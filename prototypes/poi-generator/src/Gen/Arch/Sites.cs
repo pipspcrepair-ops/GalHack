@@ -333,34 +333,25 @@ public static class Sites
         x.Wants.Add(new SiteRoads.Want("yard", Area(p.X - 5, p.Z - 5, p.X + (cols - 1) * 9 + 11, p.Z + (rows - 1) * 6 + 8), new(), Turn: true));
     }
 
-    /// <summary>A fence line of mesh panels on posts, with gaps (gates and breaches).</summary>
+    /// <summary>A fence line with its gate: a concrete wall, or the perimeter fence (<see cref="Fences"/>), breached here and there by its decay.</summary>
     static void Fence(Ctx x, SitePart p)
     {
         int len = p.Int("len", 40), h = p.Int("h", 2);
         bool alongX = p.Arg("axis", "x") == "x";
         int gapAt = p.Int("gate", len / 2);
-        float breaches = p.Num("breaches", 0.08f);
-        bool wall = p.Arg("type", "mesh") == "wall";
+        Int3 At(int i, int y, int inward) => alongX ? new Int3(p.X + i, y, p.Z + inward) : new Int3(p.X + inward, y, p.Z + i);
+        // The way through, for roads that will come to it.
+        x.C.X.Markers.Add(new Marker("gate", At(gapAt, 0, 0), alongX ? "z" : "x"));
+        x.Wants.Add(new SiteRoads.Want("gate", new List<Int3> { At(gapAt, -1, 0) }, new(), Clear: 2));
+        if (p.Arg("type", "mesh") != "wall")
+        {
+            Fences.Line((i, y, inward, b) => x.C.Blocks.TryAdd(At(i, y, inward), b), len, alongX ? Dir.North : Dir.West, false, new Rgb(0x6a, 0x6e, 0x70), new[] { gapAt }, 2);
+            return;
+        }
         for (int i = 0; i < len; i++)
         {
-            if (i == gapAt)   // the way through, for roads that will come to it
-            {
-                Int3 g = alongX ? new Int3(p.X + i, 0, p.Z) : new Int3(p.X, 0, p.Z + i);
-                x.C.X.Markers.Add(new Marker("gate", g, alongX ? "z" : "x"));
-                x.Wants.Add(new SiteRoads.Want("gate", new List<Int3> { g - Int3.Up }, new(), Clear: 2));
-            }
-            if (Math.Abs(i - gapAt) <= 2) continue;
-            Int3 b = alongX ? new Int3(p.X + i, 0, p.Z) : new Int3(p.X, 0, p.Z + i);
-            if ((Hash.Cell(b, 61) % 1000) / 1000f < breaches) continue;
-            for (int y = 0; y < h; y++)
-            {
-                Int3 c = b + Int3.Up * y;
-                if (x.C.Blocks.ContainsKey(c)) continue;
-                x.C.Blocks[c] = wall
-                    ? new Block(BlockType.Cube, Material.Concrete, Concrete.Scale(0.8f + 0.1f * (y % 2)), Role.Wall)
-                    : i % 4 == 0 ? new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x52, 0x54), Role.Wall)
-                    : new Block(BlockType.Lattice, Material.Steel, new Rgb(0x6a, 0x6e, 0x70), Role.Wall);
-            }
+            if (Math.Abs(i - gapAt) <= 2 || (Hash.Cell(At(i, 0, 0), 61) % 1000) / 1000f < p.Num("breaches", 0.08f)) continue;
+            for (int y = 0; y < h; y++) x.C.Blocks.TryAdd(At(i, y, 0), new Block(BlockType.Cube, Material.Concrete, Concrete.Scale(0.8f + 0.1f * (y % 2)), Role.Wall));
         }
     }
 

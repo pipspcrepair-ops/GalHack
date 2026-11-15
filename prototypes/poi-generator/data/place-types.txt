@@ -55,7 +55,7 @@ type airport
   part carpark   surface tarmac   count 2..3 len 50..90 depth 30..50
   part road      surface tarmac   w 7..8
   part access    road tarmac      w 7..8
-  part fence     fence            h 2..3 round 20..40
+  part fence     fence            round 20..40
 
 # Low tech: an airstrip by the same rules with fewer parts, scaled down again: an earth strip, a gravel taxiway to a
 # small hard standing, a hangar, a lookout, a fuel dump off to one side.
@@ -74,7 +74,7 @@ type airstrip
   part fuel     tanks            count 1..2 r 2..3 h 3..5
   part carpark  surface dirt     count 1 len 15..30 depth 10..20
   part access   road dirt        w 4..6
-  part fence    fence            h 1..2 round 10..20
+  part fence    fence            round 10..20
 
 # Spaceports for high tech (owner, 14 Nov: "high tech level space ports of varying sizes"), from the owner's references
 # (reference-photos/spaceports: Pearce Design Studio, CC BY-NC 4.0, followed closely as rules, never as a template, and
@@ -115,7 +115,7 @@ type port_large
   part office   building terminal count 2..4 len 40..60 depth 30..40 h 14..20
   part fuel     tanks count 4..6 r 6..8 h 10..14
   part access   road tarmac w 10
-  part fence    fence h 3..4 round 30..50
+  part fence    fence round 30..50
   part town     building dome count 8..14 r 8..14 h 6..10
 
 type port_medium
@@ -133,14 +133,14 @@ type port_medium
   part naval    building hangar  len 70..80 depth 60..70 h 30..36
   part navalpad pads concrete    r 40..48
   part barracks building terminal len 56..72 depth 30..36 h 12..14
-  part navalfence fence h 3..4
+  part navalfence fence
   part runway   surface tarmac   len 220..320 w 30 shoulder 5
   part airhangar building hangar count 1..2 len 40..48 depth 30..40 h 16..20
   part airtower building control_tower len 8..10 depth 8..10 h 18..24 cab 5..7
   part fuel     tanks count 3..4 r 5..7 h 8..12
   part lease    building works   count 2..4 len 30..40 depth 30..36 h 8..10
   part access   road tarmac w 10
-  part fence    fence h 3..4 round 25..40
+  part fence    fence round 25..40
   part town     building dome count 8..14 r 8..14 h 6..10
 
 type port_small
@@ -160,4 +160,4 @@ type port_small
   part siding   rail             len 80..140
   part fuel     tanks count 2..3 r 4..6 h 8..12
   part access   road tarmac      w 8
-  part fence    fence            h 3..4 round 20..30
+  part fence    fence            round 20..30

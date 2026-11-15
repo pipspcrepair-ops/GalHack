@@ -420,6 +420,83 @@ public partial class PoiTest
         Check(bad.Count == 0 && shared == 0 && onGround == 0, $"{pieces} pieces of fresh airfields and ports built at their sketches' sizes, every room on foot ({bad.Count} out), {shared} cells shared between pieces, {onGround} built on laid ground");
     }
 
+    /// <summary>
+    /// Every type's perimeter fence, fresh seeds, new and in each state of decay: on its line, posts every Fences.Spacing m
+    /// (none further apart on a run as built) joined by panels the fence's height; nothing else of it but its gate's leaf on
+    /// the line inside and, once decayed, panels lying flat beside the line; no lone block, no lattice, no rubble.
+    /// </summary>
+    void FenceRuns()
+    {
+        var rand = new Random();
+        var bad = new List<string>();
+        int runs = 0, posts = 0, down = 0, sagged = 0, leaned = 0;
+        foreach (PlaceType t in _lib.Types)
+            for (int k = 0; k < 2; k++)
+            {
+                ulong seed = FreshSeed(rand);
+                Sketch s = PlaceTypes.Plan(t, seed, 32000, 16000);
+                TechLevel tech = WorldProfile.Parse(t.Techs[rand.Next(t.Techs.Count)]);
+                int turn = rand.Next(4);
+                var fenceRuns = PlaceTypes.Pieces(s, turn).Where(p => p.Plan.Parts[0].Arg("what") == "fence").ToList();
+                // The gate the access road comes to is in the fence (a gap in one run, beside the sketch's gate).
+                var (gx, gz) = PlaceTypes.Turn(s.GateX, s.GateZ, turn);
+                var gaps = fenceRuns.SelectMany(p => p.Plan.Parts[0].Arg("gates").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).Select(u => p.Front switch
+                {
+                    Dir.North => (X: p.Box.X0 + u, Z: p.Box.Z0), Dir.South => (X: p.Box.X1 - u, Z: p.Box.Z1),
+                    Dir.East => (X: p.Box.X1, Z: p.Box.Z0 + u), _ => (X: p.Box.X0, Z: p.Box.Z1 - u),
+                })).ToList();
+                // (A port's gate may stand out past its fence, its road coming in through the gap straight across from it.)
+                float past = fenceRuns.Count == 0 ? 0f : fenceRuns.Min(p => p.Front switch { Dir.North => MathF.Abs(gz - p.Box.Z0), Dir.South => MathF.Abs(gz - p.Box.Z1), Dir.East => MathF.Abs(gx - p.Box.X1), _ => MathF.Abs(gx - p.Box.X0) });
+                if (fenceRuns.Count > 0 && !gaps.Any(q => MathF.Sqrt((q.X - gx) * (q.X - gx) + (q.Z - gz) * (q.Z - gz)) < past + 16f))
+                    bad.Add($"{t.Id}: no gate in its fence by its gate at {gx:F0},{gz:F0} (gaps at {string.Join(" ", gaps.Select(q => $"{q.X:F0},{q.Z:F0}"))})");
+                foreach (TypePiece p in fenceRuns)
+                {
+                    Layout l = BuildPiece(t, p, seed, tech);
+                    runs++;
+                    // The line: the run's front row (its outer edge) as built; its gate's leaf is the row inside it.
+                    bool alongX = p.Front is Dir.North or Dir.South;
+                    int line = l.Blocks.Blocks().Where(q => Shapes.IsFence(q.Block) && (q.Block.Variant & Shapes.FenceLeaf) == 0).GroupBy(q => alongX ? q.Cell.Z : q.Cell.X).OrderByDescending(r => r.Count()).Select(r => r.Key).FirstOrDefault();
+                    foreach (PoiState state in new[] { PoiState.Active, PoiState.Abandoned, PoiState.Ruined })
+                    {
+                        PoiInstance inst = PoiFactory.Spawn(_lib, l, state, Hash.Combine(seed, (ulong)state, (ulong)runs));
+                        var g = inst.Blocks;
+                        string at = $"{t.Id} {state} fence ({p.Front})";
+                        var cells = g.Blocks().Where(q => BlockInfo.Collides(q.Block.Type) && q.Cell.Y >= 0).ToList();
+                        var fence = cells.Where(q => Shapes.IsFence(q.Block)).ToList();
+                        foreach (var (c, b) in cells.Where(q => !Shapes.IsFence(q.Block)))
+                            bad.Add($"{at}: a {b.Type} at {c}, not the fence");
+                        foreach (var (c, b) in fence)
+                        {
+                            int off = Math.Abs((alongX ? c.Z : c.X) - line);
+                            bool flat = (b.Variant & Shapes.FenceDown) != 0, leaf = (b.Variant & Shapes.FenceLeaf) != 0;
+                            if (flat ? off > 1 || c.Y != 0 : leaf ? off != 1 : off != 0) bad.Add($"{at}: a {(flat ? "fallen panel" : leaf ? "leaf" : "panel")} {off} m off the line at {c} (facing {b.Facing}, line {line})");
+                            if (flat) down++;
+                            if ((b.Variant & Shapes.FenceSag) != 0) sagged++;
+                            if ((b.Variant & Shapes.FenceLean) != 0) leaned++;
+                        }
+                        // Each standing column the fence's height, a post every Spacing m along it as built.
+                        var feet = fence.Where(q => (q.Block.Variant & Shapes.FenceDown) == 0 && q.Cell.Y == 0).ToList();
+                        foreach (var (c, _) in feet)
+                        {
+                            int h = 0;
+                            while (Shapes.IsFence(g.Get(c + Int3.Up * h))) h++;
+                            if (h != Fences.Height) bad.Add($"{at}: a column {h} m high at {c} (over it {g.Get(c + Int3.Up * h).Type} {g.Get(c + Int3.Up * h).Variant})");
+                        }
+                        if (state != PoiState.Active) continue;
+                        var row = feet.Where(q => (q.Block.Variant & Shapes.FenceLeaf) == 0).Select(q => (A: alongX ? q.Cell.X : q.Cell.Z, Post: (q.Block.Variant & Shapes.FencePost) != 0)).OrderBy(q => q.A).ToList();
+                        int last = int.MinValue;
+                        foreach (var (a, post) in row)
+                        {
+                            if (last != int.MinValue && a - last > Fences.Spacing && a - last == row.Count(r => r.A > last && r.A < a) + 1) bad.Add($"{at}: posts {a - last} m apart at {a}");
+                            if (post) { last = a; posts++; }
+                        }
+                    }
+                }
+            }
+        foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
+        Check(runs > 0 && bad.Count == 0 && down > 0 && sagged + leaned > 0, $"fences: {runs} fresh runs, new and decayed, all on their line, {posts} posts at most {Fences.Spacing} m apart, panels {Fences.Height} m high; decayed: {down} panels lying flat by their gaps, {sagged} sagging, {leaned} leaning ({bad.Count} out)");
+    }
+
     /// <summary>A cell along a piece's front edge, a metres along it, one cell inside.</summary>
     static (int X, int Z) Front(TypePiece p, int a) => p.Front switch
     {
