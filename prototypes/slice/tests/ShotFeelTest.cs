@@ -194,6 +194,7 @@ public partial class ShotFeelTest : Node
         {
             float turn = tries * 2.4f, far = 150f + tries * 30f;
             Vector3 open = start + new Vector3(MathF.Cos(turn), 0f, MathF.Sin(turn)) * far;
+            if (game.Zone.Water.LiquidAt(open.X, open.Z, out _)) continue; // dry land
             game.Survivor.PlaceOutside((game.Zone.GroundAt(open.X, open.Z) + Vector3.Up * 0.3f).ToNumerics());
             for (int i = 0; i < 60; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             if (!game.Sheltered()) break;
@@ -225,8 +226,8 @@ public partial class ShotFeelTest : Node
         {
             float a = bearing + k * MathF.Tau / 24f;
             Vector3 at = Ground(feet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * far);
-            bool open = true;
-            foreach (float h in new[] { 0.6f, 1.4f })
+            bool open = !_game.Zone.Water.LiquidAt(at.X, at.Z, out _);
+            foreach (float h in new[] { 0.3f, 0.8f, 1.4f })
                 open &= !_game.Arms.Sweep(eye.ToNumerics(), (at + Vector3.Up * h).ToNumerics(), null, 0, 1f, out _);
             if (open) return at;
         }
@@ -341,18 +342,19 @@ public partial class ShotFeelTest : Node
         Creature raider = patch.Sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Clear(13f, 1f)));
         patch.Sim.Damage(raider, 1f, patch.Player);
         Vector3 Body() => patch.WorldOf(raider) + Vector3.Up * 1.2f;
-        int fired = 0, flashIn = -1;
-        for (int i = 0; i < 60 * 20 && flashIn != 0; i++)
+        // The tick after one of its rounds, with its flash still showing on screen.
+        int fired = 0;
+        bool flashed = false;
+        for (int i = 0; i < 60 * 20 && !flashed; i++)
         {
             game.Suit.Vitals.Health = max;
             drive.Face(Body());
             int now = arms.People.KitOf(raider)?.Clip.Fired ?? 0;
-            if (now > fired && flashIn < 0) flashIn = 2;
+            bool shot = now > fired;
             fired = now;
-            if (flashIn > 0) flashIn--;
             yield return 0;
+            if (shot && game.Shots.FlashesShowing > 0 && game.Camera.IsPositionInFrustum(Body())) { Shoot("muzzle-flash.png"); flashed = true; }
         }
-        Shoot("muzzle-flash.png");
         // Frozen where it stands, it fires one past your shoulder: the bolt half way.
         patch.Frozen = true;
         for (int i = 0; i < 40; i++) { game.Suit.Vitals.Health = max; drive.Face(Body()); yield return 0; }
@@ -402,7 +404,8 @@ public partial class ShotFeelTest : Node
         {
             for (int kill = 0; kill < 2; kill++)
             {
-                Vector3 at = patch.WorldOf(c) + Vector3.Up * c.Species.BodyHeight * 0.55f;
+                // At its middle, as the shots find it.
+                Vector3 at = arms.Where(c, out N.Vector3 mid) ? mid.ToGodot() : patch.WorldOf(c) + Vector3.Up * c.Species.BodyHeight * 0.55f;
                 drive.Face(at);
                 yield return 0;
                 Vector3 eye = game.Survivor.WorldEye();

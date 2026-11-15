@@ -73,6 +73,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         AddChild(Sounds);
         Sounds.Make(Table.All);
         Zone.FrameShifted += by => Pool.Shift(by.ToNumerics());
+        _passed = new int[Pool.Shots.Length];
         People = new SimArms(this);
     }
 
@@ -854,7 +855,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     /// </summary>
     void Passing(float dt)
     {
-        _passed ??= new int[Pool.Shots.Length];
         N.Vector3 eye = Game.Survivor.WorldEye().ToNumerics();
         Shot[] shots = Pool.Shots;
         for (int i = 0; i < shots.Length; i++)
