@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DiegeticUi.Theme;
 using GalHack.Items;
+using GalHack.Items.Bridge;
 using GalHack.Items.Production;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
@@ -69,6 +70,9 @@ public sealed class CoreSection : IMenuSection
         }
         return near.OrderBy(n => n.d).Select(n => n.thing).ToList();
     }
+
+    /// <summary>The structure's settings and numbers column.</summary>
+    public StructureSection Structure => _structure;
 
     /// <summary>The structure or device the panel is on.</summary>
     public object Picked => _picked;
@@ -245,8 +249,10 @@ public sealed class CoreSection : IMenuSection
 }
 
 /// <summary>
-/// A structure's settings and numbers: core mode, gravity, Home, auto-transmit, power, lights; mass,
-/// power, CPU, storage, and a vessel's four numbers. The mode switch is here on the Tab menu's CORE
+/// A structure's settings and numbers, on two pages so the column fits whatever it carries: SETTINGS (core
+/// mode, the pilot, gravity, power, lights, Home, auto-transmit) and NUMBERS (mass, its live power: capacitor,
+/// generators against draw, fuel time; storage, its drives' reach on the jump fuel in its storage, and a
+/// vessel's four numbers and lift margin). The mode switch is here on the Tab menu's CORE
 /// tab and nowhere else, in its warning stripes: it works at any time, even in flight, and nothing
 /// refuses it. It warns about missing parts and leaves the choice to the player.
 /// </summary>
@@ -256,6 +262,8 @@ public sealed class StructureSection : IMenuSection
     readonly Game.Game _game;
     readonly Func<Vessel> _vessel;
     readonly bool _modeSwitch;
+    /// <summary>The NUMBERS page is showing (else SETTINGS).</summary>
+    public bool ShowNumbers;
 
     /// <param name="modeSwitch">Show the mode switch: true on the Tab menu only (a screen in the world just says the mode).</param>
     public StructureSection(Game.Game game, Func<Vessel> vessel, bool modeSwitch = true)
@@ -347,7 +355,16 @@ public sealed class StructureSection : IMenuSection
         Structure s = v.Structure;
         g.Caption($"{v.Name.ToUpperInvariant()} · {BlueprintsSection.ModeLabel(s.Mode)}", o, area.Size.X);
         float y = o.Y + 36;
-
+        // Two pages, so the column fits above the alerts' corner whatever the structure carries.
+        float half = (area.Size.X - 6) / 2;
+        if (g.Tab("core:page:settings", new Rect2(o.X, y, half, 30), "SETTINGS", !ShowNumbers, C.Accent2)) ShowNumbers = false;
+        if (g.Tab("core:page:numbers", new Rect2(o.X + half + 6, y, half, 30), "NUMBERS", ShowNumbers, C.Accent2)) ShowNumbers = true;
+        y += 40;
+        if (ShowNumbers)
+        {
+            Numbers(g, v, o.X, y, area.Size.X);
+            return;
+        }
         // ---- Settings ---------------------------------------------------------------------------
         bool Toggle(string id, string label, bool on, bool enabled = true)
         {
@@ -375,20 +392,34 @@ public sealed class StructureSection : IMenuSection
             v.Home = now;
         }
         if (Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
+    }
 
-        // ---- Numbers ----------------------------------------------------------------------------
+    /// <summary>The NUMBERS page: mass, power and storage, and a vessel's four handling numbers and lift margin.</summary>
+    void Numbers(Gui g, Vessel v, float x, float y, float width)
+    {
         StructureStats st = v.StructureStats;
-        y += 8;
-        g.Caption("NUMBERS", new Vector2(o.X, y), area.Size.X, C.Holo);
-        y += 34;
         void Row(string label, string value, Color colour)
         {
-            g.Text(label, new Vector2(o.X, y), C.Dim, 14);
-            g.TextIn(HudLayout.Fit(UiTheme.Mono, 15, value, area.Size.X - 150), new Rect2(o.X + 150, y - 1, area.Size.X - 150, 20), colour, 15, HorizontalAlignment.Left, UiTheme.Mono);
+            g.Text(label, new Vector2(x, y), C.Dim, 14);
+            g.TextIn(HudLayout.Fit(UiTheme.Mono, 15, value, width - 150), new Rect2(x + 150, y - 1, width - 150, 20), colour, 15, HorizontalAlignment.Left, UiTheme.Mono);
             y += 26;
         }
         Row("MASS", $"{st.Mass:F2} t · {st.Blocks} BLOCKS", C.Text);
-        Row("POWER", st.Generators == 0 ? "NO GENERATOR" : $"{st.PowerOut:F2} MW OUT · {st.PowerUse:F2} MW USE", st.PowerOut >= st.PowerUse ? C.Good : C.Warn);
+        // The live power: the capacitor's charge (and a bar), the generators' output against the draw, the fuel's time at that draw.
+        StructurePower p = v.Power;
+        bool shortOf = v.PowerOn && p.Supply < 1;
+        Row("CAPACITOR", $"{p.ChargeMJ:F1} / {p.CapacityMJ:F0} MJ", p.ChargeMJ > 1e-6 ? C.Text : C.Danger);
+        g.Bar(new Rect2(x, y - 6, width, 6), p.ChargeMJ, Math.Max(1e-6, p.CapacityMJ), shortOf ? C.Danger : C.Good, 20);
+        y += 6;
+        Row("POWER", !v.PowerOn ? "OFF" : p.GeneratorMW <= 0 ? "NO GENERATOR" : $"{p.OutputMW:F3} / {p.GeneratorMW:F2} MW · DRAW {p.DrawMW:F3}", shortOf ? C.Danger : C.Good);
+        double left = p.SecondsLeft;
+        string time = p.FuelUnits <= 0 ? "NO FUEL" : double.IsInfinity(left) ? "IDLE"
+            : left >= 3600 ? $"{(int)(left / 3600)} h {(int)(left % 3600 / 60):D2} min" : $"{(int)(left / 60)} min {(int)(left % 60):D2} s";
+        string burning = p.Burning is string id && v.Storage.Catalogue.TryGet(id, out ItemDef fuel) ? $" · {(fuel.Short ?? fuel.Name).ToUpperInvariant()}" : "";
+        Row("FUEL", $"{p.FuelUnits:F0} U · {time}{burning}", p.FuelUnits <= 0 ? C.Danger : left < 300 ? C.Warn : C.Text);
+        // The drives' reach on the jump fuel in storage (the drives themselves come in phase 2).
+        foreach (var (function, label) in new[] { ("warp-drive", "WARP"), ("hyperdrive", "HYPERDRIVE") })
+            if (p.Range(function) is { } r) Row(label, $"{r.Reach:F0} {r.Unit}", r.Reach >= 1 ? C.Text : C.Danger);
         Row("STORAGE", $"{v.Storage.UsedSu:F0} / {st.StorageCapacity:F0} SU", C.Text);
         if (v.Stats is HandlingStats h && !v.IsBase)
         {

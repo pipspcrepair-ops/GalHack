@@ -10,8 +10,8 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The force field check's and views' room: a hollow iron plated box on a base (8 x 6 x 6 cells),
-/// a 4 x 3 opening in its front wall (-z), a 1 x 2 door in its east wall (+x), its core and a
-/// generator inside. Its floor sits a little proud of the ground, so the sleeper walks in.
+/// a 4 x 3 opening in its front wall (-z), a 1 x 2 door in its east wall (+x), its core, a
+/// generator and a container with its fuel inside. Its floor sits a little proud of the ground, so the sleeper walks in.
 /// </summary>
 public sealed class FieldRig
 {
@@ -47,9 +47,11 @@ public sealed class FieldRig
         s.Set(Door, Building.Make(s, cat.Type("door-1x2x1"), null, rot));
         s.Set(new Int3(4, 1, 3), Building.Make(s, cat.CoreType));
         s.Set(new Int3(2, 1, 4), Building.Make(s, cat.Type("generator-t1")));
+        s.Set(new Int3(5, 1, 4), Building.Make(s, cat.Type("container-t1"))); // core storage, for the generator's fuel
         s.DirtyChunks.Clear();
         Vessel v = Vessel.SpawnBase(game.Zone, s, (ground + Vector3.Down * 0.2f * s.Grid.CellSize).ToNumerics(), 0f);
         foreach (var (p, _) in s.Blocks()) v.ClearGround(p);
+        v.Storage.Add("biofuel", 40);
         return new FieldRig { Room = v };
     }
 

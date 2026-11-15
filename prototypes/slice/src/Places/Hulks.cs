@@ -186,6 +186,12 @@ public sealed class HullSpace
 {
     /// <summary>The hull's pieces as built: what the creatures meet is what is set down.</summary>
     public readonly List<HullVessel.Result> Pieces;
+    /// <summary>
+    /// Each piece as built, read once here on the worker before anything is set down: the cells that stop a body and its
+    /// bounds. Once set down a wreck's structure is the main thread's to change (salvage, building, repair), so nothing
+    /// here reads it again: what lives in it meets the wreck as it came down.
+    /// </summary>
+    readonly List<(HashSet<Int3> Solid, Int3 Lo, Int3 Hi, CapitalHull.HullPiece Piece)> _lying = new();
     /// <summary>The cells any piece covers, in the place's frame (max exclusive).</summary>
     public Vector3I Min { get; } = new(int.MaxValue, int.MaxValue, int.MaxValue);
     public Vector3I Max { get; } = new(int.MinValue, int.MinValue, int.MinValue);
@@ -206,7 +212,11 @@ public sealed class HullSpace
         Pieces = Hulks.Build(plan, Slice.Game.GameData.Shared.Catalogue, state, seed, Hulks.Deco());
         foreach (HullVessel.Result r in Pieces)
         {
-            var (lo, hi) = r.Structure.Bounds();
+            Structure st = r.Structure;
+            var (lo, hi) = st.Bounds();
+            // Doors, chairs and stairs are gone up or through.
+            _lying.Add((st.Blocks().Where(b => st.TypeOf(b.block) is var t && t.Collide != Collide.None && !t.IsDoor && t.Function is not ("chair" or "stairs"))
+                .Select(b => b.pos).ToHashSet(), lo, hi, r.Piece));
             for (int c = 0; c < 8; c++)
             {
                 N.Vector3 at = Place(r, new N.Vector3((c & 1) == 0 ? lo.X - 0.5f : hi.X + 0.5f, (c & 2) == 0 ? lo.Y - 0.5f : hi.Y + 0.5f, (c & 4) == 0 ? lo.Z - 0.5f : hi.Z + 0.5f));
@@ -224,14 +234,11 @@ public sealed class HullSpace
     {
         if (x < Min.X || y < Min.Y || z < Min.Z || x >= Max.X || y >= Max.Y || z >= Max.Z) return null;
         var mid = new N.Vector3(x + 0.5f, y + 0.5f, z + 0.5f);
-        foreach (HullVessel.Result r in Pieces)
+        foreach (var (solid, lo, hi, piece) in _lying)
         {
-            Structure s = r.Structure;
-            var p = Int3.Round(N.Vector3.Transform(mid - r.Piece.Origin, N.Quaternion.Inverse(r.Piece.Rotation)));
-            var (lo, hi) = s.Bounds();
+            var p = Int3.Round(N.Vector3.Transform(mid - piece.Origin, N.Quaternion.Inverse(piece.Rotation)));
             if (p.X < lo.X || p.Y < lo.Y || p.Z < lo.Z || p.X > hi.X || p.Y > hi.Y || p.Z > hi.Z) continue;
-            // Doors, chairs and stairs are gone up or through.
-            return s.TryGet(p, out Block b) && s.TypeOf(b) is var t && t.Collide != Collide.None && !t.IsDoor && t.Function is not ("chair" or "stairs");
+            return solid.Contains(p);
         }
         return null;
     }

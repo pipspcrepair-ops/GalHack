@@ -17,6 +17,8 @@ public enum Finish : byte
     Corrugated, Seam, Plate, Planks, Parquet, Tile, Lino, Carpet, RoofTile, Slate, Shingle, Thatch, Tar,
     WallTile, Deck, Hull, Paving, Chitin, Resin, Bone, Fused, Basalt, Bronze, RockFace, Soil, CeilingTile,
     Armour, Patched, Cloth, Ash, Glass,
+    /// <summary>Chain-link mesh, drawn by the glass shader: wire diamonds up close, a grey haze far off.</summary>
+    Mesh,
 }
 
 /// <summary>Which way a face looks, as finishes are chosen: a wall's outside or inside, a floor, a ceiling, a roof (or paving: anything facing the sky), an eave's underside.</summary>

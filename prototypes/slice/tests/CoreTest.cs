@@ -78,7 +78,8 @@ public partial class CoreTest : Node
         GD.Print("-- old ids and old blueprints load --");
         OldData();
 
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        // TEST SHORTCUT: generators burn no fuel; this tests flight and handling, not fuel (PowerTest does).
+        _game = new Game.Game { FreePower = true, Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);
         _play = new Playthrough(_game);

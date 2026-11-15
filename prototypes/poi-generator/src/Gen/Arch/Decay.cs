@@ -149,7 +149,7 @@ public static class Decay
             }
         }
         // No window to leave lit (a mine mouth, a hatch): a work lamp still burns over the way in.
-        if (!inst.Lights.Any(l => l.Cell.Y >= 0))
+        if (!inst.Lights.Any(l => l.Cell.Y >= 0) && !Fences.Only(inst.Blocks)) // (a fence run has no way in to light)
         {
             Int3 out1 = layout.EntranceFacing.Vec();
             Int3 door = layout.EntranceCell - out1 * 2;

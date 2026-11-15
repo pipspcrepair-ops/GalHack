@@ -56,6 +56,12 @@ public partial class Game : Node3D
     /// </summary>
     public double CraftTimeScale = 1;
 
+    /// <summary>
+    /// TEST SHORTCUT: generators run without burning fuel, as in Creative. False in play; a test of flight or handling,
+    /// not of fuel, sets it (marked where it does) for the ships it builds without storage for fuel.
+    /// </summary>
+    public bool FreePower;
+
     public readonly Controls Controls = new();
 
     public SurfaceZone Zone { get; private set; }
@@ -227,13 +233,14 @@ public partial class Game : Node3D
         Wildlife.Weapons.GameDraws = _ => true; // people hold the player's own weapon models (Slice.Arms), not the body's
         Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
-        AddChild(new GcPacer { Name = "GC pacer" });
+        AddChild(new GcPacer { Name = "GC pacer", Room = () => Pacer.Room });
         Zone.WorldRules.Mode = _mode;
         // Placed every frame from interpolated transforms, so it is not interpolated itself.
         Camera = new Camera3D { Name = "Camera", Fov = 75f, Near = 0.05f, Far = 12000f, Current = true, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
         Zone.AddChild(Camera);
         Zone.Camera = Camera;
         Zone.Focus = Focus;
+        Pacer.Deferred = () => Zone.IsBuilt ? Zone.Streamer.LastFrameMs : 0;
         Zone.Built += OnPlanetBuilt;
         StartZones();
         AddChild(new AfterStep { Name = "AfterStep", Game = this });
@@ -899,9 +906,11 @@ public partial class Game : Node3D
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.
+        if (Zone.IsBuilt) Zone.Streamer.UploadBudgetMs = Pacer.Room; // what the frame's pace leaves room for
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         LoadAhead(delta);
+        Survivor.ViewLead = ViewLead();
         PoseFigure(delta);
         // Seen from outside, the whole figure; in first person only seated (its lap under the view), and never the head the eye is in.
         bool outside = ThirdPerson || FixedCamera != null;

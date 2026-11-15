@@ -87,7 +87,7 @@ block 1 0 1 generator-t1
 block 4 0 1 gatling
 block -4 0 2 iron-plated paint=hull
 block -1 0 2 iron-plated paint=hull
-block 0 0 2 fuel-tank-t1
+block 0 0 2 container-t1
 block 1 0 2 iron-plated paint=hull
 block 4 0 2 iron-plated paint=hull
 block -6 0 3 gatling

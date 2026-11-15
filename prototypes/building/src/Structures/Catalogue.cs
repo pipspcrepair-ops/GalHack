@@ -48,6 +48,12 @@ public sealed class Part
     /// <summary>Drawn (and solid) only while a door is closed: the door leaf.</summary>
     public bool ClosedOnly;
 
+    /// <summary>Drawn (and solid) only while its block is switched on, or only while it is off: a turret's barrels run out or parked.</summary>
+    public bool OnOnly, OffOnly;
+
+    /// <summary>Is it there on this block, as the block stands (a door open, a device switched off)?</summary>
+    public bool Shows(in Block b) => !(ClosedOnly && b.Open) && !(OnOnly && b.Off) && !(OffOnly && !b.Off);
+
     /// <summary>How its faces depart from the style's look (colour, pattern, a screen's symbol, a pulse), or null.</summary>
     public PartFinish Finish;
 
@@ -123,7 +129,7 @@ public sealed class BlockType
     /// <summary>True when <see cref="Size"/> is more than one cell.</summary>
     public bool Multi;
     public string Function = "";
-    public float Power, Thrust, Storage, Fuel;
+    public float Power, Thrust, Storage;
     // What the handling model reads: gyro torque, hover lift (kN) and ride height (m), leg reach (m).
     public float Torque, Lift, RideHeight, LegLength;
     /// <summary>Chairs: where a seated person's hips rest and where their eyes are, in the block's -0.5..0.5 box.</summary>
@@ -157,8 +163,11 @@ public sealed class BlockType
     public bool IsLight => Function == "light";
     /// <summary>An exterior spotlight: a lamp throwing a beam outward from the hull, switched apart from the lights inside.</summary>
     public bool IsSpotlight => Function == "spotlight";
-    /// <summary>A lamp that can be switched off (a block's Off flag): a light or a spotlight.</summary>
+    /// <summary>A lamp: a light or a spotlight.</summary>
     public bool IsLamp => IsLight || IsSpotlight;
+    public bool IsTurret => Function == "turret";
+    /// <summary>A block with a switch of its own (its Off flag): a lamp or a turret. Switched off it draws no power, its glow goes dark and its off-only parts show.</summary>
+    public bool Switches => IsLamp || IsTurret;
     public bool IsThruster => Function == "thruster";
     public bool IsGenerator => Function == "generator";
     public bool IsContainer => Function == "container";
@@ -426,7 +435,6 @@ public sealed class Catalogue
             t.Power = Num(c, "power", 0);
             t.Thrust = Num(c, "thrust", 0);
             t.Storage = Num(c, "storage", 0);
-            t.Fuel = Num(c, "fuel", 0);
             t.Torque = Num(c, "torque", 0);
             t.Lift = Num(c, "lift", 0);
             t.RideHeight = Num(c, "rideHeight", 0);
@@ -465,6 +473,8 @@ public sealed class Catalogue
             Max = max,
             Style = Enum.Parse<PartStyle>(Str(p, "style", "body"), ignoreCase: true),
             ClosedOnly = Bool(p, "closedOnly", false),
+            OnOnly = Str(p, "shown", "always") == "on",
+            OffOnly = Str(p, "shown", "always") == "off",
             Finish = LoadFinish(p),
         };
         part.Polygons = p.TryGetProperty("cylinder", out JsonElement axis)

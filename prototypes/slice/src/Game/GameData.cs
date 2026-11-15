@@ -31,6 +31,9 @@ public sealed class GameData
     /// <summary>shared/Items' catalogue with the slice's additions (data/items.json): items, recipes, block bills, machines and tech-tree nodes.</summary>
     public GalHack.Items.ItemCatalogue Items { get; private init; }
 
+    /// <summary>Structure power (shared/Items/data/power.json): fuel energy, the core's capacitor, what each device draws by.</summary>
+    public GalHack.Items.Bridge.PowerRules Power { get; private init; }
+
     /// <summary>What using each consumable does.</summary>
     public Dictionary<string, Slice.Items.ConsumableEffect> Consumables { get; private init; }
 
@@ -77,6 +80,7 @@ public sealed class GameData
             // extra armour, all read in place.
             Catalogue = catalogue,
             Items = items,
+            Power = GalHack.Items.Bridge.PowerRules.LoadDirectory(SharedPath("Items", "data"), items),
             Consumables = consumables,
             Progress = Slice.Items.ProgressRules.Parse(File.ReadAllText(Own("data/progress.json"))),
             Weather = WeatherData.Parse(File.ReadAllText(Proto("weather", "data", "weather.json"))),
@@ -230,8 +234,8 @@ public sealed class SliceRules
         public double LowC { get; set; } = 12;
         public double HighC { get; set; } = 26;
 
-        /// <summary>Seconds a unit of each fuel burns, tried in this order.</summary>
-        public Dictionary<string, double> Fuels { get; set; } = new();
+        /// <summary>What it draws from its structure's capacitors while running, MW.</summary>
+        public double Power { get; set; } = 0.01;
     }
 
     public sealed class ToolRules

@@ -503,28 +503,16 @@ public static class SewageWorks
         return land3;
     }
 
-    /// <summary>A chain-link line round the works on concrete posts, with its gate, broken here and there.</summary>
+    /// <summary>The perimeter fence round the works (<see cref="Fences"/>), with its gate between two concrete piers.</summary>
     static void Fence(Plot p, int gateI)
     {
         Fab f = p.F;
-        var link = new Block(BlockType.Rail, Material.Steel, new Rgb(0x6c, 0x6e, 0x70), Role.Decor);
-        void Line(int u0, int v0, int u1, int v1)
-        {
-            int len = Math.Max(Math.Abs(u1 - u0), Math.Abs(v1 - v0));
-            for (int t = 0; t <= len; t++)
-            {
-                int u = u0 + Math.Sign(u1 - u0) * t, v = v0 + Math.Sign(v1 - v0) * t;
-                if (v == 0 && u >= 2 * gateI && u < 2 * gateI + 12) continue;
-                if (Hash.Cell(new Int3(u / 8, 0, v / 8), 229) % 100 < 14) continue;
-                if (t % 6 == 0)
-                    for (int y = 0; y < 3; y++) p.Put(u, y, v, new Block(BlockType.Pillar, Material.Concrete, f.Plinth.C, Role.Decor));
-                else p.Put(u, 0, v, link);
-            }
-        }
-        Line(0, 0, 2 * W, 0);
-        Line(0, 0, 0, 2 * D);
-        Line(0, 2 * D, 2 * W, 2 * D);
-        Line(2 * W, 0, 2 * W, 2 * D);
+        var mesh = new Rgb(0x6c, 0x6e, 0x70);
+        // Front and back along u, the sides along v; each line in from its edge toward the works.
+        Fences.Line((a, y, n, b) => p.Put(a, y, n, b), 2 * W + 1, Dir.North, false, mesh, new[] { 2 * gateI + 6 }, 6);
+        Fences.Line((a, y, n, b) => p.Put(a, y, 2 * D - n, b), 2 * W + 1, Dir.South, false, mesh, Array.Empty<int>(), 0);
+        Fences.Line((a, y, n, b) => p.Put(n, y, a, b), 2 * D + 1, Dir.West, false, mesh, Array.Empty<int>(), 0);
+        Fences.Line((a, y, n, b) => p.Put(2 * W - n, y, a, b), 2 * D + 1, Dir.East, false, mesh, Array.Empty<int>(), 0);
         // The gate: two concrete piers and a board over the way in.
         foreach (int i in new[] { gateI - 1, gateI + 6 })
             p.Fill(i, 0, 0, i, 3, 0, Plot.Cube(f.Plinth, Role.Wall));

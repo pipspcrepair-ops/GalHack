@@ -291,20 +291,39 @@ public partial class BuildTest
         foreach (MapLevel level in Enum.GetValues<MapLevel>()) pages.Add(($"map: {level}", () => _game.Menu.OpenMap(level)));
         foreach (var entry in _game.Menu.Root.Blueprints.Library.Starters)
             pages.Add(($"blueprints: {entry.Name}", () => { _game.Menu.Open(MenuTab.Blueprints); _game.Menu.Root.Blueprints.Select(entry); }));
+        // A vessel carrying everything the Core tab shows (lights and their styles, the pilot's bar, a fabricator), off on its
+        // own ground: both pages of its settings column, which must end above the alerts' corner.
+        Vector3 home = _game.Survivor.WorldFeet;
+        Slice.Vessels.Vessel was = _game.Survivor.Aboard;
+        System.Numerics.Vector3 wasAt = was?.Body.ToLocal(_game.Survivor.Body.WorldPosition) ?? default;
+        Vector3 site = _play.FlatSpot(home, 150f, span: 14f);
+        Slice.Vessels.Vessel full = BarTest.Rig(_game, site, 0f, out _);
+        foreach (bool numbers in new[] { false, true })
+            pages.Add(($"core: {full.Name}, {(numbers ? "numbers" : "settings")}", () =>
+            {
+                _game.Survivor.PlaceOutside((site + new Vector3(5f, 2f, 0f)).ToNumerics());
+                _game.Menu.OpenCore(full);
+                _game.Menu.Root.Core.Structure.ShowNumbers = numbers;
+            }));
         foreach (var (name, open) in pages)
         {
             open();
             foreach (int x in _drive.Wait(3)) yield return x;
             NoteLines($"menu, {name}", _game.Menu.Root);
             List<string> problems = _game.Menu.Root.Gui.TextProblems();
+            problems.AddRange(_game.Menu.Root.Gui.Texts.Where(t => t.Box.End.Y > Gui.Height).Select(t => $"\"{t.Text}\" is below the menu's bottom"));
             List<string> strip = RowProblems(_game.Menu.Root);
             strip.AddRange(SlotProblems(_game.Menu.Root));
             Check(problems.Count == 0 && strip.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0,
                 $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' row and the notices' corner clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
         }
         _game.Menu.Root.You.ShowBlocks = false;
+        _game.Menu.Root.Core.Structure.ShowNumbers = false;
         _game.Menu.Close();
         Gui.Measure = false;
+        if (was != null) _game.Survivor.PlaceAboard(was, wasAt);
+        else _game.Survivor.PlaceOutside(home.ToNumerics());
+        foreach (int x in _drive.Wait(10)) yield return x;
     }
 
     /// <summary>At the start, before anything else is found or pinged, the compass holds the bunker and the place in view from its way out, and nothing else.</summary>
@@ -383,7 +402,7 @@ public partial class BuildTest
         void Hear(string t, Color c) => said += t + "|";
         _game.Said += Hear;
         Vector3 site = _play.FlatSpot(_game.Survivor.WorldFeet, 30f, 0.6f, 0.4f, span: 14f);
-        CoreCraft.ForecastBase(_game.Zone, site); // warnings come only through a forecast block: stand in its area
+        var (forecast, _) = CoreCraft.ForecastBase(_game.Zone, site); // warnings come only through a forecast block: stand in its area
         _game.Survivor.PlaceOutside((site + new Vector3(0f, 0.5f, 6f)).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
@@ -392,7 +411,7 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(6)) yield return x;
         Alerts.Shown? t = _game.Alerts.Hazards.FirstOrDefault(h => h.Sign == "tornado");
         Check(t != null && t.Value.Seconds > 0 && t.Value.From != null && Alerts.HasSign("tornado"),
-            $"a tornado forming raises its sign with a timer ({(t == null ? "none" : Alerts.Clock(t.Value.Seconds))}) and a bearing");
+            $"a tornado forming raises its sign with a timer ({(t == null ? "none" : Alerts.Clock(t.Value.Seconds))}) and a bearing (forecast base powered {forecast.Powered}, {forecast.Power.FuelUnits:F0} fuel units; forecast reaches {_game.ForecastReaches}; signs {string.Join(", ", _game.Alerts.Hazards.Select(h => h.Sign))})");
         Check(said == "", $"and nothing is said about it{(said == "" ? "" : $": \"{said}\"")}");
         Check(typeof(Alerts.Shown).GetProperties().All(p => p.Name != "Text"), "an alert carries no text at all: a sign, a timer and a direction");
         Check(_game.Alerts.Layer > _game.Escape.Layer && _game.Alerts.Layer > _game.Menu.Layer && _game.Alerts.ProcessMode == Node.ProcessModeEnum.Always,

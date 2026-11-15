@@ -389,7 +389,7 @@ public static class Building
         if (!s.TryGetBlock(p, out p, out Block b)) return false;
         BlockType t = s.TypeOf(b);
         if (t.IsDoor) b.Flags ^= BlockFlags.Open;
-        else if (t.IsLamp) b.Flags ^= BlockFlags.Off;
+        else if (t.Switches) b.Flags ^= BlockFlags.Off;
         else if (t.IsCore)
         {
             s.GravityOn = !s.GravityOn;

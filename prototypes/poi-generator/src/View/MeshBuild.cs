@@ -1318,7 +1318,23 @@ void fragment() {
     float a = COLOR.a;
     int code = int(v_code.x + 0.5);
     ALBEDO = tint; ALPHA = a; ROUGHNESS = 0.08; METALLIC = 0.2; SPECULAR = 0.5;
-    if ((code & 63) == 41 && detail > 0.5) {
+    if ((code & 63) == 42) {
+        // Chain-link: galvanised wire in 6 cm diamonds; where a diamond is under a few pixels, the haze the wire makes.
+        vec3 n = normalize(v_objn);
+        vec3 U = abs(n.x) > 0.5 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+        vec2 uv = abs(n.y) > 0.9 ? v_obj.xz : vec2(dot(v_obj, U), v_obj.y);
+        float px = max(max(length(dFdx(v_obj)), length(dFdy(v_obj))), 1e-5);
+        vec2 q = vec2(uv.x + uv.y, uv.x - uv.y) / 0.085;
+        vec2 e = abs(fract(q) - 0.5);
+        float wire = 1.0 - aastep(0.06, 0.5 - max(e.x, e.y));
+        float v = vis(1.0 / 0.06, px);
+        int wear = (code >> 8) & 3;
+        float rust = float(wear) / 3.0 * smoothstep(0.35, 0.75, fbm3(v_obj * 1.7));
+        ALBEDO = mix(tint, vec3(0.32, 0.17, 0.08), rust * 0.8);
+        ALPHA = mix(0.42, wire, v);
+        if (ALPHA < 0.05) discard;
+        ROUGHNESS = mix(0.45, 0.9, rust); METALLIC = mix(0.7, 0.1, rust); SPECULAR = 0.5;
+    } else if ((code & 63) == 41 && detail > 0.5) {
         int wear = (code >> 8) & 3;
         int edges = (code >> 20) & 15;
         int param = (code >> 6) & 3;

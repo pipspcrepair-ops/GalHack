@@ -93,19 +93,19 @@ public sealed partial class Vessel
         {
             _lightsOn = value;
             SetDecoLights(value);
-            SwitchLamps(t => t.IsLight, value);
+            SwitchBlocks(t => t.IsLight, value);
         }
     }
 
-    /// <summary>Switches every lamp block of a kind on or off (its Off flag: its glow and its real light follow).</summary>
-    public void SwitchLamps(Func<BlockType, bool> which, bool on)
+    /// <summary>Switches every block of a kind with a switch of its own (lamps, turrets) on or off: its Off flag, which its glow, its light, its parts and its draw follow.</summary>
+    public void SwitchBlocks(Func<BlockType, bool> which, bool on)
     {
         bool changed = false;
         foreach (var (cell, block) in Structure.Blocks().ToList())
         {
             Block b = block;
             BlockType t = Structure.TypeOf(b);
-            if (!t.IsLamp || !which(t) || b.Off == !on) continue;
+            if (!t.Switches || !which(t) || b.Off == !on) continue;
             b.Flags ^= BlockFlags.Off;
             Structure.Set(cell, b);
             changed = true;
@@ -122,7 +122,7 @@ public sealed partial class Vessel
         Cabin.SetGravity(Body.Core);
     }
 
-    /// <summary>Is one of its systems switched on (the toolbar's toggles by name: "life-support", "fabricators", "turrets", "shields")? The power model reads these.</summary>
+    /// <summary>Is one of its systems switched on (the toolbar's toggles by name: "life-support", "fabricators", "shields")? The power model reads these.</summary>
     public bool SystemOn(string system) => !Structure.SystemsOff.Contains(system);
 
     public void SetSystem(string system, bool on)
@@ -212,6 +212,7 @@ public sealed partial class Vessel
         }
         Storage = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
         StorageGrid = new ItemGrid(Storage, 8, 6, growable: true);
+        Power = new StructurePower(zone.Data.Power, structure, Storage);
         Roles.PilotChanged += FollowPilot;
         RefreshSeat();
         RefreshMachines();
@@ -237,8 +238,8 @@ public sealed partial class Vessel
         }
     }
 
-    /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
-    public bool Powered => PowerOn && HasGenerator;
+    bool _hasForecast;
+    int _forecastVersion = -1;
 
     RoomReport _rooms;
     int _roomsVersion = -1;
@@ -253,32 +254,25 @@ public sealed partial class Vessel
         }
     }
 
-    bool _hasGenerator, _hasForecast;
-    int _generatorVersion = -1;
-
-    /// <summary>Whether a working weather forecast block is on it: one aboard and its power on with a generator.</summary>
-    public bool Forecasting => Powered && _hasForecast;
-
-    /// <summary>A generator aboard, looked for again only when the structure has changed (its view asks a few times a second).</summary>
-    bool HasGenerator
+    /// <summary>Whether a working weather forecast block is on it: one aboard, and power to it.</summary>
+    public bool Forecasting
     {
         get
         {
-            if (_generatorVersion != Structure.Version)
+            if (_forecastVersion != Structure.Version)
             {
-                _generatorVersion = Structure.Version;
-                _hasGenerator = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsGenerator);
+                _forecastVersion = Structure.Version;
                 _hasForecast = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsForecast);
             }
-            return _hasGenerator;
+            return Powered && _hasForecast;
         }
     }
 
-    /// <summary>Runs its machines for a tick (when powered and its fabricators are switched on; the time scale is the tests' marked speed-up).</summary>
+    /// <summary>Runs its machines for a tick at the share of power they get, when its fabricators are switched on (the time scale is the tests' marked speed-up): short of power they slow, without any they stop.</summary>
     public void TickMachines(double dt)
     {
         if (!Powered || !SystemOn(StructureBar.Fabricators)) return; // switched off, their jobs wait where they stand
-        foreach (Constructor c in Machines.Values) c.Tick(dt);
+        foreach (Constructor c in Machines.Values) c.Tick(dt * Power.Supply);
     }
 
     // ---- Spawning ---------------------------------------------------------------------------

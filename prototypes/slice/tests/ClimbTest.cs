@@ -107,7 +107,8 @@ public partial class ClimbTest : Node
     {
         PoiSiting.ForceFamily = family;
         PoiSiting.ForceState = P.PoiState.Abandoned;
-        var game = new Game.Game { Interactive = false, World = WorldChoice.Fresh(), SkipIntro = true };
+        // TEST SHORTCUT: generators burn no fuel; this tests flight and handling, not fuel (PowerTest does).
+        var game = new Game.Game { FreePower = true, Interactive = false, World = WorldChoice.Fresh(), SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
         foreach (int x in drive.UntilPlaying()) yield return x;
@@ -433,7 +434,7 @@ public partial class ClimbTest : Node
     /// </summary>
     IEnumerable<int> Built()
     {
-        var game = new Game.Game { Interactive = false, World = WorldChoice.Fresh(), SkipIntro = true };
+        var game = new Game.Game { FreePower = true, Interactive = false, World = WorldChoice.Fresh(), SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
         foreach (int x in drive.UntilPlaying()) yield return x;

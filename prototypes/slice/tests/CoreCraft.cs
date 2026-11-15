@@ -54,8 +54,11 @@ public static class CoreCraft
     {
         Structure s = Ship(zone.Data.Catalogue, false, _ => true);
         var cell = new Int3(2, 1, 2);
-        Building.Place(s, cell, Building.Make(s, zone.Data.Catalogue.Type("weather-forecast")));
+        foreach (var (at2, id) in new[] { (cell, "weather-forecast"), (new Int3(1, 1, 2), "container-t1") }) // the container: core storage, for its generator's fuel
+            if (Building.Place(s, at2, Building.Make(s, zone.Data.Catalogue.Type(id))) is var e && e != PlaceError.None)
+                throw new InvalidOperationException($"the forecast base's {id} can't go at {at2}: {e}");
         Vessel v = Vessel.Spawn(zone, s, (at + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        v.Storage.Add("biofuel", 40);
         v.Settle();
         return (v, cell);
     }

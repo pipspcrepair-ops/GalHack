@@ -124,7 +124,7 @@ public partial class Game
         {
             // The view's own frame with its pitch taken out: the eye's heading, feet under it.
             Transform3D eye = s.Eye();
-            Basis turn = (eye.Basis * new Basis(Vector3.Right, -s.Pitch)).Orthonormalized();
+            Basis turn = (eye.Basis * new Basis(Vector3.Right, -s.ViewPitch)).Orthonormalized();
             place = new Transform3D(turn, eye.Origin - turn.Y * s.EyeAbove);
             // Swimming, it lies out along the way it faces, the head clear of the water.
             if (m.Swimming) place *= new Transform3D(Basis.Identity, Vector3.Up * 1.1f) * new Transform3D(new Basis(Vector3.Right, -1.2f), Vector3.Zero) * new Transform3D(Basis.Identity, Vector3.Down * 1.1f);

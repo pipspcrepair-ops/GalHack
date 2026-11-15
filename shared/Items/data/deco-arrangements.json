@@ -10,8 +10,12 @@
 //               gap      clearance between pieces; spacing between repeats along a wall
 //               max      the most uses of a template in one room (default: as many as fit)
 //               aisle    rows: the aisle down the middle (default 1.3 m)
+//               double   a row or line set back to back with its mirror (a bank of desks, a range of shelves)
+//               under    a walk-over piece laid under it, centred on its anchor (a rug under a lounge)
 // sets        per theme set: wall and island templates with weights, and the roles that fill the
-//             walls between them
+//             walls between them. A recipe may add "zone": a big room's second group (24 mÂ² and up),
+//             set in the half of the room away from what it is arranged round, and "divider": what
+//             may stand between the two
 // sites       outdoor templates: what a road, airfield or rail line is dressed with
 // rooms ...   how a POI room is furnished: from its role first, then what the place is for, never
 //             another room's kit. Each names a set or a recipe. In order:
@@ -32,10 +36,24 @@
   "templates": {
     "table-group":   { "kind": "around",  "where": "island", "anchor": ["table"], "members": ["chair", "bench-seat", "stool"], "count": [2, 6], "top": ["tray"], "topChance": 0.7, "gap": 0.04 },
     "cafe-pair":     { "kind": "around",  "where": "island", "anchor": ["table-small"], "members": ["chair", "stool"], "count": [2, 3], "gap": 0.04 },
-    "lounge":        { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa", "chair"], "count": [2, 3], "gap": 0.25 },
+    "lounge":        { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa"], "count": [2, 3], "gap": 0.25, "under": ["rug"], "max": 1 },
+    "desk-bank":     { "kind": "line",    "where": "island", "anchor": ["desk"], "front": ["chair"], "top": ["monitor"], "topChance": 0.6, "count": [2, 3], "double": true },
+    "range":         { "kind": "row",     "where": "island", "anchor": ["shelf", "books", "cabinet"], "count": [2, 3], "spacing": 0.0, "double": true },
+    "basin-line":    { "kind": "line",    "where": "island", "anchor": ["basin"], "count": [2, 3], "double": true },
+    "map-island":    { "kind": "around",  "where": "island", "anchor": ["map"], "members": ["chair", "stool"], "count": [0, 3], "gap": 0.3, "max": 1 },
+    "issue-table":   { "kind": "single",  "where": "island", "anchor": ["table"], "max": 1 },
+    "optable-island": { "kind": "around", "where": "island", "anchor": ["optable"], "members": ["iv", "monitor", "cart"], "count": [2, 3], "gap": 0.45, "max": 1 },
+    "nurse-station": { "kind": "station", "where": "wall", "anchor": ["desk", "counter"], "front": ["chair", "stool"], "top": ["monitor"], "beside": ["cabinet"], "max": 1 },
+    "reception":     { "kind": "station", "where": "wall", "anchor": ["reception", "counter", "desk"], "front": ["chair", "stool"], "top": ["monitor"], "beside": ["plant", "cabinet"], "max": 1 },
+    "waiting":       { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa", "seat-row"], "count": [2, 4], "gap": 0.3, "under": ["rug"], "max": 3 },
+    "class-rows":    { "kind": "rows",    "where": "island", "anchor": ["desk"], "focus": ["board"], "aisle": 1.0 },
+    "screen-wall":   { "kind": "single",  "where": "wall", "anchor": ["screen"], "max": 1 },
+    "board-wall":    { "kind": "single",  "where": "wall", "anchor": ["board"], "max": 1 },
+    "machine-bay":   { "kind": "single",  "where": "island", "anchor": ["boiler", "tank", "drill", "crane", "machine"], "max": 2 },
     "altar-circle":  { "kind": "around",  "where": "island", "anchor": ["altar"], "members": ["pillar", "pod", "instrument", "candles", "totem", "crystal", "brazier"], "count": [2, 4], "gap": 0.7 },
     "camp":          { "kind": "around",  "where": "island", "anchor": ["brazier"], "members": ["chair", "crate", "bench-seat"], "count": [2, 4], "gap": 0.55 },
     "desk-station":  { "kind": "station", "where": "wall", "anchor": ["desk"], "front": ["chair", "stool"], "top": ["monitor", "radio", "scope"], "beside": ["cabinet", "shelf", "plant", "bin"] },
+    "study-desk":    { "kind": "station", "where": "wall", "anchor": ["desk"], "front": ["chair", "stool"], "top": ["monitor", "radio", "scope"], "beside": ["cabinet", "shelf", "plant", "bin"], "max": 1 },
     "lab-station":   { "kind": "station", "where": "wall", "anchor": ["bench"], "front": ["stool", "chair"], "top": ["scope", "monitor"], "beside": ["fridge", "cart", "bin"] },
     "console-station": { "kind": "station", "where": "wall", "anchor": ["console", "panel"], "front": ["seat", "chair", "stool"], "beside": ["locker", "cabinet"] },
     "ward-bay":      { "kind": "bay", "where": "wall", "anchor": ["bed", "gurney", "pod"], "beside": ["nightstand", "cabinet", "iv", "monitor"], "screen": ["curtain"], "spacing": 0.35 },
@@ -64,8 +82,8 @@
     "tug-bay":       { "kind": "single", "where": "island", "max": 1, "anchor": ["tug"] },
     "rock-heap":     { "kind": "cluster", "where": "wall", "anchor": ["rock"], "count": [1, 3] },
     "kitchen-run":   { "kind": "line", "where": "wall", "anchor": ["counter"], "middle": ["sink"], "ends": ["stove"], "count": [0, 4], "max": 1 },
-    "kitchen-table": { "kind": "around", "where": "island", "anchor": ["dining-table"], "members": ["dining-chair"], "count": [2, 4], "gap": 0.06, "max": 1 },
-    "hearth-wall":   { "kind": "single", "where": "wall", "anchor": ["hearth", "screen"], "max": 1 },
+    "kitchen-table": { "kind": "around", "where": "island", "anchor": ["dining-table"], "members": ["dining-chair"], "count": [2, 4], "gap": 0.06, "max": 1, "under": ["rug"] },
+    "fire-wall":     { "kind": "single", "where": "wall", "anchor": ["hearth"], "max": 1 },
     "bed-bay":       { "kind": "bay", "where": "wall", "anchor": ["double-bed"], "beside": ["nightstand"], "max": 1 },
     "single-bay":    { "kind": "bay", "where": "wall", "anchor": ["single-bed"], "beside": ["nightstand"], "max": 1 },
     "wardrobe-row":  { "kind": "row", "where": "wall", "anchor": ["wardrobe"], "count": [1, 2], "spacing": 0.02, "max": 1 },
@@ -112,24 +130,58 @@
     "hangar":      { "set": "aviation", "wall": { "workbench-station": 3, "rack-row": 2, "tank-row": 1, "racking-aisle": 0.5 }, "island": { "engine-bay": 2, "tug-bay": 1.5 }, "fill": ["barrel", "cylinders", "crate", "toolrack"] },
     "aircraft-cabin": { "set": "aviation", "wall": { "galley-line": 1 }, "island": { "cabin-rows": 4 }, "fill": ["luggage"] },
     // A home's rooms, each arranged round what it is for (see "focus"): the worktop run with its sink and cooker and a
-    // table to eat at; a hearth or screen with the seats round a low table; the bed's head to a wall, a wardrobe; a bath,
+    // table to eat at; a hearth (only at a chimney breast) or a screen, the sofas round a low table; the bed's head to a wall, a wardrobe; a bath,
     // a basin and a WC; a console and a coat stand by the door; a desk and books; shelves and boxes; a workbench.
-    "kitchen":     { "set": "residential", "wall": { "kitchen-run": 6 }, "island": { "kitchen-table": 3 }, "fill": ["sideboard", "bin", "plant"], "light": ["ceiling-light"] },
-    "living-room": { "set": "residential", "wall": { "hearth-wall": 5, "book-row": 2 }, "island": { "lounge": 4 }, "fill": ["lamp", "plant", "rug", "sideboard"], "light": ["ceiling-light"] },
-    "bedroom":     { "set": "residential", "wall": { "bed-bay": 6, "single-bay": 2, "wardrobe-row": 3 }, "island": {}, "fill": ["nightstand", "lamp", "rug", "chest", "plant"], "light": ["ceiling-light"] },
-    "bathroom":    { "set": "residential", "wall": { "bath-bay": 4, "basin-wall": 4, "wc-wall": 4 }, "island": {}, "fill": ["bin", "plant"], "light": ["ceiling-light"] },
-    "hall":        { "set": "residential", "wall": { "console-wall": 4, "coat-wall": 2 }, "island": {}, "fill": ["coat-stand", "plant", "rug"], "light": ["ceiling-light"] },
-    "study":       { "set": "residential", "wall": { "desk-station": 5, "book-row": 3 }, "island": {}, "fill": ["plant", "lamp", "rug"], "light": ["ceiling-light"] },
-    "store":       { "set": "residential", "wall": { "shelf-row": 3, "crate-stack": 3 }, "island": {}, "fill": ["chest", "luggage", "cabinet"], "light": ["ceiling-light"] },
-    "garage":      { "set": "industrial", "wall": { "workbench-station": 4, "rack-row": 2, "tank-row": 1 }, "island": {}, "fill": ["barrel", "crate", "cylinders", "toolrack"] },
-    "storeroom":   { "set": "industrial", "wall": { "crate-stack": 3, "shelf-row": 1, "racking-aisle": 1 }, "island": {}, "fill": ["crate", "barrel", "pallet"] },
-    // A capital ship's rooms (the slice's HullVessel, for wrecks and derelicts): the bridge round its consoles, bunks and
-    // lockers in the crew's quarters, beds in the medbay, the officers' table and desks, the machinery spaces' pipes and panels.
+    // A big room (24 mÂ² and up) gets a second zone in its far half: a living room's dining table, a kitchen-diner's sofa end.
+    "kitchen":     { "set": "residential", "wall": { "kitchen-run": 6 }, "island": { "kitchen-table": 3 }, "zone": { "lounge": 2, "cafe-pair": 1 }, "fill": ["sideboard", "bin", "plant"], "light": ["ceiling-light"] },
+    "living-room": { "set": "residential", "wall": { "fire-wall": 5, "screen-wall": 3, "book-row": 2 }, "island": { "lounge": 4 }, "zone": { "kitchen-table": 3, "cafe-pair": 1 }, "divider": ["sideboard"], "fill": ["lamp", "plant", "rug", "sideboard"], "light": ["ceiling-light"] },
+    "bedroom":     { "set": "residential", "wall": { "bed-bay": 6, "single-bay": 2, "wardrobe-row": 3 }, "island": {}, "zone": { "lounge": 2, "cafe-pair": 1 }, "fill": ["nightstand", "lamp", "rug", "chest", "plant"], "light": ["ceiling-light"] },
+    "bathroom":    { "set": "residential", "wall": { "bath-bay": 4, "basin-wall": 4, "wc-wall": 4 }, "island": {}, "zone": { "basin-line": 1 }, "fill": ["bin", "plant"], "light": ["ceiling-light"] },
+    "hall":        { "set": "residential", "wall": { "console-wall": 4, "coat-wall": 2 }, "island": {}, "zone": { "lounge": 1 }, "fill": ["coat-stand", "plant", "rug"], "light": ["ceiling-light"] },
+    "study":       { "set": "residential", "wall": { "study-desk": 5, "book-row": 3 }, "island": {}, "zone": { "lounge": 1 }, "fill": ["plant", "lamp", "rug"], "light": ["ceiling-light"] },
+    "store":       { "set": "residential", "wall": { "shelf-row": 3, "crate-stack": 3 }, "island": { "range": 1 }, "zone": { "range": 1 }, "fill": ["chest", "luggage", "cabinet"], "light": ["ceiling-light"] },
+    "garage":      { "set": "industrial", "wall": { "workbench-station": 4, "rack-row": 2, "tank-row": 1 }, "island": {}, "zone": { "big-piece": 1 }, "fill": ["barrel", "crate", "cylinders", "toolrack"] },
+    "storeroom":   { "set": "industrial", "wall": { "crate-stack": 3, "shelf-row": 1, "racking-aisle": 1 }, "island": { "range": 2, "crate-stack": 1 }, "zone": { "range": 1 }, "fill": ["crate", "barrel", "pallet"] },
+    // Offices and civic buildings (docs/floorplan-refs 01 civic and institutional, WBDG and UFC admin planning): a private office's
+    // desk faces the door, its files behind; an open floor is banks of desks back to back on aisles, files and copiers by the
+    // core, a meeting table in its own part, partitions between; a lobby's desk faces the way in, its seats round a low table;
+    // records and libraries are double-sided ranges 1.5 m apart, a desk at the door, reading tables apart.
+    "office":      { "set": "office", "wall": { "desk-station": 5, "shelf-row": 2 }, "island": { "desk-bank": 3 }, "zone": { "table-group": 2, "waiting": 1 }, "divider": ["partition"], "fill": ["cabinet", "plant", "cooler", "bin", "machine"] },
+    "lobby":       { "set": "office", "wall": { "reception": 6, "board-wall": 1 }, "island": { "waiting": 3 }, "zone": { "waiting": 2, "table-group": 1 }, "divider": ["plant", "partition"], "fill": ["plant", "bin", "cooler", "barrier"] },
+    "archive":     { "set": "office", "wall": { "shelf-row": 3, "desk-station": 1 }, "island": { "range": 5 }, "zone": { "table-group": 1 }, "fill": ["cabinet", "bin"] },
+    "library":     { "set": "office", "wall": { "shelf-row": 3, "desk-station": 2 }, "island": { "range": 4 }, "zone": { "table-group": 3 }, "fill": ["plant", "cabinet"] },
+    "classroom":   { "set": "office", "island": { "class-rows": 5 }, "wall": { "desk-station": 2, "shelf-row": 1 }, "fill": ["cabinet", "plant", "bin"] },
+    "hallway":     { "set": "office", "wall": { "locker-row": 4, "board-wall": 2 }, "island": {}, "fill": ["bin", "plant"] },
+    "assembly":    { "set": "civic", "wall": { "pillar-row": 1 }, "island": { "seat-rows": 4 }, "fill": ["candles", "statue", "flag", "plant", "board"] },
+    // Military (UFC barracks and army standard designs, refs 01 section 9): a barrack room is bunks heads to the walls each with its
+    // footlocker, wall lockers between, a table in the middle; a mess is tables in rows off the serving line; an armoury racks
+    // and lockers round the walls and an issue table; a command post its map table in the middle, consoles round the walls;
+    // a guard room its desk facing the door, the screens and the gun locker.
+    "barracks":    { "set": "military", "wall": { "cot-row": 6, "locker-row": 2 }, "island": { "issue-table": 1 }, "zone": { "table-group": 2 }, "fill": ["chest", "locker", "crate"] },
+    "mess":        { "set": "canteen", "wall": { "counter-line": 4 }, "island": { "table-group": 5 }, "zone": { "table-group": 2, "cafe-pair": 1 }, "fill": ["vending", "dispenser", "bin", "rack"] },
+    "galley":      { "set": "canteen", "wall": { "counter-line": 5, "shelf-row": 1 }, "island": { "issue-table": 1 }, "fill": ["rack", "dispenser", "bin"] },
+    "armoury":     { "set": "military", "wall": { "rack-row": 5, "locker-row": 3, "crate-stack": 1 }, "island": { "issue-table": 2 }, "zone": { "crate-stack": 1, "issue-table": 1 }, "fill": ["crate", "chest", "locker"] },
+    "command":     { "set": "military", "island": { "map-island": 6 }, "wall": { "console-station": 4, "desk-station": 2 }, "zone": { "table-group": 1 }, "fill": ["radio", "cabinet", "locker", "crate"] },
+    "guard-room":  { "set": "military", "wall": { "desk-station": 5, "locker-row": 2, "rack-row": 1 }, "island": {}, "zone": { "table-group": 1 }, "fill": ["locker", "crate", "cabinet"] },
+    // Industrial halls (refs 03): a workshop's benches line its walls under their tool racks, its machine stands out on the
+    // floor; a plant room is built round its boiler or tanks, pipe runs and valves along the walls, its panel by the door.
+    "workshop":    { "set": "industrial", "wall": { "workbench-station": 5, "rack-row": 2, "tank-row": 1 }, "island": { "machine-bay": 2 }, "zone": { "assembly-line": 2, "big-piece": 1 }, "fill": ["barrel", "crate", "cylinders", "toolrack", "panel"] },
+    "plant":       { "set": "industrial", "wall": { "tank-row": 5, "pipe-run": 3, "console-station": 1 }, "island": { "machine-bay": 3 }, "zone": { "machine-bay": 1 }, "fill": ["junction", "panel", "barrel", "cylinders", "valve"] },
+    // Hospitals (NHS HBN and WBDG, refs 01 section 5): a ward is beds heads to the long walls, curtains and cabinets between, the
+    // aisle down the middle, an open ward's nurses' table out in it; a nurses' station a desk and its cabinets; a theatre its table in the middle under the lamp; a
+    // day room seats round a low table facing the screen, a table to eat at; a mortuary its table and the drawers round it.
+    "ward":        { "set": "medical", "wall": { "ward-bay": 8, "shelf-row": 1 }, "island": {}, "zone": { "table-group": 2 }, "fill": ["iv", "cabinet", "monitor", "bin"] },
+    "nurses":      { "set": "medical", "wall": { "nurse-station": 6, "shelf-row": 2 }, "island": {}, "zone": { "table-group": 1 }, "fill": ["cabinet", "monitor", "bin", "iv"] },
+    "theatre":     { "set": "medical", "island": { "optable-island": 6 }, "wall": { "shelf-row": 2, "ward-bay": 1 }, "fill": ["monitor", "iv", "cart", "cabinet"] },
+    "pharmacy":    { "set": "medical", "wall": { "nurse-station": 3, "shelf-row": 4 }, "island": { "range": 3 }, "fill": ["cabinet", "bin"] },
+    "mortuary":    { "set": "medical", "island": { "optable-island": 5 }, "wall": { "locker-row": 3, "shelf-row": 1 }, "fill": ["gurney", "cabinet", "bin"] },
+    "day-room":    { "set": "residential", "wall": { "screen-wall": 5, "book-row": 1 }, "island": { "lounge": 4 }, "zone": { "kitchen-table": 2, "cafe-pair": 2 }, "fill": ["plant", "lamp", "sideboard"], "light": ["ceiling-light"] },
+    "quarters":    { "set": "residential", "wall": { "bed-bay": 4, "single-bay": 3, "wardrobe-row": 2 }, "island": {}, "zone": { "lounge": 2, "kitchen-table": 2 }, "fill": ["nightstand", "lamp", "chest", "plant"], "light": ["ceiling-light"] },
+    // A capital ship's rooms (the slice's HullVessel, for wrecks and derelicts) that no place's rule covers: the bridge round its
+    // consoles, the officers' table and desks, the holds' cargo, the machinery spaces' pipes and panels. The rest take the
+    // places' own (barracks, galley, ward, workshop, armoury).
     "ship-bridge":   { "set": "ship", "wall": { "console-station": 6, "locker-row": 1 }, "island": { "table-group": 0.6 }, "fill": ["locker", "crate", "lamp"] },
     "ship-officers": { "set": "office", "wall": { "desk-station": 4, "shelf-row": 1 }, "island": { "table-group": 3 }, "fill": ["cabinet", "plant", "bin"] },
-    "ship-quarters": { "set": "ship", "wall": { "cot-row": 6, "locker-row": 2 }, "island": { "table-group": 0.5 }, "fill": ["chest", "locker", "crate"] },
-    "ship-medbay":   { "set": "medical", "wall": { "ward-bay": 6, "shelf-row": 1 }, "island": { "big-piece": 0.5 }, "fill": ["cabinet", "iv", "monitor", "gurney"] },
-    "ship-workshop": { "set": "industrial", "wall": { "workbench-station": 4, "rack-row": 2 }, "island": {}, "fill": ["crate", "cylinders", "toolrack", "barrel"] },
     "ship-hold":     { "set": "ship", "wall": { "crate-stack": 4 }, "island": {}, "fill": ["crate"] },
     "ship-engines":  { "set": "industrial", "wall": { "pipe-run": 3, "tank-row": 1, "workbench-station": 1 }, "island": {}, "fill": ["panel", "junction", "cylinders"] },
     "ship-reactor":  { "set": "industrial", "wall": { "pipe-run": 3, "console-station": 2 }, "island": {}, "fill": ["panel", "junction", "valve"] }
@@ -154,16 +206,22 @@
 
   "kits": { "precursor": "precursor", "vharn": "alien", "kessari": "alien", "mine": "mine" },
   "rooms": {
-    "lobby": "office", "security": "military", "airlock": "ship", "decon": "medical", "office": "office", "archive": "office",
-    "lab": "lab", "cold-store": "cryo", "containment": "lab", "control": "control-room", "command": "military",
-    "armoury": "military", "quarters": "residential", "mess": "canteen", "galley": "canteen",
+    "lobby": "lobby", "security": "guard-room", "airlock": "ship", "decon": "medical", "office": "office", "archive": "archive",
+    "lab": "lab", "cold-store": "cryo", "containment": "lab", "control": "control-room", "command": "command",
+    "armoury": "armoury", "quarters": "quarters", "quarters@military": "barracks", "quarters@fort": "barracks", "mess": "mess", "galley": "galley",
     "washroom": "bathroom", "kitchen": "kitchen", "living-room": "living-room", "bedroom": "bedroom", "bathroom": "bathroom",
-    "hall": "hall", "study": "study", "store": "store", "garage": "garage", "chapel": "civic", "ward": "medical", "nurses": "medical", "theatre": "medical",
-    "pharmacy": "medical", "quarantine": "medical", "mortuary": "medical", "cryo-bay": "cryo", "monitor": "office",
+    "hall": "hall", "study": "study", "store": "store", "garage": "garage", "chapel": "civic", "ward": "ward", "nurses": "nurses", "theatre": "theatre",
+    "pharmacy": "pharmacy", "quarantine": "ward", "mortuary": "mortuary", "day-room": "day-room", "cryo-bay": "cryo", "monitor": "office",
+    "office floor": "office", "floor": "office", "rotunda": "assembly", "lecture hall": "assembly", "classroom": "classroom", "hallway": "hallway",
+    "library": "library", "cells": "prison", "storage": "storeroom", "parts-store": "warehouse", "loading-dock": "warehouse",
+    "workshop": "workshop", "works floor": "workshop", "hangar floor@industry": "assembly-hall", "vehicle-bay": "garage",
+    "plant": "plant", "generator": "plant", "generator-hall": "plant", "boiler-house": "plant", "pump-hall": "plant", "pump-house": "plant",
+    "turbine-hall": "plant", "engine-room": "plant", "magazine": "armoury",
+    "vault@military": "armoury", "vault@medical": "pharmacy", "vault@industry": "storeroom", "vault@city": "storeroom",
     "hydroponics": "greenhouse", "cellblock": "prison", "guardroom": "prison", "solitary": "prison", "evidence": "prison",
-    "ship-bridge": "ship-bridge", "ship-officers": "ship-officers", "ship-crew-quarters": "ship-quarters", "ship-barracks": "ship-quarters", "ship-cabin": "bedroom",
-    "ship-medbay": "ship-medbay", "ship-galley": "canteen", "ship-workshop": "ship-workshop", "ship-stores": "storeroom", "ship-hold": "ship-hold", "ship-ore-hold": "ship-hold",
-    "ship-hangar": "hangar", "ship-armoury": "military", "ship-magazine": "military", "ship-sensor-room": "control-room", "ship-core-room": "control-room",
+    "ship-bridge": "ship-bridge", "ship-officers": "ship-officers", "ship-crew-quarters": "barracks", "ship-barracks": "barracks", "ship-cabin": "bedroom",
+    "ship-medbay": "ward", "ship-galley": "galley", "ship-workshop": "workshop", "ship-stores": "storeroom", "ship-hold": "ship-hold", "ship-ore-hold": "ship-hold",
+    "ship-hangar": "hangar", "ship-armoury": "armoury", "ship-magazine": "armoury", "ship-sensor-room": "control-room", "ship-core-room": "control-room",
     "ship-engine-room": "ship-engines", "ship-generator-room": "ship-engines", "ship-reactor": "ship-reactor", "ship-promenade": "resort", "ship-refinery": "assembly-hall",
     "stope": "mine", "ore-store": "mine", "vault": "precursor", "barn": "barn", "feed-store": "feed-store", "greenhouse": "greenhouse"
   },
@@ -209,6 +267,13 @@
     "bathroom": ["bath", "basin", "toilet"], "washroom": ["bath", "basin", "toilet"],
     "hall": ["console", "coat-stand"], "store": ["shelf", "rack", "racking"], "storage": ["shelf", "rack", "racking"],
     "garage": ["bench", "station"], "workshop": ["bench", "station"],
+    // The rooms of offices, civic, military, industrial and hospital places (by their room id, else their recipe).
+    "office": ["desk"], "lobby": ["reception", "counter", "desk"], "archive": ["shelf", "books"], "library": ["books", "shelf"], "classroom": ["desk", "board"],
+    "hallway": ["locker", "board"], "assembly": ["pew", "seat-row", "lectern"], "barracks": ["bed", "bunk"], "armoury": ["rack"],
+    "command": ["map", "console"], "guard-room": ["desk"], "plant": ["boiler", "tank"], "ward": ["bed"], "nurses": ["desk", "counter"],
+    "theatre": ["optable"], "pharmacy": ["shelf", "counter"], "mortuary": ["optable"], "day-room": ["screen", "sofa"],
+    "storeroom": ["crate", "shelf", "racking"], "warehouse": ["racking", "shelf", "rack", "crate"], "assembly-hall": ["conveyor", "bench", "station"],
+    "hangar": ["engine-stand", "bench"], "control-room": ["console"], "lab": ["bench"],
     "ship-bridge": ["console"], "ship-crew-quarters": ["bunk", "bed"], "ship-barracks": ["bunk", "bed"], "ship-cabin": ["bed"], "ship-medbay": ["bed"],
     "ship-galley": ["counter", "stove"], "ship-officers": ["table", "desk"], "ship-engine-room": ["pipes", "panel"], "ship-reactor": ["panel", "console"]
   },

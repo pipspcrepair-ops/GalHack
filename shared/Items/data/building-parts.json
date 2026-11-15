@@ -18,13 +18,6 @@
       ]
     },
     {
-      "id": "warp-tank", "name": "Warp cell tank", "function": "warp-tank", "hp": 316, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 2.62, "color": "3d5a80", "glow": "ffb400", "attach": "all", "airtight": "all", "covers": "all", "size": [1, 1, 2], "was": ["warptank"],
-      "parts": [
-        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
-        {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
-      ]
-    },
-    {
       "id": "hyperdrive-t1", "name": "Hyperdrive T1", "function": "hyperdrive", "hp": 363, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 10.3, "color": "5a189a", "glow": "c77dff", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 2, 5], "was": ["hyperdrive1"], "power": -0.0125,
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
@@ -33,13 +26,6 @@
     },
     {
       "id": "hyperdrive-t2", "name": "Hyperdrive T2", "function": "hyperdrive", "hp": 363, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 10.3, "color": "3c096c", "glow": "e0aaff", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 2, 5], "was": ["hyperdrive2"], "power": -0.0125,
-      "parts": [
-        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
-        {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
-      ]
-    },
-    {
-      "id": "fold-tank", "name": "Fold crystal tank", "function": "fold-tank", "hp": 32, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.308, "color": "5a189a", "glow": "ffb400", "attach": "all", "airtight": "all", "covers": "all", "size": [1, 2, 1], "was": ["foldtank"],
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
         {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}

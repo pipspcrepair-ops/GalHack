@@ -28,12 +28,21 @@ public sealed partial class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.4);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        PoiSite site = Named();
+        // --chimney=1: the nearest of the family whose room (--room) has a chimney breast (a living room with its fireplace).
+        string named = _args.GetValueOrDefault("room");
+        PoiSite site = _args.ContainsKey("chimney") && _args.TryGetValue("family", out string fam)
+            ? _game.Zone.Planet.Pois.Where(s => s.Family.Id == fam).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(250)
+                .FirstOrDefault(s => s.Instance.Layout.Extras.Lasting.Count > 0 && RoomDecor.Rooms(s.Instance).Any(d => d.Room.Flues.Count > 0 && (named == null || d.Room.RoomId?.Contains(named) == true))) ?? Named()
+            : Named();
+        GD.Print($"FURNISHED place {site.Family.Id} at {_game.Places.DistanceTo(site, _game.Survivor.WorldFeet):0} m, {site.Instance.Layout.Extras.Lasting.Count} stack blocks");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
         PartSet parts = PlaceParts.Of(p.Memory);
-        // The most crowded dressed room on the way-in's level or near it.
-        PlaceRoom room = p.Memory.Rooms.Values.OrderByDescending(r => (r.Room.Width * r.Room.Depth >= 24 ? 0.3f : 0f) + (r.Plan.Placements.Count - p.Memory.DecoTaken.GetValueOrDefault(r.Module)?.Count ?? 0) / (float)(r.Room.Width * r.Room.Depth) - MathF.Abs(r.Corner.Y) * 0.05f).First();
+        // The most crowded dressed room on the way-in's level or near it; --room=X a room whose id has X in it (one with a chimney breast and windows first).
+        PlaceRoom room = p.Memory.Rooms.Values.Where(r => named == null || r.Room.RoomId?.Contains(named) == true)
+            .OrderByDescending(r => named == null ? 0f : (r.Room.Flues.Count > 0 ? 2f : 0f) + (r.Room.Windows.Count > 0 ? 1f : 0f))
+            .ThenByDescending(r => (r.Room.Width * r.Room.Depth >= 24 ? 0.3f : 0f) + (r.Plan.Placements.Count - p.Memory.DecoTaken.GetValueOrDefault(r.Module)?.Count ?? 0) / (float)(r.Room.Width * r.Room.Depth) - MathF.Abs(r.Corner.Y) * 0.05f).First();
+        GD.Print($"FURNISHED room {room.Room.RoomId}: windows {room.Room.Windows.Count}, chimney breasts {room.Room.Flues.Count}, pieces {string.Join(" ", room.Plan.Placements.Select(x => x.Piece))}");
         float floor = room.Corner.Y + room.Floor;
         Town town = Town.Walking(p.Memory);
         Species looks = _game.Zone.Wildlife.Life.People.Person(Wildlife.Rng.Mix(site.Instance.SpawnSeed, 9), PersonRole.Worker, Occupancy.Friendly);
@@ -91,8 +100,14 @@ public sealed partial class Staging
         // The eye in the corner of the room the walk starts nearest, looking across it.
         var size = new Vector3(room.Room.Width, 0f, room.Room.Depth);
         Vector3 corner = new(room.Corner.X, floor, room.Corner.Z), middle = corner + size * 0.5f;
-        Vector3 eyeLocal = new[] { corner + new Vector3(0.4f, 0f, 0.4f), corner + new Vector3(size.X - 0.4f, 0f, 0.4f), corner + new Vector3(0.4f, 0f, size.Z - 0.4f), corner + new Vector3(size.X - 0.4f, 0f, size.Z - 0.4f) }
-            .OrderByDescending(c => MathF.Min(Near(person, c), (c - from).Length())).First() + Vector3.Up * 2.2f;
+        var corners = new[] { corner + new Vector3(0.4f, 0f, 0.4f), corner + new Vector3(size.X - 0.4f, 0f, 0.4f), corner + new Vector3(0.4f, 0f, size.Z - 0.4f), corner + new Vector3(size.X - 0.4f, 0f, size.Z - 0.4f) };
+        Vector3 eyeLocal = corners.OrderByDescending(c => MathF.Min(Near(person, c), (c - from).Length())).First() + Vector3.Up * 2.2f;
+        // --chimney=1: from the far corner, looking at the chimney breast.
+        if (_args.ContainsKey("chimney") && room.Room.Flues.Count > 0 && room.Room.DoorPoint(room.Room.Flues[0]).At is var breast)
+        {
+            middle = corner + new Vector3(breast.X, 0f, breast.Y);
+            eyeLocal = corners.OrderByDescending(c => (c - middle).Length()).First() + Vector3.Up * 2.2f;
+        }
         _game.Survivor.PlaceOutside(p.ToWorld(eyeLocal + Vector3.Down * 2.2f + ((middle - eyeLocal) with { Y = 0f }).Normalized() * -0.25f).ToNumerics());
         _game.Visor.Visible = false;
         _game.Torch.Visible = true;

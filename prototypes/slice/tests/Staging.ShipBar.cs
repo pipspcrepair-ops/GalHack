@@ -13,8 +13,9 @@ namespace Slice.Tests;
 
 /// <summary>
 /// --view=shipbar: the sleeper in the command chair of <see cref="BarTest.Rig"/>'s vessel by day on real ground, the
-/// structure's toolbar along the bottom (1-bar.png), a burst from its gatlings at the wall ahead, from beside it (2-burst.png), and the
-/// Core tab's BAR strip (3-core.png). --dir=DIR is the folder.
+/// structure's toolbar along the bottom (1-bar.png), a burst from its gatlings at the wall ahead, from beside it (2-burst.png), the
+/// Core tab's BAR strip and SETTINGS page (3-core.png) and its NUMBERS page (4-core-numbers.png), and the turret close up switched
+/// on and off by its slot (5-turret-on.png, 6-turret-off.png). --dir=DIR is the folder.
 /// </summary>
 public sealed partial class Staging
 {
@@ -61,6 +62,20 @@ public sealed partial class Staging
         foreach (int x in Play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "3-core.png"))) yield return x;
+        foreach (int x in _drive.ClickWidget("core:page:numbers")) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        foreach (int x in Shot(Path.Combine(dir, "4-core-numbers.png"))) yield return x;
+        foreach (int x in _drive.ClickWidget("core:page:settings")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
+        // The turret close up, switched on (barrels run out, its light lit) and off (parked low, dark).
+        Vector3 turret = v.ToWorld(v.Structure.PointOf(BarTest.Turret, v.Structure.Get(BarTest.Turret), N.Vector3.Zero) * v.Structure.Grid.CellSize);
+        Vector3 look = turret + side * 2.2f + Vector3.Up * 1.0f + ahead * 1.6f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(turret - look, Vector3.Up), look);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        foreach (int x in Shot(Path.Combine(dir, "5-turret-on.png"))) yield return x;
+        foreach (int x in _drive.Tap(Key.Key3)) yield return x;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        foreach (int x in Shot(Path.Combine(dir, "6-turret-off.png"))) yield return x;
+        _game.FixedCamera = null;
     }
 }

@@ -47,8 +47,8 @@ public sealed class Pilot
 
     /// <summary>
     /// SETUP SHORTCUT (printed): the Skiff's parts handed over and the tech tree opened; then its
-    /// blueprint set down on flat ground near the start and built block by block, by hand. Null if
-    /// the projector set nothing down.
+    /// blueprint set down on flat ground near the start and built block by block, by hand, and fuel
+    /// put in its storage. Null if the projector set nothing down.
     /// </summary>
     public IEnumerable<int> BuildSkiff(Action<Vessel> built)
     {
@@ -98,6 +98,7 @@ public sealed class Pilot
         }
         C.Primary = false;
         foreach (int x in _drive.Wait(5)) yield return x;
+        Playthrough.Fuel(skiff);
         built(skiff);
     }
 

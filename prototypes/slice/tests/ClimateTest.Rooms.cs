@@ -62,7 +62,7 @@ public partial class ClimateTest
         var band = Zone.Data.Rules.ClimateNode;
         Suit suit = _game.Suit;
         Structure s = room.Structure;
-        // The door into the east wall at its foot (the building rules: a wall block out, the door in).
+        // The door into the east wall at its foot (the building rules: the wall blocks out, the door in: 1 m wide, 2 m tall).
         var doorCell = new Int3(5, 1, 0);
         Building.Remove(s, doorCell, null);
         Building.Remove(s, doorCell + Int3.UnitY, null); // the door is two cells tall on the 1 m grid

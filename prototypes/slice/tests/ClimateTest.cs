@@ -113,18 +113,20 @@ public partial class ClimateTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(Zone.Weather.StrikeLight > 1f, $"and a strike nearby lights the ground ({Zone.Weather.StrikeLight:F1})");
 
-        var text = new System.Text.StringBuilder("schema galhack.blueprint\nversion 1\nname \"Shut\"\ngrid large\nmode base\ngravity off\n");
-        // Wide enough that its door (east wall, at its foot) is past the reach that opens it for anyone in the middle.
-        for (int y = 0; y <= 4; y++)
+        var text = new System.Text.StringBuilder("schema galhack.blueprint\nversion 1\nname \"Shut\"\ngrid 1m\nmode base\ngravity off\n");
+        // On the 1 m grid: 9 m across inside and 4 m floor to ceiling. Wide enough that its door (east wall, at its foot) is
+        // past the reach that opens it for anyone in the middle.
+        for (int y = 0; y <= 5; y++)
         for (int z = -5; z <= 5; z++)
         for (int x = -5; x <= 5; x++)
-            if (y == 0 || y == 4 || Math.Abs(x) == 5 || Math.Abs(z) == 5) text.Append($"block {x} {y} {z} steel\n");
-        text.Append("block 4 1 4 core\nblock -4 1 -4 generator\n");
+            if (y == 0 || y == 5 || Math.Abs(x) == 5 || Math.Abs(z) == 5) text.Append($"block {x} {y} {z} iron-plated\n");
+        text.Append("block 4 1 4 core\nblock -4 1 -4 generator-t1\nblock -4 1 4 container-t1\n");
         var shut = Blueprint.Load(text.ToString(), Zone.Data.Catalogue, out List<string> errors);
         Check(shut != null, $"the room's blueprint loads {string.Join("; ", errors)}");
         Vector3 site = Zone.GroundAt(feet.X + 30f, feet.Z);
         Slice.Vessels.Vessel room = Slice.Vessels.Vessel.SpawnBase(Zone, shut, (site + Vector3.Up * 4f).ToNumerics(), 0f);
-        Vector3 inside = room.ToWorld(new N.Vector3(0f, 3f, 0f));
+        room.Storage.Add("biofuel", 20); // its generator's fuel, in its storage
+        Vector3 inside = room.ToWorld(new N.Vector3(0f, 0.6f, 0f)); // on its floor
         Me.PlaceOutside(inside.ToNumerics());
         Zone.Light.Touch();
         foreach (int x in _drive.UntilSettled()) yield return x;
@@ -203,7 +205,10 @@ public partial class ClimateTest : Node
         sky.FrontsOff = false;
     }
 
-    /// <summary>The climate node: bench-made, in the hand it sets down like a device, and only burning does it hold the air.</summary>
+    /// <summary>
+    /// The climate node: bench-made, in the hand it sets down like a device. Life support uses power only: it has no fuel of
+    /// its own, it runs on the power of the structure whose area it stands in, and only running does it hold the air.
+    /// </summary>
     IEnumerable<int> Node()
     {
         var items = Zone.Data.Items;
@@ -219,25 +224,44 @@ public partial class ClimateTest : Node
             Check(_game.Pack.Hand == Slice.Items.HandKind.Device, "held, it is set down like a device");
         }
         var rules = Zone.Data.Rules.ClimateNode;
+        // Open ground out of every structure's reach (the room above is not far off).
         Vector3 at = Me.WorldFeet + Vector3.Right * 2f;
+        for (int k = 1; k <= 12 && Slice.Construction.StructureArea.Around(Zone, at, Zone.Data.Rules.Build.Area).Count > 0; k++)
+            at = Zone.GroundAt(Me.WorldFeet.X + MathF.Cos(k) * 30f * k, Me.WorldFeet.Z + MathF.Sin(k) * 30f * k);
         Slice.Vessels.Device node = Slice.Vessels.Device.PlaceClimate(Zone, at, 0f);
-        var here = new Pos(Me.WorldFeet.X, Me.WorldFeet.Y, Me.WorldFeet.Z);
+        var here = new Pos(at.X, at.Y + 0.1, at.Z);
         double raw = _game.Suit.Exposure(here, _game.Suit.Sim.Time).Temperature;
         (double low, double high) = (rules.LowC, rules.HighC);
         // STAGING: a band away from whatever the air is here, so holding it shows.
         rules.LowC = raw + 5;
         rules.HighC = raw + 9;
-        foreach (int x in _drive.Wait(5)) yield return x;
-        Check(!node.Burning && Math.Abs(_game.Suit.Exposure(here, _game.Suit.Sim.Time).Temperature - raw) < 0.5, "with nothing in its burner the node does nothing");
-        node.Storage.Add("biomass", 1);
-        foreach (int x in _drive.Wait(5)) yield return x;
-        double held = _game.Suit.Exposure(here, _game.Suit.Sim.Time).Temperature;
-        Check(node.Burning && held == raw + 5 && node.Storage.Count("biomass") == 0, $"fed, it burns the fuel and steadies the air: {raw:F1} to {held:F1} Â°C");
+        double Air() => _game.Suit.Exposure(here, _game.Suit.Sim.Time).Temperature;
+        foreach (int x in _drive.Wait(70)) yield return x;
+        Check(!node.Running && node.Source == null && node.Storage == null && Math.Abs(Air() - raw) < 0.5, "alone, out of any core's reach, it does nothing: it has no hopper and no fuel of its own");
+
+        // A base set down beside it: a core, a generator and a container, nothing in it yet.
+        string text = "schema galhack.blueprint\nversion 1\nname \"Node base\"\ngrid 1m\nmode base\nblock 0 0 0 core\nblock 1 0 0 generator-t1\nblock -1 0 0 container-t1\n";
+        GalHack.Structures.Structure plan = Blueprint.Load(text, Zone.Data.Catalogue, out List<string> errors);
+        Check(plan != null, $"the base's blueprint loads {string.Join("; ", errors)}");
+        if (plan == null) yield break;
+        Vector3 spot = at + Vector3.Back * 4f;
+        Slice.Vessels.Vessel base1 = Slice.Vessels.Vessel.SpawnBase(Zone, plan, (Zone.GroundAt(spot.X, spot.Z) + Vector3.Up * 0.5f).ToNumerics(), 0f);
+        foreach (int x in _drive.Wait(70)) yield return x;
+        Check(node.Source == base1 && !node.Running && !base1.Powered && Math.Abs(Air() - raw) < 0.5, $"by a base with no fuel it joins the base, and still does nothing (source {node.Source?.Name ?? "none"})");
+        base1.Storage.Add("biofuel", 4);
+        foreach (int x in _drive.Wait(70)) yield return x;
+        double held = Air();
+        Check(node.Running && held == raw + 5 && base1.Power.DrawMW >= rules.Power - 1e-9 && base1.Storage.Count("biofuel") < 4,
+            $"biofuel in the base's storage: its generator burns it ({base1.Storage.Count("biofuel")} of 4 left), the node draws {base1.Power.DrawMW:F3} MW from its capacitor and steadies the air: {raw:F1} to {held:F1} °C");
         var farOff = new Pos(here.X + rules.Radius + 3, here.Y, here.Z);
         Check(_game.Suit.Exposure(farOff, _game.Suit.Sim.Time).Temperature < held, "a few metres outside its radius the air is the world's own");
-        node.Tick(rules.Fuels["biomass"] + 1);
-        Check(!node.Burning, "the fuel burns out");
+        base1.PowerOn = false;
+        foreach (int x in _drive.Wait(5)) yield return x;
+        Check(!node.Running && Math.Abs(Air() - raw) < 0.5, "the base's power off, the node stops and the air is the world's again");
         (rules.LowC, rules.HighC) = (low, high);
+        Playthrough.TakeAway(Zone, base1);
+        Zone.Devices.Remove(node);
+        node.QueueFree();
     }
 
     /// <summary>Lava worlds only: pass --planet lava. The real distance reaches the visor, and beside it and in it health goes fast.</summary>

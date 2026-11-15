@@ -20,8 +20,14 @@ public sealed class DecoRoom
 {
     public float Width, Depth, Height = 3f;
     public List<DecoDoor> Doors = new();
-    /// <summary>Patches of the floor nothing may stand on (a stair, a cache, a hole, a heap the years left): kept clear like a doorway.</summary>
+    /// <summary>Patches of the floor nothing may stand on or walk across (a stair, a cache, a hole, a heap the years left).</summary>
     public List<DecoRect> Blocked = new();
+    /// <summary>Floor kept clear but walked on (the step inside a doorway, a ladder's foot): nothing stands there.</summary>
+    public List<DecoRect> Kept = new();
+    /// <summary>Its windows, each where it is in its wall (as a door is) and its sill's height over the floor: nothing taller stands in front of one.</summary>
+    public List<(DecoDoor At, float Sill)> Windows = new();
+    /// <summary>Its walls' chimney breasts: a fire is lit only at one, at the stack's foot.</summary>
+    public List<DecoDoor> Flues = new();
     /// <summary>The theme set (deco.json) the room is furnished from.</summary>
     public string Set;
     /// <summary>The POI room id it came from (rooms.txt), if any, and its tags.</summary>
@@ -162,6 +168,8 @@ public sealed class DecoPlanCable
 public sealed class DecoPlan
 {
     public DecoRoom Room;
+    /// <summary>The template use the room is arranged round (its focal point), or -1: the years leave it standing.</summary>
+    public int FocalGroup = -1;
     public readonly List<DecoPlacement> Placements = new();
     public readonly List<DecoPlanCable> Cables = new();
     public readonly List<string> Notes = new();

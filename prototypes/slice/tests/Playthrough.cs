@@ -374,6 +374,20 @@ public sealed class Playthrough
         return -1;
     }
 
+    /// <summary>SETUP SHORTCUT (printed): generator fuel put straight into a structure's storage, enough for a long flight.</summary>
+    public static void Fuel(Vessel v, int cells = 100)
+    {
+        int n = v.Storage.Add("energy-cell", cells);
+        GD.Print($"  (setup: {n} energy cells into the {v.Name}'s storage for its generator)");
+    }
+
+    /// <summary>A stack from the bag into a structure's core storage, as a double-click on it does with that storage open (fuel for its generators).</summary>
+    public int StoreInto(Vessel v, string itemId)
+    {
+        int slot = BagSlotOf(itemId);
+        return slot < 0 ? 0 : ItemGrid.QuickMove(Pack.Grid, slot, v.StorageGrid);
+    }
+
     /// <summary>Drags an item from the bag onto a toolbar slot (YOU tab).</summary>
     public IEnumerable<int> ToToolbar(string itemId, int slot)
     {
@@ -753,10 +767,10 @@ public sealed class Playthrough
     /// <summary>
     /// The small vessel the real-player test and the screenshots build on a core set down on the
     /// ground: a column up from the core to a deck above head height, a generator, struts and a
-    /// gyro round it, a main engine at the back, the seat and a fuel tank on top (reached with a hop
-    /// on the jetpack), and under the deck two lift jets and three legs, looked up at from beside.
-    /// Each block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom,
-    /// a thruster not by its nozzle, a leg by its top).
+    /// gyro round it, a main engine at the back, the seat and a container for its fuel on top (reached
+    /// with a hop on the jetpack), and under the deck two lift jets and three legs, looked up at from
+    /// beside. Each block goes on a face its mounting allows (a seat by its base, a thruster not by its
+    /// nozzle, a leg by its top).
     /// </summary>
     public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout = DeckLayout();
 
@@ -774,8 +788,8 @@ public sealed class Playthrough
             ("steel", at(0, 1), Dir.PosX, null), ("steel", at(0, 1), Dir.NegX, null),
             // A retro at the nose, to brake.
             ("thruster", at(0, -2), Dir.NegZ, Dir.PosZ),
-            // On top, from hops: the seat, the fuel tank, and a jet pushing down, to come down under control.
-            ("chair", deck, Dir.PosY, null), ("fueltank", at(-1, 1), Dir.PosY, null), ("thruster", at(1, 0), Dir.PosY, Dir.NegY),
+            // On top, from hops: the seat, a container (its core storage, for its fuel), and a jet pushing down, to come down under control.
+            ("chair", deck, Dir.PosY, null), ("container", at(-1, 1), Dir.PosY, null), ("thruster", at(1, 0), Dir.PosY, Dir.NegY),
             // Under the deck, from beside: lift jets and three legs.
             ("thruster", at(1, 0), Dir.NegY, Dir.PosY), ("thruster", at(-1, 0), Dir.NegY, Dir.PosY),
             ("gear", at(1, 1), Dir.NegY, null), ("gear", at(0, -2), Dir.NegY, null), ("gear", at(-1, 1), Dir.NegY, null),
