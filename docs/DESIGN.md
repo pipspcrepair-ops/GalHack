@@ -873,6 +873,7 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 | Production | Constructors (small, large, advanced), deconstructor, blueprint factory | Constructors on all; factory on bases and capital vessels |
 | Storage | Cargo containers in several sizes, all adding to one shared storage | All, with volume caps per class |
 | Defense | Shield generator and extenders, turrets, fixed weapons, detector, spotlights | Per class (section 15) |
+| Force fields | Force field component (one block makes a field of any size, with corner emitters) | All |
 | Repair | Repair bay T1/T2 with console, field repair station | Bases and capital vessels |
 | Utility | Teleporter, auto-miner, switches and sensors, displays, doors, shutters, ramps, lifts | Per device |
 | Harvesting | Mining drills; harvester blades (front-mounted mulchers that chip trees and plants and run down animals); salvagers | Hover vessels and small vessels |
@@ -889,6 +890,16 @@ Air is handled by the core, like gravity: there are no ventilators, oxygen tanks
 - **Finding leaks:** the visor's airtight overlay marks every leaking face in red, and the systems console lists each room as sealed, open or breached, with a marker to the problem.
 - **Suits top themselves up** in any breathable room; oxygen bottles cover time outside.
 - On breathable planets, open rooms are simply fine.
+
+**Force fields** (owner, 15 Nov)
+
+- **A different tech from shields, with its own colour:** force fields are blue, shields are purple.
+- **One block, any size.** The force field component is a single item, used up when a field of any size is placed.
+- **Placing by dragging.** Click a block to begin and drag to size the field: a rectangle from where the mouse was pressed to where it is released. The point being drawn to is found from the player's own position and view. The far corner must touch a block attached to a core, or the placement is invalid and fails. While dragging, the field's silhouette is red when invalid and blue when valid.
+- **Emitters.** When placed, L-shaped emitters appear at the four corners. Plating put on an emitter afterwards hardens it against damage.
+- **Power.** A field draws from the capacitors, rising exponentially with its size. A moderate opening, sized for a scout ship, should not cost much to run.
+- **Doors.** Outer hull doors have a force field by default. It holds the air while the door is open and the structure is powered, and is very cheap to run.
+- **Damage.** A field takes damage until it fizzles to nothing. Its tier sets how much it can take. At zero the emitters are not broken: after a timer the field quietly builds its strength back up. Tech level sets both the regrowth delay and the strength cap.
 
 This keeps the good part of the genre's air systems (sealed rooms that matter in a breach) and drops the chores players complain about: hunting invisible leaks, tanks that silently run dry after a refit, ladder shafts that break seals, and power-hungry vents.
 
