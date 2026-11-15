@@ -920,7 +920,7 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 
 - **Three separate fuels** (owner, 15 Nov): generator fuel (above), warp fuel and hyperdrive fuel. Warp fuel and hyperdrive fuel are both gathered, not made from common materials.
 - A hyperdrive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp fuel, gathered as pentaxite ore and refined into warp cells, about 1 per AU. The fuel moon by the start world holds the first warp fuel deposits.
-- Shields burn fold crystal only while recharging (reference: about 1,000 shield HP per unit), never while full or off. Shields must be down to warp.
+- Shields draw power from the capacitors like every device (more while recharging), and also consume dribbles of fold crystal from core storage while they recharge (owner, 15 Nov), never while off. Shields must be down to warp.
 - Fold crystal deposits favour irradiated and dead stars, so fuelling long voyages pulls players toward dangerous systems.
 
 **CPU budget**
