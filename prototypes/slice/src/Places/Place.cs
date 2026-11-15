@@ -471,7 +471,8 @@ public partial class Place : Node3D
             for (int x = 0; x < GroupSize; x++)
             {
                 Int3 c = min + new Int3(x, y, z);
-                if (Inst.Blocks.Get(c).Type == BlockType.Cube) return (g.Key, c);
+                // A floor: a block with the place's own air over it, so its going changes what is drawn.
+                if (Inst.Blocks.Get(c).Type == BlockType.Cube && Inst.Blocks.Get(c + Int3.Up).IsAir && Inst.Layout.Occupied[c + Int3.Up]) return (g.Key, c);
             }
         }
         return null;

@@ -401,6 +401,12 @@ public static class Mesher
 
         bool CollidesFull(Int3 p) => (Flags(p) & FCollides) != 0;
 
+        // The two cell questions as delegates made once: a method group passed as one is a new delegate every call (a
+        // shaped block's every face and collision box, the commonest allocation of a city's meshing).
+        Func<Int3, bool> _collidesFull, _hides;
+        Func<Int3, bool> CollidesFullOnce => _collidesFull ??= CollidesFull;
+        Func<Int3, bool> HidesOnce => _hides ??= Hides;
+
         /// <summary>Whether a neighbour hides a face: as <see cref="Occludes"/>, except the top of the buried ground where it may not really be (<see cref="MeshOptions.GroundShow"/>).</summary>
         bool Hides(Int3 p) => Occludes(p) && !(_o.GroundShow > 0 && IsRock(p) && p.Y > Assembler.GroundY - _o.GroundShow);
 
@@ -615,7 +621,7 @@ public static class Mesher
                 // Props collide as their real shape: a table as its top and legs, a locker as its body against the wall.
                 bool shaped = BlockInfo.IsShaped(b.Type);
                 foreach (var (lo, hi) in Shapes.CollisionBoxes(b, p))
-                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi, shaped ? (f => Shut(p, b, lo, hi, f, CollidesFull)) : null);
+                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi, shaped ? (f => Shut(p, b, lo, hi, f, CollidesFullOnce)) : null);
             }
         }
 
@@ -1090,7 +1096,7 @@ public static class Mesher
             for (int f = 0; f < 6; f++)
             {
                 if (box.SkipBottom && f == 5) continue;
-                if (shaped && Shut(p, b, box.Lo, box.Hi, f, Hides)) continue;
+                if (shaped && Shut(p, b, box.Lo, box.Hi, f, HidesOnce)) continue;
                 BoxFace(f, o + box.Lo, o + box.Hi, out V3 a, out V3 bb, out V3 c, out V3 d);
                 V3 n = Normals[f];
                 float k = box.Surface == Surface.Glow ? 1f : FaceShade[f];

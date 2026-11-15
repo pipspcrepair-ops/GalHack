@@ -528,6 +528,14 @@ public partial class PopRoute : Node
         ["bike"] = new(88, 350, 220, 150, 60, 20, 10, 30, MoveOffLimit),
         ["fly"] = new(72, 350, 360, 250, 150, 25, 10, 55, MoveOffLimit),
         ["space"] = new(72, 350, 360, 250, 150, 25, 10), // (the fly route's, at a vessel's top speed in space)
+        // The largest city or town (--only=city --force-city=1), from where it stood on the 16 Nov build with the city tricks
+        // (seed 550338, a forced city of 200 buildings): it paces at 60 a second (CPU-bound: the places' main-thread work, physics,
+        // the renderer, and 110 to 260 MB a second allocated), so these hold it from drifting, not to where it should be.
+        // Frames over 16.7 ms mean nothing at 60 a second. Measured: p99 27.0, 27.6, 38.5 ms; frames off the most common 53, 36,
+        // 58 %; near ground 104, 88, 40 m; column wait 95th 154, 268, 549 ms.
+        ["city walk"] = new(88, double.NaN, 220, double.NaN, double.NaN, 32, 10, 60, MoveOffLimit),
+        ["city bike"] = new(72, double.NaN, 360, double.NaN, double.NaN, 32, 10, 45, MoveOffLimit),
+        ["city fly"] = new(double.NaN, double.NaN, 700, double.NaN, double.NaN, 45, 10, 65, MoveOffLimit),
     };
 
     /// <summary>
