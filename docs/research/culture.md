@@ -332,7 +332,7 @@ The other three axes (fierce, young, roam) take the world's values for every fac
 
 ### 4.6 Desperation
 
-A world fact (`desperation`, 0 to 1), rolled just before culture from facts the world already has, with a little noise of its own (±0.1):
+A world fact (`desperation`, 0 to 1), rolled just before culture from what the world already rolled, with a little noise of its own (±0.1). Each value below carries `trait despair` in the data, and they add up:
 
 | Fact | Adds |
 | --- | --- |
@@ -343,7 +343,6 @@ A world fact (`desperation`, 0 to 1), rolled just before culture from facts the 
 | each hostile `presence` (warlords, gangs, militias, bandit_riders, water_lords, reaver_capital, reaver_salvage, vharn_garrison, vharn_patrols, frenzied, husk_nights) | 0.15 |
 | `zone` inner (Husks near) | 0.1 |
 | `zone` core | 0.2 |
-| `drop` 2 (the tech fell two bands) | 0.1 |
 | `air` foul or none | 0.1 |
 | `people` survivors | 0.1 |
 

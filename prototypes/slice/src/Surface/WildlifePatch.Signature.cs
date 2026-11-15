@@ -35,6 +35,7 @@ public partial class WildlifePatch
             foreach (WorldLayer l in roll.Rolled)
                 if (l.Kind is LayerKind.Creed or LayerKind.Presence) w.Story.Add($"{l.Kind.ToString().ToLowerInvariant()}.{l.Id}");
             w.Peopled = roll.Fact("people") != "none";
+            if (roll.Culture != null) w.Culture = CultureOf(roll.Culture);
         }
         if (profile != null)
         {
@@ -45,6 +46,16 @@ public partial class WildlifePatch
         if (reading?.Paint is { } paint)
             foreach (Rgb c in new[] { paint.Main, paint.Accent, paint.Roof, paint.Cloth, paint.Light })
                 w.Paint.Add(new Color(c.R / 255f, c.G / 255f, c.B / 255f).Lerp(new Color(0.55f, 0.53f, 0.5f), Math.Clamp(paint.Fade * 0.5f, 0f, 0.5f)));
+    }
+
+    /// <summary>A culture as the bestiary reads it: its values' traits, its sides, its world's desperation.</summary>
+    public static Culture CultureOf(CultureReading c)
+    {
+        var cu = new Culture { Lead = c.Lead == "male" ? Sex.Male : Sex.Female, CoverFor = c.CoverFor, Desperation = c.Desperation, Seed = c.Seed };
+        foreach (var (k, l) in c.Values) cu.Values[k.ToString().ToLowerInvariant()] = l.Id;
+        foreach (var (k, v) in c.Traits) cu.Traits[k] = v;
+        foreach (var (k, v) in c.SideA) cu.SideA[k] = v;
+        return cu;
     }
 
     /// <summary>Where the world's own kinds keep to, by kind of ground: round living places, round ruins, along its roads.</summary>

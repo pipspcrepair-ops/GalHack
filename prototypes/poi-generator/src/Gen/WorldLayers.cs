@@ -11,6 +11,8 @@ public enum LayerKind : byte
 {
     Zone, Type, Air, Climate, Land, Mod, Pre, Post, Port, People, Trade, Ran, Phase, Age, Fall, Moment, Theme, Build, Infra, Running,
     Presence, Creed, Occ, Feature, Hazard, Flora, Fauna, Sky, Weather, Palette, Sound, Marks, Dress, Rule, Clash, Fam, Old,
+    // The culture axes (docs/research/culture.md), in the order a world rolls them, and a faction's own set.
+    Space, Self, Sexes, Arms, Fierce, Young, Caste, Garb, Cover, Labour, Rite, Reign, Roam, Guest, Elders, Manner, Culture,
 }
 
 /// <summary>A condition on a world's facts: fact=a,b or fact!=a,b. A fact not rolled yet blocks nothing.</summary>
@@ -50,6 +52,9 @@ public sealed class WorldLayer
     /// <summary>On a palette: the colours made things take (paint, accent, roof, cloth, light).</summary>
     public readonly List<Rgb> Paint = new();
     public readonly Dictionary<string, string> Style = new();
+    /// <summary>A culture value's numbers (and the odd word) the generators read: the last one given wins.</summary>
+    public readonly Dictionary<string, string> Traits = new();
+    public float Trait(string key, float otherwise = 0f) => Traits.TryGetValue(key, out string? v) && float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : otherwise;
     public string? Depot;
     public float[]? States;
 
@@ -168,6 +173,9 @@ public static class LayerParser
             case "style":
                 for (int i = 1; i + 1 < p.Length; i += 2) l.Style[p[i]] = p[i + 1];
                 break;
+            case "trait":
+                for (int i = 1; i + 1 < p.Length; i += 2) l.Traits[p[i]] = p[i + 1];
+                break;
             case "state":
                 l.States = new float[4];
                 for (int i = 1; i + 1 < p.Length; i += 2) l.States[(int)Enum.Parse<PoiState>(p[i], true)] = Num(p[i + 1]);
@@ -186,7 +194,7 @@ public static class LayerParser
 /// a new layer leaves the rest of a world alone. Nothing in the generators names a value: they read these
 /// tables, so a world is whatever its layers add up to. No name here is ever shown to a player.
 /// </summary>
-public sealed class WorldRoll
+public sealed partial class WorldRoll
 {
     /// <summary>What's already decided before the roll, as the planet has it or a test forces it: layer to ids. Anything left out is rolled.</summary>
     public sealed class Given
@@ -264,7 +272,7 @@ public sealed class WorldRoll
     static string PeopleCode(PopulationNow p) => p.ToString().ToLowerInvariant();
 
     /// <summary>A roll in progress: the world so far, and what the rules say of each value.</summary>
-    sealed class Roller
+    sealed partial class Roller
     {
         readonly PoiLibrary _lib;
         readonly WorldRoll _w;
@@ -290,14 +298,14 @@ public sealed class WorldRoll
 
         public Rng Fork(string name) => new(Hash.Combine(_seed, Hash.Of(name)));
 
-        IEnumerable<WorldLayer> Table(LayerKind k) => _lib.Layers.Where(l => l.Kind == k);
+        public IEnumerable<WorldLayer> Table(LayerKind k) => _lib.Layers.Where(l => l.Kind == k);
 
         public void Add(WorldLayer l)
         {
             _w.Rolled.Add(l);
             _tags.UnionWith(l.Is);
             if (l.Group != null) _tags.Add("group." + l.Group);
-            if (l.Kind is LayerKind.Zone or LayerKind.Type or LayerKind.Pre or LayerKind.Post or LayerKind.Port or LayerKind.People or LayerKind.Phase or LayerKind.Age)
+            if (l.Kind is LayerKind.Zone or LayerKind.Type or LayerKind.Pre or LayerKind.Post or LayerKind.Port or LayerKind.People or LayerKind.Phase or LayerKind.Age || CultureReading.Axes.Contains(l.Kind))
                 _w.Facts[l.Kind.ToString().ToLowerInvariant()] = l.Id;
             if (l.Speed != null) _w.Facts["speed"] = l.Speed;
             foreach (var (fact, value) in l.Sets) _w.Facts[fact] = value;
@@ -335,9 +343,11 @@ public sealed class WorldRoll
             return Rules(l);
         }
 
-        float Odds(WorldLayer l)
+        public float Odds(WorldLayer l)
         {
             float w = l.Weight;
+            // A desperate world leans some culture values (its arms) by how desperate it is.
+            if (l.Traits.ContainsKey("desperate")) w *= MathF.Max(0.05f, 1f + _w.Desperation * l.Trait("desperate"));
             foreach (WorldLayer r in _w.Rolled)
                 foreach (LayerLike like in r.Like)
                     if (like.Layer == l.Kind && like.Id == l.Id) w *= like.By;
@@ -494,7 +504,11 @@ public sealed class WorldRoll
         // The present.
         roll.Features.AddRange(w.Many(LayerKind.Feature, 1, 3));
         roll.Presences.AddRange(w.Many(LayerKind.Presence, 0, 2, 0.75f));
-        if (profile.Inhabited) w.One(LayerKind.Creed);
+        if (profile.Inhabited)
+        {
+            w.One(LayerKind.Creed);
+            w.Culture();
+        }
         w.Many(LayerKind.Hazard, 1, 3);
         // The surface.
         foreach (LayerKind k in new[] { LayerKind.Flora, LayerKind.Fauna, LayerKind.Sky, LayerKind.Weather, LayerKind.Palette, LayerKind.Sound, LayerKind.Marks }) w.One(k);

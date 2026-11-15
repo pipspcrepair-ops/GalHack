@@ -48,6 +48,8 @@ public sealed class WorldConditions
     public bool Peopled = true;
     /// <summary>The old world's tech and the living's: 0 low, 1 mid, 2 high. They set gear, weapons and machines.</summary>
     public int Before = 1, Now = 1;
+    /// <summary>Its people's culture, the world's own (a town drifts from it, a faction keeps its own: see <see cref="Wildlife.Culture"/>). Today's ways where nobody rolled one.</summary>
+    public Culture Culture = Culture.Default;
     /// <summary>The colours made things take on this world (its rolled palette, faded): uniforms and costumes. Empty: none.</summary>
     public readonly List<Color> Paint = new();
 
