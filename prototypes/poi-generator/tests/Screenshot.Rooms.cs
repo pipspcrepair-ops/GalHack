@@ -49,6 +49,10 @@ public partial class Screenshot
         }
         var rooms = layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall && m.Cells.Count(c => c.Y == m.Min.Y) >= 2)
             .OrderBy(m => m.Storey).ThenBy(m => depth.GetValueOrDefault(m.Index, 99)).ToList();
+        // --rooms=N: at most N tiles, every purpose once before any twice (a tower's twenty floors on one sheet).
+        if (OS.GetCmdlineUserArgs().FirstOrDefault(x => x.StartsWith("--rooms=")) is { } cap)
+            rooms = rooms.Select((m, k) => (m, k, n: rooms.Take(k).Count(o => o.Purpose == m.Purpose))).OrderBy(t => t.n).ThenBy(t => t.k)
+                .Take(int.Parse(cap["--rooms=".Length..])).OrderBy(t => t.k).Select(t => t.m).ToList();
         var tiles = new List<(Image Img, string Label)>();
         string stem = Path.Combine(Path.GetDirectoryName(sheetPath) ?? ".", Path.GetFileNameWithoutExtension(sheetPath));
         var fill = new OmniLight3D { LightColor = new Color("fff0dc"), LightEnergy = 0.6f, OmniRange = 22f, OmniAttenuation = 1.2f, ShadowEnabled = false };

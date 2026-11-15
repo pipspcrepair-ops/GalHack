@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Deco;
+using GalHack.Items;
 using PoiGenerator.Gen;
 using NV2 = System.Numerics.Vector2;
 
@@ -10,75 +11,126 @@ namespace PoiGenerator;
 public partial class PoiTest
 {
     /// <summary>What one room of a place shows a person walking in, as the game furnishes it.</summary>
-    sealed record RoomLook(PlacedModule Module, int Pieces, float Detour, bool Lit, bool Lamp, bool Focal, string Signature, (Gen.Finish, Rgb) Floor, (Gen.Finish, Rgb) Wall, string How, int Ways);
+    sealed record RoomLook(PlacedModule Module, int Pieces, float Detour, bool Lit, bool Lamp, bool Focal, string Signature, (Gen.Finish, Rgb) Floor, (Gen.Finish, Rgb) Wall, string How, int Ways)
+    {
+        /// <summary>A room of 24 mÂ² or more, and whether its middle is bare (a third of it with nothing within 1.5 m).</summary>
+        public bool Big, Sparse;
+        /// <summary>Its ceiling as you look up: its heights over the floor, what it is made of, and any beams or pipes under it.</summary>
+        public string Ceiling = "";
+        public bool Flat;
+        /// <summary>Its ways to another room a door's width or less, and how many have no door.</summary>
+        public int Narrow, Doorless;
+        /// <summary>Ruined: what it was arranged round is down or gone; its middle has more of the fallen in it than its edges; most of it is open to the sky.</summary>
+        public bool FocalDown, MidDebris, Sky;
+    }
+
+    /// <summary>The places checked: the one a sleeper walks into most early, then the next most visited, each by its families and spawns a run.</summary>
+    static readonly (string Type, string[] Families, int Spawns)[] InteriorTypes =
+    {
+        ("house", new[] { "flavour_house" }, 24),
+        ("ominous tower", new[] { "ominous_tower" }, 3),
+        ("city offices and civic", new[] { "city_tower", "city_midrise", "city_civic", "city_police", "city_fire", "city_school", "city_university" }, 7),
+        ("military", new[] { "meridian_garrison", "military_base", "command_bunker" }, 6),
+        ("industrial halls", new[] { "abandoned_factory", "city_works" }, 6),
+        ("hospital", new[] { "hospital" }, 4),
+    };
 
     /// <summary>
-    /// The interiors of the place a sleeper walks into most early, the start town's houses, as the game shows them (the
-    /// generator's rooms dressed by the decorations library through Gen/RoomDecor), on fresh spawns, ruined and abandoned.
-    /// Each room is checked for what makes an interior read as generated: an empty room; furniture in the walking line (a
-    /// detour of more than a metre between two of its ways in); a room with no light (no lamp burning and no daylight); two
-    /// rooms of a house alike (purpose, size, pieces, floor and walls); a room with nothing it is arranged round (its focal point:
-    /// the roles the arrangements give its purpose, or its biggest piece); and per house, one material wall to wall (every
-    /// room the same floor colour and the same wall colour, or more than half the ways between rooms changing nothing).
+    /// The interiors of the places a sleeper walks into most (the start town's houses, then the Ominous Tower, a city's offices
+    /// and civic buildings, military places, industrial halls and hospitals) as the game shows them (the generator's rooms
+    /// dressed by the decorations library through Gen/RoomDecor), on fresh spawns, ruined and abandoned. Each room is checked
+    /// for what makes an interior read as generated: an empty room; furniture in the walking line (a detour of more than a metre
+    /// between two of its ways in); a room with no light; two rooms of a storey alike (purpose, size, pieces, floor and walls); a
+    /// room with nothing it is arranged round (its focal point); per place, one material wall to wall. And the weak points the
+    /// owner saw: a big room with a bare middle (no second group, rug or divider), a door's-width way between rooms with no
+    /// door in it, a ceiling flat all through a place, and in a ruin, a room whose focal point is down or gone, its fallen
+    /// heaped across the middle, or mostly open sky. Numbers per type.
     /// </summary>
     void Interiors()
     {
         DecoPoi decor = PoiView.Decor;
         if (decor == null) { Fail("Interiors: the decorations library did not load"); return; }
         var rand = new Random();
-        FamilyDef fam = _lib.Families.First(f => f.Id == "flavour_house");
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        int houses = 0, rooms = 0, empty = 0, lined = 0, inLine = 0, unlit = 0, lamps = 0, unfocused = 0, alike = 0, alikeHouses = 0, oneMaterial = 0;
-        var firsts = new Dictionary<string, string>();
-        void Note(string kind, string what) => firsts.TryAdd(kind, what);
-        var weak = new Dictionary<string, int>();
-        for (int i = 0; i < 24; i++)
+        foreach (var (type, families, spawns) in InteriorTypes)
         {
-            var hints = new LayoutHints(Dirs.Horizontal[rand.Next(4)], (TechLevel)rand.Next(3), null, new HomeHints(rand.Next(), (Climate)rand.Next(4), (float)rand.NextDouble()));
-            Layout layout = PoiFactory.SpawnLayout(_lib, fam, rand.Next(fam.Variants.Count), Rarity.Common, (ulong)rand.NextInt64(), hints, out string why);
-            if (layout == null) { Fail($"Interiors: a house would not lay out: {why}"); continue; }
-            PoiInstance inst = PoiFactory.Spawn(_lib, layout, i % 2 == 0 ? PoiState.Ruined : PoiState.Abandoned, (ulong)rand.NextInt64());
-            houses++;
-            string house = $"{layout.Extras.Homes.FirstOrDefault()?.Silhouette} {inst.State}";
-            List<RoomLook> looks = LookRooms(inst, decor);
-            foreach (RoomLook r in looks)
+            int places = 0, rooms = 0, empty = 0, lined = 0, inLine = 0, unlit = 0, lamps = 0, unfocused = 0, alike = 0, oneMaterial = 0;
+            int big = 0, sparse = 0, narrow = 0, doorless = 0, flat = 0, oneCeiling = 0, ruined = 0, focalDown = 0, midDebris = 0, sky = 0;
+            var firsts = new Dictionary<string, string>();
+            void Note(string kind, string what) => firsts.TryAdd(kind, what);
+            var weak = new Dictionary<string, int>();
+            for (int i = 0; i < spawns; i++)
             {
-                rooms++;
-                string at = $"{r.Module.Purpose} on storey {r.Module.Storey} of a {house}, {r.How}";
-                void Weak(string kind) { weak[$"{r.Module.Purpose} {kind}"] = weak.GetValueOrDefault($"{r.Module.Purpose} {kind}") + 1; }
-                if (r.Pieces == 0) { empty++; Weak(r.How.StartsWith("dressed") ? "empty though dressed" : "empty, undressed"); Note("empty", at); }
-                if (!float.IsNaN(r.Detour))
+                FamilyDef fam = _lib.Families.First(f => f.Id == families[i % families.Length]);
+                var hints = new LayoutHints(Dirs.Horizontal[rand.Next(4)], (TechLevel)rand.Next(3), null, fam.Tags.Contains("house") ? new HomeHints(rand.Next(), (Climate)rand.Next(4), (float)rand.NextDouble()) : null);
+                Layout layout = PoiFactory.SpawnLayout(_lib, fam, rand.Next(fam.Variants.Count), fam.Rarity, (ulong)rand.NextInt64(), hints, out string why);
+                if (layout == null) { Fail($"Interiors: a {type} ({fam.Id}) would not lay out: {why}"); continue; }
+                PoiState state = i % 2 == 0 ? PoiState.Ruined : PoiState.Abandoned;
+                PoiInstance inst = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
+                places++;
+                string place = layout.Extras.Homes.FirstOrDefault()?.Silhouette is { } s ? $"{s} {inst.State}" : $"{fam.Id} {inst.State}";
+                List<RoomLook> looks = LookRooms(inst, decor);
+                foreach (RoomLook r in looks)
                 {
-                    lined++;
-                    if (r.Detour > 1f) { inLine++; Weak("in the way"); Note("line", $"{at}: {(float.IsPositiveInfinity(r.Detour) ? "no way through" : $"{r.Detour:0.0} m round")} ({r.Signature})"); }
+                    rooms++;
+                    string at = $"{r.Module.Purpose} on storey {r.Module.Storey} of a {place}, {r.How}";
+                    void Weak(string kind) { weak[$"{r.Module.Purpose} {kind}"] = weak.GetValueOrDefault($"{r.Module.Purpose} {kind}") + 1; }
+                    if (r.Pieces == 0) { empty++; Weak(r.How.StartsWith("dressed") ? "empty though dressed" : "empty, undressed"); Note("empty", at); }
+                    if (!float.IsNaN(r.Detour))
+                    {
+                        lined++;
+                        if (r.Detour > 1f) { inLine++; Weak("in the way"); Note("line", $"{at}: {(float.IsPositiveInfinity(r.Detour) ? "no way through" : $"{r.Detour:0.0} m round")} ({r.Signature})"); }
+                    }
+                    if (!r.Lit) { unlit++; Weak("unlit"); Note("unlit", at); }
+                    if (r.Lamp) lamps++;
+                    if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at}, {r.Ways} ways in ({r.Signature})"); }
+                    if (r.Big) big++;
+                    if (r.Sparse) { sparse++; Weak("bare middle"); Note("sparse", $"{at} ({r.Signature})"); }
+                    narrow += r.Narrow;
+                    doorless += r.Doorless;
+                    if (r.Doorless > 0) Note("door", $"{at}: {r.Doorless} of {r.Narrow} ways a door's width with no door");
+                    if (r.Flat) flat++;
+                    if (state == PoiState.Ruined)
+                    {
+                        ruined++;
+                        if (r.FocalDown) { focalDown++; Weak("focal down in a ruin"); Note("down", at); }
+                        if (r.MidDebris) { midDebris++; Weak("fallen across the middle"); Note("debris", at); }
+                        if (r.Sky) { sky++; Weak("mostly sky"); Note("sky", at); }
+                    }
                 }
-                if (!r.Lit) { unlit++; Weak("unlit"); Note("unlit", at); }
-                if (r.Lamp) lamps++;
-                if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at}, {r.Ways} ways in ({r.Signature})"); }
+                // Alike: two rooms of a storey the same in purpose, size, pieces, floor and walls.
+                int pairs = looks.GroupBy(r => r.Module.Storey).Sum(st => st.SelectMany((a, k) => st.Skip(k + 1).Where(b => a.Signature == b.Signature)).Count());
+                alike += pairs;
+                if (pairs > 0) Note("alike", $"{place}: {looks.GroupBy(r => (r.Module.Storey, r.Signature)).First(g => g.Count() > 1).Key.Signature}");
+                if (looks.Count > 1 && looks.Select(r => r.Ceiling).Distinct().Count() == 1) { oneCeiling++; Note("ceiling", $"{place}: every room's ceiling {looks[0].Ceiling}"); }
+                // One material wall to wall: one floor and one wall colour all through, or the ways between rooms change nothing.
+                var of = RoomDecor.ModuleOf(layout);
+                var byModule = looks.ToDictionary(r => r.Module.Index);
+                var joined = looks.SelectMany(r => RoomDecor.Ways(inst, r.Module, r.Module.Min.Y, of).Where(w => w.From > r.Module.Index && byModule.ContainsKey(w.From)).Select(w => (r, byModule[w.From]))).ToList();
+                int same = joined.Count(p => p.Item1.Floor == p.Item2.Floor && p.Item1.Wall == p.Item2.Wall);
+                bool oneColour = looks.Count > 1 && looks.Select(r => r.Floor.Item2).Distinct().Count() == 1 && looks.Select(r => r.Wall.Item2).Distinct().Count() == 1;
+                if (oneColour || joined.Count > 0 && same * 2 > joined.Count)
+                {
+                    oneMaterial++;
+                    Note("material", $"{place}: {(oneColour ? $"one floor colour and one wall colour in all {looks.Count} rooms" : $"{same} of {joined.Count} ways between rooms change nothing")}");
+                }
             }
-            int pairs = looks.SelectMany((a, k) => looks.Skip(k + 1).Where(b => a.Signature == b.Signature)).Count();
-            alike += pairs;
-            if (pairs > 0) { alikeHouses++; Note("alike", $"{house}: {looks.GroupBy(r => r.Signature).First(g => g.Count() > 1).Key}"); }
-            // One material wall to wall: one floor and one wall colour all through, or the ways between rooms change nothing.
-            var of = RoomDecor.ModuleOf(layout);
-            var byModule = looks.ToDictionary(r => r.Module.Index);
-            var joined = looks.SelectMany(r => RoomDecor.Ways(inst, r.Module, r.Module.Min.Y, of).Where(w => w.From > r.Module.Index && byModule.ContainsKey(w.From)).Select(w => (r, byModule[w.From]))).ToList();
-            int same = joined.Count(p => p.Item1.Floor == p.Item2.Floor && p.Item1.Wall == p.Item2.Wall);
-            bool oneColour = looks.Count > 1 && looks.Select(r => r.Floor.Item2).Distinct().Count() == 1 && looks.Select(r => r.Wall.Item2).Distinct().Count() == 1;
-            if (oneColour || joined.Count > 0 && same * 2 > joined.Count)
-            {
-                oneMaterial++;
-                Note("material", $"{house}: {(oneColour ? $"one floor colour and one wall colour in all {looks.Count} rooms" : $"{same} of {joined.Count} ways between rooms change nothing")}");
-            }
+            string First(string kind) => firsts.TryGetValue(kind, out string s) ? $" (first: {s})" : "";
+            string T(string what) => $"Interiors, {type}: {what}";
+            System.Console.WriteLine($"Interiors, {type}: {places} places, {rooms} rooms; {lamps} with a lamp burning; big rooms {big}, bare middle {sparse}; narrow ways {narrow}, no door {doorless}; flat ceilings {flat} of {rooms}, places one ceiling all through {oneCeiling}; "
+                + $"ruined rooms {ruined}: focal down {focalDown}, fallen across the middle {midDebris}, mostly sky {sky}; weakest: {string.Join(", ", weak.OrderByDescending(k => k.Value).Take(6).Select(k => $"{k.Key} {k.Value}"))}");
+            Check(empty == 0, T($"no empty rooms ({empty} of {rooms}){First("empty")}"));
+            Check(inLine == 0, T($"nothing stands in the walking line between a room's ways in ({inLine} of {lined} rooms with two or more ways in){First("line")}"));
+            Check(oneMaterial == 0, T($"no place one material wall to wall ({oneMaterial} of {places}){First("material")}"));
+            Check(unlit == 0, T($"every room lit, by a lamp or daylight ({unlit} of {rooms} unlit){First("unlit")}"));
+            Check(alike == 0, T($"no two rooms of a storey alike ({alike} pairs){First("alike")}"));
+            Check(unfocused == 0, T($"every room has a focal point ({unfocused} of {rooms} without){First("focal")}"));
+            Check(sparse == 0, T($"no big room with a bare middle ({sparse} of {big} big rooms){First("sparse")}"));
+            Check(doorless == 0, T($"a door in every door's-width way between rooms ({doorless} of {narrow} without){First("door")}"));
+            Check(oneCeiling == 0, T($"no place one ceiling all through ({oneCeiling} of {places}){First("ceiling")}"));
+            Check(focalDown == 0 && midDebris == 0 && sky * 4 <= ruined, T($"ruined rooms read as rooms: focal point standing ({focalDown} down), the fallen against the walls ({midDebris} across the middle), at most a quarter mostly sky ({sky} of {ruined}){First("down")}{First("debris")}{First("sky")}"));
         }
-        string First(string kind) => firsts.TryGetValue(kind, out string s) ? $" (first: {s})" : "";
-        System.Console.WriteLine($"Interiors: {houses} houses, {rooms} rooms in {sw.Elapsed.TotalSeconds:0.0} s; {lamps} rooms with a lamp burning; weakest: {string.Join(", ", weak.OrderByDescending(k => k.Value).Take(8).Select(k => $"{k.Key} {k.Value}"))}");
-        Check(empty == 0, $"Interiors: no empty rooms ({empty} of {rooms}){First("empty")}");
-        Check(inLine == 0, $"Interiors: nothing stands in the walking line between a room's ways in ({inLine} of {lined} rooms with two or more ways in){First("line")}");
-        Check(oneMaterial == 0, $"Interiors: no house one material wall to wall ({oneMaterial} of {houses}){First("material")}");
-        Check(unlit == 0, $"Interiors: every room lit, by a lamp or daylight ({unlit} of {rooms} unlit){First("unlit")}");
-        Check(alike == 0, $"Interiors: no two rooms of a house alike ({alike} pairs in {alikeHouses} of {houses} houses){First("alike")}");
-        Check(unfocused == 0, $"Interiors: every room has a focal point ({unfocused} of {rooms} without){First("focal")}");
+        System.Console.WriteLine($"Interiors: {sw.Elapsed.TotalSeconds:0.0} s");
     }
 
     /// <summary>Every room of a spawned place as the game shows it: dressed by the library where it dresses it (its props then cleared), its own props elsewhere.</summary>
@@ -89,13 +141,14 @@ public partial class PoiTest
         var of = RoomDecor.ModuleOf(layout);
         PlaceLook look = inst.Blocks.Look ?? PlaceLook.For(inst);
         BlockGrid g = inst.Blocks;
-        var nav = inst.Nav();
+        var doorCells = new HashSet<Int3>(layout.Doorways.SelectMany(dw => dw.Cells));
         var looks = new List<RoomLook>();
-        foreach (PlacedModule m in layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall))
+        foreach (PlacedModule m in layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault))
         {
             int y = m.Min.Y;
             var floor = m.Cells.Where(c => c.Y == y).ToList();
             if (floor.Count < 2) continue;
+            var own = new HashSet<Int3>(floor);
             var ways = RoomDecor.Ways(inst, m, y, of);
             int pieces;
             string how;
@@ -103,6 +156,9 @@ public partial class PoiTest
             var kinds = new List<string>();
             string[] focus = decor.Arrangements.Focus.GetValueOrDefault(m.Purpose);
             bool focal = m.Kind == ModuleKind.Hall && floor.Any(c => Dirs.Horizontal.Any(h => g.Get(c + h.Vec()).Type == BlockType.Stair));
+            bool sparse = false, focalDown = false;
+            bool Focus(DecoPlacement p) => focus != null ? focus.Contains(p.Role) || decor.Forge.Catalogue.Piece(p.Piece).Roles.Any(focus.Contains)
+                : p.Support < 0 && decor.Forge.Catalogue.Piece(p.Piece) is { } piece && piece.Width * piece.Depth >= 1f;
             if (dressed.TryGetValue(m.Index, out RoomDecor.Dressable d))
             {
                 DecoPlan found = decor.Dress(d.Room, inst.Kit?.Id), used = decor.Dress(d.Room, inst.Kit?.Id, disorder: false);
@@ -110,11 +166,13 @@ public partial class PoiTest
                 pieces = found.Placements.Count;
                 how = $"dressed as {d.Room.Recipe ?? d.Room.Set}";
                 kinds.AddRange(used.Placements.Select(p => p.Piece));
-                focal |= used.Placements.Any(p => focus != null ? focus.Contains(p.Role) || decor.Forge.Catalogue.Piece(p.Piece).Roles.Any(focus.Contains)
-                    : p.Support < 0 && decor.Forge.Catalogue.Piece(p.Piece) is { } piece && piece.Width * piece.Depth >= 1f);
+                bool wasFocal = used.Placements.Any(Focus);
+                focal |= wasFocal;
+                focalDown = wasFocal && !found.Placements.Any(p => Focus(p) && p.Fall == DecoFall.None && p.State != DecoState.Knocked);
                 int x0 = d.Corner.X, z0 = d.Corner.Z, x1 = x0 + (int)d.Room.Width - 1, z1 = z0 + (int)d.Room.Depth - 1;
                 var doors = ways.Select(w => RoomDecor.Door(w.Cells, x0, x1, z0, z1)).OfType<DecoDoor>().ToList();
                 if (doors.Count >= 2) detour = Detour(d.Room, doors, used.Placements.Where(p => DecoLayout.Blocks(decor.Forge, p)).Select(p => DecoLayout.Footprint(decor.Forge, p)));
+                sparse = d.Room.Width * d.Room.Depth >= BigRoom && MathF.Min(d.Room.Width, d.Room.Depth) >= 4 && Bare(d.Room, found.Placements.Where(p => p.Support < 0 && decor.Forge.Catalogue.Piece(p.Piece).Mount != DecoMount.Ceiling).Select(p => DecoLayout.Footprint(decor.Forge, p)).ToList());
             }
             else
             {
@@ -133,11 +191,68 @@ public partial class PoiTest
             // Lit: a lamp burning in it, a window in its walls, or the sky over it.
             bool lamp = inst.Lights.Any(l => l.Mode != LightMode.Dead && l.Cell.Y >= y && l.Cell.Y <= m.Max.Y + 1 && floor.Any(c => c.X == l.Cell.X && c.Z == l.Cell.Z));
             bool window = floor.Any(c => Dirs.Horizontal.Any(h => Enumerable.Range(1, 2).Any(k => g.Get(c + h.Vec() + Int3.Up * k) is { Type: BlockType.Pane, Role: Role.Window } or { IsAir: true } && !of.ContainsKey(c + h.Vec() + Int3.Up * k) && !of.ContainsKey(c + h.Vec() * 2 + Int3.Up * k))));
-            bool sky = floor.Any(c => !Enumerable.Range(1, 12).Any(k => g.Get(c + Int3.Up * k) is { IsAir: false } b && BlockInfo.IsFullCube(b.Type)));
+            bool Open(Int3 c) => !Enumerable.Range(1, 12).Any(k => g.Get(c + Int3.Up * k) is { IsAir: false } b && BlockInfo.IsFullCube(b.Type));
+            int open = floor.Count(Open);
             string signature = $"{m.Purpose} {Math.Min(w0, d0)}x{Math.Max(w0, d0)} {floorLook.Item1}/{floorLook.Item2} {wallLook.Item1}/{wallLook.Item2}: {string.Join(" ", kinds.OrderBy(k => k))}";
-            looks.Add(new RoomLook(m, pieces, detour, lamp || window || sky, lamp, focal, signature, floorLook, wallLook, how, ways.Count));
+            var (ceiling, flatCeiling) = CeilingOf(g, floor.Where(c => Dirs.Horizontal.All(h => own.Contains(c + h.Vec()))).DefaultIfEmpty(floor[0]).ToList());
+            // Its ways to another room a door's width or less, and those with no door hung in them (a ruin's may have gone since).
+            var toRooms = ways.Where(w => w.From >= 0 && layout.Modules[w.From].Kind is not (ModuleKind.Outdoor or ModuleKind.Stair or ModuleKind.Lift) && w.Cells.Count <= DoorSize.Wide).ToList();
+            bool Doored(List<Int3> cells) => cells.Any(c => doorCells.Contains(c) || g.Get(c).Type == BlockType.Door);
+            // What fell, at the floor: heaped in the middle (cells clear of every wall) more than round the edges.
+            bool Fallen(Int3 c) => g.Get(c).Role == Role.Debris && g.Get(c).Type is BlockType.Rubble or BlockType.Cube or BlockType.Ramp || g.Get(c + Int3.Up).Role == Role.Debris && g.Get(c + Int3.Up).Type is BlockType.Rubble or BlockType.Cube;
+            var middle = floor.Where(c => Dirs.Horizontal.All(h => own.Contains(c + h.Vec()) && own.Contains(c + h.Vec() * 2))).ToList();
+            var edge = floor.Except(middle).ToList();
+            float midShare = middle.Count == 0 ? 0 : middle.Count(Fallen) / (float)middle.Count, edgeShare = edge.Count == 0 ? 0 : edge.Count(Fallen) / (float)edge.Count;
+            looks.Add(new RoomLook(m, pieces, detour, lamp || window || open > 0, lamp, focal, signature, floorLook, wallLook, how, ways.Count)
+            {
+                Big = Math.Min(w0, d0) >= 4 && floor.Count >= BigRoom, Sparse = sparse, Ceiling = ceiling, Flat = flatCeiling,
+                Narrow = toRooms.Count, Doorless = toRooms.Count(w => !Doored(w.Cells)),
+                FocalDown = focalDown, MidDebris = midShare > 0.1f && midShare > edgeShare, Sky = open * 2 > floor.Count,
+            });
         }
         return looks;
+    }
+
+    /// <summary>A room of this many square metres or more, 4 m or more across, is big: it wants a second zone (a group of its own, a rug, a divider).</summary>
+    const float BigRoom = 24f;
+
+    /// <summary>A big room's middle is bare: a third of the floor 1.5 m in from its walls has nothing standing within 1.5 m of it.</summary>
+    static bool Bare(DecoRoom room, List<DecoRect> furniture)
+    {
+        int points = 0, bare = 0;
+        for (float z = 1.5f; z <= room.Depth - 1.5f; z += 0.5f)
+            for (float x = 1.5f; x <= room.Width - 1.5f; x += 0.5f)
+            {
+                points++;
+                var p = new NV2(x, z);
+                var near = new DecoRect(p, new NV2(1.5f, 0), new NV2(0, 1.5f));
+                if (!furniture.Any(f => f.Overlaps(near))) bare++;
+            }
+        return points > 0 && bare * 3 > points;
+    }
+
+    /// <summary>
+    /// A room's ceiling as you look up from the middle of its floor (a cornice round its edge is no ceiling): the clear heights
+    /// over its cells, what stops them (a slab, a slope, a lowered panel), and any beams or pipes under it. Flat: one height all
+    /// over, a plain slab, nothing under it.
+    /// </summary>
+    static (string Form, bool Flat) CeilingOf(BlockGrid g, List<Int3> floor)
+    {
+        var heights = new SortedSet<int>();
+        var stops = new SortedSet<string>();
+        bool beams = false;
+        foreach (Int3 c in floor)
+            for (int k = 1; k < 14; k++)
+            {
+                Block b = g.Get(c + Int3.Up * k);
+                if (b.Role == Role.Decor && b.Type is BlockType.Beam or BlockType.Pipe) { beams = true; continue; }
+                if (b.IsAir || b.Role is not (Role.Floor or Role.Roof or Role.Wall)) continue;
+                heights.Add(k);
+                stops.Add(b.Type.ToString());
+                break;
+            }
+        bool flat = heights.Count <= 1 && !beams && stops.All(s => s == nameof(BlockType.Cube));
+        return ($"{string.Join("/", heights)} m {string.Join("/", stops)}{(beams ? " beamed" : "")}", flat);
     }
 
     /// <summary>A floor as it is drawn: its finish (the room's, by its purpose) and colour, on the plate laid in the cell or the slab under it.</summary>
