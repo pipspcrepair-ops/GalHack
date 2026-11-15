@@ -70,6 +70,9 @@ public sealed class CoreSection : IMenuSection
         return near.OrderBy(n => n.d).Select(n => n.thing).ToList();
     }
 
+    /// <summary>The structure's settings and numbers column.</summary>
+    public StructureSection Structure => _structure;
+
     /// <summary>The structure or device the panel is on.</summary>
     public object Picked => _picked;
 
@@ -245,8 +248,9 @@ public sealed class CoreSection : IMenuSection
 }
 
 /// <summary>
-/// A structure's settings and numbers: core mode, gravity, Home, auto-transmit, power, lights; mass,
-/// power, CPU, storage, and a vessel's four numbers. The mode switch is here on the Tab menu's CORE
+/// A structure's settings and numbers, on two pages so the column fits whatever it carries: SETTINGS (core
+/// mode, the pilot, gravity, power, lights, Home, auto-transmit) and NUMBERS (mass, power, storage, and a
+/// vessel's four numbers and lift margin). The mode switch is here on the Tab menu's CORE
 /// tab and nowhere else, in its warning stripes: it works at any time, even in flight, and nothing
 /// refuses it. It warns about missing parts and leaves the choice to the player.
 /// </summary>
@@ -256,6 +260,8 @@ public sealed class StructureSection : IMenuSection
     readonly Game.Game _game;
     readonly Func<Vessel> _vessel;
     readonly bool _modeSwitch;
+    /// <summary>The NUMBERS page is showing (else SETTINGS).</summary>
+    public bool ShowNumbers;
 
     /// <param name="modeSwitch">Show the mode switch: true on the Tab menu only (a screen in the world just says the mode).</param>
     public StructureSection(Game.Game game, Func<Vessel> vessel, bool modeSwitch = true)
@@ -347,7 +353,16 @@ public sealed class StructureSection : IMenuSection
         Structure s = v.Structure;
         g.Caption($"{v.Name.ToUpperInvariant()} · {BlueprintsSection.ModeLabel(s.Mode)}", o, area.Size.X);
         float y = o.Y + 36;
-
+        // Two pages, so the column fits above the alerts' corner whatever the structure carries.
+        float half = (area.Size.X - 6) / 2;
+        if (g.Tab("core:page:settings", new Rect2(o.X, y, half, 30), "SETTINGS", !ShowNumbers, C.Accent2)) ShowNumbers = false;
+        if (g.Tab("core:page:numbers", new Rect2(o.X + half + 6, y, half, 30), "NUMBERS", ShowNumbers, C.Accent2)) ShowNumbers = true;
+        y += 40;
+        if (ShowNumbers)
+        {
+            Numbers(g, v, o.X, y, area.Size.X);
+            return;
+        }
         // ---- Settings ---------------------------------------------------------------------------
         bool Toggle(string id, string label, bool on, bool enabled = true)
         {
@@ -375,16 +390,16 @@ public sealed class StructureSection : IMenuSection
             v.Home = now;
         }
         if (Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
+    }
 
-        // ---- Numbers ----------------------------------------------------------------------------
+    /// <summary>The NUMBERS page: mass, power and storage, and a vessel's four handling numbers and lift margin.</summary>
+    void Numbers(Gui g, Vessel v, float x, float y, float width)
+    {
         StructureStats st = v.StructureStats;
-        y += 8;
-        g.Caption("NUMBERS", new Vector2(o.X, y), area.Size.X, C.Holo);
-        y += 34;
         void Row(string label, string value, Color colour)
         {
-            g.Text(label, new Vector2(o.X, y), C.Dim, 14);
-            g.TextIn(HudLayout.Fit(UiTheme.Mono, 15, value, area.Size.X - 150), new Rect2(o.X + 150, y - 1, area.Size.X - 150, 20), colour, 15, HorizontalAlignment.Left, UiTheme.Mono);
+            g.Text(label, new Vector2(x, y), C.Dim, 14);
+            g.TextIn(HudLayout.Fit(UiTheme.Mono, 15, value, width - 150), new Rect2(x + 150, y - 1, width - 150, 20), colour, 15, HorizontalAlignment.Left, UiTheme.Mono);
             y += 26;
         }
         Row("MASS", $"{st.Mass:F2} t · {st.Blocks} BLOCKS", C.Text);

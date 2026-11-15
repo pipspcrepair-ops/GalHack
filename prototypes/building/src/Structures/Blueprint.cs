@@ -272,7 +272,7 @@ public static class Blueprint
                 foreach (string name in b.Paint.Where(n => n != "-" && !paintNames.Contains(n)).Distinct())
                     Error($"unknown paint '{name}'");
             if ((b.Flags & BlockFlags.Open) != 0 && !type.IsDoor) Error($"only doors can be open, not '{b.Type}'");
-            if ((b.Flags & BlockFlags.Off) != 0 && !type.IsLamp) Error($"only lights can be off, not '{b.Type}'");
+            if ((b.Flags & BlockFlags.Off) != 0 && !type.Switches) Error($"only lights and turrets can be off, not '{b.Type}'");
             if (Math.Abs(b.Pos.X) > MaxCoordinate || Math.Abs(b.Pos.Y) > MaxCoordinate || Math.Abs(b.Pos.Z) > MaxCoordinate)
                 Error("coordinate out of range");
 

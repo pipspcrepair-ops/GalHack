@@ -93,19 +93,19 @@ public sealed partial class Vessel
         {
             _lightsOn = value;
             SetDecoLights(value);
-            SwitchLamps(t => t.IsLight, value);
+            SwitchBlocks(t => t.IsLight, value);
         }
     }
 
-    /// <summary>Switches every lamp block of a kind on or off (its Off flag: its glow and its real light follow).</summary>
-    public void SwitchLamps(Func<BlockType, bool> which, bool on)
+    /// <summary>Switches every block of a kind with a switch of its own (lamps, turrets) on or off: its Off flag, which its glow, its light, its parts and its draw follow.</summary>
+    public void SwitchBlocks(Func<BlockType, bool> which, bool on)
     {
         bool changed = false;
         foreach (var (cell, block) in Structure.Blocks().ToList())
         {
             Block b = block;
             BlockType t = Structure.TypeOf(b);
-            if (!t.IsLamp || !which(t) || b.Off == !on) continue;
+            if (!t.Switches || !which(t) || b.Off == !on) continue;
             b.Flags ^= BlockFlags.Off;
             Structure.Set(cell, b);
             changed = true;
@@ -122,7 +122,7 @@ public sealed partial class Vessel
         Cabin.SetGravity(Body.Core);
     }
 
-    /// <summary>Is one of its systems switched on (the toolbar's toggles by name: "life-support", "fabricators", "turrets", "shields")? The power model reads these.</summary>
+    /// <summary>Is one of its systems switched on (the toolbar's toggles by name: "life-support", "fabricators", "shields")? The power model reads these.</summary>
     public bool SystemOn(string system) => !Structure.SystemsOff.Contains(system);
 
     public void SetSystem(string system, bool on)
