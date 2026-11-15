@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
@@ -64,7 +64,7 @@ public partial class Game
         Zone.AddChild(Underworld);
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
         Zone.AddChild(Doors);
-        Fields = new ForceFields { Name = "ForceFields", ZoneOf = () => Zone, Feet = () => Survivor.WorldFeet };
+        Fields = new ForceFields { Name = "ForceFields", ZoneOf = () => Zone, Feet = () => Survivor.WorldFeet, Doors = Doors };
         AddChild(Fields);
         Tool.Places = Places;
         Zone.Wildlife.SolidAt = Places.SolidAt;

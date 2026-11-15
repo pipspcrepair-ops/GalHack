@@ -28,6 +28,8 @@ public partial class ForceFields : Node3D
     /// <summary>The zone you are in (the planet's surface or its orbit), and your feet: door fields are drawn near you.</summary>
     public Func<SurfaceZone> ZoneOf;
     public Func<Vector3> Feet;
+    /// <summary>The structures' doors: only one with a door open has its outer doors' fields worked out.</summary>
+    public BlockDoors Doors;
     SurfaceZone Zone => ZoneOf?.Invoke();
 
     /// <summary>A force field's colour (shields, later, are purple).</summary>
@@ -46,17 +48,26 @@ public partial class ForceFields : Node3D
 
     readonly Dictionary<ForceField, Look> _fields = new();
     readonly Dictionary<(Vessel, Int3), Look> _doors = new();
+    /// <summary>Each structure's open outer doors holding a field, as last worked out.</summary>
+    readonly Dictionary<Vessel, int> _doorFields = new();
 
     /// <summary>Shots and blasts fields have taken (tests).</summary>
     public static int Hits { get; private set; }
 
+    /// <summary>STAGING: fields' waits and regrowth at this many times play speed (tests), 1 in play.</summary>
+    public float TimeScale = 1f;
+
+    /// <summary>Open outer doors whose field is drawn now (tests).</summary>
+    public int DoorsShown => System.Linq.Enumerable.Count(_doors.Values, l => IsInstanceValid(l.Mesh) && l.Mesh.Visible);
+
     public override void _PhysicsProcess(double delta)
     {
         if (Zone?.Planet == null) return;
-        float dt = (float)delta;
+        float dt = (float)delta * TimeScale;
         Vector3 feet = Feet?.Invoke() ?? Vector3.Zero;
         foreach (Look l in _fields.Values) l.Seen = false;
         foreach (Look l in _doors.Values) l.Seen = false;
+        _doorFields.Clear();
         foreach (Vessel v in Zone.Vessels)
         {
             if (!IsInstanceValid(v.Node)) continue;
@@ -68,8 +79,10 @@ public partial class ForceFields : Node3D
                 s.AirChanged();
             }
             for (int i = s.Fields.Count - 1; i >= 0; i--) Run(v, s.Fields[i], dt, powered);
-            if (powered && v.Body.WorldPosition.ToGodot().DistanceTo(feet) < Reach(v))
-                foreach (Int3 door in v.Rooms.FieldDoors) ShowDoor(v, door, dt);
+            int held = 0;
+            if (powered && Doors != null && Doors.AnyOpen(v) && v.Body.WorldPosition.ToGodot().DistanceTo(feet) < Reach(v))
+                foreach (Int3 door in v.Rooms.FieldDoors) held += ShowDoor(v, door, dt) ? 1 : 0;
+            _doorFields[v] = held;
         }
         Drop(_fields);
         Drop(_doors);
@@ -81,11 +94,11 @@ public partial class ForceFields : Node3D
     /// </summary>
     public static bool PoweredFor(Vessel v) => !v.IsWreck && v.Powered;
 
-    /// <summary>MW its fields draw from the capacitors now: every tile of each placed field that holds, and each open outer door's field.</summary>
-    public static double Draw(Vessel v)
+    /// <summary>MW a structure's fields draw from the capacitors now: every tile of each placed field that holds, and each open outer door's field.</summary>
+    public double Draw(Vessel v)
     {
         var rules = v.Zone.Data.Rules.ForceFields;
-        double mw = v.Structure.DoorFields ? v.Rooms.FieldDoors.Count * rules.DoorDraw : 0;
+        double mw = _doorFields.GetValueOrDefault(v) * rules.DoorDraw;
         foreach (ForceField f in v.Structure.Fields) mw += f.Draw(rules.DrawPerTile);
         return mw;
     }
@@ -154,10 +167,10 @@ public partial class ForceFields : Node3D
     }
 
     /// <summary>The field across an open outer door: in its leaves' plane, filling the doorway, fading in as the leaves draw back.</summary>
-    void ShowDoor(Vessel v, Int3 anchor, float dt)
+    bool ShowDoor(Vessel v, Int3 anchor, float dt)
     {
         Structure s = v.Structure;
-        if (!s.TryGet(anchor, out Block b) || !s.TypeOf(b).IsDoor) return;
+        if (!s.TryGet(anchor, out Block b) || !s.TypeOf(b).IsDoor) return false;
         Look l = LookFor(_doors, (v, anchor), v);
         l.Shown = MathF.Min(1f, l.Shown + dt * 2.5f);
         Mat3 m = Orientations.Matrix(b.Rot);
@@ -170,6 +183,7 @@ public partial class ForceFields : Node3D
         l.Material.SetShaderParameter("size", size);
         l.Material.SetShaderParameter("strength", l.Shown);
         l.Mesh.Visible = true;
+        return true;
     }
 
     Look LookFor<TKey>(Dictionary<TKey, Look> looks, TKey key, Vessel v)

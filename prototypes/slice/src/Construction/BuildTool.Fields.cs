@@ -42,8 +42,9 @@ public sealed partial class BuildTool
     public int FieldsPlaced { get; private set; }
     public int FieldsTakenDown { get; private set; }
 
-    /// <summary>A field is being drawn (the button held since it was pressed on a block).</summary>
+    /// <summary>A field is being drawn (the button held since it was pressed on a block), and whether its silhouette says it can go.</summary>
     public bool Drawing => _drag != null;
+    public bool DrawnCanGo { get; private set; }
 
     SliceRules.FieldRules FieldRules => _zone.Data.Rules.ForceFields;
 
@@ -144,6 +145,7 @@ public sealed partial class BuildTool
         _fieldGhost.MaterialOverride = m;
         _fieldGhost.GlobalTransform = v.DrawTransform * frame;
         _fieldGhost.Visible = true;
+        DrawnCanGo = can;
         var corners = new List<(Int3, Block, Color)>();
         for (int i = 0; i < 4; i++) corners.Add((f.Corner(i), EmitterAt(s, f, i), can ? ForceFields.Blue : GhostPreview.Invalid));
         _ghosts.ShowGhosts(v.DrawTransform, s, corners);

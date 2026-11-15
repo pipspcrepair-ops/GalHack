@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -67,6 +67,7 @@ public sealed partial class Staging
             "bunkershot" => BunkerShot(),
             "torch" => Torch(),
             "base" => BaseView(),
+            "fields" => FieldViews(),
             "blockbase" => BaseView(survival: true),
             "constructor" => ConstructorBlocks(),
             "machinescreen" => MachineScreenView(),
