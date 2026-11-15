@@ -30,7 +30,7 @@ GalHack is an open-world space survival sandbox: the player wakes from cryosleep
 **Galactic depth.** Every system has a depth, from 0 at the tip of a spiral arm on the rim to 1 at the core, taken from its real position in the galaxy. Depth is one of the things a world rolls from, alongside its type, theme, fall and eras, and it drives the push coreward: the rim has no factions and the faintest wrongness; factions appear partway in; Husks, Husk worlds, the reality fraying, and glimpses of the incomprehensible grow more common toward the core, as do danger and rarer finds. **Start and test options.** A new game can start from a preset (the default is the rim, at an arm's tip) or from custom options: depth, world type, theme, fall, mid-collapse or not, the old and current tech eras, world size, Survival or Creative, and a seed or a random one. The same options exist for testing, on the command line and in a test suite that sweeps across depths, eras, types and falls, rolling fresh random worlds within each choice every run.
 
 **The journey to the core** (owner, 15 Nov). The story is the player's own, but the journey coreward has a rhythm, and depth sets it:
-- **The rim** is backward and quiet. There isn't much trade, and it isn't as dangerous: the main dangers are survivors and wildlife.
+- **The rim** is backward and quiet. There's trade, in things the player can use, but not the high-tech goods found further in. It isn't as dangerous: the main dangers are survivors and wildlife.
 - **Faction space.** Moving in, the player meets the friendlier factions and civilisation. Civilisation is built on self-contained faction bases and spreads into space on ships and stations, built on the same tech the sleepers use. The player can visit friendly or neutral factions and wander round their bases, which are hubs where people live. Pirates appear toward the rich faction worlds of the middle arm. Deeper, bases have Husk scanners, places carry Husk warning signs, and the occasional Husk turns up.
 - **The war zone.** Deeper still, the player crosses a war zone between the friendly factions and the Vharn, with Husks and pirates taking advantage of the chaos. Worlds are more brutalised, dangerous and scarred: heavily armed marauders on the ground, Husks in the shadows, the occasional Hollow bloom gone unchecked.
 - **Vharn space.** Then through the heart of Vharn space, where they struggle with Husks pouring in from the core.
@@ -133,7 +133,7 @@ The galaxy is generated from a seed, one system at a time when it's first visite
 
 | Region | Character | What it's for |
 | --- | --- | --- |
-| The rim | The arms' quiet, backward tips: little trade, survivors and wildlife the main dangers | Waking, surviving, the first ships |
+| The rim | The arms' quiet, backward tips: low-tech trade only, survivors and wildlife the main dangers | Waking, surviving, the first ships |
 | Faction space | Friendlier factions and civilisation: self-contained faction bases as hubs, ships and stations; pirates near the rich worlds of the middle arm; Husk signs further in | Trade, hubs, the mid-game |
 | The war zone | The front between the friendly factions and the Vharn: brutalised, scarred worlds, marauders, Husks, pirates, unchecked Hollow blooms | The hard middle |
 | Vharn space | The heart of the Dominion, holding back Husks pouring in from the core | Late game |
