@@ -132,6 +132,7 @@ public sealed partial class HullVessel
         b.Lights();
         b.Finish();
         if (!intact) b.Damage();
+        if (!intact && state == PoiState.Infested) b.Infest();
         b.Hollow();
         if (dress != null) b.Dress(dress);
         b.S.Name = plan.Role switch { "warship" => "Warship", "liner" => "Liner", "miner" => "Mining Ship", "carrier" => "Carrier", _ => "Freighter" } + piece.Name;
@@ -147,7 +148,19 @@ public sealed partial class HullVessel
     void Paints()
     {
         GalHack.Structures.Paint Coat(uint c, int grime) => GalHack.Structures.Paint.Solid(c) with { Grime = (byte)grime };
-        foreach (var (name, c) in H.Paints) Paint[name] = D.Paint(name, Coat(Hex(c), name is "deck" or "hull" or "trim" ? 3 : 2));
+        HullStyle st = H.Style;
+        int outside = Math.Clamp(st.Grime, 0, 3);
+        foreach (var (name, c) in H.Paints) Paint[name] = D.Paint(name, Coat(Hex(c), name is "deck" ? 3 : outside));
+        // The band in the style's pattern over its second colour.
+        if (st.Pattern is "stripes" or "chevrons" or "checker" or "hazard")
+            Paint["orange"] = D.Paint("band", Coat(Hex(st.Band), outside).WithPattern(Enum.Parse<Pattern>(st.Pattern, true), Hex(st.Band2)));
+        // Glowing strips (markings, status lights) in the style's colour; hull numerals stencilled over the trim.
+        if (st.Glow is { } glow)
+            Paint["glow"] = D.Paint("glow", GalHack.Structures.Paint.Lit(LampShape.Strip, LightSettings.Make(Hex(glow), LightAnim.Steady, 0.6f, 0)));
+        for (char c = '0'; c <= '9'; c++) Paint["num" + c] = D.Paint("num" + c, Coat(Hex(H.Paints["trim"]), outside).WithStencil(c, Hex(st.Band)));
+        // A Husk ship's flesh and the veins through its walls, and the light that looks wrong.
+        Paint["flesh"] = D.Paint("flesh", Coat(0x8a3a50, 3));
+        Paint["vein"] = D.Paint("vein", Coat(0x5a2a3a, 3).WithPattern(Pattern.Stripes, 0xb8486e));
         uint hazard = Hex(H.Paints["hazard"]), black = Hex(H.Paints["black"]);
         Paint["hazard"] = D.Paint("hazard", Coat(hazard, 2).WithPattern(Pattern.Hazard, black));
         Paint["scorch"] = D.Paint("scorch", Coat(Hex(H.Paints["hull"].Lerp(new Rgb(0x20, 0x1c, 0x1a), 0.7f)), 3));
@@ -195,9 +208,9 @@ public sealed partial class HullVessel
     /// </summary>
     void Corners()
     {
-        _u0 = -H.Half - 2;
-        _nu = 2 * H.Half + 5;
-        _ny = H.TowerTop + 2;
+        _u0 = -H.ExtentU - 1;
+        _nu = 2 * H.ExtentU + 3;
+        _ny = H.ExtentY + 1;
         _nv = VEnd - Pc.V0;
         int cu = _nu + 1, cy = _ny + 1;
         var corner = new bool[cu * cy * (_nv + 1)];
@@ -253,8 +266,8 @@ public sealed partial class HullVessel
     void Shell()
     {
         for (int v = Pc.V0; v < VEnd; v++)
-            for (int y = 0; y <= H.TowerTop; y++)
-                for (int u = -H.Half - 1; u <= H.Half + 1; u++)
+            for (int y = 0; y < _ny; y++)
+                for (int u = _u0; u < _u0 + _nu; u++)
                 {
                     int m = Mask(u, y, v);
                     if (m == 0 || Interior(u, y, v)) continue;
@@ -266,6 +279,10 @@ public sealed partial class HullVessel
     /// <summary>The livery on the outside: bands down the flanks, chevrons on the bow, hazard checks on the stern and the tower's crown, dark nacelles.</summary>
     ushort Livery(int u, int y, int v)
     {
+        if (H.InPart(u, y, v) is { } part) return Paint.TryGetValue(part.Paint, out ushort pp) ? pp : Paint["trim"];
+        if (H.InRib(u, y, v) && !H.Body(u, y, v)) return Glowing(u, y, v) ?? Paint["trim"];
+        if (Glowing(u, y, v) is ushort g) return g;
+        if (Numeral(u, y, v) is ushort n) return n;
         int band = H.Top * 3 / 5;
         bool flank = MathF.Abs(u) >= H.HalfWidth(v) - 1.5f && y > 2 && y < H.Top - 2 && v < H.L;
         if (v >= H.L) return (u + y) % 5 == 0 ? Paint["dark"] : Paint["trim"];
@@ -279,6 +296,30 @@ public sealed partial class HullVessel
     }
 
     static int Mod(int a, int m) => ((a % m) + m) % m;
+
+    /// <summary>
+    /// The style's glowing strips: a status light on every frame at the band's height (a lattice hull's), else a marking run
+    /// down each segment of the flank and round the tower's crown (a carapace's).
+    /// </summary>
+    ushort? Glowing(int u, int y, int v)
+    {
+        if (!Paint.TryGetValue("glow", out ushort glow) || v >= H.L) return null;
+        int band = H.Top * 3 / 5;
+        if (H.Style.Ribs > 0) return H.InRib(u, y, v) && (y == band || y == 2) ? glow : null;
+        bool flank = MathF.Abs(u) >= H.HalfWidth(v) - 1.5f;
+        if (flank && y == band - 3 && v > H.Bz && H.Waists.All(w => Math.Abs(v - w) > 5) && Mod(v, 9) < 6) return glow;
+        return y == H.TowerTop - 2 && InTower(u, v) && Mod(u + v, 4) == 0 ? glow : null;
+    }
+
+    /// <summary>The hull's number stencilled big on both bows (its seed's three digits), for a style that numbers its hulls.</summary>
+    ushort? Numeral(int u, int y, int v)
+    {
+        if (!H.Style.Numbers) return null;
+        int at = H.Bz + 1, band = H.Top * 3 / 5;
+        if (y != band - 2 || v < at || v >= at + 3 || MathF.Abs(u) < H.HalfWidth(v) - 1.5f) return null;
+        int digit = (int)(H.Seed / (ulong)Math.Pow(10, v - at) % 10);
+        return Paint["num" + (char)('0' + digit)];
+    }
 
     // ---- decks ------------------------------------------------------------------------------------------
 

@@ -123,6 +123,7 @@ public partial class HulkTest : Node
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = true;
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?[7..];
+        if (only is null or "styles") foreach (int x in Styles()) yield return x;
         if (only is null or "fresh") foreach (int x in Fresh()) yield return x;
         if (only is null or "crashed") foreach (int x in Crashed()) yield return x;
         if (only is null or "adrift") foreach (int x in Adrift()) yield return x;

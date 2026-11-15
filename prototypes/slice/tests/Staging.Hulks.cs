@@ -112,6 +112,71 @@ public sealed partial class Staging
         foreach (int x in Inside(ship, dir, tag)) yield return x;
     }
 
+    /// <summary>
+    /// One capital hull of each faction's style and a Husk-hijacked one (any faction's hull, Infested), each set adrift
+    /// in turn ahead of the Skiff in orbit: from far (its silhouette against space, from its sunlit side) and near (its
+    /// bow quarter); the hijacked one inside too. Frames into --dir as faction-NAME-far/near.png.
+    /// </summary>
+    IEnumerable<int> FactionView()
+    {
+        string dir = _args.GetValueOrDefault("dir", ".");
+        System.IO.Directory.CreateDirectory(dir);
+        foreach (int x in ToOrbit()) yield return x;
+        for (int i = 0; i < 1200 && _game.Orbit is { Ready: false }; i++) yield return 0;
+        _game.Visor.Visible = false;
+        var lib = Slice.Game.WorldChoice.Library;
+        var cat = _game.Zone.Data.Catalogue;
+        SiteDef site = lib.Sites.Values.First(x => x.Parts.Count > 0 && x.Parts[0].Arg("what") == "capital");
+        string[] roles = { "freighter", "warship", "liner", "miner", "carrier" };
+        string[] styled = { "freeholders", "meridian", "exchange", "reavers", "kessari", "vharn" };
+        var shots = styled.Select(f => (Faction: f, Name: f, State: PoiState.Abandoned)).ToList();
+        shots.Add((styled[Random.Shared.Next(styled.Length)], "husk", PoiState.Infested));
+        foreach (var (faction, name, state) in shots)
+        {
+            ulong seed = (ulong)Random.Shared.NextInt64();
+            var spec = new CapitalHull.Spec(roles[Random.Shared.Next(roles.Length)], "large", "long", faction);
+            CapitalHull.HullPlan plan = CapitalHull.Plan(lib.Kits[site.Style], WorldProfile.Parse(site.Parts[0].Arg("tech", "mid")), spec, seed);
+            HullVessel.Result r = HullVessel.Build(plan, plan.Pieces[0], cat, state, seed, Hulks.Deco());
+            // Ahead of the Skiff, broadside on to it, level with the globe under them.
+            N.Vector3 skiff = Skiff.Body.Position, world = _game.Orbit.ToWorld(N.Vector3.Zero), upN = N.Vector3.Normalize(skiff - world);
+            N.Vector3 ahead = N.Vector3.Normalize(N.Vector3.Cross(upN, N.Vector3.UnitX) is var c && c.LengthSquared() > 0.01f ? c : N.Vector3.Cross(upN, N.Vector3.UnitZ));
+            N.Vector3 along = N.Vector3.Normalize(N.Vector3.Cross(ahead, upN));
+            var (lo, hi) = r.Structure.Bounds();
+            float span = hi.Z - lo.Z;
+            N.Quaternion turn = N.Quaternion.Normalize(N.Quaternion.CreateFromRotationMatrix(N.Matrix4x4.CreateWorld(N.Vector3.Zero, along, upN)));
+            N.Vector3 at = skiff + ahead * (span * 0.9f + 120f) - N.Vector3.Transform(new N.Vector3((lo.X + hi.X) * 0.5f, (lo.Y + hi.Y) * 0.5f, (lo.Z + hi.Z) * 0.5f), turn);
+            Vessel v = Vessel.SpawnDerelict(_game.Orbit, r.Structure, at, turn);
+            v.Derelict = new Slice.Orbit.DerelictPlan { Id = "style-" + name, Name = r.Structure.Name, Structure = r.Structure, Position = at, Rotation = turn, Door = r.Door, Hull = r, State = state };
+            foreach (int x in v.DressSteps(r.Decor)) yield return x;
+            foreach (int x in _drive.Wait(90)) yield return x;
+            Vector3 Local(float x, float y, float z) => v.Node.ToGlobal(new Vector3(x, y, z));
+            Vector3 mid = Local((lo.X + hi.X) * 0.5f, (lo.Y + hi.Y) * 0.5f, (lo.Z + hi.Z) * 0.5f), up = (Local(0, 1, 0) - Local(0, 0, 0)).Normalized();
+            // From its sunlit flank: far, the whole of it a little from above and off the bow; near, its bow quarter.
+            Vector3 side = (Local(1, 0, 0) - Local(0, 0, 0)).Normalized(), fore = (Local(0, 0, -1) - Local(0, 0, 0)).Normalized();
+            if (side.Dot(_game.Orbit.Space.ToSun) < 0) side = -side;
+            Vector3 far = mid + side * span * 1.05f + up * span * 0.3f + fore * span * 0.25f;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(mid - far, up), far);
+            foreach (int x in _drive.Wait(60)) yield return x;
+            foreach (int x in Shot($"{dir}/faction-{name}-far.png")) yield return x;
+            Vector3 bow = Local(0, (lo.Y + hi.Y) * 0.5f, lo.Z + span * 0.15f), near = bow + side * span * 0.35f + up * span * 0.12f + fore * span * 0.2f;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(Local(0, (lo.Y + hi.Y) * 0.45f, lo.Z + span * 0.4f) - near, up), near);
+            foreach (int x in _drive.Wait(40)) yield return x;
+            foreach (int x in Shot($"{dir}/faction-{name}-near.png")) yield return x;
+            _game.FixedCamera = null;
+            GD.Print($"faction: {name} ({plan.Style.Id}, {spec.Role}, {state}): {r.Structure.Count} blocks, {span:F0} m, {plan.Parts.Count} parts");
+            if (state == PoiState.Infested)
+            {
+                string why = r.CoreSlot is Int3 slot ? v.ClaimWith(slot) : "no seat";
+                v.LightsOn = true;
+                foreach (int x in Inside(v, dir, "faction-husk")) yield return x;
+            }
+            // Out of the way of the next: far off and gone from view.
+            v.Body.Position += upN * 60000f;
+            v.Binding.Teleport();
+            foreach (int x in _drive.Wait(10)) yield return x;
+        }
+    }
+
     /// <summary>Inside a wreck: its best-dressed room of a kind people lived or worked in, then a long run of a deck's spine, each from eye height.</summary>
     IEnumerable<int> Inside(Vessel v, string dir, string tag)
     {

@@ -36,8 +36,9 @@ public partial class HulkTest
         var sites = lib.Sites.Values.Where(s => s.Parts.Count > 0 && s.Parts[0].Arg("what") == "capital").ToList();
         var specs = sites.Select(s => (Site: s, Spec: CapitalHull.SpecOf(s.Parts[0]))).ToList();
         string[] roles = { "freighter", "warship", "liner", "miner", "carrier" }, sizes = { "medium", "large", "huge" }, crashes = { "broken", "nose", "scattered", "long" };
-        for (int i = 0; i < 2; i++)
-            specs.Add((sites[0], new CapitalHull.Spec(roles[Random.Shared.Next(roles.Length)], sizes[Random.Shared.Next(sizes.Length)], crashes[Random.Shared.Next(crashes.Length)])));
+        // And one more of every faction's style, of a random role, size and crash (each must still be a ship a crew can walk).
+        foreach (string faction in Styled)
+            specs.Add((sites[0], new CapitalHull.Spec(roles[Random.Shared.Next(roles.Length)], sizes[Random.Shared.Next(sizes.Length)], crashes[Random.Shared.Next(crashes.Length)], faction)));
         var problems = new List<string>();
         int bad = 0, hulls = 0;
         void Bad(bool ok, string what) { if (!ok) { bad++; problems.Add(what); } }
@@ -55,7 +56,7 @@ public partial class HulkTest
             var intact = plan.Pieces.Select((p, i) => HullVessel.Build(plan, p, cat, PoiState.Abandoned, seed + (ulong)i * 7919UL, intact: true)).ToList();
             yield return 0;
             hulls++;
-            string name = $"{spec.Role} {spec.Size} {spec.Crash} ({seed})";
+            string name = $"{plan.Style.Id} {spec.Role} {spec.Size} {spec.Crash} ({seed})";
             var (l0, l1, _, _, _) = CapitalHull.SizeOf(spec.Size);
             int length = plan.L + plan.Nac;
             Bad(plan.L >= l0 && length <= 290, $"{name}: {length} m long");

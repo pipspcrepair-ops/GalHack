@@ -97,6 +97,64 @@ public sealed partial class HullVessel
         }
     }
 
+    /// <summary>
+    /// A Husk ship (DESIGN: hijacked vessels of any faction, keeping its hull, overrun with worm flesh): flesh grown in
+    /// rounded masses out of its rooms' walls and corners, the holds and the engine room the worst, now and then through
+    /// the deck overhead into the room above; veins through the walls round it; every lamp that still works flickering a
+    /// light that looks wrong. Never in a doorway's way or a corridor: what lives here still gets about.
+    /// </summary>
+    void Infest()
+    {
+        var lamps = S.Blocks().Where(b => S.TypeOf(b.block).IsLight).Select(b => b.pos).ToList();
+        foreach (Int3 l in lamps) S.SetLight(l, LightSettings.Make(0x9ad040, LightAnim.Flicker, 0.35f, l.X * 5 + l.Z));
+        foreach (Space s in Out.Spaces.Where(s => !s.Corridor && s.Floor.Count >= 6))
+        {
+            var near = new HashSet<(int, int)>(s.Doors.SelectMany(d => Around(d.Inside, 2)));
+            var walls = s.Floor.Where(c => !near.Contains(c) && new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Any(o => !s.Floor.Contains((c.U + o.Item1, c.V + o.Item2)))).ToList();
+            int blobs = (int)MathF.Ceiling(s.Area / (s.Purpose is "hold" or "ore-hold" or "engine-room" ? 18f : 35f));
+            for (int i = 0; i < blobs && walls.Count > 0; i++)
+            {
+                var (cu, cv) = walls[Rng.Next(walls.Count)];
+                float r = 1.2f + (float)Rng.NextDouble() * (s.Hall ? 2.6f : 1.4f);
+                // On the floor against the wall, or up through the deck overhead.
+                bool through = Rng.Next(4) == 0;
+                float cy = through ? s.Y + s.Height - 0.5f : s.Y - 0.5f + r * 0.6f;
+                Blob(s, near, cu + 0.5f, cy, cv + 0.5f, r, through);
+            }
+        }
+        // Veins through the walls of the rooms it has taken.
+        foreach (var (p, b) in S.Blocks().ToList())
+            if (S.TypeOf(b) == Plating && Interior(p.X, p.Y, p.Z + Pc.V0) && Rng.Next(7) == 0 && Dirs.All.Any(f => !S.Has(p + f.Vec())))
+                S.Set(p, Armour(Plating, S.ShapeOf(b), b.Rot, Paint["vein"]));
+    }
+
+    /// <summary>A rounded mass of flesh about a point (hull frame, metres), shaped to its sphere a cell at a time; through a deck it takes the slab's cells too.</summary>
+    void Blob(Space s, HashSet<(int, int)> near, float cu, float cy, float cv, float r, bool through)
+    {
+        bool In(float u, float y, float v) => (u - cu) * (u - cu) + (y - cy) * (y - cy) * 1.4f + (v - cv) * (v - cv) <= r * r;
+        int R = (int)MathF.Ceiling(r) + 1;
+        for (int v = (int)cv - R; v <= (int)cv + R; v++)
+            for (int u = (int)cu - R; u <= (int)cu + R; u++)
+            {
+                if (!s.Floor.Contains((u, v)) || near.Contains((u, v))) continue;
+                for (int y = (int)cy - R; y <= (int)cy + R; y++)
+                {
+                    if (y < s.Y || !through && y >= s.Y + s.Height || y > s.Y + s.Height + 1) continue;
+                    bool slab = y >= s.Y + s.Height;
+                    if (Has(u, y, v) && !(slab && S.TryGet(At(u, y, v), out Block b) && S.TypeOf(b) == Plating)) continue;
+                    if (slab && y == s.Y + s.Height + 1 && Has(u, y, v)) continue;
+                    int m = 0;
+                    for (int c = 0; c < 8; c++)
+                        if (In(u - 0.5f + (c & 1), y - 0.5f + (c >> 1 & 1), v - 0.5f + (c >> 2 & 1))) m |= 1 << c;
+                    // Through the deck the slab stays whole (flesh over it); in the room, the mass's own shape.
+                    if (slab && y == s.Y + s.Height) m = In(u, y, v) ? 255 : 0;
+                    if (m == 0 || Fit.For(m) is not var (shape, rot)) continue;
+                    Put(u, y, v, Armour(Plating, shape, rot, Paint["flesh"]));
+                    s.Taken.Add((u, v));
+                }
+            }
+    }
+
     /// <summary>Solid that nobody sees or reaches (a cube of plating with plating on all six sides: the middle of a cargo stack, the fill behind the bow's rooms) is left out, as a builder would.</summary>
     void Hollow()
     {

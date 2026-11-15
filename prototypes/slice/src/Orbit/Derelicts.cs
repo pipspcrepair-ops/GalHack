@@ -70,7 +70,7 @@ public static class Derelicts
             {
                 "field" when poi.Site.Id.Contains("pod") => Pods(rng, poi, id, catalogue),
                 "field" => Field(rng, poi, id, catalogue),
-                _ => Station(rng, poi, id, catalogue),
+                _ => Station(rng, poi, id, catalogue, HullStyle.For(library.HullStyles, poi.Site.Faction, poi.Seed)),
             };
             // Pieces were laid out round the site's centre in its own frame: turn the whole site.
             N.Quaternion siteTurn = RandomTurn(rng);
@@ -159,37 +159,100 @@ public static class Derelicts
         }
         return pieces;
     }
-    /// <summary>A broken station: a hub with an airlock, modules out on truss tubes, one module torn off and drifting.</summary>
-    static List<DerelictPlan> Station(Random rng, OrbitPoi poi, string id, Catalogue catalogue)
+    /// <summary>
+    /// A broken station in its faction's style (data/hull-styles.txt, the hulls' rules): a hub with its airlock, arms out
+    /// on truss tubes to modules, one module torn off and drifting. The style sets it all: the hub's size and form (a
+    /// block, a segmented chain swept to one side, a ribbed and mirrored frame), how many arms and whether they mirror,
+    /// arms swept in short straight runs, modules stacked as cargo pods, bolted on mismatched, studded with spikes or
+    /// scrap plates, an engine block, and the colours.
+    /// </summary>
+    static List<DerelictPlan> Station(Random rng, OrbitPoi poi, string id, Catalogue catalogue, HullStyle st)
     {
-        var hub = new Cells(rng, "d8d4c8", accent: "1b263b");
-        hub.Box(-3, 0, -3, 3, 4, 3, "hull", hollow: true);
-        hub.Box(-2, 2, -2, 2, 2, 2, "deck");
+        var hub = new Cells(rng, st);
+        int h = (int)MathF.Round(3 * st.Beam * (st.Segments > 0 ? 0.8f : 1f) + (st.Length > 1.1f ? 1 : 0)), up = 4 + (st.Length > 1.1f ? 2 : 0);
+        hub.Box(-h, 0, -h, h, up, h, "hull", hollow: true);
+        hub.Box(-h + 1, 2, -h + 1, h - 1, 2, h - 1, "deck");
         hub.Clear(-1, 2, -1, 0, 2, 0);
-        hub.HullDoor(3, 1);
-        foreach (var (x, z) in new[] { (-2, -2), (2, -2), (-2, 2) }) hub.Set(x, 1, z, "container", paint: "cargo");
-        // Truss tubes out along -z and +x, a module on the -z one.
-        hub.Tube(0, 2, -4, 0, 0, -1, 5);
-        hub.Set(0, 2, -3, "door", open: true);
-        hub.Box(-2, 0, -13, 2, 4, -9, "hull", hollow: true);
-        hub.Set(0, 2, -9, "door", open: true);
-        hub.Set(-1, 1, -11, "container", paint: "cargo");
-        hub.Set(1, 1, -12, "container", paint: "cargo");
-        hub.Tube(4, 2, 0, 1, 0, 0, 3); // torn off at its far end: a way in from open space
-        hub.Set(3, 2, 0, "door", open: true);
+        // A segmented hub: a chain of shrinking segments aft, each stepped to one side (the carapace's sweep).
+        for (int k = 1; k <= st.Segments; k++)
+        {
+            int w = Math.Max(2, h - k), z0 = h + 1 + (k - 1) * (2 * w + 2), dx = k;
+            hub.Box(-w + dx, 0, z0 + 1, w + dx, up - k / 2, z0 + 2 * w + 1, "hull", hollow: true);
+            hub.Tube(dx, 2, z0 - 1, 0, 0, 1, 3);
+        }
+        hub.HullDoor(h, 1);
+        foreach (var (x, z) in new[] { (-h + 1, -h + 1), (h - 1, -h + 1), (-h + 1, h - 1) }) hub.Set(x, 1, z, "container", paint: "cargo");
+        // Frames round the hub (a lattice style's ribs), mirrored all round.
+        if (st.Ribs > 0)
+            for (int z = -h; z <= h; z += 2)
+                if (Math.Abs(z - 1) > 1) hub.Ring(-h - 1, -1, z, h + 1, up + 1, z, "trim");
+        // The arms: along the axes (mirrored for a symmetric style), out to a module each; a swept style steps them aside as they go.
+        var dirs = new List<(int dx, int dz)> { (0, -1), (-1, 0), (1, 0), (0, 1) };
+        int arms = st.Symmetric ? 4 : st.Length > 1.1f ? 2 : rng.Next(2, 4);
+        if (!st.Symmetric) dirs = st.Length > 1.1f ? new() { (0, -1), (0, 1) } : dirs.Take(3).OrderBy(_ => rng.Next()).ToList();
+        int len = (int)MathF.Round(5 * st.Length) + (st.Symmetric ? 0 : rng.Next(0, 3)), size = st.Symmetric ? 2 : 2 + rng.Next(0, 2);
+        var modules = new List<(int x, int z)>();
+        for (int i = 0; i < arms && i < dirs.Count; i++)
+        {
+            var (dx, dz) = dirs[i];
+            if (dx == 1) continue; // (the hull door's side stays clear)
+            // From the hub's wall (the tube opens it), in one run or three swept aside, to the module's wall.
+            int x = dx * h, z = dz * h, sweep = st.Fins > 0 ? (i % 2 == 0 ? 1 : -1) : 0, runs = sweep != 0 ? 3 : 1;
+            for (int run = 0; run < runs; run++)
+            {
+                int n = sweep != 0 ? Math.Max(2, len / 3) : len;
+                hub.Tube(x, 2, z, dx, 0, dz, n);
+                x += dx * n;
+                z += dz * n;
+                if (run == runs - 1) break;
+                int sx = dz != 0 ? sweep : 0, sz = dx != 0 ? sweep : 0;
+                hub.Tube(x - dx, 2, z - dz, sx, 0, sz, 3);
+                x += 2 * sx;
+                z += 2 * sz;
+            }
+            int m = size + (st.Symmetric ? 0 : rng.Next(0, 2));
+            hub.Tube(x, 2, z, dx, 0, dz, 1);
+            int cx = x + dx * m, cz = z + dz * m;
+            Module(hub, rng, st, cx, cz, m, up);
+            modules.Add((cx, cz));
+        }
+        // An engine block on the stern of a long hull's station (its spine's end), and spikes all over a raider's.
+        if (st.EngineLength > 1.4f) hub.Box(-h, 0, -h - 4, h, up, -h - 1, "dark");
+        for (int i = 0, n = (int)MathF.Round(st.Spikes * 0.6f); i < n; i++)
+        {
+            var (mx, mz) = modules.Count > 0 && rng.Next(2) == 0 ? modules[rng.Next(modules.Count)] : (0, 0);
+            int sx = rng.Next(2) == 0 ? -1 : 1, sl = 2 + rng.Next(0, 4), sy = 1 + rng.Next(0, up);
+            for (int k = 0; k < sl; k++) hub.Set(mx + sx * (h + 1 + k + (mx == 0 && mz == 0 ? 0 : 1)), sy, mz + rng.Next(-1, 2), "steel", "dark");
+        }
+        hub.Plates(st.Plates);
         hub.Scars(8);
         DerelictPlan main = hub.Plan(id, poi.Site.Name, catalogue);
         // The torn-off module, its stub of tube open to space.
-        var torn = new Cells(rng, "d8d4c8", accent: "1b263b");
-        torn.Box(-2, -2, -2, 2, 2, 2, "hull", hollow: true);
-        torn.Tube(-5, 0, 0, 1, 0, 0, 3);
-        torn.Clear(-2, 0, 0, -2, 0, 0);
-        torn.Set(1, -1, 1, "container", paint: "cargo");
+        var torn = new Cells(rng, st);
+        torn.Tube(-size - 3, 2, 0, 1, 0, 0, 4);
+        Module(torn, rng, st, 0, 0, size, up, fixedWidth: true);
         torn.Scars(4);
         DerelictPlan off = torn.Plan(id + "-module", poi.Site.Name + " (module)", catalogue);
         off.Position = new N.Vector3(26f, 6f, 9f);
         off.Rotation = N.Quaternion.CreateFromYawPitchRoll(0.6f, 0.4f, -0.3f);
         return new List<DerelictPlan> { main, off };
+    }
+
+    /// <summary>A station's module round a point, by its style: cargo pods stacked (colour-coded), a ribbed frame, a mismatched box, or a plain one.</summary>
+    static void Module(Cells c, Random rng, HullStyle st, int x, int z, int m, int up, bool fixedWidth = false)
+    {
+        if (st.Pods > 0)
+        {
+            for (int px = -1; px <= 1; px += 2)
+                for (int py = 0; py < 2; py++)
+                    c.Box(x + px * (m + 1) - 1, py * 3, z - m, x + px * (m + 1) + 1, py * 3 + 2, z + m, "pod" + rng.Next(0, Math.Max(1, st.Cargo.Count)));
+        }
+        int mu = st.Bolted > 0 && !fixedWidth ? m + rng.Next(0, 2) : m;
+        c.Box(x - mu, 0, z - m, x + mu, up - 1, z + m, "hull", hollow: true);
+        c.Box(x - mu + 1, 2, z - m + 1, x + mu - 1, 2, z + m - 1, "deck");
+        c.Set(x, 3, z, "container", paint: "cargo");
+        if (st.Ribs > 0) c.Ring(x - mu - 1, -1, z, x + mu + 1, up, z, "trim");
+        if (st.Bolted > 0) c.Box(x + mu + 1, 1, z - 1, x + mu + 2 + rng.Next(0, 2), 3, z + 1 + rng.Next(0, 2), "scrap" + rng.Next(0, Math.Max(1, st.Scrap.Count)));
     }
 
     /// <summary>A wreck field: hull fragments and loose cargo boxes, scattered and tumbling apart.</summary>
@@ -245,7 +308,10 @@ public static class Derelicts
     {
         readonly Random _rng;
         readonly SortedDictionary<(int y, int z, int x), string> _cells = new();
+        /// <summary>The tubes' passages: nothing laid after them fills them (a door may stand in one).</summary>
+        readonly HashSet<(int y, int z, int x)> _open = new();
         readonly string _hull, _accent;
+        readonly HullStyle _style;
         Int3? _door;
 
         public Cells(Random rng, string hull, string accent = "2b2d42")
@@ -255,8 +321,31 @@ public static class Derelicts
             _accent = accent;
         }
 
+        /// <summary>A layout in a faction's style: its hull and trim colours, its cargo's and its scrap's.</summary>
+        public Cells(Random rng, HullStyle style) : this(rng, Hex(style.Hull), Hex(style.Trim)) => _style = style;
+
+        static string Hex(Rgb c) => $"{c.R:x2}{c.G:x2}{c.B:x2}";
+
+        /// <summary>A frame round a box's edge in a plane across z (or x when x0 == x1): the cells of its rim.</summary>
+        public void Ring(int x0, int y0, int z, int x1, int y1, int z1, string paint)
+        {
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                    if ((x == x0 || x == x1 || y == y0 || y == y1) && !_cells.ContainsKey((y, z, x))) Set(x, y, z, "steel", paint);
+        }
+
+        /// <summary>Scrap plates over a share of the hull: patches of its shell repainted in mismatched colours.</summary>
+        public void Plates(float share)
+        {
+            if (share <= 0 || _style == null || _style.Scrap.Count == 0) return;
+            foreach (var key in _cells.Where(c => c.Value.Contains("paint=hull")).Select(c => c.Key).ToList())
+                if (Math.Abs(((key.x >> 1) * 73856093) ^ ((key.y >> 1) * 19349663) ^ ((key.z >> 1) * 83492791)) % 100 < share * 100)
+                    _cells[key] = _cells[key].Replace("paint=hull", "paint=scrap" + Math.Abs((key.x >> 1) + (key.z >> 1)) % _style.Scrap.Count);
+        }
+
         public void Set(int x, int y, int z, string type, string paint = null, string rot = null, bool open = false)
         {
+            if (type != "door" && _open.Contains((y, z, x))) return;
             paint ??= type switch { "steel" or "hardened" => "hull", "glass" => null, _ => null };
             var line = new StringBuilder(type);
             if (rot != null) line.Append(" rot=").Append(rot);
@@ -283,7 +372,8 @@ public static class Derelicts
                         int edges = (x == x0 || x == x1 ? 1 : 0) + (y == y0 || y == y1 ? 1 : 0) + (z == z0 || z == z1 ? 1 : 0);
                         if (hollow && edges == 0) continue;
                         if (kind == "hull") Set(x, y, z, edges >= 2 ? "hardened" : "steel", edges >= 2 ? "trim" : "hull");
-                        else Set(x, y, z, "steel", kind == "deck" ? "deck" : "wall");
+                        else if (kind is "deck" or "wall") Set(x, y, z, "steel", kind == "deck" ? "deck" : "wall");
+                        else Set(x, y, z, "steel", kind);
                     }
         }
 
@@ -307,7 +397,11 @@ public static class Derelicts
                     for (int b = -1; b <= 1; b++)
                     {
                         int px = cx + p.Item1 * a + q.Item1 * b, py = cy + p.Item2 * a + q.Item2 * b, pz = cz + p.Item3 * a + q.Item3 * b;
-                        if (a == 0 && b == 0) _cells.Remove((py, pz, px));
+                        if (a == 0 && b == 0)
+                        {
+                            _cells.Remove((py, pz, px));
+                            _open.Add((py, pz, px));
+                        }
                         else Set(px, py, pz, "steel", "trim");
                     }
             }
@@ -366,6 +460,14 @@ public static class Derelicts
             text.AppendLine("paint deck base=22223b grime=3 texture=ribbed");
             text.AppendLine("paint cargo base=e85d04 accent=2b2d42 pattern=stripes grime=3");
             text.AppendLine("paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2");
+            if (_style != null)
+            {
+                text.AppendLine($"paint dark base={Hex(_style.Dark)} grime=2");
+                for (int i = 0; i < Math.Max(1, _style.Cargo.Count); i++)
+                    text.AppendLine($"paint pod{i} base={(_style.Cargo.Count > 0 ? Hex(_style.Cargo[i]) : "e85d04")} accent=2b2d42 pattern=stripes grime=2");
+                for (int i = 0; i < Math.Max(1, _style.Scrap.Count); i++)
+                    text.AppendLine($"paint scrap{i} base={(_style.Scrap.Count > 0 ? Hex(_style.Scrap[i]) : _accent)} grime=3");
+            }
             foreach (var ((y, z, x), what) in _cells)
                 text.AppendLine(string.Create(CultureInfo.InvariantCulture, $"block {x} {y} {z} {what}"));
             BlueprintData data = Blueprint.Parse(text.ToString());

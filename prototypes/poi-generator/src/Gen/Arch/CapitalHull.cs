@@ -25,7 +25,8 @@ namespace PoiGenerator.Gen;
 /// </summary>
 public static class CapitalHull
 {
-    public sealed record Spec(string Role, string Size, string Crash);
+    /// <summary>What a hull is: its role, size class and how it came down, and the faction whose style it is built in (null: the site's kit's).</summary>
+    public sealed record Spec(string Role, string Size, string Crash, string? Faction = null);
 
     /// <summary>A size class: the length and half-beam ranges (m) and the decks.</summary>
     public static (int L0, int L1, int H0, int H1, int Decks) SizeOf(string size) => size switch
@@ -47,7 +48,31 @@ public static class CapitalHull
         p.Finish();
     }
 
-    public static Spec SpecOf(SitePart part) => new(part.Arg("role", "freighter"), part.Arg("size", "large"), part.Arg("crash", "broken"));
+    public static Spec SpecOf(SitePart part) => new(part.Arg("role", "freighter"), part.Arg("size", "large"), part.Arg("crash", "broken"), part.Arg("faction", "") is { Length: > 0 } f ? f : null);
+
+    /// <summary>
+    /// Something a faction's style adds outside the hull's body (a cargo pod, a bolted-on module, a scrap plate, a spike, a
+    /// fin's run, a truss member): a box in the hull's frame, or tapered along an axis (0 +u, 1 -u, 2 +y, 3 -y, 4 +v, 5 -v)
+    /// to Tip of its section at its far end; painted by name.
+    /// </summary>
+    public sealed record Part(string Paint, float U0, float Y0, float V0, float U1, float Y1, float V1, int Axis = -1, float Tip = 1f)
+    {
+        public bool Contains(float u, float y, float v)
+        {
+            if (u < U0 || u > U1 || y < Y0 || y > Y1 || v < V0 || v > V1) return false;
+            if (Axis < 0) return true;
+            // How far along it is (0 at its base, 1 at its tip), and its section there about its middle.
+            float t = Axis switch { 0 => (u - U0) / (U1 - U0), 1 => (U1 - u) / (U1 - U0), 2 => (y - Y0) / (Y1 - Y0), 3 => (Y1 - y) / (Y1 - Y0), 4 => (v - V0) / (V1 - V0), _ => (V1 - v) / (V1 - V0) };
+            float k = 1f + (Tip - 1f) * t;
+            float cu = (U0 + U1) / 2, cy = (Y0 + Y1) / 2, cv = (V0 + V1) / 2;
+            bool InU() => MathF.Abs(u - cu) <= (U1 - U0) / 2 * k;
+            bool InY() => MathF.Abs(y - cy) <= (Y1 - Y0) / 2 * k;
+            bool InV() => MathF.Abs(v - cv) <= (V1 - V0) / 2 * k;
+            return Axis switch { 0 or 1 => InY() && InV(), 2 or 3 => InU() && InV(), _ => InU() && InY() };
+        }
+
+        public Part Mirrored => this with { U0 = -U1, U1 = -U0, Axis = Axis switch { 0 => 1, 1 => 0, _ => Axis } };
+    }
 
     /// <summary>
     /// A capital hull with no place round it (a derelict adrift): the same rules, the vessel only. Its pieces lie
@@ -101,6 +126,14 @@ public static class CapitalHull
         public static int Walk(int d) => Pitch * d + 1;
 
         public int L, Half, Decks, Bz;
+        /// <summary>The faction's style it is built in (data/hull-styles.txt).</summary>
+        public HullStyle Style = new();
+        /// <summary>What the style adds outside the body (pods, modules, plates, spikes, fins, the truss).</summary>
+        public readonly List<Part> Parts = new();
+        /// <summary>Where the waists between its segments fall (v).</summary>
+        public readonly List<int> Waists = new();
+        /// <summary>How far the hull and everything on it reaches across (|u|) and up (y), cells: the box a builder must cover.</summary>
+        public int ExtentU, ExtentY;
         /// <summary>The roof's level (the slab over the top deck).</summary>
         public int Top => Pitch * Decks;
         public int TowerTop => Pitch * (Decks + TowerDecks);
@@ -124,28 +157,80 @@ public static class CapitalHull
         float Taper(float v)
         {
             float t = Math.Clamp((v + 0.5f) / Bz, 0f, 1f);
-            return Round ? 0.32f + 0.68f * MathF.Sqrt(1f - (1f - t) * (1f - t)) : 0.26f + 0.74f * MathF.Pow(t, 0.8f);
+            if (Round) return 0.32f + 0.68f * MathF.Sqrt(1f - (1f - t) * (1f - t));
+            return Style.Bow switch
+            {
+                "blunt" => 0.45f + 0.55f * MathF.Pow(t, 0.6f),
+                "needle" => 0.12f + 0.88f * MathF.Pow(t, 1.4f),
+                _ => 0.26f + 0.74f * MathF.Pow(t, 0.8f),
+            };
+        }
+
+        /// <summary>How much of the beam a segment's waist leaves at v (1 away from the waists).</summary>
+        float Waisted(float v)
+        {
+            float k = 1f;
+            foreach (int w in Waists) k = MathF.Min(k, 1f - Style.Waist * MathF.Max(0f, 1f - MathF.Abs(v - w) / 5f));
+            return k;
         }
 
         /// <summary>Half the beam at v, m (to the outside of the shell).</summary>
-        public float HalfWidth(float v) => (Half + 0.5f) * Taper(v) * (1f - 0.06f * Math.Clamp((v - (L - 5)) / 5f, 0f, 1f));
+        public float HalfWidth(float v) => (Half + 0.5f) * Taper(v) * Waisted(v) * (1f - 0.06f * Math.Clamp((v - (L - 5)) / 5f, 0f, 1f));
 
-        /// <summary>How far the shoulders slope in at 45 degrees to the roof, m: the upper third of the flank, as a hull leans in to its back.</summary>
-        public int Shoulder => Math.Max(3, Top / 3);
+        /// <summary>How far the shoulders slope in at 45 degrees to the roof, m: the style's share of the flank (a block's is small), as a hull leans in to its back.</summary>
+        public int Shoulder => Math.Max(2, (int)MathF.Round(Top * Style.Shoulder));
 
-        /// <summary>The hull's solid as drawn (metres in its frame): the hull, the tower and the nacelles.</summary>
-        public bool Solid(float u, float y, float v) => InHull(u, y, v) || InTower(u, y, v) || InNacelle(u, y, v);
+        /// <summary>The hull's solid as drawn (metres in its frame): the hull, the tower, the nacelles, its ribs and what its style adds.</summary>
+        public bool Solid(float u, float y, float v) => InHull(u, y, v) || InTower(u, y, v) || InNacelle(u, y, v) || InRib(u, y, v) || InPart(u, y, v) != null;
+
+        /// <summary>The body a crew lives in: the hull and the tower (rooms go nowhere else).</summary>
+        public bool Body(float u, float y, float v) => InHull(u, y, v) || InTower(u, y, v);
+
+        /// <summary>The part of the style's at a point, if any.</summary>
+        public Part? InPart(float u, float y, float v)
+        {
+            if (_byV == null || Parts.Count != _indexed) Index();
+            int k = (int)MathF.Floor(v);
+            if (k < 0 || k >= _byV!.Length) return null;
+            foreach (Part p in _byV[k])
+                if (p.Contains(u, y, v)) return p;
+            return null;
+        }
+
+        /// <summary>The parts by the metre of the hull's length they reach into (a point is only tested against those).</summary>
+        List<Part>[]? _byV;
+        int _indexed = -1;
+
+        void Index()
+        {
+            int n = Math.Max(1, (int)MathF.Ceiling(Parts.Count == 0 ? 1 : Parts.Max(p => p.V1)) + 2);
+            var by = new List<Part>[n];
+            for (int i = 0; i < n; i++) by[i] = new List<Part>();
+            foreach (Part p in Parts)
+                for (int k = Math.Max(0, (int)MathF.Floor(p.V0)); k <= Math.Min(n - 1, (int)MathF.Floor(p.V1)); k++) by[k].Add(p);
+            _byV = by;
+            _indexed = Parts.Count;
+        }
+
+        /// <summary>A frame round the hull (the style's ribs): the hull grown by the rib's depth, in a 1 m slab every so many metres down the body.</summary>
+        public bool InRib(float u, float y, float v)
+        {
+            if (Style.Ribs <= 0 || v < Bz || v > L - 3 || ((int)MathF.Floor(v + 0.5f) - Bz) % Style.Ribs != 0) return false;
+            float r = Style.Rib;
+            return InHull(u - r, y, v) || InHull(u + r, y, v) || InHull(u, y - r, v) || InHull(u, y + r, v);
+        }
 
         public bool InHull(float u, float y, float v)
         {
             if (v < -0.5f || v > L - 0.5f) return false;
             float hw = HalfWidth(v), au = MathF.Abs(u);
             if (au > hw) return false;
-            float fore = MathF.Min(Top / 3f, Bz / 2f), rake = MathF.Min(Top * 0.5f, Bz * 0.6f);
+            // A ram's prow rakes far back over its keel blade (a part of its own).
+            float fore = MathF.Min(Top / 3f, Bz / 2f), rake = Style.Bow == "ram" ? MathF.Min(Top * 0.9f, Bz * 0.9f) : MathF.Min(Top * 0.5f, Bz * 0.6f);
             float bottom = -0.5f + MathF.Max(0f, fore - (v + 0.5f)) + MathF.Max(0f, au - (hw - 2f));
             float top = Top + 0.5f - MathF.Max(0f, rake - (v + 0.5f)) - MathF.Max(0f, au - (hw - Shoulder)) - MathF.Max(0f, (v + 0.5f) - (L - 2));
             // The dorsal spine down the back, from the bow to the engines, sloped either side and at its ends.
-            float spine = MathF.Max(0f, 1.5f - MathF.Max(0f, au - 1f)) * Math.Clamp(MathF.Min(v - Bz, L - 6 - v) / 1.5f, 0f, 1f);
+            float spine = MathF.Max(0f, Style.Spine - MathF.Max(0f, au - Style.SpineWidth)) * Math.Clamp(MathF.Min(v - Bz, L - 6 - v) / 1.5f, 0f, 1f);
             return y >= bottom && y <= top + spine;
         }
 
@@ -235,12 +320,14 @@ sealed class Hulk
         H.Crash = S.Crash;
         H.Tech = P.Tech;
         H.Seed = R.NextU64();
-        H.Faction = P.C.Kit.Faction;
+        H.Faction = S.Faction is { } f && Enum.TryParse(f, true, out Faction named) ? named : P.C.Kit.Faction;
+        H.Style = HullStyle.For(HullStyle.Shared, H.Faction, H.Seed);
         Livery();
         Bays();
         Shape();
         Poses_();
         Ways();
+        Parts();
         Pieces();
     }
 
@@ -256,18 +343,21 @@ sealed class Hulk
             TechLevel.High => plate.Scale(1.04f),
             _ => plate,
         };
-        H.Paints["hull"] = plate;
-        H.Paints["trim"] = plate.Scale(0.72f);
+        // Outside, the faction's livery (its style); inside, the kit's own walls and floors.
+        HullStyle st = H.Style;
+        H.Paints["hull"] = P.Tech == TechLevel.Low ? st.Hull.Lerp(new Rgb(0x7a, 0x6a, 0x5a), 0.25f) : st.Hull;
+        H.Paints["trim"] = st.Trim;
         H.Paints["wall"] = K(P, '%', f.Panel.C);
         H.Paints["deck"] = K(P, '_', f.Floor.C);
-        H.Paints["orange"] = K(P, 'k', f.Accent.C);
-        H.Paints["teal"] = K(P, 't', f.Accent.C);
+        H.Paints["orange"] = st.Band;
+        H.Paints["teal"] = st.Band2;
         H.Paints["machine"] = K(P, 'm', f.Steel.C);
-        H.Paints["dark"] = new Rgb(0x2a, 0x2e, 0x34);
+        H.Paints["dark"] = st.Dark;
         H.Paints["hazard"] = f.Hazard;
         H.Paints["black"] = f.Black;
-        // The faction's hand on the shape: a bulbous bow for the traders and the liners.
-        H.Round = H.Faction == Faction.Exchange || S.Role == "liner";
+        for (int i = 0; i < st.Cargo.Count; i++) H.Paints["cargo" + i] = st.Cargo[i];
+        for (int i = 0; i < st.Scrap.Count; i++) H.Paints["scrap" + i] = st.Scrap[i];
+        H.Round = st.Bow == "round" || S.Role == "liner";
     }
 
     // ---- the bays, stem to stern -----------------------------------------------------------------------
@@ -276,8 +366,9 @@ sealed class Hulk
     {
         var (l0, l1, h0, h1, decks) = CapitalHull.SizeOf(S.Size);
         H.Decks = decks;
-        H.Half = R.Between(h0, h1);
-        int target = R.Between(l0, l1);
+        HullStyle st = H.Style;
+        H.Half = Math.Max(11, (int)MathF.Round(R.Between(h0, h1) * st.Beam));
+        int target = (int)MathF.Round(R.Between(l0, l1) * st.Length);
         // Now and then a huge hull runs on toward the longest Empyrion's derelicts reach.
         if (S.Size == "huge" && R.Chance(0.15f)) target = R.Between(250, 270);
         // Each bay its own proportions about the hull's length; the crew's and the power bays hold a stair core and a full
@@ -310,6 +401,11 @@ sealed class Hulk
         Add("engine", engine);
         H.L = v;
         H.Bz = H.Bays[0].V1;
+        // Segment waists at the heads of the role's bays (never by the crew's or the power bay's stair core), and at their
+        // middles when there are too few heads.
+        var mids = H.Bays.Where(b => b.Kind is not ("bow" or "crew" or "power" or "engine")).ToList();
+        var at = mids.Skip(1).Select(b => b.V0).Concat(mids.Where(b => b.V1 - b.V0 >= 24).Select(b => (b.V0 + b.V1) / 2)).Distinct().OrderBy(x => x).ToList();
+        for (int i = 0; i < Math.Min(st.Segments, at.Count); i++) H.Waists.Add(at[(int)((i + 0.5f) * at.Count / Math.Min(st.Segments, at.Count))]);
     }
 
     void Shape()
@@ -319,21 +415,24 @@ sealed class Hulk
         CapitalHull.Bay bay = H.Bays.First(b => b.Kind == (aft ? "power" : "crew"));
         // Wide enough for the stair core coming up through it beside the spine (u 3 to 7, walled), and from the bay's head,
         // so the core's landing (4 m in) is clear of the crown's rounding over the tower's front.
+        // The style's lopsided crown shifts it to starboard (its port edge stays over the spine, for the stair core's landing).
         int tw = Math.Clamp((int)(H.Half * 0.6f), 9, Math.Max(9, H.Half - H.Shoulder));
-        H.TU0 = -tw;
-        H.TU1 = tw;
+        int off = Math.Min(tw - 1, (int)MathF.Round(H.Style.TowerOffset * tw));
+        H.TU0 = -tw + off;
+        H.TU1 = tw + off;
         H.TV0 = bay.V0;
         H.TV1 = Math.Min(bay.V1 - 2, H.TV0 + Math.Clamp(H.Half + R.Range(-2, 3), 14, 22));
-        // Nacelles off the stern, two or three by the beam.
-        int n = H.Half >= 17 ? 3 : 2, span = (2 * H.Half + 1 - 6) / n, w = Math.Max(5, span - 2);
+        // The engine bank off the stern: the style's count across the beam, its length and its height.
+        HullStyle st = H.Style;
+        int n = R.Between(st.EnginesMin, st.EnginesMax), span = (2 * H.Half + 1 - 6) / n, w = Math.Max(3, Math.Min(span - 1, 3 + span * 2 / 3));
         for (int i = 0; i < n; i++)
         {
             int c = -H.Half + 3 + span * i + span / 2;
             H.Nacelles.Add((c - w / 2, c - w / 2 + w - 1));
         }
-        H.Nac = Math.Clamp(H.L / 12 + R.Range(-1, 3), 8, 18);
+        H.Nac = Math.Clamp((int)MathF.Round((H.L / 12 + R.Range(-1, 3)) * st.EngineLength), 8, 34);
         H.NY0 = 2;
-        H.NY1 = Math.Min(H.Top - 2, CapitalHull.HullPlan.Walk(2) + 1);
+        H.NY1 = Math.Clamp((int)MathF.Round(H.Top * st.EngineHeight), H.NY0 + 4, H.Top - 2);
     }
 
     // ---- how it came down ------------------------------------------------------------------------------
@@ -443,6 +542,143 @@ sealed class Hulk
         }
     }
 
+    // ---- what the faction's style adds outside ---------------------------------------------------------
+
+    /// <summary>
+    /// What the style adds outside the body, all by its numbers (per 100 m of hull): cargo pod stacks on the flanks and
+    /// the back, bolted-on modules, scrap plates welded over the shell, spikes, a ram's keel blade, swept fins built in
+    /// short straight runs (the 1 m grid's curve), a truss down the spine; each mirrored for a symmetric style. Never over
+    /// a way in, the flank jets or the tower; the bow's taper is the bow's own (the silhouette's nose).
+    /// </summary>
+    void Parts()
+    {
+        HullStyle st = H.Style;
+        float per = H.L / 100f;
+        int Count(float rate) => (int)MathF.Round(rate * per * R.Float(0.8f, 1.2f));
+        int v0 = H.Bz + 2, v1 = H.L - 4;
+        bool Clear(float a, float b) => !(H.DoorV >= 0 && b >= H.DoorV - 3 && a <= H.DoorV + 5)
+            && !H.Ways.Any(w => w.Side != 0 && b >= w.V0 - 2 && a <= w.V0 + w.Width + 2)
+            && !(b >= H.Bz && a <= H.Bz + 8);
+        bool OffTower(float a, float b) => b < H.TV0 - 1 || a > H.TV1 + 1;
+        void Add(CapitalHull.Part part)
+        {
+            H.Parts.Add(part);
+            if (st.Symmetric && MathF.Abs(part.U0 + part.U1) > 0.01f) H.Parts.Add(part.Mirrored);
+        }
+        // The flank's face over a stretch (the narrowest of it), and where the roof is flat across.
+        float Face(float a, float b) => Enumerable.Range((int)a, Math.Max(1, (int)(b - a) + 1)).Min(v => H.HalfWidth(v));
+        float Flat(float a, float b) => Face(a, b) - H.Shoulder - 1f;
+        int Side() => st.Symmetric ? 1 : R.Chance(0.5f) ? 1 : -1;
+        string Scrap() => st.Scrap.Count > 0 ? "scrap" + R.Range(0, st.Scrap.Count) : "trim";
+        CapitalHull.Part Flank(string paint, int side, float a, float b, float y0, float y1, float depth, int axis = -1, float tip = 1f)
+        {
+            float f = Face(a, b) - 1f;
+            return side > 0 ? new(paint, f, y0, a, f + depth, y1, b, axis, tip) : new(paint, -f - depth, y0, a, -f, y1, b, axis < 0 ? axis : axis ^ 1, tip);
+        }
+
+        // Cargo pods, stacked two or three high on a flank or a row across the back, each its own colour (colour-coded).
+        for (int i = 0, n = Count(st.Pods); i < n; i++)
+        {
+            int a = v0 + 9 * R.Range(0, Math.Max(1, (v1 - v0 - 8) / 9)), b = a + 8;
+            if (!Clear(a, b)) continue;
+            if (R.Chance(0.35f) && OffTower(a, b))
+            {
+                float w = Flat(a, b);
+                for (float u = -w + 1; u + 5 <= w - 1; u += 6)
+                    if (MathF.Abs(u + 2.5f) > H.Style.SpineWidth + 2) Add(new("cargo" + R.Range(0, Math.Max(1, st.Cargo.Count)), u, H.Top, a, u + 5, H.Top + 5 + 5 * R.Range(0, 2), b));
+                continue;
+            }
+            int side = Side();
+            for (float y0 = 1; y0 + 5 <= H.Top + 2; y0 += 5.5f)
+                Add(Flank("cargo" + R.Range(0, Math.Max(1, st.Cargo.Count)), side, a, b, y0, y0 + 5, R.Between(6, 9)));
+        }
+        // Bolted-on modules: a box of whatever there was, on a flank or the back, never two alike.
+        for (int i = 0, n = Count(st.Bolted); i < n; i++)
+        {
+            int len = R.Between(6, 18), a = R.Range(v0, Math.Max(v0 + 1, v1 - len)), b = a + len;
+            if (!Clear(a, b)) continue;
+            if (R.Chance(0.35f) && OffTower(a, b))
+            {
+                float w = Flat(a, b), du = R.Between(4, 10);
+                float u = R.Float(-w + 1, Math.Max(-w + 1.5f, w - 1 - du));
+                Add(new(Scrap(), u, H.Top, a, u + du, H.Top + R.Between(3, 8), b));
+                continue;
+            }
+            int dy = R.Between(5, 11);
+            float y0 = R.Between(1, Math.Max(1, H.Top - dy));
+            Add(Flank(Scrap(), Side(), a, b, y0, y0 + dy, R.Between(4, 9)));
+        }
+        // Scrap plates welded over the shell, a metre proud, mismatched.
+        for (int i = 0, n = Count(st.Plates * 40f); i < n; i++)
+        {
+            int len = R.Between(3, 8), a = R.Range(v0, Math.Max(v0 + 1, v1 - len)), b = a + len;
+            if (!Clear(a, b)) continue;
+            int dy = R.Between(2, 5);
+            float y0 = R.Between(2, Math.Max(2, H.Top - H.Shoulder - dy));
+            Add(Flank(Scrap(), Side(), a, b, y0, y0 + dy, 1.5f));
+        }
+        // Spikes out of the flanks and the back, tapering to a point.
+        for (int i = 0, n = Count(st.Spikes); i < n; i++)
+        {
+            float v = R.Range(v0, v1), r = R.Float(1.4f, 2.4f), len = R.Between(6, 13);
+            if (!Clear(v - r, v + r)) continue;
+            if (R.Chance(0.35f) && OffTower(v - r, v + r))
+            {
+                float u = R.Float(-Flat(v - r, v + r), Flat(v - r, v + r));
+                Add(new("dark", u - r, H.Top, v - r, u + r, H.Top + len, v + r, 2, 0.12f));
+                continue;
+            }
+            float y = R.Float(3f, H.Top - H.Shoulder - 2f);
+            Add(Flank("dark", Side(), v - r, v + r, y - r, y + r, len, 0, 0.12f));
+        }
+        // A ram's keel blade, out ahead under the raked prow.
+        if (st.Bow == "ram") Add(new("dark", -3f, 1f, 0f, 3f, H.Top * 0.55f, H.Bz, 5, 0.1f));
+        // Swept fins: a blade stepping out, back and up or down in short straight runs, each its own length and side.
+        for (int i = 0; i < st.Fins; i++)
+        {
+            int side = i % 2 == 0 ? 1 : -1, steps = R.Between(6, 10);
+            float v = R.Range(v0, Math.Max(v0 + 1, v1 - 4 * steps)), y = R.Float(H.Top * 0.25f, H.Top * 0.7f), u = Face(v, v + 4) - 1f, dy = R.Chance(0.5f) ? 1f : -1f;
+            if (!Clear(v, v + 4 * steps)) continue;
+            for (int k = 0; k < steps && y > 1 && y < H.TowerTop; k++)
+            {
+                Add(side > 0 ? new("trim", u, y, v, u + 3, y + 3, v + 4) : new("trim", -u - 3, y, v, -u, y + 3, v + 4));
+                u += 2;
+                v += 3;
+                y += dy * (1 + k / 3);
+            }
+        }
+        // A superstructure down the back, a long block either side of the tower (a big spine's: the corporate hull's).
+        if (st.Spine >= 3f)
+        {
+            float w = st.SpineWidth + 2, top = H.Top + st.Spine + R.Between(3, 5);
+            if (H.TV0 - 2 > v0 + 6) Add(new("trim", -w, H.Top, v0 + 2, w, top, H.TV0 - 2));
+            if (H.TV1 + 2 < v1 - 8) Add(new("trim", -w, H.Top, H.TV1 + 2, w, top - 1, v1 - 6));
+        }
+        // A truss down the spine: two rails, posts every six metres and the bars across between them.
+        if (st.Lattice)
+        {
+            float w = H.Style.SpineWidth + 2, top = H.Top + H.Style.Spine + 4;
+            for (int k = 0; k < 2; k++)
+            {
+                float u = k == 0 ? -w : w;
+                Add(new("machine", u - 0.5f, top, v0 + 2, u + 0.5f, top + 1, v1 - 2));
+            }
+            for (int v = v0 + 2; v < v1 - 2; v += 4)
+            {
+                if (!OffTower(v - 1, v + 1)) continue;
+                Add(new("machine", -w - 0.5f, H.Top, v - 0.5f, -w + 0.5f, top, v + 0.5f));
+                Add(new("machine", -w, top, v - 0.5f, w, top + 1, v + 0.5f));
+            }
+        }
+        H.ExtentU = H.Half + 2 + (st.Ribs > 0 ? st.Rib : 0);
+        H.ExtentY = H.TowerTop + 2;
+        foreach (CapitalHull.Part q in H.Parts)
+        {
+            H.ExtentU = Math.Max(H.ExtentU, (int)MathF.Ceiling(MathF.Max(MathF.Abs(q.U0), MathF.Abs(q.U1))) + 2);
+            H.ExtentY = Math.Max(H.ExtentY, (int)MathF.Ceiling(q.Y1) + 2);
+        }
+    }
+
     // ---- the vessel's pieces ---------------------------------------------------------------------------
 
     void Pieces()
@@ -491,8 +727,8 @@ sealed class Hulk
             float tilt = MathF.Abs(p.Pitch), arm = (v1 - p.V0) * 0.5f;
             NV3 middle = ToPlot(p, new NV3(0, H.Top * 0.5f, (p.V0 + v1) * 0.5f));
             var corners = new List<NV3>();
-            foreach (float u in new[] { -H.Half - 1f, H.Half + 1f })
-                foreach (float y in new[] { -0.5f, H.TowerTop + 0.5f })
+            foreach (float u in new[] { -H.ExtentU - 0.5f, H.ExtentU + 0.5f })
+                foreach (float y in new[] { -0.5f, H.ExtentY + 0.5f })
                     foreach (float v in new[] { p.V0 - 0.5f, v1 - 0.5f }) corners.Add(ToPlot(p, new NV3(u, y, v)));
             float grow = arm * MathF.Sin(tilt) + 1f;
             int x0 = (int)MathF.Floor(corners.Min(c => c.X) - grow), x1 = (int)MathF.Ceiling(corners.Max(c => c.X) + grow);
@@ -618,7 +854,7 @@ sealed class Hulk
                 NV3 s = FromPlot(p, new NV3(u + 0.5f, y, v + 0.5f));
                 if (s.Z < p.V0 - 2.5f || s.Z > (last ? H.L + H.Nac + 3 : p.V1 + 1)) continue;
                 float vz = Math.Clamp(s.Z, 0f, H.L - 1f);
-                if (MathF.Abs(s.X) <= H.Half + 6 && (s.Z >= H.L || MathF.Abs(s.X) <= H.HalfWidth(vz) + 2f)) return true;
+                if (MathF.Abs(s.X) <= H.ExtentU + 4 && (s.Z >= H.L || MathF.Abs(s.X) <= H.HalfWidth(vz) + 2f || s.Z >= H.Bz && MathF.Abs(s.X) <= H.ExtentU + 2)) return true;
             }
         }
         return false;

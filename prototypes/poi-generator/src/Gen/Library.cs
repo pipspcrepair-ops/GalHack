@@ -55,6 +55,8 @@ public sealed class PoiLibrary
     public List<OrbitTheme> OrbitThemes = new();
     /// <summary>Faction sigils as painted cells (data/sigils.txt), by faction.</summary>
     public Dictionary<string, SigilDef> Sigils = new();
+    /// <summary>How each faction builds a hull or a station (data/hull-styles.txt), by faction id: every generated vessel's shape and livery.</summary>
+    public Dictionary<string, HullStyle> HullStyles = new();
 
     /// <summary>The house families (data/homes.txt): what a house is put together from, by climate, tech and era.</summary>
     public HomeBook Homes = new();
@@ -111,6 +113,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("themes.txt", StringComparison.Ordinal)) lib.Themes = ThemeParser.Parse(text, name);
             else if (name.EndsWith("world-layers.txt", StringComparison.Ordinal)) lib.Layers = LayerParser.Parse(text, name);
             else if (name.EndsWith("sigils.txt", StringComparison.Ordinal)) lib.Sigils = SigilDef.Parse(text, name);
+            else if (name.EndsWith("hull-styles.txt", StringComparison.Ordinal)) HullStyle.Shared = lib.HullStyles = HullStyle.Parse(text, name);
             else if (name.EndsWith("orbit.txt", StringComparison.Ordinal)) OrbitParser.Parse(text, name, lib.SpaceSites, lib.OrbitThemes);
             else if (name.EndsWith("homes.txt", StringComparison.Ordinal)) lib.Homes = HomeBook.Parse(text, name);
             else if (name.EndsWith("world-dressing.txt", StringComparison.Ordinal)) lib.Dressing = DressBook.Parse(text, name);

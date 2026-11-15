@@ -179,6 +179,7 @@ public sealed partial class Staging
             "dress" => DressView(),
             "hulk" => HulkView(),
             "derelict-hull" => DerelictHullView(),
+            "factions" => FactionView(),
             "visor" => VisorView(),
             "feet" => FeetView(),
             "zfight" => ZFightView(),

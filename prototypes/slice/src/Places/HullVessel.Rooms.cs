@@ -58,7 +58,7 @@ public sealed partial class HullVessel
         for (int v = Pc.V0; v < VEnd; v++)
             for (int u = _u0; u < _u0 + _nu; u++)
                 for (int d = 0; d < Levels; d++)
-                    _zone[Z(d, u, v)] = v < H.L && (d < H.Decks || InTower(u, v)) && Open(u, d, v) ? Fill : None;
+                    _zone[Z(d, u, v)] = v < H.L && (d < H.Decks || InTower(u, v)) && Open(u, d, v) && H.Body(u, Plan.Walk(d) + 2, v) ? Fill : None;
         // The stair cores first: they run the height of the hull, and up through the tower over their bay.
         foreach (Bay b in H.Bays.Where(b => b.Kind is "crew" or "power"))
         {
