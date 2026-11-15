@@ -1,16 +1,19 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using GalHack.Physics.Engine;
 using Godot;
 using Slice.Ui;
 using Slice.Vessels;
+using N = System.Numerics;
 using WeatherKind = Weather.Model.WeatherKind;
 
 namespace Slice.Tests;
 
 /// <summary>
 /// --view=shipbar: the sleeper in the command chair of <see cref="BarTest.Rig"/>'s vessel by day on real ground, the
-/// structure's toolbar along the bottom (1-bar.png), a burst from its gatlings at the wall ahead (2-burst.png), and the
+/// structure's toolbar along the bottom (1-bar.png), a burst from its gatlings at the wall ahead, from beside it (2-burst.png), and the
 /// Core tab's BAR strip (3-core.png). --dir=DIR is the folder.
 /// </summary>
 public sealed partial class Staging
@@ -36,15 +39,25 @@ public sealed partial class Staging
         _game.Survivor.Pitch = -0.12f;
         foreach (int x in _drive.Wait(40)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "1-bar.png"))) yield return x;
+        // The burst from beside the vessel, its rounds in flight between the guns and the wall: taken once one is well out.
         foreach (int x in _drive.Tap(Key.Key2)) yield return x;
+        Vector3 muzzle = v.Bar.Muzzles().First(), ahead = (v.ToWorld(N.Vector3.Zero) - v.ToWorld(N.Vector3.UnitZ)).Normalized();
+        Vector3 side = ahead.Cross(Vector3.Up).Normalized(), eye = muzzle - side * 9f + Vector3.Up * 2.5f - ahead * 3f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(muzzle + ahead * 10f - eye, Vector3.Up), eye);
         _game.Controls.PrimaryPressed = true;
-        for (int i = 0; i < (int)Num("burst", 14); i++)
+        for (int i = 0; i < 240; i++)
         {
             _game.Controls.Primary = true;
             yield return 0;
+            if (i < (int)Num("burst", 20)) continue;
+            bool out_ = false;
+            foreach (ref readonly GalHack.Arms.Shot shot in _game.Arms.Pool.Shots.AsSpan())
+                if (shot.Live && shot.Def.Item == "gatling" && (shot.Pos.ToGodot() - muzzle).Dot(ahead) is > 4f and < 12f) out_ = true;
+            if (out_) break;
         }
         foreach (int x in Shot(Path.Combine(dir, "2-burst.png"))) yield return x;
         _game.Controls.Primary = false;
+        _game.FixedCamera = null;
         foreach (int x in Play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "3-core.png"))) yield return x;
