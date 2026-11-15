@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Plants;
@@ -126,6 +126,9 @@ public sealed class PlanetFlora
         return new PlanetFlora(map, Herbarium.Roll(climate, habitats), meanWet);
     }
 
+    /// <summary>The share of the old tree numbers that grow: one value for every world and biome, scaling the scatter's tree rules (near, far and colliders all read them). Small growth is untouched.</summary>
+    public static float TreeDensity = 0.5f;
+
     /// <summary>How fungal a world's layers must make it before fungus stands among everything else.</summary>
     const float FungalAt = 0.25f;
 
@@ -156,7 +159,7 @@ public sealed class PlanetFlora
                 if (FamilyOf(r.Kind) is not PlantFamily family) kept.Add(r);
                 else if (!book.Barren)
                 {
-                    kept.Add(r with { Density = r.Density * (family is PlantFamily.Crystal or PlantFamily.Ice ? 1f : lush) });
+                    kept.Add(r with { Density = r.Density * (family is PlantFamily.Crystal or PlantFamily.Ice ? 1f : lush) * (Planets.Surface.FloraMeshes.IsTree(r.Kind) ? TreeDensity : 1f) });
                     if (family is not (PlantFamily.Crystal or PlantFamily.Ice)) trees += r.Density;
                 }
             }
@@ -164,7 +167,7 @@ public sealed class PlanetFlora
             if (!book.Barren && mood.Fungal > FungalAt && trees > 0f && rules.All(r => r.Kind != Flora.GiantMushroom))
             {
                 Rgb tint = rules.First(r => FamilyOf(r.Kind) != null).Color;
-                kept.Add(new FloraRule(Flora.GiantMushroom, trees * 0.7f * mood.Fungal * mood.Fungal, tint));
+                kept.Add(new FloraRule(Flora.GiantMushroom, trees * 0.7f * mood.Fungal * mood.Fungal * TreeDensity, tint));
                 kept.Add(new FloraRule(Flora.Mushroom, trees * 0.8f * mood.Fungal, tint));
             }
             _rules[b] = kept.ToArray();
