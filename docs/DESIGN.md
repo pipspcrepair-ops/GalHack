@@ -1423,7 +1423,7 @@ GalHack's interface **looks like part of the world** without being built into it
   - Operating time left on generator fuel, in minutes.
   - AU left in warp fuel.
   - Light years left in fold fuel.
-- **In a command chair, the toolbar along the bottom is the structure's** (owner, 15 Nov). It lists the functions the pilot can toggle or trigger in flight: lights on and off, firing the guns, enabling and disabling shields, toggling gravity, and the like (doors, landing gear, force fields). Equipment such as lights and guns sits at the left end, and core systems such as gravity and shields at the right.
+- **In a command chair, the toolbar along the bottom is the structure's** (owner, 15 Nov). It lists the functions the pilot can toggle or trigger in flight: lights on and off, firing the guns, enabling and disabling shields, toggling gravity, and the like. Doors, landing gear and force fields stay off it (owner). Equipment such as lights and guns sits at the left end, and core systems such as gravity and shields at the right.
   - Its slots fill from the devices the structure has, and the pilot can arrange them. The arrangement is saved with the structure.
   - The number keys toggle or select, and firing triggers the selected weapons.
   - As in Empyrion, where a seated pilot's toolbar holds the ship's weapons and device groups.
