@@ -345,7 +345,7 @@ public partial class Game : Node3D
         Zone.Wildlife.Died += OnCreatureDied;
         SetUpBodies();
         Zone.Weather.Observer = () => Survivor.WorldFeet;
-        Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
+        if (Zone.Weather.Bridge != null) Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
         Zone.Weather.Shelter = Sheltered;
         Suit.UnderCover = UnderCover;
         Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
@@ -646,6 +646,7 @@ public partial class Game : Node3D
             _stick = Vector2.Zero;
             return;
         }
+        StepBar(vessel, c);
         if (vessel.Flight == null) return;
         var move = new Vector3(c.Axis(Key.D, Key.A), c.Axis(Key.Space, Key.Ctrl), c.Axis(Key.S, Key.W));
         var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E));
@@ -653,6 +654,7 @@ public partial class Game : Node3D
         if (vessel.Roles.Pilot != Vessel.Player) return;
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
+        if (c.WasPressed(Key.I)) vessel.Flight.ToggleAssist();
     }
 
     void ToggleTorch()
@@ -742,6 +744,7 @@ public partial class Game : Node3D
         TickPings();
         if (!hands || !(building || deconstruct || plating)) Builder.Hide();
         if (!hands || hand != HandKind.Weapon) Arms.Idle(dt);
+        FireBar(dt);
         TickMachines(dt);
         CheckDeath();
         Stats.Tick(this, dt);

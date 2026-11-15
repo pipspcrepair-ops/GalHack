@@ -145,6 +145,24 @@ public partial class CombatTest : Node
         Check(items, $"each carries the item for their weapon ({string.Join(", ", armed.Take(4).Select(p => $"{p.Figure.Prop}: {p.Kit?.Def.Id}"))})");
         var drawn = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
         Check(drawn.All(p => p.Model != null && p.Holder?.GetParent() == p.View), $"held as the player's own model of it, in the hand ({drawn.Count(p => p.Model != null)} of {drawn.Count} drawn)");
+        // Away until the place is taken down (its people's bodies and guns with it), and back: each gun is hung in the new hand, and nothing
+        // touches what went (a gun left posed on a freed node threw every tick, 170 times on a PopRoute).
+        int thrown = 0;
+        EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> count = (_, e) => { if (e.Exception is ObjectDisposedException or NullReferenceException) thrown++; };
+        AppDomain.CurrentDomain.FirstChanceException += count;
+        game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + new System.Numerics.Vector3(3000f, 0f, 0f));
+        for (int i = 0; i < 1200 && game.Places.PlaceOf(site) != null; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        bool dropped = game.Places.PlaceOf(site) == null;
+        game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
+        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        place = game.Places.PlaceOf(site);
+        for (int i = 0; i < 600 && armed.Any(p => !p.Dead && p.View == null && !p.Indoors && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        for (int i = 0; i < 120; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        AppDomain.CurrentDomain.FirstChanceException -= count;
+        var again = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
+        Check(dropped && place?.Memory.Town == town && thrown == 0 && again.All(p => p.Model != null && p.Holder?.GetParent() == p.View),
+            $"taken down and stood again: {(dropped ? "dropped" : "never dropped")}, {thrown} exceptions, guns in the new hands {again.Count(p => p.Holder?.GetParent() == p.View)} of {again.Count}");
+        drawn = again;
         // (--shots=<folder>: a picture of each of a few of them, close, with what they hold.)
         string shots0 = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?.Substring(8);
         if (shots0 != null)

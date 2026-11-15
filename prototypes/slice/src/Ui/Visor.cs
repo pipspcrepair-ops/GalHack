@@ -21,7 +21,7 @@ namespace Slice.Ui;
 /// <summary>
 /// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): the sleeper's gauges at the bottom
 /// left that flash while they are only a warning and turn red once they cost health (calm, they fade after a few
-/// seconds), the surroundings at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
+/// seconds), the temperature at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
 /// the things themselves (the bunker, places, deposits, your vessels), the suit's assistant's lines, what the tool is
 /// aimed at, and seated, a flight strip and the structure's gauges at the bottom right. Drawn every frame onto the main canvas.
 /// </summary>
@@ -179,6 +179,7 @@ public partial class Visor : CanvasLayer
         {
             DrawFlight(v);
             DrawStructure(layout, v);
+            DrawBar(layout, v);
         }
         else
         {
@@ -396,12 +397,13 @@ public partial class Visor : CanvasLayer
             float g = Game.Zone.GroundAt(at.X, at.Z).Y;
             return float.IsFinite(g) ? new Vector3(at.X, g + lift, at.Z) : at;
         }
-        if (Game.Bunker != null && !Game.InOrbit) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        // Each body's own: the bunker, the start world's finds and your map marks on the start world, a moon's finds on the moon.
+        if (Game.Bunker != null && Game.Zone == Game.Surface) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
         if (!Game.InOrbit && Game.Zone.Planet != null)
         {
-            string startPlace = Game.Spaceflight.StartPlaceKey;
+            string startPlace = Game.Spaceflight.StartPlaceKey, on = Game.Spaceflight.ChartOf(Game.Zone);
             // The start place always shows (first in line, whatever its distance); other finds only while within the scanner's reach.
-            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind)
+            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind, on)
                 .Select(m => (m.Label, m.Key, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
                 .Where(x => x.Key == startPlace || new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
                 .OrderBy(x => x.Key == startPlace ? 0 : 1).ThenBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared())
@@ -409,14 +411,17 @@ public partial class Visor : CanvasLayer
             foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), Ground(at, PlaceLift), C.Accent, 1f, "place"));
             if (survivor.Seated == null)
                 foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), Ground(at, 1.5f), C.Holo, 1f, "deposit"));
-            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark"))
+            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark", on))
                 marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
         }
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        // The scan's marks: an ore by name, a place by its icon and distance alone (a found place's own marker stands for it).
+        var named = marks.Where(m => m.Kind == "place").Select(m => new Vector2(m.At.X, m.At.Z)).ToList();
         foreach (Game.Game.Ping p in Game.Pings)
-            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+            if (p.Place == null) marks.Add(new(p.Label.ToUpperInvariant(), p.At, C.Holo, Game.PingAlpha(p), "ping"));
+            else if (!named.Any(n => n.DistanceTo(new Vector2(p.At.X, p.At.Z)) < 1f)) marks.Add(new("", Ground(p.At, PlaceLift), C.Accent, Game.PingAlpha(p), p.Place));
         // The handheld scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
         foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
         return marks;

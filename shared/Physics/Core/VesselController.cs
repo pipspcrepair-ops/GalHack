@@ -29,6 +29,9 @@ public struct FlightMotion
     /// away by itself.
     /// </summary>
     public bool Parked;
+
+    /// <summary>Set by the rules: flight assist is off, so the thrusters hold nothing up; the water buoys it as it would anything.</summary>
+    public bool Coasting;
 }
 
 /// <summary>
@@ -275,7 +278,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
                         && GroundDistance < body.Shape.FeetBelowOrigin + DropReach;
         if (dropping) v.Y = v0.Y;
         Vector3 gravity = world.GravityAt(body);
-        bool holding = !dropping && (Stats.CanLiftOff || Zone.Gravity <= 0f);
+        bool holding = !dropping && !motion.Coasting && (Stats.CanLiftOff || Zone.Gravity <= 0f);
         Vector3 buoyed = holding ? world.BuoyancyOn(body) : Vector3.Zero;
         world.AddForce(body, body.Mass * ((v - v0) / dt - (dropping ? Vector3.Zero : gravity)) - buoyed, ForceKind.Thrust);
     }

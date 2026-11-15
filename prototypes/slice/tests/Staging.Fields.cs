@@ -77,6 +77,10 @@ public partial class Staging
         }
         Vector3 front = rig.World(0f, 2.8f, -6f), opening = rig.World(3.5f, 2f, 0f);
         foreach (int x in Frame(front, opening, "fields-placed.png")) yield return x;
+        // Along the wall, grazing, and from inside: any gap between sheet, emitters and opening shows here; one bare emitter close.
+        foreach (int x in Frame(rig.World(-1.5f, 2.2f, -1.1f), opening, "fields-grazing.png")) yield return x;
+        foreach (int x in Frame(rig.World(3.5f, 2.2f, 3.2f), opening, "fields-inside.png")) yield return x;
+        foreach (int x in Frame(rig.World(4.3f, 2.4f, -1.3f), rig.World(5.2f, 3.2f, 0f), "fields-emitter.png")) yield return x;
         foreach (var (corner, plating) in new[] { (0, "iron-plated"), (1, "combat-plated") })
             Building.Plate(s, f.Corner(corner), s.TypeOf(s.Get(f.Corner(corner))).Platings.First(p => p.Plate == s.Catalogue.Type(plating).Plate));
         v.ApplyEdits();

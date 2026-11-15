@@ -1845,7 +1845,7 @@ public partial class PoiTest : Node
                     {
                         ulong layoutSeed = (ulong)rand.NextInt64();
                         var layout = PoiFactory.BuildLayout(_lib, f, v.Index, Rarity.Common, layoutSeed, new LayoutHints(front, tech));
-                        if (layout.Blocks.Blocks().Any(b => b.Cell.Y < 0)) { belowGround++; Note($"{v.Name} goes below ground"); }
+                        if (layout.Blocks.Blocks().FirstOrDefault(b => b.Cell.Y < 0) is { Block.IsAir: false } under) { belowGround++; Note($"{v.Name} goes below ground: {under.Block} at {under.Cell}"); }
                         // A house's buildings, its garage among them, at house size: a terrace row runs long.
                         foreach (PlainBox b in layout.Extras.Plain.Where(_ => f.Id == "flavour_house"))
                         {

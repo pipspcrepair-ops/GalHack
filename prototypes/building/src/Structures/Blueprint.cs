@@ -28,6 +28,9 @@ public sealed class BlueprintData
     public CoreMode Mode = CoreMode.Flight;
     public bool Gravity = true;
     public double Cargo;
+    /// <summary>The toolbar's arrangement ("bar", '-' an empty slot), or null; and the systems switched off ("off").</summary>
+    public string[] Bar;
+    public readonly List<string> Off = new();
     public readonly List<(string name, Paint paint, int line)> Paints = new();
     public readonly List<BlueprintBlock> Blocks = new();
     public readonly List<string> Errors = new();
@@ -42,6 +45,8 @@ public sealed class BlueprintData
 ///   name "Foss Lancer"
 ///   grid 1m                          # the one grid; old "large" and "small" files load on it as they are
 ///   mode flight                      # base, hover or flight (old capital and vessel read as flight)
+///   bar spotlights guns.gatling - - - - life-support gravity   # the pilot's toolbar, a key per slot, '-' empty
+///   off fabricators                  # systems switched off
 ///   paint hull base=e9dfc4 grime=1   # base accent pattern texture stencil grime
 ///   block 0 1 0 core
 ///   block -3..3 0 -8..8 steel paint=hull
@@ -105,6 +110,14 @@ public static class Blueprint
                 case "cargo":
                     if (!double.TryParse(Arg(1), NumberStyles.Float, CultureInfo.InvariantCulture, out data.Cargo) || data.Cargo < 0)
                         Error("bad cargo amount");
+                    break;
+                case "bar":
+                    if (t.Count < 2 || t.Skip(1).Any(k => k != "-" && !IsName(k))) Error("bar needs a slot key or '-' for each slot");
+                    else data.Bar = t.Skip(1).Select(k => k == "-" ? null : k).ToArray();
+                    break;
+                case "off":
+                    if (t.Skip(1).Any(k => !IsName(k))) Error("off needs system names");
+                    else data.Off.AddRange(t.Skip(1));
                     break;
                 case "paint": ParsePaint(t, line, data, Error); break;
                 case "block": total += ParseBlock(t, line, data, Error, total); break;
@@ -259,7 +272,7 @@ public static class Blueprint
                 foreach (string name in b.Paint.Where(n => n != "-" && !paintNames.Contains(n)).Distinct())
                     Error($"unknown paint '{name}'");
             if ((b.Flags & BlockFlags.Open) != 0 && !type.IsDoor) Error($"only doors can be open, not '{b.Type}'");
-            if ((b.Flags & BlockFlags.Off) != 0 && !type.IsLight) Error($"only lights can be off, not '{b.Type}'");
+            if ((b.Flags & BlockFlags.Off) != 0 && !type.IsLamp) Error($"only lights can be off, not '{b.Type}'");
             if (Math.Abs(b.Pos.X) > MaxCoordinate || Math.Abs(b.Pos.Y) > MaxCoordinate || Math.Abs(b.Pos.Z) > MaxCoordinate)
                 Error("coordinate out of range");
 
@@ -311,7 +324,9 @@ public static class Blueprint
             GravityOn = data.Gravity,
             CargoSu = data.Cargo,
             Owner = owner,
+            Bar = data.Bar,
         };
+        s.SystemsOff.UnionWith(data.Off);
         var slots = new Dictionary<string, ushort> { ["-"] = 0 };
         foreach (var (name, paint, _) in data.Paints) slots[name] = s.Palette.Intern(paint, name);
 
@@ -407,6 +422,8 @@ public static class Blueprint
         Line($"mode {s.Mode.ToString().ToLowerInvariant()}");
         Line($"gravity {(s.GravityOn ? "on" : "off")}");
         if (s.CargoSu > 0) Line($"cargo {Num(s.CargoSu)}");
+        if (s.Bar != null) Line($"bar {string.Join(" ", s.Bar.Select(k => k ?? "-"))}");
+        if (s.SystemsOff.Count > 0) Line($"off {string.Join(" ", s.SystemsOff)}");
 
         var blocks = s.Blocks().OrderBy(x => x.pos.Y).ThenBy(x => x.pos.Z).ThenBy(x => x.pos.X).ToList();
         var used = new SortedSet<ushort>();

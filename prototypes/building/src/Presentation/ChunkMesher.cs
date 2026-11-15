@@ -614,7 +614,7 @@ public static class ChunkMesher
                 return new FaceLook(Rgb(t.Accent), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 1, 0, false, wear, holed));
             case PartStyle.Glow:
                 // Smashed badly enough, a light goes out.
-                bool lit = !(t.IsLight && b.Off) && damage < 3;
+                bool lit = !(t.IsLamp && b.Off) && damage < 3;
                 if (lit && light is LightSettings ls)
                     return new FaceLook(Rgb(ls.Color), ls.PackAccent(), Flags(Pattern.None, 0, FaceTexture.Smooth, damage, true, 0, 0, false, wear, holed) | ((int)ls.Anim << LightSettings.AnimShift));
                 return new FaceLook(Rgb(lit ? t.GlowColor : 0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, lit, 0, 0, false, wear, holed));

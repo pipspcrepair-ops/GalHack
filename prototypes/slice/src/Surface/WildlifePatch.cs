@@ -499,6 +499,7 @@ public partial class WildlifePatch : Node3D
     public void SetPlayer(ITarget player)
     {
         Player = player;
+        if (Sim == null) return; // an airless world: no life to hunt you
         Sim.Targets.Clear();
         Sim.Targets.Add(player);
     }
