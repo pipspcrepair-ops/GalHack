@@ -71,19 +71,21 @@ public partial class ClimateTest : Node
 
     IEnumerable<int> Scenario()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = false, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        bool airless = Array.IndexOf(OS.GetCmdlineUserArgs(), "--airless") >= 0;
+        _game = new Game.Game { Interactive = false, SkipIntro = false, World = airless ? AirlessWorld() : WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _play = new Playthrough(_game);
         _drive = _play.Drive;
         while (_game.Phase != Phase.Playing) yield return 0;
-        Zone.Weather.Bridge.Calm = true;
-        Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        if (Zone.Weather.Bridge != null) Zone.Weather.Bridge.Calm = true;
+        Zone.Weather.Sim?.Snap(WeatherKind.Clear); // an airless world has no weather
         Zone.Wildlife.Frozen = true;
         foreach (int x in _drive.UntilPlaying()) yield return x;
         foreach (int x in Bunker()) yield return x;
         foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
-        foreach (int x in Sections()) yield return x;
+        // -- --airless: a fresh airless world started on, out of the bunker: vacuum, as one landed on from orbit is.
+        foreach (int x in airless ? Airless() : Sections()) yield return x;
     }
 
     IEnumerable<int> Sections()
@@ -400,7 +402,7 @@ public partial class ClimateTest : Node
         float moved = (Me.Body.WorldPosition - still).Length();
         Check(moved < 0.3f, $"a hurricane and a funnel overhead don't touch anyone in shelter: moved {moved:F2} m in 2.5 s");
         sky.ClearTornadoes();
-        Zone.Weather.Bridge.Calm = true;
+        if (Zone.Weather.Bridge != null) Zone.Weather.Bridge.Calm = true;
 
         // A tunnel off the bottom of the shaft: with a gale over it, its mouth moans.
         var walls = new float[16];

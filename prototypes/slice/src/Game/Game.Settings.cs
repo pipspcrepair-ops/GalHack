@@ -37,6 +37,9 @@ public partial class Game
     Vector2 StickPush(Controls c) => new Vector2(c.Look.X, c.Look.Y * (Settings.InvertFlightY ? -1f : 1f)) * BaseStick * Settings.FlightSensitivity;
 
     Brightness _brightness;
+
+    /// <summary>Paces the frames evenly against the screen's refresh (the frame cap NONE with vsync on).</summary>
+    public FramePacer Pacer { get; private set; }
     int _appliedVersion = -1;
     SurfaceZone _appliedZone;
 
@@ -46,6 +49,7 @@ public partial class Game
         Settings = GameSettings.Load(SettingsPath);
         _brightness = new Brightness { Name = "Brightness" };
         AddChild(_brightness);
+        AddChild(Pacer = new FramePacer { Name = "Frame pacer" });
         ApplyDisplay();
     }
 
@@ -88,7 +92,7 @@ public partial class Game
             }
             DisplayServer.WindowSetVsyncMode(s.Vsync ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled);
         }
-        Engine.MaxFps = s.FpsCap;
+        Pacer.Asked = s.FpsCap;
         GetViewport().Scaling3DScale = s.RenderScale;
         _brightness?.SetGamma(s.Gamma);
     }

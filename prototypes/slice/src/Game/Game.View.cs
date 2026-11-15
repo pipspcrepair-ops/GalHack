@@ -4,6 +4,7 @@ using GalHack.Physics;
 using GalHack.Physics.Engine;
 using PhysicsSandbox.Bridges;
 using Slice.Surface;
+using Slice.Vehicles;
 using Slice.Vessels;
 
 namespace Slice.Game;
@@ -81,6 +82,18 @@ public partial class Game
             _zoom[(int)m] = Mathf.Clamp(_zoom[(int)m] * MathF.Pow(1.15f, c.Wheel), near, far);
             c.Wheel = 0; // zoom, not the toolbar
         }
+    }
+
+    /// <summary>
+    /// The look's lead this frame (<see cref="Survivor.ViewLead"/>): on foot and on the bike, the mouse moved since the last tick
+    /// as the next tick turns it; on the bike, its last tick's turn of the view as far as the bike is drawn through it.
+    /// </summary>
+    Vector2 ViewLead()
+    {
+        if (Phase != Phase.Playing || Suit.Dead || Survivor.Seated != null || FreeLook) return Vector2.Zero;
+        Vector2 turn = Menu.IsOpen ? Vector2.Zero : LookTurn(Controls);
+        float behind = Survivor.OnBike is HoverBike bike ? (1f - (float)Engine.GetPhysicsInterpolationFraction()) * bike.LastTurn : 0f;
+        return new Vector2(-turn.X - behind, -turn.Y);
     }
 
     /// <summary>This frame's view, from exactly the transforms everything is drawn with this frame.</summary>

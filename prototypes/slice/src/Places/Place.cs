@@ -25,6 +25,9 @@ public partial class Place : Node3D
     /// <summary>Chunks: each is a millisecond or two to put in, and a broken wall remeshes only one or two.</summary>
     public const int ChunkSize = 16;
 
+    /// <summary>A cube's full detail drawn as one mesh rather than a mesh a chunk. Off until an edit's split back (Unmerge) is proven; PopRoute --merge=1 measures it.</summary>
+    public static bool MergeCubes;
+
     /// <summary>The cubes it stands in: each has its own body, and is drawn near or left to the planet's merged drawing as one.</summary>
     public const int GroupSize = PoiLayer.GroupSize;
 
@@ -52,6 +55,10 @@ public partial class Place : Node3D
         /// <summary>Its blocks changed: it keeps its own meshes, whatever the distance.</summary>
         public bool Modified;
         public Task<List<ChunkMesh>> Meshing;
+        /// <summary>The cube's chunks merged on the meshing worker, one surface a material (null: drawn a chunk at a time, as a changed cube is).</summary>
+        public MeshBuild.Surface[] Merging;
+        /// <summary>Its full detail as one mesh (a draw a material, where it was a draw a material a chunk), while its blocks are as built.</summary>
+        public MeshInstance3D Merged;
         public int Next;
         /// <summary>How far its full detail has dissolved in over the merged cube (0..1), and which way it is going (+1, -1, 0: still).</summary>
         public float Blend;
@@ -228,6 +235,7 @@ public partial class Place : Node3D
             Group g = GroupAt(GroupOf(ch));
             if (!g.Modified) Places.Zone.Pois.Unocclude(Site, g.Key);
             g.Modified = true;
+            if (g.Near) Unmerge(g);
             ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
             if (g.Near) SetChunkMesh(mesh);
             SetChunkShape(mesh);
@@ -272,6 +280,11 @@ public partial class Place : Node3D
             List<ChunkMesh> built = g.Meshing.Result;
             double budget = PlanetSurface.Fx.LoadBudget.Left(Places.BudgetMs);
             double before = clock.Elapsed.TotalMilliseconds;
+            if (g.Merging != null && !g.Modified)
+            {
+                SetMerged(g);
+                g.Next = built.Count;
+            }
             while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget) SetChunkMesh(built[g.Next++]);
             PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds - before);
             if (g.Next < built.Count) break;
@@ -312,7 +325,37 @@ public partial class Place : Node3D
         CellMask occupied = Inst.Layout.Occupied;
         Int3 min = g.Key * GroupSize;
         _meshing++;
-        g.Meshing = Task.Run(() => Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false)));
+        bool merge = !g.Modified && MergeCubes;
+        g.Merging = null;
+        g.Meshing = Task.Run(() =>
+        {
+            List<ChunkMesh> built = Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false));
+            if (merge) g.Merging = MeshBuild.Merge(built);
+            return built;
+        });
+    }
+
+    /// <summary>A cube's full detail as one mesh, from its chunks merged on the worker.</summary>
+    void SetMerged(Group g)
+    {
+        g.Merged?.QueueFree();
+        var mesh = new ArrayMesh();
+        for (int s = 0; s < g.Merging.Length; s++) MeshBuild.AddSurface(mesh, g.Merging[s], _materials.BySurface[s]);
+        g.Merging = null;
+        g.Merged = mesh.GetSurfaceCount() == 0 ? null : new MeshInstance3D { Name = $"Cube {g.Key}", Mesh = mesh };
+        if (g.Merged == null) return;
+        AddChild(g.Merged);
+        if (!g.Near || g.Way != 0) PlanetSurface.Fx.Fade.Set(g.Merged, 0f, g.Way != 0 ? g.Blend : 0f);
+    }
+
+    /// <summary>A merged cube about to change: back to a mesh a chunk, built here and now (an edit is rare; the rest of the cube is redrawn as it was).</summary>
+    void Unmerge(Group g)
+    {
+        if (g.Merged == null) return;
+        g.Merged.QueueFree();
+        g.Merged = null;
+        foreach (ChunkMesh c in Mesher.Build(new ChunkWindow(Inst.Blocks, g.Key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(g.Key * GroupSize, collision: false)))
+            SetChunkMesh(c);
     }
 
     /// <summary>Each cube's meshes, there and then (tests and the warm-up).</summary>
@@ -355,6 +398,7 @@ public partial class Place : Node3D
 
     IEnumerable<MeshInstance3D> MeshesOf(Group g)
     {
+        if (g.Merged != null) yield return g.Merged;
         foreach (var (ch, c) in _chunks)
             if (c.Mesh != null && GroupOf(ch) == g.Key) yield return c.Mesh;
     }
@@ -391,6 +435,8 @@ public partial class Place : Node3D
         Places.Zone.Pois.FadeGroup(Site, g.Key, 0f, done: true);
         Places.Zone.Pois.HideGroup(Site, g.Key, way > 0);
         if (way > 0) return;
+        g.Merged?.QueueFree();
+        g.Merged = null;
         foreach (Int3 ch in _chunks.Keys.ToList())
         {
             if (GroupOf(ch) != g.Key) continue;

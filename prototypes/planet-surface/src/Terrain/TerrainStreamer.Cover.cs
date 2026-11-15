@@ -100,15 +100,7 @@ public partial class TerrainStreamer
             var key = (Mod(ax + dx, width), Mod(az + dz, height));
             if (_coverCells.ContainsKey(key) || !_coverPending.Add(key)) continue;
             asked++;
-            int cx = key.Item1, cz = key.Item2, version = _coverVersion;
-            PlanetSurface.World.PlanetWorld world = World;
-            HashSet<long> dug = _dugSnapshot;
-            Task.Run(() =>
-            {
-                CoverCell cell = CoverBuilder.Build(cx, cz, world.Source, world.Palette, dug);
-                cell.Version = version;
-                _coverDone.Enqueue(cell);
-            });
+            AskCover(key.Item1, key.Item2);
         }
 
         bool moved = fx != _coverFocusX || fz != _coverFocusZ;
@@ -127,6 +119,20 @@ public partial class TerrainStreamer
     }
 
     /// <summary>Copies every cell in reach into its species' buffer, placed round the focus, and hands them over.</summary>
+    /// <summary>A cover cell built on a worker (its own method: a closure in the ring loop's body was made on every pass round it, thousands a frame).</summary>
+    void AskCover(int cx, int cz)
+    {
+        int version = _coverVersion;
+        PlanetSurface.World.PlanetWorld world = World;
+        HashSet<long> dug = _dugSnapshot;
+        Task.Run(() =>
+        {
+            CoverCell cell = CoverBuilder.Build(cx, cz, world.Source, world.Palette, dug);
+            cell.Version = version;
+            _coverDone.Enqueue(cell);
+        });
+    }
+
     void FillCover(int fx, int fz, int width, int height)
     {
         _coverFocusX = fx;

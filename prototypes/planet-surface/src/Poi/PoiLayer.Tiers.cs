@@ -88,6 +88,15 @@ public partial class PoiLayer
         _tiles.AddRange(tiles.Values);
     }
 
+    /// <summary>The middle of a place's top, the copy nearest <paramref name="eye"/>: what of it is seen first from afar.</summary>
+    Vector3 Top(PoiSite site, Vector3 eye)
+    {
+        var lo = site.Footprint.Min;
+        var hi = site.Footprint.Max;
+        float top = site.Pending ? site.Footprint.Max.Y - 12 : site.Origin.Y + site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8;
+        return _world.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, top, (lo.Z + hi.Z + 1) * 0.5f), eye);
+    }
+
     /// <summary>A city tile's far mesh, once every building in it has been built.</summary>
     void StartTile(Tile tile)
     {
@@ -120,6 +129,7 @@ public partial class PoiLayer
         tile.Node.AddChild(tile.Low);
         tile.Mesh = null;
         AddChild(tile.Node);
+        Fx.PopLog.Note("city", "appears", tile.Distance, TileSize, 1f, Top(tile.First, _focus));
         foreach (Place p in tile.Members)
         {
             PoiInstance inst = p.Site.Instance;
@@ -231,6 +241,7 @@ public partial class PoiLayer
             }
             p.Node = BuildLow(p);
             AddChild(p.Node);
+            Fx.PopLog.Note("place", "appears", Away(p, camera), p.Size, 1f, Top(p.Site, camera));
             built = true;
             break;
         }

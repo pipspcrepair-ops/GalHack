@@ -68,7 +68,7 @@ public partial class BarTest : Node
     static readonly string[] Expected = { "spotlights", "guns.gatling", "turrets", "scanner", null, null, "fabricators", "life-support", "gravity" };
 
     /// <summary>The rig's chair, the cells its guns, spotlights and fabricator stand on.</summary>
-    public static readonly Int3 Chair = new(0, 1, -1), Fabricator = new(2, 1, 2), Light = new(-2, 1, 2);
+    public static readonly Int3 Chair = new(0, 1, -1), Fabricator = new(2, 1, 2), Light = new(-2, 1, 2), Turret = new(3, 1, -3);
     public static readonly Int3[] Guns = { new(-2, 0, -4), new(2, 0, -4) }, Spots = { new(-1, 0, -4), new(1, 0, -4) };
 
     /// <summary>
@@ -92,7 +92,7 @@ public partial class BarTest : Node
         s.Set(Chair, Make("command-chair"));
         foreach (Int3 g in Guns) s.Set(g, Make("gatling"));
         foreach (Int3 p in Spots) s.Set(p, Make("spotlight"));
-        s.Set(new Int3(3, 1, -3), Make("turret"));
+        s.Set(Turret, Make("turret"));
         s.Set(new Int3(-3, 1, -3), Make("scanner-t1"));
         s.Set(Fabricator, Make("portable-fabricator"));
         s.Set(Light + new Int3(0, 0, 1), Make("iron-plated"));
@@ -190,9 +190,18 @@ public partial class BarTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(SpotsLit(), "and on again");
 
+        // A turret switched off looks off: its status light dark, its barrels parked low in the dome; on, run out level.
+        BlockType turret = s.Catalogue.Type("turret");
+        string Barrels() => s.Get(Turret) is var tb && turret.Parts.Any(p => p.OffOnly && p.Shows(tb)) && !turret.Parts.Any(p => p.OnOnly && p.Shows(tb)) ? "parked" : "run out";
+        double use = v.StructureStats.PowerUse;
+        Check(!s.Get(Turret).Off && Barrels() == "run out", "the turret is on, its barrels run out");
         foreach (int x in Press("turrets")) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
-        Check(!v.SystemOn("turrets") && MountedNone(), "the turrets' number switches them off; they never fire from the trigger");
+        Check(s.Get(Turret).Off && Barrels() == "parked" && v.StructureStats.PowerUse < use && MountedNone(),
+            $"the turrets' number switches them off: barrels parked, light dark, {use - v.StructureStats.PowerUse:0.###} MW less drawn; they never fire from the trigger");
+        foreach (int x in Press("turrets")) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(!s.Get(Turret).Off && Barrels() == "run out", "and on again, ready");
 
         foreach (int x in Press("gravity")) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
@@ -302,7 +311,8 @@ public partial class BarTest : Node
         string[] moved = v.Bar.Arranged().Select(f => f?.Key).ToArray();
         Check(moved[4] == "spotlights" && moved[0] == null && s.Bar != null && s.Bar[4] == "spotlights",
             $"dragged on the Core tab, the spotlights move to slot 5 and the arrangement is kept with the structure: {Show(moved)}");
-        v.SetSystem("turrets", false);
+        v.SwitchBlocks(t => t.IsTurret, false);
+        v.SetSystem(StructureBar.Fabricators, false);
         string text = Slice.Construction.BlueprintLibrary.Text(s, "Bar Trip");
         Structure back = Blueprint.Load(text, s.Catalogue, out List<string> errors);
         Check(errors.Count == 0 && back != null && back.Bar.SequenceEqual(s.Bar) && back.SystemsOff.SetEquals(s.SystemsOff) && Blueprint.Save(back) == Blueprint.Save(Slice.Construction.BlueprintLibrary.Design(s, "Bar Trip")),
@@ -311,7 +321,7 @@ public partial class BarTest : Node
         {
             Vessel copy = Vessel.Spawn(_game.Zone, back, (site + new Vector3(40f, 3f, 0f)).ToNumerics(), 0f, landed: true);
             foreach (int x in _drive.Wait(5)) yield return x;
-            Check(copy.Bar.Arranged().Select(f => f?.Key).SequenceEqual(moved) && !copy.SystemOn("turrets"), "a structure built from the blueprint shows the same bar");
+            Check(copy.Bar.Arranged().Select(f => f?.Key).SequenceEqual(moved) && !copy.SystemOn(StructureBar.Fabricators) && copy.Structure.Get(Turret).Off, "a structure built from the blueprint shows the same bar and switches");
         }
 
         // ---- Standing up ---------------------------------------------------------------------------------

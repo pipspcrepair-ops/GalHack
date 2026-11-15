@@ -13,7 +13,9 @@ public sealed class DecoTemplate
     public string Id, Kind, Where;
     public string[] Anchor = Array.Empty<string>(), Members = Array.Empty<string>(), Front = Array.Empty<string>(), Top = Array.Empty<string>(),
         Beside = Array.Empty<string>(), Screen = Array.Empty<string>(), Ends = Array.Empty<string>(), Focus = Array.Empty<string>(),
-        Side = Array.Empty<string>(), Other = Array.Empty<string>(), Middle = Array.Empty<string>();
+        Side = Array.Empty<string>(), Other = Array.Empty<string>(), Middle = Array.Empty<string>(), Under = Array.Empty<string>();
+    /// <summary>A row or line set back to back with its mirror (a bank of desks, a double-sided range of shelves).</summary>
+    public bool Double;
     public int CountMin = 1, CountMax = 1;
     /// <summary>The most uses of a template in one room (0: as many as fit).</summary>
     public int Max;
@@ -29,6 +31,9 @@ public sealed class DecoSetPlan
 {
     public string Set;
     public List<(string Template, float Weight)> Wall = new(), Island = new();
+    /// <summary>A big room's second zone (a living room's dining table, an office's meeting table), set in the half away from the first, and what may divide them.</summary>
+    public List<(string Template, float Weight)> Zone = new();
+    public string[] Divider = Array.Empty<string>();
     public string[] Fill = Array.Empty<string>();
     /// <summary>The roles of the fitting hung in the middle of the ceiling (a room of a home: its age's lamp), if any.</summary>
     public string[] Light = Array.Empty<string>();
@@ -83,7 +88,8 @@ public sealed class DecoArrangements
                 Id = p.Name, Kind = DataJson.Str(e, "kind"), Where = DataJson.Str(e, "where", "wall"),
                 Anchor = Roles(e, "anchor"), Members = Roles(e, "members"), Front = Roles(e, "front"), Top = Roles(e, "top"),
                 Beside = Roles(e, "beside"), Screen = Roles(e, "screen"), Ends = Roles(e, "ends"), Focus = Roles(e, "focus"),
-                Side = Roles(e, "side"), Other = Roles(e, "other"), Middle = Roles(e, "middle"),
+                Side = Roles(e, "side"), Other = Roles(e, "other"), Middle = Roles(e, "middle"), Under = Roles(e, "under"),
+                Double = e.TryGetProperty("double", out JsonElement dbl) && dbl.GetBoolean(),
                 Gap = (float)DataJson.Num(e, "gap", 0.05), Spacing = (float)DataJson.Num(e, "spacing", 0.3), TopChance = (float)DataJson.Num(e, "topChance", 0.5),
                 Max = DataJson.Int(e, "max", 0), Aisle = (float)DataJson.Num(e, "aisle", 1.3),
             };
@@ -94,8 +100,8 @@ public sealed class DecoArrangements
         }
         DecoSetPlan ReadPlan(string set, JsonElement e)
         {
-            var sp = new DecoSetPlan { Set = set, Fill = Roles(e, "fill"), Light = Roles(e, "light") };
-            foreach (var (key, list) in new[] { ("wall", sp.Wall), ("island", sp.Island) })
+            var sp = new DecoSetPlan { Set = set, Fill = Roles(e, "fill"), Light = Roles(e, "light"), Divider = Roles(e, "divider") };
+            foreach (var (key, list) in new[] { ("wall", sp.Wall), ("island", sp.Island), ("zone", sp.Zone) })
                 if (e.TryGetProperty(key, out JsonElement w))
                     foreach (JsonProperty q in w.EnumerateObject())
                     {
@@ -168,17 +174,22 @@ public sealed class DecoArrangements
     {
         if (kit != null && Kits.TryGetValue(kit, out string k)) return As(k);
         string[] words = Words(roomId);
+        var has = new HashSet<string>(tags ?? Array.Empty<string>(), StringComparer.Ordinal);
+        // A room as the place it stands in has it first ("quarters@military": a barrack room, not a bedroom).
+        if (roomId != null)
+            foreach (string t in TagOrder)
+                if (has.Contains(t) && Rooms.TryGetValue($"{roomId}@{t}", out string rt)) return As(rt);
         if (roomId != null && Rooms.TryGetValue(roomId, out string r)) return As(r);
         foreach (string w in words) if (Roles.TryGetValue(w, out string role)) return As(role);
-        if (tags != null)
-        {
-            var has = new HashSet<string>(tags, StringComparer.Ordinal);
-            foreach (string t in TagOrder) if (has.Contains(t)) return As(Tags[t]);
-        }
+        foreach (string t in TagOrder) if (has.Contains(t)) return As(Tags[t]);
         if (roomId != null && Spaces.TryGetValue(roomId, out string sp)) return As(sp);
         foreach (string w in words) if (Spaces.TryGetValue(w, out string space)) return As(space);
         return As(Fallback);
     }
+
+    /// <summary>What a room is arranged round: its id's focal point, else its recipe's (a foreman's office is an office's), else none.</summary>
+    public string[] FocusFor(string roomId, string recipe) =>
+        roomId != null && Focus.TryGetValue(roomId, out string[] f) ? f : recipe != null && Focus.TryGetValue(recipe, out string[] r) ? r : null;
 
     /// <summary>A name in the maps as a set and recipe: a recipe furnishes from its own set.</summary>
     (string Set, string Recipe) As(string name) => Recipes.TryGetValue(name, out DecoSetPlan recipe) ? (recipe.Set, name) : (name, null);

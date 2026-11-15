@@ -24,7 +24,8 @@
 //              a face hides nothing unless an opaque part really covers the whole of it
 //   collide    cell, parts (the part boxes) or none
 //   parts      boxes or cylinders in box units; style body (takes paint), dark, accent, glow,
-//              glass; closedOnly parts belong to a door leaf. A part may also set its finish:
+//              glass; closedOnly parts belong to a door leaf; shown "on" or "off" parts show only while
+//              their block is switched on or off (a turret's barrels run out or parked). A part may also set its finish:
 //              color, accent, pattern (a paint pattern, fine-hazard or grille), texture, metal,
 //              symbol (shown on a glow part, stencilled on anything else), anim and speed (a glow
 //              that pulses or blinks). Bolts, vents, screens and trim come from DeviceDetail.cs,
@@ -282,8 +283,10 @@
         {"box": [-0.5, -0.5, -0.5, 0.5, -0.32, 0.5], "style": "body"},
         {"cylinder": "y", "segments": 16, "box": [-0.42, -0.32, -0.42, 0.42, -0.2, 0.42], "style": "dark"},
         {"cylinder": "y", "segments": 16, "box": [-0.34, -0.2, -0.34, 0.34, 0.18, 0.34], "style": "body"},
-        {"box": [-0.17, -0.02, -0.5, -0.07, 0.08, -0.2], "style": "dark"},
-        {"box": [0.07, -0.02, -0.5, 0.17, 0.08, -0.2], "style": "dark"},
+        {"box": [-0.17, -0.02, -0.5, -0.07, 0.08, -0.2], "style": "dark", "shown": "on"},
+        {"box": [0.07, -0.02, -0.5, 0.17, 0.08, -0.2], "style": "dark", "shown": "on"},
+        {"box": [-0.17, -0.18, -0.38, -0.07, -0.1, -0.2], "style": "dark", "shown": "off"},
+        {"box": [0.07, -0.18, -0.38, 0.17, -0.1, -0.2], "style": "dark", "shown": "off"},
         {"box": [-0.25, 0.18, -0.12, 0.25, 0.22, 0.12], "style": "glow"}
       ]
     },
