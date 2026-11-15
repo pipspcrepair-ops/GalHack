@@ -109,15 +109,15 @@ public partial class Visor
 
     /// <summary>
     /// The structure's icon row, right to left (mirroring the sleeper's): power, gravity, active air, and its thrusters, passive
-    /// (flight assist on: they hold it fixed) or active (assist off: they fire only when told). The flight model has no assist
-    /// off yet, so a structure that flies always holds. Dim where it is off or there is none (a base has no thrusters).
+    /// (flight assist on: they hold it fixed) or active (assist off: they fire only when told). Dim where it is off or there is
+    /// none (a base has no thrusters).
     /// </summary>
     public IconState[] StructureIcons(Vessel v) => new[]
     {
         new IconState(HudIcon.Power, v.PowerOn, v.Powered ? C.Good : C.Danger), // switched on with no power to give: lit in danger
         new IconState(HudIcon.Gravity, v.Structure.GravityOn, C.Holo),
         new IconState(HudIcon.Atmosphere, Game.Suit.HoldsAir(v), C.Holo),
-        new IconState(HudIcon.ThrustersPassive, v.Flight != null, C.Accent),
+        new IconState(v.Flight?.Assisted == false ? HudIcon.ThrustersActive : HudIcon.ThrustersPassive, v.Flight != null, C.Accent),
     };
 
     // ---- Drawing them --------------------------------------------------------------------------

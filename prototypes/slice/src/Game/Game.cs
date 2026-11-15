@@ -653,6 +653,7 @@ public partial class Game : Node3D
         if (vessel.Roles.Pilot != Vessel.Player) return;
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
+        if (c.WasPressed(Key.I)) vessel.Flight.ToggleAssist();
     }
 
     void ToggleTorch()
