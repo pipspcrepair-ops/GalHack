@@ -145,10 +145,13 @@ public sealed class Creature
     /// </summary>
     public AttackMove Move;
     public int StrikeLimb;
-    public bool Struck;
+    public bool StrikeLanded;
     public Vector3 StrikeAt;
     /// <summary>The striking part's centre last step, so a fast sweep can't pass through someone between steps.</summary>
     public Vector3 StrikerWas;
+    /// <summary>Its rig's footfalls already counted (a charge pounds the ground with each), and the way it faced as a swipe began.</summary>
+    public int StrikeSteps;
+    public float StrikeYaw;
     public bool StrikerWasOn;
     /// <summary>How wide its mouth goes: 0 as built, 1 gaping for the bite, -1 snapped shut. Set by the strike, smoothed by the rig.</summary>
     public float Gape;

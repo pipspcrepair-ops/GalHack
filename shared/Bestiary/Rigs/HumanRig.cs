@@ -237,6 +237,13 @@ public sealed partial class HumanRig : Rig
         SetBounds(chest, _f.Height * 0.65f);
     }
 
+    /// <summary>A person strikes with the fist of their leading arm, or the blade or club swung in it.</summary>
+    public override Vector4 Striker(Creature c)
+    {
+        Vector3 fist = FistOf(1);
+        return new Vector4(fist.X, fist.Y, fist.Z, BlowOf(Species) == StrikeKind.Swat ? 0.22f : 0.08f);
+    }
+
     /// <summary>The way the last hit went (world), for what a blast does with the body.</summary>
     public Vector3 HitDir => _hitDir;
 

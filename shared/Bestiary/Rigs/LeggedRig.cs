@@ -36,6 +36,11 @@ public sealed class LeggedRig : Rig
     readonly bool _chinTendrils;
     readonly float _hipRest, _neckLen, _tailLen, _neckRest;
     float _gait, _neckPitch, _sag;
+    /// <summary>The tail's tip and how thick it hits there (a club or spikes hit wider); the stomping leg (-1 none) and the height its foot was lifted to.</summary>
+    Vector3 _tailTip;
+    readonly float _tailTipRadius;
+    int _stompLeg = -1;
+    Vector3 _stompLifted;
 
     public LeggedRig(Species s) : base(s, s.Mechanical ? Robots.BuildLegged : Build)
     {
@@ -51,6 +56,8 @@ public sealed class LeggedRig : Rig
         _neckLen = b.NeckLength;
         _tailLen = b.TailLength;
         _neckRest = b.NeckLength > b.Size * 0.5f ? 0.95f : 0.35f;
+        string tip = s.Part("tail");
+        _tailTipRadius = b.Width * (tip == "club" ? 0.36f : tip is "spiked" or "quills" ? 0.3f : 0.1f);
 
         float legLen = b.LegLength;
         LoftProfile shape = BodyProfile(s);
@@ -173,19 +180,23 @@ public sealed class LeggedRig : Rig
         float groundMid = (gF + gB) * 0.5f;
 
         // Body: lowered by crouching, hiding and death, bobbing twice per stride.
-        _leaping = c.Phase == AttackPhase.Lunge || (c.Phase == AttackPhase.Recover && c.PhaseTime < 0.25f);
+        // A lunge leaves the ground; a charge runs, a stomp and a swipe stand.
+        bool thrown = c.Move == AttackMove.Bite;
+        _leaping = thrown && (c.Phase == AttackPhase.Lunge || (c.Phase == AttackPhase.Recover && c.PhaseTime < 0.25f));
         _gait += speed * dt / MathF.Max(0.15f, legLen * 0.9f);
-        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing);
+        // A big body drops its forequarters into a bite, to bring its head down onto you.
+        float big = Math.Clamp((L - 1.5f) / 4f, 0f, 1f), dip = thrown ? Lunging * big : 0f;
+        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing - 0.3f * dip);
         float bob = MathF.Sin(_gait * MathF.Tau * 2f) * 0.035f * legLen * MathF.Min(1f, speed / walk);
         float breathe = MathF.Sin(c.Age * 1.7f + c.Id) * 0.01f * H;
         float bodyY = groundMid + hip + H * 0.25f + bob + breathe;
         float deadY = groundMid + H * 0.5f;
         bodyY = Mathf.Lerp(bodyY, deadY, Dead);
-        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f + Graze * 0.04f - Bracing * 0.1f;
+        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f - dip * 0.15f + Graze * 0.04f - Bracing * 0.1f;
         float roll = Math.Clamp(-YawRate * speed * 0.03f, -0.15f, 0.15f) + Dead * 1.35f + Twitch(c) * 0.08f;
         // A charge's wind-up rocks the body back and forth, like a bull pawing the ground.
         float paw = Bracing * MathF.Sin(c.Age * 9f) * 0.035f * L;
-        Vector3 lunge = fwd * (Lunging * 0.22f * L - Rearing * 0.08f * L + paw);
+        Vector3 lunge = fwd * ((thrown ? Lunging * 0.22f * L : 0f) - Rearing * 0.08f * L + paw);
         Basis body = yaw * new Basis(Vector3.Right, pitch) * new Basis(Vector3.Back, roll);
         var bodyT = new Transform3D(body, new Vector3(pos.X, bodyY, pos.Z) + lunge);
 
@@ -236,11 +247,40 @@ public sealed class LeggedRig : Rig
         int activeGroup = (int)MathF.Floor(_gait * 2f) & 1;
         bool dead = Dead > 0f;
 
-        foreach (Leg leg in _legs)
+        bool stomping = c.Move == AttackMove.Stomp && c.Phase is AttackPhase.Windup or AttackPhase.Lunge && !dead && _legs.Length >= 2;
+        int stompLeg = stomping ? (c.StrikeLimb < 0 ? 0 : 1) : -1;
+        if (_stompLeg >= 0 && stompLeg < 0) _legs[_stompLeg].Foot = Ground(w, _legs[_stompLeg].Drawn); // it stays where it came down
+        _stompLeg = stompLeg;
+        for (int li = 0; li < _legs.Length; li++)
         {
+            Leg leg = _legs[li];
             Vector3 home = Ground(w, pos + yaw * WildSim.Flat(leg.Anchor + leg.Rest) + vel * duration * 0.5f);
             Vector3 hipW = bodyT * leg.Anchor;
             float reach = leg.Upper + leg.Lower;
+
+            if (li == stompLeg)
+            {
+                // Lifted in the tell, then brought down hard on whoever is there.
+                leg.Stepping = false;
+                Vector3 stompFoot;
+                if (c.Phase == AttackPhase.Windup)
+                {
+                    float up = MathF.Min(1f, c.PhaseTime / MathF.Max(0.05f, c.PhaseLength) * 2.5f);
+                    _stompLifted = leg.Foot + Vector3.Up * (w.Combat.Strikes.StompLift * legLen * up) + yaw * Vector3.Forward * (legLen * 0.2f * up);
+                    stompFoot = _stompLifted;
+                }
+                else
+                {
+                    float k = Math.Clamp(c.PhaseTime / MathF.Max(0.05f, c.PhaseLength), 0f, 1f);
+                    stompFoot = _stompLifted.Lerp(c.StrikePoint, k * k);
+                }
+                (Vector3 sKnee, Vector3 sDrawn) = SolveIK(hipW, stompFoot, leg.Upper, leg.Lower, bodyT.Basis * leg.Pole);
+                leg.Drawn = sDrawn;
+                Pose[leg.UpPiece] = Geo.Segment(hipW, sKnee, bodyT.Basis.X);
+                Pose[leg.LoPiece] = Geo.Segment(sKnee, sDrawn, bodyT.Basis.X);
+                Pose[leg.FootPiece] = new Transform3D(yaw, sDrawn);
+                continue;
+            }
 
             if (leg.Stepping)
             {
@@ -333,8 +373,18 @@ public sealed class LeggedRig : Rig
             }
             // A charge drops the head to lead with the horns; a long neck has further to drop.
             float brace = _neckRest > 0.5f ? 1.25f : 0.65f;
-            target = Mathf.Lerp(target, -0.15f, Crouch) + 0.55f * Rearing - 0.7f * Lunging - 0.9f * Dead - brace * Bracing;
-            if (h == 0) _neckPitch = Geo.Smooth(_neckPitch, target, 4f, dt);
+            target = Mathf.Lerp(target, -0.15f, Crouch) + 0.55f * Rearing - 0.9f * Dead - brace * Bracing;
+            // A bite drives the head at the victim: the neck points at where the jaws are going, down and forward.
+            float aimPitch = 0f;
+            bool biting = c.Attacking && c.Move == AttackMove.Bite && !c.Dead;
+            if (biting)
+            {
+                Vector3 to = c.StrikeAt - baseW;
+                aimPitch = MathF.Atan2(to.Y, MathF.Max(0.05f, WildSim.Flat(to).Length()));
+                target = Mathf.Lerp(target, Math.Clamp(aimPitch, -1.3f, 0.6f), Lunging);
+            }
+            else target -= 0.7f * Lunging;
+            if (h == 0) _neckPitch = Geo.Smooth(_neckPitch, target, c.Attacking ? 16f : 4f, dt);
 
             Vector3 p = baseW;
             if (hasNeck && h < _necks.Length)
@@ -352,6 +402,7 @@ public sealed class LeggedRig : Rig
                 }
             }
             float headPitch = Math.Clamp(_neckPitch * 0.35f, -0.9f, 0.4f) - Graze * 0.5f - Lunging * 0.2f - Bracing * 0.35f + MathF.Sin(c.Age * 2.1f + h) * 0.03f;
+            if (biting) headPitch = Mathf.Lerp(headPitch, Math.Clamp(aimPitch, -1.1f, 0.4f), Lunging);
             Basis headB = yaw * new Basis(Vector3.Up, LookYaw + splay) * new Basis(Vector3.Right, headPitch) * new Basis(Vector3.Back, Twitch(c) * 0.3f);
             Pose[_heads[h]] = new Transform3D(headB, p);
         }
@@ -370,15 +421,35 @@ public sealed class LeggedRig : Rig
             float speed = WildSim.Flat(c.Velocity).Length();
             float amp = speed > 0.3f ? 0.12f : 0.28f;
             float lag = Math.Clamp(-YawRate * 0.3f, -0.7f, 0.7f);
+            // A swipe bends the tail round to a side and brings it down to the victim's height.
+            float swing = c.Dead ? 0f : c.Swipe, sweep = MathF.Min(1f, MathF.Abs(swing));
+            if (sweep > 0f)
+            {
+                lag *= 1f - sweep;
+                float drop = MathF.Asin(Math.Clamp((c.StrikeAt.Y - p.Y) / MathF.Max(0.1f, _tailLen), -0.95f, 0.5f));
+                pitchAcc = Mathf.Lerp(pitchAcc, drop + 0.03f * chain.Length, sweep);
+            }
             for (int i = 0; i < chain.Length; i++)
             {
-                yawAcc += MathF.Sin(c.Age * 2.2f - i * 0.8f + c.Id) * amp / chain.Length * 2f + lag / chain.Length;
+                yawAcc += MathF.Sin(c.Age * 2.2f - i * 0.8f + c.Id) * amp * (1f - sweep) / chain.Length * 2f + lag / chain.Length + swing * 1.5f / chain.Length;
                 pitchAcc -= 0.06f;
                 Vector3 dir = bodyT.Basis * Geo.Backward(yawAcc, pitchAcc);
                 Pose[chain[i]] = Geo.Segment(p, p + dir * seg, bodyT.Basis.X);
                 p += dir * seg;
             }
+            if (t == 0) _tailTip = p;
         }
+    }
+
+    /// <summary>What it strikes with now: a stomping foot, its tail's tip, or its head (horns and jaws).</summary>
+    public override Vector4 Striker(Creature c)
+    {
+        Proportions b = Species.Body;
+        if (c.Move == AttackMove.Stomp && _stompLeg >= 0) return new Vector4(_legs[_stompLeg].Drawn.X, _legs[_stompLeg].Drawn.Y, _legs[_stompLeg].Drawn.Z, MathF.Max(0.12f, b.LegThickness * 0.5f));
+        if (c.Move == AttackMove.Swipe && _tails.Length > 0) return new Vector4(_tailTip.X, _tailTip.Y, _tailTip.Z, _tailTipRadius);
+        if (_heads.Length == 0) return base.Striker(c);
+        Vector3 head = Pose[_heads[0]] * new Vector3(0, 0, -b.HeadSize * 0.5f);
+        return new Vector4(head.X, head.Y, head.Z, b.HeadSize * 0.6f);
     }
 
     void PoseLimbs(Creature c, Transform3D bodyT)
@@ -495,9 +566,10 @@ public sealed class LeggedRig : Rig
         for (int h = 0; h < heads; h++)
         {
             var head = new Piece("head");
-            HeadShape shapeInfo = Parts.Head(head, drawnHead, hs, k, rng);
+            var jaw = new Piece("jaw");
+            HeadShape shapeInfo = Parts.Head(head, drawnHead, hs, k, rng, jaw);
             Parts.Horns(head, s.Part("horns"), hs, k, rng, shapeInfo);
-            layout.Add(head);
+            layout.AddHead(head, jaw);
             for (int i = 0; i < neckSegs; i++)
             {
                 float seg = b.NeckLength / neckSegs;

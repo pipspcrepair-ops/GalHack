@@ -242,6 +242,14 @@ public sealed class RigLayout
         Pieces.Add(piece);
         return Pieces.Count - 1;
     }
+
+    /// <summary>A head, then its moving jaw if it has one (a rig works the jaw on the head before it).</summary>
+    public int AddHead(Piece head, Piece jaw)
+    {
+        int at = Add(head);
+        if (jaw.Prims.Count > 0) Add(jaw);
+        return at;
+    }
 }
 
 /// <summary>Small geometry helpers shared by the rigs.</summary>

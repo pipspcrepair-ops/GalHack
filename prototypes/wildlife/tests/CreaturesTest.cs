@@ -79,6 +79,7 @@ public partial class CreaturesTest : Node
             CrouchingIsQuieter();
             WeightShows();
             NothingClipsThePlayer();
+            StrikesLand();
             WoundsShow();
             DeepPerformance();
             CrowdedPlaceCost();

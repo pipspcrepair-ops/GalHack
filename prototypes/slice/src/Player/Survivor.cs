@@ -390,6 +390,13 @@ public sealed class Survivor
     }
 
     /// <summary>Puts the survivor in the zone's world, upright (respawns, tests, screenshots).</summary>
+    /// <summary>A blow throws the survivor (m/s, zone frame): on foot only.</summary>
+    public void Knock(Vector3 push)
+    {
+        if (Seated != null || push.LengthSquared() < 1e-4f) return;
+        Body.Velocity += push.ToNumerics();
+    }
+
     public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default)
     {
         if (Seated != null) StandUp();

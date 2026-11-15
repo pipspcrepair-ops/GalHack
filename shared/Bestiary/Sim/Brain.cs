@@ -891,7 +891,7 @@ public static partial class Brain
             else Steer(w, c, t.Position + back * hold, c.Stats.RunSpeed * 0.7f);
             return;
         }
-        if (dist <= Attacks.Range(c, t))
+        if (dist <= Attacks.Range(w, c, t))
         {
             c.Desired = Vector3.Zero;
             Attacks.Start(w, c, t);

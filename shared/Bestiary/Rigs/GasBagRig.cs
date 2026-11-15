@@ -131,8 +131,9 @@ public sealed class GasBagRig : Rig
         layout.Add(body);
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head") is "maw" or "lantern" or "dome" ? s.Part("head") : "dome", hs, k, rng);
-        layout.Add(head);
+        var jaw = new Piece("jaw");
+        Parts.Head(head, s.Part("head") is "maw" or "lantern" or "dome" ? s.Part("head") : "dome", hs, k, rng, jaw);
+        layout.AddHead(head, jaw);
 
         // The bags: long bladders of thin, veined skin, lit through from behind, each with a
         // crest along the top like a man-of-war's float. A balloon reads as a toy.

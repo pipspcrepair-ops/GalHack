@@ -220,13 +220,14 @@ public sealed class WingedRig : Rig
         layout.Add(body);
 
         var head = new Piece("head");
-        HeadShape info = Parts.Head(head, s.Part("head"), hs, k, rng);
+        var jaw = new Piece("jaw");
+        HeadShape info = Parts.Head(head, s.Part("head"), hs, k, rng, jaw);
         Parts.Horns(head, s.Part("horns"), hs, k, rng, info);
         if (s.Part("tendrils") != "none")
             for (int i = 0; i < 4; i++)
                 head.Taper(new Vector3((i - 1.5f) * hs * 0.15f, -hs * 0.2f, -hs * 0.8f), new Vector3((i - 1.5f) * hs * 0.4f, -hs * 0.8f, -hs * 0.6f),
                     hs * 0.03f, hs * 0.008f, s.Corrupted ? k.Veins : k.Accent, 0f, s.Corrupted ? 0.8f : 0f);
-        layout.Add(head);
+        layout.AddHead(head, jaw);
 
         if (b.NeckLength > L * 0.15f)
         {

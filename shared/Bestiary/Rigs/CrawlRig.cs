@@ -257,9 +257,10 @@ public sealed class CrawlRig : Rig
         bool soft = s.Form == "mossgrub";
 
         var head = new Piece("head");
-        HeadShape shape = Parts.Head(head, s.Part("head"), hs, k, rng);
+        var jaw = new Piece("jaw");
+        HeadShape shape = Parts.Head(head, s.Part("head"), hs, k, rng, jaw);
         Parts.Horns(head, s.Part("horns"), hs, k, rng, shape);
-        layout.Add(head);
+        layout.AddHead(head, jaw);
 
         for (int i = 0; i < n; i++)
         {
