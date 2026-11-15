@@ -321,6 +321,9 @@ public partial class PowerTest : Node
         Check(Height(v) > ground + 12f && MathF.Abs(Height(v) - held) < 1f, $"it climbs off the ground and hovers hands off ({Height(v) - ground:F1} m up)");
         Check(climbing > hovering && hovering > 0, $"its thrusters draw by their throttle: {climbing:F3} MW climbing, {hovering:F3} MW holding it up");
         Check(Math.Abs(burnt - drawn) < drawn * 0.05 + 1e-6, $"its generator burns fuel from its storage as they draw: {burnt:F2} MJ of fuel for {drawn:F2} MJ drawn in 3 s ({v.Storage.Count("energy-cell")} cells left)");
+        var gauges = Slice.Ui.StructureReadout.Of(v);
+        Check(gauges.CapUse == v.Power.Usage && gauges.CapUse > 0 && gauges.FuelSeconds == v.Power.SecondsLeft && gauges.FuelSeconds > 60 && gauges.WarpAu == null && gauges.FoldLy == null,
+            $"the chair's gauges read it: {gauges.CapUse:P0} of its generator's supply in use, {gauges.FuelSeconds / 60:F0} min of fuel, no drives");
 
         // Run dry in the air: the fuel taken out, the capacitor nearly empty.
         foreach (ItemDef f in data.Power.Fuels) v.Storage.Remove(f.Id, v.Storage.Count(f.Id));

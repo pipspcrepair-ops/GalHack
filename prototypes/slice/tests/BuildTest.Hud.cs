@@ -83,7 +83,7 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(10)) yield return x;
         Gauge[] sg = _game.Visor.StructureGauges(floor);
         Check(string.Join(",", sg.Select(x => x.Label)) == "CAP,FUEL,WARP,FOLD" && sg.All(x => x.Value == "--"),
-            $"structure gauges: {string.Join("  ", sg.Select(x => $"{x.Label} {x.Value}"))} (no live power to read until power phase 1)");
+            $"structure gauges: {string.Join("  ", sg.Select(x => $"{x.Label} {x.Value}"))} (no generator and no drives on it: nothing to read)");
         IconState[] icons = _game.Visor.StructureIcons(floor);
         bool gravity = floor.Structure.GravityOn;
         floor.Structure.GravityOn = !gravity;
