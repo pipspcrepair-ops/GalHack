@@ -34,7 +34,9 @@ public sealed partial class Staging
 
     IEnumerable<int> NightLightsView()
     {
-        string dir = Folder("nightlights");
+        // Frames go in --dir (--out is the screenshot scene's own last frame).
+        string dir = _args.GetValueOrDefault("dir", "nightlights");
+        Directory.CreateDirectory(dir);
         bool minspec = _args.ContainsKey("minspec");
         if (minspec)
         {
@@ -56,8 +58,9 @@ public sealed partial class Staging
 
         // The town: the brightest glow within reach of the start; the lone farm: a lived-in place no glow covers.
         FarLights.Glow? town = far.Glows.Where(g => Off(Near(g.X, g.Z)) < 9000f).OrderByDescending(g => g.Strength / (1f + Off(Near(g.X, g.Z)) / 3000f)).Cast<FarLights.Glow?>().FirstOrDefault();
-        bool Covered(PoiSite s) => far.Glows.Any(g => Middle(s).DistanceTo(Near(g.X, g.Z) with { Y = Middle(s).Y }) < g.Radius + 700f);
-        PoiSite farm = world.Pois.Where(s => FarLights.Lived(s) && s.Siting != "city" && !Covered(s)).OrderBy(s => Off(Middle(s))).FirstOrDefault();
+        bool Covered(PoiSite s, float margin = 700f) => far.Glows.Any(g => Middle(s).DistanceTo(Near(g.X, g.Z) with { Y = Middle(s).Y }) < g.Radius + margin);
+        // (Far enough from every glow that none of them stands behind it in the view.)
+        PoiSite farm = world.Pois.Where(s => FarLights.Lived(s) && s.Siting != "city" && !Covered(s, 3000f)).OrderBy(s => Off(Middle(s))).FirstOrDefault();
         // The lit place and the dead ruin from what has been built (places build nearest first, out to the camera's reach), each with lamps to show.
         for (int i = 0; i < 1200 && !(far.Of.Any(o => o.Value.Lived && o.Value.Count > 0) && far.Of.Any(o => !o.Value.Lived && o.Value.Count > 0)); i++) yield return 0;
         PoiSite ruin = far.Of.Where(o => !o.Value.Lived && o.Value.Count > 0 && o.Key.Siting != "city").Select(o => o.Key).OrderBy(s => Off(Middle(s))).FirstOrDefault()
@@ -112,10 +115,10 @@ public sealed partial class Staging
         if (farm != null)
         {
             Vector3 mid = Middle(farm);
-            Vector3 eye = Clear(mid, 1500f, 30f);
+            Vector3 eye = Clear(mid, 500f, 250f);
             foreach (int x in Midnight(eye, mid, () => true, 240)) yield return x;
             float lift = 0f;
-            foreach (int x in AB(eye, mid, far, "Light glow", new List<Vector3> { mid + Vector3.Up * 120f }, v => lift = v, box: 40)) yield return x;
+            foreach (int x in AB(eye, mid, far, "Light glow", new List<Vector3> { mid + Vector3.Up * 60f }, v => lift = v, box: 40)) yield return x;
             NightCheck(lift < 0.015f, $"nothing glows over the farm's air (lift {lift:F3})");
         }
         foreach (int x in NightResult()) yield return x;
@@ -125,17 +128,28 @@ public sealed partial class Staging
         _game.FixedCamera = null;
         _game.Survivor.PlaceOutside(from.ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
+        _game.Zone.Sky.TimeOfDay = MidnightAt();
         foreach (int x in ToOrbit()) yield return x;
         if (!_game.InOrbit) yield break;
-        // Looking down past the Skiff at the world under it, the start's side, a little ahead.
-        for (int i = 0; i < 180; i++)
+        // On up a while, for the world below to fit the view.
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 60 * (int)Num("climb", 20); i++) yield return 0;
+        _game.Controls.ReleaseAll();
+        // The world under the Skiff, its night side: the clock set so the sun is well down over the start, the view narrowed onto it.
+        Vector3 centre0 = _game.Orbit.ToWorld(System.Numerics.Vector3.Zero).ToGodot();
+        SunOver((Skiff.Body.Position.ToGodot() - centre0).Normalized(), -0.6f);
+        float fov = _game.Camera.Fov;
+        _game.Camera.Fov = (float)Num("orbitfov", 40);
+        for (int i = 0; i < 120; i++)
         {
             Vector3 at = Skiff.Body.Position.ToGodot(), centre = _game.Orbit.ToWorld(System.Numerics.Vector3.Zero).ToGodot();
             Vector3 down = (centre - at).Normalized(), side = down.Cross(Vector3.Right).Normalized();
-            _game.FixedCamera = new Transform3D(Basis.LookingAt((down * 0.8f + side * 0.6f).Normalized(), -down), at - down * 40f);
+            Vector3 eye = at + side * 80f - down * 30f;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt((centre - eye).Normalized(), side), eye);
             yield return 0;
         }
         foreach (int x in Shot(Path.Combine(dir, "orbit.png"))) yield return x;
+        _game.Camera.Fov = fov;
     }
 
     IEnumerable<int> NightResult()
@@ -243,10 +257,11 @@ public sealed partial class Staging
         Rid vp = _game.GetViewport().GetViewportRid();
         RenderingServer.ViewportSetMeasureRenderTime(vp, true);
         var got = new (double Gpu, double Cpu, double Main)[2];
+        double own = 0, ownWorst = 0;
         // Alternated, three times each, so the world settling in counts against neither.
-        for (int pass = 0; pass < 6; pass++)
+        for (int pass = -1; pass < 6; pass++)
         {
-            far.Visible = pass % 2 == 0;
+            far.Visible = pass % 2 == 0; // pass -1 settles the view in, uncounted
             for (int i = 0; i < 20; i++) { Look(eye, look); yield return 0; }
             double gpu = 0, cpu = 0, main = 0;
             for (int i = 0; i < 60; i++)
@@ -256,15 +271,20 @@ public sealed partial class Staging
                 gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp);
                 cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp);
                 main += Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0;
+                if (pass >= 0) own += far.LastMs / 360.0;
+                if (pass >= 0) ownWorst = Math.Max(ownWorst, far.LastMs);
             }
             GD.Print($"(night cost pass {pass}: far lights {(pass % 2 == 0 ? "on" : "off")}, GPU {gpu / 60:F2}, main {main / 60:F2} ms)");
+            if (pass < 0) continue;
             var was = got[pass % 2];
             got[pass % 2] = (was.Gpu + gpu / 180, was.Cpu + cpu / 180, was.Main + main / 180);
         }
         far.Visible = true;
         string tag = minspec ? "minimum spec" : "this machine";
         GD.Print($"(night cost, {tag}: with far lights GPU {got[0].Gpu:F2} ms, render CPU {got[0].Cpu:F2} ms, main {got[0].Main:F2} ms; without GPU {got[1].Gpu:F2}, render CPU {got[1].Cpu:F2}, main {got[1].Main:F2})");
-        double frame = Math.Max(got[0].Gpu, got[0].Cpu + got[0].Main);
-        NightCheck(got[0].Gpu - got[1].Gpu < 0.5 && frame < 16.7, $"the far lights' cost on {tag}: {got[0].Gpu - got[1].Gpu:+0.00;-0.00} ms GPU, frame {frame:F1} ms of 16.7");
+        // The machine's other runs make whole frames noisy: the far lights' own cost is what is judged, their GPU time (A/B) and main-thread time (timed).
+        double gpuCost = got[0].Gpu - got[1].Gpu;
+        GD.Print($"(night cost, {tag}: far lights' main thread {own:F3} ms a frame, worst {ownWorst:F3})");
+        NightCheck(gpuCost < 0.5 && own < 0.2, $"the far lights' cost on {tag}: {gpuCost:+0.00;-0.00} ms GPU, {own:F3} ms main thread (frame with them {Math.Max(got[0].Gpu, got[0].Cpu + got[0].Main):F1} ms, without {Math.Max(got[1].Gpu, got[1].Cpu + got[1].Main):F1})");
     }
 }

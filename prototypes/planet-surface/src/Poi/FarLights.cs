@@ -201,6 +201,7 @@ public partial class FarLights : Node3D
     public override void _Process(double delta)
     {
         if (_points == null) return;
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
         _clock += delta;
         if (_dirty)
         {
@@ -224,7 +225,11 @@ public partial class FarLights : Node3D
             m.SetShaderParameter(Fx.Names.Of("clock"), (float)(_clock % 3600.0));
         }
         _domeMaterial.SetShaderParameter(Fx.Names.Of("cloud"), new Vector2(cloudBase, cover));
+        LastMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
+
+    /// <summary>The main thread's time on the far lights last frame, ms (tests).</summary>
+    public double LastMs { get; private set; }
 
     public void Clear()
     {
@@ -273,14 +278,15 @@ public partial class FarLights : Node3D
             float size = max(world, pixel * 2.2);
             vec3 view = (VIEW_MATRIX * vec4(at, 1.0)).xyz;
             float inner = INSTANCE_CUSTOM.w;
-            view += normalize(-view) * min(mix(0.8, 8.0, inner), d * 0.5); // in front of its own lamp's block (a lamp inside: through its wall)
+            // In front of its own lamp's block; far off, in front of its place's far mesh too (solid in 4 m cells); a lamp inside, through its wall.
+            float far = smoothstep(hand_off.x, hand_off.x + hand_off.y, d);
+            view += normalize(-view) * min(max(mix(0.8, 6.0, far), 8.0 * inner), d * 0.5);
             POSITION = PROJECTION_MATRIX * vec4(view + vec3(VERTEX.xy * size, 0.0), 1.0);
             float mode = INSTANCE_CUSTOM.x, s = clock + INSTANCE_CUSTOM.y;
             float wave = mode > 1.5 && mode < 2.5 ? (mod(s, 1.6) < 0.25 ? 1.0 : 0.05)
                 : mode > 0.5 && mode < 1.5 ? (sin(s * 23.0) * sin(s * 7.3) > 0.55 ? 0.15 : 0.9)
                 : mode > 2.5 ? 0.6 + 0.4 * sin(s * 0.9) : 1.0;
             // The old halo's 40 to 120 m fade near; full past the hand-off, where it is all that is left of the lamp.
-            float far = smoothstep(hand_off.x, hand_off.x + hand_off.y, d);
             float a = smoothstep(40.0, 120.0, d) * mix(0.55, 1.0, far) * mix(1.0, far * 0.6, inner);
             // Nobody lives there: its lamps go out with its real lights.
             a *= mix(1.0 - far, 1.0, INSTANCE_CUSTOM.z);
