@@ -158,6 +158,30 @@ public partial class PopRoute : Node
             foreach (int x in Route(name, start, way, speed, pops ? speed * 20f : length, up, pops)) yield return x;
         }
         PopLog.On = false;
+        // The world's largest town or city: walking its streets, biking its outskirts, flying low over it (the owner: "a lot of
+        // performance drop there"). --only=city runs just these.
+        if ((only == null || only.Contains("city")) && Biggest(_game) is var (mid, radius, what))
+        {
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE city: {what}, radius {radius:F0} m, {new Vector2(mid.X - start.X, mid.Z - start.Z).Length():F0} m from the start"));
+            Vector3 across = Vector3.Right, side = Vector3.Back;
+            var cityRoutes = new[]
+            {
+                ("city walk", mid - across * 150f, 6f, 300f, 0.3f),
+                ("city bike", mid + side * radius * 0.8f - across * MathF.Max(300f, radius * 1.25f), 26f, MathF.Max(600f, radius * 2.5f), 1f),
+                ("city fly", mid - across * (radius + 400f), 70f, radius * 2f + 800f, 40f),
+            };
+            PopLog.On = true;
+            foreach (var (name, from, speed, length, up) in cityRoutes)
+            {
+                _hold = Lift(from, up);
+                for (int i = 0; i < 60; i++) yield return 0;
+                foreach (int x in _drive.UntilSettled(40)) yield return x;
+                for (int i = 0; i < 300; i++) yield return 0; // the places round it stand up
+                foreach (int x in Route(name, from, across, speed, length, up)) yield return x;
+            }
+            PopLog.On = false;
+        }
+        else if (only?.Contains("city") == true) GD.Print("ROUTE city: none on this world");
         if (only == null || only.Contains("flicker"))
             foreach (int x in Flicker(start)) yield return x;
         if (only == null || only.Contains("pinholes"))
@@ -261,6 +285,18 @@ public partial class PopRoute : Node
                 if (n > most) (most, over) = (n, at);
             }
         return over;
+    }
+
+    /// <summary>The middle of the world's city, or of its largest town or settlement (by the ground its stamp takes), its radius, and what it is.</summary>
+    public static (Vector3 Mid, float Radius, string What)? Biggest(Game.Game game)
+    {
+        var world = game.Zone.Planet;
+        if (world.Infra?.City is { Sites.Count: > 0 } c) return (new Vector3((float)c.CenterX, 0f, (float)c.CenterZ), (float)c.Radius, $"the city, {c.Sites.Count} buildings");
+        var town = world.Pois.Where(p => p.Tier is PoiGenerator.Gen.PoiTier.Town or PoiGenerator.Gen.PoiTier.City or PoiGenerator.Gen.PoiTier.Spaceport)
+            .OrderByDescending(p => (double)(p.Stamp.MaxX - p.Stamp.MinX) * (p.Stamp.MaxZ - p.Stamp.MinZ)).FirstOrDefault();
+        if (town == null) return null;
+        var (x, z) = town.Center;
+        return (new Vector3((float)x, 0f, (float)z), (float)Math.Max(town.Stamp.MaxX - town.Stamp.MinX, town.Stamp.MaxZ - town.Stamp.MinZ) * 0.5f, $"{town.Name} ({town.Family.Id}, {town.Tier})");
     }
 
     Vector3 Lift(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };

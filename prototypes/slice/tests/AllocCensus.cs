@@ -51,8 +51,23 @@ public sealed class AllocCensus : EventListener
         string name = key[(key.LastIndexOf(' ') + 1)..];
         if (!name.StartsWith('<')) return "";
         var owners = System.AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => { try { return a.GetTypes(); } catch { return System.Type.EmptyTypes; } })
-            .Where(t => t.Name == name && t.DeclaringType != null).Select(t => t.DeclaringType.FullName).Distinct().Take(6);
+            .Where(t => t.Name == name && t.DeclaringType != null).Select(t => $"{t.DeclaringType.FullName}.{string.Join("/", Makers(t))}").Distinct().Take(8);
         return $" (in {string.Join(" | ", owners)})";
+    }
+
+    /// <summary>The methods of a compiler-made type's owner that make one (a newobj of its constructor in their code).</summary>
+    static IEnumerable<string> Makers(System.Type made)
+    {
+        const System.Reflection.BindingFlags All = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+        var ctors = made.GetConstructors(All).Select(c => c.MetadataToken).ToHashSet();
+        foreach (var m in made.DeclaringType.GetMethods(All).Cast<System.Reflection.MethodBase>().Concat(made.DeclaringType.GetConstructors(All)))
+        {
+            byte[] il;
+            try { il = m.GetMethodBody()?.GetILAsByteArray(); } catch { continue; }
+            if (il == null) continue;
+            for (int i = 0; i + 4 < il.Length; i++)
+                if (il[i] == 0x73 && ctors.Contains(System.BitConverter.ToInt32(il, i + 1))) { yield return m.Name; break; }
+        }
     }
 
     /// <summary>The types most allocated since the last report, with their share, and starts over.</summary>

@@ -227,7 +227,7 @@ public partial class Game : Node3D
         Wildlife.Weapons.GameDraws = _ => true; // people hold the player's own weapon models (Slice.Arms), not the body's
         Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
-        AddChild(new GcPacer { Name = "GC pacer" });
+        AddChild(new GcPacer { Name = "GC pacer", Room = () => Pacer.Room });
         Zone.WorldRules.Mode = _mode;
         // Placed every frame from interpolated transforms, so it is not interpolated itself.
         Camera = new Camera3D { Name = "Camera", Fov = 75f, Near = 0.05f, Far = 12000f, Current = true, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };

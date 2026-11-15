@@ -112,6 +112,17 @@ public partial class Pacing : Node
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         foreach (int x in _drive.Wait(60)) yield return x;
         Vector3 town = _game.Bunker.Landmark ?? (S.WorldFeet + new Vector3(0f, 0f, -300f));
+        // --city=1: all of it in the world's largest town or city instead, from a street 150 m short of its middle.
+        if (_args.ContainsKey("city") && PopRoute.Biggest(_game) is var (mid, radius, what))
+        {
+            Vector3 street = mid - Vector3.Right * 150f;
+            S.PlaceOutside((street with { Y = zone.GroundAt(street.X, street.Z).Y + 0.5f }).ToNumerics());
+            town = mid + Vector3.Right * 150f;
+            GD.Print($"PACING city: {what}, radius {radius:F0} m");
+            foreach (int x in _drive.Wait(60)) yield return x;
+            foreach (int x in _drive.UntilSettled(60)) yield return x;
+            foreach (int x in _drive.Wait(300)) yield return x;
+        }
         foreach (int x in _drive.LookAt(town with { Y = S.WorldEye().Y }, 10)) yield return x;
         _drive.Controls.Look = Vector2.Zero;
 
