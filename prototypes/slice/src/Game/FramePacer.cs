@@ -24,8 +24,8 @@ public partial class FramePacer : Node
 
     readonly double[] _work = new double[120];
     readonly double[] _sorted = new double[120];
-    int _count, _since;
-    double _fitFor, _last;
+    int _count;
+    double _fitFor, _missFor, _last;
     Rid _viewport;
 
     public override void _Ready()
@@ -79,7 +79,6 @@ public partial class FramePacer : Node
         // Two frames at a time: the frames queued for the screen take up one frame's unevenness (a tick's frame then one without).
         _work[_count++ % _work.Length] = (work + _last) * 0.5;
         _last = work;
-        _since++;
         int n = Math.Min(_count, _work.Length);
         if (n < 30) return;
         Array.Copy(_work, _sorted, n);
@@ -89,21 +88,27 @@ public partial class FramePacer : Node
         int most = Math.Max(1, (int)(hz / 50.0));
         int need = 1;
         while (need < most && Work > need * refresh - 0.5) need++;
-        if (need > Refreshes && _since >= 30) Set(need);
+        // Fewer frames once they have missed for half a second (not for a hitch); more again once they have fitted with room for
+        // three seconds: every change of pace is itself a jolt.
+        if (need > Refreshes)
+        {
+            _fitFor = 0;
+            _missFor += delta;
+            if (_missFor > 0.5) Set(need);
+        }
         else if (need < Refreshes && Work < (Refreshes - 1) * refresh - 1.0)
         {
-            // Back to more frames only once they have fitted for a while.
+            _missFor = 0;
             _fitFor += delta;
-            if (_fitFor > 2.0) Set(Refreshes - 1);
+            if (_fitFor > 3.0) Set(Refreshes - 1);
         }
-        else _fitFor = 0;
+        else _fitFor = _missFor = 0;
         Engine.MaxFps = Refreshes == 1 ? 0 : (int)Math.Ceiling(hz / Refreshes);
     }
 
     void Set(int refreshes)
     {
         Refreshes = refreshes;
-        _since = 0;
-        _fitFor = 0;
+        _fitFor = _missFor = 0;
     }
 }
