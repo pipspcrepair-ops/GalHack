@@ -79,8 +79,8 @@ public static class RoomDecor
     }
 
     /// <summary>
-    /// A room's windows and chimney breasts, wall by wall along its box: a window's sill is the lowest glass in the wall over
-    /// the floor; a breast is the place's chimney stack (<see cref="LayoutExtras.Lasting"/>) standing in the wall.
+    /// A room's windows and chimney breasts, wall by wall along its box: a window's sill is the lowest glass (or empty frame)
+    /// in the wall over the floor; a breast is the place's chimney stack (<see cref="LayoutExtras.Lasting"/>) standing in the wall.
     /// </summary>
     static void Openings(PoiInstance inst, DecoRoom room, int y, int x0, int x1, int z0, int z1, float floor)
     {
@@ -90,7 +90,9 @@ public static class RoomDecor
             bool ns = wall is DecoWall.North or DecoWall.South;
             int a0 = ns ? x0 : z0, a1 = ns ? x1 : z1;
             Int3 At(int a) => wall switch { DecoWall.North => new Int3(a, y, z0 - 1), DecoWall.South => new Int3(a, y, z1 + 1), DecoWall.West => new Int3(x0 - 1, y, a), _ => new Int3(x1 + 1, y, a) };
-            float? Sill(int a) => Enumerable.Range(0, 4).Where(k => g.Get(At(a) + Int3.Up * k).Role == Role.Window).Select(k => (float?)MathF.Max(0f, k - floor)).FirstOrDefault();
+            // (Glass, or an empty frame: a hole in the wall over a sill of wall, its pane gone in a ruin.)
+            bool Glazed(int a, int k) => g.Get(At(a) + Int3.Up * k) is var b && (b.Role == Role.Window || k > 0 && b.IsAir && g.Get(At(a) + Int3.Up * (k - 1)) is { IsAir: false, Role: Role.Wall });
+            float? Sill(int a) => Enumerable.Range(0, 4).Where(k => Glazed(a, k)).Select(k => (float?)MathF.Max(0f, k - floor)).FirstOrDefault();
             bool Flue(int a) => inst.Layout.Extras.Lasting.Contains(At(a) + Int3.Up) && g.Get(At(a) + Int3.Up).Role == Role.Decor;
             // Each run of window columns as one window, at its lowest sill; each run of stack columns as one breast.
             for (int a = a0; a <= a1; a++)

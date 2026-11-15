@@ -28,7 +28,10 @@ public sealed partial class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.4);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        PoiSite site = Named();
+        // --chimney=1: the nearest of the family with a chimney stack (a living room with its fireplace).
+        PoiSite site = _args.ContainsKey("chimney") && _args.TryGetValue("family", out string fam)
+            ? _game.Zone.Planet.Pois.Where(s => s.Family.Id == fam).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(40).FirstOrDefault(s => s.Instance.Layout.Extras.Lasting.Count > 0) ?? Named()
+            : Named();
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
         PartSet parts = PlaceParts.Of(p.Memory);

@@ -107,12 +107,12 @@ public static class DecoRules
         return room.Windows.Any(w => Span(room, r, w.At.Wall) is var s && s.Off <= 0.6f && Overlaps(s.Lo, s.Hi, w.At, beside) && top > w.Sill + 0.05f);
     }
 
-    /// <summary>A fire lit anywhere but at a chimney breast: against the breast's wall, within its width (a hand either side).</summary>
+    /// <summary>A fire lit anywhere but at a chimney breast: against the breast's wall, within the stack's width (a hand's play), so the flue goes up over it.</summary>
     public static bool OffFlue(DecoForge forge, DecoRoom room, DecoPlacement pl)
     {
         if (pl.Support >= 0 || !forge.Catalogue.Piece(pl.Piece).Has("hearth")) return false;
         DecoRect r = DecoLayout.Footprint(forge, pl);
-        return !room.Flues.Any(f => Span(room, r, f.Wall) is var s && s.Off <= 0.3f && s.Lo >= f.Offset - f.Width / 2 - 0.5f && s.Hi <= f.Offset + f.Width / 2 + 0.5f);
+        return !room.Flues.Any(f => Span(room, r, f.Wall) is var s && s.Off <= 0.3f && s.Lo >= f.Offset - f.Width / 2 - 0.1f && s.Hi <= f.Offset + f.Width / 2 + 0.1f);
     }
 
     /// <summary>
