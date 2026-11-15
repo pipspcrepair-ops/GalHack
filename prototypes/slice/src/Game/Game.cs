@@ -56,6 +56,12 @@ public partial class Game : Node3D
     /// </summary>
     public double CraftTimeScale = 1;
 
+    /// <summary>
+    /// TEST SHORTCUT: generators run without burning fuel, as in Creative. False in play; a test of flight or handling,
+    /// not of fuel, sets it (marked where it does) for the ships it builds without storage for fuel.
+    /// </summary>
+    public bool FreePower;
+
     public readonly Controls Controls = new();
 
     public SurfaceZone Zone { get; private set; }

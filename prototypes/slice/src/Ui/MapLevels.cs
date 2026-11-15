@@ -473,7 +473,9 @@ public sealed class MapLevels
         g.Text($"{bodies.Count(e => e.Kind is "planet" or "giant" or "world")} WORLDS · {bodies.Count(e => e.Kind == "moon")} MOONS · {bodies.Count(e => e.Kind == "belt")} BELTS", side.Position + new Vector2(0, 40), C.Dim, 14);
         if (yours)
         {
-            g.Text("WARP DRIVE: NOT FITTED", side.Position + new Vector2(0, 62), C.Dim, 14);
+            // The drive's reach on the warp cells in the craft's core storage (the drive itself is phase 2).
+            var range = (_game.Survivor.Seated ?? _game.Survivor.Aboard)?.Power.Range("warp-drive");
+            g.Text(range is { } r ? $"WARP DRIVE: {r.Reach:F0} {r.Unit}" : "WARP DRIVE: NOT FITTED", side.Position + new Vector2(0, 62), C.Dim, 14);
             g.Text("WRECKS", side.Position + new Vector2(0, 84), C.Dim, 14);
         }
         float y = 112;

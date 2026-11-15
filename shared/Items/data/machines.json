@@ -40,16 +40,15 @@
     // Survival placement with the multi-tool, including picking and lining blocks up.
     "placeSecondsPerBlock": 1.2,
     // What a player builds between the crash and the first vessel: a foothold base (core, power,
-    // fuel, a fabricator, storage, a floor), then the vessel.
+    // a fabricator, storage that holds its fuel, a floor), then the vessel.
     "foothold": [
       { "block": "core", "count": 1 },
       { "block": "generator-t1", "count": 1 },
-      { "block": "fuel-tank-t1", "count": 1 },
       { "block": "fabricator-t1", "count": 1 },
       { "block": "container-t1", "count": 1 },
       { "block": "iron-plated", "count": 12 }
     ],
-    // Fuel to fly the first vessel: energy cells (common materials only).
+    // Fuel to fly the first vessel, in its core storage: energy cells (common materials only).
     "starterFuel": { "energy-cell": 20 }
   }
 }

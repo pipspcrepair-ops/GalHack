@@ -408,7 +408,6 @@ public partial class BuildTest : Node
         {
             ["thruster-t1"] = new(1, 1, 1), ["thruster-t2"] = new(1, 1, 2), ["thruster-t3"] = new(1, 1, 2), ["thruster-t4"] = new(2, 2, 4), ["thruster-t5"] = new(3, 3, 6),
             ["generator-t1"] = new(1, 1, 1), ["generator-t2"] = new(1, 2, 1), ["generator-t3"] = new(3, 1, 1), ["generator-t4"] = new(6, 2, 2),
-            ["fuel-tank-t1"] = new(1, 1, 1), ["fuel-tank-t2"] = new(1, 1, 2), ["fuel-tank-t3"] = new(1, 2, 1), ["fuel-tank-t4"] = new(2, 2, 1),
             ["container-t1"] = new(1, 1, 1), ["container-t2"] = new(1, 1, 1), ["container-t3"] = new(1, 1, 1), ["container-t4"] = new(2, 1, 1),
             ["command-chair"] = new(1, 2, 3), ["cockpit-t1"] = new(3, 2, 4), ["cockpit-t2"] = new(3, 3, 5), ["core"] = new(1, 1, 1),
             ["door-1x2x1"] = new(1, 2, 1), ["door-2x2x1"] = new(2, 2, 1), ["door-3x3x1"] = new(3, 3, 1), ["door-4x4x1"] = new(4, 4, 1), ["door-5x5x1"] = new(5, 5, 1),
@@ -420,7 +419,7 @@ public partial class BuildTest : Node
             if (ok) s.Set(new Int3(0, 1, 0), Building.Make(s, t));
             Check(ok && s.Count == 1 + t.Cells && s.BlockCount == 2, $"{id} loads as {size.X}x{size.Y}x{size.Z} cells and sets whole");
         }
-        foreach (string family in new[] { "thruster", "generator", "fuel-tank", "container" })
+        foreach (string family in new[] { "thruster", "generator", "container" })
         {
             var rungs = _cat.Types.Skip(1).Where(t => t.Id.StartsWith(family + "-t")).ToList();
             Check(rungs.Count >= 4 && rungs.Select(t => t.Name).Distinct().Count() == rungs.Count && rungs.All(t => t.Name.Contains($"T{t.Id[^1]}")),
@@ -559,7 +558,7 @@ public partial class BuildTest : Node
         {
             ("steel", "iron-plated"), ("hardened", "hardened-plated"), ("combat", "combat-plated"), ("glass", "glass-plated"),
             ("concrete", "concrete-plated"), ("cpuext", "iron-plated"), ("cpuext3", "iron-plated"), ("cpuext4", "iron-plated"),
-            ("thruster", "thruster-t1"), ("generator", "generator-t1"), ("fueltank", "fuel-tank-t1"), ("container", "container-t1"),
+            ("thruster", "thruster-t1"), ("generator", "generator-t1"), ("fueltank", "container-t1"), ("container", "container-t1"),
             ("door", "door-1x2x1"), ("chair", "command-chair"), ("cockpit", "command-chair"),
         };
         foreach (var (old, now) in was)

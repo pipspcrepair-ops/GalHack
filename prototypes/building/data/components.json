@@ -4,11 +4,12 @@
 // Units, one constant per quantity, anchored so today's small part x 8 is about the bottom rung:
 //   hp         hit points (a plated iron cube is 158)
 //   mass       tonnes (the figures' kg / 1000)
-//   power      MW: positive generates, negative is drawn at full load; the figures' kW x 0.0005
+//   power      MW: positive generates, negative is drawn at full load; the figures' kW x 0.0005. What makes
+//              a device draw it, and how much of it, is shared/Items/data/power.json. There are no fuel
+//              tanks: fuel sits in the containers (core storage), and old tanks load as containers
 //   thrust     kN, pushing the structure forward (-Z) out of the exhaust at +Z; the figures' index x 0.5
-//   fuel       units held; the figures' kWh x 0.5
 //   storage    SU added to the one shared storage of the structure (the figures' SU as is)
-//   function   core, chair, thruster, generator, fuel, container, door, light, turret, ladder or
+//   function   core, chair, thruster, generator, container, door, light, turret, ladder or
 //              stairs (two 0.5 m steps rising toward +z, the slope's way: a shape is one convex
 //              hull, so the steps are parts and collide as they are)
 //   size       cells [x, y, z] (default one); parts boxes span -0.5..0.5 over the whole size.
@@ -180,45 +181,7 @@
       ]
     },
     {
-      "id": "fuel-tank-t1", "name": "Fuel tank T1", "function": "fuel", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.336, "color": "e85d04", "accent": "2b2d42", "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"], "was": ["fueltank"], "power": -0.004, "fuel": 1200.0,
-      "parts": [
-        {"cylinder": "y", "segments": 16, "box": [-0.46, -0.42, -0.46, 0.46, 0.42, 0.46], "style": "body"},
-        {"cylinder": "y", "segments": 16, "box": [-0.475, -0.06, -0.475, 0.475, 0.06, 0.475], "style": "accent"},
-        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
-        {"box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark"}
-      ]
-    },
-    {
-      "id": "fuel-tank-t2", "name": "Fuel tank T2", "function": "fuel", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.672, "color": "e85d04", "accent": "2b2d42", "attach": ["+z", "-z"], "airtight": ["+z", "-z"], "covers": ["+z", "-z"], "size": [1, 1, 2], "power": -0.004, "fuel": 2640.0,
-      "parts": [
-        {"cylinder": "z", "segments": 16, "box": [-0.46, -0.46, -0.42, 0.46, 0.46, 0.42], "style": "body"},
-        {"cylinder": "z", "segments": 16, "box": [-0.475, -0.475, -0.03, 0.475, 0.475, 0.03], "style": "accent"},
-        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, -0.42], "style": "dark"},
-        {"box": [-0.5, -0.5, 0.42, 0.5, 0.5, 0.5], "style": "dark"}
-      ]
-    },
-    {
-      "id": "fuel-tank-t3", "name": "Fuel tank T3", "function": "fuel", "hp": 25, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.314, "color": "e85d04", "accent": "2b2d42", "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"], "size": [1, 2, 1], "power": -0.0001, "fuel": 2905.0,
-      "parts": [
-        {"cylinder": "y", "segments": 16, "box": [-0.46, -0.42, -0.46, 0.46, 0.42, 0.46], "style": "body"},
-        {"cylinder": "y", "segments": 16, "box": [-0.475, -0.06, -0.475, 0.475, 0.06, 0.475], "style": "accent"},
-        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
-        {"box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark"}
-      ]
-    },
-    {
-      "id": "fuel-tank-t4", "name": "Fuel tank T4", "function": "fuel", "hp": 25, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.446, "color": "e85d04", "accent": "2b2d42", "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"], "size": [2, 2, 1], "power": -0.0001, "fuel": 6400.0,
-      "parts": [
-        {"cylinder": "y", "segments": 16, "box": [-0.48, -0.42, -0.46, -0.02, 0.42, 0.46], "style": "body"},
-        {"cylinder": "y", "segments": 16, "box": [-0.49, -0.06, -0.475, -0.01, 0.06, 0.475], "style": "accent"},
-        {"cylinder": "y", "segments": 16, "box": [0.02, -0.42, -0.46, 0.48, 0.42, 0.46], "style": "body"},
-        {"cylinder": "y", "segments": 16, "box": [0.01, -0.06, -0.475, 0.49, 0.06, 0.475], "style": "accent"},
-        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
-        {"box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark"}
-      ]
-    },
-    {
-      "id": "container-t1", "name": "Container T1", "function": "container", "hp": 316, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.44, "color": "f4a100", "texture": "ribbed", "attach": "all", "airtight": "all", "covers": "all", "was": ["container"], "power": -0.012, "storage": 1000,
+      "id": "container-t1", "name": "Container T1", "function": "container", "hp": 316, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.44, "color": "f4a100", "texture": "ribbed", "attach": "all", "airtight": "all", "covers": "all", "was": ["container", "fueltank", "fuel-tank-t1", "fuel-tank-t2", "fuel-tank-t3", "fuel-tank-t4", "warptank", "warp-tank", "foldtank", "fold-tank"], "power": -0.012, "storage": 1000,
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
         {"box": [-0.505, -0.5, -0.505, -0.4, 0.5, -0.4], "style": "dark"},

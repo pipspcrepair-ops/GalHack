@@ -25,8 +25,13 @@ public readonly record struct IconState(HudIcon Icon, bool On, Color Tone);
 /// </summary>
 public readonly record struct StructureReadout(double? CapUse, double? FuelSeconds, double? WarpAu, double? FoldLy)
 {
-    /// <summary>A structure's readouts. Live power (power phase 1) fills these; until then there are none to read.</summary>
-    public static StructureReadout Of(Vessel v) => default;
+    /// <summary>A structure's readouts from its live power (<see cref="GalHack.Items.Bridge.StructurePower"/>): none without a generator, or a drive.</summary>
+    public static StructureReadout Of(Vessel v)
+    {
+        GalHack.Items.Bridge.StructurePower p = v.Power;
+        bool generator = p.GeneratorMW > 0;
+        return new(generator ? p.Usage : null, generator ? p.SecondsLeft : null, p.Range("warp-drive")?.Reach, p.Range("hyperdrive")?.Reach);
+    }
 }
 
 /// <summary>

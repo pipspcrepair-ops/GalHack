@@ -153,7 +153,7 @@ block -1..1 1 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
 block 2..6 1 -5 concrete-plated paint=wall
 block -5 1 -4 concrete-plated paint=wall
 block -4 1 -4 generator-t1
-block -3 1 -4 fuel-tank-t1
+block -3 1 -4 container-t1
 block -2 1 -4 fabricator-t1
 block 2..5 1 -4 container-t1
 block 6 1 -4 concrete-plated paint=wall

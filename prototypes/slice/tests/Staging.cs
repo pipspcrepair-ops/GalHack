@@ -267,6 +267,7 @@ public sealed partial class Staging
         if (v == null) throw new InvalidOperationException("the blueprint would not go down anywhere near the start: see the lines above");
         int stop = half ? _game.StarterPlan.Count * 11 / 20 : int.MaxValue;
         foreach (int x in _drive.HoldPrimary(v.Body.Position.ToGodot(), 3000, () => _game.Builder.Underway == null || v.Structure.Count >= stop)) yield return x;
+        Playthrough.Fuel(v); // staging shortcut: its generator's fuel, as with its parts
         foreach (int x in _drive.UntilSettled()) yield return x;
         // Step round to a three-quarter view of it.
         Vector3 side = v.Body.ToParent(new N.Vector3(4.5f, 0f, -4.5f)).ToGodot();

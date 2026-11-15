@@ -5,6 +5,9 @@ namespace GalHack.Structures;
 /// <summary>
 /// Everything the build HUD shows, summed over a structure's blocks: mass, power, thrust and the
 /// one shared storage. There is no CPU: what a structure can run is limited by its power alone.
+/// These are the build's numbers (a generator fitted, its output against full load); whether it
+/// has power now, with its charge and the fuel in its storage, is the live power's (shared/Items'
+/// StructurePower).
 /// </summary>
 public sealed class StructureStats
 {
@@ -23,7 +26,6 @@ public sealed class StructureStats
 
     public double StorageRaw, StorageCapacity, CargoSu; // storage units
     public int Containers, Thrusters, Generators, Lights;
-    public double Fuel;
 
     public bool HasCore, GravityActive, LifeSupport;
 
@@ -45,7 +47,6 @@ public sealed class StructureStats
                 st.Containers++;
                 st.StorageRaw += t.Storage;
             }
-            st.Fuel += t.Fuel;
             if (t.Power > 0) { st.PowerOut += t.Power; st.Generators++; }
             else if (!(t.Switches && b.Off)) st.PowerUse += -t.Power;
             if (t.IsLight) st.Lights++;

@@ -86,7 +86,7 @@ block -2..1 0 3 container-t1
 block 2 0 3 iron-plated paint=chev
 block -3 0 4 iron-plated paint=chev
 block -2 0 4 generator-t1
-block -1..0 0 4 fuel-tank-t1
+block -1..0 0 4 container-t1
 block 1 0 4 generator-t1
 block 2 0 4 iron-plated paint=chev
 block -3..2 0 5 iron-plated paint=chev

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DiegeticUi.Theme;
 using GalHack.Items;
+using GalHack.Items.Bridge;
 using GalHack.Items.Production;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
@@ -249,7 +250,8 @@ public sealed class CoreSection : IMenuSection
 
 /// <summary>
 /// A structure's settings and numbers, on two pages so the column fits whatever it carries: SETTINGS (core
-/// mode, the pilot, gravity, power, lights, Home, auto-transmit) and NUMBERS (mass, power, storage, and a
+/// mode, the pilot, gravity, power, lights, Home, auto-transmit) and NUMBERS (mass, its live power: capacitor,
+/// generators against draw, fuel time; storage, its drives' reach on the jump fuel in its storage, and a
 /// vessel's four numbers and lift margin). The mode switch is here on the Tab menu's CORE
 /// tab and nowhere else, in its warning stripes: it works at any time, even in flight, and nothing
 /// refuses it. It warns about missing parts and leaves the choice to the player.
@@ -403,7 +405,21 @@ public sealed class StructureSection : IMenuSection
             y += 26;
         }
         Row("MASS", $"{st.Mass:F2} t · {st.Blocks} BLOCKS", C.Text);
-        Row("POWER", st.Generators == 0 ? "NO GENERATOR" : $"{st.PowerOut:F2} MW OUT · {st.PowerUse:F2} MW USE", st.PowerOut >= st.PowerUse ? C.Good : C.Warn);
+        // The live power: the capacitor's charge (and a bar), the generators' output against the draw, the fuel's time at that draw.
+        StructurePower p = v.Power;
+        bool shortOf = v.PowerOn && p.Supply < 1;
+        Row("CAPACITOR", $"{p.ChargeMJ:F1} / {p.CapacityMJ:F0} MJ", p.ChargeMJ > 1e-6 ? C.Text : C.Danger);
+        g.Bar(new Rect2(x, y - 6, width, 6), p.ChargeMJ, Math.Max(1e-6, p.CapacityMJ), shortOf ? C.Danger : C.Good, 20);
+        y += 6;
+        Row("POWER", !v.PowerOn ? "OFF" : p.GeneratorMW <= 0 ? "NO GENERATOR" : $"{p.OutputMW:F3} / {p.GeneratorMW:F2} MW · DRAW {p.DrawMW:F3}", shortOf ? C.Danger : C.Good);
+        double left = p.SecondsLeft;
+        string time = p.FuelUnits <= 0 ? "NO FUEL" : double.IsInfinity(left) ? "IDLE"
+            : left >= 3600 ? $"{(int)(left / 3600)} h {(int)(left % 3600 / 60):D2} min" : $"{(int)(left / 60)} min {(int)(left % 60):D2} s";
+        string burning = p.Burning is string id && v.Storage.Catalogue.TryGet(id, out ItemDef fuel) ? $" · {(fuel.Short ?? fuel.Name).ToUpperInvariant()}" : "";
+        Row("FUEL", $"{p.FuelUnits:F0} U · {time}{burning}", p.FuelUnits <= 0 ? C.Danger : left < 300 ? C.Warn : C.Text);
+        // The drives' reach on the jump fuel in storage (the drives themselves come in phase 2).
+        foreach (var (function, label) in new[] { ("warp-drive", "WARP"), ("hyperdrive", "HYPERDRIVE") })
+            if (p.Range(function) is { } r) Row(label, $"{r.Reach:F0} {r.Unit}", r.Reach >= 1 ? C.Text : C.Danger);
         Row("STORAGE", $"{v.Storage.UsedSu:F0} / {st.StorageCapacity:F0} SU", C.Text);
         if (v.Stats is HandlingStats h && !v.IsBase)
         {

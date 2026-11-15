@@ -402,7 +402,7 @@ public partial class BuildTest
         void Hear(string t, Color c) => said += t + "|";
         _game.Said += Hear;
         Vector3 site = _play.FlatSpot(_game.Survivor.WorldFeet, 30f, 0.6f, 0.4f, span: 14f);
-        CoreCraft.ForecastBase(_game.Zone, site); // warnings come only through a forecast block: stand in its area
+        var (forecast, _) = CoreCraft.ForecastBase(_game.Zone, site); // warnings come only through a forecast block: stand in its area
         _game.Survivor.PlaceOutside((site + new Vector3(0f, 0.5f, 6f)).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
@@ -411,7 +411,7 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(6)) yield return x;
         Alerts.Shown? t = _game.Alerts.Hazards.FirstOrDefault(h => h.Sign == "tornado");
         Check(t != null && t.Value.Seconds > 0 && t.Value.From != null && Alerts.HasSign("tornado"),
-            $"a tornado forming raises its sign with a timer ({(t == null ? "none" : Alerts.Clock(t.Value.Seconds))}) and a bearing");
+            $"a tornado forming raises its sign with a timer ({(t == null ? "none" : Alerts.Clock(t.Value.Seconds))}) and a bearing (forecast base powered {forecast.Powered}, {forecast.Power.FuelUnits:F0} fuel units; forecast reaches {_game.ForecastReaches}; signs {string.Join(", ", _game.Alerts.Hazards.Select(h => h.Sign))})");
         Check(said == "", $"and nothing is said about it{(said == "" ? "" : $": \"{said}\"")}");
         Check(typeof(Alerts.Shown).GetProperties().All(p => p.Name != "Text"), "an alert carries no text at all: a sign, a timer and a direction");
         Check(_game.Alerts.Layer > _game.Escape.Layer && _game.Alerts.Layer > _game.Menu.Layer && _game.Alerts.ProcessMode == Node.ProcessModeEnum.Always,

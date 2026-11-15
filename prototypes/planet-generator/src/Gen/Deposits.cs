@@ -15,7 +15,7 @@ public enum DepositKind : byte
     Iron, Copper, Silicon, Carbon, Water, Burnstone,
     Magnesium, Cobalt, Neodymium, Gold, Gravium,
     Crystal, Resin,
-    /// <summary>The jump fuel for the warp drive (item warp-fuel-ore): only on airless worlds, see <see cref="DepositField.FuelKinds"/>.</summary>
+    /// <summary>The jump fuel for the warp drive (item pentaxite): on airless and icy worlds, see <see cref="DepositField.FuelKinds"/>.</summary>
     WarpFuel,
 }
 
@@ -89,15 +89,19 @@ public sealed class DepositField
     }
 
     /// <summary>
-    /// The jump fuels a world holds, from what it is and nothing else: warp fuel (<see cref="DepositKind.WarpFuel"/>)
-    /// only on an airless world, hyperspace fuel (the fold crystal's <see cref="DepositKind.Crystal"/>) on a dangerous
-    /// high-gravity one. Neither is ever marked on a map: it is found by going there.
+    /// The jump fuels a world holds, from what it is and nothing else: warp fuel (<see cref="DepositKind.WarpFuel"/>,
+    /// pentaxite) on an airless world (the moons and small bodies, the start's fuel moon always) or an icy one, hyperspace
+    /// fuel (the fold crystal's <see cref="DepositKind.Crystal"/>) on a dangerous high-gravity one. Neither is ever marked
+    /// on a map: it is found by going there.
     /// </summary>
     public static IEnumerable<DepositKind> FuelKinds(PlanetSpec spec)
     {
-        if (spec.Airless) yield return DepositKind.WarpFuel;
+        if (HoldsWarpFuel(spec)) yield return DepositKind.WarpFuel;
         if (spec.HighGravity) yield return DepositKind.Crystal;
     }
+
+    /// <summary>Warp fuel lies on the moons and small bodies (airless) and on icy worlds (the design's resource table, section 10).</summary>
+    public static bool HoldsWarpFuel(PlanetSpec spec) => spec.Airless || spec.Archetype == Archetype.Ice;
 
     /// <summary>The ores that are smaller and fewer than the commons.</summary>
     public static bool IsScarce(DepositKind kind) => kind >= DepositKind.Magnesium && kind <= DepositKind.Gravium;

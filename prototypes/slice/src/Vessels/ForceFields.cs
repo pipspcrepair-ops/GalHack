@@ -80,14 +80,15 @@ public partial class ForceFields : Node3D
             if (powered && Doors != null && Doors.AnyOpen(v) && v.Body.WorldPosition.ToGodot().DistanceTo(feet) < Reach(v))
                 foreach (Int3 door in v.Rooms.FieldDoors) held += ShowDoor(v, door, dt) ? 1 : 0;
             _doorFields[v] = held;
+            if (powered) v.Power.AddLoad(Draw(v)); // from its capacitors, like every device
         }
         Drop(_fields);
         Drop(_doors);
     }
 
     /// <summary>
-    /// Is the power its fields draw there? Today: a generator on it with its power on. When the
-    /// capacitors come (proto/power), whether they cover <see cref="Draw"/>.
+    /// Is the power its fields draw there: its power on and its capacitors giving (they carry <see cref="Draw"/> with
+    /// every other device's draw, and short of power every device gets the same share).
     /// </summary>
     public static bool PoweredFor(Vessel v) => !v.IsWreck && v.Powered;
 

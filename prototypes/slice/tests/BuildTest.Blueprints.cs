@@ -46,7 +46,7 @@ public partial class BuildTest
                 $"{e.Name}: {s.Count} blocks, {st.Mass:F1} t, powers on ({st.PowerOut:F2} MW out, {st.PowerUse:F2} MW at full load)");
             if (s.Mode == CoreMode.Base)
             {
-                Check(st.Generators > 0 && st.Fuel > 0 && st.Containers > 0 && BuildingBridge.MachinesOn(data.Items, s).Any(), $"{e.Name}: a constructor, storage, a generator and fuel");
+                Check(st.Generators > 0 && st.Containers > 0 && BuildingBridge.MachinesOn(data.Items, s).Any(), $"{e.Name}: a constructor, a generator, and storage to hold its fuel");
                 continue;
             }
             List<string> missing = ModeFit.Missing(s, s.Mode, data.Handling, g);

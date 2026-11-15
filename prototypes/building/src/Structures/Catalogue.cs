@@ -129,7 +129,7 @@ public sealed class BlockType
     /// <summary>True when <see cref="Size"/> is more than one cell.</summary>
     public bool Multi;
     public string Function = "";
-    public float Power, Thrust, Storage, Fuel;
+    public float Power, Thrust, Storage;
     // What the handling model reads: gyro torque, hover lift (kN) and ride height (m), leg reach (m).
     public float Torque, Lift, RideHeight, LegLength;
     /// <summary>Chairs: where a seated person's hips rest and where their eyes are, in the block's -0.5..0.5 box.</summary>
@@ -435,7 +435,6 @@ public sealed class Catalogue
             t.Power = Num(c, "power", 0);
             t.Thrust = Num(c, "thrust", 0);
             t.Storage = Num(c, "storage", 0);
-            t.Fuel = Num(c, "fuel", 0);
             t.Torque = Num(c, "torque", 0);
             t.Lift = Num(c, "lift", 0);
             t.RideHeight = Num(c, "rideHeight", 0);

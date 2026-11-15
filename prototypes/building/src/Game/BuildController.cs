@@ -21,7 +21,7 @@ public partial class BuildController : Node
     public static readonly string[][] Slots =
     {
         new[] { "iron-plated", "base-block" }, new[] { "hardened-plated" }, new[] { "combat-plated" }, new[] { "glass-plated", "window-block", "concrete-plated" },
-        new[] { "thruster-t1", "thruster-t2", "generator-t1", "fuel-tank-t1" }, new[] { "command-chair", "cockpit-t1", "light", "turret" },
+        new[] { "thruster-t1", "thruster-t2", "generator-t1" }, new[] { "command-chair", "cockpit-t1", "light", "turret" },
         new[] { "container-t1", "container-t4" }, new[] { "door-1x2x1", "door-2x2x1", "ladder" }, new[] { "core" },
     };
 

@@ -155,11 +155,16 @@ public partial class PlayerTest : Node
         need.Add("core", 1);
         need.Add("core", 1);
         foreach (var (block, n) in BaseBlocks.Concat(VesselBlocks)) need.Add(items.Blocks.For(ItemBlock(block)), n);
+        need.Add(Fuel, FuelCells);
         return items.Graph.Expand(need).Leaves;
     }
 
     /// <summary>The block a block id (any it has had) is priced as.</summary>
     static string ItemBlock(string block) => BuildingBridge.ItemBlockOf(GameData.Shared.Catalogue.Type(block));
+
+    /// <summary>The generators' fuel the loop makes at the survival constructor: half for the base's storage, half for the vessel's.</summary>
+    const string Fuel = "energy-cell";
+    const int FuelCells = 20;
 
     static readonly (string block, int n)[] BaseBlocks =
     {
@@ -174,7 +179,7 @@ public partial class PlayerTest : Node
     /// <summary>The toolbar slots the vessel's blocks go on.</summary>
     static readonly Dictionary<string, int> Slots = new()
     {
-        ["chair"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2,
+        ["chair"] = 4, ["generator"] = 5, ["container"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2,
     };
 
     IEnumerable<int> Gathering()
@@ -536,10 +541,11 @@ public partial class PlayerTest : Node
         Bill blocks = new();
         foreach (var (b, n) in BaseBlocks)
             if (b != "smallfab") blocks.Add(_play.BlockItem(b), n);
+        blocks.Add(Fuel, FuelCells); // its generator's fuel, and the vessel's
         foreach (int x in _play.MakeAll("core", _fab.Constructor, _fab.Storage, blocks, 240)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(!_fab.Constructor.Busy && blocks.All(kv => _fab.Storage.Count(kv.Key) + _game.Pack[kv.Key] >= kv.Value),
-            $"the survival constructor crafted the base's blocks as items: {_game.Zone.Data.Items.Describe(blocks, 5)}");
+            $"the survival constructor crafted the base's blocks as items, and fuel: {_game.Zone.Data.Items.Describe(blocks, 6)}");
         // Unlock the small constructor at its level when the points allow, and craft it too.
         int fabLevel = _game.Progress.Node("fabricator-t1").Level;
         foreach (int x in _play.WaitFor(() => _game.Progress.Level >= fabLevel, 60)) yield return x;
@@ -591,8 +597,14 @@ public partial class PlayerTest : Node
         int built = _game.Builder.Placed - placed;
         Check(built == steps.Length, $"{built} large blocks built onto the base by looking and clicking, each using one from its stack");
         Check(_game.Pack.Grid[8].IsEmpty, "the steel stack is used up: its toolbar slot is empty, and an empty stack can't place");
-        Check(_base.Machines.Count == 1 && _base.Powered && _base.Storage.CapacitySu > 0,
-            $"the base has a constructor, power and storage ({_base.Storage.CapacitySu:F0} SU)");
+        // Its generator's fuel into its storage (core storage: there are no fuel tanks): half the cells, split off with a right-click.
+        foreach (int x in _play.OpenMenu(MenuTab.You)) yield return x;
+        foreach (int x in _drive.RightClickWidget($"bag:{_play.BagSlotOf(Fuel)}")) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        _play.StoreInto(_base, Fuel);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(_base.Machines.Count == 1 && _base.Powered && _base.Storage.CapacitySu > 0 && _base.Storage.Count(Fuel) > 0,
+            $"the base has a constructor, storage ({_base.Storage.CapacitySu:F0} SU) and power, its generator burning the {_base.Storage.Count(Fuel)} {Fuel} put in its storage");
         // Take one down with the tool's deconstruct mode: the block item comes back.
         string steel = _play.BlockItem("steel");
         int stock = _game.Pack[steel];
@@ -735,6 +747,13 @@ public partial class PlayerTest : Node
         if (v == null) yield break;
         GD.Print("-- 9. fly it 500 m and land --");
         if (v.Seat == null) { Fail("the vessel has no seat to fly it from"); yield break; }
+        // Fuel for its generator into its storage: the cells left in the bag.
+        Check(!v.Powered, "built, it has no power until there is fuel in its storage");
+        _play.StoreInto(v, Fuel);
+        int stored = v.Storage.Count(Fuel);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        double fuelled = v.Power.FuelUnits;
+        Check(stored > 0 && v.Powered, $"{stored} {Fuel} in its storage: its generator charges its capacitor ({v.Power.ChargeMJ:F0} MJ)");
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "F at its command chair");
         if (_game.Survivor.Seated != v) yield break;
@@ -785,6 +804,7 @@ public partial class PlayerTest : Node
         float flown = new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length();
         Check(flown >= 500f, $"it flew {flown:F0} m, top speed {top:F0} m/s");
         Check(v.Controller.Frozen && v.Body.Damage == built, $"and landed on its gear, undamaged ({(v.Controller.Frozen ? "landed" : "still flying")}, {v.AboveGround:F1} m up, damage {v.Body.Damage:F3}, {built:F3} before take-off)");
+        Check(v.Power.FuelUnits < fuelled, $"the flight burned fuel from its storage: {fuelled:F1} fuel units to {v.Power.FuelUnits:F1} ({v.Storage.Count(Fuel)} {Fuel} left)");
         Mark("flown");
     }
 
