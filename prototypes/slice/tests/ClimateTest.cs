@@ -111,19 +111,20 @@ public partial class ClimateTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(Zone.Weather.StrikeLight > 1f, $"and a strike nearby lights the ground ({Zone.Weather.StrikeLight:F1})");
 
-        var text = new System.Text.StringBuilder("schema galhack.blueprint\nversion 1\nname \"Shut\"\ngrid large\nmode base\ngravity off\n");
-        // Wide enough that its door (east wall, at its foot) is past the reach that opens it for anyone in the middle.
-        for (int y = 0; y <= 4; y++)
+        var text = new System.Text.StringBuilder("schema galhack.blueprint\nversion 1\nname \"Shut\"\ngrid 1m\nmode base\ngravity off\n");
+        // On the 1 m grid: 9 m across inside and 4 m floor to ceiling. Wide enough that its door (east wall, at its foot) is
+        // past the reach that opens it for anyone in the middle.
+        for (int y = 0; y <= 5; y++)
         for (int z = -5; z <= 5; z++)
         for (int x = -5; x <= 5; x++)
-            if (y == 0 || y == 4 || Math.Abs(x) == 5 || Math.Abs(z) == 5) text.Append($"block {x} {y} {z} steel\n");
-        text.Append("block 4 1 4 core\nblock -4 1 -4 generator\nblock -4 1 4 container\n");
+            if (y == 0 || y == 5 || Math.Abs(x) == 5 || Math.Abs(z) == 5) text.Append($"block {x} {y} {z} iron-plated\n");
+        text.Append("block 4 1 4 core\nblock -4 1 -4 generator-t1\nblock -4 1 4 container-t1\n");
         var shut = Blueprint.Load(text.ToString(), Zone.Data.Catalogue, out List<string> errors);
         Check(shut != null, $"the room's blueprint loads {string.Join("; ", errors)}");
         Vector3 site = Zone.GroundAt(feet.X + 30f, feet.Z);
         Slice.Vessels.Vessel room = Slice.Vessels.Vessel.SpawnBase(Zone, shut, (site + Vector3.Up * 4f).ToNumerics(), 0f);
         room.Storage.Add("biofuel", 20); // its generator's fuel, in its storage
-        Vector3 inside = room.ToWorld(new N.Vector3(0f, 3f, 0f));
+        Vector3 inside = room.ToWorld(new N.Vector3(0f, 0.6f, 0f)); // on its floor
         Me.PlaceOutside(inside.ToNumerics());
         Zone.Light.Touch();
         foreach (int x in _drive.UntilSettled()) yield return x;
