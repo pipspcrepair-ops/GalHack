@@ -149,22 +149,26 @@ public partial class SurfaceTest
                 var runway = ground.Where(q => q.Pattern == GroundPattern.Runway).MaxBy(q => q.Layer);
                 if (place.Sketch.Type.Id == "airport" && runway != null && !(runway.HalfU * 2 is >= 400 and <= 601 && runway.HalfV * 2 is >= 29 and <= 31))
                     bad.Add($"runway {runway.HalfU * 2:F0} x {runway.HalfV * 2:F0} m");
-                // The runways' junction on the ground: one level all the way along the second runway's centre line through the
-                // main's laid width (no step), and the main's own markings on top there (unbroken through it).
+                // The runways' junction on the ground, along the second runway's centre line through the main's laid width: one
+                // level (no step), runway all the way (no shoulder or grass across it: no gap), and the main's own markings on
+                // top at the crossing itself (unbroken through it).
                 var second = ground.FirstOrDefault(q => q.Pattern == GroundPattern.Runway && q != runway);
                 if (runway != null && second != null)
                 {
                     junctions++;
+                    GroundPatch Top(double x, double z) => ground.Where(q => Math.Abs(Mathx.WrapDelta(x - q.X, W) * q.UX + (z - q.Z) * q.UZ) < q.HalfU && Math.Abs(-Mathx.WrapDelta(x - q.X, W) * q.UZ + (z - q.Z) * q.UX) < q.HalfV).MaxBy(q => q.Layer);
                     float lo = float.MaxValue, hi = float.MinValue;
+                    int gaps = 0;
                     double t = ((runway.X - second.X) * runway.UZ - (runway.Z - second.Z) * runway.UX) / (second.UX * runway.UZ - second.UZ * runway.UX);
-                    for (double d = -30; d <= 30; d += 2)
+                    for (double d = Math.Max(-30, -second.HalfU - t + 0.5); d <= Math.Min(30, second.HalfU - t - 0.5); d += 1)
                     {
-                        float h = g.SurfaceHeight(Mathx.WrapX(second.X + second.UX * (t + d), W), second.Z + second.UZ * (t + d));
+                        double x = second.X + second.UX * (t + d), z = second.Z + second.UZ * (t + d);
+                        float h = g.SurfaceHeight(Mathx.WrapX(x, W), z);
                         (lo, hi) = (MathF.Min(lo, h), MathF.Max(hi, h));
+                        if (Top(x, z)?.Pattern != GroundPattern.Runway) gaps++;
                     }
-                    double jx = second.X + second.UX * t, jz = second.Z + second.UZ * t;
-                    var top = ground.Where(q => Math.Abs(Mathx.WrapDelta(jx - q.X, W) * q.UX + (jz - q.Z) * q.UZ) < q.HalfU && Math.Abs(-Mathx.WrapDelta(jx - q.X, W) * q.UZ + (jz - q.Z) * q.UX) < q.HalfV).MaxBy(q => q.Layer);
-                    if (hi - lo > 0.1f || top != runway) bad.Add($"junction: {hi - lo:F2} m of step along the second runway, the main's markings {(top == runway ? "on top" : "under")} at it");
+                    bool marked = Top(second.X + second.UX * t, second.Z + second.UZ * t) == runway;
+                    if (hi - lo > 0.1f || gaps > 0 || !marked) bad.Add($"junction: {hi - lo:F2} m of step, {gaps} m of something else across the second runway, the main's markings {(marked ? "on top" : "under")} at the crossing");
                     else joined++;
                 }
             }
@@ -176,7 +180,7 @@ public partial class SurfaceTest
         Check(loadLayouts == 0, $"its share of a new world's load is no layouts: {loadLayouts} made while the worlds loaded");
         Check(roads == sited, $"the world's road comes to its gate on {roads} of {sited}");
         Check(worstOff < 1.01f && worstGrade < 0.35f, $"graded: the ground across it within {worstOff:F2} m of its level{(worstOff >= 1.01f ? $" (at {offAt})" : "")}, the run out to the land at most {worstGrade:P0} steeper than the land's own ({worstAt})");
-        if (junctions > 0) Check(joined == junctions, $"runways joined: on {joined} of {junctions} airports with two, one level along the second through the main's laid width and the main's markings unbroken over it");
+        if (junctions > 0) Check(joined == junctions, $"runways joined: on {joined} of {junctions} airports with two, the second laid and level all through the main's laid width (no gap, no step) and the main's markings unbroken over the crossing");
         Check(walks > 0 && walked == walks, $"walked: from the landside way in through the terminal to the apron, onto each hangar's floor, up each tower to its cab: {walked} of {walks}");
         Check(bad.Count == 0 && shared == 0 && onGround == 0, $"built on its world at real sizes ({bad.Count} out), {shared} cells of one part in another, {onGround} built on its laid ground{firstOn}; the builder spent {(builder.Count > 0 ? builder.Average() : 0):F0} ms on all of an airfield's parts (worst {(builder.Count > 0 ? builder.Max() : 0):F0})");
     }

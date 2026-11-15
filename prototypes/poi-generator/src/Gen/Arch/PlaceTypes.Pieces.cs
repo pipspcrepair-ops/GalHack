@@ -41,9 +41,9 @@ public static partial class PlaceTypes
         return types.Except(fitting).Select(t => Plan(t, seed, worldWidth, worldHeight)).FirstOrDefault(s => !s.TooBig) ?? last!;
     }
 
-    /// <summary>A typed family's layout off a world (a test, the viewer, its landmark): its tallest building, as a fresh sketch of it rolls it.</summary>
-    public static SiteDef Sample(PoiLibrary lib, FamilyDef family, ulong seed, TechLevel? tech) =>
-        Pieces(PlanFor(lib, family, tech, seed, 16000, 8000), 0).Where(p => p.Item.Part.Kind == "building").MaxBy(p => p.Item.H)!.Plan;
+    /// <summary>A typed family's layout off a world (a test, the viewer, its landmark): its tallest building, as a fresh sketch of it rolls it (a spaceport of its variant's class).</summary>
+    public static SiteDef Sample(PoiLibrary lib, FamilyDef family, ulong seed, TechLevel? tech, Starport? port = null) =>
+        Pieces(PlanFor(lib, family, tech, seed, 16000, 8000, port), 0).Where(p => p.Item.Part.Kind == "building").MaxBy(p => p.Item.H)!.Plan;
 
     /// <summary>A point of the sketch turned by quarter turns about its middle.</summary>
     public static (float X, float Z) Turn(float x, float z, int turn) => (turn & 3) switch { 0 => (x, z), 1 => (-z, x), 2 => (-x, -z), _ => (z, -x) };

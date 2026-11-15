@@ -132,13 +132,13 @@ type port_medium
   part spoke    surface concrete w 20
   part naval    building hangar  len 70..80 depth 60..70 h 30..36
   part navalpad pads concrete    r 40..48
-  part barracks building terminal len 48..64 depth 30..36 h 12..14
+  part barracks building terminal len 56..72 depth 30..36 h 12..14
   part navalfence fence h 3..4
   part runway   surface tarmac   len 220..320 w 30 shoulder 5
   part airhangar building hangar count 1..2 len 40..48 depth 30..40 h 16..20
   part airtower building control_tower len 8..10 depth 8..10 h 18..24 cab 5..7
   part fuel     tanks count 3..4 r 5..7 h 8..12
-  part lease    building terminal count 2..4 len 30..44 depth 30..34 h 12..14
+  part lease    building works   count 2..4 len 30..40 depth 30..36 h 8..10
   part access   road tarmac w 10
   part fence    fence h 3..4 round 25..40
   part town     building dome count 8..14 r 8..14 h 6..10

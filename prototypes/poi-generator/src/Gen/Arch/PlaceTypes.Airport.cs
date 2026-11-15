@@ -108,8 +108,8 @@ public static partial class PlaceTypes
             var (bx, bz) = At(xj + ux * land, uv * land);
             xs["tee"] = tee ? 1f : 0f;
             Lay(p, Shape.Strip(ax, az, bx, bz, half), xs);
-            if (!tee || stemLand) ends.Add((bx, bz, ux, _s * uv, half, 5));
-            if (!tee || !stemLand) ends.Add((ax, az, -ux, -_s * uv, half, 5));
+            if (!tee || stemLand) ends.Add((bx, bz, ux, _s * uv, half, 7));
+            if (!tee || !stemLand) ends.Add((ax, az, -ux, -_s * uv, half, 7));
         }
 
         /// <summary>A link from v out on the landside at x to the runway, slanting by <paramref name="slant"/> along it; left out where it would cross the second runway.</summary>
@@ -203,8 +203,8 @@ public static partial class PlaceTypes
                     foreach (int way in new[] { s, -s })
                     {
                         float hx = way > 0 ? hi + r.Float(6f, 14f) + hs["len"] / 2f : lo - r.Float(6f, 14f) - hs["len"] / 2f;
-                        // (Its door on the apron: no further past its end than a quarter of its own width.)
-                        if (hx - hs["len"] / 4f > ab.X1 || hx + hs["len"] / 4f < ab.X0) continue;
+                        // (Its door on the apron: half of it at least.)
+                        if (hx > ab.X1 || hx < ab.X0) continue;
                         if (Building(hangar, hx, _s * (back + hs["depth"] / 2f), 0, -_s, r, 0.5f, hs) is not { } h) continue;
                         (lo, hi) = (MathF.Min(lo, h.Box.X0), MathF.Max(hi, h.Box.X1));
                         break;

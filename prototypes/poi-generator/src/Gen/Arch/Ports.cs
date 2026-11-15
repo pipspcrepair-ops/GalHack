@@ -130,8 +130,8 @@ public static class Ports
     /// <summary>
     /// The reference's three-winged complex, dominating its port. The core round the middle of its box: a broad podium
     /// whose lobby is a hall three storeys high, open to the front and to each wing; over it a tower of 6 m storeys
-    /// stepping in toward its top, glazed in bands, a room each round a ladder up the middle; on top the crown, a block
-    /// wider than the storey under it and glazed all round (flight operations), a mast over it. A wing off each side and
+    /// stepping in toward its top, glazed in bands, a room each round a ladder up the middle; on top the crown, three
+    /// blocks wider than the storey under it and glazed all round (flight operations), a mast over it. A wing off each side and
     /// the back: a hall the width the type rolled out to the box's edge, its roof stepping down in terraces from twice the
     /// podium's height at the core to two storeys at its end, a craft's door across its end.
     /// </summary>
@@ -209,10 +209,11 @@ public static class Ports
         for (int s = 0; s <= storeys + 1; s++)
         {
             bool crown = s == storeys + 1;
-            double r = s == 0 ? rb : crown ? rTop + 1 : rb - 2 - (s - 1) * step;
+            double r = s == 0 ? rb : crown ? rTop + 3 : rb - 2 - (s - 1) * step;
             int j = s == 0 ? 0 : Podium + 1 + (s - 1) * P, h = s == 0 ? Podium : H;
             jTop = j;
-            // Glazed in a band at the top of each storey; the crown all glass.
+            // Glazed in a band at the top of each storey; the crown all glass, over the storey under it on a slab of its own.
+            if (crown) p.Disc(mid, mid, r, j - 1, Solid(f.Floor, Role.Floor));
             p.Drum(mid, mid, r, j, j + h - 1, f.Wall, jj => crown || jj == j + h - 1 ? glass : f.Wall);
             p.Disc(mid, mid, r, j + h, Solid(crown ? f.Roof : f.Floor, crown ? Role.Roof : Role.Floor));
             Floor(p, mid, r - 1, j);
