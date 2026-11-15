@@ -335,7 +335,8 @@ public sealed partial class Town
         }
         _animals.Clear();
         DropSolids();
-        foreach (Person p in People) p.View = null;
+        // (Their bodies went with the place's nodes: the gun hung in each hand went with them.)
+        foreach (Person p in People) (p.View, p.Holder, p.Model) = (null, null, null);
         _view = null;
         _place = null;
     }
