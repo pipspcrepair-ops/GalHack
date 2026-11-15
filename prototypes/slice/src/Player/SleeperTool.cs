@@ -155,7 +155,9 @@ public sealed class SleeperTool
     {
         _cooldown -= dt;
         Aim();
+        // On a block of ours: outlined, with what comes back. Someone else's isn't ours to take down.
         OnStructure = Mode == ToolMode.Gather && Builder != null && Builder.AimTakeDown();
+        if (OnStructure && !Ours(Builder.TargetVessel)) { OnStructure = false; Builder.Hide(); }
         if (OnStructure) TargetLabel = Builder.Verdict;
         if (!trigger || _suit.Dead) return;
         if (Mode == ToolMode.Repair) Mend();
@@ -486,7 +488,6 @@ public sealed class SleeperTool
     {
         Shots++;
         _cooldown = _rules.ShotInterval;
-        _suit.Worked();
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         float damage = _rules.ShotDamage * Tier.Shot;
         if (Seizer?.Invoke() is { Dead: false } husk)
@@ -643,14 +644,16 @@ public sealed class SleeperTool
             _thunderAt = now;
             Arms?.Sounds?.Play(CombatSound.Thunder, Muzzle(), pitch, attack ? 0f : -8f, loud: attack);
         }
-        if (attack) _zone.Wildlife.Noise(_survivor.WorldEye(), ShotHeard);
+        if (!attack) return; // (gathering works the suit itself)
+        _suit.Worked();
+        _zone.Wildlife.Noise(_survivor.WorldEye(), ShotHeard);
     }
 
     // ---- Repair: the green cone ------------------------------------------------------------------
 
     /// <summary>
     /// Repair held: the green cone shows and, a pulse at a time, mends the damaged block the look is on
-    /// (a share of its health back for that share of its bill), or restores a destroyed block in the
+    /// (whole again, for the share of its bill its damage is), or restores a destroyed block in the
     /// cone, paid for from the bag, else the core's storage. It harms nothing.
     /// </summary>
     void Mend()
@@ -665,13 +668,12 @@ public sealed class SleeperTool
             && GalHack.Structures.Building.IsDamaged(look.Vessel.Structure, look.Cell))
         {
             Slice.Vessels.Vessel v = look.Vessel;
-            Bill bill = v.Hits.RepairBill(look.Cell, r.Share);
+            Bill bill = v.Hits.RepairBill(look.Cell);
             SharedStorage from = _pack.Storage.Has(bill) ? _pack.Storage : v.Storage;
-            if (v.Hits.Repair(look.Cell, r.Share, from) == GalHack.Structures.RepairStatus.Repaired)
+            if (v.Hits.Repair(look.Cell, 1f, from) == GalHack.Structures.RepairStatus.Repaired)
             {
                 Repaired++;
                 if (from == _pack.Storage) _pack.Grid.Reconcile();
-                TargetLabel = $"REPAIR · {_zone.Data.Items.Describe(bill, 2)}";
             }
             else Said?.Invoke($"REPAIR · {_zone.Data.Items.Describe(bill, 2)} NEEDED", Tones.Caution);
             return;

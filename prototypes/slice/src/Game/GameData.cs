@@ -275,13 +275,12 @@ public sealed class SliceRules
         public float ThunderGap { get; set; } = 0.28f;
     }
 
-    /// <summary>The Sleeper tool's repair cone: reach, half-angle in degrees, pulse interval and the health share a pulse gives back.</summary>
+    /// <summary>The Sleeper tool's repair cone: reach, half-angle in degrees, and the time between pulses (each mends or restores one block).</summary>
     public sealed class RepairRules
     {
         public float Range { get; set; } = 6f;
         public float Angle { get; set; } = 14f;
-        public float Interval { get; set; } = 0.25f;
-        public float Share { get; set; } = 0.25f;
+        public float Interval { get; set; } = 0.35f;
     }
 
     /// <summary>How much a hand tool does: its gather rate as a multiple of the Sleeper tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
