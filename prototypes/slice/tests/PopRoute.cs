@@ -48,6 +48,8 @@ public partial class PopRoute : Node
         // As the owner plays: his settings file (--settings=path), vsync on, full screen at 1920 x 1080.
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
         DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+        // --trees=X: the share of the scatter's trees that grow (PlanetFlora.TreeDensity), for an A/B of tree numbers.
+        if (_args.TryGetValue("trees", out string trees)) PlanetFlora.TreeDensity = float.Parse(trees, CultureInfo.InvariantCulture);
         // (Set by reflection: the flag is only there from places built after load on.)
         if (_args.ContainsKey("places-at-load"))
             typeof(PlanetSurface.World.PlanetWorld).GetField("BuildPlacesAtLoad")?.SetValue(null, true);
@@ -128,7 +130,7 @@ public partial class PopRoute : Node
             yield break;
         }
         PopLog.On = true;
-        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, space, flicker, pinholes, trees.
+        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, space, flicker, pinholes, trees (cost: the tree cost alone).
         string[] only = _args.TryGetValue("only", out string o) ? o.Split(',') : null;
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         if (only == null || only.Contains("once"))
@@ -157,6 +159,8 @@ public partial class PopRoute : Node
             foreach (int x in TurnStorm(Densest(start))) yield return x;
             foreach (int x in TreeCost(Densest(start))) yield return x;
         }
+        else if (only.Contains("cost"))
+            foreach (int x in TreeCost(Densest(start))) yield return x;
         GD.Print($"ROUTE ruin trees planted: {_planted0} when the world showed, {(zone.Planet.Palette.Planted as System.Collections.ICollection)?.Count} at the end");
     }
 
