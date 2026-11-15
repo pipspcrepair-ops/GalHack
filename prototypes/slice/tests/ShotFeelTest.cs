@@ -137,6 +137,9 @@ public partial class ShotFeelTest : Node
         GD.Print($"  (shot: {file})");
     }
 
+    /// <summary>Seconds a shooter with a clear line may take to fire its first round: its wind-up and its aim.</summary>
+    const float FirstShot = 1.5f;
+
     static readonly string[] Carried = { "rifle", "shotgun", "pistol", "musket", "crossbow", "bow", "laser_rifle", "energy_pistol" };
 
     IEnumerable<int> Scenario()
@@ -249,6 +252,22 @@ public partial class ShotFeelTest : Node
         return c;
     }
 
+    /// <summary>
+    /// A point so far from a mark, level with it, with nothing solid between (the first going round
+    /// from a heading, either way, no more than so far round; else the heading's own).
+    /// </summary>
+    Vector3 ClearFrom(Vector3 mark, Vector3 heading, float far, float most)
+    {
+        for (int k = 0; k <= 16; k++)
+        {
+            float a = (k + 1) / 2 * (k % 2 == 0 ? 1f : -1f) * MathF.Tau / 16f;
+            if (MathF.Abs(a) > most) break;
+            Vector3 p = mark + heading.Rotated(Vector3.Up, a) * far;
+            if (!_game.Arms.Sweep(p.ToNumerics(), mark.ToNumerics(), null, ArmsHost.Hostile, 1f, out GalHack.Arms.ShotHit h) || h.Kind == HitKind.Player) return p;
+        }
+        return mark + heading * far;
+    }
+
     /// <summary>Dry ground so far off on a bearing, seen clear from the eye low and high.</summary>
     bool Open(float far, float bearing, out Vector3 at)
     {
@@ -344,8 +363,9 @@ public partial class ShotFeelTest : Node
         misses = arms.NearMisses;
         Vector3 eye = game.Survivor.WorldEye();
         Vector3 from = patch.WorldOf(raider) + Vector3.Up * 1.4f;
-        Vector3 side = (eye - from).Cross(Vector3.Up).Normalized();
-        arms.FireFrom(rifle, from, eye + side * 1.5f - from, 0f, raider);
+        Vector3 side = (eye - from).Cross(Vector3.Up).Normalized(), past = eye + side * 1.5f;
+        Vector3 start = ClearFrom(past, WildSim.Flat(from - eye).Normalized(), 12f, MathF.PI); // (the ground between is the world's, not the test's)
+        arms.FireFrom(rifle, start, past - start, 0f, raider);
         for (int i = 0; i < 60 && arms.NearMisses == misses; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Check(arms.NearMisses > misses && arms.Sounds.PlayedShared[(int)CombatSound.Crack] > cracks, $"a round past your head cracks as it goes by ({arms.NearMisses - misses} heard within {ArmsHost.PassRadius} m)");
 
@@ -356,12 +376,7 @@ public partial class ShotFeelTest : Node
         int hits = arms.PlayerHits;
         // From behind, at the chest, from close enough that the ground between can't take it.
         Vector3 chest = game.Survivor.WorldFeet + Vector3.Up * 1.1f, away = new Vector3(from.X - eye.X, 0f, from.Z - eye.Z).Normalized();
-        Vector3 behind = chest + away * 6f;
-        for (float near = 6f; near > 1.5f; near -= 1.5f) // (nearer if the ground behind is in the way)
-        {
-            behind = chest + away * near;
-            if (!arms.Sweep(behind.ToNumerics(), chest.ToNumerics(), null, ArmsHost.Hostile, 1f, out GalHack.Arms.ShotHit h) || h.Kind == HitKind.Player) break;
-        }
+        Vector3 behind = ClearFrom(chest, away, 6f, 1.1f);
         arms.FireFrom(rifle, behind, chest - behind, 0f, null);
         for (int i = 0; i < 60 && arms.PlayerHits == hits; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 local = game.Camera.GlobalBasis.Inverse() * (behind - game.Camera.GlobalPosition);
@@ -415,12 +430,15 @@ public partial class ShotFeelTest : Node
         var barrels = new List<float>();
         var facing = new List<float>();
         int fired = 0;
+        float wanted = -1f, first = -1f; // (when it first had you in reach on a clear line, and when its first round went)
         for (int i = 0; i < 60 * 25 && offs.Count < 3 && !raider.Dead; i++)
         {
             game.Suit.Vitals.Health = max;
             drive.Face(patch.WorldOf(raider) + Vector3.Up * 1.4f);
             yield return 0;
             SimArms.Kit kit = arms.People.KitOf(raider);
+            if (wanted < 0f && Arming.ShootReach(raider, patch.Player) > 0f) wanted = i / 60f;
+            if (first < 0f && kit?.Clip.Fired > 0) first = i / 60f;
             if (kit == null || kit.Clip.Fired <= fired || raider.Rig is not HumanRig hr) continue;
             fired = kit.Clip.Fired;
             if (kit.Target != patch.Player || hr.WeaponLine.LengthSquared() < 0.5f) continue;
@@ -434,8 +452,14 @@ public partial class ShotFeelTest : Node
             Vector3 to = WildSim.Flat(patch.Player.Position - raider.Position);
             facing.Add(Mathf.RadToDeg(WildSim.Flat(hr.Facing).AngleTo(to)));
         }
+        if (offs.Count == 0)
+        {
+            SimArms.Kit k0 = arms.People.KitOf(raider);
+            GD.Print($"  (no round measured: {raider.State} {raider.Phase}{(raider.Dead ? " dead" : "")}, {WildSim.Flat(patch.Player.Position - raider.Position).Length():F0} m off, {(patch.WorldOf(raider).Y - patch.PlayerWorld().Y):F1} m above you, fired {k0?.Clip.Fired}, target {(k0?.Target == patch.Player ? "you" : k0?.Target == null ? "none" : "else")}, reach {Arming.ShootReach(raider, patch.Player):F0}, line {(raider.Rig is HumanRig r0 ? r0.WeaponLine.Length().ToString("F2") : "no rig")}, aim error {(raider.Rig is HumanRig r1 ? r1.AimError(patch.Player.Position + Vector3.Up * 1.15f).ToString("F1") : "-")}, bursts dropped {arms.People.Dropped} (last held {arms.People.LastHeldOff:F1} off))");
+        }
         patch.Sim.Kill(raider, null);
         string Degrees(List<float> a) => a.Count == 0 ? "none" : string.Join(", ", a.Select(v => $"{v:F1}"));
+        Check(first >= 0f && wanted >= 0f && first - wanted <= FirstShot, $"with you in reach on a clear line, it fires within about a second ({(first < 0f ? "never fired" : $"{first - wanted:F2} s")}; reach first at {wanted:F1} s)");
         Check(offs.Count >= 2 && offs.Max() <= HumanRig.OnMark + 0.5f, $"its {prop} is on you as each round goes: {Degrees(offs)} degrees off the line to you (at most {HumanRig.OnMark})");
         if (prop != "bow") Check(barrels.Count >= 2 && barrels.Max() <= HumanRig.OnMark + 1.5f, $"the round leaves the muzzle along the barrel: {Degrees(barrels)} degrees between the barrel and muzzle-to-you");
         GD.Print($"  (its chest turned {Degrees(facing)} degrees from you as it fired)");
@@ -609,7 +633,7 @@ public partial class ShotFeelTest : Node
         whoosh = arms.Sounds.PlayedShared[(int)CombatSound.Whoosh];
         int hits = arms.PlayerHits;
         Vector3 chest = game.Survivor.WorldFeet + Vector3.Up * 1.1f;
-        Vector3 from = chest + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
+        Vector3 from = ClearFrom(chest, new Vector3(look.X, 0f, look.Z).Normalized(), 1.2f, MathF.PI);
         arms.FireFrom(club, from, chest - from, 0f, null);
         game.Suit.Vitals.Health = max;
         yield return 0;
