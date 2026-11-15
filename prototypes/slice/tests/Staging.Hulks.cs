@@ -88,8 +88,14 @@ public sealed partial class Staging
             GD.PrintErr("derelict: no derelict capital ship in this system");
             yield break;
         }
-        _game.Visor.Visible = false;
+        // Flown up to (round the globe as a pilot does), so it stands near enough to be drawn.
         var (lo, hi) = ship.Structure.Bounds();
+        Vector3 world = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot(), hull = ship.Body.Position.ToGodot();
+        Hurry(3);
+        foreach (int x in FlyRound(Skiff, hull + (hull - world).Normalized() * (hi.Z - lo.Z), 30f, 240f)) yield return x;
+        Hurry(1);
+        GD.Print($"derelict: the Skiff {Skiff.Body.Position.ToGodot().DistanceTo(ship.Body.Position.ToGodot()):F0} m off it");
+        _game.Visor.Visible = false;
         // (A fixed camera wants the scene's own points: where the hull is drawn, which in orbit is not its physics frame.)
         Vector3 Local(float x, float y, float z) => ship.Node.ToGlobal(new Vector3(x, y, z));
         Vector3 mid = Local((lo.X + hi.X) * 0.5f, (lo.Y + hi.Y) * 0.5f, (lo.Z + hi.Z) * 0.5f);
@@ -126,7 +132,7 @@ public sealed partial class Staging
             Vector3 eye = At(room, door.U + (cu - door.U) * 0.1f, door.V + (cv - door.V) * 0.1f, 1.7f);
             Vector3 look = At(room, cu + (cu - door.U) * 0.6f, cv + (cv - door.V) * 0.6f, 1.0f);
             GD.Print($"inside: {room.Purpose}, {room.Floor.Count} m², {Dressed(room)} cells dressed");
-            foreach (int x in InsideShot(eye, look, $"{dir}/{tag}-room.png")) yield return x;
+            foreach (int x in InsideShot(v, eye, look, $"{dir}/{tag}-room.png")) yield return x;
         }
         // Down the spine of a deck, from a third of the way along it.
         HullVessel.Space corridor = hull.Spaces.Where(sp => sp.Purpose == "corridor" && sp.Floor.Count(f => f.U == 0) > 30).OrderBy(sp => Math.Abs(sp.Deck - 2)).FirstOrDefault();
@@ -134,14 +140,14 @@ public sealed partial class Staging
         {
             var spine = corridor.Floor.Where(f => f.U == 0).Select(f => f.V).OrderBy(z => z).ToList();
             int start = spine[spine.Count / 3];
-            foreach (int x in InsideShot(At(corridor, 0, start, 1.7f), At(corridor, 0, start + 30, 1.3f), $"{dir}/{tag}-corridor.png")) yield return x;
+            foreach (int x in InsideShot(v, At(corridor, 0, start, 1.7f), At(corridor, 0, start + 30, 1.3f), $"{dir}/{tag}-corridor.png")) yield return x;
         }
     }
 
-    IEnumerable<int> InsideShot(Vector3 eye, Vector3 look, string file)
+    IEnumerable<int> InsideShot(Vessel v, Vector3 eye, Vector3 look, string file)
     {
         _game.Torch.Visible = true;
-        _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, v.Node.GlobalBasis.Y), eye);
         foreach (int x in _drive.Wait(120)) yield return x;
         foreach (int x in Shot(file)) yield return x;
         _game.FixedCamera = null;
