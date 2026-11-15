@@ -49,7 +49,7 @@ public sealed class HandlingFlight : IFlightRules
         Tunables = tunables;
     }
 
-    public static FlightConditions Conditions(PhysicsFlightZone zone) => new(zone.PlanetGravity, zone.InAtmosphere);
+    public static FlightConditions Conditions(PhysicsFlightZone zone) => new(zone.PlanetGravity, zone.InAtmosphere, zone.Above);
 
     VesselStats IFlightRules.Stats(Body body, PhysicsFlightZone zone)
     {

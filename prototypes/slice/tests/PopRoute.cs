@@ -52,6 +52,8 @@ public partial class PopRoute : Node
         if (_args.ContainsKey("minspec"))
         {
             Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            if (!_args.ContainsKey("screen")) // the slowest screen
+                _args["screen"] = Enumerable.Range(0, DisplayServer.GetScreenCount()).MinBy(DisplayServer.ScreenGetRefreshRate).ToString(CultureInfo.InvariantCulture);
             TerrainStreamer.Cores = 4;
             _args.TryAdd("settings", "res://tests/minspec.cfg");
         }
@@ -150,12 +152,10 @@ public partial class PopRoute : Node
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         if (only == null || only.Contains("once"))
             foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
-        // "space" (only when asked for): a vessel's top speed in space (handling.json's fastest band, or --space-speed=N,M,... one route
-        // each), level at 800 m over the sea, between the air's ceiling and the crossing.
-        float[] spaceSpeeds = _args.TryGetValue("space-speed", out string ss) ? ss.Split(',').Select(v => float.Parse(v, CultureInfo.InvariantCulture)).ToArray()
-            : new[] { Game.GameData.Shared.Handling.Speeds.Bands.Max(b => b.TopSpeedSpace) };
-        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", 70f, 4000f, 60f, false) }
-            .Concat(spaceSpeeds.Select(v => ("space", v, 12000f, 800f, true)));
+        // "space" (only when asked for): a vessel's top speed in space, level at 800 m over the sea. --fly-speed=N,M (or --space-speed):
+        // that route once at each speed.
+        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", 70f, 4000f, 60f, false), ("space", Game.GameData.Shared.Handling.Speeds.Bands.Max(b => b.TopSpeedSpace), 12000f, 800f, true) }
+            .SelectMany(r => _args.TryGetValue($"{r.Item1}-speed", out string v) ? v.Split(',').Select(n => r with { Item2 = float.Parse(n, CultureInfo.InvariantCulture) }) : new[] { r });
         // Each from a settled start; then the first 20 s of each again, counting the plants that pop.
         foreach (bool pops in new[] { false, true })
         foreach (var (name, speed, length, up, level) in routes)

@@ -45,6 +45,7 @@ public sealed class Tunables
     {
         public SpeedData Hover { get; set; } = new();
         public List<BandData> Bands { get; set; } = new();
+        public float Brake { get; set; }
     }
 
     public class SpeedData

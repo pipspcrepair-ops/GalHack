@@ -16,7 +16,8 @@
       { "below": 1000, "topSpeedAir": 60, "topSpeedSpace": 200, "maxTurn": 30 },
       { "below": 0,    "topSpeedAir": 50, "topSpeedSpace": 200, "maxTurn": 15 }
     ],
-    "_note": "Top speeds and the turn cap go by mass band (tonnes, docs/grid-figures.md section 5): the first band the mass is below, the last (below 0) for anything heavier. Hover Mode takes hover's top speeds whatever its mass, and its band's turn cap."
+    "brake": 60,
+    "_note": "Top speeds and the turn cap go by mass band (tonnes, docs/grid-figures.md section 5): the first band the mass is below, the last (below 0) for anything heavier. Hover Mode takes hover's top speeds whatever its mass, and its band's turn cap. The air speed holds under the crossing whatever the air; over it the cap rises with height, as braking at brake (m/s²) brings it back to the air speed by the crossing, up to the space speed; speed over the cap is taken off at brake, like strong drag."
   },
 
   "turning": {
