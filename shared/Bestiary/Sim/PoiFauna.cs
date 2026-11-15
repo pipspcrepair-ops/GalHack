@@ -244,11 +244,18 @@ public static partial class PoiFauna
         fauna.Variant = (int)(Rng.Mix(poi.Seed, 0x7A41) % 3);
         try
         {
-            if (poi.Kept == null || poi.Rooms.TrueForAll(r => poi.Kept.Contains(r.Index))) return PopulateOne(poi, fauna, rules);
-            // Its holders keep the storeys they are on; the rest of it is nobody's, with what lives in any place's dark.
-            PoiPopulation pop = PopulateOne(Part(poi, true), fauna, rules);
-            Join(pop, PopulateOne(Part(poi, false), fauna, rules));
-            return pop;
+            PoiPopulation pop;
+            if (poi.Kept == null || poi.Rooms.TrueForAll(r => poi.Kept.Contains(r.Index))) pop = PopulateOne(poi, fauna, rules);
+            else
+            {
+                // Its holders keep the storeys they are on; the rest of it is nobody's, with what lives in any place's dark.
+                pop = PopulateOne(Part(poi, true), fauna, rules);
+                Join(pop, PopulateOne(Part(poi, false), fauna, rules));
+            }
+            if (poi.Holder != PlaceHolder.Machines || pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
+            // Machines that fit no beat and no post here leave it nobody's, as holders with nobody to be do.
+            (poi.Holder, poi.Kept) = (PlaceHolder.Empty, null);
+            return PopulateOne(poi, fauna, rules);
         }
         finally { fauna.Variant = 0; }
     }

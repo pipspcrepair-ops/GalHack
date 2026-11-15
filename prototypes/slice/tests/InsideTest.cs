@@ -105,9 +105,8 @@ public partial class InsideTest : Node
         List<PlacedModule> modules = place.Inst.Layout.Modules;
         int entry = modules[place.Inst.Layout.EntranceModule].Storey, way = modules.Max(m => m.Storey) > entry ? 1 : -1;
         Dictionary<int, int> hops = fauna?.Rooms is { } plan ? PoiFauna.Hops(plan) : new();
-        var stops = Enumerable.Range(0, 4).Select(k => (fauna?.Rooms.Rooms ?? new List<PoiRoom>())
-            .Where(r => modules[r.Index].Storey == entry + way * k && r.Kind is RoomKind.Room or RoomKind.Hall && hops.ContainsKey(r.Index)).OrderBy(r => hops[r.Index]).FirstOrDefault())
-            .Where(r => r != null).ToList();
+        var stops = (fauna?.Rooms.Rooms ?? new List<PoiRoom>()).Where(r => r.Kind is RoomKind.Room or RoomKind.Hall && hops.ContainsKey(r.Index) && (modules[r.Index].Storey - entry) * way >= 0)
+            .GroupBy(r => modules[r.Index].Storey).OrderBy(g => Math.Abs(g.Key - entry)).Take(4).Select(g => g.OrderBy(r => hops[r.Index]).First()).ToList();
         // The storeys its keepers live on (their people's spots, their machines' posts) and one either side are theirs to keep clear.
         IEnumerable<int> posts = fauna?.Rooms.Holder == PlaceHolder.Machines ? place.Inst.Enemies.Select(e => e.Module) : place.Inst.Townsfolk?.Spots.Select(s => s.Module) ?? Enumerable.Empty<int>();
         var theirs = fauna?.Rooms.Holder is PlaceHolder.People or PlaceHolder.Machines ? posts.Where(i => i >= 0 && i < modules.Count).Select(i => modules[i].Storey).ToHashSet() : new HashSet<int>();
@@ -125,9 +124,9 @@ public partial class InsideTest : Node
             foreach (int x in walk.To(place, goal, v => ok = v)) { game.Suit.Vitals.Health = max; yield return x; }
             for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             int storey = modules[r.Index].Storey - entry;
-            var (line, seen, missed) = Count(game, place, r);
+            var (line, there, seen, missed) = Count(game, place, r);
             GD.Print($"  {(ok ? "at" : "short of")} the {r.Purpose} on storey {storey} ({hops[r.Index]} doors in): {line}");
-            if (storey != 0 && seen == 0 && !theirs.Any(s => Math.Abs(s - modules[r.Index].Storey) <= 1)) bare++;
+            if (storey != 0 && there == 0 && !theirs.Any(s => Math.Abs(s - modules[r.Index].Storey) <= 1)) bare++;
             hidden += missed;
             if (seen > best.Seen) best = (seen, $"{r.Purpose} on storey {storey}");
             if (Arg("shots") is { } dir && seen > 0 && best.Seen == seen)
@@ -139,7 +138,7 @@ public partial class InsideTest : Node
                 GD.Print($"  (shot: {file})");
             }
         }
-        Check(stops.Count >= 2 && bare == 0, $"on each storey walked off the way in's ({stops.Count - 1}), something that comes at you or someone is there on it: {bare} bare; the most at once {best.Seen}, in the {best.Where}");
+        Check(stops.Count >= 2 && bare == 0, $"on each storey walked off the way in's ({stops.Count - 1}), something that comes at you or someone is on it within 30 m: {bare} bare; the most drawn at once {best.Seen}, in the {best.Where}");
         Check(hidden == 0 && unseen == 0, $"nothing near or attacking is left undrawn: {hidden} near you not drawn, {unseen} of {blows} blows by something not drawn");
         game.QueueFree();
         yield return 0;
@@ -149,7 +148,7 @@ public partial class InsideTest : Node
     /// What is round the sleeper: the place's creatures (all, within 30 m, stepped, drawn) and of the threats and people
     /// on the room's own storey, those drawn; and how many near or attacking are not drawn (DeepSite's distance).
     /// </summary>
-    static (string Line, int Seen, int Missed) Count(Game.Game game, Place place, PoiRoom room)
+    static (string Line, int There, int Seen, int Missed) Count(Game.Game game, Place place, PoiRoom room)
     {
         Vector3 feet = place.FromWorld(game.Survivor.WorldFeet), eye = place.FromWorld(game.Zone.Camera.GlobalPosition);
         bool OnStorey(Vector3 p) => p.Y > room.Min.Y - 1f && p.Y < room.Max.Y;
@@ -161,7 +160,7 @@ public partial class InsideTest : Node
         int seen = threats.Count(c => c.Shown) + people.Count(p => p.View is { Visible: true });
         double step = place.Memory.Fauna?.Site?.LastStepMs ?? 0;
         return ($"{all.Count} creatures in the place, {near.Count} within 30 m, {near.Count(c => !c.Dormant)} stepped, {near.Count(c => c.Shown)} drawn; on this storey {threats.Count} threats ({threats.Count(c => c.Shown)} drawn) "
-            + $"and {people.Count} people ({people.Count(p => p.View is { Visible: true })} drawn); the place's sim step {step:F2} ms", seen, missed);
+            + $"and {people.Count} people ({people.Count(p => p.View is { Visible: true })} drawn); {all.Count(c => !c.Dormant)} of the place's stepped, its sim step {step:F2} ms", threats.Count + people.Count, seen, missed);
     }
 
     /// <summary>The nearest drawn threat or person on a room's storey in a clear line from the eye (else the nearest), local.</summary>

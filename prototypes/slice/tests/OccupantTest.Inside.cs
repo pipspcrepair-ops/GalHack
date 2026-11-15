@@ -17,7 +17,8 @@ namespace Slice.Tests;
 ///   barren world left it silent;
 /// - the storeys off the way in's, below ground or up a tower, have something on them (a threat or a person), or are
 ///   the storeys its keepers live on (theirs and one either side); one in five may be quiet (place-patterns E3, E7);
-/// - that floor, where nobody keeps it, holds at least the easiest places' density (E2: 0.3 threats a 100 m2).
+/// - that floor, where nobody keeps it, holds at least the easiest places' density less the quiet rooms (E2's 0.3 threats a
+///   100 m2, a third of the rooms quiet at most by E3: 0.2).
 /// Counts by family: threats a 100 m2 of all its floor and of the floor off the way in's storey nobody keeps, people a
 /// place, and the storeys held.
 /// </summary>
@@ -58,7 +59,7 @@ public partial class OccupantTest
         Check(places > 250 && silent <= places * 0.1f, $"{places} places of {by.Count(kv => kv.Value.Places > 0)} families on fresh worlds: {silent} silent (only a barren world's may be)");
         Check(all.Sum(t => t.Missing) == 0, $"whoever holds a place is in it: {all.Sum(t => t.Missing)} places without their holders ({Worst(t => t.Missing)})");
         Check(all.Sum(t => t.Bare) == 0, $"the storeys off the way in's hold something, up a tower as below ground: {all.Sum(t => t.Held)} of {all.Sum(t => t.Storeys)}; {all.Sum(t => t.Bare)} places with more bare than one in five ({Worst(t => t.Bare)})");
-        Check(all.Sum(t => t.Thin) == 0, $"the floor off the way in's storey that nobody keeps holds 0.3 threats a 100 m2 at least (place-patterns E2): {all.Sum(t => t.Thin)} places thinner ({Worst(t => t.Thin)})");
+        Check(all.Sum(t => t.Thin) == 0, $"the floor off the way in's storey that nobody keeps holds 0.2 threats a 100 m2 at least (place-patterns E2, E3): {all.Sum(t => t.Thin)} places thinner ({Worst(t => t.Thin)})");
     }
 
     /// <summary>One place of a family as the game seats and fills it, counted into its family's tally.</summary>
@@ -78,13 +79,13 @@ public partial class OccupantTest
         PlaceFauna fauna = PlaceFauna.Plan(m, deep);
         PoiPlan plan = fauna.Rooms;
         var walkable = plan.Rooms.Where(r => r.Kind is not (RoomKind.Vent or RoomKind.Duct) && r.Size.Y >= 2f).ToList();
-        if (walkable.Count == 0 && plan.Yards.Count == 0) return;
+        if (walkable.Count == 0) return; // (a sign or a camp on open ground: no inside to it)
         t.Places++;
         PoiPopulation pop = fauna.Population;
         Townsfolk folk = inst.Townsfolk;
         int people = folk?.People.Count ?? 0;
         t.People += people;
-        string who = $"{state} {occ?.Main.ToString() ?? "unheld"}, {pop.Note}";
+        string who = $"{state} {occ?.Main.ToString() ?? "unheld"} ({plan.Holder}), {pop.Note}";
         // Only a barren world's places may be silent.
         bool barren = deep.Livable < 0.35f;
         if (pop.Silent && people == 0)
@@ -110,8 +111,8 @@ public partial class OccupantTest
         // Whoever the roll says holds it: people where it has rooms they could settle in, else what lives in it (the nesters' bugs too).
         Occupant? main = occ?.Main;
         bool peopleHold = main is Occupant.Scavengers or Occupant.Squatters or Occupant.Gang or Occupant.Faction or Occupant.Cult or Occupant.Keepers or Occupant.Mimics && occ.Second == null;
-        // (People who found no room to settle leave it nobody's: then it holds what any place does.)
-        bool nobody = main is null or Occupant.Empty or Occupant.Sleepers or Occupant.Nesters || peopleHold && people == 0;
+        // (People who found no room to settle, or machines no beat or post they fit, leave it nobody's: then it holds what any place does.)
+        bool nobody = plan.Holder == PlaceHolder.Empty || main is null or Occupant.Nesters || peopleHold && people == 0;
         bool there = peopleHold && people >= 2 || threats.Count > 0 || pop.Masses.Count > 0 || !peopleHold && people > 0 || nobody && sim.Creatures.Any(c => !c.Removed);
         if (!there)
         {
@@ -143,7 +144,7 @@ public partial class OccupantTest
             t.Bare++;
             t.Note($"{who}: {held} of {storeys} storeys off the way in's hold something; {threats.Count} threats, {people} people");
         }
-        if (far >= 300f && farThreats * 100f / far < 0.3f)
+        if (far >= 300f && farThreats * 100f / far < 0.2f)
         {
             t.Thin++;
             t.Note($"{who}: {farThreats} threats on {far:F0} m2 off the way in's storey nobody keeps");

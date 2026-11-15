@@ -102,9 +102,10 @@ public static partial class PoiFauna
         Dictionary<int, int> hops = Hops(poi);
         var rooms = walkable.FindAll(r => r.Kind is not (RoomKind.Entrance or RoomKind.Corridor) && (r.Level >= 1 || !empty && hops.GetValueOrDefault(r.Index, 9) > 1));
         if (rooms.Count == 0) return;
-        float floor = 0f;
-        foreach (PoiRoom r in empty ? rooms : walkable) floor += r.Size.X * r.Size.Z;
-        int want = (int)MathF.Round(floor / 100f * Mathf.Lerp(1f, 3f, Math.Clamp(poi.Danger, 0f, 1f)) * (poi.Derelict ? 0.5f : 1f));
+        // (Nobody's: its dark below ground as any place's, its storeys up at the easiest places' rate, E2's 0.3.)
+        float rate = Mathf.Lerp(1f, 3f, Math.Clamp(poi.Danger, 0f, 1f)) * (poi.Derelict ? 0.5f : 1f), wanted = 0f;
+        foreach (PoiRoom r in empty ? rooms : walkable) wanted += r.Size.X * r.Size.Z / 100f * (empty && r.Depth == 0 ? 0.3f : rate);
+        int want = (int)MathF.Round(wanted);
         // Where something is first, then the furthest in and darkest.
         var score = new Dictionary<int, float>();
         foreach (PoiRoom r in rooms) score[r.Index] = (pop.Spawns.Exists(s => s.Room == r.Index && Threat(s)) ? 100f : 0f) + r.Level * 10f + (r.Lit ? 0f : 5f) + rng.Range(0f, 2f);
