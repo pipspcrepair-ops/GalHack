@@ -128,7 +128,7 @@ public sealed partial class HullVessel
                 S.Set(p, Armour(Plating, S.ShapeOf(b), b.Rot, Paint["vein"]));
     }
 
-    /// <summary>A rounded mass of flesh about a point (hull frame, metres), shaped to its sphere a cell at a time; through a deck it takes the slab's cells too.</summary>
+    /// <summary>A rounded mass of flesh about a point (hull frame, metres), shaped to its sphere a cell at a time, soft (the bare base block, no plating); through a deck it takes the slab's cells too.</summary>
     void Blob(Space s, HashSet<(int, int)> near, float cu, float cy, float cv, float r, bool through)
     {
         bool In(float u, float y, float v) => (u - cu) * (u - cu) + (y - cy) * (y - cy) * 1.4f + (v - cv) * (v - cv) <= r * r;
@@ -149,7 +149,7 @@ public sealed partial class HullVessel
                     // Through the deck the slab stays whole (flesh over it); in the room, the mass's own shape.
                     if (slab && y == s.Y + s.Height) m = In(u, y, v) ? 255 : 0;
                     if (m == 0 || Fit.For(m) is not var (shape, rot)) continue;
-                    Put(u, y, v, Armour(Plating, shape, rot, Paint["flesh"]));
+                    Put(u, y, v, Armour(Cat.Type("base-block"), shape, rot, Paint["flesh"]));
                     s.Taken.Add((u, v));
                 }
             }

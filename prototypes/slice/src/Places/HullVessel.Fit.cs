@@ -520,11 +520,11 @@ public sealed partial class HullVessel
             if (at.U != int.MinValue) Device(cockpit, at.U, s.Y, at.V, rot, s);
         }
         // Command chairs either side of the helm about the bridge's own middle (an offset crown's is not the hull's), the
-        // front row first and back a row where the way in or the windows leave no room.
+        // front row first and back row by row where the ways in or the windows leave no room.
         BlockType chair = Cat.Type("command-chair");
         int mid = (s.U0 + s.U1) / 2, chairs = 0;
-        for (int v = front; v < front + 4 && chairs < 4; v++)
-            foreach (int du in new[] { -7, -5, 4, 6, -9, 8 })
+        for (int v = front; v <= s.V1 && chairs < 4; v++)
+            foreach (int du in new[] { -7, -5, 4, 6, -9, 8, -3, 2, -11, 10 })
                 if (chairs < 4 && Fits(chair, At(mid + du, s.Y, v), rot, Free))
                 {
                     Device(chair, mid + du, s.Y, v, rot, s);

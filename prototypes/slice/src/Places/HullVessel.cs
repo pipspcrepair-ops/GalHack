@@ -149,7 +149,8 @@ public sealed partial class HullVessel
     {
         GalHack.Structures.Paint Coat(uint c, int grime) => GalHack.Structures.Paint.Solid(c) with { Grime = (byte)grime };
         HullStyle st = H.Style;
-        int outside = Math.Clamp(st.Grime, 0, 3);
+        // (A Husk ship keeps its faction's livery, fouled.)
+        int outside = State == PoiState.Infested && !Intact ? 3 : Math.Clamp(st.Grime, 0, 3);
         foreach (var (name, c) in H.Paints) Paint[name] = D.Paint(name, Coat(Hex(c), name is "deck" ? 3 : outside));
         // The band in the style's pattern over its second colour.
         if (st.Pattern is "stripes" or "chevrons" or "checker" or "hazard")
