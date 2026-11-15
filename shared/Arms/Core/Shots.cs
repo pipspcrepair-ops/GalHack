@@ -4,7 +4,7 @@ using System.Numerics;
 namespace GalHack.Arms;
 
 /// <summary>What a shot met.</summary>
-public enum HitKind { Nothing, Ground, Block, Creature, Person, Player }
+public enum HitKind { Nothing, Ground, Block, Creature, Person, Player, Field }
 
 /// <summary>
 /// One thing a sweep met: where, its surface normal, how far along, what it was (a creature, a
@@ -293,7 +293,7 @@ public sealed class ShotPool
                 return;
             }
 
-            // Ground or a block.
+            // Ground, a block or a force field.
             if (d.Placed != null && w.Hold(hit, out Anchor pa))
             {
                 StickTo(ref s, pa, hit, w, ShotNote.Placed);
@@ -322,7 +322,7 @@ public sealed class ShotPool
                 Detonate(ref s, w, hit.Normal);
                 return;
             }
-            if (hit.Kind == HitKind.Block) w.Strike(ref s, hit, s.Damage);
+            if (hit.Kind is HitKind.Block or HitKind.Field) w.Strike(ref s, hit, s.Damage);
             if (d.Arc != null) ArcFrom(ref s, hit, w);
             if (d.Stick != null && w.Hold(hit, out Anchor sa)) { StickTo(ref s, sa, hit, w, ShotNote.Stuck); return; }
             if (d.Blast != null) { s.Pos = hit.Point; Detonate(ref s, w, hit.Normal); return; }

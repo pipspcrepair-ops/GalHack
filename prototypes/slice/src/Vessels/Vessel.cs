@@ -204,6 +204,19 @@ public sealed partial class Vessel
     /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
     public bool Powered => PowerOn && HasGenerator;
 
+    RoomReport _rooms;
+    int _roomsVersion = -1;
+
+    /// <summary>Its rooms, force fields and door fields counted (building's flood fill), worked out again only when the structure has changed.</summary>
+    public RoomReport Rooms
+    {
+        get
+        {
+            if (_roomsVersion != Structure.Version) (_rooms, _roomsVersion) = (GalHack.Structures.Rooms.Detect(Structure), Structure.Version);
+            return _rooms;
+        }
+    }
+
     bool _hasGenerator, _hasForecast;
     int _generatorVersion = -1;
 

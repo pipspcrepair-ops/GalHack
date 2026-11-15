@@ -198,7 +198,7 @@ public sealed class Suit : IDamageSink
             _roomsOf = s;
             _roomsVersion = s.Version;
             _roomAt.Clear();
-            foreach (Room room in Rooms.Detect(s).Rooms)
+            foreach (Room room in v.Rooms.Rooms)
                 foreach (Int3 cell in room.Cells) _roomAt[cell] = room;
         }
         if (_roomAt.Count == 0) return false;

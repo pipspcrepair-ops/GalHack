@@ -13,7 +13,8 @@ namespace Slice.Construction;
 
 /// <summary>
 /// The survival tool's plating mode, the plating gun (docs/one-metre-grid.md section 3): aimed at
-/// an armour block, the left button sprays the picked plating on (a bare base block takes it, a
+/// an armour block or a force field's emitter (the same plates harden it), the left button sprays
+/// the picked plating on (a bare base block takes it, a
 /// plated one swaps it, the old plates coming back by its hit-point share, rounded down), or, on
 /// a damaged block already wearing it, tops it back up with plates for the damage. The right
 /// button strips the plating back to the base block, for the same refund. The wheel picks the
@@ -26,9 +27,9 @@ public sealed partial class BuildTool
 {
     List<BlockType> _platings;
 
-    /// <summary>Every plating the gun sprays, in the wheel's order (a salvage-only plating can't be sprayed).</summary>
+    /// <summary>Every plating the gun sprays, in the wheel's order (a salvage-only plating can't be sprayed). A field emitter takes the same plates.</summary>
     public IReadOnlyList<BlockType> Platings => _platings ??= _catalogue.Types
-        .Where(t => t != null && t.IsPlated && !(Items.Blocks.TryGet(t.Id, out BlockBill b) && b.UniqueOnly)).ToList();
+        .Where(t => t != null && t.IsPlated && t.Base.IsArmor && !(Items.Blocks.TryGet(t.Id, out BlockBill b) && b.UniqueOnly)).ToList();
 
     public int PlatingIndex;
     public BlockType Plating => Platings[PlatingIndex];
@@ -52,12 +53,14 @@ public sealed partial class BuildTool
         }
         Vessel v = TargetVessel;
         Structure s = v.Structure;
-        BlockType t = s.TypeOf(b), want = Plating;
+        // Armour takes the plating picked; another block that takes plating (a field emitter) its own plating of the same plates.
+        BlockType t = s.TypeOf(b), under = t.Base ?? t;
+        BlockType want = under.IsArmor ? Plating : under.Platings.FirstOrDefault(p => p.Plate == Plating.Plate) ?? Plating;
         _ghosts.ShowOutline(v.DrawTransform, s, TargetCell, new Color(0.18f, 0.77f, 0.71f, 0.9f));
         ItemDef plate = PlateOf(want);
-        string why = !t.IsArmor ? $"{t.Name} · NOT ARMOUR"
-            : (t.Base ?? t) != want.Base ? $"{plate.Name} · NOT FOR {t.Name}"
-            : !Creative && Progress?.BlockAllowed(want.Id) == false ? $"{want.Name} · LOCKED"
+        string why = !Building.TakesPlating(t) ? $"{t.Name} · NOT ARMOUR"
+            : under != want.Base ? $"{plate.Name} · NOT FOR {t.Name}"
+            : !Creative && Progress?.BlockAllowed(Plating.Id) == false ? $"{Plating.Name} · LOCKED"
             : null;
         Bill need = new(), back = new();
         if (why == null && t == want)
@@ -96,9 +99,9 @@ public sealed partial class BuildTool
     {
         Structure s = v.Structure;
         BlockType t = s.TypeOf(b);
-        if (!t.IsArmor || !t.IsPlated)
+        if (!t.IsPlated)
         {
-            Said?.Invoke(t.IsArmor ? $"{t.Name} · BARE" : $"{t.Name} · NOT ARMOUR", Tones.Caution);
+            Said?.Invoke(Building.TakesPlating(t) ? $"{t.Name} · BARE" : $"{t.Name} · NOT ARMOUR", Tones.Caution);
             return;
         }
         var back = new Bill();

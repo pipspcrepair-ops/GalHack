@@ -1,5 +1,5 @@
 // Blocks manufacturing needs that building's catalogue doesn't have yet: the production machines,
-// the drives and two fixed weapons with their own ammo. Same format and units as
+// the drives, two fixed weapons with their own ammo and the force field emitter. Same format and units as
 // prototypes/building/data/components.json. Whoever loads the building catalogue appends these to
 // its components, as the physics sandbox does with its vessel parts; nothing in
 // prototypes/building changes. Their bills are in blocks.json. The fabricator ladder is the
@@ -127,6 +127,23 @@
         {"box": [0.06, -0.28, -0.455, 0.32, -0.06, -0.45], "style": "dark"},
         {"box": [-0.425, -0.05, -0.2, 0.425, 0.05, 0.2], "style": "accent"}
       ]
-    }
+    },
+    // A force field's corner emitter: an L whose arms (+x, +y) run along the field's two edges from
+    // its corner, the field across its face (z). It comes with the field (one force field component
+    // makes a field of any size and its four emitters); this item only replaces one shot away. Plated
+    // like armour, from the same plates: the plated ones are their base under plates (same shape and work).
+    {
+      "id": "forcefield-emitter", "name": "Force field emitter", "function": "field-emitter", "hp": 120, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.05, "color": "8d99ae", "glow": "4cc2ff", "attach": ["-x", "-y", "+z", "-z"], "airtight": "none", "covers": "none", "collide": "parts",
+      "parts": [
+        {"box": [-0.5, -0.5, -0.26, -0.16, -0.16, 0.26], "style": "dark"},
+        {"box": [-0.18, -0.48, -0.22, 0.5, -0.24, 0.22], "style": "body"},
+        {"box": [-0.48, -0.18, -0.22, -0.24, 0.5, 0.22], "style": "body"},
+        {"box": [-0.16, -0.245, -0.06, 0.5, -0.215, 0.06], "style": "glow"},
+        {"box": [-0.245, -0.16, -0.06, -0.215, 0.5, 0.06], "style": "glow"}
+      ]
+    },
+    {"id": "forcefield-emitter-iron", "name": "Iron plated emitter", "base": "forcefield-emitter", "plate": "iron-plate", "plates": 2, "hp": 300, "armor": 12, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.15}, "mass": 0.09, "color": "c9c1ae", "metal": 1},
+    {"id": "forcefield-emitter-hardened", "name": "Hardened plated emitter", "base": "forcefield-emitter", "plate": "hardened-plate", "plates": 2, "hp": 600, "armor": 25, "resist": {"kinetic": 0.45, "explosive": 0.2, "energy": 0.2}, "mass": 0.14, "color": "8b97a3", "metal": 2},
+    {"id": "forcefield-emitter-combat", "name": "Combat plated emitter", "base": "forcefield-emitter", "plate": "combat-plate", "plates": 2, "hp": 1200, "armor": 50, "resist": {"kinetic": 0.3, "explosive": 0.55, "energy": 0.3}, "mass": 0.22, "color": "4d5563", "metal": 3}
   ]
 }
