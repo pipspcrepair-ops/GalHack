@@ -63,6 +63,7 @@ bow round
 shoulder 0.33
 spine 0
 pods 14
+symmetric yes
 engines 2 3 0.9 0.5
 hull c8b896
 trim 6a5a3a
@@ -79,7 +80,7 @@ beam 1.05
 bow ram
 shoulder 0.3
 spine 0.5
-spikes 16
+spikes 22
 plates 0.35
 bolted 1.5
 engines 2 3 0.9 0.6

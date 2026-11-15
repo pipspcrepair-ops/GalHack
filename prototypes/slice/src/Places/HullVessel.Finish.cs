@@ -111,11 +111,11 @@ public sealed partial class HullVessel
         {
             var near = new HashSet<(int, int)>(s.Doors.SelectMany(d => Around(d.Inside, 2)));
             var walls = s.Floor.Where(c => !near.Contains(c) && new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Any(o => !s.Floor.Contains((c.U + o.Item1, c.V + o.Item2)))).ToList();
-            int blobs = (int)MathF.Ceiling(s.Area / (s.Purpose is "hold" or "ore-hold" or "engine-room" ? 18f : 35f));
+            int blobs = (int)MathF.Ceiling(s.Area / (s.Purpose is "hold" or "ore-hold" or "engine-room" ? 10f : 18f));
             for (int i = 0; i < blobs && walls.Count > 0; i++)
             {
                 var (cu, cv) = walls[Rng.Next(walls.Count)];
-                float r = 1.2f + (float)Rng.NextDouble() * (s.Hall ? 2.6f : 1.4f);
+                float r = 1.4f + (float)Rng.NextDouble() * (s.Hall ? 3f : 1.8f);
                 // On the floor against the wall, or up through the deck overhead.
                 bool through = Rng.Next(4) == 0;
                 float cy = through ? s.Y + s.Height - 0.5f : s.Y - 0.5f + r * 0.6f;

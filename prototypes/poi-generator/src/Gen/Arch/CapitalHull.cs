@@ -424,7 +424,8 @@ sealed class Hulk
         H.TV1 = Math.Min(bay.V1 - 2, H.TV0 + Math.Clamp(H.Half + R.Range(-2, 3), 14, 22));
         // The engine bank off the stern: the style's count across the beam, its length and its height.
         HullStyle st = H.Style;
-        int n = R.Between(st.EnginesMin, st.EnginesMax), span = (2 * H.Half + 1 - 6) / n, w = Math.Max(3, Math.Min(span - 1, 3 + span * 2 / 3));
+        // (Never narrower than a main engine: fewer of them if the beam can't take the count.)
+        int n = Math.Min(R.Between(st.EnginesMin, st.EnginesMax), Math.Max(1, (2 * H.Half + 1 - 6) / 6)), span = (2 * H.Half + 1 - 6) / n, w = Math.Max(5, Math.Min(span - 1, 3 + span * 2 / 3));
         for (int i = 0; i < n; i++)
         {
             int c = -H.Half + 3 + span * i + span / 2;
@@ -568,7 +569,9 @@ sealed class Hulk
         // The flank's face over a stretch (the narrowest of it), and where the roof is flat across.
         float Face(float a, float b) => Enumerable.Range((int)a, Math.Max(1, (int)(b - a) + 1)).Min(v => H.HalfWidth(v));
         float Flat(float a, float b) => Face(a, b) - H.Shoulder - 1f;
-        int Side() => st.Symmetric ? 1 : R.Chance(0.5f) ? 1 : -1;
+        // A lopsided style leans its additions to one side of the hull (done where there was room).
+        int lean = R.Chance(0.5f) ? 1 : -1;
+        int Side() => st.Symmetric ? 1 : R.Chance(0.8f) ? lean : -lean;
         string Scrap() => st.Scrap.Count > 0 ? "scrap" + R.Range(0, st.Scrap.Count) : "trim";
         CapitalHull.Part Flank(string paint, int side, float a, float b, float y0, float y1, float depth, int axis = -1, float tip = 1f)
         {

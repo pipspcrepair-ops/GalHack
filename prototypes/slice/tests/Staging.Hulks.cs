@@ -131,6 +131,13 @@ public sealed partial class Staging
         string[] styled = { "freeholders", "meridian", "exchange", "reavers", "kessari", "vharn" };
         var shots = styled.Select(f => (Faction: f, Name: f, State: PoiState.Abandoned)).ToList();
         shots.Add((styled[Random.Shared.Next(styled.Length)], "husk", PoiState.Infested));
+        // Up out of the air's haze first, so space is all there is behind them.
+        {
+            Vector3 from = Skiff.Body.Position.ToGodot(), world0 = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot();
+            Hurry(3);
+            foreach (int x in FlyRound(Skiff, from + (from - world0).Normalized() * 1500f, 60f, 150f)) yield return x;
+            Hurry(1);
+        }
         foreach (var (faction, name, state) in shots)
         {
             ulong seed = (ulong)Random.Shared.NextInt64();
@@ -154,7 +161,7 @@ public sealed partial class Staging
             // From its sunlit flank: far, the whole of it a little from above and off the bow; near, its bow quarter.
             Vector3 side = (Local(1, 0, 0) - Local(0, 0, 0)).Normalized(), fore = (Local(0, 0, -1) - Local(0, 0, 0)).Normalized();
             if (side.Dot(_game.Orbit.Space.ToSun) < 0) side = -side;
-            Vector3 far = mid + side * span * 1.05f + up * span * 0.3f + fore * span * 0.25f;
+            Vector3 far = mid + side * span * 0.95f - up * span * 0.12f + fore * span * 0.2f;
             _game.FixedCamera = new Transform3D(Basis.LookingAt(mid - far, up), far);
             foreach (int x in _drive.Wait(60)) yield return x;
             foreach (int x in Shot($"{dir}/faction-{name}-far.png")) yield return x;

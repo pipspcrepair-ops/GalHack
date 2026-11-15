@@ -88,6 +88,16 @@ public sealed partial class HullVessel
                 core.Doors.Add(((2, row), (3, row), 1));
                 // The room it opens into keeps the way clear (the tower's decks have no other).
                 Out.Spaces.FirstOrDefault(x => x.Deck == d && !x.Corridor && x.Floor.Contains((1, row)))?.Doors.Add(((2, row), (1, row), 1));
+                // In the tower, its other end and its starboard side open too wherever a room lies beyond (an offset,
+                // rounded crown can leave a room either side of it reached only so).
+                if (d >= H.Decks)
+                    foreach (var (wall, beyond, inside) in new[] { ((2, s + 5), (1, s + 5), (3, s + 5)), ((8, s - 1), (9, s - 1), (7, s - 1)), ((8, s + 5), (9, s + 5), (7, s + 5)) })
+                        if (Out.Spaces.FirstOrDefault(x => x.Deck == d && !x.Corridor && x.Floor.Contains(beyond)) is { } room)
+                        {
+                            for (int y = Plan.Walk(d); y < Plan.Walk(d) + 3; y++) Clear(wall.Item1, y, wall.Item2);
+                            core.Doors.Add((wall, inside, 1));
+                            room.Doors.Add((wall, beyond, 1));
+                        }
                 for (int v = s; v <= s + 4; v++) core.Taken.UnionWith(new[] { (3, v), (4, v), (6, v), (7, v) });
             }
         }
@@ -509,9 +519,17 @@ public sealed partial class HullVessel
                 .FirstOrDefault(c => Fits(cockpit, At(c.U, s.Y, c.V), rot, Free), (U: int.MinValue, V: 0));
             if (at.U != int.MinValue) Device(cockpit, at.U, s.Y, at.V, rot, s);
         }
+        // Command chairs either side of the helm about the bridge's own middle (an offset crown's is not the hull's), the
+        // front row first and back a row where the way in or the windows leave no room.
         BlockType chair = Cat.Type("command-chair");
-        foreach (int u in new[] { -7, -5, 4, 6 })
-            if (Fits(chair, At(u, s.Y, front), rot, Free)) Device(chair, u, s.Y, front, rot, s);
+        int mid = (s.U0 + s.U1) / 2, chairs = 0;
+        for (int v = front; v < front + 4 && chairs < 4; v++)
+            foreach (int du in new[] { -7, -5, 4, 6, -9, 8 })
+                if (chairs < 4 && Fits(chair, At(mid + du, s.Y, v), rot, Free))
+                {
+                    Device(chair, mid + du, s.Y, v, rot, s);
+                    chairs++;
+                }
     }
 
     /// <summary>Turrets on the roof and the tower's crown: a warship bristles, a hauler carries a few.</summary>
@@ -523,11 +541,16 @@ public sealed partial class HullVessel
         for (int v = Math.Max(Pc.V0, H.Bz) + 2; v < Math.Min(VEnd, H.L - 3) && placed < want; v += every)
             foreach (int side in new[] { -1, 1 })
             {
-                int u = side * (H.Half / 2);
+                // The roof's first free footing out from half the beam, then in toward the spine.
                 int y = H.Top + 1;
-                if (InTower(u, v) || Mask(u, H.Top, v) != 255 || Has(u, y, v)) continue;
-                Device(turret, u, y, v, 0);
-                placed++;
+                foreach (int a in Enumerable.Range(0, H.Half).Select(k => H.Half / 2 + (k % 2 == 0 ? k / 2 : -(k + 1) / 2)).Where(a => a > 1 && a < H.Half))
+                {
+                    int u = side * a;
+                    if (InTower(u, v) || Mask(u, H.Top, v) != 255 || Has(u, y, v) || Has(u, y + 1, v)) continue;
+                    Device(turret, u, y, v, 0);
+                    placed++;
+                    break;
+                }
             }
     }
 

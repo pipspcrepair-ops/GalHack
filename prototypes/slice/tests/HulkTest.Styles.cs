@@ -29,7 +29,7 @@ public partial class HulkTest
         Catalogue cat = _game.Zone.Data.Catalogue;
         SiteDef site = lib.Sites.Values.First(s => s.Parts.Count > 0 && s.Parts[0].Arg("what") == "capital");
         string[] roles = { "freighter", "warship", "liner", "miner", "carrier" }, sizes = { "medium", "large", "huge" };
-        const int each = 4;
+        const int each = 5;
         var samples = new List<(string Faction, float[] Measure, bool[,] Side, bool[,] Top)>();
         foreach (string faction in Styled)
             for (int i = 0; i < each; i++)
@@ -134,6 +134,20 @@ public partial class HulkTest
                 if (y > roof && (v < plan.TV0 - 1 || v > plan.TV1 + 1)) over++;
             }
         }
+        // How thin what stands out past the beam is: its share in runs of three metres or less down the length (a spike's, not a crate's).
+        int thin = 0, stand = 0;
+        for (int u = 0; u < nu; u++)
+        {
+            if (MathF.Abs(u - (nu - 1) / 2f) <= half + 0.6f) continue;
+            for (int v = 0; v < nv;)
+            {
+                if (!top[v, u]) { v++; continue; }
+                int run = 0;
+                while (v < nv && top[v, u]) { run++; v++; }
+                stand += run;
+                if (run <= 3) thin += run;
+            }
+        }
         // Bumps: how often the beam jumps down the length; the deepest waist down the middle half.
         int bumps = Enumerable.Range(1, nv - 1).Count(v => MathF.Abs(beam[v] - beam[v - 1]) >= 2);
         float waist = Enumerable.Range(nv / 4, nv / 2).Min(v => beam[v]) / maxBeam;
@@ -147,6 +161,7 @@ public partial class HulkTest
             plan.Nac * (float)plan.Nacelles.Count / nv,
             beyond / (float)Math.Max(1, area), over / (float)Math.Max(1, sideArea),
             bumps * 10f / nv, waist,
+            thin / (float)Math.Max(1, stand),
         };
     }
 
