@@ -574,7 +574,8 @@ public partial class Place
                 body.ShapeOwnerAddShape(owner, shape);
                 body.ShapeOwnerSetTransform(owner, at * xf);
             }
-            if (clock.Elapsed.TotalMilliseconds > 1.2)
+            // Out after half a millisecond: a step ends with at most one more piece over it.
+            if (clock.Elapsed.TotalMilliseconds > 0.5)
             {
                 _dressStage = pl.Piece;
                 yield return 0;
