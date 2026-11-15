@@ -154,9 +154,9 @@ public sealed class DecoCatalogue
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, DecoPiece[]> _ofSet = new(), _inSet = new();
 
     /// <summary>Pieces whose own set is <paramref name="set"/>.</summary>
-    public IReadOnlyList<DecoPiece> OfSet(string set) => _ofSet.GetOrAdd(set ?? "", k => _pieces.Where(p => p.Set == k).ToArray());
+    public IReadOnlyList<DecoPiece> OfSet(string set) => _ofSet.TryGetValue(set ?? "", out DecoPiece[] a) ? a : _ofSet.GetOrAdd(set ?? "", k => _pieces.Where(p => p.Set == k).ToArray());
     /// <summary>Pieces that furnish <paramref name="set"/>, its own first, then those it borrows.</summary>
-    public IReadOnlyList<DecoPiece> InSet(string set) => _inSet.GetOrAdd(set ?? "", k => _pieces.Where(p => p.Set == k).Concat(_pieces.Where(p => p.Set != k && p.Also.Contains(k))).ToArray());
+    public IReadOnlyList<DecoPiece> InSet(string set) => _inSet.TryGetValue(set ?? "", out DecoPiece[] a) ? a : _inSet.GetOrAdd(set ?? "", k => _pieces.Where(p => p.Set == k).Concat(_pieces.Where(p => p.Set != k && p.Also.Contains(k))).ToArray());
     /// <summary>Pieces that furnish a set and play a role in it.</summary>
     public IEnumerable<DecoPiece> WithRole(string set, string role) => InSet(set).Where(p => p.Has(role));
 

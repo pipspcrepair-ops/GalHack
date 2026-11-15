@@ -71,8 +71,12 @@ public static class DecoLayout
     }
 
     /// <summary>Inside the room, within a millimetre: not through a wall.</summary>
-    public static bool Inside(DecoRoom room, DecoRect r, float eps = 0.001f) =>
-        r.Corners().All(c => c.X >= -eps && c.Y >= -eps && c.X <= room.Width + eps && c.Y <= room.Depth + eps);
+    public static bool Inside(DecoRoom room, DecoRect r, float eps = 0.001f)
+    {
+        // Its four corners, worked out as Corners() does them, with no iterator.
+        return In(r.Centre - r.U - r.V) && In(r.Centre + r.U - r.V) && In(r.Centre + r.U + r.V) && In(r.Centre - r.U + r.V);
+        bool In(Vector2 c) => c.X >= -eps && c.Y >= -eps && c.X <= room.Width + eps && c.Y <= room.Depth + eps;
+    }
 }
 
 /// <summary>
@@ -89,6 +93,7 @@ public sealed class DecoRaster
     int[] _sum;
     bool[] _fit, _seen;
     Queue<int> _queue;
+    List<int> _starts;
 
     public DecoRaster(float width, float depth, float cell)
     {
@@ -151,6 +156,13 @@ public sealed class DecoRaster
     public List<int> DoorStarts(DecoRoom room, DecoDoor d, int k)
     {
         var list = new List<int>();
+        DoorStarts(room, d, k, list);
+        return list;
+    }
+
+    /// <summary>The same, added to a list the caller keeps.</summary>
+    public void DoorStarts(DecoRoom room, DecoDoor d, int k, List<int> list)
+    {
         float a = d.Offset - d.Width / 2, b = d.Offset + d.Width / 2;
         int lo = (int)MathF.Ceiling(a / Cell - 1e-4f), hi = (int)MathF.Floor(b / Cell + 1e-4f) - k;
         for (int t = lo; t <= hi; t++)
@@ -163,19 +175,42 @@ public sealed class DecoRaster
                 default: if (t >= 0 && t + k <= Nz && Nx - k >= 0) list.Add(t * Nx + Nx - k); break;
             }
         }
-        return list;
     }
 
     /// <summary>Every position a k-by-k agent reaches from the starts.</summary>
     public bool[] Reach(IEnumerable<int> starts, int k, bool[] fit = null)
     {
         fit ??= Fits(k);
+        bool[] seen = Seen();
+        foreach (int s in starts) Start(s, fit, seen);
+        return Flood(fit, seen);
+    }
+
+    /// <summary>The same from a list (no enumerator made).</summary>
+    public bool[] Reach(List<int> starts, int k, bool[] fit = null)
+    {
+        fit ??= Fits(k);
+        bool[] seen = Seen();
+        for (int i = 0; i < starts.Count; i++) Start(starts[i], fit, seen);
+        return Flood(fit, seen);
+    }
+
+    bool[] Seen()
+    {
         var seen = _seen ??= new bool[Nx * Nz];
         Array.Clear(seen);
-        var q = _queue ??= new Queue<int>();
-        q.Clear();
-        foreach (int s in starts)
-            if (s >= 0 && s < fit.Length && fit[s] && !seen[s]) { seen[s] = true; q.Enqueue(s); }
+        (_queue ??= new Queue<int>()).Clear();
+        return seen;
+    }
+
+    void Start(int s, bool[] fit, bool[] seen)
+    {
+        if (s >= 0 && s < fit.Length && fit[s] && !seen[s]) { seen[s] = true; _queue.Enqueue(s); }
+    }
+
+    bool[] Flood(bool[] fit, bool[] seen)
+    {
+        var q = _queue;
         while (q.Count > 0)
         {
             int c = q.Dequeue(), i = c % Nx, j = c / Nx;
@@ -199,7 +234,9 @@ public sealed class DecoRaster
         if (room.Doors.Count == 0) return true;
         int k = Math.Max(1, (int)MathF.Ceiling(room.Agent / Cell - 1e-4f));
         bool[] fit = Fits(k);
-        var starts = DoorStarts(room, room.Doors[0], k);
+        var starts = _starts ??= new List<int>();
+        starts.Clear();
+        DoorStarts(room, room.Doors[0], k, starts);
         bool[] reach = Reach(starts, k, fit);
         if (room.Doors.Count == 1)
         {
@@ -213,7 +250,13 @@ public sealed class DecoRaster
             return false;
         }
         for (int d = 1; d < room.Doors.Count; d++)
-            if (!DoorStarts(room, room.Doors[d], k).Any(s => reach[s])) return false;
+        {
+            starts.Clear();
+            DoorStarts(room, room.Doors[d], k, starts);
+            bool joined = false;
+            for (int i = 0; i < starts.Count && !joined; i++) joined = reach[starts[i]];
+            if (!joined) return false;
+        }
         return true;
     }
 }

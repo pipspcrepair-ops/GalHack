@@ -67,9 +67,15 @@ public sealed class DecoPlanner
     bool Full(DecoPiece p) => _count.GetValueOrDefault(p.Id) >= CapOf(p, _room.Width * _room.Depth);
 
     /// <summary>Forgets a template's chosen pieces, so its next use picks afresh (a room isn't the same thing over and over).</summary>
+    readonly List<string> _repicked = new();
+
     void Repick(DecoTemplate t)
     {
-        foreach (string k in _chosen.Keys.Where(k => k.StartsWith(t.Id + ":", StringComparison.Ordinal)).ToList()) _chosen.Remove(k);
+        var gone = _repicked;
+        gone.Clear();
+        foreach (string k in _chosen.Keys)
+            if (k.Length > t.Id.Length && k[t.Id.Length] == ':' && k.StartsWith(t.Id, StringComparison.Ordinal)) gone.Add(k);
+        foreach (string k in gone) _chosen.Remove(k);
     }
 
     public DecoPlan Plan(DecoRoom room, DecoSetPlan mix = null)
@@ -150,10 +156,12 @@ public sealed class DecoPlanner
             foreach (string r in roles) role |= x.Has(r);
             return role && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x);
         }
-        foreach (DecoPiece x in _cat.OfSet(_room.Set))
-            if (Fits(x)) all.Add(x);
-        foreach (DecoPiece x in _cat.InSet(_room.Set))
-            if (x.Set != _room.Set && Fits(x)) all.Add(x);
+        // (By index: a foreach over the catalogue's lists made an enumerator each time.)
+        IReadOnlyList<DecoPiece> own = _cat.OfSet(_room.Set), lent = _cat.InSet(_room.Set);
+        for (int i = 0; i < own.Count; i++)
+            if (Fits(own[i])) all.Add(own[i]);
+        for (int i = 0; i < lent.Count; i++)
+            if (lent[i].Set != _room.Set && Fits(lent[i])) all.Add(lent[i]);
         if (all.Count == 0) return null;
         // The room's own era first by far: a high world's room takes its high pieces where it has them, older ones only to fill in.
         foreach (DecoPiece x in all) weights.Add((x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x));
@@ -389,7 +397,7 @@ public sealed class DecoPlanner
         all.Clear();
         all.AddRange(_plan.Placements);
         all.AddRange(added);
-        if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.Unreached(_forge, _room, all).Count > 0) return false;
+        if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.AnyUnreached(_forge, _room, all)) return false;
         List<DecoRect> blocking = _blocking;
         blocking.Clear();
         foreach (DecoPlacement p in added)
