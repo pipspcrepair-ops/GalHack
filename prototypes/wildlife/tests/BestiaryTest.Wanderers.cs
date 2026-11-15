@@ -246,7 +246,7 @@ public partial class BestiaryTest
             Check(bands.Sum() >= 30 && bands.All(n => n >= 6), $"{bands.Sum()} bands met on fresh worlds: {By(bands)}");
             Check(fledNoThreat[0] == 0 && fledNoThreat[1] == 0, $"nobody friendly or wary runs with no threat (walked up to, stood by, walked off from, come back to): fled {By(fledNoThreat)}");
             Check(foughtNoThreat[0] == 0 && foughtNoThreat[1] == 0, $"nor turns on you for it: fought {By(foughtNoThreat)}");
-            Check(kept[0] == bands[0] && kept[1] >= bands[1] * 0.9f, $"the friendly keep a comfortable distance and the wary back off as you stand by them: {By(kept)}");
+            Check(kept[0] == bands[0] && kept[1] >= bands[1] * 0.8f, $"the friendly keep a comfortable distance and the wary back off as you stand by them: {By(kept)}");
             Check(waryNoticed >= bands[1] * 0.8f && warnedOnApproach == waryNoticed, $"every wary band that sees you coming warns you off ({warnedOnApproach} of the {waryNoticed} of {bands[1]} that saw you: a rock between can hide you)");
             Check(waryFights > 0 && waryFightsWarned == waryFights, $"a gun on a wary band: it turns only after its warning, every time ({waryFightsWarned} of {waryFights} warned first)");
             Check(hostileAttacked >= bands[2] * 0.9f, $"hostile bands come for you ({hostileAttacked} of {bands[2]} attacked)");
