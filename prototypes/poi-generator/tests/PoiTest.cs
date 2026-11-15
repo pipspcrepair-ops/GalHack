@@ -1843,7 +1843,8 @@ public partial class PoiTest : Node
                 foreach (TechLevel tech in Enum.GetValues<TechLevel>())
                     foreach (Dir front in Dirs.Horizontal)
                     {
-                        var layout = PoiFactory.BuildLayout(_lib, f, v.Index, Rarity.Common, (ulong)rand.NextInt64(), new LayoutHints(front, tech));
+                        ulong layoutSeed = (ulong)rand.NextInt64();
+                        var layout = PoiFactory.BuildLayout(_lib, f, v.Index, Rarity.Common, layoutSeed, new LayoutHints(front, tech));
                         if (layout.Blocks.Blocks().Any(b => b.Cell.Y < 0)) { belowGround++; Note($"{v.Name} goes below ground"); }
                         // A house's buildings, its garage among them, at house size: a terrace row runs long.
                         foreach (PlainBox b in layout.Extras.Plain.Where(_ => f.Id == "flavour_house"))
@@ -1863,7 +1864,9 @@ public partial class PoiTest : Node
                         if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !flatByRule && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
                         foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned })
                         {
-                            PoiInstance p = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
+                            ulong spawnSeed = (ulong)rand.NextInt64();
+                            PoiInstance p = PoiFactory.Spawn(_lib, layout, state, spawnSeed);
+                            string seeds = $"layout {layoutSeed}, {tech}, {front}, spawn {spawnSeed}";
                             if (state == PoiState.Ruined && rand.Next(4) == 0) Gen.StateTransforms.Blast(p, 1f, 0f, 0.3f + (float)rand.NextDouble() * 0.6f, new Rng((ulong)rand.NextInt64()));
                             spawns++;
                             var g = p.Blocks;
@@ -1885,9 +1888,9 @@ public partial class PoiTest : Node
                             foreach (var (c, b) in g.Blocks())
                             {
                                 bool solid = BlockInfo.Collides(b.Type);
-                                if (solid && !held.Contains(c)) { floating++; Note($"{v.Name} {state}: {b} floats at {c}"); }
-                                if (!solid && b.Type is BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Plate && !nav.IsRock(c + Int3.Down) && !BlockInfo.Collides(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state}: {b} hangs at {c}"); }
-                                if (b.Type == BlockType.Rubble && !nav.IsRock(c + Int3.Down) && !BlockInfo.Supports(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state}: rubble hangs at {c}"); }
+                                if (solid && !held.Contains(c)) { floating++; Note($"{v.Name} {state} ({seeds}): {b} floats at {c}"); }
+                                if (!solid && b.Type is BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Plate && !nav.IsRock(c + Int3.Down) && !BlockInfo.Collides(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state} ({seeds}): {b} hangs at {c}"); }
+                                if (b.Type == BlockType.Rubble && !nav.IsRock(c + Int3.Down) && !BlockInfo.Supports(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state} ({seeds}): rubble hangs at {c}"); }
                                 if (b.Type == BlockType.Pillar && b.Material == Gen.Material.Timber && b.Role == Role.Decor && b.Color == new Rgb(0x4a, 0x3a, 0x2a) && !nav.IsRock(c + Int3.Down) == false && g.Get(c + Int3.Up * 3).Type == BlockType.Pillar) { trees++; Note($"{v.Name}: a block tree"); }
                             }
                             stands += Faces(g, layout.Occupied, ref faces, ref missing, ref faceFirst);
@@ -1969,7 +1972,8 @@ public partial class PoiTest : Node
             {
                 Int3 n = p + d.Vec();
                 var nb = g.Get(n);
-                if (BlockInfo.IsFullCube(nb.Type) && !BlockInfo.IsTransparent(nb.Material)) continue;
+                // (Shut: against a full block, or a rim piece that fills the face, the face lies between two solids.)
+                if (BlockInfo.IsFullCube(nb.Type) && !BlockInfo.IsTransparent(nb.Material) || Mesher.RimCovers(g.Rounds, nb, n, (int)d)) continue;
                 faces++;
                 Int3 v = d.Vec();
                 if (!drawn.Contains((p.X * 2 + 1 + v.X, p.Y * 2 + 1 + v.Y, p.Z * 2 + 1 + v.Z)))

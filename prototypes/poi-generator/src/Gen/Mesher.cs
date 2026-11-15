@@ -135,6 +135,15 @@ public static class Mesher
     /// <summary>Faces carry their finish codes (off only to measure what they cost: every face then draws plain).</summary>
     public static bool Finishes = true;
 
+    /// <summary>
+    /// A round thing's rim piece in cell <paramref name="n"/> beside a block whose face toward it (face <paramref name="f"/>) the piece
+    /// takes in whole, as a block would: a cut whose flat side is that face, a sloped piece that fills it. The face then lies between
+    /// two solids and neither draws it.
+    /// </summary>
+    public static bool RimCovers(IReadOnlyList<RoundBody>? rounds, Block nb, Int3 n, int f) =>
+        f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f))
+        || nb.Type == BlockType.RoundSlope && Round.BodyAt(rounds, n) is { } body && Round.Fills(body, n, Dirs.All[f].Opposite());
+
     static readonly V3[] Normals =
     {
         new(0, 0, -1), new(1, 0, 0), new(0, 0, 1), new(-1, 0, 0), new(0, 1, 0), new(0, -1, 0),
@@ -1291,10 +1300,8 @@ public static class Mesher
             }
         }
 
-        /// <summary>A round thing's rim piece beside a block whose face toward it (face <paramref name="f"/>) the piece takes in whole, as a block would: a cut whose flat side is that face, a sloped piece that fills it.</summary>
-        bool RimCovers(Block nb, Int3 n, int f) =>
-            f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f))
-            || nb.Type == BlockType.RoundSlope && Round.BodyAt(_rounds, n) is { } body && Round.Fills(body, n, Dirs.All[f].Opposite());
+        /// <summary>See <see cref="Mesher.RimCovers(IReadOnlyList{RoundBody}, Block, Int3, int)"/>.</summary>
+        bool RimCovers(Block nb, Int3 n, int f) => Mesher.RimCovers(_rounds, nb, n, f);
 
         /// <summary>
         /// A course of a round thing that runs in or out as it rises (<see cref="Round.Pieces"/>): its outside and inside shaded
