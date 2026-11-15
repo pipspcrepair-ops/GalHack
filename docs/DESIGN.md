@@ -31,6 +31,10 @@ GalHack is an open-world space survival sandbox: the player wakes from cryosleep
 
 **Alien peoples.** The old civilisation was mixed-species, so its survivors include alien peoples as well as humans, often living side by side. Each keeps the human skeleton and proportions, so roles, gestures and silhouettes keep working, and differs by parts attached to it (snouts, beaks, mandibles, horns, crests, antennae, ears, tails, digitigrade legs) and by its covering (skin shades and patterns, scales, feathers, fur, chitin). A people is a combination of those parts rolled from a world's founders, never a hand-made model, and peoples cluster the way human groups do. Every people stays under a height cap, and every generated doorway fits that cap, so nobody is ever too big for a door. The plan and parts lists are in docs/alien-peoples.md.
 
+**Culture** (owner, 15 Nov; research first). Each world's peoples carry a culture layer, alongside its other layers. It sets things such as social distance, independence and individuality, gender norms and roles, class roles and castes, religious beliefs, clone labourers and political systems. Culture shows in how far apart people keep and who groups with whom (men and women mixed or apart; children with men, women or on their own), and in what each wears (the same outfit for all, or different). It also sets who carries weapons (both sexes, one or none), whether one sex is aggressive and the other not, and who wanders. Places and flavour buildings reflect it. A research job first collects science-fiction culture tropes and works out how each could practically change places, how people treat each other and how they treat sleepers.
+
+**Gestures** (owner, 15 Nov). People nod (yes), shake their heads (no) and laugh, each set off by what is happening around them.
+
 **Who's who after the collapse:**
 
 | Who | Place in the post-collapse galaxy |
@@ -504,7 +508,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 
 | Stage | Player goal | Key builds and unlocks | Main threats |
 | --- | --- | --- | --- |
-| 1. Wake | Stay alive | Survival tool (shoot and gather modes), suit constructor, survival replicator, O2 bottles, medkits | Exposure, hunger, wildlife |
+| 1. Wake | Stay alive | Sleeper tool (attack/gather and repair modes), suit constructor, survival replicator, O2 bottles, medkits | Exposure, hunger, wildlife |
 | 2. Foothold | A safe, powered shelter | Base core, generator, capacitor, small constructor, galley replicator | Night predators, first Vharn scouts |
 | 3. Wheels | Cover the whole planet | Hover vessel, hand drill, detector, portable constructor | Vharn patrols, guarded POIs |
 | 4. Wings | Reach orbit, moons and asteroids | Small vessel, landing gear, large constructor, CPU tier 2 | Space pirates, hostile fighters |
@@ -582,7 +586,7 @@ The player's kit is small and role-based: a few tools that change the world, wea
 
 | Tool | What it does | Runs on | Notes |
 | --- | --- | --- | --- |
-| Survival tool | Two modes. Shoot: the only starting weapon, a rechargeable energy shot strong enough for early wildlife, fired as a red bolt. Gathering and deconstructing use a blue beam. A tree gives materials with each hit and falls over once it's depleted, leaving a stump, and the fallen trunk fades away. Gather mode slowly chips at everything it's pointed at, including building blocks found out in the world, and nothing is deleted instantly. Digging and salvage are gradual: sustained drilling wears a block or cell down instead of one hit removing it, with resources trickling in as it goes and the block slowly shrinking into its neighbours as it depletes, and advanced mining tools unlocked by level are faster. Taking down your own building blocks stays instant. Gather: mines ore, digs terrain, cuts plants and salvages wrecks (about 33% return) | Nothing | Every player starts with it; never dropped on death |
+| Sleeper tool | (Owner, 15 Nov; it replaces the survival tool.) Two modes only. **Attack/gather** (blue light), one unified mode for attacking, gathering and collecting or disassembling blocks. Each shot is a short-range blast of lightning with a crackle, a thunderclap and a flash, and the tool kicks. A person in front of it gets a short arc that chips a little damage and stuns them in their flinch for a moment. A block attached to a core we own, or to no core, goes straight back to the bag. A block attached to a core that isn't a sleeper's takes damage, and a little of the material it was made from is extracted as it's damaged, with lightning arcing over it. Mining ore works as before, with lightning arcing to the ground being worked. **Repair** (green light) repairs or restores, given the ingredients: a luminous green cone with a lighter sound, harmless to people and blocks | Nothing | Every player starts with it; never dropped on death |
 | Hand drill T1/T2 | Faster mining; digs terrain (remove only) | Biofuel (T1), drill charges (T2) | T2 has longer reach and collects ore automatically |
 | Chainsaw | Fells trees for wood | Biofuel | Early building material |
 | Multi-tool T1/T2 | Removes, repairs, upgrades and rotates blocks; salvages wrecks and pulls intact components out whole from structures whose core is destroyed | Small energy cells (T1), multi-charges (T2) | Salvage return about 33% (T1), about 65% (T2); vessel-mounted salvagers up to 80% |
@@ -1079,6 +1083,7 @@ Fights should feel punchy and readable: tight, responsive shooting with heavy fe
 
 - **Responsive shooting:** low input latency, crisp aim-down-sights, learnable recoil patterns rather than random spread, and hits that register the moment they land (predicted on the client, confirmed by the server).
 - **Heavy feedback:** a distinct, punchy sound per weapon, muzzle flash, impact sparks and debris that match the surface hit, hit markers, a clear kill confirmation and a brief camera kick.
+- **Shots you can see and hear** (owner, 15 Nov): people's shots, energy bolts and rockets travel slowly enough to see, bright, and every gunshot is LOUD. A gun gives a muzzle flash and kicks; a bow or crossbow twangs, and the arrow thuds where it lands. Swings whoosh, and a strike that lands thuds. A projectile that hits makes a sound that confirms it, and whatever is hit cries out. When the player lands a hit, the thud is heard clearly at any distance and a confirmation ring shows round the reticle. A sleeper looking at someone who shoots at them must clearly see and hear it. Vomiting is somewhat loud.
 - **Enemies react:** guards flinch, stagger and take cover; damaged ships trail smoke and fire; creatures recoil.
 - **Visible destruction:** blocks show scorching and cracks as they lose hit points, then break away in chunks; shields ripple where they're struck; hull breaches vent atmosphere; destroyed devices burst.
 - **Every weapon feels different:** sound, kick, rate of fire and impact all match the weapon's job (section 9), so switching weapons changes the fight.
