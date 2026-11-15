@@ -18,8 +18,12 @@ public sealed class PoiRoom
     public RoomKind Kind;
     /// <summary>The open interior, in the sim's frame: floor at Min.Y, ceiling at Max.Y.</summary>
     public Vector3 Min, Max;
-    /// <summary>Levels below the way in (0 at the way in).</summary>
+    /// <summary>Levels below the way in (0 at the way in): what lives this deep (pale, blind, tougher).</summary>
     public int Depth;
+    /// <summary>Storeys from the way in's own, up (positive) or down.</summary>
+    public int Storey;
+    /// <summary>How far in it is, in storeys from the way in either way, at least its depth (place-patterns E7: danger rises up as down, a tower's top floors as a bunker's deepest).</summary>
+    public int Level => Math.Max(Depth, Math.Abs(Storey));
     public bool Dark;
     /// <summary>What the room was for (the generator's purpose: galley, ward, storage...), or empty.</summary>
     public string Purpose = "";
@@ -95,6 +99,11 @@ public sealed class PoiPlan
     /// </summary>
     public float Severity = 1f;
     public readonly List<PoiRoom> Rooms = new();
+    /// <summary>
+    /// The rooms whoever keeps the place clear (people, machines) really holds: the storeys they live and walk on. A tall
+    /// place's other storeys are nobody's (a few squatters don't keep a tower). Null: they hold all of it.
+    /// </summary>
+    public HashSet<int> Kept;
     /// <summary>The place's open ground (yards, a camp's pitches): kept apart from its rooms, for those that hold it.</summary>
     public readonly List<PoiRoom> Yards = new();
     /// <summary>
@@ -233,9 +242,72 @@ public static partial class PoiFauna
     {
         // Each place draws its own of the world's kinds for each job.
         fauna.Variant = (int)(Rng.Mix(poi.Seed, 0x7A41) % 3);
-        try { return PopulateOne(poi, fauna, rules); }
+        try
+        {
+            PoiPopulation pop;
+            if (poi.Kept == null || poi.Rooms.TrueForAll(r => poi.Kept.Contains(r.Index))) pop = PopulateOne(poi, fauna, rules);
+            else
+            {
+                // Its holders keep the storeys they are on; the rest of it is nobody's, with what lives in any place's dark.
+                pop = PopulateOne(Part(poi, true), fauna, rules);
+                Join(pop, PopulateOne(Part(poi, false), fauna, rules));
+            }
+            if (poi.Holder != PlaceHolder.Machines || pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
+            // Machines that fit no beat and no post on their storeys walk the whole place; fitting nowhere, they leave it nobody's.
+            if (poi.Kept != null)
+            {
+                poi.Kept = null;
+                pop = PopulateOne(poi, fauna, rules);
+                if (pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
+            }
+            poi.Holder = PlaceHolder.Empty;
+            return PopulateOne(poi, fauna, rules);
+        }
         finally { fauna.Variant = 0; }
     }
+
+    /// <summary>The rooms its holders keep (with its open ground, and them), or the rest of it as nobody's.</summary>
+    static PoiPlan Part(PoiPlan poi, bool kept)
+    {
+        var part = new PoiPlan
+        {
+            Seed = kept ? poi.Seed : Rng.Mix(poi.Seed, 0x4E5B), Theme = poi.Theme, State = poi.State, Holder = kept ? poi.Holder : PlaceHolder.Empty,
+            Armed = poi.Armed, Derelict = poi.Derelict, Livable = poi.Livable, Husks = poi.Husks && kept, Shared = poi.Shared, Severity = poi.Severity, Danger = poi.Danger,
+        };
+        if (kept)
+        {
+            part.Holders.AddRange(poi.Holders);
+            part.Yards.AddRange(poi.Yards);
+        }
+        part.Dark.AddRange(poi.Dark);
+        part.Hollows.AddRange(poi.Hollows);
+        part.Rooms.AddRange(poi.Rooms.FindAll(r => poi.Kept.Contains(r.Index) == kept));
+        return part;
+    }
+
+    /// <summary>Another part of the same place's population into this one (its holes numbered on from this one's).</summary>
+    static void Join(PoiPopulation pop, PoiPopulation rest)
+    {
+        if (rest.Silent) return;
+        int cracks = pop.Cracks.Count, nests = pop.Nests.Count;
+        foreach (Crack k in rest.Cracks) { k.Id += cracks; pop.Cracks.Add(k); }
+        foreach (PoiSpawn s in rest.Spawns)
+        {
+            if (s.Hole >= 0) s.Hole += cracks;
+            if (s.Nest >= 0) s.Nest += nests;
+            pop.Spawns.Add(s);
+        }
+        pop.Nests.AddRange(rest.Nests);
+        pop.Food.AddRange(rest.Food);
+        pop.FoodChain.AddRange(rest.FoodChain);
+        pop.Masses.AddRange(rest.Masses);
+        pop.VeinRoots.AddRange(rest.VeinRoots);
+        pop.Clash ??= rest.Clash;
+        pop.Silent = false;
+        pop.Note = Tally(pop);
+    }
+
+    static string Tally(PoiPopulation pop) => $"{pop.Spawns.Count} creatures, {pop.Nests.Count} nests, {pop.FoodChain.Count} links in its food chain";
 
     static PoiPopulation PopulateOne(PoiPlan poi, DeepFauna fauna, DeepTables rules)
     {
@@ -286,8 +358,8 @@ public static partial class PoiFauna
             {
                 if (room.Kind is RoomKind.Vent or RoomKind.Duct) continue;
                 if (room.Dark || room.Depth >= 1 || rng.Chance(0.35f)) Subsisters(pop, fauna, theme, room, rng, false, density * 0.7f, pr);
-                // Nobody holds the floors above; below ground, the dark has its own all the same.
-                if (room.Depth >= 1 && room.Kind != RoomKind.Corridor && rng.Chance(0.45f) && Dark(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng) is { } d) Lurker(pop, fauna, theme, room, rng, false, d);
+                // Nobody holds the way in's storey; further in, below ground or up a tower's dark floors, the dark has its own all the same.
+                if (room.Level >= 1 && (room.Dark || room.Depth >= 1) && room.Kind != RoomKind.Corridor && rng.Chance(0.45f) && Dark(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng) is { } d) Lurker(pop, fauna, theme, room, rng, false, d);
             }
         }
         else
@@ -339,12 +411,12 @@ public static partial class PoiFauna
                     // A nesters' place has its nests room after room, in the dark and in the big rooms, not only deepest down.
                     else if (nesters && roomy && room.Kind != RoomKind.Entrance && (dark || room.Kind != RoomKind.Room) && rng.Chance(0.55f))
                         NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.Nester, false);
-                    // The dark's hunters: the most dangerous and the most varied of the world's, more the deeper.
-                    if (dark && room.Kind != RoomKind.Entrance && rng.Chance(MathF.Min(0.95f, pr.Lurker * MathF.Min(1.5f, density) * (owned ? 1.5f : 1f) * (1f + 0.25f * d))))
+                    // The dark's hunters: the most dangerous and the most varied of the world's, more the further in.
+                    if (dark && room.Kind != RoomKind.Entrance && rng.Chance(MathF.Min(0.95f, pr.Lurker * MathF.Min(1.5f, density) * (owned ? 1.5f : 1f) * (1f + 0.25f * Math.Min(room.Level, 4)))))
                         Lurker(pop, fauna, theme, room, rng, infested, owned ? Own(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng)
                             : rng.Chance(0.65f) ? Dark(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng) : null);
-                    // A pack lies up in a big dark room deep down.
-                    if (dark && d >= 1 && room.Kind is RoomKind.Hall or RoomKind.Room or RoomKind.Vault && room.Width >= 4f && rng.Chance(0.3f * MathF.Min(1.3f, density + 0.3f)))
+                    // A pack lies up in a big dark room far in (deep down, or high up).
+                    if (dark && room.Level >= 1 && room.Kind is RoomKind.Hall or RoomKind.Room or RoomKind.Vault && room.Width >= 4f && rng.Chance(0.3f * MathF.Min(1.3f, density + 0.3f)))
                         Pack(poi, pop, fauna, theme, room, rng);
                     Subsisters(pop, fauna, theme, room, rng, infested, density, pr);
                     foreach (var (at, n) in room.Vents)
@@ -403,13 +475,13 @@ public static partial class PoiFauna
             pop.Silent = true;
             pop.Note = active ? "kept clear by its garrison" : "empty and silent";
         }
-        else pop.Note = $"{pop.Spawns.Count} creatures, {pop.Nests.Count} nests, {pop.FoodChain.Count} links in its food chain";
+        else pop.Note = Tally(pop);
         return pop;
     }
 
     /// <summary>
     /// Keeps a place to a few creatures: first each room to its cap, then the place to its own,
-    /// taking from whichever role has most and from the shallowest rooms, so what is left is a
+    /// taking from whichever role has most and from the rooms nearest the way in, so what is left is a
     /// mix of things, further in. A nest always keeps a guard.
     /// </summary>
     static void Cap(PoiPlan poi, PoiPopulation pop, Rng rng, PopulationRules pr, string state)
@@ -434,7 +506,7 @@ public static partial class PoiFauna
         }
         int baseCap = pr.PlaceCap.GetValueOrDefault(state, 5);
         int most = Math.Min(baseCap * 2, baseCap + poi.Rooms.Count / Math.Max(1, pr.CapRooms));
-        int Depth(PoiSpawn s) => poi.Rooms.Find(r => r.Index == s.Room)?.Depth ?? 0;
+        int Far(PoiSpawn s) => poi.Rooms.Find(r => r.Index == s.Room)?.Level ?? 0;
         while (pop.Spawns.Count(s => !s.Species.Passive) > most)
         {
             var roles = new Dictionary<DeepRole, int>();
@@ -446,8 +518,8 @@ public static partial class PoiFauna
                 if (n > count || n == count && role < busiest) { busiest = role; count = n; }
             List<PoiSpawn> from = pop.Spawns.FindAll(s => s.Role == busiest && Spare(s) && !s.Species.Passive);
             int shallowest = int.MaxValue;
-            foreach (PoiSpawn s in from) shallowest = Math.Min(shallowest, Depth(s));
-            from = from.FindAll(s => Depth(s) == shallowest);
+            foreach (PoiSpawn s in from) shallowest = Math.Min(shallowest, Far(s));
+            from = from.FindAll(s => Far(s) == shallowest);
             pop.Spawns.Remove(from[rng.Int(0, from.Count - 1)]);
         }
     }
