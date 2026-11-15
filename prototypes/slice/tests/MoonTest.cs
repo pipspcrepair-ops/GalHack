@@ -11,6 +11,7 @@ using Slice.Game;
 using Slice.Items;
 using Slice.Orbit;
 using Slice.Surface;
+using Slice.Ui;
 using Slice.Vessels;
 using Weather.Model;
 using N = System.Numerics;
@@ -26,18 +27,21 @@ namespace Slice.Tests;
 ///
 /// It checks the system model's promise (a moon within thruster reach, a vacuum world), the flight
 /// readout (no world altitude in open space: speed and the nearest body), that the moon never
-/// vanishes on the way (its far look hands over to its own globe), the frame hand-over, the
-/// crossing's mapping, the landing, the moon's world (its gravity, no air or weather, its sky the
-/// system seen from it), the climb back off it, and frame times on the way out.
+/// vanishes on the way (its far look hands over to its own globe, the two painted alike), the frame
+/// hand-over, the crossing's mapping, the landing, the moon's world (its gravity, no air or weather,
+/// its sky the system seen from it), a stride on it stopping as on a planet, its markers its own,
+/// the climb back off it, the frame handed back to the world, and frame times on the way out. Then
+/// the same down onto a second moon: every moon you can fly to has a surface of its own.
 ///
 /// Setting up is the one shortcut, printed when it happens: the Skiff's parts are handed over and
-/// the tech tree opened. Fresh world every run.
+/// the tech tree opened; and the cruise out to the second moon is skipped (the Skiff set inside its
+/// reach). Fresh world every run.
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/MoonTest.tscn
 /// </summary>
 public partial class MoonTest : Node
 {
-    const int WatchdogMinutes = 16;
+    const int WatchdogMinutes = 26;
     Game.Game _game;
     Driver _drive;
     Pilot _pilot;
@@ -105,14 +109,25 @@ public partial class MoonTest : Node
         if (_skiff == null) yield break;
         foreach (int x in ClimbOut()) yield return x;
         if (!_game.InOrbit) yield break;
+        Celestial moon = null;
         foreach (int x in ToTheMoon()) yield return x;
-        if (_game.Orbit.Anchor != _game.Orbit.Moon) yield break;
-        foreach (int x in Descent()) yield return x;
-        if (_game.Zone != _game.Spaceflight.MoonSurface) yield break;
-        foreach (int x in Landing()) yield return x;
-        foreach (int x in StepOut()) yield return x;
+        if (_game.Orbit.Anchor != (moon = _game.Orbit.Moon)) yield break;
+        foreach (int x in DownOnto(moon)) yield return x;
         if (_game.Survivor.Seated != _skiff) yield break;
         foreach (int x in BackUp()) yield return x;
+        if (_game.Orbit.Anchor != _game.Orbit.Home) yield break;
+        Celestial next = null;
+        foreach (int x in ToAnotherMoon(c => next = c)) yield return x;
+        if (next != null && _game.Orbit.Anchor == next) foreach (int x in DownOnto(next)) yield return x;
+    }
+
+    /// <summary>Down through a moon's crossing, landed on its gear, out across its ground and back in the seat.</summary>
+    IEnumerable<int> DownOnto(Celestial moon)
+    {
+        foreach (int x in Descent(moon)) yield return x;
+        if (_game.Zone != moon.Surface) yield break;
+        foreach (int x in Landing(moon)) yield return x;
+        foreach (int x in StepOut(moon)) yield return x;
     }
 
     // ---- The system's promise -------------------------------------------------------------------
@@ -129,12 +144,17 @@ public partial class MoonTest : Node
         Check(centre <= home * PlanetSurface.Skies.StarSystem.ThrusterMoonTo * 1.01 && gap is > 6000 and < 14000,
             $"the thruster moon is {moon.Name}, {centre / 1000:F1} km from the world's centre ({centre / home:F1} radii): {gap / 1000:F1} km of open space from the top of the climb to its ground, Empyrion's 8.3 to 12.3 km");
         Check(moon.Spec != null && moon.Spec.Airless, $"it is a vacuum world you can land on: {moon.Spec}");
-        // Over its turning world it nearly holds still (it goes round the way the world turns), so a small vessel catches it.
-        double day = _game.Surface.Planet.Sky.DayMinutes * 60.0, worstSpeed = 0;
+        // It goes round its world at no more than the system's cap, and over the turning world it moves slower than a
+        // vessel flies in space (checked once the Skiff is built, from its own handling), so it is caught in a short flight.
+        double day = _game.Surface.Planet.Sky.DayMinutes * 60.0, round = Math.Tau * moon.Orbit / (moon.Period * day);
         PlanetSurface.Skies.D3 Over(double t) => model.Orient(t).ToGlobe(model.Position(moon, t) - model.Position(model.Home, t));
-        for (double t = 0; t < 2; t += 0.05) worstSpeed = Math.Max(worstSpeed, (Over(t + 0.001) - Over(t)).Length / (0.001 * day));
-        Check(worstSpeed < 65, $"over the turning world it moves at {worstSpeed:F0} m/s at most, under half a small vessel's 130, so it is caught in a short flight (a {day / 60:F0} minute day)");
+        _moonOverWorld = 0;
+        for (double t = 0; t < 2; t += 0.05) _moonOverWorld = Math.Max(_moonOverWorld, (Over(t + 0.001) - Over(t)).Length / (0.001 * day));
+        Check(round <= StarSystem.MoonSpeedCap + 1e-6, $"it goes round the world at {round:F1} m/s, within the {StarSystem.MoonSpeedCap:F0} m/s every moon keeps to (a {moon.Period:F2} day month of {day / 60:F0} minute days)");
     }
+
+    /// <summary>The thruster moon's fastest over the turning world, m/s (the system's check).</summary>
+    double _moonOverWorld;
 
     // ---- Its light -----------------------------------------------------------------------------
 
@@ -173,14 +193,14 @@ public partial class MoonTest : Node
         bodies.AddRange(sky.Drawn.Select(d => d.Body).Where(b => b != m.FuelMoon && b.Kind != OrbiterKind.GasGiant));
         Orbiter dark = null;
         double full = -1, partial = -1;
+        double Covered(Orbiter b, double t) => m.EclipseAt(t, m.Position(b, t), b).Covered;
         foreach (Orbiter b in bodies)
         {
-            double Covered(double t) => m.EclipseAt(t, m.Position(b, t), b).Covered;
             double t = now;
-            while (t < now + 40.0 && Covered(t) > 0.01) t += 0.001; // out of any shadow it is in now, first
+            while (t < now + 40.0 && Covered(b, t) > 0.01) t += 0.001; // out of any shadow it is in now, first
             for (; t < now + 40.0 && full < 0; t += 0.001)
             {
-                double covered = Covered(t);
+                double covered = Covered(b, t);
                 if (covered > 0.4 && partial < 0) partial = t;
                 if (covered > 0.98) full = t;
             }
@@ -194,7 +214,11 @@ public partial class MoonTest : Node
             sky.Paused = false;
             return;
         }
-        (double Mid, double Least, double Most) Across(double t)
+        // Its deepest: the middle of the time it is all in shadow (its first moment is the umbra's very edge).
+        double over = full;
+        while (over < full + 1.0 && Covered(dark, over + 0.001) > 0.98) over += 0.001;
+        double deep = (full + over) / 2;
+        (double Mid, double Centre, double Least, double Most) Across(double t)
         {
             sky.Days = t;
             sky.Track();
@@ -212,15 +236,38 @@ public partial class MoonTest : Node
                     double h = Shadowed(east * x + north * y - d[i] * MathF.Sqrt(1f - x * x - y * y), l[i], c[i], s[i]);
                     (least, most) = (Math.Min(least, h), Math.Max(most, h));
                 }
-            return (Shadowed(-d[i], l[i], c[i], s[i]), least, most);
+            return (Shadowed(-d[i], l[i], c[i], s[i]), Shadowed(Vector3.Zero, l[i], c[i], s[i]), least, most);
         }
-        var inside = Across(full);
+        var inside = Across(deep);
         var edge = Across(partial);
-        Check(inside.Mid > 0.9 && edge.Least < 0.2 && edge.Most > 0.6,
-            $"{Charts.Tidy(dark.Name)} goes dark in a shadow {full - now:F2} days on, drawn point by point: {inside.Mid:P0} of the sun hidden at its middle; as the edge crosses it, {edge.Least:P0} to {edge.Most:P0} across the disc (umbra and penumbra)");
+        // The shader's sums at the body's centre are the system's own eclipse there, and across the disc the shadow differs
+        // point by point as its edge crosses; how sharp the edge is goes by the caster: a far one's penumbra (the star's size
+        // from the body, times the caster's distance) is wider than the body, a near one's narrower.
+        double offDeep = Math.Abs(inside.Centre - Covered(dark, deep)), offEdge = Math.Abs(edge.Centre - Covered(dark, partial));
+        Check(inside.Mid > 0.9 && edge.Most - edge.Least > 0.1 && edge.Least < edge.Centre && edge.Centre < edge.Most && offDeep < 0.03 && offEdge < 0.03,
+            $"{Charts.Tidy(dark.Name)} goes dark in {Charts.Tidy(m.EclipseAt(deep, m.Position(dark, deep), dark).By?.Name ?? "nothing")}'s shadow {deep - now:F2} days on, drawn point by point: {inside.Mid:P0} of the sun hidden at its middle at the deepest; as the edge crosses it, {edge.Least:P0} to {edge.Most:P0} across the disc (umbra and penumbra); at its centre the sky's shadow and the system's agree within {Math.Max(offDeep, offEdge):P1}");
         sky.Days = now;
         sky.Paused = false;
         sky.Track();
+        GD.Print($"  (tracking the ground's sky: {TrackCost(sky.Track)})");
+    }
+
+    static PlanetSurface.Skies.D3 D3Of(N.Vector3 q) => new(q.X, q.Y, q.Z);
+
+    /// <summary>What a call costs on the main thread: its mean and worst ms over 300 calls, and what it allocates.</summary>
+    static string TrackCost(Action track)
+    {
+        track();
+        long bytes = GC.GetAllocatedBytesForCurrentThread();
+        double total = 0, worst = 0;
+        for (int i = 0; i < 300; i++)
+        {
+            long at = Stopwatch.GetTimestamp();
+            track();
+            double ms = Stopwatch.GetElapsedTime(at).TotalMilliseconds;
+            (total, worst) = (total + ms, Math.Max(worst, ms));
+        }
+        return $"{total / 300:F3} ms a call, worst {worst:F3} ms, {(GC.GetAllocatedBytesForCurrentThread() - bytes) / 300 / 1024.0:F1} KB allocated";
     }
 
     /// <summary>The sky shader's own shadow on a point of a body (sky.gdshader's shadowed()): the share of the sun its caster hides there.</summary>
@@ -240,6 +287,11 @@ public partial class MoonTest : Node
         AirCells.Give(_game);
         Check(_skiff?.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built: {_skiff?.Structure.Count} of {_game.StarterPlan.Count} blocks");
         if (_skiff?.Structure.Count != _game.StarterPlan.Count) _skiff = null;
+        else
+        {
+            float top = _skiff.Stats.TopSpeedSpace;
+            Check(_moonOverWorld < top * 0.5, $"over the turning world the moon moves at {_moonOverWorld:F0} m/s at most, under half the Skiff's {top:F0} in space, so it is caught in a short flight");
+        }
     }
 
     // ---- Up and out ----------------------------------------------------------------------------
@@ -248,6 +300,8 @@ public partial class MoonTest : Node
     {
         GD.Print("-- up out of the atmosphere --");
         Vessel v = _skiff;
+        foreach (int x in Stride((slid, speed) => _worldStride = slid)) yield return x;
+        GD.Print($"  (on the world a stride let go at a walk carries on {_worldStride:F2} m)");
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "at the Skiff's controls");
         if (_game.Survivor.Seated != v) yield break;
@@ -281,6 +335,8 @@ public partial class MoonTest : Node
         Celestial moon = orbit.Moon;
         Check(moon?.Ready == true && _game.Spaceflight.MoonSurface?.Made != null, $"the moon's surface was made off the main thread while you played, and its globe painted from it ({_clock.Elapsed.TotalSeconds:F0} s in)");
         if (moon?.Ready != true) yield break;
+        EveryMoon();
+        var farLook = System.Threading.Tasks.Task.Run(() => BodySurfaces.Paint(moon.Body)); // as the skies paint it from afar
         // Over the moon's near side, a little over the top of its band.
         var (tx, tz) = moon.Map.MapPoint(moon.ToGlobe(v.Body.Position));
         float over = moon.Ceiling + orbit.Rules.Crossing.Band + 400f;
@@ -295,8 +351,9 @@ public partial class MoonTest : Node
             {
                 var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(from, c.Centre, GalHack.Physics.Layers.World));
                 float want = from.DistanceTo(c.Centre) - c.GlobeRadius, got = hit.Count > 0 ? from.DistanceTo((Vector3)hit["position"]) : float.NaN;
-                bool its = hit.Count > 0 && hit["collider"].AsGodotObject() is Node n && n.GetParent() == c.Sphere;
-                Check(its && MathF.Abs(got - want) < 2f, $"{when}: {c.Name} is solid at its true radius, its ground {(c.Surface?.Arrived == true ? "there" : "not there yet")} (a ray from the Skiff meets it {got:F0} m out, {want:F0} m expected)");
+                Celestial first = hit.Count > 0 && hit["collider"].AsGodotObject() is Node n ? orbit.Bodies.FirstOrDefault(o => o.Sphere == n.GetParent()) : null;
+                if (first != null && first != c) GD.Print($"  ({when}: {c.Name} stands behind {first.Name}, which the ray meets first)");
+                else Check(first == c && MathF.Abs(got - want) < 2f + (c.Shift - c.ShiftWas).Length(), $"{when}: {c.Name} is solid at its true radius, its ground {(c.Surface?.Arrived == true ? "there" : "not there yet")} (a ray from the Skiff meets it {got:F0} m out, {want:F0} m expected, within the {(c.Shift - c.ShiftWas).Length():F0} m it goes in a tick)");
             }
             // The bodies near with no ground here (other moons, a giant and its moons): solid too, unless another stands in front.
             int met = 0, hidden = 0;
@@ -319,7 +376,8 @@ public partial class MoonTest : Node
         float sizeOff = 0f;
         string sizeWhat = "";
         double worstCpu = 0;
-        _game.Spaceflight.WorstSeamMs = 0;
+        _game.Spaceflight.WorstSeamMs = _game.Spaceflight.WorstSkyMs = _game.Spaceflight.SkyMs = 0;
+        _game.Spaceflight.SkyFrames = 0;
         float topSpeed = 0f;
         var watch = Stopwatch.StartNew();
         IEnumerable<int> Route()
@@ -363,14 +421,68 @@ public partial class MoonTest : Node
         var (p95, worst) = Spread(cpu);
         var (wallP95, wallWorst) = Spread(frames);
         GD.Print($"  frame times on the way, CPU: 95th {p95:F1} ms, worst {worst:F1} ms at {worstAt / 60f:F0} s; wall: 95th {wallP95:F1} ms, worst {wallWorst:F1} ms; {frames.Count} frames, headless, machine shared");
+        Spaceflight sf = _game.Spaceflight;
+        GD.Print($"  (tracking the skies in orbit: {sf.SkyMs / Math.Max(sf.SkyFrames, 1):F3} ms a frame on average, worst {sf.WorstSkyMs:F2} ms, over {sf.SkyFrames} frames; space's sky alone {TrackCost(() => orbit.Space.Track(_game.Surface.Planet.StarSystem, sf.Below.Sky.Days, orbit.Home.Turn.ToBasis(), D3Of(orbit.Home.ToGlobe(v.Body.Position)), v.Body.Position.ToGodot()))})");
         GD.Print($"  (the seam and skies took at most {_game.Spaceflight.WorstSeamMs:F1} ms of a frame: {_game.Spaceflight.WorstSeamParts}; the moon arrived a piece a frame: {_game.Spaceflight.MoonSurface.ArriveSteps})");
-        Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 40f, $"flew {start / 1000:F1} km from high orbit to over the moon in {tick / 60f:F0} s of game time at up to {topSpeed:F0} m/s ({v.Body.Position.ToGodot().DistanceTo(Above()):F0} m off the point)");
+        Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 40f, $"flew {start / 1000:F1} km from high orbit to over the moon in {tick / 60f:F0} s of game time at up to {topSpeed:F0} m/s (its top in space {v.Stats.TopSpeedSpace:F0}) ({v.Body.Position.ToGodot().DistanceTo(Above()):F0} m off the point)");
         Check(handedOverAt > 0 && orbit.Anchor == moon, $"the moon took over as the frame on the way ({handedOverAt / 60f:F0} s out), so its ground waits where you see it");
         Check(shown, $"the moon was in view every frame of the way, its far look handing over to its own globe ({lost ?? "never lost"})");
         Check(sized > 0 && sizeOff < 0.01f, $"every body was drawn at its true angular size every frame of the way, within 1%, so nothing pops ({sized} looks; the worst {sizeOff:P2} off{(sizeWhat == "" ? "" : ": " + sizeWhat)})");
         Check(nearestMoon, "the readout named the moon as the nearest body as it came near");
         Check(_game.Spaceflight.MoonSurface.Arrived, "its surface arrived ahead of the descent");
         Check(p95 < 16.7 && worst < 33.4, $"the flight keeps the frame budget in CPU time: 95th percentile {p95:F1} ms (budget 16.7), worst {worst:F1} ms (no frame dropped twice)");
+        PaintedAlike(moon, farLook.Result);
+    }
+
+    /// <summary>Every moon you can fly to is a body of the orbit zone with a surface of its own, from its own spec.</summary>
+    void EveryMoon()
+    {
+        StarSystem model = _game.Surface.Planet.StarSystem;
+        int inReach = model.Bodies.Count(b => b.Kind == OrbiterKind.Moon && b != model.Home && (b.Parent == model.Home || b.Parent == model.Neighbour));
+        List<Celestial> moons = _game.Orbit.Moons.ToList();
+        string Of(Celestial c) => $"{c.Name}: {c.Body.Spec.Archetype}{(c.Body.Spec.Airless ? ", cratered, no air" : ", air")}, {c.Body.Spec.WidthKm} km, {c.Surface.Physics.Zone.Strength:F1} m/s²{(c.Surface.Making ? "" : ", not made yet")}";
+        Check(moons.Count == inReach && moons[0] == _game.Orbit.Moon && moons.All(c => c.Surface is { IsOtherBody: true } s && s.Spec == c.Body.Spec && s.MakeLater == (c != moons[0])),
+            $"every moon you can fly to is a body here with a surface of its own from its own spec, the thruster moon's made from the start, every other one's as you come near ({moons.Count} of {inReach}: {string.Join("; ", moons.Select(Of))})");
+    }
+
+    /// <summary>
+    /// A moon's far look (as the skies paint it from afar) and its globe (painted from its own surface's map) agree in
+    /// brightness and colour, so nothing pops as one hands over to the other: their mean colours over the sphere. Both
+    /// are lit alike (the star's light and the dark round it, Burley's diffuse), so this is what is left to differ.
+    /// </summary>
+    void PaintedAlike(Celestial moon, Image far)
+    {
+        if (!moon.Body.Spec.Airless)
+        {
+            GD.Print($"  ({moon.Name} has air: its far look carries its clouds painted in, its globe draws them as a layer of their own, so the ground's paint is not compared)");
+            return;
+        }
+        Vector3 a = Mean(far), b = Mean(moon.Painting.Result.Albedo);
+        static float Lum(Vector3 c) => 0.2126f * c.X + 0.7152f * c.Y + 0.0722f * c.Z;
+        float bright = Lum(b) / Lum(a);
+        Vector3 tint = b / Lum(b) - a / Lum(a);
+        float off = MathF.Max(MathF.Abs(tint.X), MathF.Max(MathF.Abs(tint.Y), MathF.Abs(tint.Z)));
+        Check(MathF.Abs(bright - 1f) < 0.06f && off < 0.06f,
+            $"{moon.Name}'s far look and its globe are painted alike: the globe {bright:P0} as bright, its colour {off:P1} off (linear means: far {a.X:F3} {a.Y:F3} {a.Z:F3}, globe {b.X:F3} {b.Y:F3} {b.Z:F3})");
+    }
+
+    /// <summary>A map image's mean linear colour over the sphere it wraps (each row by its share of the area).</summary>
+    static Vector3 Mean(Image image)
+    {
+        int w = image.GetWidth(), h = image.GetHeight(), step = Math.Max(1, w / 256);
+        Vector3 sum = Vector3.Zero;
+        float weight = 0f;
+        for (int y = 0; y < h; y += step)
+        {
+            float area = MathF.Cos(((y + 0.5f) / h - 0.5f) * MathF.PI);
+            for (int x = 0; x < w; x += step)
+            {
+                Color c = image.GetPixel(x, y).SrgbToLinear();
+                sum += new Vector3(c.R, c.G, c.B) * area;
+                weight += area;
+            }
+        }
+        return sum / weight;
     }
 
     /// <summary>
@@ -415,11 +527,10 @@ public partial class MoonTest : Node
 
     // ---- Down onto it --------------------------------------------------------------------------
 
-    IEnumerable<int> Descent()
+    IEnumerable<int> Descent(Celestial moon)
     {
-        GD.Print("-- down through the moon's crossing --");
+        GD.Print($"-- down through {moon.Name}'s crossing --");
         Vessel v = _skiff;
-        Celestial moon = _game.Orbit.Moon;
         var (tx, tz) = moon.Under(v.Body.Position.ToGodot());
         foreach (int x in Upright(_pilot, moon, v)) yield return x;
         int crossings = _game.Spaceflight.Crossings.Count;
@@ -433,7 +544,7 @@ public partial class MoonTest : Node
         }
         _game.Controls.ReleaseAll();
         Check(alt != null && alt.Contains("ALT"), $"down in the moon's band the readout gives the moon's altitude: {alt}");
-        SurfaceZone surface = _game.Spaceflight.MoonSurface;
+        SurfaceZone surface = moon.Surface;
         Check(_game.Zone == surface && v.Zone == surface && _game.Survivor.Seated == v, "down through its band it crossed onto the moon's own surface, in the seat, no loading screen");
         if (_game.Zone != surface) yield break;
         Crossing down = _game.Spaceflight.Crossings[^1];
@@ -444,7 +555,7 @@ public partial class MoonTest : Node
         Check(Math.Sqrt(dx * dx + (down.MapZ - tz) * (down.MapZ - tz)) < 80, "it came in over the point it was over on the moon's globe");
     }
 
-    IEnumerable<int> Landing()
+    IEnumerable<int> Landing(Celestial moon)
     {
         GD.Print("-- landing --");
         Vessel v = _skiff;
@@ -455,24 +566,26 @@ public partial class MoonTest : Node
         foreach (int x in _pilot.Land(v, pad))
         {
             if (++t % 600 == 0 && v.Controller is { } c)
-                GD.Print($"  ({t / 60} s: {v.AboveGround:F1} m up, moving {v.Body.Velocity}, settling {c.Settling}, gear {c.Gear?.Attached}, ground {c.GroundDistance:F1} m under, {v.Body.Position.ToGodot().DistanceTo(pad):F0} m from the pad, asleep {v.Body.Asleep}, input {v.Flight.Input.Move} seated {v.Flight.Input.Seated} thrust {v.Flight.Input.AnyThrust}, tossed {v.Body.Tossed:F2}, in air {c.Zone.InAtmosphere} gravity {c.Zone.Gravity:F1}, held {string.Join(",", new[] { Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift }.Where(k => _game.Controls.IsHeld(k)))})");
+                GD.Print($"  ({t / 60} s: {v.AboveGround:F1} m up, moving {v.Body.Velocity}, settling {c.Settling}, gear {c.Gear?.Attached}, ground {c.GroundDistance:F1} m under, {v.Body.Position.ToGodot().DistanceTo(pad):F0} m from the pad, asleep {v.Body.Asleep}, input {v.Flight.Input.Move} seated {v.Flight.Input.Seated} thrust {v.Flight.Input.AnyThrust}, tossed {v.Body.Tossed:F2}, in air {c.Zone.InAtmosphere} gravity {c.Zone.Gravity:F1}, in the seat {_game.Survivor.Seated == v} as {v.Roles.Pilot}, the controls' up {_game.Controls.Axis(Key.Space, Key.Ctrl)}, held {string.Join(",", new[] { Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift }.Where(k => _game.Controls.IsHeld(k)))})");
             yield return x;
         }
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(v.Controller?.Frozen == true && v.Body.Damage == hurtBefore && !_game.Suit.Dead, $"landed on the moon on its gear, undamaged, the sleeper alive at the controls (settled {v.Controller?.Frozen}, {v.AboveGround:F1} m up, damage {v.Body.Damage - hurtBefore:F2}, the suit's air at {_game.Suit.OxygenShare:P0})");
+        Check(v.Controller?.Frozen == true && v.Body.Damage == hurtBefore && !_game.Suit.Dead, $"landed on {moon.Name} on its gear, undamaged, the sleeper alive at the controls (settled {v.Controller?.Frozen}, {v.AboveGround:F1} m up, damage {v.Body.Damage - hurtBefore:F2}, the suit's air at {_game.Suit.OxygenShare:P0})");
         float g = surface.Physics.Zone.Strength, home = _game.Surface.Physics.Zone.Strength;
-        float sized = home * _game.Orbit.Moon.GlobeRadius / _game.Orbit.Home.GlobeRadius;
+        float sized = home * moon.GlobeRadius / _game.Orbit.Home.GlobeRadius;
         Check(MathF.Abs(g - sized) < 0.01f, $"its gravity comes from its size: {g:F1} m/s² on a {surface.Planet.Width / 1000:F0} km moon, the world's {home:F1} on {_game.Surface.Planet.Width / 1000:F0} km");
-        Check(surface.Weather.Sim == null && surface.Planet.Sky.Density < SurfaceWeather.NoAir && _game.Suit.Beyond != null, "no air: no weather, a black sky, the suit on its own oxygen");
+        if (moon.Body.Spec.Airless)
+            Check(surface.Weather.Sim == null && surface.Planet.Sky.Density < SurfaceWeather.NoAir && _game.Suit.Beyond != null, "no air: no weather, a black sky, the suit on its own oxygen");
+        else Check(surface.Planet.Sky.Density >= SurfaceWeather.NoAir, $"air of its own: its sky's density {surface.Planet.Sky.Density:F2}");
         var seen = surface.Planet.StarSystem;
-        Check(seen.Home == _game.Surface.Planet.StarSystem.FuelMoon && seen.Origin == _game.Surface.Planet.StarSystem,
+        Check(seen.Home == moon.Body && seen.Origin == _game.Surface.Planet.StarSystem,
             "its sky is the start world's system seen from the moon: one model, one clock");
         Check(MathF.Abs((float)(surface.Sky.Days - _game.Surface.Sky.Days)) < 1e-6f, $"one clock: the moon's sky and the world's tell the same day ({surface.Sky.Days:F4})");
     }
 
-    IEnumerable<int> StepOut()
+    IEnumerable<int> StepOut(Celestial moon)
     {
-        GD.Print("-- out onto the moon --");
+        GD.Print($"-- out onto {moon.Name} --");
         Vessel v = _skiff;
         SurfaceZone surface = _game.Zone;
         if (v.Controller?.Frozen != true) yield break;
@@ -482,13 +595,62 @@ public partial class MoonTest : Node
         Vector3 from = s.WorldFeet, there = v.Body.Position.ToGodot() + MathX.Rotate(v.Body.Rotation, N.Vector3.UnitX).ToGodot() * 9f;
         there.Y = surface.GroundAt(there.X, there.Z).Y;
         foreach (int x in _drive.WalkTo(there, 0.8f, 40f, sprint: false, dig: false, hop: false)) yield return x;
-        foreach (int x in _drive.Wait(90)) yield return x; // a stride in low gravity comes down slowly
+        foreach (int x in _drive.Wait(90)) yield return x;
         Vector3 feet = s.WorldFeet;
         float ground = surface.GroundAt(feet.X, feet.Z).Y;
         Check(s.Seated == null && s.Zone == surface && s.Body.Frame == null && feet.DistanceTo(from) > 4f && MathF.Abs(feet.Y - ground) < 0.4f,
             $"the sleeper got up out of the seat and walked {new Vector2(feet.X - from.X, feet.Z - from.Z).Length():F1} m across the moon's own ground ({feet.DistanceTo(there):F1} m off the spot, feet {feet.Y - ground:F2} m over the ground, standing on {(s.Body.Frame == null ? "the moon" : "a hull")})");
+        float slid = 0f, speed = 0f, g = surface.Physics.Zone.Strength;
+        foreach (int x in Stride((d, at) => (slid, speed) = (d, at))) yield return x;
+        Check(slid < MathF.Max(1f, 2f * _worldStride),
+            $"a stride let go stops as on a planet in {g:F1} m/s²: let go at {speed:F1} m/s it carries on {slid:F2} m ({_worldStride:F2} m on the world at {s.Legs.WalkSpeed:F1} m/s)");
+        MarkedHere(moon);
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(s.Seated == v, "and back into the Skiff's seat");
+    }
+
+    float _worldStride;
+
+    /// <summary>
+    /// A stride let go: a second and a half's walk away from the Skiff, the key let go with the feet on the ground, and
+    /// how far it carries on (m), with the speed it was let go at (m/s).
+    /// </summary>
+    IEnumerable<int> Stride(Action<float, float> done)
+    {
+        var s = _game.Survivor;
+        Vector3 feet = s.WorldFeet, away = feet - _skiff.Body.Position.ToGodot();
+        away.Y = 0f;
+        Vector3 to = feet + away.Normalized() * 30f;
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 150 && (i < 90 || !s.Body.OnFloor); i++)
+        {
+            _drive.Face(new Vector3(to.X, s.WorldEye().Y, to.Z));
+            yield return 0;
+        }
+        _game.Controls.Hold(Key.W, false);
+        Vector3 letGo = s.WorldFeet;
+        float speed = new Vector2(s.Body.Velocity.X, s.Body.Velocity.Z).Length();
+        var trace = new System.Text.StringBuilder();
+        for (int i = 0; i < 120; i++)
+        {
+            yield return 0;
+            if (i % 6 == 0) trace.Append($"{(s.Body.OnFloor ? "" : "^")}{new Vector2(s.Body.Velocity.X, s.Body.Velocity.Z).Length():F1} ");
+        }
+        float slid = new Vector2(s.WorldFeet.X - letGo.X, s.WorldFeet.Z - letGo.Z).Length();
+        GD.Print($"  (a stride let go at {speed:F1} m/s carried on {slid:F2} m; its speed every tenth of a second, ^ off the ground: {trace})");
+        done(slid, speed);
+    }
+
+    /// <summary>On a moon the visor marks what is the moon's own (its places and deposits found there, the Skiff): none of the start world's.</summary>
+    void MarkedHere(Celestial moon)
+    {
+        string on = _game.Spaceflight.ChartOf(moon.Surface);
+        Charts charts = _game.Spaceflight.Charts;
+        HashSet<string> own = charts.Marks.Where(m => m.On == on).Select(m => m.Label.ToUpperInvariant()).ToHashSet();
+        List<Visor.Marker> marks = _game.Visor.Markers();
+        bool foreign = marks.Any(m => m.Kind is "bunker" or "mark" || m.Kind is "place" or "deposit" && !own.Contains(m.Tag));
+        bool skiff = marks.Any(m => m.Kind == "vessel" && m.Tag == _skiff.Name.ToUpperInvariant());
+        Check(!foreign && skiff, $"on {moon.Name} the visor marks its own ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))}), none of the start world's (its bunker and {charts.Marks.Count(m => m.On == null)} finds stay on its chart): {moon.Surface.Planet.Pois.Count} places of its own, {own.Count} finds charted here");
     }
 
     IEnumerable<int> BackUp()
@@ -512,12 +674,57 @@ public partial class MoonTest : Node
         foreach (int x in _pilot.Stop()) yield return x;
         OrbitZone orbit = _game.Orbit;
         Celestial home = orbit.Home, moon = orbit.Moon;
-        Vector3 Back() => home.Centre + (moon.Centre - home.Centre).Normalized() * (home.ShellRadius + 4500f); // well over the world's band
+        // Over the world's band on the line to the moon: out of the moon's reach, the world the nearer of the two.
+        float over = home.GlobeRadius + home.Ceiling + orbit.Rules.Crossing.Band + 600f;
+        Vector3 Back() => home.Centre + (moon.Centre - home.Centre).Normalized() * over;
         foreach (Vector3 way in OrbitTest.RoundTheGlobe(moon, v.Body.Position.ToGodot(), Back()))
             foreach (int x in _pilot.FlyTo(v, () => way, 300f, 120f, through: true)) yield return x;
         foreach (int x in _pilot.FlyTo(v, Back, 300f, 300f)) yield return x;
         string line = _game.Spaceflight.FlightLine(v);
-        Check(orbit.Anchor == home && line.Contains("YOUR WORLD"), $"flown back out of the moon's reach, the world took the frame back and the readout names it: '{line}'");
+        Vector3 at = v.Body.Position.ToGodot();
+        Check(orbit.Anchor == home && line.Contains("YOUR WORLD"),
+            $"flown back out of the moon's reach ({at.DistanceTo(moon.Centre) - moon.Reach:F0} m past it, {home.Height(at):F0} m over the world, {moon.Height(at):F0} m over the moon), the world took the frame back and the readout names it: '{line}'");
+    }
+
+    /// <summary>
+    /// A second moon, the nearest other one you can fly to. The cruise out is skipped (printed): the Skiff is set just
+    /// inside its reach, as if it had flown out and waited in its path. Its surface is made as you come near it, its globe
+    /// painted from that alike with its far look, it takes over as the frame, and the readout names it.
+    /// </summary>
+    IEnumerable<int> ToAnotherMoon(Action<Celestial> found)
+    {
+        GD.Print("-- out to a second moon --");
+        OrbitZone orbit = _game.Orbit;
+        Vessel v = _skiff;
+        Vector3 at = v.Body.Position.ToGodot();
+        Celestial next = orbit.Moons.Where(c => c != orbit.Moon).OrderBy(c => at.DistanceTo(c.Centre)).FirstOrDefault();
+        if (next == null)
+        {
+            GD.Print("  (no second moon to fly to: the thruster moon is this world's only one)");
+            yield break;
+        }
+        found(next);
+        Vector3 was = next.Centre;
+        foreach (int x in _drive.Wait(30)) yield return x;
+        float far = at.DistanceTo(next.Centre) - next.GlobeRadius, sweep = next.Centre.DistanceTo(was) * 2f;
+        GD.Print($"  ({next.Name} is {far / 1000:F0} km off, going round the turning world at {sweep:F0} m/s; its surface {(next.Surface.Making ? "being made" : "not made yet")})");
+        Vector3 inside = next.Centre + (at - next.Centre).Normalized() * (next.Reach - 400f);
+        GD.Print($"  (shortcut: the {far / 1000:F0} km cruise out to {next.Name} skipped: the Skiff set {next.Height(inside):F0} m over it, just inside its reach)");
+        v.Body.Position = inside.ToNumerics();
+        v.Body.Velocity = N.Vector3.Zero;
+        v.Body.AngularVelocity = N.Vector3.Zero;
+        v.Binding.Teleport();
+        var watch = Stopwatch.StartNew();
+        for (int i = 0; i < 60 * 300 && !(next.Ready && next.Surface.Arrived && orbit.Anchor == next); i++) yield return 0;
+        Check(orbit.Anchor == next, $"{next.Name} took over as the frame");
+        Check(next.Ready && next.Surface.Arrived, $"its surface was made off the main thread as you came near and its globe painted from it, in {watch.Elapsed.TotalSeconds:F0} s: {next.Surface.Made?.Spec}");
+        if (!next.Ready || orbit.Anchor != next) yield break;
+        PaintedAlike(next, BodySurfaces.Paint(next.Body));
+        string line = _game.Spaceflight.FlightLine(v);
+        Check(line.Contains(next.Name.ToUpperInvariant()), $"the readout names it: '{line}'");
+        var (tx, tz) = next.Map.MapPoint(next.ToGlobe(v.Body.Position));
+        Vector3 Above() => next.ToWorld(next.Map.Direction(tx, tz) * next.RadiusFor(next.Ceiling + orbit.Rules.Crossing.Band + 400f)).ToGodot();
+        foreach (int x in _pilot.FlyTo(v, Above, 30f, 400f)) yield return x;
     }
 }
 

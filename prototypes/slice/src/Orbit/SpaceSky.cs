@@ -175,7 +175,8 @@ public partial class SpaceSky : Node3D
         }
         """;
 
-    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces)
+    /// <param name="atmosphere">How high a world's air stands round its globe, in its radii: the far look's air is its globe's.</param>
+    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces, float atmosphere)
     {
         _surfaces = surfaces;
         _rules = rules;
@@ -233,6 +234,16 @@ public partial class SpaceSky : Node3D
             };
             AddChild(node);
             _bodies.Add((node, b, material));
+            if (b.Kind != OrbiterKind.GasGiant && b.Spec is { Airless: false } spec)
+            {
+                // A world with air: its globe's own air over the disc and round the limb.
+                var (air, airMaterial) = Globe.AirMesh(C(ArchetypeLook.For(spec).Atmosphere));
+                airMaterial.RenderPriority = 10; // over the far look and any rings: it adds light, it hides nothing
+                air.TopLevel = true;
+                air.Visible = false;
+                AddChild(air);
+                _air[b] = (air, airMaterial, Globe.AirShare(SkySystem.For(spec).Density), atmosphere);
+            }
             if (!b.Rings) continue;
             var ring = new ShaderMaterial { Shader = new Shader { Code = GiantRingSource }, RenderPriority = 3 };
             ring.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.RingColor));
@@ -292,6 +303,8 @@ public partial class SpaceSky : Node3D
         {
             float fade = _fade.TryGetValue(body, out float f) ? f : 1f;
             node.Visible = fade > 0.002f;
+            bool air = _air.TryGetValue(body, out var a);
+            if (air) a.Node.Visible = false;
             if (!node.Visible) continue;
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("fade"), fade);
             Sighting s = model.See(body, days, eyeGlobe, o);
@@ -303,6 +316,13 @@ public partial class SpaceSky : Node3D
             Vector3 dir = W(s.Direction).Normalized(), light = W(s.ToItsLight).Normalized();
             node.GlobalPosition = eye + dir * d;
             node.Scale = Vector3.One * d * sine;
+            // Its air as its globe draws it, in its radii, as much as its far look shows; its shell just short of the far look's
+            // air, so the far look's depth hides none of it and what stands in front of the body stands in front of its air too.
+            if (air && s.Angular > AirFrom && Globe.Air(a.Material, -dir, 1f, a.Thickness, (float)(s.Distance / body.Radius) - 1f, fade * a.Share, light))
+            {
+                a.Material.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), MathF.Max(d * (1f - sine * (1f + a.Thickness)) - 1f, MathF.Max(behind, 1f)));
+                a.Node.Visible = true;
+            }
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_light"), light);
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("behind"), behind);
             var (bodyAxis, bodyZero) = model.Turned(body, days);
@@ -333,6 +353,15 @@ public partial class SpaceSky : Node3D
             }
         }
     }
+
+    /// <summary>Each world with air: its air's shell, how much of its air shows (its density's) and its height in its radii.</summary>
+    readonly Dictionary<Orbiter, (MeshInstance3D Node, ShaderMaterial Material, float Share, float Thickness)> _air = new();
+
+    /// <summary>How much of a body's air its far look draws now, 0 to 1 (0: none, or no air).</summary>
+    public float AirOf(Orbiter body) => _air.TryGetValue(body, out var a) && a.Node.Visible && a.Node.IsVisibleInTree() ? a.Share * FadeOf(body) : 0f;
+
+    /// <summary>Under this angular radius a world's air round it is under a pixel, and not drawn.</summary>
+    const float AirFrom = 0.002f;
 
     readonly Vector4[] _umbra = new Vector4[4];
     readonly List<Orbiter> _casters = new();
@@ -421,6 +450,7 @@ public partial class SpaceSky : Node3D
         if (shown == _bodiesShown) return;
         _bodiesShown = shown;
         foreach (var (node, _, _) in _bodies) node.Visible = shown;
+        if (!shown) foreach (var a in _air.Values) a.Node.Visible = false;
     }
 
     static Color C(Rgb c) => new(c.R, c.G, c.B);
