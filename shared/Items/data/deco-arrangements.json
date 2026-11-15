@@ -45,7 +45,7 @@
     "optable-island": { "kind": "around", "where": "island", "anchor": ["optable"], "members": ["iv", "monitor", "cart"], "count": [2, 3], "gap": 0.45, "max": 1 },
     "nurse-station": { "kind": "station", "where": "wall", "anchor": ["desk", "counter"], "front": ["chair", "stool"], "top": ["monitor"], "beside": ["cabinet"], "max": 1 },
     "reception":     { "kind": "station", "where": "wall", "anchor": ["reception", "counter", "desk"], "front": ["chair", "stool"], "top": ["monitor"], "beside": ["plant", "cabinet"], "max": 1 },
-    "waiting":       { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa", "chair", "seat-row"], "count": [2, 4], "gap": 0.3, "under": ["rug"] },
+    "waiting":       { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa", "seat-row"], "count": [2, 4], "gap": 0.3, "under": ["rug"], "max": 3 },
     "class-rows":    { "kind": "rows",    "where": "island", "anchor": ["desk"], "focus": ["board"], "aisle": 1.0 },
     "screen-wall":   { "kind": "single",  "where": "wall", "anchor": ["screen"], "max": 1 },
     "board-wall":    { "kind": "single",  "where": "wall", "anchor": ["board"], "max": 1 },
@@ -170,7 +170,7 @@
     // Hospitals (NHS HBN and WBDG, refs 01 section 5): a ward is beds heads to the long walls, curtains and cabinets between, the
     // aisle down the middle, an open ward's nurses' table out in it; a nurses' station a desk and its cabinets; a theatre its table in the middle under the lamp; a
     // day room seats round a low table facing the screen, a table to eat at; a mortuary its table and the drawers round it.
-    "ward":        { "set": "medical", "wall": { "ward-bay": 8, "shelf-row": 1 }, "island": {}, "zone": { "table-group": 2 }, "fill": ["iv", "cabinet", "wheelchair", "monitor", "bin"] },
+    "ward":        { "set": "medical", "wall": { "ward-bay": 8, "shelf-row": 1 }, "island": {}, "zone": { "table-group": 2 }, "fill": ["iv", "cabinet", "monitor", "bin"] },
     "nurses":      { "set": "medical", "wall": { "nurse-station": 6, "shelf-row": 2 }, "island": {}, "zone": { "table-group": 1 }, "fill": ["cabinet", "monitor", "bin", "iv"] },
     "theatre":     { "set": "medical", "island": { "optable-island": 6 }, "wall": { "shelf-row": 2, "ward-bay": 1 }, "fill": ["monitor", "iv", "cart", "cabinet"] },
     "pharmacy":    { "set": "medical", "wall": { "nurse-station": 3, "shelf-row": 4 }, "island": { "range": 3 }, "fill": ["cabinet", "bin"] },

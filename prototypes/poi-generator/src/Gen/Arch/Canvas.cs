@@ -290,7 +290,8 @@ public sealed class Canvas
         {
             var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
             if (floor.Count < 4) continue;
-            Int3 mid = floor.MinBy(c => Math.Abs(c.X - floor.Average(f => f.X)) + Math.Abs(c.Z - floor.Average(f => f.Z)));
+            double ax = floor.Average(f => f.X), az = floor.Average(f => f.Z);
+            Int3 mid = floor.MinBy(c => Math.Abs(c.X - ax) + Math.Abs(c.Z - az));
             int up = 1;
             while (up < 12 && !Solid(mid + Int3.Up * (up + 1))) up++;
             if (up < 2) continue;

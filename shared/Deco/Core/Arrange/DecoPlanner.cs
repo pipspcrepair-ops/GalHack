@@ -75,6 +75,10 @@ public sealed class DecoPlanner
         string named = room.Recipe ?? room.RoomId;
         mix ??= (named != null && _arr.Recipes.TryGetValue(named, out var recipe)) ? recipe : _arr.Sets.TryGetValue(room.Set, out var sp) ? sp : new DecoSetPlan { Set = room.Set };
         Reserve();
+        // What its floor can't take stands in the way like furniture, so nothing set down shuts the only way round it (unless
+        // it splits the room already: then the planner can't tell a way through, and only keeps clear of it).
+        foreach (DecoRect r in room.Blocked) _raster.Add(r, 1);
+        if (room.Blocked.Count > 0 && !_raster.DoorsJoined(room)) foreach (DecoRect r in room.Blocked) _raster.Add(r, -1);
         // A narrow room is a way through, kept to a few things by its walls; one whose purpose names what it is arranged
         // round (a washroom of 2 by 2 m, a hall) still gets it.
         string[] focus = _arr.FocusFor(room.RoomId, room.Recipe);

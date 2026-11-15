@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -63,10 +63,11 @@ public partial class Screenshot
         {
             var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
             // (A floor come up to by its stair has no doorway: from the corner of it nearest the stair's.)
-            if ((DoorwayInto(poi, m, depth) ?? Corner(poi, m, floor)) is not var (centre, inward)) continue;
-            Vector3 mid = new((float)floor.Average(c => c.X) + 0.5f, m.Min.Y + 1.1f, (float)floor.Average(c => c.Z) + 0.5f);
-            // Just over the threshold, clear of the door's leaf, as a person stands coming in.
+            var door = DoorwayInto(poi, m, depth);
+            if ((door ?? Corner(poi, m, floor)) is not var (centre, inward)) continue;
+            // Just over the threshold, clear of the door's leaf, as a person stands coming in; looking at the room's middle (from a stair's corner, down the floor).
             Vector3 eye = centre + inward * 0.75f + Vector3.Up * EyeHeight;
+            Vector3 mid = door != null ? new((float)floor.Average(c => c.X) + 0.5f, m.Min.Y + 1.1f, (float)floor.Average(c => c.Z) + 0.5f) : eye + inward * 8f + Vector3.Down * 0.8f;
             _main.Camera.GlobalTransform = new Transform3D(Basis.Identity, _main.Stage.ToGlobal(eye)).LookingAt(_main.Stage.ToGlobal(mid), Vector3.Up);
             _main.Camera.Fov = 75f;
             _main.FreezeCamera = true;
@@ -94,7 +95,11 @@ public partial class Screenshot
         var stairs = poi.Layout.Links.Select(k => k.A == m.Index ? k.B : k.B == m.Index ? k.A : -1).Where(i => i >= 0 && poi.Layout.Modules[i].Kind == ModuleKind.Stair)
             .SelectMany(i => poi.Layout.Modules[i].Cells).ToList();
         Int3 at = stairs.Count > 0 ? floor.MinBy(c => stairs.Min(s => Math.Abs(s.X - c.X) + Math.Abs(s.Z - c.Z))) : floor[0];
-        Vector3 mid = new((float)floor.Average(c => c.X), at.Y, (float)floor.Average(c => c.Z)), from = new(at.X + 0.5f, at.Y, at.Z + 0.5f);
+        // Looking down the longest clear run of its floor from there (a floor round a core is seen along it, not into the core).
+        var own = floor.ToHashSet();
+        bool Seen(Int3 c) => Enumerable.Range(1, 20).All(k => own.Contains(new Int3((int)MathF.Round(at.X + (c.X - at.X) * k / 20f), at.Y, (int)MathF.Round(at.Z + (c.Z - at.Z) * k / 20f))));
+        if (floor.OrderByDescending(c => Math.Abs(c.X - at.X) + Math.Abs(c.Z - at.Z)).Where(Seen).Select(c => (Int3?)c).FirstOrDefault() is not Int3 far || far == at) return null;
+        Vector3 mid = new(far.X + 0.5f, at.Y, far.Z + 0.5f), from = new(at.X + 0.5f, at.Y, at.Z + 0.5f);
         return (from - (mid - from).Normalized() * 0.75f, (mid - from).Normalized());
     }
 

@@ -81,8 +81,8 @@ public partial class PoiTest
                         lined++;
                         if (r.Detour > 1f) { inLine++; Weak("in the way"); Note("line", $"{at}: {(float.IsPositiveInfinity(r.Detour) ? "no way through" : $"{r.Detour:0.0} m round")} ({r.Signature})"); }
                     }
-                    // (A ruin goes dark by design, its power long gone and the deep levels black: Decay. An abandoned place's lamps still mostly burn.)
-                    if (!r.Lit && state == PoiState.Abandoned) { unlit++; Weak("unlit"); Note("unlit", at); }
+                    // (Whether a lamp still burns is the state's: a ruin goes dark, deep levels blacker, by design (Decay). Each room has its own hung.)
+                    if (!r.Lit) { unlit++; Weak("unlit"); Note("unlit", at); }
                     if (r.Lamp) lamps++;
                     if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at}, {r.Ways} ways in ({r.Signature})"); }
                     if (r.Big) big++;
@@ -123,7 +123,7 @@ public partial class PoiTest
             Check(empty == 0, T($"no empty rooms ({empty} of {rooms}){First("empty")}"));
             Check(inLine == 0, T($"nothing stands in the walking line between a room's ways in ({inLine} of {lined} rooms with two or more ways in){First("line")}"));
             Check(oneMaterial == 0, T($"no place one material wall to wall ({oneMaterial} of {places}){First("material")}"));
-            Check(unlit == 0, T($"every room of an abandoned place lit, by a lamp or daylight ({unlit} unlit){First("unlit")}"));
+            Check(unlit == 0, T($"every room has its own lamp or daylight ({unlit} of {rooms} without){First("unlit")}"));
             Check(alike == 0, T($"no two rooms of a storey alike ({alike} pairs){First("alike")}"));
             Check(unfocused == 0, T($"every room has a focal point ({unfocused} of {rooms} without){First("focal")}"));
             Check(sparse == 0, T($"no big room with a bare middle ({sparse} of {big} big rooms){First("sparse")}"));
@@ -194,6 +194,7 @@ public partial class PoiTest
             var wallLook = walls.Count == 0 ? (Gen.Finish.Plain, new Rgb(0, 0, 0)) : walls.GroupBy(x => x).OrderByDescending(x => x.Count()).First().Key;
             // Lit: a lamp burning in it, a window in its walls, or the sky over it.
             bool lamp = inst.Lights.Any(l => l.Mode != LightMode.Dead && l.Cell.Y >= y && l.Cell.Y <= m.Max.Y + 1 && floor.Any(c => c.X == l.Cell.X && c.Z == l.Cell.Z));
+            bool hung = layout.Extras.Lights.Any(l => l.Module == m.Index || l.Cell.Y >= y && l.Cell.Y <= m.Max.Y + 1 && own.Contains(l.Cell with { Y = y }));
             bool window = floor.Any(c => Dirs.Horizontal.Any(h => Enumerable.Range(1, 2).Any(k => g.Get(c + h.Vec() + Int3.Up * k) is { Type: BlockType.Pane, Role: Role.Window } or { IsAir: true } && !of.ContainsKey(c + h.Vec() + Int3.Up * k) && !of.ContainsKey(c + h.Vec() * 2 + Int3.Up * k))));
             bool Open(Int3 c) => !Enumerable.Range(1, 12).Any(k => g.Get(c + Int3.Up * k) is { IsAir: false } b && BlockInfo.IsFullCube(b.Type));
             int open = floor.Count(Open);
@@ -208,7 +209,7 @@ public partial class PoiTest
             var middle = floor.Where(c => Dirs.Horizontal.All(h => own.Contains(c + h.Vec()) && own.Contains(c + h.Vec() * 2))).ToList();
             var edge = floor.Except(middle).ToList();
             float midShare = middle.Count == 0 ? 0 : middle.Count(Fallen) / (float)middle.Count, edgeShare = edge.Count == 0 ? 0 : edge.Count(Fallen) / (float)edge.Count;
-            looks.Add(new RoomLook(m, pieces, detour, lamp || window || open > 0, lamp, focal, signature, floorLook, wallLook, how, ways.Count)
+            looks.Add(new RoomLook(m, pieces, detour, hung || window || open > 0, lamp, focal, signature, floorLook, wallLook, how, ways.Count)
             {
                 Big = Math.Min(w0, d0) >= 4 && floor.Count >= BigRoom, Sparse = sparse, Ceiling = ceiling, Flat = flatCeiling,
                 Narrow = toRooms.Count, Doorless = toRooms.Count(w => !Doored(w.Cells)),
