@@ -82,6 +82,12 @@ default glyph    any    all:basalt
 default ash      any    all:ash
 default cloth    any    all:cloth
 default glass    any    all:glass
+# Lamps' housings and dead lamps (a lit one glows; out, it is a fitting), crystal, growth: nothing is drawn bare.
+default lumen    any    all:plate
+default deadlumen any   all:plate
+default crystal  any    all:fused
+default plant    any    all:thatch
+default bloom    any    all:chitin
 
 # ---- Rooms inside -------------------------------------------------------------------------------------
 

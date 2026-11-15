@@ -81,12 +81,15 @@ public sealed class DecoPalette
     /// <summary>
     /// What a part in a slot is made of when its model doesn't say: the body and trim are painted,
     /// dark parts are moulded plastic, metal is brushed and chrome, bronze and gold polished, cloth
-    /// is woven, stone, soil and rubble are stone, growths are organic. Lights have no surface.
+    /// is woven, stone, soil and rubble are stone, growths are organic. A light out (drawn matte) is its
+    /// moulded lens; a sign's face is painted.
     /// </summary>
     public static DecoFinish FinishOf(DecoSlot s) => s switch
     {
-        DecoSlot.Body or DecoSlot.Trim or DecoSlot.Hazard or DecoSlot.Alert => DecoFinish.Paint,
-        DecoSlot.Dark or DecoSlot.Plastic => DecoFinish.Plastic,
+        DecoSlot.Body or DecoSlot.Trim or DecoSlot.Hazard or DecoSlot.Alert or DecoSlot.Signal => DecoFinish.Paint,
+        DecoSlot.Dark or DecoSlot.Plastic or DecoSlot.Lamp or DecoSlot.Liquid => DecoFinish.Plastic,
+        DecoSlot.Node or DecoSlot.Node2 => DecoFinish.Organic,
+        DecoSlot.Crack => DecoFinish.Stone,
         DecoSlot.Metal => DecoFinish.Steel,
         DecoSlot.Chrome or DecoSlot.Bronze or DecoSlot.Gold => DecoFinish.Polished,
         DecoSlot.Wood => DecoFinish.Wood,
