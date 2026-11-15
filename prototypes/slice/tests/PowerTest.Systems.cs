@@ -193,6 +193,9 @@ public partial class PowerTest
             $"a 160 round on the hull is the shield's: {shield:F0} to {p.ShieldHp:F0}, the plate untouched; the bar's SHIELD slot reads {ShieldSlot()}");
         ShieldShell shell = v.Node.GetChildren().OfType<ShieldShell>().FirstOrDefault();
         Check(shell is { Visible: true, Rippling: true }, "the shield ripples where it was struck: its shell shows");
+        float underside = (v.Structure.Bounds().min.Y - 0.5f) * v.Structure.Grid.CellSize;
+        Check(shell != null && shell.Floor >= underside - 1e-4f && shell.Position.Y - shell.Scale.Y < underside,
+            $"on a grounded base it is a dome: nothing drawn below its lowest cell ({shell?.Floor:F2} m, the ellipsoid reaching {shell?.Position.Y - shell?.Scale.Y:F2})");
         foreach (int x in _drive.Wait(60)) yield return x;
         Check(shell is { Visible: false, Rippling: false }, "and fades out within a second, hidden till the next hit");
         v.SetSystem(StructureBar.Shields, false);
