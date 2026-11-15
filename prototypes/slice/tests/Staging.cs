@@ -68,6 +68,7 @@ public sealed partial class Staging
             "bunkershot" => BunkerShot(),
             "torch" => Torch(),
             "base" => BaseView(),
+            "fields" => FieldViews(),
             "blockbase" => BaseView(survival: true),
             "constructor" => ConstructorBlocks(),
             "machinescreen" => MachineScreenView(),

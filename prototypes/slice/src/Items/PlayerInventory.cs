@@ -262,6 +262,8 @@ public sealed class PlayerInventory
             if (id == Core) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;
             if (id == Slice.Vessels.Device.ClimateItem || _items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
+            if (Slice.Game.GameData.Shared.Rules.ForceFields.TierOf(id) != null) return HandKind.Device; // a force field component: drawn across an opening
+
             if (item.Category == ItemCategory.Consumable || id == "meat") return HandKind.Consumable;
             return HandKind.Other;
         }

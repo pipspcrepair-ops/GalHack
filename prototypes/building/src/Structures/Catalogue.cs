@@ -104,11 +104,15 @@ public sealed class BlockType
     public BlockType Upgrade;
     public Dictionary<string, int> Cost = new();
 
-    // Plated armour only: the block under the plating, and the plate item sprayed on per full cube.
+    // Plated blocks only: the block under the plating, and the plate item sprayed on per full cube.
+    // Armour takes plating, and so does a component listed as a plated one's base (a field emitter).
     public BlockType Base;
     public string Plate;
     public int Plates;
     public bool IsPlated => Plate != null;
+
+    /// <summary>The plated blocks with this one under them (empty: it takes no plating).</summary>
+    public readonly List<BlockType> Platings = new();
 
     // Components only.
     /// <summary>
@@ -158,6 +162,8 @@ public sealed class BlockType
     public bool IsForecast => Function == "forecast";
     /// <summary>A seat that gives control: the command chair, or a cockpit built round one.</summary>
     public bool IsCommandChair => Function == "chair";
+    /// <summary>A force field's corner emitter (any plating).</summary>
+    public bool IsFieldEmitter => Function == "field-emitter";
     public int Cells => Size.X * Size.Y * Size.Z;
 
     public static bool Has(int mask, Dir d) => (mask & (1 << (int)d)) != 0;
@@ -208,6 +214,7 @@ public sealed class Catalogue
         c.LoadComponents(Parse(readFile(ComponentsFile), "galhack.components"));
         foreach (BlockType t in c._types.Skip(1))
         {
+            t.Base?.Platings.Add(t);
             if (t.UpgradesTo != null) t.Upgrade = c.Type(t.UpgradesTo);
             if (!t.IsArmor) t.Detail = DeviceDetail.For(t);
             if (t.Group == null) continue;
@@ -398,6 +405,17 @@ public sealed class Catalogue
         foreach (JsonElement c in root.GetProperty("components").EnumerateArray())
         {
             BlockType t = Common(c, BlockKind.Component);
+            if (c.TryGetProperty("base", out JsonElement under))
+            {
+                // A plated component is its base under plates: the same shape, faces and work, its own hit points, armour and colour.
+                BlockType b = Type(under.GetString());
+                (t.Function, t.Power, t.Size, t.Multi, t.Collide, t.Parts, t.GlowColor, t.Accent) = (b.Function, b.Power, b.Size, b.Multi, b.Collide, b.Parts, b.GlowColor, b.Accent);
+                (t.AttachFaces, t.AirtightFaces, t.CoverFaces, t.AirtightFacesOpen, t.CoverFacesOpen, t.Airtight) = (b.AttachFaces, b.AirtightFaces, b.CoverFaces, b.AirtightFacesOpen, b.CoverFacesOpen, b.Airtight);
+                (t.Base, t.Plate, t.Plates) = (b, Str(c, "plate"), Int(c, "plates", 1));
+                t.Cost = new Dictionary<string, int>(b.Cost) { [t.Plate] = t.Plates };
+                Add(t);
+                continue;
+            }
             t.Function = Str(c, "function", "");
             t.Power = Num(c, "power", 0);
             t.Thrust = Num(c, "thrust", 0);

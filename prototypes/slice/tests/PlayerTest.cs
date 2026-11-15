@@ -1033,7 +1033,7 @@ public partial class PlayerTest : Node
         GD.Print("-- throughout --");
         var oxygen = _game.Suit.Sim.Data.Vitals.Oxygen;
         Check(_game.Zone.Data.Consumables["o2-bottle"].Oxygen == oxygen.SmallBottle && _game.Zone.Data.Consumables["air-cell"].Oxygen == oxygen.LargeBottle
-              && _game.Zone.Data.Items.Item("o2-bottle").Name == "O2 bottle", "oxygen items give the design's +75 and +250, in suit oxygen");
+              && _game.Zone.Data.Items.Item("o2-bottle").Name == "Air bottle", "oxygen items give the design's +75 and +250, in suit oxygen");
         Check(WorldChoice.Types.All(t => t.Name.StartsWith(t.Archetype.ToString(), StringComparison.Ordinal) || t.Archetype == Archetype.Alien && t.Key == "swamp"),
             "the start screen's planet types carry their archetype's name");
         Check(_rescues.All(r => r.Body != _game.Survivor.Body), $"the sleeper never needed rescuing from the ground ({_rescues.Count} rescues of anything)");

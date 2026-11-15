@@ -6,14 +6,11 @@ using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
 using PhysicsSandbox.Bridges;
-using Slice.Places;
 using Slice.Surface;
 using N = System.Numerics;
 
 namespace Slice.Vessels;
 
-/// <summary>A door that stands open, as anything that must know reads it (a force field across it, later).</summary>
-public readonly record struct OpenDoor(Vector3 Centre, Vector3 Normal, Vector2 Size, float Open);
 
 /// <summary>
 /// One door system with the places' doors: door blocks on bases and vessels open and shut with E,
@@ -213,26 +210,12 @@ public partial class BlockDoors : Node3D
         }
     }
 
-    /// <summary>Every door standing open or opening, on structures and in the places near (a force field across an open door reads this).</summary>
-    public IEnumerable<OpenDoor> OpenDoors(PoiPlaces places)
+    /// <summary>Is any door on a structure near you standing open? Only then are its outer doors' force fields worked out (the rooms' <see cref="RoomReport.FieldDoors"/>).</summary>
+    public bool AnyOpen(Vessel v)
     {
-        foreach (Vessel v in Zone.Vessels)
-        {
-            if (v.Body.Kind == BodyKind.Wreck || !_known.TryGetValue(v, out Known k)) continue;
-            float size = v.Structure.Grid.CellSize;
-            foreach (Int3 cell in k.Doors)
-            {
-                if (!IsOpen(v, cell) || !v.Structure.TryGet(cell, out Block b)) continue;
-                Vector3 z = Orientations.Matrix(b.Rot).Z.ToVector3().ToGodot();
-                float open = _slides.TryGetValue((v, cell), out Slide s) ? s.Open : 1f;
-                Int3 n = SizeOf(v, cell);
-                yield return new OpenDoor(v.ToWorld(Centre(v, cell)), z, new Vector2(size * n.X, size * n.Y), open);
-            }
-        }
-        if (places == null) yield break;
-        foreach (Place p in places.Standing)
-            foreach (Place.Door d in p.Doors)
-                if (d.Open > 0.02f)
-                    yield return new OpenDoor(p.ToWorld(d.Centre), d.Along.Cross(Vector3.Up).Normalized(), new Vector2(d.Width, d.Cells.Max(c => c.Y) - d.Cells.Min(c => c.Y) + 1), d.Open);
+        if (!_known.TryGetValue(v, out Known k)) return false;
+        foreach (Int3 cell in k.Doors)
+            if (IsOpen(v, cell)) return true;
+        return false;
     }
 }
