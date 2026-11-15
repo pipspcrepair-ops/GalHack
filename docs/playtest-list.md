@@ -657,7 +657,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 - [ ] Thrust hold toggle, power budget, thrusters and drives using power and fuel (no CPU: superseded by the 1 m grid plan, 12 Nov), spikes from drives and shields [not started] [normal]
 - [ ] Spool-up lift-off, then rerun the massive POI test [not started] [normal]
 - [ ] Space POIs: 100 orbital themes reflecting each world's tech level and theme, 100 deep space themes, and layers that feed the procgen, in `docs/space-pois.md` [running: research] [normal]
-- [ ] One roving non-aggressive ship on start worlds; NPC traffic later [not started] [later]
+- [ ] A LONE TRADER OR SCOUT IN THE START WORLD'S SKY (owner, asked several times; 15 Nov: "We can still encounter pirates in the rim, but they're small fry looking for easy pickings. There's the occassional small trader going about things too. Like I've said before, it would be good to have a lone trader or a scout in the sky on the starter world"). One non-aggressive generated ship (never a stock blueprint) flying the start world's sky, landing at places; small-fry pirates and small traders on the rim later [running: skyship agent] [high]
 
 ## Building and blueprints
 
