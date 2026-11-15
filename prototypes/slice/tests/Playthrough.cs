@@ -132,14 +132,16 @@ public sealed class Playthrough
 
         if (shoot)
         {
-            int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.Bolts, impacts = Game.Shots.Impacts;
-            float health = b.Ruin.Structure.Blocks().Sum(x => x.block.Hp);
+            // The bunker is the sleeper's: a blast at its wall takes the block it meets back to the bag, whole.
+            int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.LightningBolts, whole = Game.Tool.TakenWhole;
             Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.75f)); // past the lockers on the side wall
+            var bag = Pack.Storage.Contents.ToDictionary(kv => kv.Key, kv => kv.Value);
             foreach (int x in ShootAt(() => wall)) yield return x;
             foreach (int x in Drive.Wait(20)) yield return x;
-            check(Game.Shots.Bolts > bolts && Game.Shots.Impacts > impacts && Game.Shots.LastImpact.Kind == Slice.Player.ImpactKind.Block
-                  && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Structure.Blocks().Sum(x => x.block.Hp) < health,
-                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim ({Game.Shots.LastImpact.Kind}), and the block it hit loses hit points ({health - b.Ruin.Structure.Blocks().Sum(x => x.block.Hp):F0} lost, {b.Ruin.Hits.HitsTaken} hits taken, {blocks - b.Ruin.Structure.Count} blocks gone)");
+            var back = Pack.Storage.Contents.Where(kv => kv.Value > bag.GetValueOrDefault(kv.Key)).Select(kv => kv.Key).ToList();
+            check(Game.Shots.LightningBolts > bolts && Game.Tool.TakenWhole == whole + 1 && b.Ruin.Structure.Count < blocks && back.Count == 1,
+                $"{label}a blast inside the bunker: lightning at its wall, and the block it met back in the bag whole ({string.Join(", ", back)}; {blocks - b.Ruin.Structure.Count} blocks gone)");
+            foreach (string id in back) Pack.Remove(id, Pack[id] - bag.GetValueOrDefault(id)); // (what follows counts the kit and what's crafted alone)
             int removed = Game.Zone.Planet.Terrain.Store.RemovedCount;
             foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
             foreach (int x in Drive.HoldPrimary(b.At(new Vector3(0f, 0.25f, -1.5f)), 30)) yield return x;

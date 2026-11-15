@@ -211,6 +211,30 @@ public partial class SleeperToolTest : Node
         }
     }
 
+    /// <summary>What the blast would meet along the look, and what the take-down is on (for a failure's line).</summary>
+    string Aimed(Vessel v)
+    {
+        Vector3 eye = _game.Survivor.WorldEye(), dir = _game.Survivor.WorldLook();
+        bool met = _game.Arms.Sweep(eye.ToNumerics(), (eye + dir * Bolt.Range).ToNumerics(), Slice.Arms.ArmsHost.PlayerThing, 0, 0f, out ShotHit hit);
+        return $"the blast meets {(met ? hit.Kind.ToString() : "nothing")}{(met && hit.Thing == v ? " on it" : "")} at {hit.Distance:F1} m; the take-down on it {Tool.OnStructure && _game.Builder.TargetVessel == v} ({_game.Builder.Verdict})";
+    }
+
+    /// <summary>The cell of a structure the blast along the look meets first, if it meets that structure.</summary>
+    S.Int3? Met(Vessel v)
+    {
+        Vector3 eye = _game.Survivor.WorldEye(), dir = _game.Survivor.WorldLook();
+        return _game.Arms.Sweep(eye.ToNumerics(), (eye + dir * Bolt.Range).ToNumerics(), Slice.Arms.ArmsHost.PlayerThing, 0, 0f, out ShotHit hit)
+               && hit.Kind == HitKind.Block && hit.Thing == v ? new S.Int3(hit.CellX, hit.CellY, hit.CellZ) : null;
+    }
+
+    /// <summary>To fresh open ground, well away from the structures set down so far.</summary>
+    IEnumerable<int> MoveOn()
+    {
+        Vector3 site = _play.FlatSpot(_game.Survivor.WorldFeet, 25f, (float)_rng.NextDouble() * MathF.Tau, span: 10f);
+        _game.Survivor.PlaceOutside((_game.Zone.GroundAt(site.X, site.Z) + Vector3.Up * 0.3f).ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+    }
+
     IEnumerable<int> Blocks()
     {
         GD.Print("-- blocks: ours come back whole; someone else's give up a share --");
@@ -222,16 +246,20 @@ public partial class SleeperToolTest : Node
             foreach (int x in _drive.Wait(30)) yield return x;
             S.Int3 end = cells[2];
             string item = BuildingBridge.ItemOf(items, v.Structure, v.Structure.Get(end)).Id;
-            int bag = _game.Pack[item], whole = Tool.TakenWhole;
+            int bag = _game.Pack[item], whole = Tool.TakenWhole, count = v.Structure.Count;
+            foreach (int x in _drive.LookAt(FaceOf(v, end), 6)) yield return x;
+            string aimed = Aimed(v);
             foreach (int x in Blast(FaceOf(v, end))) yield return x;
-            Check(SleeperTool.Ours(v) && !v.Structure.Has(end) && _game.Pack[item] == bag + 1 && Tool.TakenWhole == whole + 1,
-                $"{label}: one blast and the block is back in the bag, whole (+1 {items.Item(item).Name}; core {(v.Structure.Core != null ? v.Structure.Owner : "none")})");
+            Check(SleeperTool.Ours(v) && v.Structure.Count < count && _game.Pack[item] == bag + 1 && Tool.TakenWhole == whole + 1,
+                $"{label}: one blast and the block is back in the bag, whole (+{_game.Pack[item] - bag} {items.Item(item).Name}; core {(v.Structure.Core != null ? v.Structure.Owner : "none")}; {aimed})");
         }
 
         // Someone else's core: damaged a share at a time, arcs over it, a share of its bill as it goes.
         Vessel theirs = Row("raiders", true, NextBearing(), out S.Int3[] row);
         foreach (int x in _drive.Wait(30)) yield return x;
-        S.Int3 cell = row[2];
+        // The block a blast at the row's end meets first (from where you stand it may be another).
+        foreach (int x in _drive.LookAt(FaceOf(theirs, row[2]), 6)) yield return x;
+        S.Int3 cell = Met(theirs) ?? row[2];
         S.Structure ts = theirs.Structure;
         S.Block b = ts.Get(cell);
         float max = ts.StatsOf(b).MaxHp;
@@ -275,6 +303,7 @@ public partial class SleeperToolTest : Node
     IEnumerable<int> Person()
     {
         GD.Print("-- a person in front: zapped, chipped, stunned in their flinch --");
+        foreach (int x in MoveOn()) yield return x;
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
         Creature c = Bystander(4f);
         foreach (int x in _drive.Wait(40)) yield return x;
@@ -332,7 +361,9 @@ public partial class SleeperToolTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.Q)) yield return x;
         S.Structure s = v.Structure;
-        S.Int3 hurt = cells[0], gone = cells[3];
+        // The block the look lands on when aimed at the row's first (from where you stand that may be the core).
+        foreach (int x in _drive.LookAt(FaceOf(v, cells[0]), 6)) yield return x;
+        S.Int3 hurt = WorldRay.Cast(_game.Zone, _game.Survivor, _game.Zone.Data.Rules.Tool.Repair.Range, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit on) && on.Vessel == v ? on.Cell : cells[0], gone = cells[3];
         float max = s.StatsOf(s.Get(hurt)).MaxHp;
         s.SetHp(hurt, max * 0.3f);
         v.ApplyEdits();
@@ -351,8 +382,9 @@ public partial class SleeperToolTest : Node
         foreach (var (id, n) in bill) _game.Pack.Add(id, n);
         int repaired = Tool.Repaired;
         foreach (int x in HoldRepair(FaceOf(v, hurt), 120)) yield return x;
+        bool onIt = WorldRay.Cast(_game.Zone, _game.Survivor, _game.Zone.Data.Rules.Tool.Repair.Range, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit look);
         Check(s.Get(hurt).Hp >= max - 0.01f && Tool.Repaired > repaired && bill.All(kv => _game.Pack[kv.Key] < kv.Value),
-            $"with them in the bag it is mended to full ({s.Get(hurt).Hp:F0} of {max:F0}), paid from the bag");
+            $"with them in the bag it is mended to full ({s.Get(hurt).Hp:F0} of {max:F0}), paid from the bag (last pulse: {Tool.LastMend}; the look on {(onIt ? $"{look.Vessel?.Name ?? "ground"} {look.Cell} at {look.Distance:F1} m" : "nothing")})");
 
         // Destroyed: restored from what the bag holds, nothing without.
         S.Block was = s.Get(gone);

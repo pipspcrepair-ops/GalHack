@@ -102,6 +102,8 @@ public sealed class SleeperTool
     public int Extracted { get; private set; }
     public int Repaired { get; private set; }
     public int Restored { get; private set; }
+    /// <summary>What the last repair pulse did (tests and the visor's line).</summary>
+    public string LastMend { get; private set; } = "";
 
     public bool HasTarget { get; private set; }
     public Int3 Target { get; private set; }
@@ -664,13 +666,15 @@ public sealed class SleeperTool
         _cooldown = r.Interval;
         Arms?.Sounds?.Play(CombatSound.Mend, Muzzle(), 0.95f + 0.1f * (float)Random.Shared.NextDouble(), -10f);
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
-        if (WorldRay.Cast(_zone, _survivor, r.Range, Layers.Hull, out LookHit look) && look.OnBlock
+        if (WorldRay.Cast(_zone, _survivor, r.Range, Layers.World | Layers.Hull, out LookHit look) && look.OnBlock
             && GalHack.Structures.Building.IsDamaged(look.Vessel.Structure, look.Cell))
         {
             Slice.Vessels.Vessel v = look.Vessel;
             Bill bill = v.Hits.RepairBill(look.Cell);
             SharedStorage from = _pack.Storage.Has(bill) ? _pack.Storage : v.Storage;
-            if (v.Hits.Repair(look.Cell, 1f, from) == GalHack.Structures.RepairStatus.Repaired)
+            GalHack.Structures.RepairStatus done = v.Hits.Repair(look.Cell, 1f, from);
+            LastMend = $"{done} {look.Cell} for {_zone.Data.Items.Describe(bill, 2)}";
+            if (done == GalHack.Structures.RepairStatus.Repaired)
             {
                 Repaired++;
                 if (from == _pack.Storage) _pack.Grid.Reconcile();
@@ -678,6 +682,7 @@ public sealed class SleeperTool
             else Said?.Invoke($"REPAIR · {_zone.Data.Items.Describe(bill, 2)} NEEDED", Tones.Caution);
             return;
         }
+        LastMend = look.OnBlock ? $"whole {look.Cell}" : "no block";
         // A destroyed block in the cone, nearest the look first.
         float cos = MathF.Cos(Mathf.DegToRad(r.Angle));
         string why = null;

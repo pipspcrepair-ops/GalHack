@@ -253,38 +253,11 @@ public partial class PlayerTest : Node
             var seen = space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, g + (g - eye).Normalized() * 0.5f, Layers.World | Layers.Hull | Layers.Props));
             if (seen.Count > 0 && ((Vector3)seen["position"]).DistanceTo(g) < 0.3f) { ahead = g; break; }
         }
-        int impacts = _game.Shots.Impacts;
+        int bolts = _game.Shots.LightningBolts, worked = _game.Tool.ChippedCells + _game.Zone.Planet.Terrain.Store.RemovedCount;
         foreach (int x in _play.ShootAt(() => ahead)) yield return x;
         foreach (int x in _drive.Wait(20)) yield return x;
-        Check(_game.Shots.Impacts > impacts && _game.Shots.LastImpact.Kind == ImpactKind.Ground && _game.Shots.LastImpact.At.DistanceTo(ahead) < 1.5f,
-            $"a shot at the ground: a bolt and sparks and a scorch where it lands ({_game.Shots.LastImpact.At.DistanceTo(ahead):F2} m from the aim)");
-        // Down along a slope the voxel cubes' corners stand far along the shot from the ground that is
-        // drawn: look round for the longest such stretch, and the bolt must go on to the drawn ground.
-        {
-            Vector3 from = _game.Survivor.WorldEye();
-            float worst = 0f;
-            Vector3? graze = null;
-            for (int k = 0; k < 48; k++)
-                for (float drop = 0.08f; drop < 0.75f; drop += 0.06f)
-                {
-                    float a = k * MathF.Tau / 48f, flat = MathF.Sqrt(1f - drop * drop);
-                    var look = new Vector3(MathF.Cos(a) * flat, -drop, MathF.Sin(a) * flat);
-                    if (!_game.Zone.Planet.Terrain.Store.Raycast(from.ToNumerics(), look.ToNumerics(), 30f, out _, out _, out float cube)) continue;
-                    var drawn = space.IntersectRay(PhysicsRayQueryParameters3D.Create(from, from + look * 40f, Layers.World | Layers.Hull | Layers.Props | Layers.Flora));
-                    if (drawn.Count == 0) continue;
-                    Vector3 g = (Vector3)drawn["position"];
-                    float gap = from.DistanceTo(g) - cube;
-                    if (gap > worst && gap < 12f) { worst = gap; graze = g; }
-                }
-            if (graze is Vector3 target)
-            {
-                impacts = _game.Shots.Impacts;
-                foreach (int x in _play.ShootAt(() => target)) yield return x;
-                foreach (int x in _drive.Wait(20)) yield return x;
-                Check(_game.Shots.Impacts > impacts && _game.Shots.LastImpact.At.DistanceTo(target) < 0.75f,
-                    $"a shot down along the slope lands on the ground that is drawn, {worst:F2} m past the voxel cube it grazes ({_game.Shots.LastImpact.At.DistanceTo(target):F2} m from the aim)");
-            }
-        }
+        Check(_game.Shots.LightningBolts > bolts && _game.Tool.ChippedCells + _game.Zone.Planet.Terrain.Store.RemovedCount != worked,
+            $"a blast at the ground in reach: lightning to it, and the ground is worked ({_game.Shots.LightningBolts - bolts} bolts)");
         WildlifePatch w = _game.Zone.Wildlife;
         Vector3 feet = _game.Survivor.WorldFeet;
         var tried = new HashSet<Creature>();
