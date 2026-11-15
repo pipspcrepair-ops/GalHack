@@ -156,7 +156,10 @@ public partial class TerrainStreamer : Node3D
     readonly PriorityQueue<Int3, int> _queue = new();
     readonly List<(int dx, int dz)> _ring = new();
     int _heightsInFlight, _voxelInFlight, _shiftX, _shiftZ;
-    readonly int _maxInFlight = Math.Clamp(System.Environment.ProcessorCount / 2 - 1, 2, 6);
+    readonly int _maxInFlight = Math.Clamp(Cores / 2 - 1, 2, 6);
+
+    /// <summary>The processor's threads the workers are sized for (a check standing in for a smaller machine sets it before the world is built).</summary>
+    public static int Cores = System.Environment.ProcessorCount;
     int _completeRadius = -1;
 
     // ---- Far state ----

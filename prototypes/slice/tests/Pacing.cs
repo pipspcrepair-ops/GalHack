@@ -93,7 +93,7 @@ public partial class Pacing : Node
             System.IO.Directory.CreateDirectory(dir);
             _pacing.Dump($"{dir}/{name}.csv");
         }
-        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work p90 {_game.Pacer.Work:F1} ms): {_pacing.Stop()}");
+        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms): {_pacing.Stop()}");
         _mouse = Vector2.Zero;
     }
 

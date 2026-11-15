@@ -9,8 +9,8 @@ namespace Slice.Game;
 /// refreshes: every refresh while a frame's work fits in one, else every second, third or fourth (a 240 Hz screen
 /// at 240, 120, 80 or 60 frames a second, never under 50). Frames that take one refresh and then two (a 240 Hz
 /// screen at 150 a second) stay up unevenly, and the picture judders however smoothly it moves.
-/// The pace is set by the work every frame must do: the main thread's (its physics ticks counted at the pace's
-/// own share of them) and the GPU's, without the waits. What can wait (the streamer's uploads) is given the
+/// The pace is set by the work every frame must do: the main thread's (a frame with a physics tick in it, once the
+/// pace puts one in most frames) and the GPU's, without the waits. What can wait (the streamer's uploads) is given the
 /// room left in the frame (<see cref="Room"/>), so streaming neither sets the pace nor falls behind at a slower one.
 /// </summary>
 public partial class FramePacer : Node
@@ -24,7 +24,7 @@ public partial class FramePacer : Node
     /// <summary>Refreshes a frame stays up while paced (1 when not).</summary>
     public int Refreshes { get; private set; } = 1;
 
-    /// <summary>The work every frame must do (the slowest fifth of the last two seconds', a tick's share at the pace), ms.</summary>
+    /// <summary>The work every frame must do (the slowest fifth of the last two seconds' frames), ms.</summary>
     public double Work { get; private set; }
 
     /// <summary>Room left in a frame for what can wait, ms (<see cref="Unpaced"/> when not paced).</summary>
@@ -33,10 +33,10 @@ public partial class FramePacer : Node
     public const double Unpaced = 3.0, LeastRoom = 1.0, MostRoom = 4.0, Margin = 0.5;
 
     const int Kept = 480;
-    readonly double[] _fixed = new double[Kept], _gpu = new double[Kept], _tick = new double[Kept / 4], _sorted = new double[Kept];
-    int _frames, _ticks;
+    static readonly bool Debugging = OS.HasEnvironment("PACER_DEBUG");
+    readonly double[] _cpu = new double[Kept], _gpu = new double[Kept], _sorted = new double[Kept];
+    int _frames;
     double _fitFor, _missFor;
-    ulong _tickWas;
     Rid _viewport;
 
     public override void _Ready()
@@ -91,26 +91,20 @@ public partial class FramePacer : Node
         {
             Refreshes = 1;
             Room = Unpaced;
-            Engine.MaxFps = Asked;
+            Cap(Asked);
             return;
         }
-        // The last frame's main thread (up to the draw, then the renderer's own CPU) less what could wait and its ticks; the GPU's last frame.
-        ulong tickNow = Engine.GetPhysicsFrames();
-        int ticks = (int)(tickNow - _tickWas);
-        _tickWas = tickNow;
-        double tick = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
-        if (ticks > 0) _tick[_ticks++ % _tick.Length] = tick;
+        // The last frame's main thread (up to the draw, then the renderer's own CPU) less what could wait; the GPU's last frame.
         double cpu = _scripts + RenderingServer.GetFrameSetupTimeCpu() + RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport);
-        _fixed[_frames % Kept] = Math.Max(0, cpu - (Deferred?.Invoke() ?? 0) - ticks * tick);
+        _cpu[_frames % Kept] = Math.Max(0, cpu - (Deferred?.Invoke() ?? 0));
         _gpu[_frames % Kept] = RenderingServer.ViewportGetMeasuredRenderTimeGpu(_viewport);
         _frames++;
         if (_frames < 30) return;
         int window = Math.Max(30, (int)(2.0 * hz / Refreshes));
-        double fixedWork = P80(_fixed, _frames, window), gpu = P80(_gpu, _frames, window), tickWork = P80(_tick, _ticks, _tick.Length);
+        // The slowest fifth: at any pace of half the ticks' rate or more, the frames with a tick in them.
+        double must = P80(_cpu, _frames, window), gpu = P80(_gpu, _frames, window);
         double refresh = 1000.0 / hz;
-        // A frame at n refreshes carries up to this many ticks' work, and its own.
-        double Must(int n) => fixedWork + Math.Ceiling(n * refresh * Engine.PhysicsTicksPerSecond / 1000.0 - 1e-6) * tickWork;
-        bool Fits(int n, double margin) => Math.Max(Must(n) + LeastRoom, gpu) <= n * refresh - margin;
+        bool Fits(int n, double margin) => Math.Max(must + LeastRoom, gpu) <= n * refresh - margin;
         int most = Math.Max(1, (int)(hz / 50.0));
         int need = 1;
         while (need < most && !Fits(need, Margin)) need++;
@@ -129,10 +123,22 @@ public partial class FramePacer : Node
             if (_fitFor > 3.0) Set(Refreshes - 1);
         }
         else _fitFor = _missFor = 0;
-        Work = Math.Max(Must(Refreshes), gpu);
-        Room = Math.Clamp(Refreshes * refresh - Margin - Must(Refreshes), LeastRoom, MostRoom);
-        Engine.MaxFps = Refreshes == 1 ? 0 : (int)Math.Ceiling(hz / Refreshes);
+        Work = Math.Max(must, gpu);
+        if (Debugging && _frames % 240 == 0)
+            GD.Print($"PACER {Refreshes} refreshes: cpu p80 {must:F1} ms (scripts {_scripts:F1}, setup {RenderingServer.GetFrameSetupTimeCpu():F1}, render {RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport):F1}, deferred {Deferred?.Invoke() ?? 0:F1}), gpu p80 {gpu:F1} ms");
+        Room = Math.Clamp(Refreshes * refresh - Margin - must, LeastRoom, MostRoom);
+        Cap(Refreshes == 1 ? 0 : (int)Math.Ceiling(hz / Refreshes));
     }
+
+    /// <summary>The engine's frame cap, set only when the pace changes it (a test may set its own meanwhile).</summary>
+    void Cap(int fps)
+    {
+        if (fps == _capped) return;
+        _capped = fps;
+        Engine.MaxFps = fps;
+    }
+
+    int _capped = -1;
 
     void Set(int refreshes)
     {

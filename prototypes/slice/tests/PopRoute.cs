@@ -14,7 +14,7 @@ namespace Slice.Tests;
 /// <summary>
 /// How far ahead the ground and the trees are in, on one world: walking, at a hover bike's speed and flying at a
 /// craft's top speed, each from the start toward the highest ground within 4 km (mountains, through what grows on the way).
-/// Run windowed: godot --path prototypes/slice res://tests/PopRoute.tscn [-- --seed=N --places-at-load=1 --screen=N]
+/// Run windowed: godot --path prototypes/slice res://tests/PopRoute.tscn [-- --seed=N --places-at-load=1 --screen=N --minspec=1]
 /// Per route: the near ground's complete radius (median, worst), the far rings' nearest chunk still short of its level,
 /// the streamer's queue, how long a column waited from coming into the ring to its first near chunk, how long a
 /// level-0 far chunk (the trees' near drawing) waited from being wanted to standing, and how far off trees appeared.
@@ -45,6 +45,14 @@ public partial class PopRoute : Node
         {
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
+        }
+        // --minspec=1: the minimum spec's stand-in (4 cores, one thread each: logical CPUs 0, 2, 4 and 6; workers sized for 4; the lowest
+        // graphics, tests/minspec.cfg, unless --settings says otherwise). Run it on the 60 Hz screen.
+        if (_args.ContainsKey("minspec"))
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            TerrainStreamer.Cores = 4;
+            _args.TryAdd("settings", "res://tests/minspec.cfg");
         }
         // As the owner plays: his settings file (--settings=path), vsync on, full screen at 1920 x 1080.
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
@@ -398,7 +406,7 @@ public partial class PopRoute : Node
         }
         double minutes = clock.Elapsed.TotalMinutes;
         static double P(List<double> v, double q) => v.Count == 0 ? double.NaN : v[Math.Min(v.Count - 1, (int)(v.Count * q))];
-        var lim = Limits.GetValueOrDefault(name.Replace(" at once", ""));
+        var lim = (_args.ContainsKey("minspec") ? MinSpecLimits : Limits).GetValueOrDefault(name.Replace(" at once", ""));
         if (pops)
         {
             // Per minute of the route's own time (sampling slows the clock).
@@ -412,7 +420,7 @@ public partial class PopRoute : Node
         }
         SplitReport(name, tick);
         FramePacing.Result pace = _pacing.Stop();
-        GD.Print($"ROUTE {name} pacing (paced at {_game.Pacer.Refreshes} refreshes a frame, work p90 {_game.Pacer.Work:F1} ms): {pace}");
+        GD.Print($"ROUTE {name} pacing (paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms): {pace}");
         int over = _frames.Count(t => t > 16.7);
         _frames.Sort();
         _gpu.Sort();
@@ -436,12 +444,12 @@ public partial class PopRoute : Node
             Gate($"{name}: frame p99", P(_frames, 0.99), lim.P99, false, "ms");
             // Pacing: frames that stay up longer or shorter than the rest (an uneven picture however fast), and the camera's
             // steps against its own pace by the engine's clock (anything moved in ticks and drawn without interpolation).
-            Gate($"{name}: frames more than 2 ms off the rate reached", pace?.OffPace ?? double.NaN, lim.OffPace, false, "%");
+            Gate($"{name}: frames up for another number of refreshes than most", pace?.OffRefreshes ?? double.NaN, lim.OffRefreshes, false, "%");
             Gate($"{name}: camera steps over 25% off its pace", pace?.MoveOffGame ?? double.NaN, lim.MoveOff, false, "%");
         }
     }
 
-    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops, double OffPace, double MoveOff);
+    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops, double OffRefreshes, double MoveOff);
 
     /// <summary>
     /// Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames
@@ -456,9 +464,22 @@ public partial class PopRoute : Node
     /// </summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10, double.NaN, double.NaN), // (a walk sees too few trees and columns to judge them appearing)
-        ["bike"] = new(88, 350, 220, 150, 60, 20, 10, double.NaN, double.NaN),
-        ["fly"] = new(72, 350, 360, 250, 150, 25, 10, double.NaN, double.NaN),
+        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10, OwnerOff, MoveOffLimit), // (a walk sees too few trees and columns to judge them appearing)
+        ["bike"] = new(88, 350, 220, 150, 60, 20, 10, OwnerOff, MoveOffLimit),
+        ["fly"] = new(72, 350, 360, 250, 150, 25, 10, OwnerOff, MoveOffLimit),
+    };
+
+    /// <summary>
+    /// The minimum spec's stand-in (--minspec=1, on the 60 Hz screen): its pacing only. At 60 Hz every frame is near 16.7 ms, so
+    /// the frame-time limits mean nothing there; the streaming limits are the owner's machine's (see the report for the stand-in's).
+    /// </summary>
+    const double OwnerOff = 30, MinSpecOff = 20, MoveOffLimit = 10;
+
+    static readonly Dictionary<string, Limit> MinSpecLimits = new()
+    {
+        ["walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit),
+        ["bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit),
+        ["fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit),
     };
 
     int _gateFails;
