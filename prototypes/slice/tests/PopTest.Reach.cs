@@ -126,7 +126,7 @@ public partial class PopTest
         }
         Vector3 eye = new(best.X, g + 1.7f, best.Z);
         var shown = s.FloraShown(eye).Where(p => p.Shows > 0.05f).ToList();
-        float trees = shown.Where(p => p.Layer == TerrainStreamer.LargeLayer).Select(p => p.Away).DefaultIfEmpty(0f).Max();
+        float trees = shown.Where(p => p.Layer != TerrainStreamer.SmallLayer).Select(p => p.Away).DefaultIfEmpty(0f).Max();
         float small = shown.Where(p => p.Layer == TerrainStreamer.SmallLayer).Select(p => p.Away).DefaultIfEmpty(0f).Max();
         int past = shown.Count(p => p.Away > 1000f);
         Check(trees > 1000f && past > 20, $"in the woods ({most:F0} cover): trees show to {trees:F0} m, {past} of them past a kilometre; small growth to {small:F0} m");

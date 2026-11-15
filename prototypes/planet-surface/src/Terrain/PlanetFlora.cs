@@ -126,8 +126,11 @@ public sealed class PlanetFlora
         return new PlanetFlora(map, Herbarium.Roll(climate, habitats), meanWet);
     }
 
-    /// <summary>The share of the old tree numbers that grow: one value for every world and biome, scaling the scatter's tree rules (near, far and colliders all read them). Small growth is untouched.</summary>
-    public static float TreeDensity = 0.5f;
+    /// <summary>
+    /// The share of the full tree numbers that grow: one value for every world and biome, scaling the scatter's tree rules (near, far and
+    /// colliders all read them). Small growth is untouched. Full: past their near reach trees draw with their far meshes and cast no shadow.
+    /// </summary>
+    public static float TreeDensity = 1f;
 
     /// <summary>How fungal a world's layers must make it before fungus stands among everything else.</summary>
     const float FungalAt = 0.25f;

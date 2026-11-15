@@ -3,11 +3,12 @@
 // is shade. Trunks and flowers keep their own colour. Tall plants sway in the weather's wind, more
 // toward the top and more in gusty weather; rocks and crystals don't move.
 //
-// By distance from the eye (the far rings' scatter, TerrainStreamer): every large plant has one drawing,
-// its own mesh, out to the detail distance, dissolving over the last band of it through a fixed screen
-// pattern; small growth shrinks into the ground over the last band of its reach, and a thinning share
-// of it (instance alpha past 1) sooner, so it thins out rather than ending in a line. Each plant's reach
-// is a little its own. Nothing swaps drawings or appears whole. The reaches come from TerrainStreamer
+// By distance from the eye (the far rings' scatter, TerrainStreamer): every large plant draws out to the
+// detail distance, dissolving over the last band of it through a fixed screen pattern; a tree whose species
+// has a far mesh hands its near mesh over to it round flora_near, the pattern split between the two (what
+// the far draws the near leaves), so it never shows more or less. Small growth shrinks into the ground over
+// the last band of its reach, and a thinning share of it (instance alpha past 1) sooner, so it thins out
+// rather than ending in a line. Each plant's reach is a little its own. Nothing appears whole. The reaches come from TerrainStreamer
 // (DetailReach), and past 2 km plants sink over the round world's horizon with the land. Keep in step
 // with TerrainStreamer.FloraShows.
 shader_type spatial;
@@ -19,7 +20,8 @@ render_mode cull_disabled, diffuse_burley;
 global uniform vec4 weather_wind;    // direction x, z, speed m/s, distance travelled (gust phase)
 global uniform vec4 weather_ground;  // wetness, snow, dust, solar
 
-// 0: large growth; 1: small growth; 2 (anything else that draws with this): whole at every distance.
+// 0: large growth; 1: small growth; 2 (anything else that draws with this): whole at every distance; 3 and 4: a tree's
+// near mesh and its far one, the near handing over to the far round flora_near through the same pattern, split.
 instance uniform float flora_layer = 2.0;
 // A chunk's new drawing dissolving in over its old one (TerrainStreamer.StepSwaps): the part of a
 // second screen pattern, independent of the first, each draws, the new [0, t) and the old [t, 1).
@@ -32,6 +34,8 @@ instance uniform vec2 fade_band = vec2(0.0, 1.0);
 // Reaches, m, and the bands they fade over: large growth, small growth.
 uniform vec2 flora_reach = vec2(1280.0, 200.0);
 uniform vec2 flora_bands = vec2(192.0, 60.0);
+// Where a tree's near mesh hands over to its far one, m, and the band it does it over (DetailReach.Near).
+uniform vec2 flora_near = vec2(340.0, 40.0);
 
 varying vec3 tint;
 varying float glow;
@@ -53,8 +57,11 @@ void vertex() {
 		// From the eye itself, as the renderer culls a batch by (its visibility range), so a batch never goes while any of it shows.
 		float away = distance(root, MAIN_CAM_INV_VIEW_MATRIX[3].xyz);
 		float r = fract(sin(dot(root.xz, vec2(12.9898, 78.233))) * 43758.5453);
-		if (layer == 0) {
-			band.y = shown(flora_reach.x * (0.95 + 0.05 * r), flora_bands.x, away);
+		if (layer != 1) {
+			float s = shown(flora_reach.x * (0.95 + 0.05 * r), flora_bands.x, away);
+			// The far mesh's share: the near draws the pattern's [far, s), the far [0, far), so together they draw [0, s).
+			float far = layer == 0 ? 0.0 : min(1.0 - shown(flora_near.x * (0.9 + 0.1 * r), flora_near.y, away), s);
+			band = layer == 4 ? vec2(0.0, far) : vec2(far, s);
 		} else {
 			float k = thin ? 0.6 : 1.0;
 			float grown = shown(flora_reach.y * k * (0.7 + 0.3 * r), flora_bands.y * k, away);
@@ -73,7 +80,9 @@ void vertex() {
 		float flutter = sin(TIME * 2.3 + world.x * 0.3 + world.z * 0.2) * 0.04;
 		vec3 push = vec3(weather_wind.x, 0.0, weather_wind.y) * (strength + flutter) * sway * max(COLOR.a, 0.8) * 3.0;
 		push.y -= round_sink(to_eye); // over the round world's horizon, with the far land
-		VERTEX += (inverse(MODEL_MATRIX) * vec4(push, 0.0)).xyz;
+		// Into the plant's frame: its basis is a turn and a scale, so each axis is its column over its length squared (no inverse a vertex).
+		mat3 m = mat3(MODEL_MATRIX);
+		VERTEX += vec3(dot(m[0], push) / dot(m[0], m[0]), dot(m[1], push) / dot(m[1], m[1]), dot(m[2], push) / dot(m[2], m[2]));
 	}
 }
 

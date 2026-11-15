@@ -12,11 +12,14 @@ namespace PlanetSurface.Terrain;
 /// </summary>
 public partial class TerrainStreamer
 {
-    /// <summary>Flora's drawings, by the layer each batch is (flora.gdshader's flora_layer): large growth and small growth.</summary>
-    public const int LargeLayer = 0, SmallLayer = 1;
+    /// <summary>
+    /// Flora's drawings, by the layer each is (flora.gdshader's flora_layer): large growth and small growth (a batch's layer),
+    /// and a large plant's near and far meshes where its species has a far one (the two drawings of a large batch).
+    /// </summary>
+    public const int LargeLayer = 0, SmallLayer = 1, NearLayer = 3, FarLayer = 4;
 
     /// <summary>How far from the eye a layer's drawings can show at all, m (each plant's own reach is a little less).</summary>
-    public static float FloraLayerReach(int layer) => layer == SmallLayer ? DetailReach.Small : DetailReach.Large;
+    public static float FloraLayerReach(int layer) => layer switch { SmallLayer => DetailReach.Small, NearLayer => DetailReach.Near, _ => DetailReach.Large };
 
     readonly Dictionary<(int, int), float> _meshHeight = new();
 
@@ -56,7 +59,8 @@ public partial class TerrainStreamer
 
     /// <summary>
     /// Every plant drawn and how much of it shows from an eye (frame coordinates), as the shader has it, by layer, with
-    /// where it roots, its height and its scatter cell (one plant's drawings share it): tests measure flora's reach and its pops with it.
+    /// where it roots, its height and its scatter cell (one plant's drawings share it; a large plant with a far mesh has two,
+    /// its near and far, <see cref="NearLayer"/> and <see cref="FarLayer"/>): tests measure flora's reach and its pops with it.
     /// </summary>
     public IEnumerable<(float Away, int Layer, float Shows, Vector3 At, float Size, long Id)> FloraShown(Vector3 eye)
     {
@@ -67,7 +71,7 @@ public partial class TerrainStreamer
             float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, eye.X, w), z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, eye.Z, h);
             foreach (FloraBatch b in f.Flora)
             {
-                int layer = b.Layer;
+                bool split = b.Layer == LargeLayer && FarMesh(b.Plant) != null;
                 float height = MeshHeight(b);
                 for (int i = 0; i < b.Count; i++)
                 {
@@ -76,7 +80,13 @@ public partial class TerrainStreamer
                     var root = new Vector3(x, b.Buffer[o + 7], z);
                     float away = eye.DistanceTo(root);
                     long id = FarBuilder.ScatterId(f.Fx, f.Fz, (int)(lx / FarBuilder.ScatterCell), (int)(lz / FarBuilder.ScatterCell));
-                    yield return (away, layer, FloraShows(layer, b.Buffer[o + 15] >= 1.5f, away, x, z), root, height * b.Buffer[o + 5], id);
+                    bool thin = b.Buffer[o + 15] >= 1.5f;
+                    if (!split) yield return (away, b.Layer, FloraShows(b.Layer, thin, away, x, z), root, height * b.Buffer[o + 5], id);
+                    else
+                    {
+                        yield return (away, NearLayer, FloraShows(NearLayer, thin, away, x, z), root, height * b.Buffer[o + 5], id);
+                        yield return (away, FarLayer, FloraShows(FarLayer, thin, away, x, z), root, height * b.Buffer[o + 5], id);
+                    }
                 }
             }
         }
@@ -94,18 +104,17 @@ public partial class TerrainStreamer
         {
             if (f.Node == null || f.Flora == null) continue;
             float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, eye.X, w), z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, eye.Z, h);
-            int k = 0;
             foreach (Node n in f.Node.GetChildren())
             {
-                if (n is not MultiMeshInstance3D m) continue;
-                FloraBatch b = f.Flora[k++];
+                if (n is not MultiMeshInstance3D m || m.Name.ToString() is not ['L', var c]) continue;
+                FloraBatch b = f.Flora[m.GetMeta(BatchMeta).AsInt32()];
                 float d = (m.GlobalTransform * m.Multimesh.GetAabb().GetCenter()).DistanceTo(eye);
                 if (d >= m.VisibilityRangeBegin && (m.VisibilityRangeEnd <= 0f || d <= m.VisibilityRangeEnd)) continue;
                 for (int i = 0; i < b.Count; i++)
                 {
                     int o = i * 16;
                     float x = x0 + b.Buffer[o + 3], z = z0 + b.Buffer[o + 11];
-                    if (FloraShows(b.Layer, b.Buffer[o + 15] >= 1.5f, eye.DistanceTo(new Vector3(x, b.Buffer[o + 7], z)), x, z) > 0.05f) culled++;
+                    if (FloraShows(c - '0', b.Buffer[o + 15] >= 1.5f, eye.DistanceTo(new Vector3(x, b.Buffer[o + 7], z)), x, z) > 0.05f) culled++;
                 }
             }
         }
@@ -154,8 +163,11 @@ public partial class TerrainStreamer
     {
         float s = MathF.Sin(x * 12.9898f + z * 78.233f) * 43758.5453f;
         float r = s - MathF.Floor(s), k = thin ? 0.6f : 1f;
-        return layer == SmallLayer
-            ? Shown(DetailReach.Small * k * (0.7f + 0.3f * r), DetailReach.SmallBand * k, away)
-            : Shown(DetailReach.Large * (0.95f + 0.05f * r), DetailReach.LargeBand, away);
+        if (layer == SmallLayer) return Shown(DetailReach.Small * k * (0.7f + 0.3f * r), DetailReach.SmallBand * k, away);
+        float shows = Shown(DetailReach.Large * (0.95f + 0.05f * r), DetailReach.LargeBand, away);
+        if (layer is not (NearLayer or FarLayer)) return shows;
+        // The near and far meshes split the one pattern: what the far draws the near leaves, so the plant shows as much throughout.
+        float far = MathF.Min(1f - Shown(DetailReach.Near * (0.9f + 0.1f * r), DetailReach.NearBand, away), shows);
+        return layer == FarLayer ? far : shows - far;
     }
 }

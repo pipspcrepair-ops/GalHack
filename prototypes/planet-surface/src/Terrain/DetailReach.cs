@@ -39,11 +39,20 @@ public static class DetailReach
     public static int Lod1Radius { get; private set; }
 
     /// <summary>
-    /// Flora's reaches from the eye and the bands they fade over, m. Every large plant (tree, bush, boulder) has one
-    /// drawing, its own mesh, out to the detail distance, and dissolves over the last <see cref="LargeBand"/> of it; small
-    /// growth shrinks into the ground over the last <see cref="SmallBand"/> of its reach. Nothing swaps or appears whole.
+    /// Flora's reaches from the eye and the bands they fade over, m. Every large plant (tree, bush, boulder) draws out to
+    /// the detail distance and dissolves over the last <see cref="LargeBand"/> of it; small growth shrinks into the ground
+    /// over the last <see cref="SmallBand"/> of its reach. Nothing appears whole.
     /// </summary>
     public static float Large, LargeBand, Small, SmallBand;
+
+    /// <summary>
+    /// How far a tree's own near mesh draws, m, and the band over which it dissolves into its species' far mesh (fewer
+    /// triangles, no shadow), one screen pattern split between the two, so the tree never shows more or less as it goes.
+    /// </summary>
+    public static float Near, NearBand;
+
+    /// <summary>Where trees hand their near meshes to their far ones, m: just past the sun's shadows at their default reach.</summary>
+    public const float NearTrees = 340f;
 
     /// <summary>How far along from the default to the horizon the distance is set, 0..1.</summary>
     public static float Along => (Distance - Default) / (Most - Default);
@@ -72,6 +81,8 @@ public static class DetailReach
         LargeBand = t * 0.15f;
         Small = 200f * MathF.Min(k, 2f);
         SmallBand = Small * 0.3f;
+        NearBand = 40f;
+        Near = MathF.Min(NearTrees, t - LargeBand);
         // What stands on the land is built as far out as the far rings show its pads, corners included.
         InfraRadius = (FarRadius + 0.3f) * FarBuilder.Size * MathF.Sqrt(2f);
         Version++;

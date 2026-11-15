@@ -9,7 +9,7 @@ using Rng = Planets.Gen.Rng;
 
 namespace PlanetSurface.Tests;
 
-/// <summary>Half the trees: the same fresh worlds and chunks grown at the old tree density and at the set one, trees counted per km².</summary>
+/// <summary>Tree numbers: the same fresh worlds and chunks grown at the full tree density and at the set one (<see cref="PlanetFlora.TreeDensity"/>), trees counted per km².</summary>
 public partial class FloraTest
 {
     void TreeCount()
@@ -38,7 +38,8 @@ public partial class FloraTest
             }
             PlanetFlora.TreeDensity = keep;
             double ratio = per[0] > 0 ? per[1] / per[0] : 1;
-            Check(per[0] < 500 ? ratio is > 0.35 and < 0.65 : ratio is > 0.45 and < 0.55, $"{a} {v}: trees per km² {per[0]:F0} before, {per[1]:F0} after ({ratio:P0})");
+            double off = Math.Abs(ratio - keep);
+            Check(per[0] < 500 ? off < 0.15 : off < 0.05, $"{a} {v}: trees per km² {per[0]:F0} before, {per[1]:F0} after ({ratio:P0})");
         }
     }
 
