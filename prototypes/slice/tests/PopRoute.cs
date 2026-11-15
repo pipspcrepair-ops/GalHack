@@ -268,6 +268,8 @@ public partial class PopRoute : Node
         var complete = new List<float>();
         var farShort = new List<int>();
         var pending = new List<int>();
+        var clipPending = new List<int>();
+        float focusOff = 0f;
         var farBehind = new List<int>();
         var columnWait = new List<double>();
         var farWait = new List<double>();
@@ -281,6 +283,10 @@ public partial class PopRoute : Node
             if (applied.Add(col) && ringAt.TryGetValue(col, out double t)) columnWait.Add(clock.Elapsed.TotalMilliseconds - t);
         };
         s.ChunkApplied += onChunk;
+        // Over a planet's edge the zone moves everything by a whole planet: the way on moves with it (or each tick puts the eye back over the edge).
+        int shifts0 = _game.Zone.FrameShifts;
+        Action<Vector3> onShift = shift => start += shift;
+        _game.Zone.FrameShifted += onShift;
         // A level-0 far chunk's wait: from first within the level-0 radius of the focus's far chunk to its node standing at level 0.
         var farWanted = new Dictionary<(int, int), double>();
         // Far chunks' new drawings as the streamer puts them in (looking through its children every few ticks for new ones allocated more than the game does).
@@ -348,6 +354,8 @@ public partial class PopRoute : Node
             complete.Add((s.CompleteRadius + 0.5f) * S);
             farShort.Add(s.FarBehindNearest);
             pending.Add(s.Pending);
+            clipPending.Add(s.Clip.Pending);
+            focusOff = MathF.Max(focusOff, new Vector2(s.Focus.X - p.X, s.Focus.Z - p.Z).Length());
             farBehind.Add(s.FarBehind);
             int fcx = (int)MathF.Floor(s.Focus.X / S), fcz = (int)MathF.Floor(s.Focus.Z / S);
             for (int dz = -s.VoxelRadius; dz <= s.VoxelRadius; dz++)
@@ -381,6 +389,7 @@ public partial class PopRoute : Node
             farNew.Clear();
         }
         s.ChunkApplied -= onChunk;
+        _game.Zone.FrameShifted -= onShift;
         s.FarApplied -= onFar;
         double seconds = clock.Elapsed.TotalSeconds;
         string workers = string.Create(CultureInfo.InvariantCulture, $"main thread {_streaming / seconds:F0} ms a second; workers: far chunks {(s.FarBuildMs.Sum() - buildMs0.Sum()) / seconds:F0} ms a second, ground tiles {(ClipGround.FillTicks - tileTicks0) * 1000.0 / Stopwatch.Frequency / seconds:F0} ms a second ({(ClipGround.Filled - tiles0) / seconds:F0} a second)");
@@ -418,7 +427,7 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE {name} far chunks built on workers, each: {builds}");
         GD.Print($"ROUTE {name} {speed:F0} m/s {length:F0} m: near ground complete to m {Q(complete.Select(c => (double)c).ToList(), true)}; " +
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
-                 $"queue {Q(pending.Select(c => (double)c).ToList())} (median over the first third {P(pending.Take(pending.Count / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}, the last {P(pending.Skip(pending.Count * 2 / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}); far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
+                 $"queue {Q(pending.Select(c => (double)c).ToList())} (median over the first third {P(pending.Take(pending.Count / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}, the last {P(pending.Skip(pending.Count * 2 / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}; ground tiles {Q(clipPending.Select(c => (double)c).ToList())}; focus off the eye at most {focusOff:F0} m, frame shifts {_game.Zone.FrameShifts - shifts0}); far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
                  $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; flora or cover jumps over 5% within 120 m {nearJumps}; " +
                  $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; streaming: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
