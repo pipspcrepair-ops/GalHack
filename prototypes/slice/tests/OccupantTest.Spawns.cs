@@ -92,7 +92,7 @@ public partial class OccupantTest
                 {
                     int n = Threats(r);
                     int h = hops.GetValueOrDefault(r.Index, 99);
-                    if (r.Depth >= 1) { deepT += n; deepR++; }
+                    if (r.Level >= 1) { deepT += n; deepR++; } // off the way in's storey, down or up (E7)
                     else if (h <= 1) { nearT += n; nearR++; }
                     else { groundT += n; groundR++; }
                     if (r.Kind == RoomKind.Entrance && n > 0 && rooms.Count > 2 && !spawns.Any(s => s.Room == r.Index && (s.Species.Husk || s.Species.Corrupted || s.Nest >= 0))) gateLoud++;
@@ -123,11 +123,11 @@ public partial class OccupantTest
         }
         foreach (var (k, b) in byState.OrderBy(kv => kv.Key)) GD.Print($"    {k}: {b.Places} places, {b.Threats / (float)Math.Max(1, b.Places):F1} threats and {b.Vermin / (float)Math.Max(1, b.Places):F1} vermin a place");
         float near_ = nearT / Math.Max(1f, nearR), ground = groundT / Math.Max(1f, groundR), deep_ = deepT / Math.Max(1f, deepR);
-        GD.Print($"    threats a room: by the way in {near_:F2}, further in {ground:F2}, below ground {deep_:F2}; {threats * 100f / Math.Max(1f, floor):F2} a 100 m2 of floor in ordinary abandoned places");
+        GD.Print($"    threats a room: by the way in {near_:F2}, further in on its storey {ground:F2}, off its storey (below ground or up) {deep_:F2}; {threats * 100f / Math.Max(1f, floor):F2} a 100 m2 of floor in ordinary abandoned places");
         Check(threats * 100f / Math.Max(1f, floor) is > 0.6f and < 1.5f, $"ordinary places are held at 0.8 to 1.2 threats a 100 m2 of floor (place-patterns E2): {threats * 100f / Math.Max(1f, floor):F2}");
         Check(silent <= places * 0.15f, $"few places are silent on fresh worlds: {silent} of {places} (aliveness follows the world)");
         Check(withSomething == places - silent, $"every place that isn't silent has something in it: {withSomething} of {places - silent}");
-        Check(deep_ >= near_ * 1.5f && deep_ > ground, $"encounters build with depth: {near_:F2} a room by the way in, {ground:F2} further in, {deep_:F2} below ground");
+        Check(deep_ >= near_ * 1.5f && deep_ > ground, $"encounters build further in, down or up: {near_:F2} a room by the way in, {ground:F2} further in on its storey, {deep_:F2} off it");
         Check(levels > 20 && levelsHeld >= levels * 0.9f, $"the dark has its monsters: {levelsHeld} of {levels} levels below ground have one");
         Check(gateLoud == 0, $"the way in is quiet: {gateLoud} places have something waiting in it");
         Check(quietOf > 20 && quietOk >= quietOf * 0.9f, $"one room in five is quiet: {quietOk} of {quietOf} places of five rooms or more");
@@ -291,20 +291,23 @@ public partial class OccupantTest
                 FamilyDef f = families[_rng.Next(families.Count)];
                 OccupancyRoll occ = OccupancyLayer.Roll(roll.Occupancy, f, Seed());
                 PoiInstance inst = Place(f, PoiState.Abandoned, occ);
-                PoiPopulation pop = PlaceFauna.Plan(Memory(inst), deep).Population;
-                var plan = new PoiPlan();
-                PlaceFauna.HoldersOf(inst, life, plan);
+                PlaceFauna fauna = PlaceFauna.Plan(Memory(inst), deep);
+                PoiPopulation pop = fauna.Population;
+                PoiPlan plan = fauna.Rooms;
                 var spawns = pop.Silent ? new List<PoiSpawn>() : pop.Spawns;
                 bool Under(PoiSpawn s) => inst.Layout.Modules.FirstOrDefault(m => m.Index == s.Room) is { Storey: < 0 };
+                // Off the way in's storey the dark has its own; those who keep a place clear keep the storeys they are on.
+                bool FarIn(PoiSpawn s) => plan.Rooms.Find(r => r.Index == s.Room) is { Level: >= 1 };
+                bool Theirs(PoiSpawn s) => plan.Kept?.Contains(s.Room) ?? true;
                 int people = inst.Townsfolk?.People.Count ?? 0;
                 string why = plan.Holder switch
                 {
-                    PlaceHolder.Empty => spawns.Any(s => PoiFauna.Threat(s) && !Under(s) && !s.Species.Husk) || pop.Nests.Count > 0 ? "more than vermin above ground" : null,
+                    PlaceHolder.Empty => spawns.Any(s => PoiFauna.Threat(s) && !FarIn(s) && !s.Species.Husk) || pop.Nests.Count > 0 ? "more than vermin on the way in's storey" : null,
                     PlaceHolder.Nesters => spawns.Count(s => s.Role is DeepRole.Nester or DeepRole.DerelictNester) < 1 ? "no nesters" : null,
                     PlaceHolder.Beasts => spawns.Count(s => plan.Holders.Any(h => s.Species.Id.StartsWith(h.Id, StringComparison.Ordinal))) < 1 ? "none of its beasts" : null,
-                    PlaceHolder.Machines => spawns.Count(s => s.Species.Mechanical) < 1 ? "no machines" : spawns.Any(s => PoiFauna.Threat(s) && !s.Species.Mechanical) ? "wild hunters among the machines" : null,
+                    PlaceHolder.Machines => spawns.Count(s => s.Species.Mechanical) < 1 ? "no machines" : spawns.Any(s => PoiFauna.Threat(s) && !s.Species.Mechanical && Theirs(s)) ? "wild hunters among the machines" : null,
                     PlaceHolder.Husks => spawns.Count(s => s.Species.Husk) + pop.Masses.Count < 1 ? "no Husks" : null,
-                    PlaceHolder.People => people < 1 && inst.Townsfolk != null ? "no people" : spawns.Any(s => PoiFauna.Threat(s) && !Under(s) && !s.Species.Husk) ? "wild hunters among the people" : null,
+                    PlaceHolder.People => people < 1 && inst.Townsfolk != null ? "no people" : spawns.Any(s => PoiFauna.Threat(s) && !Under(s) && !s.Species.Husk && Theirs(s)) ? "wild hunters among the people" : null,
                     _ => null,
                 };
                 string code = occ.Main.ToString();

@@ -116,7 +116,8 @@ public sealed class CoreSection : IMenuSection
         var v2 = (Vessel)_picked;
         // Side by side: the structure's settings and numbers, its constructor and queue, its storage.
         _structure.Build(g, new Rect2(body.Position, new Vector2(400, body.Size.Y)));
-        var machines = new Rect2(body.Position + new Vector2(420, 0), new Vector2(620, body.Size.Y));
+        float barH = BarStrip(g, v2, body.Position + new Vector2(420, 0), 620);
+        var machines = new Rect2(body.Position + new Vector2(420, barH), new Vector2(620, body.Size.Y - barH));
         if (v2.Machines.Count == 0)
         {
             g.Caption("MANUFACTURING", machines.Position, machines.Size.X);
@@ -137,6 +138,36 @@ public sealed class CoreSection : IMenuSection
         {
             Title = $"{v2.Name} storage", Grid = v2.StorageGrid, Vessel = v2, Where = () => v2.Body.Position.ToGodot(),
         }));
+    }
+
+    /// <summary>A slot of the structure's bar picked up in the strip.</summary>
+    sealed record BarDrag(Vessel Vessel, int Slot);
+
+    /// <summary>
+    /// The structure's toolbar as the pilot arranges it: its nine slots, each function's label and state; drag one onto
+    /// another and they swap, the arrangement kept with the structure. Returns its height (0 with nothing on the bar).
+    /// </summary>
+    float BarStrip(Gui g, Vessel v, Vector2 at, float width)
+    {
+        StructureBar bar = v.Bar;
+        if (bar.Functions.Count == 0) return 0;
+        g.Caption("BAR", at, width);
+        BarSlot[] slots = bar.Arranged();
+        float cell = (width - (StructureBar.Slots - 1) * 6) / StructureBar.Slots;
+        for (int i = 0; i < StructureBar.Slots; i++)
+        {
+            var r = new Rect2(at + new Vector2(i * (cell + 6), 34), new Vector2(cell, 50));
+            BarSlot f = slots[i];
+            bool on = f != null && bar.IsOn(f);
+            Color tone = f == null ? C.Dim : f.Act switch { BarAct.Select => C.Accent, BarAct.Run => C.Holo, _ => C.Good };
+            g.Draggable($"core:bar:{i}", r, f == null ? null : new BarDrag(v, i), f?.Label ?? "", tone);
+            if (g.DropTarget($"core:bar:{i}", r, out object dropped) && dropped is BarDrag d && d.Vessel == v) bar.Move(d.Slot, i);
+            g.Fill(r, new Color(on ? tone : C.Glass, on ? 0.85f : 0.55f));
+            g.Outline(r, new Color(tone, f == null ? 0.3f : 0.8f), 1.5f);
+            g.Text($"{i + 1}", r.Position + new Vector2(4, 2), on ? C.Glass : C.Dim, 12, UiTheme.Mono);
+            if (f != null) g.TextIn(HudLayout.Fit(UiTheme.Label, 13, f.Label, cell - 6), new Rect2(r.Position + new Vector2(2, 22), new Vector2(cell - 4, 22)), on ? C.Glass : C.Text, 13, HorizontalAlignment.Center);
+        }
+        return 96;
     }
 
     void DeviceStorage(Gui g, Rect2 r, Device d) =>
@@ -335,15 +366,7 @@ public sealed class StructureSection : IMenuSection
             if (g.Button("core:pilot", new Rect2(o.X, y, area.Size.X, 32), $"PILOT: {(v.Roles.Pilot ?? "nobody").ToUpperInvariant()}{(seated.Count > 1 ? " (HAND OVER)" : "")}", C.Accent2, enabled: seated.Count > 1, size: 15)) v.Roles.Assign(next);
             y += 38;
         }
-        if (Toggle("core:gravity", "CORE GRAVITY", s.GravityOn))
-        {
-            s.GravityOn = !s.GravityOn;
-            if (v.Body.Core != null)
-            {
-                v.Body.Core.On = s.GravityOn;
-                v.Cabin.SetGravity(v.Body.Core);
-            }
-        }
+        if (Toggle("core:gravity", "CORE GRAVITY", s.GravityOn)) v.SetGravity(!s.GravityOn);
         if (Toggle("core:power", "POWER", v.PowerOn)) v.PowerOn = !v.PowerOn;
         if (Toggle("core:lights", "LIGHTS", v.LightsOn)) v.LightsOn = !v.LightsOn;
         y = LightStyle(g, v, new Vector2(o.X, y), area.Size.X);

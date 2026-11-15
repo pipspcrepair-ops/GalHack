@@ -11,7 +11,7 @@
 //   draw        what makes a device of each function draw, as shares of its block's power (MW at full
 //               load, components.json). The live measures: throttle (its share of the thrust in its
 //               direction), turning (the gyros' share of their turn), hovering (plates holding the
-//               craft up), lit (a light switched on), working (a constructor with a run under way),
+//               craft up), lit (a light or spotlight switched on), working (a constructor with a run under way),
 //               seated (a chair someone sits in), on (whenever the structure has power). Not wired yet
 //               (phase 2, no such device in the slice): idle, tracking and firing (turrets and fixed
 //               guns, whose ammo comes from core storage), up and recharging (shields), engaged
@@ -30,6 +30,7 @@
     "gyro": { "turning": 1 },
     "hover": { "hovering": 1 },
     "light": { "lit": 1 },
+    "spotlight": { "lit": 1 },
     "constructor": { "working": 1 },
     "chair": { "seated": 1 },
     "forecast": { "on": 1 },

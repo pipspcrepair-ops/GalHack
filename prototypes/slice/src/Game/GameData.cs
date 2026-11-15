@@ -87,6 +87,7 @@ public sealed class GameData
             Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("..", "shared", "Bestiary", "data", "wildlife.json"))),
             Rules = SliceRules.Parse(File.ReadAllText(Own("data/slice.json"))),
             Arms = LoadArms(items),
+            Mounts = LoadMounts(items, catalogue),
         };
     }
 
@@ -108,6 +109,20 @@ public sealed class GameData
         foreach (var item in items.InCategory(GalHack.Items.ItemCategory.Weapon))
             if (arms.OfItem(item.Id) == null) throw new InvalidDataException($"weapon item '{item.Id}' has no row in shared/Arms/data/weapons.json");
         return arms;
+    }
+
+    /// <summary>shared/Arms' mounted guns (data/mounted.json): each row is a weapon block that fires from a structure, its ammo an item.</summary>
+    public GalHack.Arms.Armoury Mounts { get; private init; }
+
+    static GalHack.Arms.Armoury LoadMounts(GalHack.Items.ItemCatalogue items, Catalogue catalogue)
+    {
+        var mounts = GalHack.Arms.Armoury.LoadFile(SharedPath("Arms", "data", "mounted.json"));
+        foreach (GalHack.Arms.WeaponDef w in mounts.All)
+        {
+            if (!catalogue.TryGetType(w.Item, out BlockType t) || t.Function != "weapon") throw new InvalidDataException($"mounted gun '{w.Id}': '{w.Item}' is not a weapon block");
+            if (!items.TryGet(w.Ammo, out _)) throw new InvalidDataException($"mounted gun '{w.Id}': no ammo item '{w.Ammo}'");
+        }
+        return mounts;
     }
 
     /// <summary>
@@ -144,6 +159,9 @@ public sealed class SliceRules
     public TorchRules Torch { get; set; } = new();
     public ContainerRules Containers { get; set; } = new();
     public FieldRules ForceFields { get; set; } = new();
+    public BarRules StructureBar { get; set; } = new();
+    /// <summary>How far a structure's scan marks places, m, by scanner block id.</summary>
+    public Dictionary<string, float> Scanners { get; set; } = new();
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -310,6 +328,24 @@ public sealed class SliceRules
         public float Strength { get; set; } = 600f;
         public float RegrowDelay { get; set; } = 30f;
         public float RegrowSeconds { get; set; } = 20f;
+    }
+
+    /// <summary>The structure's toolbar in a command chair: its kinds of slot, in data order (<see cref="Slice.Vessels.StructureBar"/>).</summary>
+    public sealed class BarRules
+    {
+        public List<BarKind> Kinds { get; set; } = new();
+    }
+
+    /// <summary>A kind of slot on the structure's toolbar: its label, the block functions that bring it, what its key does, its icon, its end, and a slot per block type or one.</summary>
+    public sealed class BarKind
+    {
+        public string Id { get; set; } = "";
+        public string Label { get; set; }
+        public List<string> Functions { get; set; } = new();
+        public string Act { get; set; } = "toggle";
+        public string Icon { get; set; } = "";
+        public string End { get; set; } = "left";
+        public bool PerType { get; set; }
     }
 
     public sealed class ContainerRules

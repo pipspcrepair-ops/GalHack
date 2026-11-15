@@ -78,6 +78,8 @@ public sealed class ItemDef
     public int FuelUnits { get; init; }
     /// <summary>Tools that reach: how far, m (data: <c>range</c>).</summary>
     public float Range { get; init; }
+    /// <summary>Scanners: how far a scan marks places, m (data: <c>scan</c>).</summary>
+    public float Scan { get; init; }
     /// <summary>Ammo: rounds in one box, belt or rack.</summary>
     public int Rounds { get; init; }
     /// <summary>Ammo: the default auto-restock threshold, in boxes.</summary>

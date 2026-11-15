@@ -9,8 +9,8 @@ using Slice.Vessels;
 
 namespace Slice.Orbit;
 
-/// <summary>A thing on a chart: a place found, a deposit, a wreck, a mark of yours.</summary>
-public sealed record ChartMark(string Key, string Label, double X, double Z, string Kind);
+/// <summary>A thing on a chart: a place found, a deposit, a wreck, a mark of yours; <see cref="On"/> the body it is on (null: the start world).</summary>
+public sealed record ChartMark(string Key, string Label, double X, double Z, string Kind, string On = null);
 
 /// <summary>A body or a place on the system map.</summary>
 public sealed record SystemEntry(string Key, string Label, string Kind, float Size, float Orbit, float Bearing, string Note = "", string Parent = null, float Width = 0f);
@@ -37,7 +37,9 @@ public sealed class Charts
     public const float PlaceRange = 500f, WreckRange = 3000f;
 
     public IEnumerable<ChartMark> Marks => _marks.Values;
-    public IEnumerable<ChartMark> OfKind(string kind) => _marks.Values.Where(m => m.Kind == kind);
+
+    /// <summary>What is charted of a kind on one body (null: the start world).</summary>
+    public IEnumerable<ChartMark> OfKind(string kind, string on = null) => _marks.Values.Where(m => m.Kind == kind && m.On == on);
 
     /// <summary>Whether something is on the chart.</summary>
     public bool Has(string key) => _marks.ContainsKey(key);
@@ -62,11 +64,12 @@ public sealed class Charts
         return false;
     }
 
-    /// <summary>Finds something on the world map. True the first time.</summary>
-    public bool Find(string key, string label, double x, double z, string kind)
+    /// <summary>Finds something on a body's map (null: the start world's). True the first time.</summary>
+    public bool Find(string key, string label, double x, double z, string kind, string on = null)
     {
+        key = on == null ? key : $"{on}/{key}";
         if (_marks.ContainsKey(key)) return false;
-        _marks[key] = new ChartMark(key, label, x, z, kind);
+        _marks[key] = new ChartMark(key, label, x, z, kind, on);
         return true;
     }
 
@@ -81,15 +84,15 @@ public sealed class Charts
     /// <summary>Takes down one of your own marks (nothing else on the chart can be removed).</summary>
     public bool Unmark(string key) => _marks.TryGetValue(key, out ChartMark m) && m.Kind == "mark" && _marks.Remove(key);
 
-    /// <summary>Places on the planet come onto the chart as you come near them (map metres, torus distance).</summary>
-    public void LookAround(IEnumerable<(string key, string label, double x, double z)> places, double x, double z, double width, double height)
+    /// <summary>Places on a body (null: the start world) come onto the chart as you come near them (map metres, torus distance).</summary>
+    public void LookAround(IEnumerable<(string key, string label, double x, double z)> places, double x, double z, double width, double height, string on = null)
     {
         foreach (var (key, label, px, pz) in places)
         {
             double dx = Math.Abs(px - x), dz = Math.Abs(pz - z);
             dx = Math.Min(dx, width - dx);
             dz = Math.Min(dz, height - dz);
-            if (dx * dx + dz * dz <= PlaceRange * PlaceRange) Find(key, label, px, pz, "place");
+            if (dx * dx + dz * dz <= PlaceRange * PlaceRange) Find(key, label, px, pz, "place", on);
         }
     }
 

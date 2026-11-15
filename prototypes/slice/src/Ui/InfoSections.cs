@@ -175,7 +175,7 @@ public sealed class MapSection : IMenuSection
         // Deposits you have been near, and the scanner's pings while they last.
         if (!_game.InOrbit)
             foreach (ChartMark m in _game.Spaceflight.Charts.OfKind("deposit")) Mark(Levels.NearYou(m.X, m.Z), m.Label.ToUpperInvariant(), C.Holo, 6f, 6);
-        foreach (Game.Game.Ping p in _game.Pings) Mark(p.At, p.Place ? "?" : p.Label.ToUpperInvariant(), new Color(p.Place ? C.Accent : C.Holo, _game.PingAlpha(p)), 5f, 7);
+        foreach (Game.Game.Ping p in _game.Pings) Mark(p.At, p.Place != null ? "?" : p.Label.ToUpperInvariant(), new Color(p.Place != null ? C.Accent : C.Holo, _game.PingAlpha(p)), 5f, 7);
         foreach (Lootable l in _game.Zone.Loot.All)
             if (l.Kind != LootKind.Cache) // a place's caches are found by going in, not from the map
                 Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4, 2);

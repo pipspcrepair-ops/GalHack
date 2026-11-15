@@ -155,11 +155,17 @@ public sealed class BlockType
     public bool IsDoor => Function == "door";
     public bool IsLadder => Function == "ladder";
     public bool IsLight => Function == "light";
+    /// <summary>An exterior spotlight: a lamp throwing a beam outward from the hull, switched apart from the lights inside.</summary>
+    public bool IsSpotlight => Function == "spotlight";
+    /// <summary>A lamp that can be switched off (a block's Off flag): a light or a spotlight.</summary>
+    public bool IsLamp => IsLight || IsSpotlight;
     public bool IsThruster => Function == "thruster";
     public bool IsGenerator => Function == "generator";
     public bool IsContainer => Function == "container";
     /// <summary>A weather forecast block: the structure it is on broadcasts the weather warnings.</summary>
     public bool IsForecast => Function == "forecast";
+    /// <summary>A scanner: a scan from the structure marks the places within its tier's range.</summary>
+    public bool IsScanner => Function == "scanner";
     /// <summary>A seat that gives control: the command chair, or a cockpit built round one.</summary>
     public bool IsCommandChair => Function == "chair";
     /// <summary>A force field's corner emitter (any plating).</summary>
