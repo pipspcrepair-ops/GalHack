@@ -1,5 +1,5 @@
 // Blocks manufacturing needs that building's catalogue doesn't have yet: the production machines,
-// the drives, two fixed weapons with their own ammo and the force field emitter. Same format and units as
+// the drives, two fixed weapons with their own ammo, the spotlight, the detector and the force field emitter. Same format and units as
 // prototypes/building/data/components.json. Whoever loads the building catalogue appends these to
 // its components, as the physics sandbox does with its vessel parts; nothing in
 // prototypes/building changes. Their bills are in blocks.json. The fabricator ladder is the
@@ -126,6 +126,29 @@
         {"box": [-0.32, -0.28, -0.455, -0.06, -0.06, -0.45], "style": "dark"},
         {"box": [0.06, -0.28, -0.455, 0.32, -0.06, -0.45], "style": "dark"},
         {"box": [-0.425, -0.05, -0.2, 0.425, 0.05, 0.2], "style": "accent"}
+      ]
+    },
+    // An exterior spotlight: a lamp on the hull throwing a beam out of its lens (-z), switched with the
+    // structure's other spotlights from the pilot's toolbar, apart from the lights inside. Figures
+    // from Empyrion's spotlight (hp, a little power), scaled like the light.
+    {
+      "id": "spotlight", "name": "Spotlight", "function": "spotlight", "hp": 120, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.02, "color": "3a3f47", "glow": "fff1d0", "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "parts", "power": -0.001,
+      "parts": [
+        {"box": [-0.32, -0.32, 0.42, 0.32, 0.32, 0.5], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.26, -0.26, -0.1, 0.26, 0.26, 0.42], "style": "body"},
+        {"cylinder": "z", "segments": 14, "box": [-0.3, -0.3, -0.16, 0.3, 0.3, -0.1], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.22, -0.22, -0.165, 0.22, 0.22, -0.16], "style": "glow"}
+      ]
+    },
+    // A detector: the structure's scanner, run from the pilot's toolbar (its range is the toolbar's
+    // data). Figures from Empyrion's small-vessel detector T1: 120 hp, 0.1 t.
+    {
+      "id": "detector", "name": "Detector", "function": "detector", "hp": 120, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.1, "color": "4d5563", "glow": "6ff2e0", "attach": ["+z"], "airtight": ["+z"], "covers": ["+z"], "collide": "parts", "power": -0.0005,
+      "parts": [
+        {"box": [-0.4, -0.4, 0.2, 0.4, 0.4, 0.5], "style": "body"},
+        {"cylinder": "z", "segments": 12, "box": [-0.08, -0.08, -0.3, 0.08, 0.08, 0.2], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.36, -0.36, -0.36, 0.36, 0.36, -0.3], "style": "accent"},
+        {"cylinder": "z", "segments": 8, "box": [-0.06, -0.06, -0.42, 0.06, 0.06, -0.36], "style": "glow"}
       ]
     },
     // A force field's corner emitter: an L whose arms (+x, +y) run along the field's two edges from

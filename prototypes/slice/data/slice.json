@@ -133,6 +133,28 @@
     }
   },
 
+  // The structure's toolbar in a command chair (design: Visor HUD layout; Empyrion's seated toolbar):
+  // what the pilot toggles or triggers in flight, filled from the structure's blocks. A kind shows
+  // once the structure has a block of one of its functions ("core": every cored structure), as one
+  // slot, or with "perType" one slot for each block type (each kind of gun). "act": toggle (its
+  // number switches it), select (its number picks it; the trigger fires what is picked) or run (its
+  // number runs it once). "end": the end of the bar it fills from, in order towards that end (the
+  // last listed for the right end sits rightmost); the pilot can rearrange them on the Core tab.
+  // "label": its name on the slot (a slot per type takes its block's name). "icon": its picture, drawn by code. "range": how far a scanner's scan reaches, m (Empyrion's
+  // small-vessel detector: 2,500 m).
+  "structureBar": {
+    "kinds": [
+      { "id": "spotlights", "label": "SPOT", "functions": ["spotlight"], "act": "toggle", "icon": "spotlight", "end": "left" },
+      { "id": "guns", "functions": ["weapon"], "act": "select", "icon": "gun", "end": "left", "perType": true },
+      { "id": "turrets", "label": "TURRET", "functions": ["turret"], "act": "toggle", "icon": "turret", "end": "left" },
+      { "id": "scanner", "label": "SCAN", "functions": ["detector"], "act": "run", "icon": "scanner", "end": "left", "range": 2500 },
+      { "id": "shields", "label": "SHIELD", "functions": ["shield"], "act": "toggle", "icon": "shield", "end": "right" },
+      { "id": "fabricators", "label": "FAB", "functions": ["constructor", "factory", "deconstructor"], "act": "toggle", "icon": "fabricator", "end": "right" },
+      { "id": "life-support", "label": "LIFE", "functions": ["core"], "act": "toggle", "icon": "atmosphere", "end": "right" },
+      { "id": "gravity", "label": "GRAV", "functions": ["core"], "act": "toggle", "icon": "gravity", "end": "right" }
+    ]
+  },
+
   // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8).
   "containers": { "corpse": [4, 4], "backpack": [8, 8], "drop": [8, 8] },
 

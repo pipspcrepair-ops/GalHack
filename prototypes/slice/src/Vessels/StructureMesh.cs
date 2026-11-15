@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using GalHack.Structures;
@@ -17,7 +18,7 @@ namespace Slice.Vessels;
 /// </summary>
 public partial class StructureMesh : Node3D
 {
-    const int MaxLights = 8;
+    const int MaxLights = 8, MaxSpots = 6;
 
     /// <summary>What damage may spend redrawing in one frame, ms. One chunk always goes, so the queue always drains.</summary>
     const double BudgetMs = 5.0;
@@ -46,7 +47,7 @@ public partial class StructureMesh : Node3D
     readonly HashSet<Int3> _waiting = new();
     readonly Dictionary<Int3, MeshInstance3D> _chunks = new();
     readonly ChunkMeshData _scratch = new();
-    readonly List<OmniLight3D> _lights = new();
+    readonly List<Light3D> _lights = new();
     readonly List<LightSettings> _lightSettings = new();
     string _lightKey = "";
     readonly Slice.Surface.StructureSky _sky = new();
@@ -177,12 +178,17 @@ public partial class StructureMesh : Node3D
     void UpdateLights()
     {
         var lights = new List<(Int3 pos, Block block)>();
+        var spots = new List<(Int3 pos, Block block)>();
         foreach (var (p, b) in Structure.Blocks())
-            if (Structure.TypeOf(b).IsLight && !b.Off && lights.Count < MaxLights) lights.Add((p, b));
-        string key = string.Join(";", lights.ConvertAll(l => $"{l.pos}/{l.block.Rot}/{Structure.LightAt(l.pos).ToText()}"));
+        {
+            BlockType t = Structure.TypeOf(b);
+            if (t.IsLight && !b.Off && lights.Count < MaxLights) lights.Add((p, b));
+            else if (t.IsSpotlight && !b.Off && spots.Count < MaxSpots) spots.Add((p, b));
+        }
+        string key = string.Join(";", lights.ConvertAll(l => $"{l.pos}/{l.block.Rot}/{Structure.LightAt(l.pos).ToText()}")) + "|" + string.Join(";", spots.ConvertAll(l => $"{l.pos}/{l.block.Rot}"));
         if (key == _lightKey) return;
         _lightKey = key;
-        foreach (OmniLight3D l in _lights) l.QueueFree();
+        foreach (Light3D l in _lights) l.QueueFree();
         _lights.Clear();
         _lightSettings.Clear();
         float cell = Structure.Grid.CellSize;
@@ -200,6 +206,27 @@ public partial class StructureMesh : Node3D
             AddChild(light);
             _lights.Add(light);
             _lightSettings.Add(Structure.LightAt(pos));
+        }
+        // A spotlight's beam leaves its lens along its facing (-z), out from the hull: after the lights, which animate by index.
+        foreach (var (pos, block) in spots)
+        {
+            System.Numerics.Vector3 lens = Structure.PointOf(pos, block, new System.Numerics.Vector3(0, 0, -0.2f)) * cell,
+                ahead = Structure.PointOf(pos, block, new System.Numerics.Vector3(0, 0, -1f)) * cell;
+            Vector3 at = new(lens.X, lens.Y, lens.Z), dir = (new Vector3(ahead.X, ahead.Y, ahead.Z) - at).Normalized();
+            var spot = new SpotLight3D
+            {
+                Name = "Spotlight",
+                LightColor = ChunkMesher.Rgb(Structure.TypeOf(block).GlowColor),
+                LightEnergy = 6f,
+                SpotRange = 60f,
+                SpotAngle = 22f,
+                SpotAttenuation = 0.9f,
+                ShadowEnabled = false,
+            };
+            AddChild(spot);
+            spot.Position = at;
+            spot.Basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.9f ? Vector3.Forward : Vector3.Up);
+            _lights.Add(spot);
         }
     }
 }

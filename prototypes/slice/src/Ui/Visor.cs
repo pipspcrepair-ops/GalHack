@@ -179,6 +179,7 @@ public partial class Visor : CanvasLayer
         {
             DrawFlight(v);
             DrawStructure(layout, v);
+            DrawBar(layout, v);
         }
         else
         {
