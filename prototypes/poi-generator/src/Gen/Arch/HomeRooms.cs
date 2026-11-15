@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,9 +9,9 @@ namespace PoiGenerator.Gen;
 /// A house's rooms finished by what each is for (the reference bar: period and modern house plans, docs/floorplan-refs
 /// 02-housing-commerce): every room's floor laid in its own colour (the finish book gives the pattern by purpose: a
 /// kitchen's tiles, a bedroom's carpet, a hall's boards), its walls in their own paint and every ceiling in the house's
-/// one; a light fitting's lamp in the middle of every ceiling; and the structure by role: an old house's joists left
-/// showing over its kitchen, living room and hall, a garage's pipe run along its ceiling. Rooms of one purpose take the
-/// next colour of their purpose, so no two read alike. The furniture is the decorations library's (Gen/RoomDecor).
+/// one; a light fitting's lamp in the middle of every ceiling; and the ceiling by role and storey (<see cref="Hut.Ceiling"/>).
+/// Rooms of one purpose take the next colour of their purpose, so no two read alike. The furniture is the decorations
+/// library's (Gen/RoomDecor); the doors in its inner doorways are every place's (<see cref="Canvas"/>).
 /// </summary>
 public static partial class Homes
 {
@@ -67,27 +67,85 @@ public static partial class Homes
                 }
                 // The walls: the house's next paint; the ceilings all the house's one.
                 C.X.Paints[room.Module] = WallPaints[paint++ % WallPaints.Length];
-                // The lamp in the middle of the ceiling (the library hangs the fitting of the house's age there).
+                Ceiling(room, tech, C.X.Ceiling.Value);
+                // The lamp in the middle of the ceiling, as high as the ceiling is there (the library hangs the fitting of the house's age there).
                 int cu = (room.U0 + room.U1) / 2, cv = (room.V0 + room.V1) / 2, wide = Math.Max(room.U1 - room.U0, room.V1 - room.V0) + 1;
-                C.X.Lights.Add(new LightSpot { Cell = P(cu, Ring(room.Storey) - 1, cv), Color = LampColour(tech), Module = room.Module, Storey = room.Storey, Energy = 1.1f, Range = wide * 0.9f + 2f, Mode = LightMode.Steady });
-                // The structure by role: an old house's joists over its kitchen, living room and hall; a garage's pipe run.
-                if (tech == TechLevel.Low && room.Purpose is "kitchen" or "living-room" or "hall" && room.Shape == null) Joists(room);
-                if (room.Purpose == "garage" && room.Shape == null) PipeRun(room, tech);
+                int top = Walk(room.Storey) + 1;
+                while (top < Walk(room.Storey) + 12 && !C.Solid(P(cu, top + 1, cv))) top++;
+                if (C.Get(P(cu, top + 1, cv)).Type is BlockType.Half or BlockType.Beam) top++; // (hung at a dropped panel's face, or between the beams)
+                C.X.Lights.Add(new LightSpot { Cell = P(cu, top, cv), Color = LampColour(tech), Module = room.Module, Storey = room.Storey, Energy = 1.1f, Range = wide * 0.9f + 2f, Mode = LightMode.Steady });
             }
         }
 
-        /// <summary>Timber joists under the ceiling across a room's short span, one every two metres, wall to wall; none over a stair.</summary>
-        void Joists(Room room)
+        /// <summary>
+        /// The ceiling by role and storey (period and modern house sections, docs/floorplan-refs 02): the top storey under a pitched
+        /// roof open to its slope over the bedrooms, study and living room (a vaulted ceiling); an old house's joists over its
+        /// ground-floor kitchen, living room and hall, a newer living room coffered; the upper storeys, the bathrooms and stores
+        /// half a metre lower under a dropped ceiling; a garage its pipe run.
+        /// </summary>
+        void Ceiling(Room room, TechLevel tech, Rgb paint)
         {
-            bool acrossU = room.U1 - room.U0 <= room.V1 - room.V0;
+            if (room.Purpose == "garage" && room.Shape == null) { PipeRun(room, tech); return; }
+            if (room.Storey == Storeys - 1 && room.Purpose is "bedroom" or "study" or "living-room" && Vault(room, paint)) return;
+            if (room.Purpose is "bathroom" or "store" || room.Storey > 0 && room.Purpose != "hall") { Drop(room, paint); return; }
+            if (room.Shape != null) return; // (a round room's ceiling spans it whole)
+            if (tech == TechLevel.Low && room.Purpose is "kitchen" or "living-room" or "hall") Beams(room, new Block(BlockType.Beam, Material.Timber, new Rgb(0x5a, 0x44, 0x30), Role.Decor), false);
+            else if (room.Purpose == "living-room") Beams(room, new Block(BlockType.Beam, Material.Concrete, paint, Role.Decor), true);
+        }
+
+        /// <summary>Beams under the ceiling across a room's short span, one every two metres wall to wall (an old house's timber joists); <paramref name="coffered"/>, along its length too (a plastered coffer). None over a stair.</summary>
+        void Beams(Room room, Block beam, bool coffered)
+        {
             int y = Ring(room.Storey) - 1;
-            var timber = new Block(BlockType.Beam, Material.Timber, new Rgb(0x5a, 0x44, 0x30), Role.Decor, _f.Turn(acrossU ? Dir.East : Dir.South));
-            for (int a = (acrossU ? room.V0 : room.U0) + 1; a < (acrossU ? room.V1 : room.U1); a += 2)
+            bool shortU = room.U1 - room.U0 <= room.V1 - room.V0;
+            foreach (bool acrossU in coffered ? new[] { shortU, !shortU } : new[] { shortU })
+                for (int a = (acrossU ? room.V0 : room.U0) + 1; a < (acrossU ? room.V1 : room.U1); a += 2)
+                {
+                    var line = Enumerable.Range(acrossU ? room.U0 : room.V0, (acrossU ? room.U1 - room.U0 : room.V1 - room.V0) + 1).Select(b => acrossU ? (b, a) : (a, b)).ToList();
+                    if (line.Any(c => _stair.Contains((c.Item1, c.Item2, room.Storey)) || !C.Solid(P(c.Item1, y + 1, c.Item2)))) continue;
+                    foreach (var (u, v) in line.Where(c => C.Get(P(c.Item1, y, c.Item2)).IsAir)) C.Set(P(u, y, v), beam with { Facing = _f.Turn(acrossU ? Dir.East : Dir.South) });
+                }
+        }
+
+        /// <summary>A ceiling dropped half a metre (a panel under the slab), stepping back up round the windows so none is cut across.</summary>
+        void Drop(Room room, Rgb paint)
+        {
+            int y = Ring(room.Storey) - 1;
+            var panel = new Block(BlockType.Half, Material.Concrete, paint, Role.Floor, Dir.Up);
+            foreach (var (u, v) in room.Cells())
+                if (!_stair.Contains((u, v, room.Storey)) && C.Get(P(u, y, v)).IsAir && C.Solid(P(u, y + 1, v)) && !Dirs.Horizontal.Any(h => C.Get(P(u, y, v) + h.Vec()).Role == Role.Window))
+                    C.Set(P(u, y, v), panel);
+        }
+
+        /// <summary>
+        /// The room open to the pitched roof over it: its ceiling slab out, the roof's underside laid in slopes under the deck so it
+        /// reads as one plane from eaves to ridge, and the walls round it carried up to the roof. Only under a plain slope of this
+        /// house's roof (a slope or the ridge over every cell); else nothing changes.
+        /// </summary>
+        bool Vault(Room room, Rgb paint)
+        {
+            int ring = Ring(room.Storey);
+            var cells = room.Cells().ToList();
+            if (cells.Any(c => _stair.Contains((c.U, c.V, room.Storey)) || !_top.TryGetValue(c, out int t) || t < ring + 1 || C.Get(P(c.U, t, c.V)).Type is not (BlockType.Ramp or BlockType.Cube))) return false;
+            var deck = new Block(BlockType.Cube, S.RoofM, paint, Role.Roof);
+            foreach (var (u, v) in cells)
             {
-                var line = Enumerable.Range(acrossU ? room.U0 : room.V0, (acrossU ? room.U1 - room.U0 : room.V1 - room.V0) + 1).Select(b => acrossU ? (b, a) : (a, b)).ToList();
-                if (line.Any(c => _stair.Contains((c.Item1, c.Item2, room.Storey)) || !C.Solid(P(c.Item1, y + 1, c.Item2)))) continue;
-                foreach (var (u, v) in line) C.Set(P(u, y, v), timber);
+                int t = _top[(u, v)];
+                Block roof = C.Get(P(u, t, v));
+                for (int y = ring; y < t - 1; y++) C.Clear(P(u, y, v));
+                C.Set(P(u, t - 1, v), deck);
+                C.Set(P(u, t - 2, v), roof.Type == BlockType.Ramp ? new Block(BlockType.Chamfer, S.RoofM, paint, Role.Roof, roof.Facing.Opposite()) : deck);
             }
+            // The walls round it up to the roof: a bedroom under the slope is shut off from the next one's.
+            var own = cells.ToHashSet();
+            foreach (var (u, v) in cells)
+                foreach (var w in new[] { (u - 1, v), (u + 1, v), (u, v - 1), (u, v + 1) })
+                {
+                    if (own.Contains(w) || !Foot.Contains(w) || Edge(w.Item1, w.Item2) || !_top.TryGetValue(w, out int t)) continue;
+                    for (int y = ring + 1; y < t; y++)
+                        if (C.Get(P(w.Item1, y, w.Item2)).IsAir) C.Set(P(w.Item1, y, w.Item2), Cube(S.WallM, S.Wall, Role.Wall));
+                }
+            return true;
         }
 
         /// <summary>A service pipe along a room's longest wall under its ceiling, its whole length.</summary>

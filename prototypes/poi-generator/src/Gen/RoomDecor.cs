@@ -43,7 +43,8 @@ public static class RoomDecor
         var (y, x0, x1, z0, z1, height, open, floor) = room0;
         int w = x1 - x0 + 1, d = z1 - z0 + 1;
         // Far from a rectangle (what isn't its floor is kept clear below), or no more than a cupboard: the generator's props stay.
-        if (open < MinCells || open < w * d * 0.6f || height < 2) return null;
+        // A big room of an odd shape is still dressed where it has floor (an L of a day room, a hall round a stair).
+        if (open < MinCells || open < w * d * (open >= 60 ? 0.35f : 0.6f) || height < 2) return null;
         bool alien = (inst.Family.Style ?? "").StartsWith("alien_", StringComparison.Ordinal);
         var room = new DecoRoom
         {
@@ -155,7 +156,7 @@ public static class RoomDecor
     /// start at it, a kit's a layer of floor below), the floor's height in it (bare, or laid with plates:
     /// as most of its cells are), its box and clear height, and its cells with that floor.
     /// </summary>
-    public static (int Y, int X0, int X1, int Z0, int Z1, int Height, int Cells, float Floor)? Interior(PoiInstance inst, PlacedModule m)
+    public static (int Y, int X0, int X1, int Z0, int Z1, float Height, int Cells, float Floor)? Interior(PoiInstance inst, PlacedModule m)
     {
         NavGrid nav = inst.Nav();
         foreach (int y in new[] { m.Min.Y, m.Min.Y + 1 })
@@ -166,12 +167,16 @@ public static class RoomDecor
             var inside = floors.Where(t => t.Floor == floor).Select(t => t.Cell).ToList();
             int x0 = inside.Min(c => c.X), x1 = inside.Max(c => c.X), z0 = inside.Min(c => c.Z), z1 = inside.Max(c => c.Z);
             int height = 0;
+            // (Measured over the floor nearest its middle: an L's middle may be no floor of it.)
+            Int3 mid = inside.MinBy(c => Math.Abs(2 * c.X - x0 - x1) + Math.Abs(2 * c.Z - z0 - z1));
             for (int h = 0; h < 12; h++, height++)
             {
-                Block b = inst.Blocks.Get(new Int3((x0 + x1) / 2, y + h, (z0 + z1) / 2));
+                Block b = inst.Blocks.Get(mid + Int3.Up * h);
                 if (!Open(b) && !(h == 0 && b.Type == BlockType.Plate)) break;
             }
-            return (y, x0, x1, z0, z1, height, inside.Count, floor);
+            // (A dropped ceiling's panel is the upper half of its cell: half a metre more.)
+            float clear = height + (inst.Blocks.Get(mid + Int3.Up * height) is { Type: BlockType.Half, Facing: Dir.Up } ? 0.5f : 0f);
+            return (y, x0, x1, z0, z1, clear, inside.Count, floor);
         }
         return null;
     }

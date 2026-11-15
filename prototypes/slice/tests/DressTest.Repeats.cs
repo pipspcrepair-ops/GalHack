@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Deco;
@@ -30,7 +30,7 @@ public partial class DressTest
                 var kept = room.Plan.Placements.Where((_, i) => !taken.Contains(i)).ToList();
                 foreach (var g in kept.GroupBy(p => p.Piece))
                 {
-                    int cap = DecoPlanner.CapOf(decor.Catalogue.Piece(g.Key));
+                    int cap = DecoPlanner.CapOf(decor.Catalogue.Piece(g.Key), room.Plan.Room.Width * room.Plan.Room.Depth);
                     if (g.Count() > cap) over.Add($"{r.Name}, {room.Room.RoomId}: {g.Count()} x {g.Key} (cap {cap})");
                     // Seats set out in rows facing something (pews, an aircraft's cabin) are rows by what they are: those are made uneven, and left out here.
                     if (Lined(g.Where(p => p.Role != "seat").ToList()) is int n && n >= 4) lined.Add($"{r.Name}, {room.Room.RoomId}: {n} x {g.Key} in an even line");

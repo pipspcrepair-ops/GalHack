@@ -81,7 +81,8 @@ public partial class PoiTest
                         lined++;
                         if (r.Detour > 1f) { inLine++; Weak("in the way"); Note("line", $"{at}: {(float.IsPositiveInfinity(r.Detour) ? "no way through" : $"{r.Detour:0.0} m round")} ({r.Signature})"); }
                     }
-                    if (!r.Lit) { unlit++; Weak("unlit"); Note("unlit", at); }
+                    // (A ruin goes dark by design, its power long gone and the deep levels black: Decay. An abandoned place's lamps still mostly burn.)
+                    if (!r.Lit && state == PoiState.Abandoned) { unlit++; Weak("unlit"); Note("unlit", at); }
                     if (r.Lamp) lamps++;
                     if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at}, {r.Ways} ways in ({r.Signature})"); }
                     if (r.Big) big++;
@@ -122,11 +123,11 @@ public partial class PoiTest
             Check(empty == 0, T($"no empty rooms ({empty} of {rooms}){First("empty")}"));
             Check(inLine == 0, T($"nothing stands in the walking line between a room's ways in ({inLine} of {lined} rooms with two or more ways in){First("line")}"));
             Check(oneMaterial == 0, T($"no place one material wall to wall ({oneMaterial} of {places}){First("material")}"));
-            Check(unlit == 0, T($"every room lit, by a lamp or daylight ({unlit} of {rooms} unlit){First("unlit")}"));
+            Check(unlit == 0, T($"every room of an abandoned place lit, by a lamp or daylight ({unlit} unlit){First("unlit")}"));
             Check(alike == 0, T($"no two rooms of a storey alike ({alike} pairs){First("alike")}"));
             Check(unfocused == 0, T($"every room has a focal point ({unfocused} of {rooms} without){First("focal")}"));
             Check(sparse == 0, T($"no big room with a bare middle ({sparse} of {big} big rooms){First("sparse")}"));
-            Check(doorless == 0, T($"a door in every door's-width way between rooms ({doorless} of {narrow} without){First("door")}"));
+            Check(doorless == 0, T($"a door in every door-sized way between rooms ({doorless} of {narrow} without){First("door")}"));
             Check(oneCeiling == 0, T($"no place one ceiling all through ({oneCeiling} of {places}){First("ceiling")}"));
             Check(focalDown == 0 && midDebris == 0 && sky * 4 <= ruined, T($"ruined rooms read as rooms: focal point standing ({focalDown} down), the fallen against the walls ({midDebris} across the middle), at most a quarter mostly sky ({sky} of {ruined}){First("down")}{First("debris")}{First("sky")}"));
         }
@@ -162,9 +163,10 @@ public partial class PoiTest
             if (dressed.TryGetValue(m.Index, out RoomDecor.Dressable d))
             {
                 DecoPlan found = decor.Dress(d.Room, inst.Kit?.Id), used = decor.Dress(d.Room, inst.Kit?.Id, disorder: false);
+                focus = decor.Arrangements.FocusFor(m.Purpose, d.Room.Recipe);
                 RoomDecor.ClearProps(inst, d);
                 pieces = found.Placements.Count;
-                how = $"dressed as {d.Room.Recipe ?? d.Room.Set}";
+                how = $"dressed as {d.Room.Recipe ?? d.Room.Set} ({d.Room.Width}x{d.Room.Depth}, {d.Room.Height} m, {d.Room.Doors.Count} doors, {d.Room.Blocked.Count} cells blocked)";
                 kinds.AddRange(used.Placements.Select(p => p.Piece));
                 bool wasFocal = used.Placements.Any(Focus);
                 focal |= wasFocal;
@@ -180,7 +182,9 @@ public partial class PoiTest
                 pieces = props.Count;
                 how = RoomDecor.Interior(inst, m) is { } inner ? $"undressed: {inner.Cells} open cells of {(inner.X1 - inner.X0 + 1) * (inner.Z1 - inner.Z0 + 1)}, {inner.Height} m clear" : "undressed: no floor";
                 kinds.AddRange(props.Select(c => g.Get(c).Type.ToString()));
-                focal |= props.Any(c => g.Get(c).Type is BlockType.Table or BlockType.Meal or BlockType.Bed or BlockType.Bunk or BlockType.Bench or BlockType.Machine or BlockType.Terminal);
+                // (A hidden stash is arranged round its cache.)
+                focal |= props.Any(c => g.Get(c).Type is BlockType.Table or BlockType.Meal or BlockType.Bed or BlockType.Bunk or BlockType.Bench or BlockType.Machine or BlockType.Terminal)
+                    || inst.Extras.Secrets.Any(s => s.Module == m.Index) && inst.Caches.Any(c => c.Module == m.Index);
                 if (ways.Count >= 2) detour = CellDetour(floor, ways, c => BlockInfo.Collides(g.Get(c).Type) && !g.Get(c).IsAir);
             }
             int w0 = floor.Max(c => c.X) - floor.Min(c => c.X) + 1, d0 = floor.Max(c => c.Z) - floor.Min(c => c.Z) + 1;
@@ -196,7 +200,8 @@ public partial class PoiTest
             string signature = $"{m.Purpose} {Math.Min(w0, d0)}x{Math.Max(w0, d0)} {floorLook.Item1}/{floorLook.Item2} {wallLook.Item1}/{wallLook.Item2}: {string.Join(" ", kinds.OrderBy(k => k))}";
             var (ceiling, flatCeiling) = CeilingOf(g, floor.Where(c => Dirs.Horizontal.All(h => own.Contains(c + h.Vec()))).DefaultIfEmpty(floor[0]).ToList());
             // Its ways to another room a door's width or less, and those with no door hung in them (a ruin's may have gone since).
-            var toRooms = ways.Where(w => w.From >= 0 && layout.Modules[w.From].Kind is not (ModuleKind.Outdoor or ModuleKind.Stair or ModuleKind.Lift) && w.Cells.Count <= DoorSize.Wide).ToList();
+            var toRooms = ways.Where(w => w.From >= 0 && layout.Modules[w.From].Kind is not (ModuleKind.Outdoor or ModuleKind.Stair or ModuleKind.Lift) && w.Cells.Count == DoorSize.Wide
+                && w.Cells.All(c => BlockInfo.Collides(g.Get(c + Int3.Up * DoorSize.Tall).Type))).ToList();
             bool Doored(List<Int3> cells) => cells.Any(c => doorCells.Contains(c) || g.Get(c).Type == BlockType.Door);
             // What fell, at the floor: heaped in the middle (cells clear of every wall) more than round the edges.
             bool Fallen(Int3 c) => g.Get(c).Role == Role.Debris && g.Get(c).Type is BlockType.Rubble or BlockType.Cube or BlockType.Ramp || g.Get(c + Int3.Up).Role == Role.Debris && g.Get(c + Int3.Up).Type is BlockType.Rubble or BlockType.Cube;

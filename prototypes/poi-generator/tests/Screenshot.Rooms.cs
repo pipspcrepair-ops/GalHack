@@ -61,8 +61,9 @@ public partial class Screenshot
         string firstStray = "";
         foreach (PlacedModule m in rooms)
         {
-            if (DoorwayInto(poi, m, depth) is not var (centre, inward)) continue;
             var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
+            // (A floor come up to by its stair has no doorway: from the corner of it nearest the stair's.)
+            if ((DoorwayInto(poi, m, depth) ?? Corner(poi, m, floor)) is not var (centre, inward)) continue;
             Vector3 mid = new((float)floor.Average(c => c.X) + 0.5f, m.Min.Y + 1.1f, (float)floor.Average(c => c.Z) + 0.5f);
             // Just over the threshold, clear of the door's leaf, as a person stands coming in.
             Vector3 eye = centre + inward * 0.75f + Vector3.Up * EyeHeight;
@@ -84,6 +85,17 @@ public partial class Screenshot
         Error result = GetViewport().GetTexture().GetImage().SavePng(sheetPath);
         GD.Print(result == Error.Ok ? $"saved {sheetPath}" : $"could not save {sheetPath}: {result}");
         GalHack.Testing.Backstop.Quit(this, result == Error.Ok && stray == 0 ? 0 : 1);
+    }
+
+    /// <summary>A floor cell of a room nearest the stair it is come up to (else its first), and the way from there toward its middle.</summary>
+    static (Vector3 Centre, Vector3 Inward)? Corner(PoiInstance poi, PlacedModule m, List<Int3> floor)
+    {
+        if (floor.Count == 0) return null;
+        var stairs = poi.Layout.Links.Select(k => k.A == m.Index ? k.B : k.B == m.Index ? k.A : -1).Where(i => i >= 0 && poi.Layout.Modules[i].Kind == ModuleKind.Stair)
+            .SelectMany(i => poi.Layout.Modules[i].Cells).ToList();
+        Int3 at = stairs.Count > 0 ? floor.MinBy(c => stairs.Min(s => Math.Abs(s.X - c.X) + Math.Abs(s.Z - c.Z))) : floor[0];
+        Vector3 mid = new((float)floor.Average(c => c.X), at.Y, (float)floor.Average(c => c.Z)), from = new(at.X + 0.5f, at.Y, at.Z + 0.5f);
+        return (from - (mid - from).Normalized() * 0.75f, (mid - from).Normalized());
     }
 
     /// <summary>The middle of the way a room is come into (from the shallowest room beside it) at its floor, and the way into the room; null if it has none.</summary>

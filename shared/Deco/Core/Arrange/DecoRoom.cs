@@ -162,6 +162,8 @@ public sealed class DecoPlanCable
 public sealed class DecoPlan
 {
     public DecoRoom Room;
+    /// <summary>The template use the room is arranged round (its focal point), or -1: the years leave it standing.</summary>
+    public int FocalGroup = -1;
     public readonly List<DecoPlacement> Placements = new();
     public readonly List<DecoPlanCable> Cables = new();
     public readonly List<string> Notes = new();
