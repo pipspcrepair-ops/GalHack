@@ -377,7 +377,7 @@ public partial class Spaceflight
         if (!s.Arrived)
         {
             // Its surface hasn't arrived yet (it does while you are still far over it): the whole globe, where it is.
-            DrawFar(o, eye);
+            DrawFar(o, eye, o.IsHome ? 1f : 1f - Orbit.Space.FadeOf(o.Body)); // its air shared with the far look as DrawOthers fades it
             return;
         }
         float cap = Ceiling, R = o.GlobeRadius;
