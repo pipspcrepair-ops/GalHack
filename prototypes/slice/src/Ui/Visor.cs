@@ -42,13 +42,16 @@ public partial class Visor : CanvasLayer
     /// <summary>The ore scanner the compass and the map read.</summary>
     public readonly DepositFinder Deposits = new();
     readonly List<(string text, double until)> _xp = new();
-    double _levelUntil = -1, _hitUntil = -1;
+    double _levelUntil = -1, _hitAt = -9;
+    bool _hitKill;
     string _level = "";
 
     /// <summary>Is this alert flashing right now? (tests read it)</summary>
     public bool Flashing(Alert a) => (Game.Suit?.Last.Warnings & a) != 0;
 
     public bool ThreatShowing => _time < _threatUntil;
+    /// <summary>Whether the visor's edge is reddened on the side a hit came from (tests).</summary>
+    public bool HurtShowing => _time < _hurtUntil;
 
     /// <summary>Tests only: holds the glass's frost and red pulse at these levels (the visor staging view).</summary>
     public (float frost, float harm)? PinnedGlass;
@@ -93,8 +96,21 @@ public partial class Visor : CanvasLayer
         Game.Notices?.Post(NoticeKind.Level, "LEVEL", _level);
     }
 
-    /// <summary>A shot landed on a creature: a hit marker at the crosshair.</summary>
-    public void Hit() => _hitUntil = _time + 0.25;
+    /// <summary>How long the reticle's ring shows for a hit, and for a kill.</summary>
+    public const double HitSeconds = 0.35, KillSeconds = 0.7;
+
+    /// <summary>The player's hit landed: a ring flashes round the reticle; a kill rings twice, in the danger colour, crossed.</summary>
+    public void Hit(bool kill = false)
+    {
+        // A kill isn't undone by a hit straight after it.
+        if (!kill && RingShowing && _hitKill) return;
+        _hitAt = _time;
+        _hitKill = kill;
+    }
+
+    /// <summary>Whether the reticle's confirmation ring shows now, and whether it is a kill's (tests).</summary>
+    public bool RingShowing => _time - _hitAt < (_hitKill ? KillSeconds : HitSeconds);
+    public bool RingKill => RingShowing && _hitKill;
 
     public bool LevelUpShowing => _time < _levelUntil;
     public int XpLines => _xp.Count;
@@ -458,9 +474,7 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 c = _hud.Size / 2;
         _hud.DrawCircle(c, 3 * s, new Color(C.Text, 0.85f));
-        if (_time < _hitUntil)
-            foreach (var d in new[] { new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) })
-                _hud.DrawLine(c + d * 7 * s, c + d * 15 * s, C.Danger, 3 * s);
+        DrawHitRing(c, s);
         // Only a prompt for what is in reach and usable (E or F), the ore the tool is on, or the
         // build tool's verdict: never where you are.
         string label = Game.UsePrompt();
@@ -476,6 +490,25 @@ public partial class Visor : CanvasLayer
         };
         if (!string.IsNullOrEmpty(label))
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, PromptBox(_hud.Size, UiScale, label).Position.Y, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+    }
+
+    /// <summary>The hit ring's radius, and a kill's second thin ring's, in UI units (times the HUD scale: 8.4 and 10.8 px at 1080p).</summary>
+    public const float RingRadius = 7f, KillRadius = 9f;
+
+    /// <summary>The outermost ring's radius in pixels on a screen this size (tests).</summary>
+    public static float RingPixels(Vector2 screen, bool kill) => (kill ? KillRadius : RingRadius) * HudLayout.Compute(screen).Scale;
+
+    /// <summary>
+    /// The confirmation when the player's hit lands: a small, tight ring hugging the reticle that
+    /// fades; a kill is the same ring in the danger colour with a second thin ring just outside it.
+    /// </summary>
+    void DrawHitRing(Vector2 c, float s)
+    {
+        if (!RingShowing) return;
+        float life = (float)((_time - _hitAt) / (_hitKill ? KillSeconds : HitSeconds));
+        var tone = new Color(_hitKill ? C.Danger : C.Text, 1f - life * life);
+        _hud.DrawArc(c, RingRadius * s, 0f, MathF.Tau, 32, tone, 1.6f * s, true);
+        if (_hitKill) _hud.DrawArc(c, KillRadius * s, 0f, MathF.Tau, 32, tone, 1f * s, true);
     }
 
     /// <summary>Under the crosshair with a weapon in hand: reloading, out of ammo, or the charge stage reached.</summary>
