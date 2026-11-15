@@ -289,6 +289,8 @@ public partial class PopRoute : Node
         var farIn = new HashSet<(int, int)>();
         int size = FarBuilder.Size;
         PopLog.Take();
+        // A place or city tile coming in is seen if it is in frame, nearer than the camera draws and not behind the ground.
+        PopLog.Sees = at => _game.Camera is { } c && c.IsPositionInFrustum(at) && c.GlobalPosition.DistanceTo(at) < c.Far && !Behind(c.GlobalPosition, at);
         _frames.Clear();
         _gpu.Clear();
         _streaming = 0;
@@ -380,7 +382,10 @@ public partial class PopRoute : Node
         s.FarApplied -= onFar;
         double seconds = clock.Elapsed.TotalSeconds;
         string workers = string.Create(CultureInfo.InvariantCulture, $"main thread {_streaming / seconds:F0} ms a second; workers: far chunks {(s.FarBuildMs.Sum() - buildMs0.Sum()) / seconds:F0} ms a second, ground tiles {(ClipGround.FillTicks - tileTicks0) * 1000.0 / Stopwatch.Frequency / seconds:F0} ms a second ({(ClipGround.Filled - tiles0) / seconds:F0} a second)");
+        PopLog.Sees = null;
         var logged = PopLog.Take();
+        var placesIn = logged.Where(q => q.Kind is "place" or "city" && q.What == "appears").ToList();
+        int placesSeen = placesIn.Count(q => q.Seen);
         var trees = logged.Where(q => q.Kind == "flora" && q.What == "appears" && q.Size > 3f).Select(q => q.Distance).ToList();
         string byKind = string.Join(", ", logged.GroupBy(q => q.Kind + " " + q.What).OrderBy(g => g.Key).Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count()} ({g.Sum(q => q.Jump * q.Size / MathF.Max(q.Distance, 10f)):F1})")));
         int nearJumps = logged.Count(q => q.Kind is "flora" or "cover" && q.Distance < 120f && q.Jump > 0.05f);
@@ -415,7 +420,7 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE {name} {speed:F0} m/s {length:F0} m: near ground complete to m {Q(complete.Select(c => (double)c).ToList(), true)}; " +
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
                  $"queue {Q(pending.Select(c => (double)c).ToList())}; far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
-                 $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; flora or cover jumps over 5% within 120 m {nearJumps}; " +
+                 $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; places appearing at m {Q(placesIn.Select(q => (double)q.Distance).ToList(), true)}, {placesSeen} of them in plain view (at m {Q(placesIn.Where(q => q.Seen).Select(q => (double)q.Distance).ToList(), true)}); flora or cover jumps over 5% within 120 m {nearJumps}; " +
                  $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; streaming: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
         // good test build, about the same), with room for a machine other runs share.
@@ -427,14 +432,15 @@ public partial class PopRoute : Node
             Gate($"{name}: shadow casters redrawn in view", farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes, lim.ShadowPops, false, "/min");
             Gate($"{name}: frames over 16.7 ms", over / minutes, lim.Over, false, "/min");
             Gate($"{name}: frame p99", P(_frames, 0.99), lim.P99, false, "ms");
+            Gate($"{name}: places appearing in plain view", placesSeen, lim.PlacesSeen, false, "");
         }
     }
 
-    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops);
+    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops, double PlacesSeen = 0);
 
     /// <summary>
     /// Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames
-    /// over 16.7 ms a minute at most, frame p99 at most, plants popping in view a minute at most. Trees and pops from the one-drawing
+    /// over 16.7 ms a minute at most, frame p99 at most, plants popping in view a minute at most, places or city tiles appearing in plain view (none). Trees and pops from the one-drawing
     /// trees (cb249a21 on): no pops on any route (412, 1940 and 6102 trees a minute before), and the only trees still appearing
     /// are far chunks coming in, 470 m off at the nearest. Shadow casters redrawn from the GPU far ground (99ddbe89 on): the ground
     /// is never redrawn, only far chunks' flora (10, 289 and 388 a minute at the most measured on walk, bike and fly).
@@ -459,6 +465,18 @@ public partial class PopRoute : Node
         bool ok = atLeast ? value >= limit : value <= limit;
         if (!ok) _gateFails++;
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"  {(ok ? "ok   " : "FAIL ")} {what} {value:F1} {unit} ({(atLeast ? "at least" : "at most")} {limit:F0})"));
+    }
+
+    /// <summary>Whether the ground stands between the eye and a point (sampled every 8 m along the line).</summary>
+    bool Behind(Vector3 eye, Vector3 at)
+    {
+        float d = eye.DistanceTo(at);
+        for (float s = 8f; s < d - 8f; s += 8f)
+        {
+            Vector3 q = eye.Lerp(at, s / d);
+            if (_game.Zone.GroundAt(q.X, q.Z).Y > q.Y) return true;
+        }
+        return false;
     }
 
     static double Mod(double a, double m) => a - Math.Floor(a / m) * m;

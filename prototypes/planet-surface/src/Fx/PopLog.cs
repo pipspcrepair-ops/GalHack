@@ -20,15 +20,20 @@ public static class PopLog
     /// it changed in the one frame (0: nothing, as a fade a frame at a time; 1: a hard swap, or all of
     /// it appearing or going at once).
     /// </summary>
-    public readonly record struct Pop(string Kind, string What, float Distance, float Size, float Jump);
+    /// <param name="Seen">whether the eye could see where it happened (<see cref="Sees"/>, asked when a change says where; false when nobody asks)</param>
+    public readonly record struct Pop(string Kind, string What, float Distance, float Size, float Jump, bool Seen = false);
+
+    /// <summary>A measurement's own test of whether the eye sees a point just now (in frame and not behind the ground), or null.</summary>
+    public static System.Func<Godot.Vector3, bool> Sees;
 
     static readonly List<Pop> _pops = new();
 
     /// <summary>Notes a change. A change of under a thousandth of the look is no change.</summary>
-    public static void Note(string kind, string what, float distance, float size, float jump)
+    public static void Note(string kind, string what, float distance, float size, float jump, Godot.Vector3? at = null)
     {
         if (!On || jump < 0.001f) return;
-        lock (_pops) _pops.Add(new Pop(kind, what, distance, size, jump));
+        bool seen = at is Godot.Vector3 a && Sees?.Invoke(a) == true;
+        lock (_pops) _pops.Add(new Pop(kind, what, distance, size, jump, seen));
     }
 
     /// <summary>Everything noted since the last take, and starts over.</summary>
