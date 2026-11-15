@@ -21,7 +21,7 @@ namespace Slice.Ui;
 /// <summary>
 /// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): the sleeper's gauges at the bottom
 /// left that flash while they are only a warning and turn red once they cost health (calm, they fade after a few
-/// seconds), the surroundings at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
+/// seconds), the temperature at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
 /// the things themselves (the bunker, places, deposits, your vessels), the suit's assistant's lines, what the tool is
 /// aimed at, and seated, a flight strip and the structure's gauges at the bottom right. Drawn every frame onto the main canvas.
 /// </summary>
