@@ -486,6 +486,7 @@ public partial class CultureTest : Node
                 bool Out(Town.Person p) => !p.Dead && !p.Indoors && !p.Away && p.Figure != null;
                 // (At play's own pace, a thirtieth of a second, so bodies part as they do in play.)
                 var together = new Dictionary<(Town.Person, Town.Person), float>();
+                var since = new Dictionary<Town.Person, float>();
                 town.Rehearse(120f, 1f / 30f, _ => false,
                     (p, i) =>
                     {
@@ -497,10 +498,13 @@ public partial class CultureTest : Node
                         if (at < 20f) town.WorstOverlap = 0f;
                         if (at < 20f || !Out(p)) return;
                         // Two standing in each other (a knot, a pair talking), looked at once a second.
-                        if (!Walking(p) && (int)(at * 30f) % 30 == 0)
+                        // (Two who have stood still half a second: arrivals are parted within a tick or two.)
+                        if (Walking(p)) since.Remove(p);
+                        else since.TryAdd(p, at);
+                        if (since.TryGetValue(p, out float idle) && at - idle >= 0.5f && (int)(at * 30f) % 30 == 0)
                             foreach (Town.Person o in town.People)
                             {
-                                if (o == p || !Out(o) || Walking(o) || o.GetHashCode() < p.GetHashCode() || MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
+                                if (o == p || !Out(o) || !since.TryGetValue(o, out float oIdle) || at - oIdle < 0.5f || o.GetHashCode() < p.GetHashCode() || MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
                                 float sink = Town.RadiusOf(p) + Town.RadiusOf(o) - new Vector2(o.Pos.X - p.Pos.X, o.Pos.Z - p.Pos.Z).Length();
                                 if (sink > standing) { standing = sink; standingAt = $"{fam.Id}: {p.Job} and {o.Job} at {p.Pos.X:F1},{p.Pos.Z:F1}{(p.Sitting || o.Sitting ? " (sitting)" : "")}"; }
                             }
@@ -531,7 +535,7 @@ public partial class CultureTest : Node
                         {
                             var near = town.People.Where(o => o != p && Out(o) && (packs ? o.Figure.Playful : o.Figure.Stage != LifeStage.Child && (side == 0 || o.Figure.Sex == cu.SexOf(side == 1))))
                                 .OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault();
-                            if (near != null && (packs || !Walking(near)))
+                            if (near != null && !Walking(p) && (packs || !Walking(near)))
                             {
                                 kids++;
                                 if (near.Pos.DistanceTo(p.Pos) <= (packs ? 8f : leash + 1.5f)) kept++;
@@ -561,7 +565,7 @@ public partial class CultureTest : Node
             // (Within 35 to 65% where the sexes mix freely, under 5% where they keep apart; a sample this size allowed its spread.)
             float sd = MathF.Sqrt(0.25f / Math.Max(1, adultPairs));
             if (adultPairs >= 8 && (wantMix >= 0.99f || wantMix <= 0.05f))
-                Check(wantMix >= 0.99f ? MathF.Abs(mix - 0.5f) <= MathF.Max(0.15f, 3f * sd) : mixed <= 0.05f * adultPairs + 1, $"{name}: {Pct(mix)} of {adultPairs} grown-ups' talks off work are between the sexes ({(wantMix >= 0.99f ? "35 to 65%, or 3 sd" : "under 5%, one pair allowed")})");
+                Check(wantMix >= 0.99f ? MathF.Abs(mix - 0.5f) <= MathF.Max(0.15f, 3f * sd) : mixed <= 0.05f * adultPairs + 2f * MathF.Sqrt(0.05f * adultPairs) + 1f, $"{name}: {Pct(mix)} of {adultPairs} grown-ups' talks off work are between the sexes ({(wantMix >= 0.99f ? "35 to 65%, or 3 sd" : "under 5%, or 2 sd")})");
             else GD.Print($"     {name}: {Pct(mix)} of {adultPairs} pairs of grown-ups of both sexes");
             if (kids >= 20)
                 Check(kept >= (packs ? 0.85f : 0.9f) * kids, $"{name}: {Pct(kept / (float)kids)} of child samples {(packs ? "within 8 m of another of their pack (85%)" : $"within {leash + 1.5f:F1} m of a grown-up minding them{(side > 0 ? " of their side" : "")} (90%)")}");

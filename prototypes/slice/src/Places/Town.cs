@@ -895,7 +895,9 @@ public sealed partial class Town
                     if (Culture.Has("packs") && PackLeader(p) is { } lead)
                     {
                         // A pack of their own: the rest after whichever of them leads it, the leader off about the town.
-                        GoTo(p, lead != p ? lead.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot);
+                        // (Round the leader rather than on top of it: half of them to the spots beside the leader's.)
+                        var round = Data.Links.Where(l => l.A == lead.Spot || l.B == lead.Spot).Select(l => l.A == lead.Spot ? l.B : l.A).Where(s => At(s).DistanceSquaredTo(At(lead.Spot)) < 36f).ToList();
+                        GoTo(p, lead == p ? (linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot) : round.Count > 0 && (p.GetHashCode() & 1) == 1 ? round[p.GetHashCode() / 2 % round.Count] : lead.Spot);
                         p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
                         p.Wait = lead != p ? 0.3f + (float)_rng.NextDouble() * 0.8f : 2f + (float)_rng.NextDouble() * 4f;
                         return;
@@ -946,8 +948,6 @@ public sealed partial class Town
         FaceSpot(p, dt);
         string moves = p.Looks?.Figure.Routine?.Moves ?? "wander";
         p.Sitting = tag == "sit" && moves is "wander" or "sit" or "roam" && p.Role is not ("guard" or "vendor");
-        // A child out of reach of the one minding them doesn't wait out a game: back at once (looked at twice a second).
-        if (p.Figure?.Playful == true && Culture.Trait("minder") is > 0f and var leash && (int)(_clock * 2f) != (int)((_clock - dt) * 2f) && Minder(p) is { } keeper && p.Pos.DistanceTo(keeper.Pos) > leash) p.Wait = 0f;
         if (p.Partner != null && !p.Partner.Dead)
         {
             Vector3 d = p.Partner.Pos - p.Pos;
@@ -972,7 +972,7 @@ public sealed partial class Town
         float gap = d.Length(), want = Culture.Trait("chat", 1.1f), r = BodyRadius(p), h = Height(p);
         if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) { p.ChatAt = null; return; }
         // (A step toward a stand, from a spot at a counter or a bench: clear of the furniture, or at least further out than they are.)
-        float here = _parts == null ? 0f : MathF.Min(0f, _parts.Gap(p.Pos, r, h) + 0.005f);
+        float here = _parts == null ? 0f : MathF.Min(0f, _parts.Gap(p.Pos, r, h) - 1e-4f);
         bool Step(Vector3 at) => Open(at) && Ground(at) is float g && MathF.Abs(g - p.Pos.Y) < 0.1f && (_parts == null || _parts.Gap(at, r, h) >= here);
         // (A stand found is kept till they're on it: the looking is done once, not every tick.)
         if (p.ChatAt is not { } stand || p.ChatWith != q)
