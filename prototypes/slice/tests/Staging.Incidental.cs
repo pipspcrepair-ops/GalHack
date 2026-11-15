@@ -9,7 +9,7 @@ using PInt3 = PoiGenerator.Gen.Int3;
 namespace Slice.Tests;
 
 /// <summary>
-/// A place nobody marked, in the game itself (--view=incidental --what=sewer|ruin): the eye standing height (1.7 m) a few metres
+/// A place nobody marked, in the game itself (--view=incidental --what=sewer|ruin, --nth=N for the Nth ruin): the eye standing height (1.7 m) a few metres
 /// off it and again 30 m off, for the sewer with a lamp over the junction it looks at (it is dark down there), for the nearest
 /// roadside ruin in daylight. --rounded=0 builds the underground as it was before the sections were shaped. Frames go beside --out.
 /// </summary>
@@ -42,7 +42,7 @@ public sealed partial class Staging
         }
         else if (what == "ruin")
         {
-            var ruin = world.Infra.Ruins.FirstOrDefault(r => r.Stamp != null && world.Infra.Town?.Houses.Contains(r) != true);
+            var ruin = world.Infra.Ruins.Where(r => r.Stamp != null && world.Infra.Town?.Houses.Contains(r) != true).Skip(int.Parse(_args.GetValueOrDefault("nth", "0"))).FirstOrDefault();
             if (ruin != null)
             {
                 var (rx, rz) = ruin.Center;

@@ -14,6 +14,7 @@ namespace PoiGenerator.Gen;
 /// </summary>
 public static partial class StateTransforms
 {
+    static readonly bool Old = Environment.GetEnvironmentVariable("RUIN_OLD") != null; // TEMP
     /// <summary>Takes about <paramref name="share"/> of the structure down, in collapses; <paramref name="walls"/>: walls go as well as roofs.</summary>
     public static void Weathered(PoiInstance inst, Rng rng, float share, bool walls)
     {
@@ -43,6 +44,7 @@ public static partial class StateTransforms
                 if (rng.Chance(0.2f + 0.6f * inst.Ruin.Wear)) Peel(inst, b, rng, fallen);
                 if (rng.Chance(0.15f + 0.5f * inst.Ruin.Wear + 0.2f * inst.Ruin.Violence)) Pancake(inst, b, rng, fallen);
             }
+        if (walls && !Old) Crack(inst, fallen);
         Collapse(inst, rng, fallen);
         // Rubble lies where it fell: what came down, in its own stuff and colour, under where it came from, heaped where a lot fell.
         Debris.Lay(inst, fallen, rng, 0.5f, 90);
@@ -50,6 +52,7 @@ public static partial class StateTransforms
         // The glass goes, a pane or a window at a time.
         foreach (var (p, b) in g.Blocks().ToList())
             if (b.Role == Role.Window && Hash.Cell(new Int3(p.X / 2, p.Y / 2, p.Z / 2), 93 + (uint)inst.SpawnSeed % 7) % 100 < 70) g.Set(p, Block.Air);
+        if (!Old) { Sag(inst, rng); Stains(inst); if (walls) Remains(inst, rng); }
         // Boards rot where the rain has got to them, leaving the ground to the weeds.
         foreach (var (p, b) in g.Blocks().ToList())
             if (b.Type == BlockType.Plate && b.Role == Role.Floor && OpenToSky(g, p) && Hash.Cell(new Int3(p.X / 2, 0, p.Z / 2), 95) % 100 < 60) g.Set(p, Block.Air);
