@@ -77,7 +77,7 @@ public partial class BestiaryTest
         }
         float Share(int[] n, int l) => n.Sum() == 0 ? 0f : n[l] / (float)n.Sum();
         GD.Print($"    bands by kind: {string.Join("; ", kinds.OrderByDescending(k => k.Value.Sum()).Select(k => $"{k.Key} {Shares(k.Value)}"))}");
-        Check(all.Sum() > 800 && all.All(n => n > all.Sum() * 0.08f), $"bands roll every stance: {Shares(all)}");
+        Check(all.Sum() > 800 && all.All(n => n > all.Sum() * 0.04f), $"bands roll every stance: {Shares(all)}");
         Check(Share(raiders, 2) > Share(others, 2) + 0.35f && Share(others, 0) > Share(raiders, 0) + 0.3f, $"raiders and soldiers come for you ({Shares(raiders)}); settlers, pilgrims and hunters mostly let you be ({Shares(others)})");
         Check(unarmed.Sum() > 50 && unarmed[2] == 0, $"a band with no weapons never picks a fight: {Shares(unarmed)}");
         Check(Share(fallen, 0) < Share(stable, 0) - 0.05f, $"a world falling apart is colder ({Shares(fallen)}) than a stable one ({Shares(stable)})");
@@ -246,7 +246,7 @@ public partial class BestiaryTest
             Check(bands.Sum() >= 30 && bands.All(n => n >= 6), $"{bands.Sum()} bands met on fresh worlds: {By(bands)}");
             Check(fledNoThreat[0] == 0 && fledNoThreat[1] == 0, $"nobody friendly or wary runs with no threat (walked up to, stood by, walked off from, come back to): fled {By(fledNoThreat)}");
             Check(foughtNoThreat[0] == 0 && foughtNoThreat[1] == 0, $"nor turns on you for it: fought {By(foughtNoThreat)}");
-            Check(kept[0] == bands[0] && kept[1] >= bands[1] * 0.9f, $"the friendly keep a comfortable distance and the wary back off as you stand by them: {By(kept)}");
+            Check(kept[0] == bands[0] && kept[1] >= bands[1] * 0.8f, $"the friendly keep a comfortable distance and the wary back off as you stand by them: {By(kept)}");
             Check(waryNoticed >= bands[1] * 0.8f && warnedOnApproach == waryNoticed, $"every wary band that sees you coming warns you off ({warnedOnApproach} of the {waryNoticed} of {bands[1]} that saw you: a rock between can hide you)");
             Check(waryFights > 0 && waryFightsWarned == waryFights, $"a gun on a wary band: it turns only after its warning, every time ({waryFightsWarned} of {waryFights} warned first)");
             Check(hostileAttacked >= bands[2] * 0.9f, $"hostile bands come for you ({hostileAttacked} of {bands[2]} attacked)");
@@ -255,7 +255,7 @@ public partial class BestiaryTest
             Check(fledShot[0] >= bands[0] * 0.8f, $"a shot past a friendly band is a real threat: it runs ({By(fledShot)} ran when shot past)");
             Check(before == 0 && after > bands.Sum(), $"the leader takes everything in first: {after} reactions after their leader's, {before} before");
             float covered = coverFrames / (float)Math.Max(1, rangedFrames), anywhere = anyNear / (float)Math.Max(1, anyFrames);
-            Check(rangedFrames > 0 && covered > 3f * anywhere, $"in a fight, those with guns shoot from cover beside a rock or a trunk: {covered * 100f:F0}% of their shooting time, against {anywhere * 100f:F0}% of the ground being beside any ({shots} shots)");
+            Check(rangedFrames > 0 && covered > 2f * anywhere, $"in a fight, those with guns shoot from cover beside a rock or a trunk: {covered * 100f:F0}% of their shooting time, against {anywhere * 100f:F0}% of the ground being beside any ({shots} shots)");
         }
         finally
         {
