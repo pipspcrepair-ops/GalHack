@@ -154,6 +154,8 @@ public sealed class Creature
     public bool Backing;
     /// <summary>A person in a fight: when it next looks for cover (its <see cref="Goal"/> while it has some).</summary>
     public float CoverIn;
+    /// <summary>When a run to cover is given up if it hasn't got there (a spot it can't reach): then it fights from where it is.</summary>
+    public float CoverUntil;
     /// <summary>The band's last event this one has taken in (someone seen, a fright), and the last gesture of yours it answered.</summary>
     public int PartySeen, Answered;
 

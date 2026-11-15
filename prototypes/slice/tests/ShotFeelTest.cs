@@ -151,6 +151,7 @@ public partial class ShotFeelTest : Node
         Rows(game.Zone.Data.Arms, game.Zone.Data.Mounts);
         foreach (int x in OpenGround(game)) yield return x;
         foreach (int x in Shot(game, drive)) yield return x;
+        foreach (string prop in new[] { "rifle", "pistol", "bow" }) foreach (int x in Aimed(game, drive, prop)) yield return x;
         if (_shots != null) foreach (int x in Pictures(game, drive)) yield return x;
         foreach (int x in Mounted(game, drive)) yield return x;
         foreach (int x in Hits(game, drive)) yield return x;
@@ -356,6 +357,11 @@ public partial class ShotFeelTest : Node
         // From behind, at the chest, from close enough that the ground between can't take it.
         Vector3 chest = game.Survivor.WorldFeet + Vector3.Up * 1.1f, away = new Vector3(from.X - eye.X, 0f, from.Z - eye.Z).Normalized();
         Vector3 behind = chest + away * 6f;
+        for (float near = 6f; near > 1.5f; near -= 1.5f) // (nearer if the ground behind is in the way)
+        {
+            behind = chest + away * near;
+            if (!arms.Sweep(behind.ToNumerics(), chest.ToNumerics(), null, ArmsHost.Hostile, 1f, out GalHack.Arms.ShotHit h) || h.Kind == HitKind.Player) break;
+        }
         arms.FireFrom(rifle, behind, chest - behind, 0f, null);
         for (int i = 0; i < 60 && arms.PlayerHits == hits; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 local = game.Camera.GlobalBasis.Inverse() * (behind - game.Camera.GlobalPosition);
@@ -392,49 +398,84 @@ public partial class ShotFeelTest : Node
             $"{gatling.Id}: drawn with its hot head every frame ({f?.Drawn}/{f?.Headed}/{f?.Frames}), never thinner than {f?.Thinnest:F1} px, its report loud");
     }
 
-    /// <summary>(--shots) A raider close by on open ground: its muzzle flash, and a bolt of its going past you, mid-flight.</summary>
+    /// <summary>
+    /// Someone with a rifle, a pistol or a bow shooting at you: each round waits until the weapon is
+    /// on you, so the barrel (or the arrow) points at you as it goes, a few degrees at most; the
+    /// round leaves the muzzle along it; the body is turned to you.
+    /// </summary>
+    IEnumerable<int> Aimed(Game.Game game, Driver drive, string prop)
+    {
+        GD.Print($"-- a {prop} aimed at you --");
+        WildlifePatch patch = game.Zone.Wildlife;
+        ArmsHost arms = game.Arms;
+        double max = game.Suit.Sim.Data.Vitals.Health.Max;
+        Creature raider = Stand(Raider(patch, prop), 18f, 2f);
+        patch.Sim.Damage(raider, 1f, patch.Player);
+        var offs = new List<float>();
+        var barrels = new List<float>();
+        var facing = new List<float>();
+        int fired = 0;
+        for (int i = 0; i < 60 * 25 && offs.Count < 3 && !raider.Dead; i++)
+        {
+            game.Suit.Vitals.Health = max;
+            drive.Face(patch.WorldOf(raider) + Vector3.Up * 1.4f);
+            yield return 0;
+            SimArms.Kit kit = arms.People.KitOf(raider);
+            if (kit == null || kit.Clip.Fired <= fired || raider.Rig is not HumanRig hr) continue;
+            fired = kit.Clip.Fired;
+            if (kit.Target != patch.Player || hr.WeaponLine.LengthSquared() < 0.5f) continue;
+            offs.Add(kit.LastOff);
+            Vector3 mark = patch.PlayerWorld() + Vector3.Up * 1.15f;
+            if (kit.Model != null && GodotObject.IsInstanceValid(kit.Model.Muzzle) && kit.Model.Muzzle.IsInsideTree())
+            {
+                Vector3 muzzle = kit.Model.Muzzle.GlobalPosition, barrel = -kit.Model.Muzzle.GlobalBasis.Z.Normalized();
+                barrels.Add(Mathf.RadToDeg(barrel.AngleTo(mark - muzzle)));
+            }
+            Vector3 to = WildSim.Flat(patch.Player.Position - raider.Position);
+            facing.Add(Mathf.RadToDeg(WildSim.Flat(hr.Facing).AngleTo(to)));
+        }
+        patch.Sim.Kill(raider, null);
+        string Degrees(List<float> a) => a.Count == 0 ? "none" : string.Join(", ", a.Select(v => $"{v:F1}"));
+        Check(offs.Count >= 2 && offs.Max() <= HumanRig.OnMark + 0.5f, $"its {prop} is on you as each round goes: {Degrees(offs)} degrees off the line to you (at most {HumanRig.OnMark})");
+        if (prop != "bow") Check(barrels.Count >= 2 && barrels.Max() <= HumanRig.OnMark + 1.5f, $"the round leaves the muzzle along the barrel: {Degrees(barrels)} degrees between the barrel and muzzle-to-you");
+        GD.Print($"  (its chest turned {Degrees(facing)} degrees from you as it fired)");
+    }
+
+    /// <summary>(--shots) A raider close by on open ground, facing you, shooting at you: its muzzle flash, and one of its rounds coming at you, mid-flight.</summary>
     IEnumerable<int> Pictures(Game.Game game, Driver drive)
     {
         WildlifePatch patch = game.Zone.Wildlife;
         ArmsHost arms = game.Arms;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
-        Creature raider = Stand(Raider(patch, "rifle"), 10f, 1f);
+        Creature raider = Stand(Raider(patch, "rifle"), 12f, 1f);
         patch.Sim.Damage(raider, 1f, patch.Player);
         Vector3 Body() => patch.WorldOf(raider) + Vector3.Up * 1.2f;
-        // The tick after one of its rounds, with its flash still showing on screen.
-        int fired = 0;
-        bool flashed = false;
-        for (int i = 0; i < 60 * 20 && !flashed; i++)
+        bool OnYou() => raider.Rig is HumanRig hr && hr.AimError(patch.Player.Position + Vector3.Up * 1.15f) < HumanRig.OnMark && arms.People.KitOf(raider)?.Target == patch.Player;
+        // The tick after one of its rounds at you, its rifle on you, its flash still showing on screen; then one of its rounds half way to you.
+        int fired = 0, flying = -1;
+        bool flashed = false, bolt = false;
+        for (int i = 0; i < 60 * 30 && !(flashed && bolt); i++)
         {
             game.Suit.Vitals.Health = max;
             drive.Face(Body());
-            int now = arms.People.KitOf(raider)?.Clip.Fired ?? 0;
-            bool shot = now > fired && arms.People.KitOf(raider)?.Target == patch.Player; // at you, not at something else
+            SimArms.Kit kit = arms.People.KitOf(raider);
+            int now = kit?.Clip.Fired ?? 0;
+            bool shot = now > fired && OnYou();
             fired = now;
+            Vector3 muzzle = kit != null ? arms.People.Muzzle(raider, kit, patch.Origin) : Body();
             yield return 0;
-            if (shot && game.Shots.FlashesShowing > 0 && game.Camera.IsPositionInFrustum(Body())) { Shoot("muzzle-flash.png"); flashed = true; }
-        }
-        // Frozen where it stands, it fires one past your shoulder: the bolt half way.
-        patch.Frozen = true;
-        for (int i = 0; i < 40; i++) { game.Suit.Vitals.Health = max; drive.Face(Body()); yield return 0; }
-        SimArms.Kit kit = arms.People.KitOf(raider);
-        Vector3 muzzle = kit != null ? arms.People.Muzzle(raider, kit, patch.Origin) : Body();
-        Vector3 eye = game.Survivor.WorldEye();
-        Vector3 past = eye + (eye - muzzle).Cross(Vector3.Up).Normalized() * 2.5f;
-        WeaponDef rifle = game.Zone.Data.Arms.Get("line-rifle");
-        arms.FireFrom(rifle, muzzle, past - muzzle, 0f, raider, model: kit?.Model);
-        for (int i = 0; i < 60; i++)
-        {
-            game.Suit.Vitals.Health = max;
-            yield return 0;
+            if (shot && !flashed && game.Shots.FlashesShowing > 0 && game.Camera.IsPositionInFrustum(Body())) { Shoot("muzzle-flash.png"); flashed = true; continue; }
+            if (bolt) continue;
             Shot[] shots = arms.Pool.Shots;
-            bool mid = false;
+            Vector3 eye = game.Survivor.WorldEye();
             for (int k = 0; k < shots.Length; k++)
-                if (shots[k].Live && shots[k].Def == rifle && shots[k].Owner == ArmsHost.Hostile && shots[k].Pos.ToGodot().DistanceTo(muzzle) > muzzle.DistanceTo(eye) * 0.45f) mid = true;
-            if (mid) { yield return 0; Shoot("bolt-in-flight.png"); break; }
+            {
+                if (!shots[k].Live || shots[k].Owner != ArmsHost.Hostile || shots[k].LastHit != raider) continue;
+                float gone = shots[k].Pos.ToGodot().DistanceTo(muzzle) / MathF.Max(1f, muzzle.DistanceTo(eye));
+                if (gone is > 0.35f and < 0.7f && OnYou()) { Shoot("bolt-in-flight.png"); bolt = true; break; }
+            }
         }
         patch.Sim.Kill(raider, null);
-        patch.Frozen = false;
     }
 
     /// <summary>The sleeper's own hits: the reticle's ring, the thud at any distance, the cry of what's hit.</summary>
