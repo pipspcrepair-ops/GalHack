@@ -133,7 +133,7 @@
     // makes a field of any size and its four emitters); this item only replaces one shot away. Plated
     // like armour, from the same plates: the plated ones are their base under plates (same shape and work).
     {
-      "id": "forcefield-emitter", "name": "Force field emitter", "function": "field-emitter", "hp": 120, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.05, "color": "8d99ae", "glow": "4cc2ff", "attach": ["-x", "-y", "+z", "-z"], "airtight": "none", "covers": "none", "collide": "parts",
+      "id": "forcefield-emitter", "name": "Force field emitter", "function": "field-emitter", "hp": 120, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.05, "color": "2b2d42", "glow": "4cc2ff", "attach": ["-x", "-y", "+z", "-z"], "airtight": "none", "covers": "none", "collide": "parts",
       "parts": [
         {"box": [-0.5, -0.5, -0.26, -0.16, -0.16, 0.26], "style": "dark"},
         {"box": [-0.18, -0.48, -0.22, 0.5, -0.24, 0.22], "style": "body"},
