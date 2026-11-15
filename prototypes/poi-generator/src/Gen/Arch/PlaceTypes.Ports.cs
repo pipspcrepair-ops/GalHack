@@ -409,7 +409,7 @@ public static partial class PlaceTypes
                 for (int k = 0; k < count; k++)
                 {
                     float side = k % 2 == 0 ? 1f : -1f, along = reach + 30f + k / 2 * 40f;
-                    Out(lease, gx * along, gz * along, -gz * side, gx * side, 24f, 120f, r.Fork("lease" + k));
+                    Out(lease, gx * along, gz * along, -gz * side, gx * side, 24f, 64f, r.Fork("lease" + k));
                 }
             }
         }

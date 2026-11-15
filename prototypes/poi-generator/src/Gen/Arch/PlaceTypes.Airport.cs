@@ -68,23 +68,19 @@ public static partial class PlaceTypes
                     Add(lights, box, 0f, (int)ux, (int)uz, ls);
                 }
             }
-            // The taxiway: parallel on the landside, linked to the runway near both its ends.
-            TypePart? link = Part("link");
-            float line = r.Float(50f, 70f), taxi = -1f;
-            if (Has("taxiway", r))
-            {
-                TypePart tp = Part("taxiway")!;
-                var ts = Sizes(tp, r.Fork("taxiway"));
-                taxi = ts["off"];
-                float t0 = -len / 2f + r.Float(10f, 40f), t1 = len / 2f - r.Float(10f, 40f);
-                var (ax, az) = At(t0, taxi);
-                var (bx, bz) = At(t1, taxi);
-                Lay(tp, Shape.Strip(ax, az, bx, bz, ts["w"] / 2f), ts);
-                Stub(link, t0, taxi, 0f);
-                Stub(link, t1, taxi, 0f);
-                line = taxi + ts["w"] / 2f;
-            }
-            ApronLine(len, line, taxi, e, r.Fork("line"));
+            // The taxiway: parallel on the landside, linked to the runway near both its ends, and on along the apron line
+            // where that runs on past them.
+            TypePart? tp = Has("taxiway", r) ? Part("taxiway") : null;
+            var ts = tp != null ? Sizes(tp, r.Fork("taxiway")) : null;
+            float taxi = ts?["off"] ?? -1f, line = ts != null ? taxi + ts["w"] / 2f : r.Float(50f, 70f);
+            var (lo, hi) = ApronLine(len, line, taxi, e, r.Fork("line"));
+            if (tp == null || ts == null) return;
+            float t0 = -len / 2f + r.Float(10f, 40f), t1 = len / 2f - r.Float(10f, 40f);
+            var (ax, az) = At(MathF.Min(t0, lo + 10f), taxi);
+            var (bx, bz) = At(MathF.Max(t1, hi - 10f), taxi);
+            Lay(tp, Shape.Strip(ax, az, bx, bz, ts["w"] / 2f), ts);
+            Stub(Part("link"), t0, taxi, 0f);
+            Stub(Part("link"), t1, taxi, 0f);
         }
 
         /// <summary>
@@ -126,9 +122,9 @@ public static partial class PlaceTypes
         /// <summary>
         /// The apron line along the landside from the main runway's end away from the second runway, ending before the second
         /// runway (the GA apron shortened where it would not, then the whole line begun further out); behind it the car parks
-        /// and the service road, off which the works sheds, the fuel farm and the access road.
+        /// and the service road, off which the works sheds, the fuel farm and the access road. Returns how far along x it runs.
         /// </summary>
-        void ApronLine(float len, float line, float taxi, int e, Rng r)
+        (float Lo, float Hi) ApronLine(float len, float line, float taxi, int e, Rng r)
         {
             var blocks = new List<string> { "apron" };
             foreach (string b in new[] { "ga", "fire" }) if (Part(b) != null) blocks.Add(b);
@@ -161,6 +157,8 @@ public static partial class PlaceTypes
                 }
             }
             Landside(terminal, line, e, r.Fork("landside"));
+            var aprons = S.Items.Where(i => i.Part.Id is "apron" or "ga" or "fire").ToList();
+            return (aprons.Min(i => i.Box.X0), aprons.Max(i => i.Box.X1));
         }
 
         /// <summary>
@@ -203,8 +201,8 @@ public static partial class PlaceTypes
                     foreach (int way in new[] { s, -s })
                     {
                         float hx = way > 0 ? hi + r.Float(6f, 14f) + hs["len"] / 2f : lo - r.Float(6f, 14f) - hs["len"] / 2f;
-                        // (Its door on the apron: half of it at least.)
-                        if (hx > ab.X1 || hx < ab.X0) continue;
+                        // (Its door on the apron: no further past its end than a quarter of its own width.)
+                        if (hx - hs["len"] / 4f > ab.X1 || hx + hs["len"] / 4f < ab.X0) continue;
                         if (Building(hangar, hx, _s * (back + hs["depth"] / 2f), 0, -_s, r, 0.5f, hs) is not { } h) continue;
                         (lo, hi) = (MathF.Min(lo, h.Box.X0), MathF.Max(hi, h.Box.X1));
                         break;
@@ -294,7 +292,7 @@ public static partial class PlaceTypes
             float aw = access.Get("w", 8f).Hi / 2f, ax = Math.Clamp(terminal?.Box.Cx ?? (x0 + x1) / 2f, x0 + 20f, x1 - 20f), bend = r.Float(25f, 45f) * MathF.PI / 180f;
             for (int k = 0; k < 9; k++)
             {
-                float x = ax + (k % 2 == 0 ? 1 : -1) * (k + 1) / 2 * 16f, v1 = rv + r.Float(16f, 30f), run = r.Float(40f, 80f);
+                float x = ax + (k % 2 == 0 ? 1 : -1) * (k + 1) / 2 * 16f, v1 = rv + r.Float(10f, 20f), run = r.Float(30f, 60f);
                 Shape first = Shape.Run(x, _s * rv, x, _s * v1, aw);
                 if (x < x0 || x > x1 || !Free(first, true, 2f)) continue;
                 foreach (int side in new[] { -e, e, 0 })

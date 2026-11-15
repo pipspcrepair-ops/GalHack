@@ -43,7 +43,7 @@ type airport
   part lights    lights           len 100..200
   part taxiway   surface tarmac   w 15 off 60..80 chance 0.7
   part link      surface tarmac   w 15
-  part apron     surface concrete len 200..300 depth 70..100
+  part apron     surface concrete len 240..320 depth 70..100
   part terminal  building terminal len 70..110 depth 30..44 h 14..18 concourse 6
   part tower     building control_tower len 8..10 depth 8..10 h 24..32 cab 5..7
   part hangar    building hangar  count 2..4 len 40..48 depth 30..40 h 16..20
