@@ -140,6 +140,8 @@ public sealed class SliceRules
     public TorchRules Torch { get; set; } = new();
     public ContainerRules Containers { get; set; } = new();
     public FieldRules ForceFields { get; set; } = new();
+    /// <summary>How far a structure's scan marks places, m, by scanner block id.</summary>
+    public Dictionary<string, float> Scanners { get; set; } = new();
 
     static readonly JsonSerializerOptions Json = new()
     {

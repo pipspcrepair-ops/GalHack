@@ -17,7 +17,7 @@
   "items": [
     { "id": "survival-tool", "name": "Survival tool", "short": "TOOL", "category": "tool", "rarity": "common", "mass": 2.5, "volume": 3,
       "uses": "Dig · cut · shoot", "unlock": { "level": 1, "cost": 0, "tab": "tools" } },
-    { "id": "scanner", "name": "Handheld scanner", "short": "SCAN", "category": "tool", "rarity": "common", "mass": 1.2, "volume": 1, "stack": 1, "range": 100,
+    { "id": "scanner", "name": "Handheld scanner", "short": "SCAN", "category": "tool", "rarity": "common", "mass": 1.2, "volume": 1, "stack": 1, "range": 100, "scan": 1000,
       "uses": "Pings ore and places · cores through walls", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "hover-bike", "name": "Hover bike", "short": "HV-BIKE", "category": "component", "rarity": "common", "mass": 40, "volume": 12, "stack": 2,
       "uses": "F ride · hovers · over water", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },

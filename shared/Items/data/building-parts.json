@@ -1,5 +1,5 @@
 // Blocks manufacturing needs that building's catalogue doesn't have yet: the production machines,
-// the drives, two fixed weapons with their own ammo and the force field emitter. Same format and units as
+// the drives, two fixed weapons with their own ammo, the force field emitter and the scanners. Same format and units as
 // prototypes/building/data/components.json. Whoever loads the building catalogue appends these to
 // its components, as the physics sandbox does with its vessel parts; nothing in
 // prototypes/building changes. Their bills are in blocks.json. The fabricator ladder is the
@@ -43,6 +43,45 @@
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
         {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
+      ]
+    },
+    // Scanners: a structure's detector. A scan from the structure marks the places within its tier's
+    // range for a while (the slice's data: slice.json scanners; design: vehicle detector 2.5 to 10 km).
+    // A turntable on a foot, a mast, a dish tilted up and a lit coil at its focus; each tier a wider dish.
+    {
+      "id": "scanner-t1", "name": "Scanner T1", "function": "scanner", "hp": 120, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.08, "color": "4d5563", "glow": "2ec4b6", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
+      "parts": [
+        {"box": [-0.3, -0.5, -0.3, 0.3, -0.34, 0.3], "style": "body"},
+        {"cylinder": "y", "segments": 12, "box": [-0.2, -0.34, -0.2, 0.2, -0.26, 0.2], "style": "dark"},
+        {"box": [-0.05, -0.26, -0.05, 0.05, 0.12, 0.05], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.3, -0.12, 0.04, 0.3, 0.48, 0.1], "style": "body"},
+        {"box": [-0.02, 0.16, -0.16, 0.02, 0.2, 0.04], "style": "dark"},
+        {"box": [-0.05, 0.13, -0.22, 0.05, 0.23, -0.16], "style": "glow"}
+      ]
+    },
+    {
+      "id": "scanner-t2", "name": "Scanner T2", "function": "scanner", "hp": 180, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.12, "color": "3d5a80", "glow": "2ec4b6", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
+      "parts": [
+        {"box": [-0.36, -0.5, -0.36, 0.36, -0.32, 0.36], "style": "body"},
+        {"cylinder": "y", "segments": 12, "box": [-0.24, -0.32, -0.24, 0.24, -0.24, 0.24], "style": "dark"},
+        {"box": [-0.06, -0.24, -0.06, 0.06, 0.08, 0.06], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.4, -0.3, 0.04, 0.4, 0.5, 0.1], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.3, -0.2, 0.0, 0.3, 0.4, 0.04], "style": "dark"},
+        {"box": [-0.02, 0.08, -0.2, 0.02, 0.12, 0.0], "style": "dark"},
+        {"box": [-0.06, 0.04, -0.27, 0.06, 0.16, -0.2], "style": "glow"}
+      ]
+    },
+    {
+      "id": "scanner-t3", "name": "Scanner T3", "function": "scanner", "hp": 260, "armor": 20, "resist": {"kinetic": 0.15, "explosive": 0.1, "energy": 0.15}, "mass": 0.16, "color": "1b263b", "glow": "6ff2e0", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
+      "parts": [
+        {"box": [-0.42, -0.5, -0.42, 0.42, -0.3, 0.42], "style": "body"},
+        {"cylinder": "y", "segments": 14, "box": [-0.3, -0.3, -0.3, 0.3, -0.22, 0.3], "style": "glow"},
+        {"box": [-0.07, -0.22, -0.07, 0.07, 0.02, 0.07], "style": "dark"},
+        {"cylinder": "z", "segments": 18, "box": [-0.48, -0.44, 0.04, 0.48, 0.5, 0.1], "style": "body"},
+        {"cylinder": "z", "segments": 18, "box": [-0.38, -0.34, 0.0, 0.38, 0.4, 0.04], "style": "dark"},
+        {"cylinder": "z", "segments": 18, "box": [-0.2, -0.16, -0.01, 0.2, 0.22, 0.0], "style": "glow"},
+        {"box": [-0.02, 0.02, -0.24, 0.02, 0.06, 0.0], "style": "dark"},
+        {"box": [-0.07, -0.03, -0.32, 0.07, 0.11, -0.24], "style": "glow"}
       ]
     },
     {
