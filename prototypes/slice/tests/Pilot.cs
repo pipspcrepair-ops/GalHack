@@ -226,8 +226,8 @@ public sealed class Pilot
             _drive.Face(target());
             bool there = d < within;
             if (there && v.Length() < 0.25f) break;
-            // 7 m/s² of thruster: stop in v²/14 metres.
-            bool push = !there && d > closing * closing / 14f + within * 0.6f;
+            // 7 m/s² of thruster: stop in v²/14 metres (falling behind, nothing to stop: push).
+            bool push = !there && d > (closing > 0f ? closing * closing / 14f : 0f) + within * 0.6f;
             bool back = (there && closing > 0.05f) || (!push && closing > 0.4f);
             C.Hold(Key.W, push);
             C.Hold(Key.S, back && !push);

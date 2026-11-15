@@ -411,6 +411,8 @@ public partial class OrbitTest : Node
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(40)) yield return x;
         Check(_game.Survivor.Body.Frame == null && _game.Survivor.Binding.Floating, "off the deck and floating: mag boots off, nothing holds you");
+        // Up out of the open cockpit first: straight for the door, the windscreen is in the way.
+        foreach (int x in _pilot.FloatTo(() => v.ToWorld(v.Seat.Value) + MathX.Rotate(v.Body.Rotation, N.Vector3.UnitY).ToGodot() * 4f, 1f, 15f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => Door + Outward * 2.4f + Lift, 0.7f, 40f)) yield return x;
         Check(_game.Survivor.WorldEye().DistanceTo(Door) < 4f, $"floated across on the suit's thrusters to its hull door ({_game.Survivor.WorldEye().DistanceTo(Door):F1} m off)");
         bool shut = !ship.Get(_door).Open;
@@ -575,8 +577,8 @@ public partial class OrbitTest : Node
             float agl = v.AboveGround, vy = v.Body.Velocity.Y;
             float wanted = agl > 260f ? -60f : agl > 70f ? -20f : agl > 25f ? -8f : agl > 6f ? -3f : -1.2f;
             bool onGear = agl < 3f && MathF.Abs(vy) < 0.4f; // hands off, and it settles
+            // Sinking too fast, hands off: the assist brakes at least at its floor, where Space would climb only at thrust less weight.
             _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
-            _game.Controls.Hold(Key.Space, !onGear && vy < wanted - 0.5f);
             _pilot.Creep(v, pad, agl > 3f);
             yield return 0;
         }
