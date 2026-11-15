@@ -575,7 +575,8 @@ public partial class MoonTest : Node
         float sized = home * moon.GlobeRadius / _game.Orbit.Home.GlobeRadius;
         Check(MathF.Abs(g - sized) < 0.01f, $"its gravity comes from its size: {g:F1} m/s² on a {surface.Planet.Width / 1000:F0} km moon, the world's {home:F1} on {_game.Surface.Planet.Width / 1000:F0} km");
         if (moon.Body.Spec.Airless)
-            Check(surface.Weather.Sim == null && surface.Planet.Sky.Density < SurfaceWeather.NoAir && _game.Suit.Beyond != null, "no air: no weather, a black sky, the suit on its own oxygen");
+            Check(surface.Weather.Sim == null && surface.Planet.Sky.Density < SurfaceWeather.NoAir && _game.Suit.Beyond != null && _game.Suit.InVacuum && _game.Visor.SleeperIcons()[1].On,
+                "no air: no weather, a black sky, the suit on its own oxygen and the visor's vacuum icon lit");
         else Check(surface.Planet.Sky.Density >= SurfaceWeather.NoAir, $"air of its own: its sky's density {surface.Planet.Sky.Density:F2}");
         var seen = surface.Planet.StarSystem;
         Check(seen.Home == moon.Body && seen.Origin == _game.Surface.Planet.StarSystem,

@@ -31,7 +31,7 @@ public readonly record struct StructureReadout(double? CapUse, double? FuelSecon
 
 /// <summary>
 /// The visor's gauges (design: Visor HUD layout): the sleeper's at the bottom left with its icon row above them, the
-/// surroundings at the upper left, and, in a command chair, the structure's at the bottom right with its own icon row.
+/// temperature at the upper left, and, in a command chair, the structure's at the bottom right with its own icon row.
 /// </summary>
 public partial class Visor
 {
@@ -61,19 +61,14 @@ public partial class Visor
         };
     }
 
-    /// <summary>The surroundings: the radiation level and the temperature here (in a room, the room's air).</summary>
-    public Gauge[] Surroundings()
+    /// <summary>The surroundings: the temperature here (in a room, the room's air). Radiation is the sleeper's RADS gauge.</summary>
+    public Gauge Surroundings()
     {
         Exposure e = Game.Suit.Last.Exposure;
-        VitalsRules r = Game.Suit.Sim.Data.Vitals;
-        Gauge rad = Rated("RAD", $"{e.Radiation:F1}", null, Alert.Radiation);
+        Band comfort = Game.Suit.Sim.Data.Vitals.Temperature.AmbientComfort;
         Gauge temp = Rated("TEMP", $"{e.Temperature:F0}°C", null, Alert.Cold | Alert.Heat);
-        bool comfortable = e.Temperature >= r.Temperature.AmbientComfort.Low && e.Temperature <= r.Temperature.AmbientComfort.High;
-        return new[]
-        {
-            rad with { Tone = e.Radiation > r.Radiation.DamageAbove ? C.Danger : e.Radiation > r.Radiation.WarnAbove ? C.Warn : rad.Tone },
-            temp with { Tone = temp.Harmed ? C.Danger : comfortable && !temp.Warned ? C.Good : C.Warn },
-        };
+        bool comfortable = e.Temperature >= comfort.Low && e.Temperature <= comfort.High;
+        return temp with { Tone = temp.Harmed ? C.Danger : comfortable && !temp.Warned ? C.Good : C.Warn };
     }
 
     /// <summary>Is the sleeper inside the area of one of their own core structures?</summary>
@@ -136,22 +131,18 @@ public partial class Visor
         DrawIcons(layout.StructureIcons, layout.Scale, StructureIcons(v), 1f, true);
     }
 
-    /// <summary>The radiation and temperature here at the upper left: labels and values, no bars.</summary>
+    /// <summary>The temperature here at the upper left: its label and value, no bar.</summary>
     void DrawSurroundings(HudLayout layout)
     {
-        float s = layout.Scale, h = HudLayout.SurroundRowH * s;
-        Gauge[] rows = Surroundings();
-        _hud.Block(layout.Surroundings, new Color(C.Glass, 0.55f));
-        _hud.Block(new Rect2(layout.Surroundings.Position, new Vector2(5 * s, layout.Surroundings.Size.Y)), C.Holo);
-        for (int i = 0; i < rows.Length; i++)
-        {
-            Gauge g = rows[i];
-            var row = new Rect2(layout.Surroundings.Position + new Vector2(14 * s, i * h), new Vector2(layout.Surroundings.Size.X - 24 * s, h));
-            bool lit = Blink(g);
-            if (lit) _hud.Block(new Rect2(row.Position - new Vector2(4 * s, 0), row.Size + new Vector2(8 * s, 0)), new Color(g.Tone, 0.85f));
-            _hud.TextIn(UiTheme.Label, (int)(15 * s), row, g.Label, lit ? C.Glass : C.Text);
-            _hud.TextIn(UiTheme.Mono, (int)(18 * s), row, g.Value, lit ? C.Glass : g.Tone, HorizontalAlignment.Right);
-        }
+        float s = layout.Scale;
+        Gauge g = Surroundings();
+        Rect2 box = layout.Surroundings;
+        bool lit = Blink(g);
+        _hud.Block(box, lit ? new Color(g.Tone, 0.85f) : new Color(C.Glass, 0.55f));
+        _hud.Block(new Rect2(box.Position, new Vector2(5 * s, box.Size.Y)), C.Holo);
+        var row = new Rect2(box.Position + new Vector2(14 * s, 0), new Vector2(box.Size.X - 24 * s, box.Size.Y));
+        _hud.TextIn(UiTheme.Label, (int)(15 * s), row, g.Label, lit ? C.Glass : C.Text);
+        _hud.TextIn(UiTheme.Mono, (int)(18 * s), row, g.Value, lit ? C.Glass : g.Tone, HorizontalAlignment.Right);
     }
 
     /// <summary>Is a row lit this instant? Harmed it blinks fast, warned slowly, calm never.</summary>

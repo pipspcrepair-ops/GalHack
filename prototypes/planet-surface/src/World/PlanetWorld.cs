@@ -201,7 +201,8 @@ public sealed partial class PlanetWorld
         Blasts = blasts ?? Array.Empty<PoiGenerator.Gen.Strike>();
         Source = source;
         Terrain = new PlanetTerrain(source);
-        Sky = SkySystem.For(spec);
+        // An airless world's sky is black space whichever way it is reached (its moons' too: ShareSystem), so all that reads its air agrees.
+        Sky = spec.Airless ? SkySystem.Vacuum(SkySystem.For(spec)) : SkySystem.For(spec);
         // What grows here: the type's, as its layers have shaped it (overgrown, dead, swollen, fungal, burned, sparse, stranger).
         var r = Reading;
         Flora = PlanetFlora.For(map, Sky, mood: new GalHack.Plants.FloraMood(r.Overgrown, r.Dead, r.Swollen, r.Fungal, r.Burnt, r.Sparse), lean: r.Alien);

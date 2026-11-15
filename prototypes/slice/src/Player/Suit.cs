@@ -140,7 +140,7 @@ public sealed class Suit : IDamageSink
         double day = _climate.DayNightSwing * Math.Clamp(_zone.Sky.ToSun.Y * 2f, -1f, 1f);
         double height = -_climate.LapsePerKm * Math.Max(0, p.Y) / 1000.0;
         string air = planet.Sky.Air.ToString();
-        double oxygen = _climate.OxygenByAir.TryGetValue(air, out double o2) ? o2 : 21;
+        double oxygen = planet.Sky.Density < SurfaceWeather.NoAir ? 0 : _climate.OxygenByAir.TryGetValue(air, out double o2) ? o2 : 21; // an airless world: none
         if (p.Y > _zone.Physics.Zone.Ceiling) oxygen = 0;
         // Head under water: nothing to breathe, the suit on its own oxygen (or held breath).
         if (_zone.Water.Under(new Godot.Vector3((float)p.X, (float)p.Y + Survivor.EyeHeight, (float)p.Z), out _)) oxygen = 0;
