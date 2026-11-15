@@ -275,15 +275,21 @@ public sealed partial class HullVessel
         BlockType main = Best("thruster", new Int3(3, 3, H.Nac - 1), rot, t => t.Thrust);
         if (main == null) return;
         Int3 size = Footprint.WorldSize(main, rot);
+        // Packed into each nacelle's face wherever one fits wholly inside it (its rounded edges and all), the lowest and
+        // outermost first.
+        int v = face - size.Z + 1;
+        var packed = new HashSet<(int, int)>();
         foreach (var (u0, u1) in H.Nacelles)
-            for (int y = H.NY0; y + size.Y - 1 <= H.NY1; y += size.Y)
-                for (int u = u0; u + size.X - 1 <= u1; u += size.X)
+            for (int y = H.NY0; y + size.Y - 1 <= H.NY1; y++)
+                for (int u = u0; u + size.X - 1 <= u1; u++)
                 {
-                    int v = face - size.Z + 1;
                     bool inside = true;
                     for (int dy = 0; dy < size.Y && inside; dy++)
-                        for (int du = 0; du < size.X && inside; du++) inside = Mask(u + du, y + dy, face) == 255;
-                    if (inside) Device(main, u, y, v, rot, null, Paint["dark"]);
+                        for (int du = 0; du < size.X && inside; du++) inside = Mask(u + du, y + dy, face) == 255 && !packed.Contains((u + du, y + dy));
+                    if (!inside) continue;
+                    Device(main, u, y, v, rot, null, Paint["dark"]);
+                    for (int dy = 0; dy < size.Y; dy++)
+                        for (int du = 0; du < size.X; du++) packed.Add((u + du, y + dy));
                 }
         // Manoeuvring pods on both flanks aft of the bow: a retro (pushing aft) and a side jet each.
         BlockType jet = Best("thruster", new Int3(2, 2, 4), Turn(Dir.PosY, Dir.PosZ), t => t.Thrust);
@@ -509,13 +515,14 @@ public sealed partial class HullVessel
     {
         int rot = Turn(Dir.PosY, Dir.NegZ);
         int front = s.V0 + 1;
-        var way = new HashSet<(int, int)>(s.Doors.SelectMany(d => Around(d.Inside, 2)));
+        // (A seat keeps clear only its doorways and the cell before each: the tower's are many and its floor narrow.)
+        var way = new HashSet<(int, int)>(s.Doors.SelectMany(d => Around(d.Inside, 1)));
         bool Free(int x, int y, int vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && s.Floor.Contains((x, vv)) && !s.Taken.Contains((x, vv)) && !way.Contains((x, vv));
         if (Cat.TryGetType("cockpit-t1", out BlockType cockpit))
         {
             Int3 size = Footprint.WorldSize(cockpit, rot);
             // At the forward windows on the centre line, or as near it to port (away from the stair core's landing) as leaves the way clear.
-            var at = (from v in Enumerable.Range(front, 4) from du in Enumerable.Range(0, 6) select (U: -size.X / 2 - du, V: v))
+            var at = (from v in Enumerable.Range(front, Math.Max(1, s.V1 - front + 1)) from du in new[] { 0, -1, -2, -3, 1, 2, -4, -5, 3, 4, -6, 5 } select (U: (s.U0 + s.U1) / 2 - size.X / 2 + du, V: v))
                 .FirstOrDefault(c => Fits(cockpit, At(c.U, s.Y, c.V), rot, Free), (U: int.MinValue, V: 0));
             if (at.U != int.MinValue) Device(cockpit, at.U, s.Y, at.V, rot, s);
         }
@@ -523,11 +530,12 @@ public sealed partial class HullVessel
         // front row first and back row by row where the ways in or the windows leave no room.
         BlockType chair = Cat.Type("command-chair");
         int mid = (s.U0 + s.U1) / 2, chairs = 0;
+        var columns = Enumerable.Range(s.U0, s.U1 - s.U0 + 1).Where(u => Math.Abs(u - mid) >= 3).OrderBy(u => Math.Abs(Math.Abs(u - mid) - 5)).ToList();
         for (int v = front; v <= s.V1 && chairs < 4; v++)
-            foreach (int du in new[] { -7, -5, 4, 6, -9, 8, -3, 2, -11, 10 })
-                if (chairs < 4 && Fits(chair, At(mid + du, s.Y, v), rot, Free))
+            foreach (int u in columns)
+                if (chairs < 4 && Fits(chair, At(u, s.Y, v), rot, Free))
                 {
-                    Device(chair, mid + du, s.Y, v, rot, s);
+                    Device(chair, u, s.Y, v, rot, s);
                     chairs++;
                 }
     }

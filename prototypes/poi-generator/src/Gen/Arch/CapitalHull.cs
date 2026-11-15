@@ -178,7 +178,7 @@ public static class CapitalHull
         public float HalfWidth(float v) => (Half + 0.5f) * Taper(v) * Waisted(v) * (1f - 0.06f * Math.Clamp((v - (L - 5)) / 5f, 0f, 1f));
 
         /// <summary>How far the shoulders slope in at 45 degrees to the roof, m: the style's share of the flank (a block's is small), as a hull leans in to its back.</summary>
-        public int Shoulder => Math.Max(2, (int)MathF.Round(Top * Style.Shoulder));
+        public int Shoulder => Math.Max(2, Math.Min((int)MathF.Round(Top * Style.Shoulder), Half - 9)); // (never in over the stair core's outer column, u 8)
 
         /// <summary>The hull's solid as drawn (metres in its frame): the hull, the tower, the nacelles, its ribs and what its style adds.</summary>
         public bool Solid(float u, float y, float v) => InHull(u, y, v) || InTower(u, y, v) || InNacelle(u, y, v) || InRib(u, y, v) || InPart(u, y, v) != null;
@@ -368,7 +368,8 @@ sealed class Hulk
         H.Decks = decks;
         HullStyle st = H.Style;
         H.Half = Math.Max(11, (int)MathF.Round(R.Between(h0, h1) * st.Beam));
-        int target = (int)MathF.Round(R.Between(l0, l1) * st.Length);
+        // (The style's share of the class's length, never past what Empyrion's longest derelicts reach with their engines.)
+        int target = Math.Min((int)MathF.Round(R.Between(l0, l1) * st.Length), 240);
         // Now and then a huge hull runs on toward the longest Empyrion's derelicts reach.
         if (S.Size == "huge" && R.Chance(0.15f)) target = R.Between(250, 270);
         // Each bay its own proportions about the hull's length; the crew's and the power bays hold a stair core and a full
@@ -387,6 +388,12 @@ sealed class Hulk
         int n = Math.Max(middle.Length, (int)MathF.Round(left / 24f));
         // The first of the role's bays repeats as the hull grows (more holds, more cabins), the rest follow it once each.
         var kinds = Enumerable.Repeat(middle[0], n - middle.Length + 1).Concat(middle.Skip(1)).ToList();
+        // Every hull carries a hold of its own, whatever its role (not left to the bow, which a needle bow has no room for).
+        if (!kinds.Any(k => k is "hold" or "ore-hold"))
+        {
+            kinds.Add("hold");
+            n++;
+        }
         int v = 0;
         void Add(string kind, int len) { H.Bays.Add(new CapitalHull.Bay(kind, v, v + len)); v += len; }
         Add("bow", bow);
@@ -404,7 +411,7 @@ sealed class Hulk
         // Segment waists at the heads of the role's bays (never by the crew's or the power bay's stair core), and at their
         // middles when there are too few heads.
         var mids = H.Bays.Where(b => b.Kind is not ("bow" or "crew" or "power" or "engine")).ToList();
-        var at = mids.Skip(1).Select(b => b.V0).Concat(mids.Where(b => b.V1 - b.V0 >= 24).Select(b => (b.V0 + b.V1) / 2)).Distinct().OrderBy(x => x).ToList();
+        var at = mids.Skip(1).Select(b => b.V0).Concat(mids.Where(b => b.V1 - b.V0 >= 16).Select(b => (b.V0 + b.V1) / 2)).Distinct().OrderBy(x => x).ToList();
         for (int i = 0; i < Math.Min(st.Segments, at.Count); i++) H.Waists.Add(at[(int)((i + 0.5f) * at.Count / Math.Min(st.Segments, at.Count))]);
     }
 
@@ -431,7 +438,8 @@ sealed class Hulk
             int c = -H.Half + 3 + span * i + span / 2;
             H.Nacelles.Add((c - w / 2, c - w / 2 + w - 1));
         }
-        H.Nac = Math.Clamp((int)MathF.Round((H.L / 12 + R.Range(-1, 3)) * st.EngineLength), 8, 34);
+        // (Never past the 290 m Empyrion's longest derelicts reach, engines and all.)
+        H.Nac = Math.Clamp((int)MathF.Round((H.L / 12 + R.Range(-1, 3)) * st.EngineLength), 8, Math.Max(8, Math.Min(34, 288 - H.L)));
         H.NY0 = 2;
         H.NY1 = Math.Clamp((int)MathF.Round(H.Top * st.EngineHeight), H.NY0 + 4, H.Top - 2);
     }
@@ -555,7 +563,8 @@ sealed class Hulk
     {
         HullStyle st = H.Style;
         float per = H.L / 100f;
-        int Count(float rate) => (int)MathF.Round(rate * per * R.Float(0.8f, 1.2f));
+        // (Per 100 m, but never so few that a hull of the style lacks its signature: its tries, a few of which a way in may refuse.)
+        int Count(float rate, int least) => rate <= 0 ? 0 : Math.Max(least, (int)MathF.Round(rate * per * R.Float(0.8f, 1.2f)));
         int v0 = H.Bz + 2, v1 = H.L - 4;
         bool Clear(float a, float b) => !(H.DoorV >= 0 && b >= H.DoorV - 3 && a <= H.DoorV + 5)
             && !H.Ways.Any(w => w.Side != 0 && b >= w.V0 - 2 && a <= w.V0 + w.Width + 2)
@@ -580,7 +589,7 @@ sealed class Hulk
         }
 
         // Cargo pods, stacked two or three high on a flank or a row across the back, each its own colour (colour-coded).
-        for (int i = 0, n = Count(st.Pods); i < n; i++)
+        for (int i = 0, n = Count(st.Pods, 6); i < n; i++)
         {
             int a = v0 + 9 * R.Range(0, Math.Max(1, (v1 - v0 - 8) / 9)), b = a + 8;
             if (!Clear(a, b)) continue;
@@ -592,11 +601,11 @@ sealed class Hulk
                 continue;
             }
             int side = Side();
-            for (float y0 = 1; y0 + 5 <= H.Top + 2; y0 += 5.5f)
+            for (float y0 = 1; y0 + 5 <= H.Top + 2 && y0 < 1 + 3 * 5.5f; y0 += 5.5f)
                 Add(Flank("cargo" + R.Range(0, Math.Max(1, st.Cargo.Count)), side, a, b, y0, y0 + 5, R.Between(6, 9)));
         }
         // Bolted-on modules: a box of whatever there was, on a flank or the back, never two alike.
-        for (int i = 0, n = Count(st.Bolted); i < n; i++)
+        for (int i = 0, n = Count(st.Bolted, 4); i < n; i++)
         {
             int len = R.Between(6, 18), a = R.Range(v0, Math.Max(v0 + 1, v1 - len)), b = a + len;
             if (!Clear(a, b)) continue;
@@ -612,7 +621,7 @@ sealed class Hulk
             Add(Flank(Scrap(), Side(), a, b, y0, y0 + dy, R.Between(4, 9)));
         }
         // Scrap plates welded over the shell, a metre proud, mismatched.
-        for (int i = 0, n = Count(st.Plates * 40f); i < n; i++)
+        for (int i = 0, n = Count(st.Plates * 40f, 0); i < n; i++)
         {
             int len = R.Between(3, 8), a = R.Range(v0, Math.Max(v0 + 1, v1 - len)), b = a + len;
             if (!Clear(a, b)) continue;
@@ -621,7 +630,7 @@ sealed class Hulk
             Add(Flank(Scrap(), Side(), a, b, y0, y0 + dy, 1.5f));
         }
         // Spikes out of the flanks and the back, tapering to a point.
-        for (int i = 0, n = Count(st.Spikes); i < n; i++)
+        for (int i = 0, n = Count(st.Spikes, 12); i < n; i++)
         {
             float v = R.Range(v0, v1), r = R.Float(1.4f, 2.4f), len = R.Between(6, 13);
             if (!Clear(v - r, v + r)) continue;
@@ -641,12 +650,12 @@ sealed class Hulk
         {
             int side = i % 2 == 0 ? 1 : -1, steps = R.Between(6, 10);
             float v = R.Range(v0, Math.Max(v0 + 1, v1 - 4 * steps)), y = R.Float(H.Top * 0.25f, H.Top * 0.7f), u = Face(v, v + 4) - 1f, dy = R.Chance(0.5f) ? 1f : -1f;
-            if (!Clear(v, v + 4 * steps)) continue;
+            if (!Clear(v, v + 4 * steps + 2)) continue;
             for (int k = 0; k < steps && y > 1 && y < H.TowerTop; k++)
             {
-                Add(side > 0 ? new("trim", u, y, v, u + 3, y + 3, v + 4) : new("trim", -u - 3, y, v, -u, y + 3, v + 4));
+                Add(side > 0 ? new("trim", u, y, v, u + 3, y + 3, v + 6) : new("trim", -u - 3, y, v, -u, y + 3, v + 6));
                 u += 2;
-                v += 3;
+                v += 4;
                 y += dy * (1 + k / 3);
             }
         }

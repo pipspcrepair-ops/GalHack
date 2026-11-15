@@ -62,7 +62,7 @@ beam 1.3
 bow round
 shoulder 0.33
 spine 0
-pods 14
+pods 10
 symmetric yes
 engines 2 3 0.9 0.5
 hull c8b896
@@ -102,7 +102,7 @@ spine 2 1
 ribs 6 3
 lattice yes
 symmetric yes
-engines 5 6 1.1 0.4
+engines 5 6 1.1 0.7
 hull a8aeb2
 trim 54626b
 band 54626b ffae00
@@ -118,9 +118,9 @@ beam 0.9
 bow needle
 shoulder 0.45
 spine 2.5 1
-segments 3 0.32
+segments 3 0.42
 fins 4
-tower-offset 0.6
+tower-offset 0.45
 engines 2 2 1.3 0.7
 hull 2a2638
 trim 1b192a
