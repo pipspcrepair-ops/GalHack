@@ -26,7 +26,7 @@ public partial class OccupantTest
 {
     sealed class InsideTally
     {
-        public int Places, Silent, Missing, Storeys, Held, Bare, Thin, Threats, People, FarThreats;
+        public int Places, Silent, Missing, Storeys, Held, Bare, Thin, Threats, People, FarThreats, Hulks;
         public float Floor, Far;
         public string Example = "";
         public void Note(string what) { if (Example == "") Example = $" (e.g. {what})"; }
@@ -36,7 +36,9 @@ public partial class OccupantTest
     {
         GD.Print("-- inside every place --");
         var livable = Slice.Game.GameData.Shared.Rules.Wildlife.Livable;
-        var families = _lib.Families.Where(f => f.Types.Count == 0 && !f.Space && f.StateWeights.Any(w => w > 0f)).ToList();
+        // (--family=id: that family alone, many of it.)
+        string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--family=", StringComparison.Ordinal))?["--family=".Length..];
+        var families = _lib.Families.Where(f => f.Types.Count == 0 && !f.Space && f.StateWeights.Any(w => w > 0f) && (only == null || f.Id == only)).ToList();
         var by = families.ToDictionary(f => f.Id, _ => new InsideTally());
         for (int w = 0; w < 4; w++)
         {
@@ -48,15 +50,16 @@ public partial class OccupantTest
             Slice.Surface.WildlifePatch.Story(cond, roll, profile, WorldReading.Of(roll));
             var deep = new PlaceFauna.Deep(Bestiary.Roll(_data, cond), null, livable.GetValueOrDefault(arch, 0.5f));
             foreach (FamilyDef f in families)
-                for (int i = 0; i < (f.Id == "ominous_tower" ? 3 : 1); i++) InsidePlace(f, roll, profile, deep, by[f.Id]);
+                for (int i = 0; i < (only != null ? 8 : f.Id == "ominous_tower" ? 3 : 1); i++) InsidePlace(f, roll, profile, deep, by[f.Id]);
         }
         foreach (var (id, t) in by.Where(kv => kv.Value.Places > 0).OrderBy(kv => kv.Key))
             GD.Print($"    {id}: {t.Places} places ({t.Silent} silent), {t.Threats * 100f / Math.Max(1f, t.Floor):F2} threats a 100 m2 ({t.FarThreats * 100f / Math.Max(1f, t.Far):F2} off the way in's storey where nobody keeps it), "
                 + $"{t.People / (float)t.Places:F1} people a place; {t.Held} of {t.Storeys} storeys off the way in's held{(t.Missing + t.Bare + t.Thin > 0 ? $"; {t.Missing} without their holders, {t.Bare} bare, {t.Thin} thin{t.Example}" : "")}");
         var all = by.Values.ToList();
         int places = all.Sum(t => t.Places), silent = all.Sum(t => t.Silent);
+        if (all.Sum(t => t.Hulks) > 0) GD.Print($"    (not counted: {all.Sum(t => t.Hulks)} crashed capital hulks, whose inside is a vessel set down in the place, of {string.Join(", ", by.Where(kv => kv.Value.Hulks > 0).Select(kv => kv.Key))})");
         string Worst(Func<InsideTally, int> of) => string.Join("; ", by.Where(kv => of(kv.Value) > 0).OrderByDescending(kv => of(kv.Value)).Take(5).Select(kv => $"{kv.Key} {of(kv.Value)}{kv.Value.Example}"));
-        Check(places > 250 && silent <= places * 0.1f, $"{places} places of {by.Count(kv => kv.Value.Places > 0)} families on fresh worlds: {silent} silent (only a barren world's may be)");
+        Check(places > (only != null ? 20 : 250) && silent <= places * 0.1f, $"{places} places of {by.Count(kv => kv.Value.Places > 0)} families on fresh worlds: {silent} silent (only a barren world's may be)");
         Check(all.Sum(t => t.Missing) == 0, $"whoever holds a place is in it: {all.Sum(t => t.Missing)} places without their holders ({Worst(t => t.Missing)})");
         Check(all.Sum(t => t.Bare) == 0, $"the storeys off the way in's hold something, up a tower as below ground: {all.Sum(t => t.Held)} of {all.Sum(t => t.Storeys)}; {all.Sum(t => t.Bare)} places with more bare than one in five ({Worst(t => t.Bare)})");
         Check(all.Sum(t => t.Thin) == 0, $"the floor off the way in's storey that nobody keeps holds 0.2 threats a 100 m2 at least (place-patterns E2, E3): {all.Sum(t => t.Thin)} places thinner ({Worst(t => t.Thin)})");
@@ -75,6 +78,8 @@ public partial class OccupantTest
         PoiInstance inst;
         try { inst = PoiFactory.Spawn(_lib, PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, Seed()), state, seed, null, occ); }
         catch (InvalidOperationException) { return; } // the generator gave up on a seed: the game skips such a place
+        // A crashed capital hulk's inside is a vessel the game sets down in its hollow (Hulks), not the place's rooms: counted apart.
+        if (CapitalHull.Of(inst.Layout) != null) { t.Hulks++; return; }
         PlaceMemory m = Memory(inst);
         PlaceFauna fauna = PlaceFauna.Plan(m, deep);
         PoiPlan plan = fauna.Rooms;
@@ -94,7 +99,7 @@ public partial class OccupantTest
             else
             {
                 t.Missing++;
-                t.Note($"{who}: silent");
+                t.Note($"{who}: silent; {walkable.Count} rooms ({string.Join(" ", walkable.GroupBy(r => r.Kind).Select(g => $"{g.Count()} {g.Key}"))}), the widest {walkable.Max(r => r.Width):F1} m, the tallest {walkable.Max(r => r.Size.Y):F1} m, {walkable.Count(r => r.Dark)} dark");
             }
             return;
         }
