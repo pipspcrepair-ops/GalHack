@@ -553,7 +553,7 @@ public partial class PlayerTest : Node
         foreach (int x in _play.BlockToToolbar("smallfab", 6)) yield return x;
         foreach (int x in _play.BlockToToolbar("steel", 8)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        Check(_game.Pack.Grid[4].Item == _play.BlockItem("container") && _game.Pack.Grid[6].Item == smallfab && _game.Pack.Grid[8].Count == 2, "block stacks dragged from the bag onto the toolbar");
+        Check(_game.Pack.Grid[4].Item == _play.BlockItem("container") && _game.Pack.Grid[6].Item == smallfab && _game.Pack.Grid[8].Count == 2, $"block stacks dragged from the bag onto the toolbar ({string.Join(", ", new[] { 4, 6, 8 }.Select(i => $"{i}: {_game.Pack.Grid[i].Count} {_game.Pack.Grid[i].Item}"))})");
         Vector3 core = _base.Body.Position.ToGodot();
         int placed = _game.Builder.Placed;
         var steps = new (int slot, Int3 on, Dir face)[]

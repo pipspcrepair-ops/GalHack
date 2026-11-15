@@ -524,6 +524,12 @@ public sealed class SleeperTool
                 return;
             case HitKind.Field:
                 var f = (Slice.Vessels.FieldHit)hit.Thing;
+                // Aimed at one of our field's own emitters, past the edge of its sheet: the emitter, so the field, comes down whole.
+                if (OnStructure && Builder.TargetVessel == f.Vessel && Enumerable.Range(0, 4).Any(i => f.Field.Corner(i) == f.Vessel.Structure.AnchorOf(Builder.TargetCell)))
+                {
+                    Blocks(f.Vessel, Builder.TargetCell, at, hit.Normal.ToGodot());
+                    return;
+                }
                 Slice.Vessels.ForceFields.Hit(f.Vessel, f.Field, damage);
                 Strike(at, new Vector3(0.6f, 0.6f, 0.05f), 3, attack: true);
                 return;
@@ -607,11 +613,11 @@ public sealed class SleeperTool
         if (Ours(v))
         {
             Strike(centre, Vector3.One * size * 0.5f, 3);
-            if (Builder != null && OnStructure && Builder.TargetVessel == v)
+            if (Builder != null)
             {
-                int before = Builder.TakenDown;
-                Builder.TakeDownAimed();
-                if (Builder.TakenDown > before) TakenWhole++;
+                int before = Builder.TakenDown, decos = v.Decos.Count;
+                Builder.TakeDown(v, cell);
+                if (Builder.TakenDown > before || v.Decos.Count < decos) TakenWhole++;
             }
             return;
         }

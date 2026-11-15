@@ -182,7 +182,7 @@ public sealed partial class BuildTool
     /// <summary>
     /// The Sleeper tool's aim at a structure (wrecks too): the crosshair on a block or a deco piece
     /// outlines it and says what comes back (Empyrion's multi-tool pick-up). False when it is on
-    /// neither. <see cref="TakeDownAimed"/> takes it.
+    /// neither. <see cref="TakeDown"/> takes it.
     /// </summary>
     public bool AimTakeDown()
     {
@@ -210,11 +210,11 @@ public sealed partial class BuildTool
         return true;
     }
 
-    /// <summary>Takes down what <see cref="AimTakeDown"/> is on: a deco piece, or the block, whole into the bag.</summary>
-    public void TakeDownAimed()
+    /// <summary>Takes down a block the Sleeper tool's blast met, whole into the bag (a field's emitter, the whole field), or the deco piece <see cref="AimTakeDown"/> is on there.</summary>
+    public void TakeDown(Vessel v, Int3 cell)
     {
-        if (DecoToDeconstruct(out _)) RemoveDecoNear(TargetVessel);
-        else if (HasTarget && TargetVessel != null) Remove(TargetVessel, TargetCell);
+        if (TargetVessel == v && DecoToDeconstruct(out _)) RemoveDecoNear(v);
+        else Remove(v, cell);
     }
 
     /// <summary>Starts the blueprint projector (from the BLUEPRINTS tab): the blueprint's ghost (the Skiff's if none is given) follows the crosshair until a click sets it down.</summary>

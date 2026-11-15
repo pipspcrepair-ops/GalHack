@@ -11,7 +11,7 @@ namespace Slice.Player;
 /// holds is the item's own model from <see cref="ItemModels"/> (the same one its inventory icon is
 /// rendered from): the Sleeper tool or a drill, its emitter lit by mode (blue to attack and gather,
 /// green to repair), the handheld scanner; a block, a core or a device in hand shows the plain
-/// tool, amber, and the plating gun the plain tool, teal. It kicks back on each shot and sways a little as you walk. Shown when a
+/// tool, amber; the plating gun's emitter is teal. It kicks back on each shot and sways a little as you walk. Shown when a
 /// held model, a block, a core or a device is in hand, hidden in a seat or in third person.
 /// Procedural boxes and cylinders, no assets.
 /// </summary>
@@ -143,7 +143,7 @@ public partial class Hands : Node3D
         bool model = ItemModels.IsHeld(item);
         // (Not while a Husk has your head: its face is all there is to see.)
         bool show = g?.Survivor != null && g.Survivor.Seated == null && !g.ThirdPerson && g.FixedCamera == null && !g.Suit.Dead && g.HeldBy == null
-                    && (model || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint or HandKind.Plater);
+                    && (model || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint);
         Visible = show;
         if (!show) return;
         ItemModel now = model ? Held(item.Id, item) : Held(PlainTool);
