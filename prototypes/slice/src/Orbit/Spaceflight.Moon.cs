@@ -30,10 +30,10 @@ public partial class Spaceflight
     /// <summary>The surface of the body you are near, on or over: the start world's, or the moon's.</summary>
     public SurfaceZone Below => Here?.Surface ?? Game.Surface;
 
-    /// <summary>The moon's surface zone, made from the start (parked till you land there), or null.</summary>
+    /// <summary>The thruster moon's surface zone, made from the start (parked till you land there), or null.</summary>
     public SurfaceZone MoonSurface => Orbit?.Moon?.Surface;
 
-    /// <summary>On the moon's surface (or anywhere on a world that isn't the start world).</summary>
+    /// <summary>On a moon's surface (or anywhere on a world that isn't the start world).</summary>
     public bool OnOtherBody => Game.Zone != null && Game.Zone != Game.Surface && Game.Zone is not OrbitZone;
 
     /// <summary>Where you last left each body's surface, in its own frame: you come back down near it.</summary>
@@ -43,36 +43,41 @@ public partial class Spaceflight
     readonly Dictionary<SurfaceZone, float> _highest = new();
 
     /// <summary>
-    /// The thruster moon's surface, made from its own spec on worker threads from the first moment,
-    /// parked (out of the physics and hidden) until you land on it. Its sky is the system's seen from
-    /// it, its gravity its own, its crossing the same hard cap as every world's.
+    /// Every moon you can fly to (the start world's own, and on a giant's moon her sisters round the giant), each
+    /// with a surface of its own made from its own spec by the world's generator on worker threads: the thruster
+    /// moon's from the first moment, every other one's once you come within <see cref="OrbitRules.SpaceRules.MakeMoonWithin"/>
+    /// of it (<see cref="MoonComing"/>). Each waits parked (out of the physics and hidden) until you land on it; its
+    /// sky is the system's seen from it, its gravity its own, its crossing the same hard cap as every world's.
     /// </summary>
-    void MakeMoon()
+    void MakeMoons()
     {
         SurfaceZone home = Game.Surface;
         StarSystem model = home.Planet.StarSystem;
-        Orbiter moon = model.FuelMoon;
-        if (moon?.Spec == null || Orbit.Moon != null) return;
-        var zone = new SurfaceZone
-        {
-            Name = "Moon", Data = home.Data, Spec = moon.Spec, ShareFrom = home.Planet, Body = moon,
-            ProcessMode = ProcessModeEnum.Disabled, Visible = false,
-        };
-        Game.AddChild(zone);
-        Mute(zone);
+        if (Orbit.Moon != null) return;
         float ceiling = Rules.OrbitAltitude("default");
-        zone.Physics.Zone.Strength = model.GravityOf(moon, home.Physics.Zone.Strength);
-        zone.Physics.Zone.Ceiling = ceiling;
-        zone.Built += () =>
+        foreach (Orbiter moon in model.Bodies.Where(b => b.Kind == OrbiterKind.Moon && b != model.Home && b.Spec != null && (b.Parent == model.Home || b.Parent == model.Neighbour))
+                     .OrderBy(b => b != model.FuelMoon))
         {
-            zone.Ground.Ceiling = ceiling;
-            LightBodies(zone);
+            var zone = new SurfaceZone
+            {
+                Name = Charts.Tidy(moon.Name).Replace(" ", ""), Data = home.Data, Spec = moon.Spec, ShareFrom = home.Planet, Body = moon,
+                MakeLater = moon != model.FuelMoon, ProcessMode = ProcessModeEnum.Disabled, Visible = false,
+            };
+            Game.AddChild(zone);
             Mute(zone);
-            GD.Print($"the moon is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s²");
-        };
-        Orbit.AddMoon(moon, zone, ceiling);
-        _surfaceShownOf[zone] = false;
-        _groundShownOf[zone] = true;
+            zone.Physics.Zone.Strength = model.GravityOf(moon, home.Physics.Zone.Strength);
+            zone.Physics.Zone.Ceiling = ceiling;
+            zone.Built += () =>
+            {
+                zone.Ground.Ceiling = ceiling;
+                LightBodies(zone);
+                Mute(zone);
+                GD.Print($"{Charts.Tidy(moon.Name)} is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s²");
+            };
+            Orbit.AddMoon(moon, zone, ceiling);
+            _surfaceShownOf[zone] = false;
+            _groundShownOf[zone] = true;
+        }
     }
 
     /// <summary>A parked surface draws and lights nothing: its sky's environment and its light field are off.</summary>
@@ -82,12 +87,18 @@ public partial class Spaceflight
         if (zone.Light != null) zone.Light.Active = false;
     }
 
-    /// <summary>The moon's surface finishes arriving while you are out in its reach, ahead of the descent.</summary>
+    /// <summary>
+    /// In orbit: a moon's surface starts being made as you come within reach of it (and at once, if it is the frame
+    /// already), and it finishes arriving while you are out in its reach, ahead of the descent.
+    /// </summary>
     void MoonComing()
     {
-        SurfaceZone m = MoonSurface;
-        if (m == null || m.Arrived || !Game.InOrbit || Here != Orbit.Moon) return;
-        if (m.TryArrive()) GD.Print($"[the moon's surface arrived, a piece a frame: {m.ArriveSteps}]");
+        Vector3 eye = Game.Camera.GlobalPosition;
+        foreach (Celestial c in Orbit.Moons)
+            if (!c.Surface.Making && (c == Here || eye.DistanceTo(c.Centre) - c.GlobeRadius < Rules.Space.MakeMoonWithin)) c.Surface.Make();
+        SurfaceZone m = Below;
+        if (Here.IsHome || m.Arrived) return;
+        if (m.TryArrive()) GD.Print($"[{Here.Name}'s surface arrived, a piece a frame: {m.ArriveSteps}]");
     }
 
     /// <summary>
@@ -122,9 +133,10 @@ public partial class Spaceflight
     /// <summary>The one clock: every body's sky tells the same days as the one you are under.</summary>
     void KeepOneClock()
     {
+        if (Orbit == null) return;
         SurfaceZone s = Below;
-        if (Game.Surface != s && Game.Surface.Sky != null) Game.Surface.Sky.Days = s.Sky.Days;
-        if (MoonSurface is { } m && m != s && m.Sky != null) m.Sky.Days = s.Sky.Days;
+        foreach (Celestial c in Orbit.Bodies)
+            if (c.Surface is { Sky: not null } other && other != s) other.Sky.Days = s.Sky.Days;
     }
 
     /// <summary>
@@ -140,7 +152,7 @@ public partial class Spaceflight
         bool space = Game.InOrbit && _band >= 1f;
         foreach (Celestial c in o.Bodies)
         {
-            if (c == Here || c.Globe == null) continue;
+            if (c.IsHome && c == Here || c.Globe == null) continue;
             float show = 0f;
             if (space && c.Ready)
             {
@@ -153,6 +165,7 @@ public partial class Spaceflight
                 }
             }
             if (!c.IsHome) o.Space.Fade(c.Body, space ? 1f - show : 1f);
+            if (c == Here) continue; // its own globe is drawn by the seam (DrawWorld), once it is set up
             if (show <= 0f)
             {
                 c.Globe.Visible = false;

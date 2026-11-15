@@ -432,12 +432,13 @@ public partial class Visor : CanvasLayer
             float g = Game.Zone.GroundAt(at.X, at.Z).Y;
             return float.IsFinite(g) ? new Vector3(at.X, g + lift, at.Z) : at;
         }
-        if (Game.Bunker != null && !Game.InOrbit) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        // Each body's own: the bunker, the start world's finds and your map marks on the start world, a moon's finds on the moon.
+        if (Game.Bunker != null && Game.Zone == Game.Surface) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
         if (!Game.InOrbit && Game.Zone.Planet != null)
         {
-            string startPlace = Game.Spaceflight.StartPlaceKey;
+            string startPlace = Game.Spaceflight.StartPlaceKey, on = Game.Spaceflight.ChartOf(Game.Zone);
             // The start place always shows (first in line, whatever its distance); other finds only while within the scanner's reach.
-            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind)
+            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind, on)
                 .Select(m => (m.Label, m.Key, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
                 .Where(x => x.Key == startPlace || new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
                 .OrderBy(x => x.Key == startPlace ? 0 : 1).ThenBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared())
@@ -445,7 +446,7 @@ public partial class Visor : CanvasLayer
             foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), Ground(at, PlaceLift), C.Accent, 1f, "place"));
             if (survivor.Seated == null)
                 foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), Ground(at, 1.5f), C.Holo, 1f, "deposit"));
-            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark"))
+            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark", on))
                 marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
         }
         foreach (Vessel v in Game.Zone.Vessels)

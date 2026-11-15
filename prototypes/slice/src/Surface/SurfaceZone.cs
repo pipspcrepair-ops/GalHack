@@ -40,8 +40,14 @@ public partial class SurfaceZone : Node3D
     public PlanetWorld ShareFrom;
     public Orbiter Body;
 
+    /// <summary>Another body's world is made once <see cref="Make"/> is called (as you come near it), not as it enters the scene.</summary>
+    public bool MakeLater;
+
     /// <summary>A moon or another body of the start world's system, not the start world itself.</summary>
     public bool IsOtherBody => ShareFrom != null;
+
+    /// <summary>Its world is being made, or is made.</summary>
+    public bool Making => _building != null || Planet != null;
 
     /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
     public Func<Vector3> Focus = () => Vector3.Zero;
@@ -175,15 +181,7 @@ public partial class SurfaceZone : Node3D
         PlanetSpec spec = Spec;
         if (ShareFrom != null)
         {
-            // Another body of the system: no places yet (they come with the vacuum worlds' own families), its sky the system's.
-            PlanetWorld of = ShareFrom;
-            Orbiter body = Body;
-            _building = Task.Run(() =>
-            {
-                PlanetWorld w = PlanetWorld.Build(spec, null);
-                w.ShareSystem(of, body);
-                return w;
-            });
+            if (!MakeLater) Make();
             return;
         }
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
@@ -192,6 +190,24 @@ public partial class SurfaceZone : Node3D
         // And what the new game forced onto its roll (its depth, theme, fall, mid-collapse and eras), or nothing.
         PoiGenerator.Gen.WorldForce.Current = Force ?? new PoiGenerator.Gen.WorldForce();
         _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
+    }
+
+    /// <summary>
+    /// Starts making another body's world off the main thread, if it isn't already: no places yet (they come with
+    /// the vacuum worlds' own families), its sky the system's.
+    /// </summary>
+    public void Make()
+    {
+        if (Making || ShareFrom == null) return;
+        PlanetWorld of = ShareFrom;
+        Orbiter body = Body;
+        PlanetSpec spec = Spec;
+        _building = Task.Run(() =>
+        {
+            PlanetWorld w = PlanetWorld.Build(spec, null);
+            w.ShareSystem(of, body);
+            return w;
+        });
     }
 
     // ---- Arriving --------------------------------------------------------------------------

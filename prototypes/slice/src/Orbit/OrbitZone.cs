@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
@@ -54,8 +55,11 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>The start world as a body of this zone: its globe, its frame, its surface.</summary>
     public Celestial Home { get; }
 
-    /// <summary>The start world's moon within reach of thrusters, once it is being made (null till then).</summary>
+    /// <summary>The start world's moon within reach of thrusters, once it is being made (null till then): the first of the moons.</summary>
     public Celestial Moon { get; private set; }
+
+    /// <summary>Every moon with ground in the zone, the thruster moon first.</summary>
+    public IEnumerable<Celestial> Moons => Bodies.Where(c => !c.IsHome);
 
     /// <summary>The body whose frame everything flies in: it holds still, the others move round it.</summary>
     public Celestial Anchor { get; private set; }

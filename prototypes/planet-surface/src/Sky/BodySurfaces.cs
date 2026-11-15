@@ -98,12 +98,18 @@ public sealed class BodySurfaces
     /// <summary>A coarse run of the world's own generator: one map cell to a pixel, from the spec it will be visited with.</summary>
     public static WorldMap Coarse(PlanetSpec spec) => PlanetGenerator.Generate(spec, (float)(spec.WidthMeters / Width));
 
+    /// <summary>
+    /// The land in the colours its own globe and ground are painted in up close (its ground palette's far ground, a
+    /// world with no reading of its own taken as its globe takes it), so the far look and the globe that takes over
+    /// from it agree; clouds only over a world with air.
+    /// </summary>
     static byte[] World(PlanetSpec spec)
     {
         WorldMap map = Coarse(spec);
         ArchetypeLook look = ArchetypeLook.For(spec);
-        ColorMap colors = ColorMap.Build(map, look, Width);
-        byte[] clouds = CloudMap.Build(spec, look, Width, out _);
+        var palette = new Terrain.GroundPalette(map, Terrain.PlanetFlora.For(map, SkySystem.For(spec)));
+        ColorMap colors = ColorMap.Build(map, look, Width, (x, z) => palette.FarGround(x, z, 64f));
+        byte[] clouds = spec.Airless ? new byte[Width * Height * 4] : CloudMap.Build(spec, look, Width, out _);
         var pixels = new byte[Width * Height * 4];
         for (int k = 0; k < Width * Height; k++)
         {
