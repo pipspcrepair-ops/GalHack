@@ -815,7 +815,7 @@ public sealed class DecoPlanner
         if (n < 2) return null;
         bool[] fit = _walk.Fits(Walker);
         var routes = new int[n, n];
-        var dist = _dist ??= new int[fit.Length];
+        var dist = _dist is { } kept && kept.Length == fit.Length ? kept : _dist = new int[fit.Length];
         var q = _routeQueue ??= new Queue<int>();
         for (int a = 0; a < n; a++)
         {
