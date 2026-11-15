@@ -47,7 +47,7 @@ public sealed class StructureStats
             }
             st.Fuel += t.Fuel;
             if (t.Power > 0) { st.PowerOut += t.Power; st.Generators++; }
-            else if (!(t.IsLight && b.Off)) st.PowerUse += -t.Power;
+            else if (!(t.IsLamp && b.Off)) st.PowerUse += -t.Power;
             if (t.IsLight) st.Lights++;
             if (t.IsThruster)
             {

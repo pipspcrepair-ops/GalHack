@@ -17,7 +17,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Rooms' air: a powered sealed room eases to comfortable, an unpowered one holds then drifts to the
-/// outside's, an open door lets the outside in; a place's shut room takes the edge off a blizzard;
+/// outside's, an open door's force field holds the air while powered and the outside comes in without it; a place's shut room takes the edge off a blizzard;
 /// the bunker is as it was.
 /// </summary>
 public partial class ClimateTest
@@ -65,7 +65,8 @@ public partial class ClimateTest
         // The door into the east wall at its foot (the building rules: a wall block out, the door in).
         var doorCell = new Int3(5, 1, 0);
         Building.Remove(s, doorCell, null);
-        Orientations.TryParse("+y-x", out int rot);
+        Building.Remove(s, doorCell + Int3.UnitY, null); // the door is two cells tall on the 1 m grid
+        int rot = Orientations.Find(new Mat3(new Int3(0, 0, -1), Int3.UnitY, Int3.UnitX)); // its leaf across the wall, its face east
         PlaceError placed = Building.Place(s, doorCell, Building.Make(s, s.Catalogue.Type("door"), null, rot));
         room.ApplyEdits();
         Me.PlaceAboard(room, new N.Vector3(-2f * s.Grid.CellSize, s.Grid.CellSize * 0.5f + 0.05f, 0f));
@@ -119,7 +120,8 @@ public partial class ClimateTest
         if (hadO2) climate.OxygenByAir[air] = o2;
         else climate.OxygenByAir.Remove(air);
 
-        // Power back on, then the door held open: the outside comes straight in.
+        // Power back on, then the door held open: its force field holds the air while the room is
+        // powered; with the power off the outside comes straight in.
         room.PowerOn = true;
         for (int i = 0; i < 60 * 20 && RoomC < band.LowC; i++) yield return 0;
         double warm = RoomC;
@@ -128,9 +130,14 @@ public partial class ClimateTest
         _game.Doors.Feet = () => inDoor; // STAGING: held open as if someone stood in it
         _game.Doors.Use(room, doorCell);
         foreach (int x in _drive.Wait(60)) yield return x;
+        Check(BlockDoors.IsOpen(room, doorCell) && suit.InSealedRoom && suit.Room == RoomKind.Sealed && RoomC >= band.LowC,
+            $"its door open while powered, the door's field holds the air: {RoomC:F0} Â°C ({suit.Room})");
+        room.PowerOn = false;
+        foreach (int x in _drive.Wait(60)) yield return x;
         double opened = RoomC, outsideOpen = OutsideC;
         Check(BlockDoors.IsOpen(room, doorCell) && !suit.InSealedRoom && Math.Abs(opened - outsideOpen) < 0.5 && suit.Room == RoomKind.None,
-            $"its door open, the room leaks and the outside comes in: {warm:F0} Â°C to {opened:F0} Â°C ({outsideOpen:F0} outside)");
+            $"its door open with the power off, the room leaks and the outside comes in: {warm:F0} Â°C to {opened:F0} Â°C ({outsideOpen:F0} outside)");
+        room.PowerOn = true;
         _game.Doors.Feet = feet;
         for (int i = 0; i < 300 && BlockDoors.IsOpen(room, doorCell); i++) yield return 0;
         foreach (int x in _drive.Wait(10)) yield return x;

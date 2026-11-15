@@ -18,7 +18,8 @@ namespace CapitalBase.Tests;
 /// Views: descent (Bastion 7 coming down on its lift jets, gear out), landed (settled on its legs on
 /// uneven ground), anchored (a base, built onto and into the ground, dug round, Prospector 3 parked
 /// on the pad, the core console showing), farm (Prospector drilling beside the base, sending it
-/// Home), liftoff (cut free, the ground crumbling as it rises).
+/// Home), liftoff (cut free, the ground crumbling as it rises), far (high up outside the landed Bastion's voxel square,
+/// looking back across it to the far ground rings and the horizon).
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -89,7 +90,7 @@ public partial class Screenshot : Node
                 break;
             case 1:
                 b.Flight.Input = PilotInput.LetGo;
-                if (_view == "landed")
+                if (_view is "landed" or "far")
                 {
                     _captureAt = _tick + 30;
                     _phase = 9;
@@ -234,6 +235,10 @@ public partial class Screenshot : Node
             case "farm":
                 eye = t.Origin + new Vector3(44f, 9f, -40f);
                 at = t.Origin + new Vector3(14f, -5f, -12f);
+                break;
+            case "far":
+                eye = t.Origin + new Vector3(170f, 110f, 170f); // outside the 224 m voxel square, looking back across it
+                at = t.Origin + new Vector3(-80f, -10f, -80f);
                 break;
             default: // liftoff: low over the stair's foot, where the ground is cut
                 eye = t.Origin + new Vector3(-30f, 1f, -24f);

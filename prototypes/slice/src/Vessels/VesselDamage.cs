@@ -77,11 +77,12 @@ public sealed class VesselDamage : ILocatedDamageSink
     public void Blast(N.Vector3 point, float radius, float amount, DamageType type = DamageType.Explosive) =>
         _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, default, default, type, radius / Cell, HitKind.Blast));
 
-    /// <summary>Lightning that strikes close enough to a structure hits its blocks as a small blast.</summary>
+    /// <summary>Lightning that strikes close enough to a structure hits its blocks, and its force fields, as a small blast.</summary>
     public void OnWeather(WeatherEvent e)
     {
         if (e.Kind != WeatherEventKind.LightningStrike || e.DamageRadius <= 0f || _v.Zone.VesselOf(_v.Body) != _v) return;
         N.Vector3 at = new(e.Position.X, e.Position.Y, e.Position.Z);
+        ForceFields.Blast(_v, at, e.DamageRadius, e.Damage * LightningToBlocks);
         if (_v.DistanceFromHull(_v.Body.ToLocal(at), e.DamageRadius) >= e.DamageRadius) return;
         Blast(at, e.DamageRadius, e.Damage * LightningToBlocks, DamageType.Energy);
     }

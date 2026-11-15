@@ -143,22 +143,23 @@ public partial class PopRoute : Node
             yield break;
         }
         PopLog.On = true;
-        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, flicker, pinholes, trees.
+        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, space, flicker, pinholes, trees.
         string[] only = _args.TryGetValue("only", out string o) ? o.Split(',') : null;
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         if (only == null || only.Contains("once"))
             foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
-        var routes = new[] { ("walk", 6f, 300f, 0.3f), ("bike", 26f, 1500f, 1f), ("fly", 70f, 4000f, 60f) };
+        // "space" (only when asked for): a vessel's top speed in space, level at 800 m over the sea, between the air's ceiling and the crossing.
+        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", 70f, 4000f, 60f, false), ("space", 200f, 12000f, 800f, true) };
         // Each from a settled start; then the first 20 s of each again, counting the plants that pop.
         foreach (bool pops in new[] { false, true })
-        foreach (var (name, speed, length, up) in routes)
+        foreach (var (name, speed, length, up, level) in routes)
         {
-            if (only != null && !only.Contains(name)) continue;
+            if (only == null ? level : !only.Contains(name)) continue;
             _hold = Lift(start, up);
             for (int i = 0; i < 60; i++) yield return 0;
             foreach (int x in _drive.UntilSettled(40)) yield return x;
             for (int i = 0; i < 120; i++) yield return 0;
-            foreach (int x in Route(name, start, way, speed, pops ? speed * 20f : length, up, pops)) yield return x;
+            foreach (int x in Route(name, start, way, speed, pops ? speed * 20f : length, up, pops, level)) yield return x;
         }
         PopLog.On = false;
         // The world's largest town or city: walking its streets, biking its outskirts, flying low over it (the owner: "a lot of
@@ -309,7 +310,8 @@ public partial class PopRoute : Node
     Vector3 Lift(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };
 
     /// <param name="pops">the pops pass: plants popping in view sampled every tenth of a second, and nothing else measured (--shots=dir: ringed frames of them)</param>
-    IEnumerable<int> Route(string name, Vector3 start, Vector3 way, float speed, float length, float up, bool pops = false)
+    /// <param name="level">flown level at <paramref name="up"/> over the sea (no lower than 50 m over the ground), looking 2 km ahead, instead of following the ground</param>
+    IEnumerable<int> Route(string name, Vector3 start, Vector3 way, float speed, float length, float up, bool pops = false, bool level = false)
     {
         _hold = null; // placed along the way each tick
         TerrainStreamer s = _game.Zone.Streamer;
@@ -342,6 +344,10 @@ public partial class PopRoute : Node
         var farIn = new HashSet<(int, int)>();
         int size = FarBuilder.Size;
         PopLog.Take();
+        // A place or city tile coming in is seen if it is in frame, nearer than the camera draws and not behind the ground.
+        // Places not drawn yet within the camera's reach as the route sets off: each would appear along the way.
+        int unshown0 = _game.Zone.Pois.Unshown(_game.Camera?.Far ?? 4000f);
+        PopLog.Sees = at => _game.Camera is { } c && c.IsPositionInFrustum(at) && c.GlobalPosition.DistanceTo(at) < c.Far && !Behind(c.GlobalPosition, at);
         _frames.Clear();
         _gpu.Clear();
         _streaming = 0;
@@ -366,9 +372,10 @@ public partial class PopRoute : Node
         while (along < length)
         {
             along += speed / Engine.PhysicsTicksPerSecond;
-            Vector3 p = Lift(start + way * along, up);
+            Vector3 q = start + way * along;
+            Vector3 p = level ? q with { Y = MathF.Max(up, _game.Zone.GroundAt(q.X, q.Z).Y + 50f) } : Lift(q, up);
             _game.Survivor.PlaceOutside(p.ToNumerics(), glide: true); // drawn moving between ticks, as a body the physics moves is
-            _drive.Face(Lift(start + way * (along + 200f), up * 0.5f + 1.6f));
+            _drive.Face(level ? Lift(start + way * (along + 2000f), 0f) : Lift(start + way * (along + 200f), up * 0.5f + 1.6f));
             yield return 0;
             double ph = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
             physics += ph;
@@ -436,7 +443,10 @@ public partial class PopRoute : Node
         s.FarApplied -= onFar;
         double seconds = clock.Elapsed.TotalSeconds;
         string workers = string.Create(CultureInfo.InvariantCulture, $"main thread {_streaming / seconds:F0} ms a second; workers: far chunks {(s.FarBuildMs.Sum() - buildMs0.Sum()) / seconds:F0} ms a second, ground tiles {(ClipGround.FillTicks - tileTicks0) * 1000.0 / Stopwatch.Frequency / seconds:F0} ms a second ({(ClipGround.Filled - tiles0) / seconds:F0} a second)");
+        PopLog.Sees = null;
         var logged = PopLog.Take();
+        var placesIn = logged.Where(q => q.Kind is "place" or "city" && q.What == "appears").ToList();
+        int placesSeen = placesIn.Count(q => q.Seen);
         var trees = logged.Where(q => q.Kind == "flora" && q.What == "appears" && q.Size > 3f).Select(q => q.Distance).ToList();
         string byKind = string.Join(", ", logged.GroupBy(q => q.Kind + " " + q.What).OrderBy(g => g.Key).Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count()} ({g.Sum(q => q.Jump * q.Size / MathF.Max(q.Distance, 10f)):F1})")));
         int nearJumps = logged.Count(q => q.Kind is "flora" or "cover" && q.Distance < 120f && q.Jump > 0.05f);
@@ -473,7 +483,7 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE {name} {speed:F0} m/s {length:F0} m: near ground complete to m {Q(complete.Select(c => (double)c).ToList(), true)}; " +
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
                  $"queue {Q(pending.Select(c => (double)c).ToList())}; far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
-                 $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; flora or cover jumps over 5% within 120 m {nearJumps}; " +
+                 $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; places appearing at m {Q(placesIn.Select(q => (double)q.Distance).ToList(), true)}, {placesSeen} of them in plain view (at m {Q(placesIn.Where(q => q.Seen).Select(q => (double)q.Distance).ToList(), true)}), {unshown0} not drawn within the camera's reach at the start; flora or cover jumps over 5% within 120 m {nearJumps}; " +
                  $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; streaming: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
         // good test build, about the same), with room for a machine other runs share.
@@ -489,14 +499,15 @@ public partial class PopRoute : Node
             // steps against its own pace by the engine's clock (anything moved in ticks and drawn without interpolation).
             Gate($"{name}: frames up for another number of refreshes than most", pace?.OffRefreshes ?? double.NaN, lim.OffRefreshes, false, "%");
             Gate($"{name}: camera steps over 25% off its pace", pace?.MoveOffGame ?? double.NaN, lim.MoveOff, false, "%");
+            Gate($"{name}: places appearing in plain view", placesSeen, lim.PlacesSeen, false, "");
         }
     }
 
-    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops, double OffRefreshes, double MoveOff);
+    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops, double OffRefreshes = double.NaN, double MoveOff = double.NaN, double PlacesSeen = 0);
 
     /// <summary>
     /// Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames
-    /// over 16.7 ms a minute at most, frame p99 at most, plants popping in view a minute at most. Trees and pops from the one-drawing
+    /// over 16.7 ms a minute at most, frame p99 at most, plants popping in view a minute at most, places or city tiles appearing in plain view (none). Trees and pops from the one-drawing
     /// trees (cb249a21 on): no pops on any route (412, 1940 and 6102 trees a minute before), and the only trees still appearing
     /// are far chunks coming in, 470 m off at the nearest. Shadow casters redrawn from the GPU far ground (99ddbe89 on): the ground
     /// is never redrawn, only far chunks' flora (10, 289 and 388 a minute at the most measured on walk, bike and fly).
@@ -514,6 +525,7 @@ public partial class PopRoute : Node
         ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10, 25, MoveOffLimit), // (a walk sees too few trees and columns to judge them appearing)
         ["bike"] = new(88, 350, 220, 150, 60, 20, 10, 30, MoveOffLimit),
         ["fly"] = new(72, 350, 360, 250, 150, 25, 10, 55, MoveOffLimit),
+        ["space"] = new(72, 350, 360, 250, 150, 25, 10), // (the fly route's, at a vessel's top speed in space)
     };
 
     /// <summary>
@@ -524,9 +536,9 @@ public partial class PopRoute : Node
 
     static readonly Dictionary<string, Limit> MinSpecLimits = new()
     {
-        ["walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit),
-        ["bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit),
-        ["fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit),
+        ["walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit, double.NaN),
+        ["bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit, double.NaN),
+        ["fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit, double.NaN),
     };
 
     int _gateFails;
@@ -537,6 +549,18 @@ public partial class PopRoute : Node
         bool ok = atLeast ? value >= limit : value <= limit;
         if (!ok) _gateFails++;
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"  {(ok ? "ok   " : "FAIL ")} {what} {value:F1} {unit} ({(atLeast ? "at least" : "at most")} {limit:F0})"));
+    }
+
+    /// <summary>Whether the ground stands between the eye and a point (sampled every 8 m along the line).</summary>
+    bool Behind(Vector3 eye, Vector3 at)
+    {
+        float d = eye.DistanceTo(at);
+        for (float s = 8f; s < d - 8f; s += 8f)
+        {
+            Vector3 q = eye.Lerp(at, s / d);
+            if (_game.Zone.GroundAt(q.X, q.Z).Y > q.Y) return true;
+        }
+        return false;
     }
 
     static double Mod(double a, double m) => a - Math.Floor(a / m) * m;

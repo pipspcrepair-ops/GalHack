@@ -105,7 +105,25 @@ public sealed class Structure
     /// <summary>Cargo in the shared storage, in storage units.</summary>
     public double CargoSu;
 
+    /// <summary>
+    /// The pilot's arrangement of the structure's toolbar, a function's key per slot (null for an empty slot), or null
+    /// for the default arrangement. Kept with the structure and carried by its blueprint; the game says what the keys mean.
+    /// </summary>
+    public string[] Bar;
+
+    /// <summary>The structure's systems switched off, by name (its toolbar's toggles): the game and its power model read them.</summary>
+    public readonly SortedSet<string> SystemsOff = new(StringComparer.Ordinal);
+
     public PaintPalette Palette { get; } = new();
+
+    /// <summary>Its force fields, each spanning the cells between its four emitter blocks.</summary>
+    public readonly List<ForceField> Fields = new();
+
+    /// <summary>Its open doors hold the air (a field across each, while it is powered): the rooms read this.</summary>
+    public bool DoorFields;
+
+    /// <summary>A field went up or down, or the door fields switched: what the air does changed, no block did.</summary>
+    public void AirChanged() => Version++;
 
     /// <summary>Chunks whose blocks (or whose neighbours' blocks) changed since the presentation last looked.</summary>
     public readonly HashSet<Int3> DirtyChunks = new();

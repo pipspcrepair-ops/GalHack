@@ -32,6 +32,7 @@ public partial class BuildTest
         foreach (int x in MenuTextChecks()) yield return x;
         foreach (int x in EscapeRowChecks()) yield return x;
         HudBoxChecks();
+        foreach (int x in HudCornerChecks()) yield return x;
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
         foreach (int x in ScreenClearChecks()) yield return x;
@@ -135,8 +136,8 @@ public partial class BuildTest
             string problem = l.Problem(size) ?? HudLayout.Compute(size, 1f, true).Problem(size);
             var cells = Alerts.RowCells(l.Alerts, l.Scale, Alerts.MostHazards);
             bool apart = cells.Select((c, i) => cells.Skip(i + 1).All(d => !c.Sign.Intersects(d.Sign) && !c.Timer.Intersects(d.Timer))).All(x => x);
-            bool onLine = cells.All(c => MathF.Abs(c.Sign.Position.Y - l.Toolbar.Position.Y) < 0.5f && c.Sign.Position.X < l.Toolbar.Position.X);
-            Check(problem == null && cells.Count == Alerts.MostHazards && apart && onLine, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping; room for {cells.Count} of {Alerts.MostHazards} alerts on the toolbar's line at the far left, none on another{(problem == null ? "" : ": " + problem)}");
+            bool onLine = cells.All(c => c.Sign.End.Y < l.SleeperIcons.Position.Y && c.Sign.Position.X < l.Toolbar.Position.X && c.Sign.End.X <= l.Sleeper.End.X);
+            Check(problem == null && cells.Count == Alerts.MostHazards && apart && onLine, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping; room for {cells.Count} of {Alerts.MostHazards} alerts above the sleeper's gauges and icons at the far left, none on another{(problem == null ? "" : ": " + problem)}");
         }
     }
 
@@ -153,7 +154,7 @@ public partial class BuildTest
             float k = MathF.Min(size.X / design.X, size.Y / design.Y);
             Vector2 offset = (size - design * k) * 0.5f;
             Rect2 Px(Rect2 r) => new(offset + r.Position * k, r.Size * k);
-            Rect2 box = HudLayout.Compute(size, 1f).Alerts;
+            Rect2 box = HudLayout.Compute(size, 1f).MenuAlerts;
             string at = $"{size.X:0}x{size.Y:0}";
             foreach (var (text, rect, _) in panel.Gui.Texts)
                 if (Px(rect).Grow(-1f).Intersects(box)) problems.Add($"{at}: \"{text}\" is on the alerts' row");
@@ -348,7 +349,7 @@ public partial class BuildTest
             "the heading reads right at 0, 90, 180, 270 and 359.9");
     }
 
-    /// <summary>The handheld scanner: free in the suit fabricator; a click pings what is far off onto the compass for ten seconds, fading, and nothing stays.</summary>
+    /// <summary>The handheld scanner: free in the suit fabricator; a click pings the ores far off onto the compass for ten seconds, fading, and nothing stays (places: PlaceScanTest).</summary>
     IEnumerable<int> ScannerChecks()
     {
         ItemDef scanner = Items.Item("scanner");
@@ -365,12 +366,12 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(2)) yield return x;
         int pinged = _game.Visor.Markers().Count(m => m.Kind == "ping");
         double at = _game.Stats.Seconds;
-        Check(pinged > 0 && _game.Pings.Count == pinged, $"a click pings {pinged} things onto the compass ({string.Join(", ", _game.Pings.Select(p => p.Label ?? "?"))})");
+        Check(pinged > 0 && _game.Pings.Count(p => p.Place == null) == pinged, $"a click pings {pinged} ores onto the compass ({string.Join(", ", _game.Pings.Select(p => p.Label ?? p.Place))})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 8.5, 12)) yield return x;
         var late = _game.Visor.Markers().Where(m => m.Kind == "ping").ToList();
         Check(late.Count == pinged && late.All(m => m.Alpha < 1f && m.Alpha > 0f), $"after 8.5 s they are still marked, fading (alpha {(late.Count > 0 ? late[0].Alpha : 0):F2})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 10.2, 5)) yield return x;
-        Check(_game.Visor.Markers().All(m => m.Kind != "ping"), "after ten seconds the pings are gone");
+        Check(_game.Visor.Markers().All(m => m.Kind != "ping"), "after ten seconds the ore pings are gone");
         Check(_game.Spaceflight.Charts.OfKind("deposit").Count() == charted, "and nothing pinged stays charted: only going near a deposit marks it");
     }
 

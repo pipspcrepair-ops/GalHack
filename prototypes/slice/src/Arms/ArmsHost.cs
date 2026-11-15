@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using GalHack.Arms;
 using GalHack.Items;
 using GalHack.Physics.Engine;
@@ -68,10 +69,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         AddChild(_ray);
         Fx = new ArmsFx { Name = "ShotLooks" };
         AddChild(Fx);
-        Fx.Setup(Pool, Table.All);
+        var rows = Table.All.Concat(Zone.Data.Mounts.All).ToList();
+        Fx.Setup(Pool, rows);
         Sounds = new GunSounds { Name = "GunSounds" };
         AddChild(Sounds);
-        Sounds.Make(Table.All);
+        Sounds.Make(rows);
         Zone.FrameShifted += by => Pool.Shift(by.ToNumerics());
         People = new SimArms(this);
     }
@@ -298,6 +300,30 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Zone.Wildlife.Noise(muzzle, d.Noise);
     }
 
+    /// <summary>Shots a structure's guns fired (tests).</summary>
+    public int MountedFired;
+
+    /// <summary>
+    /// A structure's fixed gun goes off (the pilot's trigger): the row's shot from its muzzle along its facing, carried at
+    /// the structure's velocity, the player's shot (it counts as theirs), its flash and report. Its own structure is looked
+    /// past, so a gun behind a fin never shoots its own hull. Ammo is the structure's to count.
+    /// </summary>
+    public void FireMounted(WeaponDef d, Vector3 muzzle, Vector3 dir, Vector3 carry, Vessel from)
+    {
+        int count = d.Pellets?.Count ?? 1;
+        for (int p = 0; p < count; p++)
+        {
+            Vector3 v = Jitter(dir, d.Spread + (count > 1 ? d.Pellets.Spread : 0f)) * d.Speed + carry;
+            int slot = Pool.Spawn(d, 0, muzzle.ToNumerics(), v.ToNumerics(), d.Damage);
+            if (slot >= 0) Pool.Shots[slot].LastHit = from;
+        }
+        MountedFired++;
+        Fired++;
+        Game.Shots.Muzzle(d.Feel, muzzle, dir, GunModel.ColourOf(d.Tracer.Colour), 1.6f);
+        Sounds.Play(d, VoiceKind.Report, muzzle, 0.94f + 0.12f * (float)_rng.NextDouble());
+        Zone.Wildlife.Noise(muzzle, d.Noise, dir);
+    }
+
     /// <summary>
     /// A blow with a hand weapon (or bare hands): whatever is first along the line from where it
     /// starts, within the row's reach, takes the row's damage as a shot of it would.
@@ -440,8 +466,22 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         if (len < 1e-5f) return false;
         Vector3 dir = seg / len;
         float best = len;
-        bool found = SolidHit(a, dir, len, owner, age, ref hit);
+        bool found = SolidHit(a, dir, len, owner, age, ref hit, skip: ignore as Vessel);
         if (found) best = hit.Distance;
+        // A field emitter has no collider (it is passed through): met by its parts.
+        if (ForceFields.EmitterAlong(Zone, a, dir, best, out Vessel ev, out Int3 ec, out float ed, out Vector3 en))
+        {
+            best = ed;
+            found = true;
+            hit = new ShotHit { Kind = HitKind.Block, Thing = ev, CellX = ec.X, CellY = ec.Y, CellZ = ec.Z, Point = (a + dir * ed).ToNumerics(), Normal = en.ToNumerics(), Distance = ed, Through = ev.Structure.Grid.CellSize };
+        }
+        // A force field that holds stops it (people and vessels pass; shots don't).
+        if (ForceFields.Along(Zone, a, dir, best, out float fd, out Vector3 fn) is FieldHit met)
+        {
+            best = fd;
+            found = true;
+            hit = new ShotHit { Kind = HitKind.Field, Thing = met, Point = (a + dir * fd).ToNumerics(), Normal = fn.ToNumerics(), Distance = fd };
+        }
 
         // A creature: the one a pierce just went through, or a corpse, is looked past.
         Creature c = null;
@@ -511,9 +551,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     }
 
     /// <summary>The solid part of a sweep: colliders first, then the voxel ground where colliders aren't loaded.</summary>
-    bool SolidHit(Vector3 a, Vector3 dir, float len, int owner, float age, ref ShotHit hit, int ghosts = 0)
+    bool SolidHit(Vector3 a, Vector3 dir, float len, int owner, float age, ref ShotHit hit, int ghosts = 0, Vessel skip = null)
     {
-        Vessel aboard = owner == 0 ? Game.Survivor.Aboard : null;
+        // A structure's own gun's shot passes its structure, so it meets the world rather than the cabin it was fired from.
+        Vessel aboard = owner == 0 && skip == null ? Game.Survivor.Aboard : null;
         bool solid;
         Vector3 point, normal;
         GodotObject collider;
@@ -544,10 +585,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 Int3 cell = StructureBridge.CellAt(v.Structure, (v.Body.ToLocal(point.ToNumerics()) - GalHack.Physics.MathX.Unrotate(v.Body.Rotation, normal.ToNumerics()) * 0.02f));
                 // A block just taken away keeps its collider until the structure's shapes are rebuilt: nothing is
                 // there, so the ray goes on through it (a mine dropping off a shot-away block lands on what is under it).
-                if (!v.Structure.Has(cell))
+                if (!v.Structure.Has(cell) || v == skip)
                 {
                     if (ghosts >= 4 || d + 0.02f >= len) return false;
-                    if (!SolidHit(point + dir * 0.02f, dir, len - d - 0.02f, owner, age, ref hit, ghosts + 1)) return false;
+                    if (!SolidHit(point + dir * 0.02f, dir, len - d - 0.02f, owner, age, ref hit, ghosts + 1, skip)) return false;
                     hit.Distance += d + 0.02f;
                     return true;
                 }
@@ -787,6 +828,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 }
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Block, v.Node);
                 break;
+            case HitKind.Field:
+                var (fv, ff) = (FieldHit)hit.Thing;
+                ForceFields.Hit(fv, ff, damage * d.Blocks);
+                if (!tick) Game.Shots.Impact(at, n, ImpactKind.Nothing);
+                break;
             default:
                 if (hit.Thing is WormMass wm)
                 {
@@ -882,6 +928,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         foreach (Vessel v in Zone.Vessels)
         {
             if (!GodotObject.IsInstanceValid(v.Node)) continue;
+            ForceFields.Blast(v, at, r, blast.Damage * blast.Blocks);
             if (v.DistanceFromHull(v.Body.ToLocal(at), r) >= r) continue;
             v.Hits.Blast(at, r, blast.Damage * blast.Blocks, DamageType.Explosive);
             BlockHits++;

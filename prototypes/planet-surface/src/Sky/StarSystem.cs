@@ -124,8 +124,8 @@ public sealed class StarSystem
     /// scenarios put a planet's moon 8.3 to 12.3 km from the planet in its orbit playfield
     /// (Default Akua-Omicron's Sectors.yaml: Akua Moon 11.5 km, Omicron Moon 11.8 km, Oscutune Moon
     /// 8.3 km); for a 16 km start world and an 8 km moon this range leaves that much open space
-    /// between the top of the world's crossing band and the moon's ground: about 1 to 1.5 minutes at
-    /// a small vessel's 130 m/s.
+    /// between the top of the world's crossing band and the moon's ground: about 45 s to a minute at
+    /// a vessel's 200 m/s.
     /// </summary>
     public const double ThrusterMoonFrom = 5.5, ThrusterMoonTo = 7.0;
 
@@ -153,6 +153,9 @@ public sealed class StarSystem
     /// from; its light is the world's own, never brighter for being bigger.
     /// </summary>
     public static double StarSkyScale = 3.0;
+
+    /// <summary>The fastest a moon goes round its parent, m/s: slower than a vessel in space, so one can always be caught. Its month is lengthened to fit.</summary>
+    public static double MoonSpeedCap = 50.0;
 
     /// <summary>The galaxy catalogue's key for this star.</summary>
     public ulong StarKey { get; private set; }
@@ -452,6 +455,8 @@ public sealed class StarSystem
         double year(double h) => TemperateYearDays * Math.Pow(h, 1.5);
         double rockMonth(double radii) => 3.8 * Math.Pow(radii / 16.0, 1.5);
         double giantMonth(double radii) => 7.6 * Math.Pow(radii / 16.0, 1.5);
+        // A moon's month, no shorter than going round its orbit at the cap takes (days are the sky's, real minutes).
+        double capped(double orbit, double month) => Math.Max(month, Math.Tau * orbit / (MoonSpeedCap * sky.DayMinutes * 60.0));
         double phase() => next();
         double tilted() => (next() - 0.5f) * 0.1; // within 3 degrees of the system's plane
         double node() => next() * Math.Tau;
@@ -536,7 +541,7 @@ public sealed class StarSystem
         Orbiter home = new()
         {
             Name = "this world", Kind = host == null ? OrbiterKind.Planet : OrbiterKind.Moon, Parent = host ?? star, Radius = homeRadius, Habitable = homeH,
-            Orbit = host == null ? chart(homeH) : host.Radius * monthRadii, Period = host == null ? year(homeH) : giantMonth(monthRadii), Phase0 = phase(),
+            Orbit = host == null ? chart(homeH) : host.Radius * monthRadii, Period = host == null ? year(homeH) : capped(host.Radius * monthRadii, giantMonth(monthRadii)), Phase0 = phase(),
             Inclination = host == null ? 0.0 : equator(), Node = host == null ? 0.0 : equatorNode(), Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
             Rings = ArchetypeLook.For(spec).Ring, Color = sky.Horizon,
         };
@@ -569,7 +574,7 @@ public sealed class StarSystem
             double r = homeRadius * 0.5;
             double wanted = host != null ? host.Radius * (3.0 + 27.0 * next())
                 : first ? homeRadius * (ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next()) : Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 14.0, homeRadius * 40.0);
-            double orbit = clearOrbit(holder, wanted), month = host != null ? giantMonth(orbit / host.Radius) : rockMonth(orbit / homeRadius);
+            double orbit = clearOrbit(holder, wanted), month = capped(orbit, host != null ? giantMonth(orbit / host.Radius) : rockMonth(orbit / homeRadius));
             first = false;
             s._bodies.Add(new Orbiter
             {
@@ -600,9 +605,11 @@ public sealed class StarSystem
         }
         void moonOf(Orbiter parent, double radii, double period)
         {
+            double orbit = clearOrbit(parent, parent.Radius * radii);
+            period = capped(orbit, period);
             s._bodies.Add(new Orbiter
             {
-                Name = $"a moon of {parent.Name}", Kind = OrbiterKind.Moon, Parent = parent, Radius = homeRadius * 0.5, Orbit = clearOrbit(parent, parent.Radius * radii), Period = period, DayLength = period,
+                Name = $"a moon of {parent.Name}", Kind = OrbiterKind.Moon, Parent = parent, Radius = homeRadius * 0.5, Orbit = orbit, Period = period, DayLength = period,
                 Phase0 = phase(), Inclination = tilted(), Node = node(), Habitable = parent.Habitable, Temperature = parent.Temperature, Zone = parent.Zone,
                 Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
             });
@@ -685,7 +692,7 @@ public sealed class StarSystem
             near = host == null
                 ? new Orbiter
                 {
-                    Name = "the near moon", Kind = OrbiterKind.Moon, Parent = home, Radius = homeRadius * 0.5, Orbit = chord, Period = rockMonth(radii), DayLength = rockMonth(radii),
+                    Name = "the near moon", Kind = OrbiterKind.Moon, Parent = home, Radius = homeRadius * 0.5, Orbit = chord, Period = capped(chord, rockMonth(radii)), DayLength = capped(chord, rockMonth(radii)),
                     Phase0 = phase(), Inclination = equator(), Node = equatorNode(), Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
                     Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
                 }

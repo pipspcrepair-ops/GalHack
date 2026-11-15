@@ -156,6 +156,8 @@ public sealed partial class BuildTool
         _ghosts.HideOutline();
         _planGhost.Visible = false;
         _deviceGhost.Visible = false;
+        _drag = null; // a field being drawn is let go
+        if (_fieldGhost != null) _fieldGhost.Visible = false;
     }
 
     /// <summary>The ghost and the label for what is in hand, and acting on the buttons.</summary>
@@ -167,6 +169,7 @@ public sealed partial class BuildTool
         {
             case HandKind.Block: TickBlock(item, slotIndex, pressed, removePressed); break;
             case HandKind.Core: TickNew(NewThing.Base, item, slotIndex, pressed); break;
+            case HandKind.Device when FieldRules.TierOf(item) != null: TickField(Items.Item(item), slotIndex, held, pressed, removePressed); break;
             case HandKind.Device: TickNew(NewThing.Device, item, slotIndex, pressed); break;
             case HandKind.Blueprint:
                 if (Plan == null && Underway == null) Follow(_zone.Data.Blueprint(_rules.StarterBlueprint));
@@ -201,7 +204,7 @@ public sealed partial class BuildTool
         }
         Structure s = TargetVessel.Structure;
         _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1f, 0.55f, 0.2f, 0.9f));
-        ItemDef back = BuildingBridge.ItemOf(Items, s, b);
+        ItemDef back = FieldOf(s, s.AnchorOf(TargetCell)) is ForceField whole ? Items.Item(whole.Tier) : BuildingBridge.ItemOf(Items, s, b);
         if (s.TypeOf(b).IsCore) Verdict = CoreStays;
         else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name} · +{s.TypeOf(b).Units} {back?.Name ?? "nothing"}";
         if (pressed) Remove(TargetVessel, TargetCell);
@@ -736,8 +739,13 @@ public sealed partial class BuildTool
     public void Remove(Vessel v, Int3 cell)
     {
         Structure s = v.Structure;
-        // Any cell of a block spanning several takes the whole block down.
+        // Any cell of a block spanning several takes the whole block down; a field's emitter, the whole field.
         if (!s.TryGetBlock(cell, out cell, out Block b)) return;
+        if (s.TypeOf(b).IsFieldEmitter && FieldOf(s, cell) is ForceField whole)
+        {
+            TakeDown(v, whole);
+            return;
+        }
         N.Vector3 centre = StructureBridge.BlockCenter(s, cell, b);
         // A base's blocks hold the ground off their faces: the ones that leave it let go.
         var before = v.IsBase ? s.Cells().Select(x => x.pos).ToList() : null;

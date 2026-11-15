@@ -32,6 +32,9 @@ public partial class Game
     /// <summary>Door blocks on bases and vessels: the same doors, E and sliding leaves, opening for you on your own.</summary>
     public BlockDoors Doors { get; private set; }
 
+    /// <summary>Force fields on every structure, placed ones and the open outer doors' own.</summary>
+    public ForceFields Fields { get; private set; }
+
     readonly HashSet<Town> _towns = new();
 
     void SetUpPlaces()
@@ -41,7 +44,7 @@ public partial class Game
         {
             Name = "Places", Zone = Zone, Focus = Focus,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs, AheadSeconds = rules.AheadSeconds,
-            Fauna = new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable),
+            Fauna = Zone.Wildlife.Life == null ? null : new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable), // none on an airless world
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;
@@ -61,6 +64,8 @@ public partial class Game
         Zone.AddChild(Underworld);
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
         Zone.AddChild(Doors);
+        Fields = new ForceFields { Name = "ForceFields", ZoneOf = () => Zone, Feet = () => Survivor.WorldFeet, Doors = Doors };
+        AddChild(Fields);
         Tool.Places = Places;
         Zone.Wildlife.SolidAt = Places.SolidAt;
         Zone.Wildlife.StandingAt = p => Places.TownHolding(p, BandReach)?.Standing ?? 0f;

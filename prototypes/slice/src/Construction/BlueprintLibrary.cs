@@ -150,10 +150,11 @@ public sealed class BlueprintLibrary
     /// <summary>A structure as blueprint text: a copy at full hit points, named, so the live structure is untouched.</summary>
     public static string Text(Structure s, string name) => Blueprint.Save(Design(s, name));
 
-    /// <summary>A copy of a structure as a design: its blocks, shapes, turns, paint, doors and lights, every block whole.</summary>
+    /// <summary>A copy of a structure as a design: its blocks, shapes, turns, paint, doors and lights, its toolbar and switches, every block whole.</summary>
     public static Structure Design(Structure s, string name)
     {
-        var copy = new Structure(s.Catalogue) { Name = name, Mode = s.Mode, GravityOn = s.GravityOn, Owner = Building.DefaultOwner };
+        var copy = new Structure(s.Catalogue) { Name = name, Mode = s.Mode, GravityOn = s.GravityOn, Owner = Building.DefaultOwner, Bar = (string[])s.Bar?.Clone() };
+        copy.SystemsOff.UnionWith(s.SystemsOff);
         for (int i = 1; i < s.Palette.Count; i++) copy.Palette.Intern(s.Palette[(ushort)i], s.Palette.NameOf((ushort)i));
         foreach (var (p, b) in s.Blocks())
         {

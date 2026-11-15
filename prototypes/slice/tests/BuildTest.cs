@@ -140,6 +140,13 @@ public partial class BuildTest : Node
             foreach (int x in UiRound()) yield return x;
             yield break;
         }
+        if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--only=hud") >= 0)
+        {
+            // -- --only=hud: the visor's layout and corners alone.
+            HudBoxChecks();
+            foreach (int x in HudCornerChecks()) yield return x;
+            yield break;
+        }
         if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--only=blueprints") >= 0)
         {
             // -- --only=blueprints: the BLUEPRINTS tab's scenario alone.
@@ -178,7 +185,7 @@ public partial class BuildTest : Node
                 if (DiegeticUi.Theme.Paint.TextWidth(DiegeticUi.Theme.UiTheme.Label, font, fitted) > l.ItemLine.Size.X + 0.5f) Fail($"HUD at {size} scale {scale}: the long line overflows its box");
                 checks++;
             }
-        Check(true, $"vitals, toolbar, item line, hints, shapes, lines and the notices never overlap or leave the window ({checks} sizes and scales, in both markers modes), and the longest line fits its box");
+        Check(true, $"gauges, icons, surroundings, toolbar, item line, hints, shapes, lines and the notices never overlap or leave the window ({checks} sizes and scales, in both markers modes), and the longest line fits its box");
     }
 
     ItemGrid BigGrid(int perItem, out SharedStorage storage)

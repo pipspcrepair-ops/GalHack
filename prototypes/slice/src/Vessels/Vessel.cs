@@ -93,18 +93,51 @@ public sealed partial class Vessel
         {
             _lightsOn = value;
             SetDecoLights(value);
-            bool changed = false;
-            foreach (var (cell, block) in Structure.Blocks().ToList())
-            {
-                Block b = block;
-                if (!Structure.TypeOf(b).IsLight || b.Off == !value) continue;
-                b.Flags ^= BlockFlags.Off;
-                Structure.Set(cell, b);
-                changed = true;
-            }
-            if (changed) ApplyEdits();
+            SwitchLamps(t => t.IsLight, value);
         }
     }
+
+    /// <summary>Switches every lamp block of a kind on or off (its Off flag: its glow and its real light follow).</summary>
+    public void SwitchLamps(Func<BlockType, bool> which, bool on)
+    {
+        bool changed = false;
+        foreach (var (cell, block) in Structure.Blocks().ToList())
+        {
+            Block b = block;
+            BlockType t = Structure.TypeOf(b);
+            if (!t.IsLamp || !which(t) || b.Off == !on) continue;
+            b.Flags ^= BlockFlags.Off;
+            Structure.Set(cell, b);
+            changed = true;
+        }
+        if (changed) ApplyEdits();
+    }
+
+    /// <summary>Switches its core's artificial gravity (it also needs power to work).</summary>
+    public void SetGravity(bool on)
+    {
+        Structure.GravityOn = on;
+        if (Body.Core == null) return;
+        Body.Core.On = on;
+        Cabin.SetGravity(Body.Core);
+    }
+
+    /// <summary>Is one of its systems switched on (the toolbar's toggles by name: "life-support", "fabricators", "turrets", "shields")? The power model reads these.</summary>
+    public bool SystemOn(string system) => !Structure.SystemsOff.Contains(system);
+
+    public void SetSystem(string system, bool on)
+    {
+        if (on) Structure.SystemsOff.Remove(system);
+        else Structure.SystemsOff.Add(system);
+    }
+
+    /// <summary>Its life support keeps its sealed rooms' air and warmth: powered and switched on. Off, they drift as they would unpowered.</summary>
+    public bool LifeSupport => Powered && SystemOn(StructureBar.LifeSupport);
+
+    StructureBar _bar;
+
+    /// <summary>Its toolbar in a command chair: the functions its blocks bring, their arrangement, its guns.</summary>
+    public StructureBar Bar => _bar ??= new StructureBar(this);
 
     /// <summary>Gives one light block (or, with no cell, every light block) new colour and animation settings; <paramref name="change"/> maps what a light has now to what it should have.</summary>
     public int StyleLights(Int3? cell, System.Func<LightSettings, LightSettings> change)
@@ -138,6 +171,9 @@ public sealed partial class Vessel
     /// for its materials (every block refunds its bill).
     /// </summary>
     public bool IsRuin { get; set; }
+
+    /// <summary>One of the player's core structures: cored, the player's, not a wreck or the bunker.</summary>
+    public bool IsPlayers => !IsWreck && !IsRuin && Structure.Core != null && Structure.Owner == Building.DefaultOwner;
     /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). One switched to Base Mode in flight is anchored only once it has come to rest.</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;
@@ -204,6 +240,19 @@ public sealed partial class Vessel
     /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
     public bool Powered => PowerOn && HasGenerator;
 
+    RoomReport _rooms;
+    int _roomsVersion = -1;
+
+    /// <summary>Its rooms, force fields and door fields counted (building's flood fill), worked out again only when the structure has changed.</summary>
+    public RoomReport Rooms
+    {
+        get
+        {
+            if (_roomsVersion != Structure.Version) (_rooms, _roomsVersion) = (GalHack.Structures.Rooms.Detect(Structure), Structure.Version);
+            return _rooms;
+        }
+    }
+
     bool _hasGenerator, _hasForecast;
     int _generatorVersion = -1;
 
@@ -225,10 +274,10 @@ public sealed partial class Vessel
         }
     }
 
-    /// <summary>Runs its machines for a tick (when powered; the time scale is the tests' marked speed-up).</summary>
+    /// <summary>Runs its machines for a tick (when powered and its fabricators are switched on; the time scale is the tests' marked speed-up).</summary>
     public void TickMachines(double dt)
     {
-        if (!Powered) return;
+        if (!Powered || !SystemOn(StructureBar.Fabricators)) return; // switched off, their jobs wait where they stand
         foreach (Constructor c in Machines.Values) c.Tick(dt);
     }
 

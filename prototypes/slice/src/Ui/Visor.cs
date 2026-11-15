@@ -19,11 +19,11 @@ using Palette = DiegeticUi.Theme.Palette;
 namespace Slice.Ui;
 
 /// <summary>
-/// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): vitals
-/// along the bottom of the glass that flash while they are only a warning and turn red once
-/// they cost health, a compass of headings with markers on the things themselves (the bunker, places, deposits, your vessels), the
-/// suit's assistant's lines, what the tool is aimed at, and a flight strip when seated. Calm
-/// vitals fade away after a few seconds. Drawn every frame onto the main canvas.
+/// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): the sleeper's gauges at the bottom
+/// left that flash while they are only a warning and turn red once they cost health (calm, they fade after a few
+/// seconds), the temperature at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
+/// the things themselves (the bunker, places, deposits, your vessels), the suit's assistant's lines, what the tool is
+/// aimed at, and seated, a flight strip and the structure's gauges at the bottom right. Drawn every frame onto the main canvas.
 /// </summary>
 public partial class Visor : CanvasLayer
 {
@@ -172,8 +172,15 @@ public partial class Visor : CanvasLayer
             Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", $"[R] RESPAWN", C.Danger);
             return;
         }
-        DrawVitals();
-        if (survivor.Seated is Vessel v) DrawFlight(v);
+        HudLayout layout = Layout;
+        DrawSleeper(layout);
+        DrawSurroundings(layout);
+        if (survivor.Seated is Vessel v)
+        {
+            DrawFlight(v);
+            DrawStructure(layout, v);
+            DrawBar(layout, v);
+        }
         else
         {
             DrawCrosshair();
@@ -207,48 +214,6 @@ public partial class Visor : CanvasLayer
         _hud.Block(new Rect2(0, band.Position.Y, 18 * s, band.Size.Y), colour);
         _hud.TextIn(UiTheme.Display, (int)(40 * s), new Rect2(0, band.Position.Y + 8 * s, size.X, 56 * s), title, colour, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, (int)(24 * s), new Rect2(0, band.Position.Y + 64 * s, size.X, 36 * s), detail, C.Text, HorizontalAlignment.Center);
-    }
-
-    // ---- Vitals along the bottom of the glass ----------------------------------------------------
-
-    void DrawVitals()
-    {
-        Suit suit = Game.Suit;
-        Vitals v = suit.Vitals;
-        VitalsRules r = suit.Sim.Data.Vitals;
-        Alert warn = suit.Last.Warnings, harm = suit.Last.Harm;
-        double air = suit.Sim.Here.Temperature;
-        var items = new (string label, string value, double share, Alert alert)[]
-        {
-            ("HEALTH", $"{v.Health:F0}", v.Health / r.Health.Max, Alert.Health),
-            ("FOOD", $"{suit.FoodShare * 100:F0}%", suit.FoodShare, Alert.Food),
-            ("O2", (warn & Alert.Breath) != 0 ? $"{v.Breath:F0}s" : $"{suit.OxygenShare * 100:F0}%", (warn & Alert.Breath) != 0 ? v.Breath / r.Oxygen.HoldBreathSeconds : suit.OxygenShare, Alert.Oxygen | Alert.Breath),
-            (suit.Room switch { RoomKind.Sealed or RoomKind.Bunker => "SEALED", RoomKind.Unpowered => "UNPOWERED", RoomKind.Closed => "INDOORS", _ => "TEMP" }, $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
-            ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
-            ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
-        };
-        HudLayout layout = Layout;
-        float s = layout.Scale;
-        Vector2 size = _hud.Size;
-        float w = HudLayout.VitalW * s, h = HudLayout.VitalH * s, gap = HudLayout.VitalGap * s;
-        for (int i = 0; i < items.Length; i++)
-        {
-            var (label, value, share, alert) = items[i];
-            bool warned = (warn & alert) != 0, harmed = (harm & alert) != 0 || (alert == Alert.Health && harm != Alert.None);
-            var at = layout.Vitals.Position + new Vector2(i * (w + gap), 0);
-            bool lit = harmed ? Mathf.PosMod((float)_time * 4.5f, 1f) < 0.55f : warned && Mathf.PosMod((float)_time * 2.2f, 1f) < 0.6f;
-            Color tone = harmed ? C.Danger : warned ? C.Warn : C.Good;
-            float a = warned || harmed ? 1f : _vitalsAlpha;
-            var box = new Rect2(at, new Vector2(w, h));
-            _hud.Block(box, new Color(lit ? tone : C.Glass, (lit ? 0.9f : 0.55f) * a));
-            _hud.Block(new Rect2(at, new Vector2(6 * s, h)), new Color(tone, a));
-            Color ink = new(lit ? C.Glass : warned || harmed ? tone : C.Text, a);
-            _hud.Text(UiTheme.Label, (int)(16 * s), at + new Vector2(14 * s, 4 * s), label, ink);
-            _hud.Text(UiTheme.Mono, (int)(20 * s), at + new Vector2(14 * s, 22 * s), value, ink);
-            _hud.Segments(new Rect2(at + new Vector2(80 * s, 30 * s), new Vector2(w - 90 * s, 12 * s)), Math.Clamp(share, 0, 1), 1, new Color(tone, a), count: 8, gap: 2 * s, alpha: a);
-        }
-        // No impact warning on foot (falling, flung, on the jetpack or the hover bike): the suit still takes a fall's damage by its
-        // own rules, but the flash belongs to piloting: see CockpitImpact.
     }
 
     /// <summary>How soon, seconds, a vessel coming down at an unsafe speed must be from the ground for the cockpit to warn of the impact.</summary>
@@ -432,12 +397,13 @@ public partial class Visor : CanvasLayer
             float g = Game.Zone.GroundAt(at.X, at.Z).Y;
             return float.IsFinite(g) ? new Vector3(at.X, g + lift, at.Z) : at;
         }
-        if (Game.Bunker != null && !Game.InOrbit) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        // Each body's own: the bunker, the start world's finds and your map marks on the start world, a moon's finds on the moon.
+        if (Game.Bunker != null && Game.Zone == Game.Surface) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
         if (!Game.InOrbit && Game.Zone.Planet != null)
         {
-            string startPlace = Game.Spaceflight.StartPlaceKey;
+            string startPlace = Game.Spaceflight.StartPlaceKey, on = Game.Spaceflight.ChartOf(Game.Zone);
             // The start place always shows (first in line, whatever its distance); other finds only while within the scanner's reach.
-            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind)
+            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind, on)
                 .Select(m => (m.Label, m.Key, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
                 .Where(x => x.Key == startPlace || new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
                 .OrderBy(x => x.Key == startPlace ? 0 : 1).ThenBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared())
@@ -445,14 +411,17 @@ public partial class Visor : CanvasLayer
             foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), Ground(at, PlaceLift), C.Accent, 1f, "place"));
             if (survivor.Seated == null)
                 foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), Ground(at, 1.5f), C.Holo, 1f, "deposit"));
-            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark"))
+            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark", on))
                 marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
         }
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        // The scan's marks: an ore by name, a place by its icon and distance alone (a found place's own marker stands for it).
+        var named = marks.Where(m => m.Kind == "place").Select(m => new Vector2(m.At.X, m.At.Z)).ToList();
         foreach (Game.Game.Ping p in Game.Pings)
-            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+            if (p.Place == null) marks.Add(new(p.Label.ToUpperInvariant(), p.At, C.Holo, Game.PingAlpha(p), "ping"));
+            else if (!named.Any(n => n.DistanceTo(new Vector2(p.At.X, p.At.Z)) < 1f)) marks.Add(new("", Ground(p.At, PlaceLift), C.Accent, Game.PingAlpha(p), p.Place));
         // The handheld scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
         foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
         return marks;
@@ -598,9 +567,10 @@ public partial class Visor : CanvasLayer
             HandKind.Weapon => Game.Zone.Data.Arms.OfItem(Game.Pack.HandItem)?.Modes.Count > 1 ? $"{Bound("rotate")} RELOAD  {Bound("tool-mode")} MODE   " : $"{Bound("rotate")} RELOAD   ",
             HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => $"[WHEEL] PIECE  {Bound("style")} THEME  {Bound("rotate")} TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  {Bound("rotate", "tilt")} TURN  {Bound("mirror")} MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
+            HandKind.Device when Game.Zone.Data.Rules.ForceFields.TierOf(Game.Pack.HandItem) != null => "[LMB] DRAG  [RMB] CANCEL   ",
             _ => "",
         };
-        string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} YOUR TOOLBAR   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
+        string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} BAG   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
         string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE · FREE BUILD" : "";
         return $"{keys}{bar}{Bound("torch")} TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   {Bound("terminal")} MENU   LVL {Game.Progress.Level}{creative}";
     }
@@ -650,7 +620,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? $"REMOTE {Bound("switch-bar")}" : $"YOURS {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? $"REMOTE {Bound("switch-bar")}" : $"BAG {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);

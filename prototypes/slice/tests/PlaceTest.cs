@@ -836,9 +836,11 @@ public partial class PlaceTest : Node
         // Among them for a while: a look, and nothing more.
         foreach (int x in drive.Wait(600)) yield return x;
         Check(town.GuardShots == 0 && town.GuardAims == 0 && game.Suit.HealthShare >= health && place.Memory.Mood == Mood.Wary, $"they watch and leave you be: {town.GuardShots} shots in 10 s among them, health {game.Suit.HealthShare * 100:F0}%, still {place.Memory.Mood}");
+        // (They keep the storeys they are on, and one either side; a large place's others are nobody's.)
         var pop = place.Memory.Fauna?.Population;
-        int hunters = pop == null || pop.Silent ? 0 : pop.Spawns.Count(s => s.Role != Wildlife.DeepRole.Subsister);
-        Check(hunters == 0, $"nothing that hunts lives where they do ({pop?.Note ?? "nothing"})");
+        HashSet<int> kept = place.Memory.Fauna?.Rooms.Kept;
+        int hunters = pop == null || pop.Silent ? 0 : pop.Spawns.Count(s => s.Role != Wildlife.DeepRole.Subsister && (kept?.Contains(s.Room) ?? true));
+        Check(hunters == 0, $"nothing that hunts lives where they do ({pop?.Note ?? "nothing"}; {kept?.Count.ToString() ?? "all"} of {place.Memory.Fauna?.Rooms.Rooms.Count} rooms theirs)");
         var sim = game.Zone.Wildlife.Sim;
         Check(sim != null && sim.Settlements.Any(q => q.Name == site.Name), "and wildlife knows their ground as it knows a town's");
         town.Provoked();
@@ -1267,7 +1269,7 @@ public partial class PlaceTest : Node
         foreach (int x in drive.WalkTo(door + along * 1.8f, 0.6f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         Vector3 f = game.Survivor.WorldFeet;
         Check((f - door).Dot(along) > 0.5f && game.Doors.Opened >= 1, $"it opens as you walk up (your own structure), and you walk through ({(f - door).Dot(along):F1} m past it)");
-        Check(game.Doors.OpenDoors(game.Places).Any(), "an open door is there to read (a force field's hook)");
+        Check(game.Doors.AnyOpen(gate), "an open door is there to read (its force field's hook)");
         foreach (int x in drive.WalkTo(past, 1f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in drive.Wait(90)) yield return x;
         Vector3 walked = game.Survivor.WorldFeet;

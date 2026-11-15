@@ -149,8 +149,8 @@ public sealed partial class Vessel
             Anchor();
             return;
         }
-        // Nobody flies a falling base: no autopilot holds its course. In space the assist brings it to rest.
-        if (Flight.Input.Seated == false) Flight.Input = PilotInput.LetGo;
+        // Nobody flies a falling base: no autopilot holds its course. In space it is brought to rest.
+        if (Flight.Input.Seated == false) Flight.Input = PilotInput.Station;
     }
 
     /// <summary>A fixed structure becomes a hull on the flight model, landed where it stands until its pilot lifts it off.</summary>
