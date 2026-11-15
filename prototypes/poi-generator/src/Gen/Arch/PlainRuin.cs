@@ -64,6 +64,8 @@ public static partial class StateTransforms
         // Boards rot where the rain has got to them, leaving the ground to the weeds.
         foreach (var (p, b) in g.Blocks().ToList())
             if (b.Type == BlockType.Plate && b.Role == Role.Floor && OpenToSky(g, p) && Hash.Cell(new Int3(p.X / 2, 0, p.Z / 2), 95) % 100 < 60) g.Set(p, Block.Air);
+        // What lay loose on what the later passes took or tipped (a pane, a board, a slab gone to a slope) drops to the floor under it.
+        Debris.Settle(inst);
     }
 
     /// <summary>

@@ -114,6 +114,25 @@
   // The head torch (L): a cone from the helmet.
   "torch": { "range": 60, "angle": 32, "energy": 6.5, "attenuation": 0.85 },
 
+  // Force fields (design section 12). A field draws drawPerTile MW from the capacitors for each 1 m
+  // tile while it is up, so 4 tiles (2 x 2) cost 0.04 MW, under 2% of a Generator T1's 2.8; a 6 x 4
+  // scout opening 0.24; a 30 x 15 capital hangar mouth 4.5, more than that generator makes. Its
+  // regrowth costs that power too, and nothing else (no fuel). An open outer door's own field costs
+  // doorDraw. Each tier, by its component: strength is what it takes before it fizzles (and the cap
+  // it grows back to; an iron plated block has 158 hit points), regrowDelay the seconds it stays down
+  // first, regrowSeconds the time from nothing back to full. A field is drawn minSide to maxSide cells each way.
+  "forceFields": {
+    "drawPerTile": 0.01,
+    "doorDraw": 0.0005,
+    "minSide": 2,
+    "maxSide": 48,
+    "tiers": {
+      "force-field-t1": { "strength": 600, "regrowDelay": 30, "regrowSeconds": 20 },
+      "force-field-t2": { "strength": 1800, "regrowDelay": 20, "regrowSeconds": 15 },
+      "force-field-t3": { "strength": 5000, "regrowDelay": 12, "regrowSeconds": 10 }
+    }
+  },
+
   // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8).
   "containers": { "corpse": [4, 4], "backpack": [8, 8], "drop": [8, 8] },
 

@@ -442,6 +442,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         float best = len;
         bool found = SolidHit(a, dir, len, owner, age, ref hit);
         if (found) best = hit.Distance;
+        // A force field that holds stops it (people and vessels pass; shots don't).
+        if (ForceFields.Along(Zone, a, dir, best, out float fd, out Vector3 fn) is FieldHit met)
+        {
+            best = fd;
+            found = true;
+            hit = new ShotHit { Kind = HitKind.Field, Thing = met, Point = (a + dir * fd).ToNumerics(), Normal = fn.ToNumerics(), Distance = fd };
+        }
 
         // A creature: the one a pierce just went through, or a corpse, is looked past.
         Creature c = null;
@@ -787,6 +794,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 }
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Block, v.Node);
                 break;
+            case HitKind.Field:
+                var (fv, ff) = (FieldHit)hit.Thing;
+                ForceFields.Hit(fv, ff, damage * d.Blocks);
+                if (!tick) Game.Shots.Impact(at, n, ImpactKind.Nothing);
+                break;
             default:
                 if (hit.Thing is WormMass wm)
                 {
@@ -882,6 +894,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         foreach (Vessel v in Zone.Vessels)
         {
             if (!GodotObject.IsInstanceValid(v.Node)) continue;
+            ForceFields.Blast(v, at, r, blast.Damage * blast.Blocks);
             if (v.DistanceFromHull(v.Body.ToLocal(at), r) >= r) continue;
             v.Hits.Blast(at, r, blast.Damage * blast.Blocks, DamageType.Explosive);
             BlockHits++;

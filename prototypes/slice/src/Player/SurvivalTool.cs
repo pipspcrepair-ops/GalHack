@@ -537,6 +537,9 @@ public sealed class SurvivalTool
             kind = hit.OnBlock ? ImpactKind.Block : ImpactKind.Ground;
             onto = hit.Vessel?.Node;
         }
+        // A force field that holds stops the bolt short of what is behind it.
+        Slice.Vessels.FieldHit onField = Slice.Vessels.ForceFields.Along(_zone, eye, dir, reach, out float fieldAt, out Vector3 fieldFace);
+        if (onField != null) (reach, normal, kind, onto) = (fieldAt, fieldFace, ImpactKind.Nothing, null);
         PoiPlaces.Hit? onPlace = null;
         if (Places != null && kind != ImpactKind.Nothing && WorldRay.Cast(_zone, _survivor, reach + 0.01f, Layers.World, out LookHit wall)
             && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph, wall.Shape)) onPlace = ph;
@@ -580,6 +583,7 @@ public sealed class SurvivalTool
         }
         else if (kind == ImpactKind.Block && hit.OnBlock)
             hit.Vessel.Hits.Shot(hit.Cell, hit.Point.ToNumerics(), hit.Normal.ToNumerics(), _rules.ShotDamage * Tier.Shot, GalHack.Structures.DamageType.Energy);
+        else if (kind == ImpactKind.Nothing && onField != null) Slice.Vessels.ForceFields.Hit(onField.Vessel, onField.Field, _rules.ShotDamage * Tier.Shot);
         Vector3 muzzle = Muzzle();
         Vector3 at = end, face = normal;
         Node3D on = onto;

@@ -92,6 +92,10 @@
     "warp-tank": {"bill": {"iron-plate": 10, "polymer": 2}, "unlock": {"level": 7, "cost": 0, "parent": "fuel-tank-t2", "tab": "structures"}, "was": ["warptank@large", "warptank@small"]},
     "hyperdrive-t1": {"bill": {"iron-plate": 40, "warp-coil": 4, "field-emitter": 2, "fusion-core": 1}, "unlock": {"level": 10, "cost": 5, "parent": "warp-drive", "tab": "structures"}, "was": ["hyperdrive1@large"]},
     "hyperdrive-t2": {"bill": {"iron-plate": 60, "warp-coil": 8, "field-emitter": 4, "fusion-core": 2}, "unlock": {"level": 20, "cost": 6, "parent": "hyperdrive-t1", "tab": "structures"}, "was": ["hyperdrive2@large"]},
-    "fold-tank": {"bill": {"iron-plate": 12, "polymer": 3}, "unlock": {"level": 10, "cost": 0, "parent": "hyperdrive-t1", "tab": "structures"}, "was": ["foldtank@large"]}
+    "fold-tank": {"bill": {"iron-plate": 12, "polymer": 3}, "unlock": {"level": 10, "cost": 0, "parent": "hyperdrive-t1", "tab": "structures"}, "was": ["foldtank@large"]},
+    "forcefield-emitter": {"bill": {"copper-wire": 4, "circuit-board": 1, "polymer": 2}, "unlock": {"level": 6, "cost": 0, "parent": "force-field-t1", "tab": "structures"}},
+    "forcefield-emitter-iron": {"bill": {"copper-wire": 4, "circuit-board": 1, "polymer": 2, "iron-plate": 2}, "unlock": {"level": 6, "cost": 0, "parent": "forcefield-emitter", "tab": "structures"}},
+    "forcefield-emitter-hardened": {"bill": {"copper-wire": 4, "circuit-board": 1, "polymer": 2, "hardened-plate": 2}, "unlock": {"level": 6, "cost": 0, "parent": "forcefield-emitter-iron", "tab": "structures"}},
+    "forcefield-emitter-combat": {"bill": {"copper-wire": 4, "circuit-board": 1, "polymer": 2, "combat-plate": 2}, "unlock": {"level": 10, "cost": 0, "parent": "forcefield-emitter-hardened", "tab": "structures"}}
   }
 }

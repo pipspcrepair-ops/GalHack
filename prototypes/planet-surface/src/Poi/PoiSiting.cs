@@ -311,7 +311,8 @@ public static partial class PoiSiting
         LastPlanMs = planClock.Elapsed.TotalMilliseconds;
         LastSetDownMs = 0;
         var sites = new List<PoiSite>();
-        if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { Types.Count: > 0 } forcedType)
+        // (A typed place is built by people and served by their roads: never on a world nobody lived on, which lays none.)
+        if (ForceFamily != null && profile is { Inhabited: true } && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { Types.Count: > 0 } forcedType)
         {
             // A typed screenshot's subject: sited by its own rule, from a kilometre or two out round the landing site.
             PoiState state = ForceState ?? (start ? PoiState.Ruined : PoiState.Abandoned);
@@ -322,7 +323,7 @@ public static partial class PoiSiting
                 if (typed != null) sites.AddRange(typed.Parts);
             }
         }
-        else if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
+        else if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { Types.Count: 0 } forced)
         {
             // A screenshot's subject: the first spot round the landing site, from 700 m out, where it can be seated.
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;

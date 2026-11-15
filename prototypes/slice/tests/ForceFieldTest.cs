@@ -1,0 +1,301 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using GalHack.Arms;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
+using GalHack.Structures;
+using Godot;
+using PhysicsSandbox.Bridges;
+using Slice.Game;
+using Slice.Items;
+using Slice.Player;
+using Slice.Vessels;
+using N = System.Numerics;
+using Structure = GalHack.Structures.Structure;
+using FieldRules = Slice.Game.SliceRules.FieldRules;
+using FieldTier = Slice.Game.SliceRules.FieldTier;
+
+namespace Slice.Tests;
+
+/// <summary>
+/// Force fields (design section 12), on a fresh random world, through the game's own keys where a
+/// player's hands would do it. A room on a base with an opening leaks; a force field component in
+/// hand is pressed on the opening's frame and dragged: red while it can't go (too small, its far
+/// corner touching nothing), blue when it can; released, it spans the opening with an L-shaped
+/// emitter in each corner and uses one component. It holds the air, draws tiles x the per-tile rate,
+/// lets the sleeper walk through and stops shots. Plated emitters take less from a hit. Knocked to
+/// zero it vanishes with its emitters whole and grows back after its tier's delay; an emitter shot
+/// away keeps it down until one is put back. An open outer door holds the air while the room is
+/// powered; power off, neither field holds. Taking an emitter down takes the field down, the
+/// component coming back.
+///
+/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ForceFieldTest.tscn
+/// </summary>
+public partial class ForceFieldTest : Node
+{
+    Game.Game _game;
+    Driver _drive;
+    IEnumerator<int> _run;
+    int _failures, _passes;
+    readonly Stopwatch _clock = Stopwatch.StartNew();
+
+    public override void _Ready()
+    {
+        ProcessPhysicsPriority = 100;
+        _run = Scenario().GetEnumerator();
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        bool more;
+        try { more = _run.MoveNext(); }
+        catch (Exception e)
+        {
+            Check(false, $"scenario threw: {e}");
+            more = false;
+        }
+        if (more) return;
+        GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
+        SetPhysicsProcess(false);
+        Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+    }
+
+    void Check(bool ok, string what)
+    {
+        if (ok) _passes++;
+        else _failures++;
+        GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
+    }
+
+    IEnumerable<int> Scenario()
+    {
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        AddChild(_game);
+        _drive = new Driver(_game);
+        var play = new Playthrough(_game);
+        foreach (int x in _drive.UntilPlaying()) yield return x;
+        _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Wildlife.Frozen = true;
+        foreach (int x in play.MakeTool()) yield return x;
+
+        FieldRules rules = _game.Zone.Data.Rules.ForceFields;
+        Tables(rules);
+
+        FieldRig rig = FieldRig.Build(_game, play.FlatSpot(_game.Start, 30f, span: 12f));
+        Vessel v = rig.Room;
+        Structure s = v.Structure;
+        var pack = _game.Pack;
+        var builder = _game.Builder;
+        Controls c = _game.Controls;
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Check(v.Powered && !rig.Sealed(), $"the room, powered by its generator, leaks through its 4 x 3 opening ({v.Rooms.Sealed.Count()} sealed rooms)");
+
+        // ---- Placing by dragging --------------------------------------------------------------
+        const string T1 = "force-field-t1";
+        pack.Add(T1, 2);
+        int slot = Enumerable.Range(0, PlayerInventory.ToolbarSlots).FirstOrDefault(i => pack.Grid[i].Item == T1, -1);
+        if (slot < 0)
+        {
+            slot = 2;
+            foreach (int x in play.ToToolbar(T1, slot)) yield return x;
+            foreach (int x in play.CloseMenu()) yield return x;
+        }
+        foreach (int x in play.Select(slot)) yield return x;
+        Check(pack.Hand == HandKind.Device && pack.HandItem == T1, $"a force field component in hand ({pack.Hand}, {pack.HandItem})");
+        StandOutside(rig);
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Vector3 frame = rig.World(1.5f, 1f, 0f); // the opening's frame, its inside face at the lower left corner
+        foreach (int x in _drive.LookAt(frame, 8)) yield return x;
+        Check(builder.HasTarget && builder.TargetVessel == v && builder.TargetCell == new Int3(1, 1, 0) && builder.PlaceCell == FieldRig.OpeningMin,
+            $"aimed at the frame's inside face: block {builder.TargetCell}, the first corner {builder.PlaceCell} (\"{builder.Verdict}\")");
+        c.PrimaryPressed = c.Primary = true;
+        _drive.Face(frame);
+        yield return 0;
+        Check(builder.Drawing && !builder.DrawnCanGo && builder.Verdict.Contains("AT LEAST"), $"pressed: one cell, red: \"{builder.Verdict}\"");
+        IEnumerable<int> DragTo(Vector3 to)
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                c.Primary = true;
+                _drive.Face(to);
+                yield return 0;
+            }
+        }
+        foreach (int x in DragTo(rig.World(4f, 2f, 0f))) yield return x;
+        Check(builder.Drawing && !builder.DrawnCanGo && builder.Verdict.Contains("FAR CORNER"),
+            $"dragged to the opening's middle, the far corner touches no block: red, \"{builder.Verdict}\"");
+        foreach (int x in DragTo(rig.World(5f, 3f, 0f))) yield return x;
+        Check(builder.Drawing && builder.DrawnCanGo && builder.Verdict.Contains("4 × 3") && builder.Verdict.Contains("0.12 MW"),
+            $"dragged to the frame's far corner: blue, \"{builder.Verdict}\"");
+        int had = pack[T1];
+        c.Primary = false;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        ForceField f = s.Fields.SingleOrDefault();
+        Check(f != null && f.Min == FieldRig.OpeningMin && f.Max == FieldRig.OpeningMax && f.Axis == 2 && f.Tiles == 12 && pack[T1] == had - 1 && !builder.Drawing,
+            $"released: one field across the opening, {f?.Width} x {f?.Height} = {f?.Tiles} tiles, one component used ({had} to {pack[T1]})");
+        if (f == null) yield break;
+        BlockType emitter = ForceFields.Emitter(s.Catalogue);
+        bool Whole(int i) => s.TryGet(f.Corner(i), out Block b) && s.TypeOf(b).IsFieldEmitter && b.Rot == f.CornerRot(i) && b.Hp >= s.MaxHp(b) - 1e-3f;
+        Check(Enumerable.Range(0, 4).All(Whole) && f.CornerRot(0) != f.CornerRot(2),
+            $"an L-shaped {emitter.Name} in each corner, each turned to run along its two edges ({string.Join(", ", Enumerable.Range(0, 4).Select(i => $"{f.Corner(i)} {Orientations.Name(f.CornerRot(i))}"))})");
+        Check(new ForceField(new Int3(3, 2, 0), new Int3(5, 3, 0), 2, T1).Check(s, new Int3(5, 3, 0), rules.MinSide, rules.MaxSide) == FieldError.Occupied,
+            "another field over it can't go: occupied");
+
+        // ---- Air and power --------------------------------------------------------------------
+        foreach (int x in _drive.Wait(3)) yield return x;
+        FieldTier tier = rules.TierOf(T1);
+        double draw = _game.Fields.Draw(v);
+        Check(f.Holding && f.Strength == tier.Strength && rig.Sealed(), $"it holds at its tier's full {f.Strength:F0} and the room is sealed ({v.Rooms.Sealed.Count()} sealed)");
+        Check(Math.Abs(draw - f.Tiles * rules.DrawPerTile) < 1e-9, $"it draws its tiles x the per-tile rate: {f.Tiles} x {rules.DrawPerTile} = {draw:0.###} MW");
+
+        // ---- Plating an emitter hardens it ---------------------------------------------------
+        foreach (int x in play.Tool(ToolMode.Plate)) yield return x;
+        pack.Add("iron-plate", 10);
+        BlockType iron = s.Catalogue.Type("iron-plated");
+        for (int i = 0; i < builder.Platings.Count && builder.Plating != iron; i++) { c.Wheel = 1; yield return 0; }
+        Vector3 hub = rig.World(1.67f, 0.67f, -0.27f); // corner 0's hub, from out in front
+        foreach (int x in _drive.LookAt(hub, 8)) yield return x;
+        string said = builder.Verdict;
+        int plates = pack["iron-plate"];
+        foreach (int x in _drive.Click()) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Block plated = s.Get(f.Corner(0)), bare = s.Get(f.Corner(1));
+        Check(s.TypeOf(plated).IsFieldEmitter && s.TypeOf(plated).IsPlated && s.TypeOf(plated).Plate == "iron-plate" && pack["iron-plate"] == plates - s.TypeOf(plated).Plates && f.Holding,
+            $"the plating gun on an emitter: {s.TypeOf(plated).Name}, for {plates - pack["iron-plate"]} iron plates; the line said \"{said}\"");
+        float Lost(int corner)
+        {
+            Int3 at = f.Corner(corner);
+            float before = s.Get(at).Hp;
+            v.Hits.Shot(at, v.ToWorld(StructureBridge.CellCenter(s, at)).ToNumerics(), N.Vector3.UnitZ, 80f, DamageType.Kinetic);
+            v.Hits.Flush();
+            return before - s.Get(at).Hp;
+        }
+        float lostPlated = Lost(0), lostBare = Lost(1);
+        Check(lostPlated < lostBare && s.StatsOf(plated).MaxHp > s.StatsOf(bare).MaxHp && Enumerable.Range(0, 4).All(i => s.TryGet(f.Corner(i), out Block e) && s.TypeOf(e).IsFieldEmitter) && f.Holding,
+            $"plated, it takes less from the same hit ({lostPlated:F0} of {s.StatsOf(plated).MaxHp:F0} against {lostBare:F0} of {s.StatsOf(bare).MaxHp:F0}); a worn emitter leaves the field up");
+        Building.Repair(s, f.Corner(0));
+        Building.Repair(s, f.Corner(1));
+        v.ApplyEdits();
+
+        // ---- People and vessels pass through --------------------------------------------------
+        Vector3 eye = _game.Survivor.WorldEye(), through = rig.World(3.5f, 2f, 0f), dir = (through - eye).Normalized();
+        bool hitAny = WorldRay.Cast(_game.Zone, null, eye, dir, 30f, Layers.World | Layers.Hull | Layers.Props | Layers.Flora | Layers.Player, out LookHit look);
+        Check(hitAny && look.Distance > eye.DistanceTo(through) + 2f && look.Cell.Z == 5,
+            $"nothing in it collides: a ray on every body's layers goes through it to the back wall ({look.Distance:F1} m, block {look.Cell}, the field at {eye.DistanceTo(through):F1} m)");
+        foreach (int x in play.Select(slot)) yield return x;
+        foreach (int x in _drive.WalkTo(rig.World(3.5f, 0.6f, 2.5f), 0.6f, 40f)) yield return x;
+        N.Vector3 feet = v.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()) / s.Grid.CellSize;
+        Check(feet.Z > 1f && f.Holding, $"the sleeper walks in through it (feet at cell {feet.X:F1} {feet.Y:F1} {feet.Z:F1}), the field still up");
+        _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Suit suit = _game.Suit;
+        Check(suit.InSealedRoom && suit.Room == RoomKind.Sealed, $"inside, the suit reads a sealed, powered room ({suit.Room})");
+
+        // ---- Shots stop on it ------------------------------------------------------------------
+        Vector3 outward = rig.World(3.5f, 2f, -4f);
+        bool swept = _game.Arms.Sweep(_game.Survivor.WorldEye().ToNumerics(), outward.ToNumerics(), null, 0, 0f, out ShotHit shot);
+        Check(swept && shot.Kind == HitKind.Field && shot.Thing is FieldHit fh && fh.Field == f, $"a shot's sweep out through the opening meets the field ({shot.Kind} at {shot.Distance:F1} m)");
+        float strength = f.Strength;
+        int hits = ForceFields.Hits;
+        foreach (int x in play.ShootAt(() => rig.World(3.5f, 2f, 0f))) yield return x;
+        float bolt = _game.Zone.Data.Rules.Tool.ShotDamage;
+        Check(ForceFields.Hits == hits + 1 && Math.Abs(strength - f.Strength - bolt) < 0.01f && f.Holding,
+            $"a survival tool bolt hits it: {strength:F0} to {f.Strength:F0} ({bolt:F0}), still up");
+
+        // ---- Knocked down, it grows back --------------------------------------------------------
+        _game.Fields.TimeScale = 10f; // STAGING: the waits at ten times play speed
+        ForceFields.Hit(v, f, f.Strength + 100f);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(!f.Holding && f.Strength == 0f && !rig.Sealed() && Enumerable.Range(0, 4).All(Whole) && s.Fields.Contains(f),
+            $"knocked to zero it fizzles: gone, the room leaking, its four emitters whole (wait {f.Wait:F1} s of {tier.RegrowDelay})");
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(!suit.InSealedRoom && suit.Room == RoomKind.None, $"the suit inside feels it at once ({suit.Room})");
+        IEnumerable<int> PlaySeconds(float seconds) => _drive.Wait((int)(seconds / _game.Fields.TimeScale * Engine.PhysicsTicksPerSecond));
+        foreach (int x in PlaySeconds(tier.RegrowDelay * 0.8f)) yield return x;
+        Check(!f.Holding && f.Strength == 0f, $"it stays down through its {tier.RegrowDelay:F0} s wait ({f.Wait:F1} s left)");
+        foreach (int x in PlaySeconds(tier.RegrowDelay * 0.2f + tier.RegrowSeconds * 0.5f)) yield return x;
+        float half = f.Strength / tier.Strength;
+        Check(f.Holding && half > 0.3f && half < 0.75f && rig.Sealed(), $"then it quietly grows back, holding the air again: {half:P0} of its cap half way through its {tier.RegrowSeconds:F0} s");
+        foreach (int x in PlaySeconds(tier.RegrowSeconds * 0.6f)) yield return x;
+        Check(f.Strength == tier.Strength && f.Holding, $"and back to its cap, {f.Strength:F0}, no more");
+
+        // ---- An emitter shot away -------------------------------------------------------------
+        Int3 lost = f.Corner(2);
+        v.Hits.Shot(lost, v.ToWorld(StructureBridge.CellCenter(s, lost)).ToNumerics(), N.Vector3.UnitZ, 1e6f, DamageType.Explosive);
+        v.Hits.Flush();
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(!s.Has(lost) && !f.Holding && s.Fields.Contains(f) && !rig.Sealed(), "an emitter destroyed takes the field down");
+        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 5f)) yield return x;
+        Check(!f.Holding && f.Strength == 0f, "and it stays down while the emitter is missing, however long");
+        s.Set(lost, Building.Make(s, emitter)); // put back, turned any old way
+        v.ApplyEdits();
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(Whole(2) && !f.Holding, $"one put back is turned to its corner ({Orientations.Name(s.Get(lost).Rot)}); the field waits its delay");
+        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 1f)) yield return x;
+        Check(f.Holding && f.Strength == tier.Strength && rig.Sealed(), "then grows back whole: repaired");
+        _game.Fields.TimeScale = 1f;
+
+        // ---- The door's own field --------------------------------------------------------------
+        Func<Vector3> was = _game.Doors.Feet;
+        Vector3 inDoor = rig.World(FieldRig.Door.X, FieldRig.Door.Y, FieldRig.Door.Z) - Vector3.Up * 0.9f;
+        _game.Doors.Feet = () => inDoor; // STAGING: held open as if someone stood in it
+        _game.Doors.Use(v, FieldRig.Door);
+        foreach (int x in _drive.Wait(40)) yield return x;
+        double withDoor = _game.Fields.Draw(v);
+        Check(BlockDoors.IsOpen(v, FieldRig.Door) && v.Rooms.FieldDoors.Contains(FieldRig.Door) && rig.Sealed() && suit.InSealedRoom && _game.Fields.DoorsShown == 1,
+            $"the outer door open while powered: its own field holds the air (sealed {rig.Sealed()}, suit {suit.Room}, drawn {_game.Fields.DoorsShown})");
+        Check(Math.Abs(withDoor - draw - rules.DoorDraw) < 1e-9 && rules.DoorDraw < rules.DrawPerTile, $"and costs very little: {rules.DoorDraw} MW ({withDoor:0.####} MW with the field)");
+        v.PowerOn = false;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Check(!f.Holding && !s.DoorFields && v.Rooms.FieldDoors.Count == 0 && !rig.Sealed() && _game.Fields.Draw(v) == 0 && _game.Fields.DoorsShown == 0,
+            "power off: neither field holds, the room leaks, nothing is drawn");
+        v.PowerOn = true;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Check(f.Holding && f.Strength == tier.Strength && rig.Sealed(), "power back: both hold again at once");
+        _game.Doors.Feet = was;
+        for (int i = 0; i < 300 && BlockDoors.IsOpen(v, FieldRig.Door); i++) yield return 0;
+
+        // ---- Taken down whole ---------------------------------------------------------------
+        foreach (int x in play.Tool(ToolMode.Deconstruct)) yield return x;
+        _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
+        foreach (int x in _drive.Wait(10)) yield return x;
+        int components = pack[T1], ironBack = pack["iron-plate"];
+        foreach (int x in _drive.LookAt(rig.World(1.67f, 0.67f, 0.27f), 8)) yield return x;
+        said = builder.Verdict;
+        foreach (int x in _drive.Click()) yield return x;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Check(s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && pack[T1] == components + 1 && pack["iron-plate"] > ironBack && !rig.Sealed(),
+            $"deconstructing an emitter takes the field down whole: its emitters gone, the component back ({components} to {pack[T1]}), the plating's iron back; the line said \"{said}\"");
+    }
+
+    void StandOutside(FieldRig rig)
+    {
+        Vector3 at = rig.World(4f, 0f, -6f);
+        _game.Survivor.PlaceOutside((_game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * 0.1f).ToNumerics());
+    }
+
+    /// <summary>The tiers and the draw, from data: linear in tiles, 4 tiles cheap against a first generator.</summary>
+    void Tables(FieldRules rules)
+    {
+        var tiers = rules.Tiers.OrderBy(t => t.Key, StringComparer.Ordinal).ToList();
+        foreach (var (id, t) in tiers) GD.Print($"  {id}: strength {t.Strength}, regrows after {t.RegrowDelay} s over {t.RegrowSeconds} s");
+        Check(tiers.Count == 3 && tiers.Zip(tiers.Skip(1)).All(p => p.Second.Value.Strength > p.First.Value.Strength && p.Second.Value.RegrowDelay < p.First.Value.RegrowDelay),
+            "three tiers: each higher tier takes more before it fizzles and comes back sooner");
+        var t2 = new ForceField(Int3.Zero, new Int3(3, 3, 0), 2, "force-field-t2") { Strength = tiers[1].Value.Strength, Holding = true };
+        Check(!t2.Take(tiers[0].Value.Strength, 1f) && t2.Holding, $"a T2 field takes a T1's whole strength and stays up ({t2.Strength:F0} left)");
+        double generator = _game.Zone.Data.Catalogue.Type("generator-t1").Power;
+        foreach (var (w, h) in new[] { (2, 2), (6, 4), (30, 15) })
+        {
+            var f = new ForceField(Int3.Zero, new Int3(w - 1, h - 1, 0), 2, "force-field-t1") { Holding = true };
+            GD.Print($"  {w} x {h}: {f.Tiles} tiles, {f.Draw(rules.DrawPerTile):0.###} MW ({f.Draw(rules.DrawPerTile) / generator:P1} of a Generator T1's {generator:0.#} MW)");
+            Check(Math.Abs(f.Draw(rules.DrawPerTile) - f.Tiles * rules.DrawPerTile) < 1e-12 && (f.Tiles != 4 || f.Draw(rules.DrawPerTile) < generator * 0.02),
+                $"{w} x {h} draws tiles x rate{(f.Tiles == 4 ? ", under 2% of a first generator" : "")}");
+        }
+        var progress = _game.Progress;
+        Check(progress.Node("force-field-t1")?.Unlock.Parent == "core" && progress.Node("force-field-t2")?.Unlock.Parent == "force-field-t1"
+              && progress.Node("force-field-t3")?.Unlock.Parent == "force-field-t2" && tiers.All(t => progress.Node(t.Key)?.Tab == "structures"),
+            "the tiers are their own tech line off the core, T1 to T2 to T3, not shields'");
+    }
+}

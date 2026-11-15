@@ -138,6 +138,9 @@ public sealed partial class Vessel
     /// for its materials (every block refunds its bill).
     /// </summary>
     public bool IsRuin { get; set; }
+
+    /// <summary>One of the player's core structures: cored, the player's, not a wreck or the bunker.</summary>
+    public bool IsPlayers => !IsWreck && !IsRuin && Structure.Core != null && Structure.Owner == Building.DefaultOwner;
     /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). One switched to Base Mode in flight is anchored only once it has come to rest.</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;
@@ -203,6 +206,19 @@ public sealed partial class Vessel
 
     /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
     public bool Powered => PowerOn && HasGenerator;
+
+    RoomReport _rooms;
+    int _roomsVersion = -1;
+
+    /// <summary>Its rooms, force fields and door fields counted (building's flood fill), worked out again only when the structure has changed.</summary>
+    public RoomReport Rooms
+    {
+        get
+        {
+            if (_roomsVersion != Structure.Version) (_rooms, _roomsVersion) = (GalHack.Structures.Rooms.Detect(Structure), Structure.Version);
+            return _rooms;
+        }
+    }
 
     bool _hasGenerator, _hasForecast;
     int _generatorVersion = -1;
