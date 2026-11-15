@@ -894,6 +894,13 @@ public sealed partial class Town
                         return;
                     }
                     Person keeper = leash > 0f ? Minder(p) : null;
+                    if (leash > 0f && keeper == null)
+                    {
+                        // Nobody of those who mind them out: they keep to home till someone is.
+                        GoTo(p, p.Home);
+                        p.Wait = 1.5f + (float)_rng.NextDouble() * 2f;
+                        return;
+                    }
                     // (Where the one minding them is going, and where the others are going: a child heads for a spot, not a person.)
                     Vector3 watch = keeper != null ? At(keeper.Spot) : Vector3.Zero;
                     Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && !o.Away && (keeper != null ? At(o.Spot).DistanceSquaredTo(watch) < leash * leash : o.Pos.DistanceSquaredTo(p.Pos) < 400f)).OrderBy(_ => _rng.Next()).FirstOrDefault();
@@ -902,7 +909,8 @@ public sealed partial class Town
                         // Back to the one minding them; old enough, at their work beside them.
                         GoTo(p, keeper.Spot);
                         p.Working = Culture.Has("work") && p.Figure.Age >= 10f && keeper.Working;
-                        p.Wait = p.Working ? 8f + (float)_rng.NextDouble() * 8f : 1f + (float)_rng.NextDouble() * 2f;
+                        p.Speed = 2.4f + (float)_rng.NextDouble() * 0.8f;
+                        p.Wait = p.Working ? 8f + (float)_rng.NextDouble() * 8f : 0.6f + (float)_rng.NextDouble() * 1f;
                         return;
                     }
                     int dash = other != null && (keeper != null || _rng.NextDouble() < 0.6) ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
@@ -941,26 +949,37 @@ public sealed partial class Town
 
     /// <summary>
     /// Two talking stand at their culture's distance: close enough to touch on one world, two strides apart on
-    /// another. Whoever stands eases toward it (half each, or all of it against one sitting), never into a wall
-    /// or the furniture.
+    /// another. One of them takes a stand that far from the other (the one standing beside one sitting, else
+    /// either), the way they already are where there's room, else round the other till there is, else as far
+    /// as the room allows; never in a wall or the furniture, never across one.
     /// </summary>
     void ChatApart(Person p, Vector3 d, float dt)
     {
-        if (p.Sitting || p.Path != null && p.Step < p.Path.Count) return;
+        Person q = p.Partner;
+        if (p.Sitting || p.Path != null && p.Step < p.Path.Count || !q.Sitting && q.Partner == p && p.GetHashCode() < q.GetHashCode()) return;
+        // (Not while pressed, giving way or with you at their shoulder: nobody leans into you to keep their distance.)
+        if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f || (p.Pos - _you).LengthSquared() < 2.25f) return;
         d.Y = 0f;
-        float gap = d.Length(), want = Culture.Trait("chat", 1.1f), share = p.Partner.Sitting ? 1f : 0.5f;
+        float gap = d.Length(), want = Culture.Trait("chat", 1.1f), r = BodyRadius(p), h = Height(p);
         if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) return;
-        // (Two on the one point part along a line of their own, each its own way; a wall behind, they turn a little till there's room.)
-        Vector3 dir = gap > 0.05f ? d / gap : Vector3.Right * (p.GetHashCode() < p.Partner.GetHashCode() ? -1f : 1f);
-        float step = Math.Clamp((want - gap) * share, -0.7f * dt, 0.7f * dt);
-        foreach (float turn in Turns)
-        {
-            Vector3 to = p.Pos - dir.Rotated(Vector3.Up, turn) * step;
-            if (Open(to) && (_parts == null || _parts.Gap(to, BodyRadius(p), Height(p)) >= 0f)) { p.Pos = to; return; }
-        }
+        Vector3 away = gap > 0.05f ? -d / gap : Vector3.Right;
+        bool Clear(Vector3 at) => Open(at) && (_parts == null || _parts.Gap(at, r, h) >= 0f);
+        foreach (float reach in new[] { want, MathF.Max(gap, 0.75f * want), MathF.Max(gap, 0.5f * want) })
+            foreach (float turn in Turns)
+            {
+                Vector3 stand = q.Pos + away.Rotated(Vector3.Up, turn) * reach;
+                stand.Y = p.Pos.Y;
+                if (!Clear(stand) || !Clear((stand + p.Pos) * 0.5f)) continue;
+                Vector3 to = p.Pos.MoveToward(stand, 0.7f * dt);
+                if (Clear(to)) p.Pos = to;
+                return;
+            }
+        // No stand clear round them: a step straight back, where there is one.
+        Vector3 back = p.Pos + away * Math.Clamp(want - gap, -0.7f * dt, 0.7f * dt);
+        if (Clear(back)) p.Pos = back;
     }
 
-    static readonly float[] Turns = { 0f, 0.8f, -0.8f, 1.6f, -1.6f };
+    static readonly float[] Turns = { 0f, 0.8f, -0.8f, 1.6f, -1.6f, 2.4f, -2.4f, MathF.PI };
 
     /// <summary>A guard in a wary or hostile place: watches you. (Hostile, they fight with what they carry: Town.Combat.)</summary>
     void Guard(Person p, Vector3 player, Mood mood, float dt)
@@ -1169,12 +1188,12 @@ public sealed partial class Town
             .OrderBy(o => o.Pos.DistanceSquaredTo(child.Pos)).FirstOrDefault();
     }
 
-    /// <summary>The child leading a child's pack: the town's children out and about, five to a pack, the first of each leading.</summary>
+    /// <summary>The child leading a child's pack: the town's children out and about, in packs of about five as even as they come, the first of each leading.</summary>
     Person PackLeader(Person child)
     {
         var kids = People.Where(o => !o.Dead && !o.Indoors && !o.Away && o.Figure?.Playful == true).ToList();
-        int i = kids.IndexOf(child);
-        return i < 0 ? null : kids[i - i % 5];
+        int i = kids.IndexOf(child), packs = (kids.Count + 4) / 5;
+        return i < 0 ? null : kids[i % packs];
     }
 
     /// <summary>The region at a world point: the map's temperature (as degrees) and humidity there.</summary>

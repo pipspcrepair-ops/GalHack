@@ -91,8 +91,12 @@ public sealed partial class Town
     }
 
     /// <summary>Once a tick, after everyone has moved: bodies apart, you stepped round, pushes answered.</summary>
+    /// <summary>Where you stood at the last parting, in the place's frame (far off where nobody is about: a rehearsal).</summary>
+    Vector3 _you = new(1e6f, 0f, 1e6f);
+
     void KeepApart(Vector3 player, float dt)
     {
+        _you = player;
         _space.Bodies.Clear();
         _bodies.Clear();
         foreach (Person p in People)

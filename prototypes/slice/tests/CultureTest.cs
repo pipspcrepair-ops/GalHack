@@ -67,11 +67,12 @@ public partial class CultureTest : Node
 
     ulong Seed() => (ulong)_rng.NextInt64();
 
+    /// <summary>A fresh settled world (a seed's own depth in the galaxy, so one seed is one world whatever is forced).</summary>
     WorldRoll Roll(ulong seed, string arch, WorldRoll.Given given = null)
     {
         WorldProfile profile = WorldProfile.Roll(seed, arch, false);
         if (!profile.Inhabited) profile = WorldProfile.Roll(seed ^ 0x5EED, arch, true);
-        return WorldRoll.Roll(_lib, seed, arch, profile, false, given, (float)_rng.NextDouble());
+        return WorldRoll.Roll(_lib, seed, arch, profile, false, given, (seed >> 20) % 1000 / 1000f);
     }
 
     List<WorldRoll> Worlds(int n)
@@ -143,9 +144,10 @@ public partial class CultureTest : Node
         float leadF = worlds.Count(w => w.Culture.Lead == "female") / (float)worlds.Count;
         Check(MathF.Abs(leadF - 0.5f) < 0.06f, $"side A is female on {Pct(leadF)} of worlds (half)");
         // The world's own leans show: warlords arm everyone more; machines that still run do the work.
+        // (Among worlds whose rule is off today's: where the world's leans show.)
         float Share(Func<WorldRoll, bool> where, LayerKind k, string id)
         {
-            var some = worlds.Where(where).ToList();
+            var some = worlds.Where(where).Where(w => w.Culture.Values.TryGetValue(k, out var v) && !v.Blank).ToList();
             return some.Count == 0 ? float.NaN : some.Count(w => w.Culture.Id(k) == id) / (float)some.Count;
         }
         float warlords = Share(w => w.Rolled.Any(l => l.Kind == LayerKind.Presence && l.Id is "warlords" or "gangs" or "militias" or "bandit_riders"), LayerKind.Reign, "warband");
@@ -311,8 +313,10 @@ public partial class CultureTest : Node
         float free = Spread("free"), uniform = Spread("uniform");
         Check(free >= 1.3f * uniform, $"dressed as they like, their colours spread {free:F3} apart on average against a uniform's {uniform:F3}");
         // The decency piece on every grown-up it's for, outdoors.
+        // (On clean air: a hazard hood or a suit's helmet wins the head.)
         var hood = Forced("Temperate", (LayerKind.Cover, "hood"));
-        var grown = People(hood.Gen, 200).Where(p => p.Stage != LifeStage.Child && hood.World.Culture.Covers(p.Sex, false)).ToList();
+        hood.World.Mutagen = hood.World.Radiation = 0f;
+        var grown = People(new PeopleGenerator(_data.People, hood.World), 200).Where(p => p.Stage != LifeStage.Child && hood.World.Culture.Covers(p.Sex, false)).ToList();
         float hooded = grown.Count(p => p.Wear.Contains("hood")) / (float)Math.Max(1, grown.Count);
         Check(grown.Count > 40 && hooded >= 0.97f, $"a hood decency asks for: on {Pct(hooded)} of the {grown.Count} grown-ups it's for");
         // The air wins: suited in vacuum whatever the culture, which shows as the suit's colour.
@@ -338,7 +342,8 @@ public partial class CultureTest : Node
             Culture cu = f.World.Culture;
             var crowd = People(f.Gen, 600).Where(p => p.Stage != LifeStage.Child).ToList();
             var fighters = crowd.Where(p => p.Role is PersonRole.Guard).ToList();
-            var others = crowd.Where(p => !PeopleGenerator.Fighter(p.Role, Occupancy.Friendly)).ToList();
+            // (Not the jobs that carry a weapon anyway.)
+            var others = crowd.Where(p => !PeopleGenerator.Fighter(p.Role, Occupancy.Friendly) && !Weapons.Armed(_data.People.Roles.GetValueOrDefault(p.Role.ToString())?.Prop ?? "")).ToList();
             float fight = fighters.Count(Armed) / (float)fighters.Count;
             var a = others.Where(p => cu.A(p.Sex)).ToList();
             var b = others.Where(p => !cu.A(p.Sex)).ToList();
@@ -454,12 +459,16 @@ public partial class CultureTest : Node
                             if (key.Item1 == p && !Walking(p) && !Walking(q) && !p.Sitting && !q.Sitting && (int)(at * 10f) % 10 == 0)
                                 chat.Add(new Vector2(p.Pos.X - q.Pos.X, p.Pos.Z - q.Pos.Z).Length());
                         }
+                        // (Children out while somebody who could mind them, or another child, is out too.)
                         if (p.Figure.Playful && (leash > 0f || packs) && (int)(at * 10f) % 10 == 0)
                         {
-                            kids++;
-                            var near = town.People.Where(o => o != p && Out(o) && (packs ? o.Figure.Stage == LifeStage.Child : o.Figure.Stage != LifeStage.Child && (side == 0 || o.Figure.Sex == cu.SexOf(side == 1))))
+                            var near = town.People.Where(o => o != p && Out(o) && (packs ? o.Figure.Playful : o.Figure.Stage != LifeStage.Child && (side == 0 || o.Figure.Sex == cu.SexOf(side == 1))))
                                 .OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault();
-                            if (near != null && near.Pos.DistanceTo(p.Pos) <= (packs ? 8f : leash + 1.5f)) kept++;
+                            if (near != null)
+                            {
+                                kids++;
+                                if (near.Pos.DistanceTo(p.Pos) <= (packs ? 8f : leash + 1.5f)) kept++;
+                            }
                         }
                     });
             }
