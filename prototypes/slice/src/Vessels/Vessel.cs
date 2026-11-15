@@ -93,25 +93,59 @@ public sealed partial class Vessel
         {
             _lightsOn = value;
             SetDecoLights(value);
-            bool changed = false, others = Structure.DirtyChunks.Count > 0;
-            foreach (var (cell, block) in Structure.Blocks().ToList())
-            {
-                Block b = block;
-                if (!Structure.TypeOf(b).IsLight || b.Off == !value) continue;
-                b.Flags ^= BlockFlags.Off;
-                Structure.Set(cell, b);
-                changed = true;
-            }
-            if (!changed) return;
-            if (others) ApplyEdits();
-            else
-            {
-                // Only lamps switched: nothing collides or weighs differently, so only their chunks are redrawn, within the frame's budget.
-                View.Queue(Structure.DirtyChunks);
-                Structure.DirtyChunks.Clear();
-            }
+            SwitchBlocks(t => t.IsLight, value);
         }
     }
+
+    /// <summary>Switches every block of a kind with a switch of its own (lamps, turrets) on or off: its Off flag, which its glow, its light, its parts and its draw follow.</summary>
+    public void SwitchBlocks(Func<BlockType, bool> which, bool on)
+    {
+        bool changed = false, others = Structure.DirtyChunks.Count > 0, lampsOnly = true;
+        foreach (var (cell, block) in Structure.Blocks().ToList())
+        {
+            Block b = block;
+            BlockType t = Structure.TypeOf(b);
+            if (!t.Switches || !which(t) || b.Off == !on) continue;
+            b.Flags ^= BlockFlags.Off;
+            Structure.Set(cell, b);
+            changed = true;
+            lampsOnly &= t.IsLight;
+        }
+        if (!changed) return;
+        if (others || !lampsOnly) ApplyEdits();
+        else
+        {
+            // Only lamps switched: nothing collides or weighs differently, so only their chunks are redrawn, within the frame's budget.
+            View.Queue(Structure.DirtyChunks);
+            Structure.DirtyChunks.Clear();
+        }
+    }
+
+    /// <summary>Switches its core's artificial gravity (it also needs power to work: an outage drops it).</summary>
+    public void SetGravity(bool on)
+    {
+        Structure.GravityOn = on;
+        if (Body.Core == null) return;
+        Body.Core.On = on && Powered;
+        Cabin.SetGravity(Body.Core);
+    }
+
+    /// <summary>Is one of its systems switched on (the toolbar's toggles by name: "life-support", "fabricators", "shields")? The power model reads these.</summary>
+    public bool SystemOn(string system) => !Structure.SystemsOff.Contains(system);
+
+    public void SetSystem(string system, bool on)
+    {
+        if (on) Structure.SystemsOff.Remove(system);
+        else Structure.SystemsOff.Add(system);
+    }
+
+    /// <summary>Its life support keeps its sealed rooms' air and warmth: powered and switched on. Off, they drift as they would unpowered.</summary>
+    public bool LifeSupport => Powered && SystemOn(StructureBar.LifeSupport);
+
+    StructureBar _bar;
+
+    /// <summary>Its toolbar in a command chair: the functions its blocks bring, their arrangement, its guns.</summary>
+    public StructureBar Bar => _bar ??= new StructureBar(this);
 
     /// <summary>Gives one light block (or, with no cell, every light block) new colour and animation settings; <paramref name="change"/> maps what a light has now to what it should have.</summary>
     public int StyleLights(Int3? cell, System.Func<LightSettings, LightSettings> change)
@@ -186,6 +220,7 @@ public sealed partial class Vessel
         }
         Storage = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
         StorageGrid = new ItemGrid(Storage, 8, 6, growable: true);
+        Power = new StructurePower(zone.Data.Power, structure, Storage);
         Roles.PilotChanged += FollowPilot;
         RefreshSeat();
         RefreshMachines();
@@ -211,8 +246,8 @@ public sealed partial class Vessel
         }
     }
 
-    /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
-    public bool Powered => PowerOn && HasGenerator;
+    bool _hasForecast;
+    int _forecastVersion = -1;
 
     RoomReport _rooms;
     int _roomsVersion = -1;
@@ -227,32 +262,25 @@ public sealed partial class Vessel
         }
     }
 
-    bool _hasGenerator, _hasForecast;
-    int _generatorVersion = -1;
-
-    /// <summary>Whether a working weather forecast block is on it: one aboard and its power on with a generator.</summary>
-    public bool Forecasting => Powered && _hasForecast;
-
-    /// <summary>A generator aboard, looked for again only when the structure has changed (its view asks a few times a second).</summary>
-    bool HasGenerator
+    /// <summary>Whether a working weather forecast block is on it: one aboard, and power to it.</summary>
+    public bool Forecasting
     {
         get
         {
-            if (_generatorVersion != Structure.Version)
+            if (_forecastVersion != Structure.Version)
             {
-                _generatorVersion = Structure.Version;
-                _hasGenerator = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsGenerator);
+                _forecastVersion = Structure.Version;
                 _hasForecast = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsForecast);
             }
-            return _hasGenerator;
+            return Powered && _hasForecast;
         }
     }
 
-    /// <summary>Runs its machines for a tick (when powered; the time scale is the tests' marked speed-up).</summary>
+    /// <summary>Runs its machines for a tick at the share of power they get, when its fabricators are switched on (the time scale is the tests' marked speed-up): short of power they slow, without any they stop.</summary>
     public void TickMachines(double dt)
     {
-        if (!Powered) return;
-        foreach (Constructor c in Machines.Values) c.Tick(dt);
+        if (!Powered || !SystemOn(StructureBar.Fabricators)) return; // switched off, their jobs wait where they stand
+        foreach (Constructor c in Machines.Values) c.Tick(dt * Power.Supply);
     }
 
     // ---- Spawning ---------------------------------------------------------------------------
@@ -344,9 +372,9 @@ public sealed partial class Vessel
     static MassProperties MassOf(Structure s) =>
         s.Count > 0 ? StructureBridge.Mass(s) : new MassProperties(100f, N.Vector3.Zero);
 
-    void Furnish(CollisionObject3D owner, bool drawLater = false)
+    void Furnish(CollisionObject3D owner, bool drawLater = false, List<ChunkColliders> made = null)
     {
-        List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
+        List<ChunkColliders> colliders = made ?? StructureBridge.Colliders(Structure);
         // A loose body (a wreck, cut off and free) collides in every part, fittings too: a lamp cut off a wall must lie on the ground.
         List<ChunkColliders> hull = Body.Motion == GalHack.Physics.Motion.Free ? StructureBridge.Colliders(Structure, null, fittings: true) : colliders;
         if (drawLater) foreach (ChunkColliders c in hull) _pendingShapes.Enqueue((HullShapes, c));

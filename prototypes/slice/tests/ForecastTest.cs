@@ -59,7 +59,8 @@ public partial class ForecastTest : Node
 
     IEnumerable<int> Scenario()
     {
-        var game = new Game.Game { Interactive = false, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs()) ?? WorldChoice.Tested, SkipIntro = true };
+        // TEST SHORTCUT: generators burn no fuel (the test ship has no storage for any); its power switch still counts.
+        var game = new Game.Game { FreePower = true, Interactive = false, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs()) ?? WorldChoice.Tested, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
         var play = new Playthrough(game);

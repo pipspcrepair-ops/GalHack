@@ -20,9 +20,15 @@ public sealed class DecoPlanner
     readonly DecoCatalogue _cat;
     DecoRoom _room;
     DecoPlan _plan;
-    DecoRaster _raster;
+    DecoRaster _raster, _walk;
+    /// <summary>Each two doors' walk line through the bare room, raster steps for the walk line's walker (-1: none).</summary>
+    int[,] _routes;
+    /// <summary>The one wall a narrow room is lined along (null: a room wide enough to furnish all round).</summary>
+    DecoWall? _lining;
     DecoRng _rng;
     List<DecoRect> _reserved;
+    /// <summary>How many of <see cref="_reserved"/> are the doorways' aprons and what the floor can't take (the rest: the walkways).</summary>
+    int _aprons;
     int _groups;
     readonly Dictionary<string, DecoPiece> _chosen = new();
 
@@ -34,6 +40,9 @@ public sealed class DecoPlanner
     }
 
     public const float Cell = 0.25f;
+
+    /// <summary>The walk line's walker, raster cells across (0.75 m), and how much longer furniture may make a line (raster steps: a metre).</summary>
+    const int Walker = 3, Slack = 4;
 
     /// <summary>One piece of a template use, in the template's own frame (its back against +z when on a wall).</summary>
     sealed class Member
@@ -47,14 +56,15 @@ public sealed class DecoPlanner
 
     /// <summary>
     /// How many of one piece a room may hold: seats in rows and round tables a good few, things set on a
-    /// surface a few more, anything else four. A room is never one piece over and over.
+    /// surface a few more, anything else four. A room is never one piece over and over; a big one holds as many
+    /// again for every 40 m² of it (a ward's beds, a hall's tables).
     /// </summary>
-    public static int CapOf(DecoPiece p) =>
-        p.Roles.Any(r => r is "seat-row" or "pew" or "bench-seat" or "airline-seat" or "seat" or "chair" or "stool") ? 16 : p.Mount == DecoMount.Top ? 5 : 3;
+    public static int CapOf(DecoPiece p, float area = 0f) =>
+        (p.Roles.Any(r => r is "seat-row" or "pew" or "bench-seat" or "airline-seat" or "seat" or "chair" or "stool") ? 16 : p.Mount == DecoMount.Top ? 5 : 3) * Math.Max(1, (int)(area / 40f));
 
     readonly Dictionary<string, int> _count = new();
 
-    bool Full(DecoPiece p) => _count.GetValueOrDefault(p.Id) >= CapOf(p);
+    bool Full(DecoPiece p) => _count.GetValueOrDefault(p.Id) >= CapOf(p, _room.Width * _room.Depth);
 
     /// <summary>Forgets a template's chosen pieces, so its next use picks afresh (a room isn't the same thing over and over).</summary>
     void Repick(DecoTemplate t)
@@ -74,28 +84,44 @@ public sealed class DecoPlanner
         string named = room.Recipe ?? room.RoomId;
         mix ??= (named != null && _arr.Recipes.TryGetValue(named, out var recipe)) ? recipe : _arr.Sets.TryGetValue(room.Set, out var sp) ? sp : new DecoSetPlan { Set = room.Set };
         Reserve();
-        // A narrow room is a way through, kept to a few things by its walls; one whose purpose names what it is arranged
-        // round (a washroom of 2 by 2 m, a hall) still gets it.
-        string[] focus = room.RoomId != null && _arr.Focus.TryGetValue(room.RoomId, out string[] f) ? f : null;
-        bool corridor = MathF.Min(room.Width, room.Depth) < 2.6f && focus == null;
+        // What its floor can't take stands in the way like furniture, so nothing set down shuts the only way round it (unless
+        // it splits the room already: then the planner can't tell a way through, and only keeps clear of it).
+        foreach (DecoRect r in room.Blocked) _raster.Add(r, 1);
+        if (room.Blocked.Count > 0 && !_raster.DoorsJoined(room)) foreach (DecoRect r in room.Blocked) _raster.Add(r, -1);
+        // The walk lines between its doors as they run through the bare room: nothing set down may lengthen one by more than a metre.
+        _walk = new DecoRaster(room.Width, room.Depth, Cell);
+        foreach (DecoRect r in room.Blocked) _walk.Add(r, 1);
+        _routes = Routes();
+        // A room under 2.5 m across is lined along one wall (DecoRules.Lining), never down its middle. One with nothing named to
+        // be arranged round, or whose focal piece won't stand there with the walk past it, is a way through or a store: a few
+        // things along that wall.
+        string[] focus = _arr.FocusFor(room.RoomId, room.Recipe);
+        _lining = DecoRules.Lining(room);
+        bool corridor = _lining != null && focus == null;
         Supports(mix.Fill);
 
         // Pews and seat rows take the whole room, facing their focus.
-        if (!corridor && mix.Island.Any(t => _arr.Templates[t.Template].Kind == "rows"))
+        if (!corridor && _lining == null && mix.Island.Any(t => _arr.Templates[t.Template].Kind == "rows"))
             Rows(_arr.Templates[mix.Island.First(t => _arr.Templates[t.Template].Kind == "rows").Template]);
 
         // One focal point a room: once it stands, the other ways of making the same one (a single bed where a double went) are
-        // off the walls; the rest of what the room is arranged round (a bathroom's basin and WC beside its bath) still come.
-        if (!corridor && focus != null && Focal(mix.Wall, focus) is string first)
+        // off the walls and the floor; the rest of what the room is arranged round (a bathroom's basin and WC beside its bath) still
+        // come, and so does more of what repeats (a ward's beds, a mess hall's tables, an office's desks).
+        string first = corridor || focus == null ? null : Focal(mix.Wall.Concat(mix.Island).ToList(), focus);
+        corridor |= _lining != null && first == null;
+        if (first != null)
         {
             var made = FocusOf(_arr.Templates[first], focus);
-            mix = new DecoSetPlan { Set = mix.Set, Wall = mix.Wall.Select(t => FocusOf(_arr.Templates[t.Template], focus).Overlaps(made) ? (t.Template, 0f) : t).ToList(), Island = mix.Island, Fill = mix.Fill, Light = mix.Light };
+            List<(string, float)> Off(List<(string Template, float Weight)> list) =>
+                list.Select(t => _arr.Templates[t.Template].Max == 1 && FocusOf(_arr.Templates[t.Template], focus).Overlaps(made) ? (t.Template, 0f) : t).ToList();
+            mix = new DecoSetPlan { Set = mix.Set, Wall = Off(mix.Wall), Island = Off(mix.Island), Zone = mix.Zone, Divider = mix.Divider, Fill = mix.Fill, Light = mix.Light };
         }
+        // A big room's second zone before the rest fills it.
+        if (!corridor && _lining == null) Zones(mix);
         if (!corridor) Walls(mix.Wall);
-        if (!corridor) Islands(mix.Island.Where(t => _arr.Templates[t.Template].Kind != "rows").ToList());
+        if (!corridor && _lining == null) Islands(mix.Island.Where(t => _arr.Templates[t.Template].Kind != "rows").ToList());
         Fill(mix.Fill, corridor ? 0.25f : 0.45f);
         Ceiling(mix.Light);
-        Access();
         return _plan;
     }
 
@@ -131,10 +157,11 @@ public sealed class DecoPlanner
     // ---- templates in their own frame ------------------------------------------------------------
 
     /// <param name="length">A row's or line's count of anchors, or -1 for a roll of its count.</param>
-    List<Member> Instance(DecoTemplate t, int length = -1)
+    /// <param name="anchor">What its anchor must be, if anything (what the room is arranged round: a shelf, not a cabinet, in a store).</param>
+    List<Member> Instance(DecoTemplate t, int length = -1, Func<DecoPiece, bool> anchor = null)
     {
         var m = new List<Member>();
-        DecoPiece a = Pick(t.Anchor, t.Id + ":anchor");
+        DecoPiece a = Pick(t.Anchor, t.Id + ":anchor", anchor);
         if (a == null) return null;
         m.Add(new Member { Piece = a, Role = a.Roles.First(t.Anchor.Contains) });
         switch (t.Kind)
@@ -153,6 +180,8 @@ public sealed class DecoPlanner
                     (new Vector2(1, 0), a.Depth, 90, a.Width / 2 + gap + c.Depth / 2),
                 };
                 int[] cap = sides.Select(s => s.len + 0.1f >= cw * 0.9f ? Math.Max(1, (int)((s.len + 0.15f) / (cw + 0.12f))) : 0).ToArray();
+                // Longer than every side (a sofa at a coffee table): one each side of its length, facing across it, none at its ends.
+                if (cap.Sum() == 0) cap = a.Width >= a.Depth ? new[] { 1, 1, 0, 0 } : new[] { 0, 0, 1, 1 };
                 int[] n = new int[4];
                 for (int placed = 0, guard = 0; placed < want && guard < 40; guard++)
                 {
@@ -234,6 +263,13 @@ public sealed class DecoPlanner
                     m.Add(new Member { Piece = end, At = new Vector2((count - 1) * step + a.Width / 2 + 0.1f + end.Width / 2, back - end.Depth / 2), Role = "end" });
                 }
                 if (m.Count == 0) return null; // (a line of none and no end: nothing)
+                // Back to back with its mirror: a bank of desks facing each other, a range of shelves open both sides.
+                if (t.Double)
+                {
+                    int n = m.Count;
+                    for (int i = 0; i < n; i++)
+                        m.Add(new Member { Piece = m[i].Piece, At = new Vector2(m[i].At.X, a.Depth - m[i].At.Y), Yaw = m[i].Yaw + 180, Y = m[i].Y, Support = m[i].Support >= 0 ? m[i].Support + n : -1, Role = m[i].Role });
+                }
                 // Centre the row on its middle.
                 float mid = (m.Min(x => x.At.X - x.Piece.Width / 2) + m.Max(x => x.At.X + x.Piece.Width / 2)) / 2;
                 foreach (Member x in m) x.At.X -= mid;
@@ -277,14 +313,18 @@ public sealed class DecoPlanner
 
     // ---- placing a template use ------------------------------------------------------------------
 
-    /// <summary>Places the members with the template's origin at (x, z) turned by yaw, if every piece fits and the doors stay joined.</summary>
-    bool TryPlace(List<Member> members, float x, float z, float yaw, string template)
+    /// <summary>
+    /// Places the members with the template's origin at (x, z) turned by yaw, if every piece fits, the doors stay joined and no
+    /// walk line between two doors grows more than a metre. <paramref name="loose"/>: across the walkway and the aprons kept for those
+    /// lines (never in a doorway), so long as the lines themselves hold: what a small room is arranged round, where nothing else fits.
+    /// </summary>
+    bool TryPlace(List<Member> members, float x, float z, float yaw, string template, bool loose = false, bool focal = false)
     {
         int group = _groups;
         int first = _plan.Placements.Count;
         // Never past a piece's cap in a room.
         foreach (var g in members.GroupBy(m => m.Piece))
-            if (_count.GetValueOrDefault(g.Key.Id) + g.Count() > CapOf(g.Key)) return false;
+            if (_count.GetValueOrDefault(g.Key.Id) + g.Count() > CapOf(g.Key, _room.Width * _room.Depth)) return false;
         var added = new List<DecoPlacement>();
         foreach (Member mem in members)
         {
@@ -301,16 +341,26 @@ public sealed class DecoPlanner
         {
             DecoRect r = DecoLayout.Footprint(_forge, pl);
             if (!DecoLayout.Inside(_room, r)) return false;
-            if (pl.Support < 0 && _reserved.Any(res => res.Overlaps(r.Shrink(0.01f))) && DecoLayout.Blocks(_forge, pl)) return false;
+            if (pl.Support < 0 && (loose ? _reserved.Skip(_room.Doors.Count).Take(_aprons - _room.Doors.Count) : _reserved).Any(res => res.Overlaps(r.Shrink(0.01f))) && DecoLayout.Blocks(_forge, pl)) return false;
             // Nothing lies in a doorway either, not even a rug a person walks over.
             if (pl.Support < 0 && _room.Doors.Any(d => _room.Apron(d, 0.9f, 0).Overlaps(r.Shrink(0.02f)))) return false;
             if (_plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) return false;
             if (added.Any(o => o != pl && added.IndexOf(o) < added.IndexOf(pl) && DecoLayout.Clash(_forge, o, pl))) return false;
+            // The room's rules (DecoRules): nothing taller than a sill before a window, a fire only at a chimney breast and nothing else there, what the room
+            // is arranged round on a solid wall, a narrow room lined along its one wall.
+            if (DecoRules.BeforeWindow(_forge, _room, pl) || DecoRules.OffFlue(_forge, _room, pl) || DecoRules.BeforeBreast(_forge, _room, pl)) return false;
+            // (Alone, under a window's sill if it is low enough.)
+            bool behind = focal && DecoRules.OpeningBehind(_room, r, loose ? DecoLayout.Heights(_forge, pl).Hi : float.MaxValue);
+            if (pl.Support < 0 && DecoLayout.Blocks(_forge, pl) && (behind || _lining is DecoWall only && DecoRules.Off(_room, r, only) > 0.15f)) return false;
         }
-        foreach (DecoPlacement pl in added.Where(p => DecoLayout.Blocks(_forge, p))) _raster.Add(DecoLayout.Footprint(_forge, pl), 1);
-        if (!_raster.DoorsJoined(_room))
+        // No more than half the floor stood on, and a clear walk to every piece's use side.
+        var all = _plan.Placements.Concat(added).ToList();
+        if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.Unreached(_forge, _room, all).Count > 0) return false;
+        var blocking = added.Where(p => DecoLayout.Blocks(_forge, p)).Select(p => DecoLayout.Footprint(_forge, p)).ToList();
+        foreach (DecoRect r in blocking) { _raster.Add(r, 1); _walk.Add(r, 1); }
+        if (!_raster.DoorsJoined(_room) || !Lines())
         {
-            foreach (DecoPlacement pl in added.Where(p => DecoLayout.Blocks(_forge, p))) _raster.Add(DecoLayout.Footprint(_forge, pl), -1);
+            foreach (DecoRect r in blocking) { _raster.Add(r, -1); _walk.Add(r, -1); }
             return false;
         }
         _plan.Placements.AddRange(added);
@@ -358,14 +408,19 @@ public sealed class DecoPlanner
     /// <summary>
     /// What the room is arranged round goes first (planning practice: the hearth, the cooker's worktop run, the bed's
     /// head), on the wall a person faces coming in by the first doorway, else the side walls, longest first; centred on
-    /// it where it fits. Returns the template it placed, or null.
+    /// it where it fits. One that stands out in the room (a map table, an operating table, a ward's bank of desks) stands
+    /// in its middle, along its length. Where none fits whole (a small room with two doors), the piece it is arranged round
+    /// goes alone, against any wall, across the walkway kept for the room's walk lines if it must, so long as those lines hold.
+    /// Returns the template it placed, or null.
     /// </summary>
     string Focal(List<(string Template, float Weight)> mix, string[] focus)
     {
+        foreach (bool alone in new[] { false, true })
         foreach (var (id, _) in mix.OrderByDescending(t => t.Weight))
         {
             DecoTemplate t = _arr.Templates[id];
-            if (FocusOf(t, focus).Count == 0) continue;
+            // (Seat rows are laid by Rows, facing their own focus.)
+            if (t.Kind == "rows" || FocusOf(t, focus).Count == 0) continue;
             DecoWall entry = _room.Doors.Count > 0 ? _room.Doors[0].Wall : DecoWall.South;
             DecoWall facing = entry switch { DecoWall.North => DecoWall.South, DecoWall.South => DecoWall.North, DecoWall.West => DecoWall.East, _ => DecoWall.West };
             var walls = new List<DecoWall> { facing };
@@ -373,11 +428,32 @@ public sealed class DecoPlanner
             walls.Add(entry);
             // A row or line as long as it goes, then shorter till it fits the room (a worktop run of three units, else two, else one).
             bool lengthens = t.Kind is "row" or "line";
-            for (int count = lengthens ? t.CountMax : -1; count >= (lengthens ? t.CountMin : -1); count--)
+            int most = lengthens ? t.CountMax : -1;
+            for (int count = most; count >= (lengthens ? t.CountMin : -1) && (!alone || count == most); count--)
             {
+                // (Its anchor what the room is arranged round, where the pick made it something else.)
                 List<Member> inst = Instance(t, count);
+                if (inst != null && !inst.Any(m => m.Piece.Roles.Any(focus.Contains))) inst = Instance(t, count, p => p.Roles.Any(focus.Contains));
                 if (inst == null || !inst.Any(m => m.Piece.Roles.Any(focus.Contains))) break;
+                if (alone) inst = inst.Where(m => m.Piece.Roles.Any(focus.Contains)).Take(1).Select(m => new Member { Piece = m.Piece, Yaw = m.Yaw, Role = m.Role }).ToList();
                 var (lo, hi) = Extent(inst);
+                if (!t.OnWall)
+                {
+                    // Out in the room: its middle on the room's, then a little off it, its long side along the room's.
+                    Vector2 centre = (lo + hi) / 2, mid = new(_room.Width / 2, _room.Depth / 2);
+                    float yaw = (hi.X - lo.X >= hi.Y - lo.Y) == (_room.Width >= _room.Depth) ? 0 : 90;
+                    var spots = new List<Vector2>();
+                    for (float dz = -1.5f; dz <= 1.5f; dz += 0.5f)
+                        for (float dx = -1.5f; dx <= 1.5f; dx += 0.5f) spots.Add(mid + new Vector2(dx, dz));
+                    foreach (Vector2 s in spots.OrderBy(s => Vector2.Distance(s, mid)))
+                        foreach (float y in new[] { yaw, yaw + 180 })
+                        {
+                            Vector2 o = s - DecoGeo.Yaw(centre, y);
+                            if (TryPlace(inst, o.X, o.Y, y, t.Id, alone, focal: true)) { Focused(t, y); return t.Id; }
+                        }
+                    // (Alone, it may stand against a wall instead: a sofa with its back to one.)
+                    if (!alone) continue;
+                }
                 foreach (DecoWall w in walls)
                 {
                     float len = WallLength(w), half = (hi.X - lo.X) / 2;
@@ -386,12 +462,64 @@ public sealed class DecoPlanner
                     foreach (float s in along.OrderBy(s => MathF.Abs(s - len / 2)))
                     {
                         var (x, z) = WallOrigin(w, s - (lo.X + hi.X) / 2, hi.Y);
-                        if (TryPlace(inst, x, z, WallYaw(w), t.Id)) return t.Id;
+                        if (TryPlace(inst, x, z, WallYaw(w), t.Id, alone, focal: true)) { Focused(t, WallYaw(w)); return t.Id; }
                     }
                 }
             }
         }
         return null;
+    }
+
+    /// <summary>The template use just placed is what the room is arranged round: the years leave it standing; a rug under it where the template lays one.</summary>
+    void Focused(DecoTemplate t, float yaw)
+    {
+        _plan.FocalGroup = _groups - 1;
+        Under(t, yaw);
+    }
+
+    /// <summary>A rug under the template use just placed, centred on its anchor (a lounge's, a dining table's): it marks the group's zone of the floor.</summary>
+    void Under(DecoTemplate t, float yaw)
+    {
+        if (t.Under.Length == 0 || Pick(t.Under, t.Id + ":under", p => p.Mount == DecoMount.Floor && p.WalkOver) is not { } rug) return;
+        DecoPlacement anchor = _plan.Placements.First(p => p.Group == _groups - 1);
+        TryPlace(new List<Member> { new() { Piece = rug, Role = "under" } }, anchor.X, anchor.Z, yaw, t.Id);
+    }
+
+    /// <summary>A room of this many square metres or more is big: it gets a second zone.</summary>
+    public const float ZoneArea = 24f;
+
+    /// <summary>
+    /// A big room's second zone (planning practice: a living room's seats by the hearth and its table by the window; an open
+    /// office's desks and its meeting table): one of the recipe's zone templates in the half of the room away from what it is
+    /// arranged round, two in a hall, and a divider between them where one stands clear of the way through.
+    /// </summary>
+    void Zones(DecoSetPlan mix)
+    {
+        float area = _room.Width * _room.Depth;
+        if (mix.Zone.Count == 0 || area < ZoneArea) return;
+        Vector2 mid = new(_room.Width / 2, _room.Depth / 2);
+        var focal = _plan.Placements.Where(p => p.Group == _plan.FocalGroup).ToList();
+        Vector2 from = focal.Count > 0 ? new Vector2(focal.Average(p => p.X), focal.Average(p => p.Z)) : _room.Doors.Count > 0 ? _room.DoorPoint(_room.Doors[0]).At : mid;
+        Vector2 away = mid - from;
+        away = away.LengthSquared() < 0.25f ? (_room.Width >= _room.Depth ? Vector2.UnitX : Vector2.UnitY) : Vector2.Normalize(away);
+        int first = _plan.Placements.Count, most = Math.Min(4, 1 + (int)(area / 60f));
+        // One of its zone templates, by weight (a hall takes one more for every 60 m²), the next where it found no room; anywhere
+        // in the room if its far half had none.
+        foreach (Func<Vector2, bool> where in new Func<Vector2, bool>[] { s => Vector2.Dot(s - mid, away) >= 0.25f, _ => true })
+        {
+            var weights = mix.Zone.Select(t => t.Weight).ToList();
+            for (int pick; _plan.Placements.Count == first && (pick = _rng.PickWeighted(weights)) >= 0; weights[pick] = 0)
+                Islands(new List<(string, float)> { mix.Zone[pick] }, where, most);
+        }
+        var zone = _plan.Placements.Skip(first).Where(p => p.Support < 0).ToList();
+        if (zone.Count == 0 || mix.Divider.Length == 0) return;
+        Vector2 to = new(zone.Average(p => p.X), zone.Average(p => p.Z)), across = Vector2.Normalize(new Vector2(-(to - from).Y, (to - from).X) + new Vector2(1e-4f, 0));
+        if (Pick(mix.Divider, "divider", p => p.Mount == DecoMount.Floor) is not { } div) return;
+        float yaw = MathF.Abs(across.X) >= MathF.Abs(across.Y) ? 0 : 90;
+        Vector2 at = (from + to) / 2;
+        for (float k = 0; k <= MathF.Max(_room.Width, _room.Depth) / 2; k += 0.5f)
+            foreach (float s in k == 0 ? new[] { 0f } : new[] { k, -k })
+                if (TryPlace(new List<Member> { new() { Piece = div, Role = "divider" } }, at.X + across.X * s, at.Y + across.Y * s, yaw, "divider")) return;
     }
 
     void Walls(List<(string Template, float Weight)> mix)
@@ -436,9 +564,12 @@ public sealed class DecoPlanner
 
     // ---- islands: templates on a lattice out in the room ------------------------------------------
 
-    void Islands(List<(string Template, float Weight)> mix)
+    /// <param name="where">Where a use's middle may go (a zone's half of the room), or anywhere.</param>
+    /// <param name="most">The most uses of each template (0: its own most, or as many as fit).</param>
+    void Islands(List<(string Template, float Weight)> mix, Func<Vector2, bool> where = null, int most = 0)
     {
         if (mix.Count == 0) return;
+        where ??= _ => true;
         var weights = mix.Select(t => t.Weight).ToList();
         for (int tries = 0, failures = 0; tries < 30 && failures < 6; tries++)
         {
@@ -462,17 +593,21 @@ public sealed class DecoPlanner
             float x0 = (_room.Width - (nx * world.X + (nx - 1) * aisle)) / 2 + world.X / 2, z0 = (_room.Depth - (nz * world.Y + (nz - 1) * aisle)) / 2 + world.Y / 2;
             var spots = new List<Vector2>();
             for (int j = 0; j < nz; j++) for (int i = 0; i < nx; i++) spots.Add(new Vector2(x0 + i * (world.X + aisle), z0 + j * (world.Y + aisle)));
-            if (t.Max > 0) _rng.Shuffle(spots);
+            spots = spots.Where(where).ToList();
+            int max = most > 0 ? (t.Max > 0 ? Math.Min(most, t.Max) : most) : t.Max;
+            if (max > 0) _rng.Shuffle(spots);
             int placed = 0;
             foreach (Vector2 spot in spots)
             {
-                if (t.Max > 0 && placed >= t.Max) break;
+                if (max > 0 && placed >= max) break;
                 float y1 = yaw + _rng.Range(-turn, turn);
                 Vector2 off = new(_rng.Range(-jitter, jitter), _rng.Range(-jitter, jitter));
                 Vector2 origin = spot + off - DecoGeo.Yaw(centre, y1);
-                if (TryPlace(inst, origin.X, origin.Y, y1, t.Id) || TryPlace(inst, spot.X - DecoGeo.Yaw(centre, yaw).X, spot.Y - DecoGeo.Yaw(centre, yaw).Y, yaw, t.Id))
+                bool turned = TryPlace(inst, origin.X, origin.Y, y1, t.Id);
+                if (turned || TryPlace(inst, spot.X - DecoGeo.Yaw(centre, yaw).X, spot.Y - DecoGeo.Yaw(centre, yaw).Y, yaw, t.Id))
                 {
                     placed++;
+                    Under(t, turned ? y1 : yaw);
                     // The next spot's pieces picked afresh: a different one where the set has it.
                     Repick(t);
                     inst = Instance(t) ?? inst;
@@ -482,7 +617,7 @@ public sealed class DecoPlanner
             }
             // The lattice found room for fewer than two (the walkway runs through its middle): try spots off it, slid towards the walls.
             // Every fourth try takes a fresh instance (a shorter line, perhaps); the tries go round all four ways.
-            for (int k = 0; placed < (t.Max > 0 ? Math.Min(2, t.Max) : 2) && k < 24; k++)
+            for (int k = 0; placed < (max > 0 ? Math.Min(2, max) : 2) && k < 24; k++)
             {
                 if (k > 0 && k % 4 == 0)
                 {
@@ -496,7 +631,7 @@ public sealed class DecoPlanner
                 float hx = MathF.Max(0, (_room.Width - w2.X) / 2 - 0.3f), hz = MathF.Max(0, (_room.Depth - w2.Y) / 2 - 0.3f);
                 var spot = new Vector2(_room.Width / 2 + _rng.Range(-hx, hx), _room.Depth / 2 + _rng.Range(-hz, hz));
                 Vector2 origin = spot - DecoGeo.Yaw(centre, y2);
-                if (TryPlace(inst, origin.X, origin.Y, y2, t.Id)) { placed++; inst = Instance(t) ?? inst; (lo, hi) = Extent(inst); size = hi - lo; centre = (lo + hi) / 2; }
+                if (where(spot) && TryPlace(inst, origin.X, origin.Y, y2, t.Id)) { placed++; Under(t, y2); inst = Instance(t) ?? inst; (lo, hi) = Extent(inst); size = hi - lo; centre = (lo + hi) / 2; }
             }
             weights[pick] = 0;
             if (placed == 0) failures++;
@@ -618,20 +753,64 @@ public sealed class DecoPlanner
         _reserved = new List<DecoRect>();
         float w = _room.Agent + 0.35f;
         foreach (DecoDoor d in _room.Doors) _reserved.Add(_room.Apron(d, 1.2f, 0.2f));
-        _reserved.AddRange(_room.Blocked);
+        _reserved.AddRange(_room.Blocked.Concat(_room.Kept));
+        _aprons = _reserved.Count;
         if (_room.Doors.Count == 0) return;
-        // A walking line between every two doorways, an L along the first one's axis, then across.
+        // A walking line between every two doorways, an L along the first one's axis, then across. A room of four or more ways is
+        // a hub: its lines join each way to its nearest already joined (a tree, not every pair), so its walls are left to furnish.
         var points = _room.Doors.Select(d => { var (p, i) = _room.DoorPoint(d); return (At: p + i * 0.6f, In: i); }).ToList();
         // One way in: the walkway runs as far in as the doorway check asks (a metre and a half, less in a small room), so the far walls are free.
         if (points.Count == 1) points.Add((points[0].At + points[0].In * MathF.Max(0f, MathF.Min(1.5f, MathF.Max(_room.Width, _room.Depth) * 0.4f) - 0.6f), points[0].In));
-        for (int i = 0; i < points.Count; i++)
-            for (int j = i + 1; j < points.Count; j++)
+        var pairs = new List<(int, int)>();
+        if (points.Count < 4)
+            for (int i = 0; i < points.Count; i++) for (int j = i + 1; j < points.Count; j++) pairs.Add((i, j));
+        else
+            for (int j = 1; j < points.Count; j++)
+                pairs.Add((Enumerable.Range(0, j).MinBy(i => MathF.Abs(points[i].At.X - points[j].At.X) + MathF.Abs(points[i].At.Y - points[j].At.Y)), j));
+        foreach (var (i, j) in pairs)
+        {
+            var (a, i0) = points[i];
+            Vector2 b = points[j].At, corner = MathF.Abs(i0.X) > 0.5f ? new Vector2(b.X, a.Y) : new Vector2(a.X, b.Y);
+            _reserved.Add(Segment(a, corner, w));
+            _reserved.Add(Segment(corner, b, w));
+        }
+    }
+
+    /// <summary>Each two doors' walk line through the floor as it stands (<see cref="_walk"/>), raster steps; null for a room of fewer than two.</summary>
+    int[,] Routes()
+    {
+        int n = _room.Doors.Count;
+        if (n < 2) return null;
+        bool[] fit = _walk.Fits(Walker);
+        var routes = new int[n, n];
+        for (int a = 0; a < n; a++)
+        {
+            var dist = new int[fit.Length];
+            Array.Fill(dist, -1);
+            var q = new Queue<int>();
+            foreach (int s in _walk.DoorStarts(_room, _room.Doors[a], Walker))
+                if (s >= 0 && s < fit.Length && fit[s] && dist[s] < 0) { dist[s] = 0; q.Enqueue(s); }
+            while (q.Count > 0)
             {
-                var (a, i0) = points[i];
-                Vector2 b = points[j].At, corner = MathF.Abs(i0.X) > 0.5f ? new Vector2(b.X, a.Y) : new Vector2(a.X, b.Y);
-                _reserved.Add(Segment(a, corner, w));
-                _reserved.Add(Segment(corner, b, w));
+                int c = q.Dequeue(), i = c % _walk.Nx, j = c / _walk.Nx;
+                foreach (int nb in new[] { i + 1 < _walk.Nx ? c + 1 : -1, i > 0 ? c - 1 : -1, j + 1 < _walk.Nz ? c + _walk.Nx : -1, j > 0 ? c - _walk.Nx : -1 })
+                    if (nb >= 0 && fit[nb] && dist[nb] < 0) { dist[nb] = dist[c] + 1; q.Enqueue(nb); }
             }
+            for (int b = 0; b < n; b++)
+                routes[a, b] = _walk.DoorStarts(_room, _room.Doors[b], Walker).Where(s => s >= 0 && s < fit.Length && dist[s] >= 0).Select(s => dist[s]).DefaultIfEmpty(-1).Min();
+        }
+        return routes;
+    }
+
+    /// <summary>No walk line between two doors shut or a metre longer than through the bare room.</summary>
+    bool Lines()
+    {
+        if (_routes == null) return true;
+        int[,] now = Routes();
+        for (int a = 0; a < _room.Doors.Count; a++)
+            for (int b = a + 1; b < _room.Doors.Count; b++)
+                if (_routes[a, b] >= 0 && (now[a, b] < 0 || now[a, b] - _routes[a, b] > Slack)) return false;
+        return true;
     }
 
     static DecoRect Segment(Vector2 a, Vector2 b, float width)
@@ -641,39 +820,5 @@ public sealed class DecoPlanner
         Vector2 u = len < 1e-4f ? new Vector2(width / 2, 0) : d / len * (len / 2 + width / 2);
         Vector2 v = len < 1e-4f ? new Vector2(0, width / 2) : new Vector2(-d.Y, d.X) / len * (width / 2);
         return new DecoRect((a + b) / 2, u, v);
-    }
-
-    // ---- everything must be reachable -----------------------------------------------------------------
-
-    /// <summary>Drops lone fill pieces nobody could walk up to (walled in behind tables).</summary>
-    void Access()
-    {
-        if (_room.Doors.Count == 0) return;
-        const int k = 2;
-        bool[] fit = _raster.Fits(k);
-        bool[] reach = _raster.Reach(_room.Doors.SelectMany(d => _raster.DoorStarts(_room, d, k)), k, fit);
-        bool Reached(Vector2 p)
-        {
-            int i = (int)MathF.Floor(p.X / Cell) - 1, j = (int)MathF.Floor(p.Y / Cell) - 1;
-            for (int dj = 0; dj <= 1; dj++)
-                for (int di = 0; di <= 1; di++)
-                {
-                    int ci = i + di, cj = j + dj;
-                    if (ci >= 0 && cj >= 0 && ci < _raster.Nx && cj < _raster.Nz && reach[cj * _raster.Nx + ci]) return true;
-                }
-            return false;
-        }
-        for (int n = _plan.Placements.Count - 1; n >= 0; n--)
-        {
-            DecoPlacement pl = _plan.Placements[n];
-            if (pl.Support >= 0 || !DecoLayout.Blocks(_forge, pl)) continue;
-            DecoRect r = DecoLayout.Footprint(_forge, pl);
-            Vector2 nu = Vector2.Normalize(r.U), nv = Vector2.Normalize(r.V);
-            bool ok = new[] { r.Centre + r.U + nu * 0.3f, r.Centre - r.U - nu * 0.3f, r.Centre + r.V + nv * 0.3f, r.Centre - r.V - nv * 0.3f }.Any(Reached);
-            if (ok || _plan.Placements.Count(p => p.Group == pl.Group) > 1) continue;
-            _raster.Add(r, -1);
-            _plan.Placements.RemoveAt(n);
-            foreach (DecoPlacement other in _plan.Placements) if (other.Support > n) other.Support--;
-        }
     }
 }

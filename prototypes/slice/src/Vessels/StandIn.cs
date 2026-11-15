@@ -7,12 +7,12 @@ namespace Slice.Vessels;
 
 /// <summary>
 /// A structure far off as one cheap mesh: its cells merged into runs along x, each a box in the colour its top face is
-/// painted (or its device's own), one draw call, no shadow. Its lights are a second mesh of bright boxes, a little
-/// bigger than the lamps, shown while they are on. It still reads as the ship it stands for: the same blocks, the same coats.
+/// painted (or its device's own), one draw call, no shadow. It still reads as the ship it stands for: the same blocks,
+/// the same coats. (Its lamps at night are far points: FarLights.)
 /// </summary>
 public partial class StandIn : Node3D
 {
-    MeshInstance3D _body, _lights;
+    MeshInstance3D _body;
     int _version = -1;
 
     /// <summary>Builds (again, if the structure changed) the stand-in's meshes from the structure.</summary>
@@ -22,13 +22,12 @@ public partial class StandIn : Node3D
         _version = s.Version;
         float cell = s.Grid.CellSize;
         var solid = new Dictionary<Int3, Color>();
-        var lamps = new List<(Int3, Color)>();
         foreach (var (p, b) in s.Cells())
         {
             Int3 anchor = p + b.ToAnchor;
             Block a = b.IsFiller ? s.Get(anchor) : b;
             BlockType t = s.TypeOf(a);
-            if (t.IsLight) { if (!a.Off) lamps.Add((p, ChunkColor(s.LightAt(anchor).Color))); continue; }
+            if (t.IsLight) continue;
             uint c = t.IsArmor ? s.Palette[a.Paint.PY].Base : t.Color;
             solid[p] = ChunkColor(c);
         }
@@ -45,10 +44,6 @@ public partial class StandIn : Node3D
         }
         _body ??= Add("Body", new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.9f, CullMode = BaseMaterial3D.CullModeEnum.Disabled });
         _body.Mesh = st.Mesh();
-        st = new Boxes();
-        foreach (var (p, colour) in lamps) Box(st, new Vector3(p.X, p.Y, p.Z) * cell, Vector3.One * 1.6f * cell, colour);
-        _lights ??= Add("Lights", new StandardMaterial3D { VertexColorUseAsAlbedo = true, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, CullMode = BaseMaterial3D.CullModeEnum.Disabled });
-        _lights.Mesh = lamps.Count > 0 ? st.Mesh() : null;
     }
 
     MeshInstance3D Add(string name, Material material)

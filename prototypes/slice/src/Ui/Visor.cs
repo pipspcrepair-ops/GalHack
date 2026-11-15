@@ -21,7 +21,7 @@ namespace Slice.Ui;
 /// <summary>
 /// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): the sleeper's gauges at the bottom
 /// left that flash while they are only a warning and turn red once they cost health (calm, they fade after a few
-/// seconds), the surroundings at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
+/// seconds), the temperature at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
 /// the things themselves (the bunker, places, deposits, your vessels), the suit's assistant's lines, what the tool is
 /// aimed at, and seated, a flight strip and the structure's gauges at the bottom right. Drawn every frame onto the main canvas.
 /// </summary>
@@ -42,13 +42,16 @@ public partial class Visor : CanvasLayer
     /// <summary>The ore scanner the compass and the map read.</summary>
     public readonly DepositFinder Deposits = new();
     readonly List<(string text, double until)> _xp = new();
-    double _levelUntil = -1, _hitUntil = -1;
+    double _levelUntil = -1, _hitAt = -9;
+    bool _hitKill;
     string _level = "";
 
     /// <summary>Is this alert flashing right now? (tests read it)</summary>
     public bool Flashing(Alert a) => (Game.Suit?.Last.Warnings & a) != 0;
 
     public bool ThreatShowing => _time < _threatUntil;
+    /// <summary>Whether the visor's edge is reddened on the side a hit came from (tests).</summary>
+    public bool HurtShowing => _time < _hurtUntil;
 
     /// <summary>Tests only: holds the glass's frost and red pulse at these levels (the visor staging view).</summary>
     public (float frost, float harm)? PinnedGlass;
@@ -93,8 +96,21 @@ public partial class Visor : CanvasLayer
         Game.Notices?.Post(NoticeKind.Level, "LEVEL", _level);
     }
 
-    /// <summary>A shot landed on a creature: a hit marker at the crosshair.</summary>
-    public void Hit() => _hitUntil = _time + 0.25;
+    /// <summary>How long the reticle's ring shows for a hit, and for a kill.</summary>
+    public const double HitSeconds = 0.35, KillSeconds = 0.7;
+
+    /// <summary>The player's hit landed: a ring flashes round the reticle; a kill rings twice, in the danger colour, crossed.</summary>
+    public void Hit(bool kill = false)
+    {
+        // A kill isn't undone by a hit straight after it.
+        if (!kill && RingShowing && _hitKill) return;
+        _hitAt = _time;
+        _hitKill = kill;
+    }
+
+    /// <summary>Whether the reticle's confirmation ring shows now, and whether it is a kill's (tests).</summary>
+    public bool RingShowing => _time - _hitAt < (_hitKill ? KillSeconds : HitSeconds);
+    public bool RingKill => RingShowing && _hitKill;
 
     public bool LevelUpShowing => _time < _levelUntil;
     public int XpLines => _xp.Count;
@@ -179,6 +195,7 @@ public partial class Visor : CanvasLayer
         {
             DrawFlight(v);
             DrawStructure(layout, v);
+            DrawBar(layout, v);
         }
         else
         {
@@ -396,12 +413,13 @@ public partial class Visor : CanvasLayer
             float g = Game.Zone.GroundAt(at.X, at.Z).Y;
             return float.IsFinite(g) ? new Vector3(at.X, g + lift, at.Z) : at;
         }
-        if (Game.Bunker != null && !Game.InOrbit) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        // Each body's own: the bunker, the start world's finds and your map marks on the start world, a moon's finds on the moon.
+        if (Game.Bunker != null && Game.Zone == Game.Surface) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
         if (!Game.InOrbit && Game.Zone.Planet != null)
         {
-            string startPlace = Game.Spaceflight.StartPlaceKey;
+            string startPlace = Game.Spaceflight.StartPlaceKey, on = Game.Spaceflight.ChartOf(Game.Zone);
             // The start place always shows (first in line, whatever its distance); other finds only while within the scanner's reach.
-            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind)
+            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind, on)
                 .Select(m => (m.Label, m.Key, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
                 .Where(x => x.Key == startPlace || new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
                 .OrderBy(x => x.Key == startPlace ? 0 : 1).ThenBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared())
@@ -409,14 +427,17 @@ public partial class Visor : CanvasLayer
             foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), Ground(at, PlaceLift), C.Accent, 1f, "place"));
             if (survivor.Seated == null)
                 foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), Ground(at, 1.5f), C.Holo, 1f, "deposit"));
-            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark"))
+            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark", on))
                 marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
         }
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && v.Structure.Owner == GalHack.Structures.Building.DefaultOwner && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        // The scan's marks: an ore by name, a place by its icon and distance alone (a found place's own marker stands for it).
+        var named = marks.Where(m => m.Kind == "place").Select(m => new Vector2(m.At.X, m.At.Z)).ToList();
         foreach (Game.Game.Ping p in Game.Pings)
-            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+            if (p.Place == null) marks.Add(new(p.Label.ToUpperInvariant(), p.At, C.Holo, Game.PingAlpha(p), "ping"));
+            else if (!named.Any(n => n.DistanceTo(new Vector2(p.At.X, p.At.Z)) < 1f)) marks.Add(new("", Ground(p.At, PlaceLift), C.Accent, Game.PingAlpha(p), p.Place));
         // The handheld scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
         foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
         return marks;
@@ -453,9 +474,7 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 c = _hud.Size / 2;
         _hud.DrawCircle(c, 3 * s, new Color(C.Text, 0.85f));
-        if (_time < _hitUntil)
-            foreach (var d in new[] { new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) })
-                _hud.DrawLine(c + d * 7 * s, c + d * 15 * s, C.Danger, 3 * s);
+        DrawHitRing(c, s);
         // Only a prompt for what is in reach and usable (E or F), the ore the tool is on, or the
         // build tool's verdict: never where you are.
         string label = Game.UsePrompt();
@@ -471,6 +490,25 @@ public partial class Visor : CanvasLayer
         };
         if (!string.IsNullOrEmpty(label))
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, PromptBox(_hud.Size, UiScale, label).Position.Y, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+    }
+
+    /// <summary>The hit ring's radius, and a kill's second thin ring's, in UI units (times the HUD scale: 8.4 and 10.8 px at 1080p).</summary>
+    public const float RingRadius = 7f, KillRadius = 9f;
+
+    /// <summary>The outermost ring's radius in pixels on a screen this size (tests).</summary>
+    public static float RingPixels(Vector2 screen, bool kill) => (kill ? KillRadius : RingRadius) * HudLayout.Compute(screen).Scale;
+
+    /// <summary>
+    /// The confirmation when the player's hit lands: a small, tight ring hugging the reticle that
+    /// fades; a kill is the same ring in the danger colour with a second thin ring just outside it.
+    /// </summary>
+    void DrawHitRing(Vector2 c, float s)
+    {
+        if (!RingShowing) return;
+        float life = (float)((_time - _hitAt) / (_hitKill ? KillSeconds : HitSeconds));
+        var tone = new Color(_hitKill ? C.Danger : C.Text, 1f - life * life);
+        _hud.DrawArc(c, RingRadius * s, 0f, MathF.Tau, 32, tone, 1.6f * s, true);
+        if (_hitKill) _hud.DrawArc(c, KillRadius * s, 0f, MathF.Tau, 32, tone, 1f * s, true);
     }
 
     /// <summary>Under the crosshair with a weapon in hand: reloading, out of ammo, or the charge stage reached.</summary>

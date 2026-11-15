@@ -137,7 +137,7 @@ public sealed partial class BuildTool
             _zone.AddChild(_fieldGhost);
         }
         Structure s = v.Structure;
-        Transform3D frame = ForceFields.Frame(s.Grid.CellSize, f.Min, f.Max, f.Axis, ForceFields.Inset, out Vector2 size);
+        Transform3D frame = ForceFields.Frame(s.Grid.CellSize, f.Min, f.Max, f.Axis, out Vector2 size);
         ShaderMaterial m = can ? _fieldCan : _fieldCant;
         m.SetShaderParameter("size", size);
         ((QuadMesh)_fieldGhost.Mesh).Size = size;

@@ -112,6 +112,12 @@ public sealed partial class Town
     {
         if (p.Dead) return;
         p.Health.Current -= damage;
+        // They cry out (once for a shot's pellets, always as they go down).
+        if (p.Looks != null && (p.Dead || p.Hurt <= 0.4f - Slice.Game.Game.CryEvery))
+        {
+            Vector3 at = World(p.Pos + Vector3.Up * Height(p) * 0.9f);
+            _places.Zone.Wildlife.Sound(Vector3.Zero, a => a.Cry(p.Looks, at));
+        }
         p.Hurt = 0.4f;
         p.LastHarm = harm;
         if (byPlayer)

@@ -131,7 +131,7 @@ public partial class SkyshipTest : Node
                 if (missing.Count == 0 && h.LiftMargin > 0f) flies++;
                 else problems.Add($"seed {seed} g {g:F1}: missing {string.Join(", ", missing)}, lift margin {h.LiftMargin:F0} kN");
                 float side = MathF.Min(h.Accel(Direction.Left), h.Accel(Direction.Right));
-                double hours = st.Fuel / (1000 * Math.Max(st.PowerUse, 1e-6));
+                double hours = st.StorageCapacity * CraftNeeds.Default.FuelMJPerSu / (3600 * Math.Max(st.PowerUse, 1e-6));
                 bool meets = h.UpwardThrust / h.Weight >= 1.3f && h.Accel(Direction.Forward) >= 5f && h.Accel(Direction.Back) >= 5f && side >= 2f
                              && h.Accel(Direction.Down) >= 2f && h.TurnRate >= data.Handling.Turning.Floor && st.PowerOut >= 1.2 * st.PowerUse && hours >= 1;
                 if (meets) standards++;
@@ -157,7 +157,7 @@ public partial class SkyshipTest : Node
             Check(made == rolls, $"{role}: {made} of {rolls} rolls at random gravities (5 to 15 m/s²) met the needs (slowest {ms} ms)");
             Check(valid == made, $"{role}: {valid} of {made} pass the player's blueprint validation (every block joined to the core, built as a player builds)");
             Check(flies == made, $"{role}: {flies} of {made} lack nothing for Flight Mode, with a positive lift margin on their gravity");
-            Check(standards == made, $"{role}: {standards} of {made} meet the player's flight standards: lift 1.3x weight, push and brake 5, slide 2, down 2 m/s², the turn floor, 1.2x power, an hour of fuel");
+            Check(standards == made, $"{role}: {standards} of {made} meet the player's flight standards: lift 1.3x weight, push and brake 5, slide 2, down 2 m/s², the turn floor, 1.2x power, room for an hour of fuel");
             Check(balanced == made, $"{role}: {balanced} of {made} have every exhaust facing open air");
             Check(freeholder == made, $"{role}: {freeholder} of {made} in the Freeholder look (theirs, faded mismatched coats, grimy, patched, a hand-painted number)");
             Check(unlike == made, $"{role}: {unlike} of {made} unlike every stock blueprint");
@@ -215,13 +215,29 @@ public partial class SkyshipTest : Node
     {
         if (_args.TryGetValue("role", out string r) && Enum.TryParse(r, true, out CraftRole role)) SkyTraffic.ForceRole = role;
         Skyship.WaitScale = 0.12f;
+        SkyTraffic.Off = _args.ContainsKey("noship");
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);
         var probe = new PlanetSurface.FrameProbe(this);
         foreach (int x in _drive.UntilPlaying()) yield return x;
+        GD.Print($"-- world: {_game.World} (the same again: --seed {_game.World.Seed} --planet {_game.World.Archetype}) --");
         _game.Zone.Wildlife.Frozen = true;
         SkyTraffic sky = _game.Sky;
+        if (SkyTraffic.Off)
+        {
+            // The baseline: the same world and the same wait with no ship in its sky.
+            foreach (int x in _drive.Wait(240)) yield return x;
+            var still = new List<double>();
+            for (int t = 0; t < Window; t++)
+            {
+                yield return 0;
+                if (probe.LastMs > 0) still.Add(probe.LastMs);
+            }
+            Check(_game.Zone.Vessels.Count(x => x.Roles.Pilot == SkyTraffic.PilotName) == 0, "no ship in the sky (baseline)");
+            Report("no ship", still);
+            yield break;
+        }
         for (int i = 0; i < 600 && sky.Ship == null && sky.Missing == null; i++) yield return 0;
         Skyship ship = sky.Ship;
         if (!Check(ship != null, $"the start world has its ship in the sky{(sky.Missing != null ? ": " + sky.Missing : "")}")) yield break;
@@ -253,19 +269,43 @@ public partial class SkyshipTest : Node
         float jump = 0f, top = v.Stats?.TopSpeed ?? 70f;
         N.Vector3 last = v.Body.Position;
         var frames = new List<double>();
+        var window = new List<double>();
+        int overlaps = 0, looked = 0, landedClear = 0;
+        string overlapWhat = "";
         double skyMs = 0, skyWorst = 0;
         var skyTimes = new List<double>();
         int skyTicks = 0;
+        double tookOff = double.NaN, landedWith = double.NaN, leastCharge = double.PositiveInfinity, leastSupply = 1;
+        SkyPhase lastPhase = ship.Phase;
         bool Done() => places.Count >= 3 && ship.Landings >= 1 && ship.Departures >= 2;
         for (int t = 0; t < 60 * 60 * 18 && !Done() && ship.Phase != SkyPhase.Wrecked; t++)
         {
             yield return 0;
             if (probe.LastMs > 0) frames.Add(probe.LastMs);
+            if (probe.LastMs > 0 && t < Window) window.Add(probe.LastMs);
+            // Nothing of the terrain's scatter through its hull: at every landing, and near the ground a second at a time.
+            bool landing = lastPhase != SkyPhase.Landed && ship.Phase == SkyPhase.Landed;
+            if (landing || t % 60 == 0 && ship.Phase is SkyPhase.Descending or SkyPhase.Rising or SkyPhase.Approaching or SkyPhase.Landed)
+                if (Overlap(v, sky) is int n)
+                {
+                    looked++;
+                    if (n > 0) { overlaps += n; overlapWhat = $"{ship.Phase} by {ship.At?.Family.Name}"; }
+                }
+            if (landing && sky.Clear(v.Body.Position, v)) landedClear++;
             skyMs += sky.LastTickMs;
             skyWorst = Math.Max(skyWorst, sky.LastTickMs);
             skyTimes.Add(sky.LastTickMs);
             skyTicks++;
             if (ship.At != null) places.Add(ship.At);
+            // Its generator fuel, taking off and putting down, and its capacitor whenever it is aloft.
+            if (lastPhase == SkyPhase.Landed && ship.Phase != SkyPhase.Landed && double.IsNaN(tookOff)) tookOff = v.Power.FuelUnits;
+            if (lastPhase != SkyPhase.Landed && ship.Phase == SkyPhase.Landed && !double.IsNaN(tookOff) && double.IsNaN(landedWith)) landedWith = v.Power.FuelUnits;
+            lastPhase = ship.Phase;
+            if (ship.Phase != SkyPhase.Landed)
+            {
+                leastCharge = Math.Min(leastCharge, v.Power.ChargeMJ);
+                leastSupply = Math.Min(leastSupply, v.Power.Supply);
+            }
             if (ship.Phase != SkyPhase.Landed)
             {
                 flying++;
@@ -281,6 +321,16 @@ public partial class SkyshipTest : Node
         Check(flying > 0 && thrusting > flying * 0.95f, $"under its own thrust: thrusters working {thrusting} of {flying} ticks aloft");
         Check(jump <= top * 1.6f / 60f + 0.5f, $"no jumps: the most it moved flat in a tick was {jump:F2} m (top speed {top:F0} m/s)");
         Check(under == 0 && ship.LeastClearance > 20f, $"above the ground: least {ship.LeastClearance:F0} m in cruise, {under} ticks under it");
+        Check(looked > 0 && overlaps == 0, $"nothing passes through its hull: {overlaps} trees, rocks or crowns in it over {looked} looks near the ground{(overlaps > 0 ? $" ({overlapWhat})" : "")}");
+        Check(landedClear == ship.Landings, $"every landing spot is clear of places, roads, roadside pieces and the scatter: {landedClear} of {ship.Landings}");
+        for (int t = window.Count; t < Window; t++)
+        {
+            yield return 0;
+            if (probe.LastMs > 0) window.Add(probe.LastMs);
+        }
+        Report("the ship flying", window);
+        Check(landedWith < tookOff, $"its generators burn the fuel in its hold as it flies: {tookOff:F0} fuel units at take-off, {landedWith:F0} on landing");
+        Check(leastCharge > 0 && leastSupply >= 0.999, $"never on an empty capacitor: least charge {leastCharge:F1} of {v.Power.CapacityMJ:F0} MJ aloft, every draw met ({leastSupply:P1} at worst)");
         Check(ship.Bumps == 0, $"clear of structures and terrain: {ship.Bumps} knocks in flight");
 
         // Shot at, it runs.
@@ -313,5 +363,41 @@ public partial class SkyshipTest : Node
         double sky99 = skyTimes.Count > 0 ? skyTimes[(int)(skyTimes.Count * 0.999)] : 0;
         Check(skyMs / Math.Max(1, skyTicks) < 0.3 && sky99 < 2.0 && skyWorst < 16.7,
             $"the ship costs little: {skyMs / Math.Max(1, skyTicks):F3} ms a tick, 99.9th {sky99:F2} ms, {skyWorst:F2} ms at worst ({sky.WorstWhat})");
+    }
+
+    /// <summary>The frames measured for the baseline and the ship alike (150 s).</summary>
+    const int Window = 60 * 150;
+
+    void Report(string what, List<double> frames)
+    {
+        frames.Sort();
+        double P(double q) => frames.Count > 0 ? frames[Math.Min(frames.Count - 1, (int)(frames.Count * q))] : 0;
+        GD.Print($"  window, {what}: {frames.Count} frames, median {P(0.5):F2} ms, 95th {P(0.95):F2} ms, 99th {P(0.99):F2} ms, worst {P(1):F2} ms{(_args.ContainsKey("minspec") ? " (min-spec)" : "")}");
+    }
+
+    /// <summary>
+    /// How many of the scatter's solids round the vessel (from the terrain's own scatter, not what has streamed in) stand
+    /// inside its blocks: points along each trunk's axis, a rock's middle and a crown's middle, each its inscribed radius
+    /// from the nearest block. Null while the scatter there is still being worked out.
+    /// </summary>
+    int? Overlap(Vessel v, SkyTraffic sky)
+    {
+        var (lo, hi) = v.Structure.Bounds();
+        float reach = (hi - lo).ToVector3().Length() * v.Structure.Grid.CellSize * 0.5f + 2f;
+        var near = sky.ScatterNear(v.Body.Position, reach);
+        if (near == null) return null;
+        int n = 0;
+        foreach (var s in near)
+        {
+            Vector3 c = _game.Zone.Planet.NearestCopy(s.Center, v.Body.Position.ToGodot());
+            float r = s.IsTrunk ? s.Extents.X : MathF.Min(s.Extents.X, s.Extents.Z) * (s.IsCanopy ? 0.5f * s.Scale : 1f);
+            Vector3 axis = s.Basis.Y.Normalized() * (s.IsTrunk ? s.Extents.Y : 0f);
+            for (int k = 0; k <= 4; k++)
+            {
+                Vector3 p = c + axis * (k / 2f - 1f);
+                if (v.DistanceFromHull(v.Body.ToLocal(p.ToNumerics()), r + 1f) < r - 0.05f) { n++; break; }
+            }
+        }
+        return n;
     }
 }

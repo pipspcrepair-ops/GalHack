@@ -45,8 +45,9 @@ public partial class SkyTraffic : Node
     /// <summary>Beyond this from the eye it is drawn as its stand-in, m.</summary>
     public float StandInFrom = 900f;
 
-    /// <summary>Tests: the role to roll (null: the world's own roll).</summary>
+    /// <summary>Tests: the role to roll (null: the world's own roll); no ship at all (a baseline run).</summary>
     public static CraftRole? ForceRole;
+    public static bool Off;
 
     public Skyship Ship { get; private set; }
 
@@ -70,9 +71,32 @@ public partial class SkyTraffic : Node
     public double WorstMs { get; private set; }
     public string WorstWhat { get; private set; } = "";
 
+    List<GalHack.Structures.Int3> _lamps = new();
+    int _firstLamp = -1;
+
+    /// <summary>Each frame, its lamps' far points where its lamps are drawn now, lit while they are (none once it is a wreck).</summary>
+    public override void _Process(double delta)
+    {
+        if (Ship == null || _firstLamp < 0 || Zone.Pois?.Far is not { } far) return;
+        Vessel v = Ship.Vessel;
+        if (!GodotObject.IsInstanceValid(v.Node)) return;
+        Transform3D at = v.DrawTransform;
+        Structure s = v.Structure;
+        float cell = s.Grid.CellSize;
+        for (int i = 0; i < _lamps.Count; i++)
+        {
+            GalHack.Structures.Int3 p = _lamps[i];
+            bool lit = s.TryGet(p, out GalHack.Structures.Block b) && s.TypeOf(b).IsLight && !b.Off && Ship.Phase != SkyPhase.Wrecked;
+            N.Vector3 out_ = Orientations.Matrix(b.Rot).Apply(new N.Vector3(0, 0, -0.6f));
+            Vector3 local = (new Vector3(p.X, p.Y, p.Z) + new Vector3(out_.X, out_.Y, out_.Z)) * cell;
+            LightSettings l = s.LightAt(p);
+            far.SetLamp(_firstLamp + i, at * local, GalHack.Structures.Presentation.ChunkMesher.Rgb(l.Color), lit ? 1.4f : 0f, l.Anim == LightAnim.Strobe);
+        }
+    }
+
     public override void _PhysicsProcess(double delta)
     {
-        if (Zone?.Planet == null || !Zone.Arrived || Zone.IsOtherBody || Missing != null) return;
+        if (Off || Zone?.Planet == null || !Zone.Arrived || Zone.IsOtherBody || Missing != null) return;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         string what;
         if (Ship == null) { Spawn(); what = "spawn"; }
@@ -118,10 +142,14 @@ public partial class SkyTraffic : Node
         _standIn = new StandIn { Name = "StandIn", Visible = false };
         v.Node.AddChild(_standIn);
         _standIn.Build(s);
+        // Its lamps carry at night as a lived-in place's do: far points, its real lights handing off to them.
+        v.View.HandOff = true;
+        _lamps = s.Blocks().Where(b => s.TypeOf(b.block).IsLight).Select(b => b.pos).ToList();
+        _firstLamp = Zone.Pois?.Far?.AddLamps(_lamps.Count) ?? -1;
         GD.Print($"skyship: a {role} ({s.BlockCount} blocks, {StructureStats.Compute(s).Mass:F0} t) landed by {home.Family.Name}, {Distance(home, _start):F0} m from the start");
     }
 
-    /// <summary>Its holds: usable goods for a trader, a little for a scout; fuel for its tanks.</summary>
+    /// <summary>Its holds: usable goods for a trader, a little for a scout; its generator fuel (CraftNeeds' hours at full load) in core storage, its capacitor charged.</summary>
     void Stock(Vessel v, CraftRole role)
     {
         var items = Zone.Data.Items;
@@ -129,8 +157,10 @@ public partial class SkyTraffic : Node
         for (int i = 0; i < (role == CraftRole.Trader ? 4 : 1); i++)
             foreach (var (item, least, most) in Slice.Orbit.OrbitRules.Shared.LootFor(i % 2 == 0 ? "scrap" : "salvage"))
                 if (items.Has(item) && _rng.Next(least, most + 1) is int n && n > 0) bill.Add(item, n);
-        if (items.Has("fuel-pack")) bill.Add("fuel-pack", (int)Math.Ceiling(StructureStats.Compute(v.Structure).Fuel / 1000.0) * 2);
+        if (items.TryGet("fuel-pack", out var pack) && pack.FuelUnits > 0)
+            bill.Add(pack.Id, (int)Math.Ceiling(CraftNeeds.Default.FuelMJ(StructureStats.Compute(v.Structure)) / (pack.FuelUnits * v.Power.Rules.FuelUnitMJ)));
         v.Storage.AddAll(bill);
+        v.Power.ChargeMJ = v.Power.CapacityMJ;
     }
 
     /// <summary>A few times a second: its lights by the daylight, its stand-in by the distance, and a landed hull set on the ground's collision once it streams in.</summary>
@@ -146,10 +176,6 @@ public partial class SkyTraffic : Node
         if (far) _standIn.Build(v.Structure);
         _standIn.Visible = far;
         v.View.Visible = !far;
-        // Put down out of the trees' reach, it may sit where a tree stands once they stream in: what it came down on is flattened under it.
-        if (Ship.Phase == SkyPhase.Landed && v.Controller is { Frozen: true })
-            foreach (var (solid, offset) in Zone.Streamer.SolidsNear(v.Body.Position.ToGodot(), Radius(v.Structure)).ToList())
-                if (MathX.Flat((solid.Center + offset).ToNumerics() - v.Body.Position).Length() < Radius(v.Structure)) Zone.Fell(solid.Id, solid.Center + offset);
         if (Ship.Phase != SkyPhase.Landed) _settledOnCollision = false;
         else if (!_settledOnCollision && v.Controller is { Frozen: true } && Collides(v.Body.Position))
         {
@@ -245,7 +271,15 @@ public partial class SkyTraffic : Node
             {
                 float a = turn + k * MathF.Tau / 16f;
                 var p = new N.Vector3(c.X + MathF.Cos(a) * ring, 0f, c.Z + MathF.Sin(a) * ring);
-                if (Fits(p, r, self) is float y)
+                if (Fits(p, r, self) is not float y)
+                {
+                    yield return false;
+                    continue;
+                }
+                // What the scatter grows there, worked out for its chunks as the terrain does, never streamed in.
+                bool? clear;
+                while ((clear = Unwooded(p, r)) == null) yield return false;
+                if (clear == true)
                 {
                     q.Spot = p with { Y = y };
                     yield break;
@@ -254,10 +288,10 @@ public partial class SkyTraffic : Node
             }
     }
 
-    /// <summary>Whether a spot it means to put down on is still clear (now its trees and hulls may have streamed in).</summary>
-    public bool Clear(N.Vector3 spot, Vessel self) => Fits(spot, Radius(self.Structure), self) != null;
+    /// <summary>Whether a spot it means to put down on is still clear of other hulls (its trees and rocks were known when it was picked).</summary>
+    public bool Clear(N.Vector3 spot, Vessel self) => Fits(spot, Radius(self.Structure), self) != null && Unwooded(spot, Radius(self.Structure)) != false;
 
-    /// <summary>The ground's height at a spot if a hull this wide can put down there: the cheap tests first, the trees last.</summary>
+    /// <summary>The ground's height at a spot if a hull this wide can put down there: dry, off every place, road and roadside piece, flat, no other hull.</summary>
     float? Fits(N.Vector3 p, float r, Vessel self)
     {
         var planet = Zone.Planet;
@@ -272,6 +306,8 @@ public partial class SkyTraffic : Node
                 double dx = Mathx.WrapDelta(cx - st.MinX, planet.Width), dz = Mathx.WrapDelta(cz - st.MinZ, planet.Height);
                 if (dx > -m && dx < st.MaxX - st.MinX + m && dz > -m && dz < st.MaxZ - st.MinZ + m) return null;
             }
+        // Nor by anything the roads and the ground lay beside them: poles, wreck sites, ruins, ore tells.
+        if (Zone.Infra == null || Zone.Infra.PieceNear(cx, cz, r + 14f)) return null;
         foreach (Vessel v in Zone.Vessels)
             if (v != self && !v.IsWreck && MathX.Flat(v.Body.Position - p).Length() < r + 25f) return null;
         float h0 = Zone.GroundAt(p.X, p.Z).Y;
@@ -282,8 +318,57 @@ public partial class SkyTraffic : Node
             foreach (float d in new[] { r, r * 0.5f })
                 if (MathF.Abs(Zone.GroundAt(p.X + MathF.Cos(b) * d, p.Z + MathF.Sin(b) * d).Y - h0) > 0.9f) return null;
         }
-        if (Zone.Streamer.SolidsNear(p.ToGodot() with { Y = h0 }, r + 3f).Any()) return null;
         return h0;
+    }
+
+    /// <summary>How far round a spot the scatter is looked at: a crown reaches out over its trunk.</summary>
+    const float CrownReach = 12f;
+
+    readonly Dictionary<(int, int), System.Threading.Tasks.Task<List<PlanetSurface.Terrain.FloraSolid>>> _scatter = new();
+
+    /// <summary>
+    /// The trees, rocks and crowns the terrain's own scatter puts within a reach of a point (frame metres), from its far chunks
+    /// built on a worker without streaming them in; null while they are still being worked out.
+    /// </summary>
+    public List<PlanetSurface.Terrain.FloraSolid> ScatterNear(N.Vector3 p, float reach)
+    {
+        var planet = Zone.Planet;
+        double cx = Mathx.WrapX(p.X, planet.Width), cz = Mathx.Wrap(p.Z, planet.Height);
+        int size = PlanetSurface.Terrain.FarBuilder.Size;
+        int nx = PlanetSurface.Terrain.FarBuilder.Count((int)planet.Width), nz = PlanetSurface.Terrain.FarBuilder.Count((int)planet.Height);
+        var found = new List<PlanetSurface.Terrain.FloraSolid>();
+        bool ready = true;
+        for (int fz = (int)Math.Floor((cz - reach) / size); fz <= (int)Math.Floor((cz + reach) / size); fz++)
+        for (int fx = (int)Math.Floor((cx - reach) / size); fx <= (int)Math.Floor((cx + reach) / size); fx++)
+        {
+            var key = (((fx % nx) + nx) % nx, ((fz % nz) + nz) % nz);
+            if (!_scatter.TryGetValue(key, out var job)) _scatter[key] = job = Zone.Streamer.SolidsOfChunk(key.Item1, key.Item2);
+            if (!job.IsCompleted) { ready = false; continue; }
+            if (job.IsFaulted) continue;
+            foreach (var s in job.Result)
+                if (Math.Abs(Mathx.WrapDelta(s.Center.X - cx, planet.Width)) < reach + Reach(s) && Math.Abs(Mathx.WrapDelta(s.Center.Z - cz, planet.Height)) < reach + Reach(s)) found.Add(s);
+        }
+        return ready ? found : null;
+    }
+
+    /// <summary>A solid's reach round its centre, flat, m: a trunk's radius, a box's half diagonal, a crown's at its tree's scale.</summary>
+    public static float Reach(PlanetSurface.Terrain.FloraSolid s) =>
+        s.IsTrunk ? s.Extents.X : new Vector2(s.Extents.X, s.Extents.Z).Length() * (s.IsCanopy ? s.Scale : 1f);
+
+    /// <summary>Nothing of the scatter within a hull's reach of a spot (true), something there (false), or not known yet (null).</summary>
+    bool? Unwooded(N.Vector3 p, float r)
+    {
+        List<PlanetSurface.Terrain.FloraSolid> near = ScatterNear(p, r + CrownReach);
+        if (near == null) return null;
+        var planet = Zone.Planet;
+        double cx = Mathx.WrapX(p.X, planet.Width), cz = Mathx.Wrap(p.Z, planet.Height);
+        foreach (var s in near)
+        {
+            float dx = (float)Mathx.WrapDelta(s.Center.X - cx, planet.Width), dz = (float)Mathx.WrapDelta(s.Center.Z - cz, planet.Height);
+            float reach = r + 1.5f + Reach(s);
+            if (dx * dx + dz * dz < reach * reach) return false;
+        }
+        return true;
     }
 
     /// <summary>Its reach round its middle on the ground, m.</summary>

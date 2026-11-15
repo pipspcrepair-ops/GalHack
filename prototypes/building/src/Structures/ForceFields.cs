@@ -51,17 +51,16 @@ public sealed class ForceField
     }
 
     /// <summary>
-    /// A tick: with all four emitters there, once its wait is over it quietly grows back to its cap
-    /// over <paramref name="regrowSeconds"/> while powered; with one gone it is down, and waits again
-    /// once it is put back. True if whether it holds changed.
+    /// A tick: once its wait is over it quietly grows back to its cap over <paramref name="regrowSeconds"/>
+    /// while powered (an emitter destroyed takes the whole field with it, so it never ticks without
+    /// all four). True if whether it holds changed.
     /// </summary>
-    public bool Tick(float dt, bool whole, float cap, float delay, float regrowSeconds)
+    public bool Tick(float dt, float cap, float regrowSeconds)
     {
-        if (!whole) (Strength, Wait) = (0f, delay);
-        else if (Wait > 0f) Wait -= dt;
+        if (Wait > 0f) Wait -= dt;
         else if (Powered && Strength < cap) Strength = MathF.Min(cap, Strength + cap / MathF.Max(0.01f, regrowSeconds) * dt);
         Flash = MathF.Max(0f, Flash - dt * 3f);
-        bool holding = whole && Powered && Strength > 0f;
+        bool holding = Powered && Strength > 0f;
         if (holding == Holding) return false;
         Holding = holding;
         return true;

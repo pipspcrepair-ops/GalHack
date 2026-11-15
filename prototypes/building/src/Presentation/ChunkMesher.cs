@@ -509,7 +509,7 @@ public static class ChunkMesher
                         if (_damage[c] == 3) data.Smoking.Add(origin + new Int3(x, y, z));
                         foreach (Part part in t.Parts)
                         {
-                            if (part.ClosedOnly && b.Open) continue;
+                            if (!part.Shows(b)) continue;
                             MeshBuffers target = part.Style == PartStyle.Glass ? data.Glass : data.Opaque;
                             foreach (Polygon poly in part.Polygons)
                                 AddPart(s, b, c, centre, size, poly, part, target);
@@ -517,7 +517,7 @@ public static class ChunkMesher
                         // The device's detail, while the face it sits on shows.
                         foreach (Part part in t.Detail)
                         {
-                            if (part.ClosedOnly && b.Open) continue;
+                            if (!part.Shows(b)) continue;
                             if (part.Mount is Dir mount)
                             {
                                 if (FaceHidden(s, b, c, centre, Orientations.ToWorld(b.Rot, mount))) continue;
@@ -563,7 +563,7 @@ public static class ChunkMesher
         BlockType type = s.Catalogue.Types[b.Type];
         FaceLook look;
         if (style == PartStyle.Glow && type.IsLight) look = Look(s, b, slot, style, _damage[c], light: s.LightAt(cell));
-        else if (style == PartStyle.Glow) look = StatusLook(type, part.Finish, _damage[c], cell);
+        else if (style == PartStyle.Glow) look = StatusLook(type, part.Finish, _damage[c], cell, type.Switches && b.Off);
         else look = Look(s, b, slot, style, _damage[c]);
         if (part?.Finish is PartFinish finish)
         {
@@ -614,7 +614,7 @@ public static class ChunkMesher
                 return new FaceLook(Rgb(t.Accent), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 1, 0, false, wear, holed));
             case PartStyle.Glow:
                 // Smashed badly enough, a light goes out.
-                bool lit = !(t.IsLight && b.Off) && damage < 3;
+                bool lit = !(t.Switches && b.Off) && damage < 3;
                 if (lit && light is LightSettings ls)
                     return new FaceLook(Rgb(ls.Color), ls.PackAccent(), Flags(Pattern.None, 0, FaceTexture.Smooth, damage, true, 0, 0, false, wear, holed) | ((int)ls.Anim << LightSettings.AnimShift));
                 return new FaceLook(Rgb(lit ? t.GlowColor : 0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, lit, 0, 0, false, wear, holed));
@@ -635,13 +635,13 @@ public static class ChunkMesher
 
     /// <summary>
     /// A device's own light or screen: its type's glow colour (or its finish's), moving as the finish
-    /// says. It shows the device's state: out once the block is wrecked, and (in the shader) flickering
+    /// says. It shows the device's state: out once the block is wrecked or switched off, and (in the shader) flickering
     /// while it is damaged and, marked as a status light, dim without power.
     /// </summary>
-    static FaceLook StatusLook(BlockType t, PartFinish finish, int damage, Int3 cell)
+    static FaceLook StatusLook(BlockType t, PartFinish finish, int damage, Int3 cell, bool off)
     {
         uint colour = finish?.Color ?? t.GlowColor;
-        if (damage >= 3)
+        if (damage >= 3 || off) // wrecked, or switched off (a spotlight, a turret): dark
             return new FaceLook(Rgb(0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 0, 0, false, t.DamageLook, false));
         int flags = Flags(Pattern.None, 0, FaceTexture.Smooth, damage, true, BlockMaterials.StatusMetal, 0, false, t.DamageLook, false);
         if (finish == null || finish.Anim == LightAnim.Steady || finish.Symbol != DeviceSymbol.None)
@@ -745,7 +745,7 @@ public static class ChunkMesher
                     {
                         foreach (Part part in t.Parts)
                         {
-                            if (part.ClosedOnly) continue;
+                            if (part.ClosedOnly || !part.Shows(b)) continue;
                             Vector3 p0 = basis * ToG(Footprint.PartPoint(t, part.Min)), p1 = basis * ToG(Footprint.PartPoint(t, part.Max));
                             Vector3 min = p0.Min(p1), max = p0.Max(p1);
                             data.Boxes.Add(((centre + (min + max) * 0.5f) * size, (max - min) * size));

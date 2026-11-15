@@ -901,7 +901,8 @@ public static partial class Homes
             }
             else
             {
-                // An end wall or the back wall, wherever no door or window goes through it.
+                // An end wall or the back wall, wherever no door or window goes through it; the living room's outer walls first, so its
+                // fireplace stands at the stack's foot (a fire is lit only at a chimney breast).
                 Wing m = plan.Wings[0];
                 var tries = new List<(int U, int V, int DU, int DV)>
                 {
@@ -909,6 +910,11 @@ public static partial class Homes
                     ((m.U0 + m.U1) / 2 - 1 + 2 * r.Range(-1, 2), m.V1, 1, 0), (m.U0, m.V1 - 3, 0, 1), (m.U1, m.V1 - 3, 0, 1),
                 };
                 r.Shuffle(tries);
+                foreach (Room lr in h.Rooms.Where(x => x.Purpose == "living-room" && x.Storey == 0 && x.Shape == null))
+                {
+                    int mu = (lr.U0 + lr.U1) / 2 - 1, mv = (lr.V0 + lr.V1) / 2 - 1;
+                    tries.InsertRange(0, new[] { (lr.U0 - 1, mv, 0, 1), (lr.U1 + 1, mv, 0, 1), (mu, lr.V1 + 1, 1, 0), (mu, lr.V0 - 1, 1, 0) });
+                }
                 foreach (var (cu, cv, du, dv) in tries)
                     if (h.ChimneyFits(cu, cv, du, dv)) { h.Chimney(cu, cv, du, dv); break; }
             }

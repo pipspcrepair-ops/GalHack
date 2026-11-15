@@ -37,7 +37,9 @@ public partial class DecoNode : Node3D
         // Drawn out to where it is a pixel or two (its longest side over 600: a cup to 40 m, a chair to 600): a street of
         // dressed rooms and a roadside wreck's hundred pieces cost the renderer nothing from far off.
         Mesh mesh = cache.Mesh(look);
-        node.MeshInstance = new MeshInstance3D { Mesh = mesh, Name = "Mesh", VisibilityRangeEnd = MathF.Max(40f, mesh.GetAabb().GetLongestAxisSize() * 600f) };
+        float longest = mesh.GetAabb().GetLongestAxisSize();
+        node.MeshInstance = new MeshInstance3D { Mesh = mesh, Name = "Mesh", VisibilityRangeEnd = MathF.Max(40f, longest * 600f) };
+        node.ShadowReach = DecoShadows.Reach(longest);
         node.AddChild(node.MeshInstance);
         if (collide)
         {
@@ -76,14 +78,20 @@ public partial class DecoNode : Node3D
     internal byte AnimBand;
     internal float AnimOwed;
 
+    // Its shadow cast only as far as it can be made out (DecoShadows).
+    internal int ShadowIndex = -1;
+    internal float ShadowReach;
+
     public override void _EnterTree()
     {
         if (_anim != null) DecoAnimator.Join(this);
+        DecoShadows.Join(this);
     }
 
     public override void _ExitTree()
     {
         if (_anim != null) DecoAnimator.Leave(this);
+        DecoShadows.Leave(this);
     }
 
     void AddSparks(Vector3 at)

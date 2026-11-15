@@ -1,5 +1,5 @@
 // Blocks manufacturing needs that building's catalogue doesn't have yet: the production machines,
-// the drives, two fixed weapons with their own ammo and the force field emitter. Same format and units as
+// the drives, two fixed weapons with their own ammo, the spotlight, the force field emitter, the scanners, the shield generator and the solar panel. Same format and units as
 // prototypes/building/data/components.json. Whoever loads the building catalogue appends these to
 // its components, as the physics sandbox does with its vessel parts; nothing in
 // prototypes/building changes. Their bills are in blocks.json. The fabricator ladder is the
@@ -12,13 +12,6 @@
   "components": [
     {
       "id": "warp-drive", "name": "Warp drive", "function": "warp-drive", "hp": 790, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 11.9, "color": "3d5a80", "glow": "8ecae6", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 2, 5], "was": ["warpdrive"], "power": -0.1,
-      "parts": [
-        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
-        {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
-      ]
-    },
-    {
-      "id": "warp-tank", "name": "Warp cell tank", "function": "warp-tank", "hp": 316, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 2.62, "color": "3d5a80", "glow": "ffb400", "attach": "all", "airtight": "all", "covers": "all", "size": [1, 1, 2], "was": ["warptank"],
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
         {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
@@ -38,11 +31,65 @@
         {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
       ]
     },
+    // Scanners: a structure's detector. A scan from the structure marks the places within its tier's
+    // range for a while (the slice's data: slice.json scanners; design: vehicle detector 2.5 to 10 km).
+    // A turntable on a foot, a mast, a dish tilted up and a lit coil at its focus; each tier a wider dish.
     {
-      "id": "fold-tank", "name": "Fold crystal tank", "function": "fold-tank", "hp": 32, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.308, "color": "5a189a", "glow": "ffb400", "attach": "all", "airtight": "all", "covers": "all", "size": [1, 2, 1], "was": ["foldtank"],
+      "id": "scanner-t1", "name": "Scanner T1", "function": "scanner", "hp": 120, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.08, "color": "4d5563", "glow": "2ec4b6", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
       "parts": [
-        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
-        {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
+        {"box": [-0.3, -0.5, -0.3, 0.3, -0.34, 0.3], "style": "body"},
+        {"cylinder": "y", "segments": 12, "box": [-0.2, -0.34, -0.2, 0.2, -0.26, 0.2], "style": "dark"},
+        {"box": [-0.05, -0.26, -0.05, 0.05, 0.12, 0.05], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.3, -0.12, 0.04, 0.3, 0.48, 0.1], "style": "body"},
+        {"box": [-0.02, 0.16, -0.16, 0.02, 0.2, 0.04], "style": "dark"},
+        {"box": [-0.05, 0.13, -0.22, 0.05, 0.23, -0.16], "style": "glow"}
+      ]
+    },
+    {
+      "id": "scanner-t2", "name": "Scanner T2", "function": "scanner", "hp": 180, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.12, "color": "3d5a80", "glow": "2ec4b6", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
+      "parts": [
+        {"box": [-0.36, -0.5, -0.36, 0.36, -0.32, 0.36], "style": "body"},
+        {"cylinder": "y", "segments": 12, "box": [-0.24, -0.32, -0.24, 0.24, -0.24, 0.24], "style": "dark"},
+        {"box": [-0.06, -0.24, -0.06, 0.06, 0.08, 0.06], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.4, -0.3, 0.04, 0.4, 0.5, 0.1], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.3, -0.2, 0.0, 0.3, 0.4, 0.04], "style": "dark"},
+        {"box": [-0.02, 0.08, -0.2, 0.02, 0.12, 0.0], "style": "dark"},
+        {"box": [-0.06, 0.04, -0.27, 0.06, 0.16, -0.2], "style": "glow"}
+      ]
+    },
+    {
+      "id": "scanner-t3", "name": "Scanner T3", "function": "scanner", "hp": 260, "armor": 20, "resist": {"kinetic": 0.15, "explosive": 0.1, "energy": 0.15}, "mass": 0.16, "color": "1b263b", "glow": "6ff2e0", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
+      "parts": [
+        {"box": [-0.42, -0.5, -0.42, 0.42, -0.3, 0.42], "style": "body"},
+        {"cylinder": "y", "segments": 14, "box": [-0.3, -0.3, -0.3, 0.3, -0.22, 0.3], "style": "glow"},
+        {"box": [-0.07, -0.22, -0.07, 0.07, 0.02, 0.07], "style": "dark"},
+        {"cylinder": "z", "segments": 18, "box": [-0.48, -0.44, 0.04, 0.48, 0.5, 0.1], "style": "body"},
+        {"cylinder": "z", "segments": 18, "box": [-0.38, -0.34, 0.0, 0.38, 0.4, 0.04], "style": "dark"},
+        {"cylinder": "z", "segments": 18, "box": [-0.2, -0.16, -0.01, 0.2, 0.22, 0.0], "style": "glow"},
+        {"box": [-0.02, 0.02, -0.24, 0.02, 0.06, 0.0], "style": "dark"},
+        {"box": [-0.07, -0.03, -0.32, 0.07, 0.11, -0.24], "style": "glow"}
+      ]
+    },
+    // The shield generator: a structure-wide shield (shared/Items/data/power.json "shield" has its hit points,
+    // recharge and fold crystal), purple like every shield. Empyrion's small shield generator in 1 m cells:
+    // 1,630 kg, 250 hit points, 3.6 kW at full recharge. A squat drum on a plinth, two lit coil rings round it.
+    {
+      "id": "shield-generator", "name": "Shield generator", "function": "shield", "hp": 250, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.2}, "mass": 1.63, "color": "3c096c", "glow": "b14aed", "attach": "all", "airtight": "all", "covers": ["-y"], "collide": "parts", "size": [1, 1, 2], "power": -0.0018,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.3, 0.5], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.4, -0.3, -0.45, 0.4, 0.5, 0.45], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.44, -0.34, -0.3, 0.44, 0.54, -0.22], "style": "glow"},
+        {"cylinder": "z", "segments": 16, "box": [-0.44, -0.34, 0.22, 0.44, 0.54, 0.3], "style": "glow"}
+      ]
+    },
+    // The solar panel: charges the capacitors by daylight before any fuel burns (power.json "solar"). Its power
+    // is what it gives in full sun: Empyrion's solar panel efficiency of 1.8 read as 1.8 kW a panel. A dark frame,
+    // the cells under glass on top.
+    {
+      "id": "solar-panel", "name": "Solar panel", "function": "solar", "hp": 60, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.09, "color": "1b263b", "glow": "4cc9f0", "attach": ["-y"], "airtight": "none", "covers": ["-y"], "collide": "parts", "power": 0.0009,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
+        {"box": [-0.46, -0.42, -0.46, 0.46, -0.39, 0.46], "style": "glass"}
       ]
     },
     {
@@ -128,18 +175,31 @@
         {"box": [-0.425, -0.05, -0.2, 0.425, 0.05, 0.2], "style": "accent"}
       ]
     },
+    // An exterior spotlight: a lamp on the hull throwing a beam out of its lens (-z), switched with the
+    // structure's other spotlights from the pilot's toolbar, apart from the lights inside. Figures
+    // from Empyrion's spotlight (hp, a little power), scaled like the light.
+    {
+      "id": "spotlight", "name": "Spotlight", "function": "spotlight", "hp": 120, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.02, "color": "3a3f47", "glow": "fff1d0", "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "parts", "power": -0.001,
+      "parts": [
+        {"box": [-0.32, -0.32, 0.42, 0.32, 0.32, 0.5], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.26, -0.26, -0.1, 0.26, 0.26, 0.42], "style": "body"},
+        {"cylinder": "z", "segments": 14, "box": [-0.3, -0.3, -0.16, 0.3, 0.3, -0.1], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.22, -0.22, -0.165, 0.22, 0.22, -0.16], "style": "glow"}
+      ]
+    },
     // A force field's corner emitter: an L whose arms (+x, +y) run along the field's two edges from
     // its corner, the field across its face (z). It comes with the field (one force field component
-    // makes a field of any size and its four emitters); this item only replaces one shot away. Plated
-    // like armour, from the same plates: the plated ones are their base under plates (same shape and work).
+    // makes a field of any size and its four emitters); one destroyed destroys the rest and the field.
+    // Plated like armour, from the same plates: the plated ones are their base under plates (same shape
+    // and work). Nothing collides with it (people, creatures and vessels pass through, owner 16 Nov);
+    // shots and the build tool's aim meet its parts (ForceFields.EmitterAlong). Its light, one strip
+    // along the whole inner side of the L, is drawn with the field (lit only while it holds).
     {
-      "id": "forcefield-emitter", "name": "Force field emitter", "function": "field-emitter", "hp": 120, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.05, "color": "2b2d42", "glow": "4cc2ff", "attach": ["-x", "-y", "+z", "-z"], "airtight": "none", "covers": "none", "collide": "parts",
+      "id": "forcefield-emitter", "name": "Force field emitter", "function": "field-emitter", "hp": 120, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.05, "color": "2b2d42","attach": ["-x", "-y", "+z", "-z"], "airtight": "none", "covers": "none", "collide": "none",
       "parts": [
-        {"box": [-0.5, -0.5, -0.26, -0.16, -0.16, 0.26], "style": "dark"},
-        {"box": [-0.18, -0.48, -0.22, 0.5, -0.24, 0.22], "style": "body"},
-        {"box": [-0.48, -0.18, -0.22, -0.24, 0.5, 0.22], "style": "body"},
-        {"box": [-0.16, -0.245, -0.06, 0.5, -0.215, 0.06], "style": "glow"},
-        {"box": [-0.245, -0.16, -0.06, -0.215, 0.5, 0.06], "style": "glow"}
+        {"box": [-0.5, -0.5, -0.087, -0.42, -0.42, 0.087], "style": "dark"},
+        {"box": [-0.42, -0.5, -0.073, 0.5, -0.42, 0.073], "style": "body"},
+        {"box": [-0.5, -0.42, -0.073, -0.42, 0.5, 0.073], "style": "body"}
       ]
     },
     {"id": "forcefield-emitter-iron", "name": "Iron plated emitter", "base": "forcefield-emitter", "plate": "iron-plate", "plates": 2, "hp": 300, "armor": 12, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.15}, "mass": 0.09, "color": "c9c1ae", "metal": 1},

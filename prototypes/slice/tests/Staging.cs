@@ -53,6 +53,7 @@ public sealed partial class Staging
             "liftoff" => Liftoff(),
             "flying" => Flying(),
             "cockpit" => Cockpit(),
+            "assist" => AssistView(),
             "menu" => Menu(),
             "settings" => SettingsView(),
             "escmenu" => EscapeMenuShots(),
@@ -62,6 +63,7 @@ public sealed partial class Staging
             "uiround" => UiRoundShots(),
             "notices" => NoticesShots(),
             "markers" => MarkersShot(),
+            "placescan" => PlaceScanShot(),
             "corescan" => CoreScanShot(),
             "fabicons" => FabIconShots(),
             "loot" => Loot(),
@@ -95,6 +97,8 @@ public sealed partial class Staging
             "vehground" => VehGroundView(),
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
+            "shipbar" => ShipBarView(),
+            "shield" => ShieldView(),
             "decogallery" => DecoGalleryView(),
             "faces" => FacesView(),
             "cores" => CoresView(),
@@ -178,10 +182,12 @@ public sealed partial class Staging
             "dress" => DressView(),
             "hulk" => HulkView(),
             "skyship" => SkyshipView(),
+            "derelict-hull" => DerelictHullView(),
             "visor" => VisorView(),
             "feet" => FeetView(),
             "zfight" => ZFightView(),
             "tiershots" => TierShots(),
+            "nightlights" => NightLightsView(),
             _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;
@@ -266,6 +272,7 @@ public sealed partial class Staging
         if (v == null) throw new InvalidOperationException("the blueprint would not go down anywhere near the start: see the lines above");
         int stop = half ? _game.StarterPlan.Count * 11 / 20 : int.MaxValue;
         foreach (int x in _drive.HoldPrimary(v.Body.Position.ToGodot(), 3000, () => _game.Builder.Underway == null || v.Structure.Count >= stop)) yield return x;
+        Playthrough.Fuel(v); // staging shortcut: its generator's fuel, as with its parts
         foreach (int x in _drive.UntilSettled()) yield return x;
         // Step round to a three-quarter view of it.
         Vector3 side = v.Body.ToParent(new N.Vector3(4.5f, 0f, -4.5f)).ToGodot();
@@ -331,6 +338,30 @@ public sealed partial class Staging
         foreach (int x in _drive.Board(v)) yield return x;
         _game.Survivor.Pitch = -0.32f;
         foreach (int x in _drive.Wait(40)) yield return x;
+    }
+
+    /// <summary>In a Skiff's chair, climbed clear of the ground, with flight assist just switched off (I): the active thrusters icon.</summary>
+    IEnumerable<int> AssistView()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Zone.Wildlife.Frozen = true;
+        Vector3 site = Play.FlatSpot(_game.Start, 40f, 0.6f, 0.4f, span: 14f);
+        Playthrough.Clearing(_game.Zone, site, 30f);
+        _game.Survivor.PlaceOutside((site + new Vector3(0f, 1f, 7f)).ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+        Vessel v = Vessel.Spawn(_game.Zone, CoreCraft.Skiff(_game.Zone.Data), (site + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        v.Settle();
+        foreach (int x in _drive.Wait(10)) yield return x;
+        foreach (int x in _drive.Board(v)) yield return x;
+        _game.Controls.Hold(Key.Space);
+        foreach (int x in _drive.Wait(240)) yield return x;
+        _game.Controls.Hold(Key.Space, false);
+        foreach (int x in _drive.Wait(60)) yield return x;
+        _game.Survivor.Pitch = -0.25f;
+        _game.Press(Key.I);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        GD.Print($"(assist off: {v.Flight.State.AssistOff}, {v.AboveGround:F0} m up)");
     }
 
     Vector3 FlatSpot(Vector3 near, float distance) => Play.FlatSpot(near, distance, span: 10f);

@@ -824,6 +824,7 @@ public partial class SliceTest : Node
             $"its four numbers are the blueprint's: {built.Accel(Direction.Forward):F1} m/sÂ² forward, {built.TurnRate:F0}Â°/s, {built.TopSpeed:F0} m/s, lift margin {built.LiftMargin:+0} kN");
         Check(skiff.Controller.Gear != null && skiff.Controller.Gear.Count == 3, "its three landing legs are its controller's");
         Check(!_rescues.Any(r => r.Body == skiff.Body), "building never pushed the vessel out of the ground");
+        Playthrough.Fuel(skiff); // SYSTEMS TEST SHORTCUT: its generator's fuel, as with its parts
     }
 
     IEnumerable<int> BuildCreative()

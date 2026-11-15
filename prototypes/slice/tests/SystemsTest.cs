@@ -20,7 +20,7 @@ namespace Slice.Tests;
 /// The star-system and planet rules, over fresh random systems every run (no seed is ever pinned):
 /// gravity follows a world's size; the smaller a body the likelier it has no air; suns and gas giants
 /// out-size every world you could land on, have bands, storms and spots and no ground; warp fuel lies
-/// only on airless worlds (as a deposit, plus loot in space places and ships), hyperspace fuel on the
+/// on airless and icy worlds only (as a deposit, plus loot in space places and ships), hyperspace fuel on the
 /// dangerous high-gravity ones (plus ships); every system holds a high-gravity world; every start has
 /// a vacuum moon with enough warp fuel for a first jump; every landable world holds what the cheapest
 /// flyer the recipe tree allows takes; and nothing marks a planet for a jump fuel.
@@ -271,8 +271,9 @@ public partial class SystemsTest : Node
             Orbiter b = worlds[i].Body;
             bool warp = maps[i].Deposits.All().Any(d => d.Kind == DepositKind.WarpFuel), crystal = maps[i].Deposits.All().Any(d => d.Kind == DepositKind.Crystal);
             if (warp) warpOn++;
-            if (warp != b.Spec.Airless) warpWrong++;
-            if (b.Spec.Airless) bare++;
+            bool cold = b.Spec.Airless || b.Spec.Archetype == Archetype.Ice; // the moons and small bodies, and the icy worlds
+            if (warp != cold) warpWrong++;
+            if (cold) bare++;
             if (b.Spec.HighGravity)
             {
                 heavy++;
@@ -281,7 +282,7 @@ public partial class SystemsTest : Node
             }
             else if (crystal && b.Spec.Archetype != Archetype.Alien) hyperElsewhere++; // only the alien crystal world's own signature, else the heavy worlds' alone
         }
-        Check(warpWrong == 0 && bare > 0, $"warp fuel: it lies on {warpOn} worlds, every airless one of {bare} and no world with air ({warpWrong} wrong)");
+        Check(warpWrong == 0 && bare > 0, $"warp fuel (pentaxite): it lies on {warpOn} worlds, every airless or icy one of {bare} and no other ({warpWrong} wrong)");
         Check(hyperMissing == 0 && heavy > 0, $"hyperspace fuel: every one of the {heavy} dangerous high-gravity worlds holds some ({hyperMissing} did not)");
         Check(hyperElsewhere == 0, $"hyperspace fuel: it lies nowhere else, but on the alien crystal worlds that always had it ({hyperElsewhere} other worlds had it)");
         return worlds.Select((w, i) => (w.System, w.Body, maps[i])).ToList();

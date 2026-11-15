@@ -80,6 +80,12 @@ public static class WorldRay
                 found = true;
             }
         }
+        // Field emitters have no collider: met by their parts.
+        if ((mask & Layers.Hull) != 0 && ForceFields.EmitterAlong(zone, eye, dir, found ? hit.Distance : reach, out Vessel ev, out Int3 ec, out float ed, out Vector3 en))
+        {
+            hit = new LookHit(eye + dir * ed, en, ed, ev, ec, null);
+            found = true;
+        }
         return found;
     }
 

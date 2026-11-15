@@ -24,17 +24,25 @@ public sealed record CraftStyle(string Owner, uint[] Coats, uint[] Marks, int Gr
 /// <summary>
 /// What a generated craft must manage on the world it flies, by the player's own numbers (StructureStats, which
 /// HandlingModel reads the same way): lift as a share of its weight, push in each direction (m/s²), turn (gyro torque
-/// over mass, °/s), generation over full-load use, and hours of fuel at full load. One place for the sizing.
+/// over mass, °/s), generation over full-load use (its core's capacitor is drawn only for what the generators can't
+/// keep up with), and hours of generator fuel at full load, carried in core storage (power.json: there are no fuel tanks;
+/// <see cref="FuelMJPerSu"/> is the energy its fuel packs into a storage unit). One place for the sizing.
 /// </summary>
 public sealed record CraftNeeds(float Lift = 1.5f, float Forward = 6f, float Back = 5f, float Side = 3f, float Down = 3f,
-    float Turn = 25f, float Power = 1.25f, float FuelHours = 1.5f)
+    float Turn = 25f, float Power = 1.25f, float FuelHours = 1.5f, float FuelMJPerSu = 54f)
 {
     public static readonly CraftNeeds Default = new();
+
+    /// <summary>The generator fuel it carries, MJ: its hours at full load.</summary>
+    public double FuelMJ(StructureStats st) => st.PowerUse * 3600 * FuelHours;
+
+    /// <summary>The storage that fuel takes, SU.</summary>
+    public double FuelSu(StructureStats st) => FuelMJ(st) / FuelMJPerSu;
 }
 
 /// <summary>
 /// Rolls a small vessel (a trader or a scout) from parts on the 1 m grid, in a faction's style: a cockpit up front, a
-/// body behind it holding the core in its belly and the generator, gyros and fuel inside, then the role's modules
+/// body behind it holding the core in its belly and the generator and gyros inside, then the role's modules
 /// bolted on (cargo pods of real containers, or a sensor mast and engine booms), landing pads in the belly, and
 /// thrusters wherever a hull face looks onto clear air in the direction they push, as many as its mass needs on
 /// every axis. Lights go on its faces: landing lights under it, red to port, green to starboard, white aft and a beacon
@@ -74,7 +82,7 @@ public static class SmallCraft
         if (!st.HasCore) return "no core";
         if (!s.Blocks().Any(b => s.TypeOf(b.block).IsCommandChair)) return "no command chair";
         if (!st.Powered || st.PowerOut < needs.Power * use) return $"power {st.PowerOut:F2} of {needs.Power * use:F2} MW";
-        if (st.Fuel / (1000 * use) < needs.FuelHours) return $"fuel {st.Fuel / (1000 * use):F1} h";
+        if (st.StorageCapacity < needs.FuelSu(st) * 1.5) return $"room for fuel {st.StorageCapacity:0} of {needs.FuelSu(st) * 1.5:0} SU";
         if (st.Thrust[(int)Dir.PosY] < needs.Lift * m * gravity) return $"lift {st.Thrust[(int)Dir.PosY]:0} of {needs.Lift * m * gravity:0} kN";
         if (st.Thrust[(int)Dir.NegZ] / m < needs.Forward) return "forward thrust";
         if (st.Thrust[(int)Dir.PosZ] / m < needs.Back) return "braking thrust";
@@ -165,10 +173,9 @@ public static class SmallCraft
                 for (int k = 1; k <= 3; k++) { l.Reserved.Add(P(x, -1 - k, z)); l.Reserved.Add(P(x, -1 - k, z + 1)); }
             }
 
-        // The power, gyro and fuel inside; then thrust and the rest, sized by its mass.
+        // The power and gyro inside, a hold for its fuel; then thrust and the rest, sized by its mass.
         Device(l, "generator-t1");
         Device(l, "gyro-t1");
-        Device(l, "fuel-tank-t1");
         // A trader's hold fills its inside but for a few cells kept for what sizing adds; then it is sized with its hold aboard.
         if (trader) while (l.Inside.Count > 4 && Device(l, "container-t1")) { }
         else Device(l, "container-t1"); // a scout's locker
@@ -254,7 +261,7 @@ public static class SmallCraft
             double m = st.Mass, use = Math.Max(st.PowerUse, 1e-6);
             bool added;
             if (st.PowerOut < needs.Power * use) added = Device(l, "generator-t1");
-            else if (st.Fuel / (1000 * use) < needs.FuelHours) added = Device(l, "fuel-tank-t1");
+            else if (st.StorageCapacity < needs.FuelSu(st) * 1.5) added = Device(l, "container-t1");
             else if (Torque(l.S) / m < needs.Turn) added = Device(l, "gyro-t1");
             else if (st.Thrust[(int)Dir.PosY] < needs.Lift * m * gravity) added = Thrust(l, Dir.PosY, "thruster-t1", pair: true);
             else if (st.Thrust[(int)Dir.NegZ] / m < needs.Forward) added = Thrust(l, Dir.NegZ, l.Rng.Next(3) == 0 ? "thruster-t2" : "thruster-t1", pair: !trader || l.Rng.Next(2) == 0);

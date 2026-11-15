@@ -3,6 +3,7 @@ using System.Linq;
 using GalHack.Plants;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Planets.Gen;
 using Planets.Look;
 using Godot;
@@ -302,6 +303,25 @@ public partial class TerrainStreamer
             return !World.Felled.Contains(solid.Id);
         }
         return false;
+    }
+
+    /// <summary>
+    /// The trunks, boulders and other solids the scatter puts in one far chunk (canonical chunk coordinates), worked out on a
+    /// worker exactly as the chunk's finest level builds them, felled trees and dug ground left out, without streaming it
+    /// in: for anything that must know what stands on ground nobody is near. Their centres are canonical.
+    /// </summary>
+    public Task<List<FloraSolid>> SolidsOfChunk(int fx, int fz)
+    {
+        var source = World.Source;
+        GroundPalette palette = World.Palette;
+        HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
+        var job = new FarJob { Fx = fx, Fz = fz, Lod = 0, SpanX = FarBuilder.Span(fx, World.Terrain.Width), SpanZ = FarBuilder.Span(fz, World.Terrain.Height) };
+        return Task.Run(() =>
+        {
+            FarBuilder.Build(job, source, palette, dug, felled);
+            if (job.Error != null) throw job.Error;
+            return job.Solids ?? new List<FloraSolid>();
+        });
     }
 
     /// <summary>The loaded solids near a point (frame coordinates, returned in the frame), for tests and stuck-safety.</summary>

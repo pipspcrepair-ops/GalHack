@@ -105,6 +105,15 @@ public sealed class Structure
     /// <summary>Cargo in the shared storage, in storage units.</summary>
     public double CargoSu;
 
+    /// <summary>
+    /// The pilot's arrangement of the structure's toolbar, a function's key per slot (null for an empty slot), or null
+    /// for the default arrangement. Kept with the structure and carried by its blueprint; the game says what the keys mean.
+    /// </summary>
+    public string[] Bar;
+
+    /// <summary>The structure's systems switched off, by name (its toolbar's toggles): the game and its power model read them.</summary>
+    public readonly SortedSet<string> SystemsOff = new(StringComparer.Ordinal);
+
     public PaintPalette Palette { get; } = new();
 
     /// <summary>Its force fields, each spanning the cells between its four emitter blocks.</summary>
@@ -403,7 +412,7 @@ public sealed class Structure
         }
         foreach (Part p in t.Parts)
         {
-            if (p.ClosedOnly && b.Open) continue;
+            if (!p.Shows(b)) continue;
             System.Numerics.Vector3 lo = Footprint.PartPoint(t, p.Min), hi = Footprint.PartPoint(t, p.Max);
             if (q.X > lo.X + Eps && q.Y > lo.Y + Eps && q.Z > lo.Z + Eps && q.X < hi.X - Eps && q.Y < hi.Y - Eps && q.Z < hi.Z - Eps) return true;
         }

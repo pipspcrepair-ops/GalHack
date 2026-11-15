@@ -65,6 +65,10 @@ public sealed class Celestial
     /// <summary>The node its ring and other globe-framed things hang on.</summary>
     internal Node3D Sphere;
 
+    /// <summary>A moon's globe being painted from its surface's map (off the main thread), then set up a piece a frame.</summary>
+    internal System.Threading.Tasks.Task<GlobePaint> Painting;
+    internal System.Collections.Generic.IEnumerator<int> SettingUp;
+
     public Celestial(Orbiter body, bool home)
     {
         Body = body;

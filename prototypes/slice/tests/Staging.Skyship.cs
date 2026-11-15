@@ -12,7 +12,8 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The start world's lone trader or scout, from the ground: landed by its home place, passing overhead in daylight,
-/// and passing over at night with its lights on. Frames into --dir (skyship-landed, skyship-overhead, skyship-night);
+/// passing over at night with its lights on, and at night from about 800 m. Frames into --dir (skyship-landed, skyship-overhead,
+/// skyship-night, skyship-night-far);
 /// --role=trader|scout picks the role.
 /// </summary>
 public sealed partial class Staging
@@ -65,6 +66,13 @@ public sealed partial class Staging
             _game.FixedCamera = SkyLook(under, v.Body.Position.ToGodot());
             foreach (int x in Shot($"{dir}/skyship-{name}.png")) yield return x;
         }
+        // At night from about 800 m off: its lamps carry as far points, as a town's do.
+        Vector3 off = SkyGround(v.Body.Position.ToGodot() + side * 800f, 1.7f);
+        foreach (int x in SkyHold(off, () => v.Body.Position.ToGodot(), 150)) yield return x;
+        off = Open(off);
+        _game.FixedCamera = SkyLook(off, v.Body.Position.ToGodot());
+        GD.Print($"skyship: night-far {ship.Phase}, {off.DistanceTo(v.Body.Position.ToGodot()):F0} m off, {v.AboveGround:F0} m up, lights {(v.LightsOn ? "on" : "off")}");
+        foreach (int x in Shot($"{dir}/skyship-night-far.png")) yield return x;
         _game.FixedCamera = null;
     }
 

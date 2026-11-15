@@ -78,7 +78,8 @@ public partial class VehicleGroundTest : Node
     IEnumerable<int> Scenarios()
     {
         string[] args = OS.GetCmdlineUserArgs();
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(args, WorldChoice.Tested) };
+        // TEST SHORTCUT: generators burn no fuel; this tests flight and handling, not fuel (PowerTest does).
+        _game = new Game.Game { FreePower = true, Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(args, WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;

@@ -11,7 +11,7 @@ using Slice.Vessels;
 namespace Slice.Tests;
 
 /// <summary>
-/// The visor's corners (design: Visor HUD layout): the sleeper's gauges and icon row at the bottom left, the surroundings
+/// The visor's corners (design: Visor HUD layout): the sleeper's gauges and icon row at the bottom left, the temperature
 /// at the upper left, the toolbar at the bottom middle, and seated, the structure's gauges and icons at the bottom right,
 /// mirroring the sleeper's. Each shows what the game has: helmet open and shut, in vacuum or not, near one of your cores
 /// or not, seated or on foot.
@@ -30,7 +30,7 @@ public partial class BuildTest
               && MathF.Abs(l.Toolbar.GetCenter().X - size.X / 2f) < 0.5f && l.Toolbar.End.Y > l.Sleeper.Position.Y
               && MathF.Abs(size.X - l.Structure.End.X - l.Sleeper.Position.X) < 0.5f && l.Structure.End.Y == l.Sleeper.End.Y && l.StructureIcons.End.Y < l.Structure.Position.Y
               && HudLayout.IconAt(l.StructureIcons, 0, s, true).End.X == l.StructureIcons.End.X,
-            $"1080p: sleeper gauges bottom left {l.Sleeper}, their icons above them, surroundings upper left {l.Surroundings}, toolbar bottom middle {l.Toolbar}, structure gauges bottom right {l.Structure} mirroring the sleeper's, icons from the corner in");
+            $"1080p: sleeper gauges bottom left {l.Sleeper}, their icons above them, temperature upper left {l.Surroundings}, toolbar bottom middle {l.Toolbar}, structure gauges bottom right {l.Structure} mirroring the sleeper's, icons from the corner in");
 
         var suit = _game.Suit;
         var gear = suit.Sim.Player.Gear;
@@ -40,10 +40,10 @@ public partial class BuildTest
               && g[0].Value == $"{v.Health:F0}" && g[1].Value == $"{v.Stamina:F0}" && g[2].Value == $"{suit.FoodShare * 100:F0}%"
               && g[3].Value == $"{suit.OxygenShare * 100:F0}%" && g[4].Value == $"{v.Radiation:F1}" && g.All(x => x.Share is >= 0 and <= 1.0001),
             $"sleeper gauges: {string.Join("  ", g.Select(x => $"{x.Label} {x.Value}"))}, each with its bar");
-        Gauge[] here = _game.Visor.Surroundings();
+        Gauge here = _game.Visor.Surroundings();
         var e = suit.Last.Exposure;
-        Check(here.Length == 2 && here[0].Label == "RAD" && here[0].Value == $"{e.Radiation:F1}" && here[1].Label == "TEMP" && here[1].Value == $"{e.Temperature:F0}°C",
-            $"surroundings: RAD {here[0].Value}, TEMP {here[1].Value} ({e.Place})");
+        Check(here.Label == "TEMP" && here.Value == $"{e.Temperature:F0}°C" && l.Surroundings.Size.Y <= HudLayout.SurroundRowH * s + 0.5f,
+            $"upper left, the temperature alone: TEMP {here.Value} ({e.Place}); radiation is the sleeper's RADS gauge");
 
         // The helmet, open and shut.
         if (gear.HelmetOn) suit.Sim.ToggleHelmet();
@@ -83,7 +83,7 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(10)) yield return x;
         Gauge[] sg = _game.Visor.StructureGauges(floor);
         Check(string.Join(",", sg.Select(x => x.Label)) == "CAP,FUEL,WARP,FOLD" && sg.All(x => x.Value == "--"),
-            $"structure gauges: {string.Join("  ", sg.Select(x => $"{x.Label} {x.Value}"))} (no live power to read until power phase 1)");
+            $"structure gauges: {string.Join("  ", sg.Select(x => $"{x.Label} {x.Value}"))} (no generator and no drives on it: nothing to read)");
         IconState[] icons = _game.Visor.StructureIcons(floor);
         bool gravity = floor.Structure.GravityOn;
         floor.Structure.GravityOn = !gravity;

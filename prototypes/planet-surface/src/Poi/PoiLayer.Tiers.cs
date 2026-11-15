@@ -78,13 +78,8 @@ public partial class PoiLayer
         {
             var place = new Place { Site = site };
             _places.Add(place);
-            // Its far mesh is made once it has been built (PoiBuilds); until then a plain block of its size stands for it.
-            if (site.Siting != "city")
-            {
-                place.StandIn = StandIn(site);
-                AddChild(place.StandIn);
-                continue;
-            }
+            // Its far mesh is made once it has been built (PoiBuilds builds the nearest first); nothing stands in for it before then.
+            if (site.Siting != "city") continue;
             var key = ((int)Mathf.Floor(site.Origin.X / TileSize), (int)Mathf.Floor(site.Origin.Z / TileSize));
             if (!tiles.TryGetValue(key, out Tile tile)) tiles[key] = tile = new Tile { First = site };
             tile.Members.Add(place);
@@ -93,22 +88,13 @@ public partial class PoiLayer
         _tiles.AddRange(tiles.Values);
     }
 
-    static StandardMaterial3D _standIn;
-
-    /// <summary>A plain block over a place's footprint, as high as it stands: what shows of it until it has been built.</summary>
-    MeshInstance3D StandIn(PoiSite site)
+    /// <summary>The middle of a place's top, the copy nearest <paramref name="eye"/>: what of it is seen first from afar.</summary>
+    Vector3 Top(PoiSite site, Vector3 eye)
     {
-        _standIn ??= new StandardMaterial3D { AlbedoColor = new Color(0.46f, 0.45f, 0.43f), Roughness = 1f };
         var lo = site.Footprint.Min;
         var hi = site.Footprint.Max;
-        // (the layout's grid keeps 8 cells of air over the place; a part not laid out yet stands as high as its footprint says)
-        float top = site.Pending ? site.Footprint.Max.Y - 12 - site.Origin.Y : site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8;
-        var size = new Vector3(hi.X - lo.X + 1, Mathf.Max(2f, top), hi.Z - lo.Z + 1);
-        return new MeshInstance3D
-        {
-            Name = "Stand-in " + site.Family.Id, Mesh = new BoxMesh { Size = size, Material = _standIn }, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            Position = _world.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, site.Origin.Y + size.Y * 0.5f, (lo.Z + hi.Z + 1) * 0.5f), _focus),
-        };
+        float top = site.Pending ? site.Footprint.Max.Y - 12 : site.Origin.Y + site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8;
+        return _world.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, top, (lo.Z + hi.Z + 1) * 0.5f), eye);
     }
 
     /// <summary>A city tile's far mesh, once every building in it has been built.</summary>
@@ -143,18 +129,14 @@ public partial class PoiLayer
         tile.Node.AddChild(tile.Low);
         tile.Mesh = null;
         AddChild(tile.Node);
+        Fx.PopLog.Note("city", "appears", tile.Distance, TileSize, 1f, Top(tile.First, _focus));
         foreach (Place p in tile.Members)
         {
             PoiInstance inst = p.Site.Instance;
             p.Node = new Node3D { Name = p.Site.Family.Id };
             AddLights(p.Node, inst, CityLights);
-            foreach (Node n in p.Node.GetChildren())
-                if (n is OmniLight3D l)
-                {
-                    l.DistanceFadeEnabled = true;
-                    l.DistanceFadeBegin = 500f;
-                    l.DistanceFadeLength = 120f;
-                }
+            HandOff(p.Node);
+            Far?.Add(p.Site, inst);
             // (No smoke: a city fell long ago, and nothing in it still burns.)
 
             DressFromDecoLibrary(p.Node, inst);
@@ -186,16 +168,18 @@ public partial class PoiLayer
         node.AddChild(p.Low);
         p.LowMesh = null;
         AddLights(node, inst);
-        foreach (Node n in node.GetChildren())
-            if (n is OmniLight3D l)
-            {
-                l.DistanceFadeEnabled = true;
-                l.DistanceFadeBegin = 500f;
-                l.DistanceFadeLength = 120f;
-            }
+        HandOff(node);
+        Far?.Add(p.Site, inst);
         AddSmoke(node, inst);
         DressFromDecoLibrary(node, inst);
         return node;
+    }
+
+    /// <summary>A far drawing's real lights fade out where its far points take over (FarLights: the one hand-off).</summary>
+    static void HandOff(Node3D node)
+    {
+        foreach (Node n in node.GetChildren())
+            if (n is Light3D l) FarLights.HandOff(l);
     }
 
     float Away(Place p, Vector3 camera)
@@ -254,8 +238,7 @@ public partial class PoiLayer
             }
             p.Node = BuildLow(p);
             AddChild(p.Node);
-            p.StandIn?.QueueFree();
-            p.StandIn = null;
+            Fx.PopLog.Note("place", "appears", Away(p, camera), p.Size, 1f, Top(p.Site, camera));
             built = true;
             break;
         }
@@ -520,14 +503,14 @@ public partial class PoiLayer
         if (p.Cells.TryGetValue(group, out MeshInstance3D cube)) cube.Visible = !hide;
     }
 
-    /// <summary>Places within <paramref name="range"/> of the camera not drawn as themselves yet: a plain block, or a city tile still waiting for its buildings (tests).</summary>
+    /// <summary>Places within <paramref name="range"/> of the camera not drawn as themselves yet: a place not built, or a city tile still waiting for its buildings (tests).</summary>
     public int Unshown(float range) =>
-        _places.Count(p => p.StandIn != null && Away(p, _focus) < range && PoiBuilds.Withhold?.Invoke(p.Site) != true) + _tiles.Count(t => t.Node == null && t.Members.Min(p => Away(p, _focus)) < range);
+        _places.Count(p => p.Node == null && !_tileOf.ContainsKey(p) && Away(p, _focus) < range && PoiBuilds.Withhold?.Invoke(p.Site) != true) + _tiles.Count(t => t.Node == null && t.Members.Min(p => Away(p, _focus)) < range);
 
     /// <summary>Whether a place in reach still waits for its merged blocks (tests and proof frames wait for none).</summary>
     public bool MidPending { get; private set; } = true;
 
-    /// <summary>How a place shows just now (tests): 0 a plain block or nothing, 1 its far mesh (or its city tile's), 2 its merged blocks, dissolved in.</summary>
+    /// <summary>How a place shows just now (tests): 0 nothing yet, 1 its far mesh (or its city tile's), 2 its merged blocks, dissolved in.</summary>
     public int Shows(PoiSite site)
     {
         Place p = _places.Find(x => x.Site == site);
@@ -536,8 +519,8 @@ public partial class PoiLayer
         return _tileOf.TryGetValue(p, out Tile t) && (t.Low is { Visible: true } || t.Way != 0) ? 1 : 2;
     }
 
-    /// <summary>Whether a place stands built, no plain block left in its stead (tests).</summary>
-    public bool Standing(PoiSite site) => site.Built != null && _places.Find(x => x.Site == site) is { StandIn: null };
+    /// <summary>Whether a place stands built and drawn (tests).</summary>
+    public bool Standing(PoiSite site) => site.Built != null && _places.Find(x => x.Site == site) is { } p && (p.Node != null || _tileOf.ContainsKey(p));
 
     /// <summary>Whether a place's mid blocks are in (tests).</summary>
     public bool MidReady(PoiSite site) => _places.Find(x => x.Site == site)?.Whole == true;

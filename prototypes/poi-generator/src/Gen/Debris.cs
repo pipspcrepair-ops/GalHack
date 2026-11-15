@@ -338,8 +338,27 @@ public static class Debris
     // ---- where it lies ------------------------------------------------------------------------
 
     /// <summary>
+    /// Loose things left on nothing (rubble on what no longer holds it, litter and weeds on air) drop to the first floor under
+    /// them, or go if none holds them there.
+    /// </summary>
+    public static void Settle(PoiInstance inst)
+    {
+        var g = inst.Blocks;
+        var nav = inst.Nav();
+        bool Rests(Block b, Int3 under) => nav.IsRock(under) || (b.Type == BlockType.Rubble ? BlockInfo.Supports(g.Get(under).Type) : BlockInfo.Collides(g.Get(under).Type));
+        foreach (var (p, b) in g.Blocks().Where(t => t.Block.Type is BlockType.Rubble or BlockType.Plant or BlockType.Ash or BlockType.Scatter).ToList())
+        {
+            if (Rests(b, p + Int3.Down)) continue;
+            g.Set(p, Block.Air);
+            Int3 c = p;
+            while (c.Y > g.Min.Y && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
+            if (g.Get(c).IsAir && !inst.Protected[c] && Rests(b, c + Int3.Down)) g.Set(c, b);
+        }
+    }
+
+    /// <summary>
     /// Lays what came down where it came down (at most <paramref name="most"/> piles): each fallen column drops to the first floor under it, and where a
-    /// lot fell in one spot it heaps, spilling chunks round it; what fell from an outer wall spills outward. A
+    /// lot fell in one spot it heaps, spilling chunks round it; what fell from an outer wall spills outward; in a room it lies along the walls. A
     /// pile only goes on a cell that is clear, off the protected way, and on a floor that holds it.
     /// <paramref name="share"/> of the fallen columns leave a pile.
     /// </summary>
@@ -371,6 +390,23 @@ public static class Debris
             while (c.Y > g.Min.Y && g.Get(c).IsAir && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
             return Holds(c) ? c : null;
         }
+        // Indoors it lies along the walls, come down off them or pushed aside by whoever came through since, never heaped across a
+        // room's middle: what a room was stays readable under its rubble.
+        var indoor = new HashSet<Int3>(inst.Layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault).SelectMany(m => m.Cells));
+        Int3? Aside(Int3 at)
+        {
+            if (!indoor.Contains(at)) return at;
+            int best = int.MaxValue;
+            Int3 to = at;
+            foreach (Dir d in Dirs.Horizontal)
+                for (int k = 1; k <= 8 && k <= best; k++)
+                {
+                    Int3 c = at + d.Vec() * k;
+                    if (!indoor.Contains(c) || BlockInfo.Collides(g.Get(c).Type)) { if (k - 1 < best) (best, to) = (k - 1, at + d.Vec() * (k - 1)); break; }
+                }
+            if (best == 0) return at;
+            return best < int.MaxValue && Land(to) is Int3 wall && wall.Y == at.Y ? wall : null;
+        }
         int laid = 0;
         var keys = columns.Keys.ToList();
         rng.Shuffle(keys);
@@ -381,7 +417,7 @@ public static class Debris
             Int3 top = new(key.X, lowest[key], key.Z);
             // An outer wall's pieces spill out from its foot.
             if (outward.TryGetValue(key, out Dir o) && rng.Chance(0.6f)) top += o.Vec() * rng.Between(1, 2);
-            if (Land(top) is not Int3 at) continue;
+            if (Land(top) is not Int3 landed || Aside(landed) is not Int3 at) continue;
             Block main = blocks.GroupBy(b => (b.Material, b.Role)).OrderByDescending(x => x.Count()).First().First();
             byte kind = blocks.Count >= 4 && main.Material is not (Material.Glass or Material.Timber) ? Heap : KindOf(main);
             g.Set(at, Of(main, kind));
