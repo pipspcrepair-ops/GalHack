@@ -322,10 +322,11 @@ public sealed partial class Staging
             foreach (int x in _drive.Wait(600)) yield return x;
             var now = town.People.Where(q => !q.Indoors && !q.Dead && !q.Away && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
             if (now.Count == 0) continue;
-            Town.Person busy = now.OrderByDescending(q => now.Count(o => o.Pos.DistanceTo(q.Pos) < 10f)).First();
+            // The knot with the most of them and the most kinds of dress among them: a split shows where both sides stand.
+            int Score(IEnumerable<Town.Person> some) => some.Count() + 4 * some.Select(o => o.Figure.Cloth).Where(c => c.S > 0.12f).Select(c => (int)(c.H * 6f) * 3 + (int)(c.V * 2.99f)).Distinct().Count();
+            Town.Person busy = now.OrderByDescending(q => Score(now.Where(o => o.Pos.DistanceTo(q.Pos) < 10f))).First();
             var near = now.Where(o => o.Pos.DistanceTo(busy.Pos) < 10f).ToList();
-            if (near.Count > knot.Count) { knot = near; people = now; }
-            if (knot.Count >= 8) break;
+            if (Score(near) > Score(knot)) { knot = near; people = now; }
         }
         if (knot.Count == 0) { GD.Print($"(nobody out at {site.Name})"); yield break; }
         GD.Print($"(culture view: {site.Name} at {_game.Zone.Sky.TimeOfDay:F2}, {people.Count} of {town.People.Count} out, {knot.Count} together; their culture: {town.Culture})");
