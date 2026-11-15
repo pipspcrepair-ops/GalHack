@@ -180,7 +180,7 @@ Today `StructureClass` (Base, Capital, Small, Hover) and the physics `VesselClas
 | Today | Uses class for | After |
 | --- | --- | --- |
 | Area margin (`slice.json:84`: 30 m large, 12 m small) | building and storage range | One rule: 12 m + `sizeShare` × half the structure's longest side (sizeShare is already there). A 40 m base gets about 30 m. |
-| Top speeds (`handling.json`: hover 50/50, small 70/130, capital 60/100) | speed caps | Caps by mass band: under 100 t gets 70/130, 100 t and up gets 60/100, and Hover mode gets 50/50 **(check)**. |
+| Top speeds (`handling.json`: hover 50/50, small 70/130, capital 60/100) | speed caps | Superseded 16 Nov: no mass bands. One Flight cap for every structure (200 m/s above the 1,060 m crossing; below it the highest multiple of 10 streaming keeps up with, 70 at least) and Hover mode 50; see DESIGN.md's Top speed row. |
 | `SmallVesselMaxTurn` (`Game.cs:520`) | turn cap | Same mass band. |
 | Hosts (`PhysicsWorld.IsHost`: Base, or Capital) | who can carry parked craft | Any structure hosts any craft whose landing gear attaches to it. See **Parking** in section 10. |
 | capital-base `IsLarge` (Home, hosting, pumping) | Home flag and so on | Any structure can be Home. Hosting as above. |
