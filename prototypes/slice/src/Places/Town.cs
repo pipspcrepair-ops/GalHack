@@ -983,9 +983,23 @@ public sealed partial class Town
             Vector3 away = gap > 0.05f ? -d / gap : Vector3.Right * (p.GetHashCode() < q.GetHashCode() ? -1f : 1f);
             if (StandBy(q.Pos, away, want, r, h, p.Pos) is not { } found)
             {
-                // No room here at their distance: the two go to a spot nearby that has it, or part if there's none. Never closer.
-                if (Roomy(q, p, want, r, h) is int spot) { GoTo(p, spot); GoTo(q, spot); p.ChatRetry = q.ChatRetry = _clock + 1f; ChatMoved++; }
-                else { p.Partner = q.Partner = null; ChatStuck++; }
+                // No room here at their distance: the two go once to a spot nearby that has it, with a way there; failing that, or
+                // still no room when they get there, they part and go about their day. Never closer.
+                if (p.ChatWith != q && Roomy(q, p, want, r, h) is int spot)
+                {
+                    GoTo(p, spot);
+                    GoTo(q, spot);
+                    if (p.Path is { Count: > 0 } || p.Asked >= 0)
+                    {
+                        p.ChatWith = q;
+                        ChatMoved++;
+                        return;
+                    }
+                }
+                p.Partner = q.Partner = null;
+                p.Wait = MathF.Min(p.Wait, 0.5f);
+                q.Wait = MathF.Min(q.Wait, 0.5f);
+                ChatStuck++;
                 return;
             }
             stand = found;

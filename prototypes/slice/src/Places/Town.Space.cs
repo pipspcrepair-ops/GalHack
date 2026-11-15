@@ -144,8 +144,9 @@ public sealed partial class Town
                     if (MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
                     float d = new Vector2(o.Pos.X - p.Pos.X, o.Pos.Z - p.Pos.Z).Length();
                     if (d >= BodyRadius(o) + BodyRadius(p) - 0.015f) continue;
-                    p.Wait = 0f;
-                    p.Partner = null;
+                    // (Both on: one keeping a stall comes straight back to it, the one visiting goes.)
+                    p.Wait = o.Wait = 0f;
+                    p.Partner = o.Partner = null;
                     break;
                 }
             }
