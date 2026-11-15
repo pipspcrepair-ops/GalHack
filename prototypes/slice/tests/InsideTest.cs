@@ -105,11 +105,11 @@ public partial class InsideTest : Node
         List<PlacedModule> modules = place.Inst.Layout.Modules;
         int entry = modules[place.Inst.Layout.EntranceModule].Storey, way = modules.Max(m => m.Storey) > entry ? 1 : -1;
         Dictionary<int, int> hops = fauna?.Rooms is { } plan ? PoiFauna.Hops(plan) : new();
-        var stops = (fauna?.Rooms.Rooms ?? new List<PoiRoom>()).Where(r => r.Kind is RoomKind.Room or RoomKind.Hall && hops.ContainsKey(r.Index) && (modules[r.Index].Storey - entry) * way >= 0)
-            .GroupBy(r => modules[r.Index].Storey).OrderBy(g => Math.Abs(g.Key - entry)).Take(Arg("shots") != null ? 6 : 4).Select(g => g.OrderBy(r => hops[r.Index]).First()).ToList();
+        var stops = (fauna?.Rooms.Rooms ?? new List<PoiRoom>()).Where(r => r.Kind is RoomKind.Room or RoomKind.Hall && hops.ContainsKey(r.Index) && r.Storey * way >= 0)
+            .GroupBy(r => r.Storey).OrderBy(g => Math.Abs(g.Key)).Take(Arg("shots") != null ? 6 : 4).Select(g => g.OrderBy(r => hops[r.Index]).First()).ToList();
         // The storeys its keepers live on (their people's spots, their machines' posts) and one either side are theirs to keep clear.
         IEnumerable<int> posts = fauna?.Rooms.Holder == PlaceHolder.Machines ? place.Inst.Enemies.Select(e => e.Module) : place.Inst.Townsfolk?.Spots.Select(s => s.Module) ?? Enumerable.Empty<int>();
-        var theirs = fauna?.Rooms.Holder is PlaceHolder.People or PlaceHolder.Machines ? posts.Where(i => i >= 0 && i < modules.Count).Select(i => modules[i].Storey).ToHashSet() : new HashSet<int>();
+        var theirs = fauna?.Rooms.Holder is PlaceHolder.People or PlaceHolder.Machines ? posts.Where(i => i >= 0 && i < modules.Count).Select(i => modules[i].Storey - entry).ToHashSet() : new HashSet<int>();
         // Nothing that comes at you is unseen: every blow on the sleeper is by something drawn.
         int blows = 0, unseen = 0;
         game.Zone.Wildlife.Attacked += e => { if (e.Hit) { blows++; if (!e.Creature.Shown) unseen++; } };
@@ -132,10 +132,10 @@ public partial class InsideTest : Node
                 double ms = fauna?.Site?.LastStepMs ?? 0;
                 (sum, worst) = (sum + ms, Math.Max(worst, ms));
             }
-            int storey = modules[r.Index].Storey - entry;
+            int storey = r.Storey;
             var (line, there, seen, missed) = Count(game, place, r);
             GD.Print($"  {(ok ? "at" : "short of")} the {r.Purpose} on storey {storey} ({hops[r.Index]} doors in): {line}; its sim step {sum / 90:F2} ms on average, {worst:F2} at worst");
-            if (storey != 0 && there == 0 && !theirs.Any(s => Math.Abs(s - modules[r.Index].Storey) <= 1)) bare++;
+            if (storey != 0 && there == 0 && !theirs.Any(s => Math.Abs(s - storey) <= 1)) bare++;
             hidden += missed;
             if (seen > best.Seen) best = (seen, $"{r.Purpose} on storey {storey}");
             // The picture: at the stop with the most drawn, a few metres from the nearest in a clear line from the eye, the torch on.

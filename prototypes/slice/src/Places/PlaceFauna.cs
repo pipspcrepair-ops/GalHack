@@ -69,7 +69,8 @@ public sealed class PlaceFauna
     {
         PoiInstance inst = memory.Inst;
         Layout layout = inst.Layout;
-        bool ship = inst.Family.Tags.Contains("ship") || inst.Family.Tags.Contains("wreck") || inst.Family.Tier == PoiTier.Wreck;
+        CapitalHull.HullPlan hull = CapitalHull.Of(layout);
+        bool ship = hull != null || inst.Family.Tags.Contains("ship") || inst.Family.Tags.Contains("wreck") || inst.Family.Tier == PoiTier.Wreck;
         var plan = new PoiPlan
         {
             Seed = inst.SpawnSeed,
@@ -122,7 +123,7 @@ public sealed class PlaceFauna
             var room = new PoiRoom
             {
                 Index = m.Index,
-                Kind = KindOf(m, ship),
+                Kind = KindOf(m.Purpose, m.Kind, ship),
                 Min = new Vector3(inside.X0, inside.Y, inside.Z0),
                 Max = new Vector3(inside.X1 + 1, inside.Y + inside.Height, inside.Z1 + 1),
                 Depth = Math.Max(0, -m.Storey),
@@ -152,6 +153,8 @@ public sealed class PlaceFauna
             if (byIndex.TryGetValue(d.ModuleA, out PoiRoom pa)) pa.Doors.Add((mid, outOfChild));
             if (byIndex.TryGetValue(d.ModuleB, out PoiRoom pb)) pb.Doors.Add((mid, -outOfChild));
         }
+        // A crashed capital hulk's inside is its vessel, lying in the hollow: its holds, engine rooms and decks.
+        if (hull != null) plan.Rooms.AddRange(HullSpace.Rooms(hull, layout.Modules.Count));
         plan.Kept = KeptBy(inst, plan.Holder);
         PoiPopulation pop;
         lock (deep.Lock) pop = PoiFauna.Populate(plan, deep.Fauna, deep.Data.Deep);
@@ -239,16 +242,16 @@ public sealed class PlaceFauna
         : f is Faction.Vharn or Faction.Kessari or Faction.Hollow ? PoiTheme.Alien
         : (family.Style ?? "").StartsWith("alien_", StringComparison.Ordinal) ? PoiTheme.Alien : PoiTheme.Industrial;
 
-    static RoomKind KindOf(PlacedModule m, bool ship)
+    internal static RoomKind KindOf(string purpose, ModuleKind kind, bool ship)
     {
         if (ship)
         {
-            string p = m.Purpose ?? "";
+            string p = purpose ?? "";
             if (p.Contains("hold") || p.Contains("cargo")) return RoomKind.Hold;
             if (p.Contains("engine") || p.Contains("reactor")) return RoomKind.EngineRoom;
             if (p.Contains("duct") || p.Contains("crawl")) return RoomKind.Duct;
         }
-        return m.Kind switch
+        return kind switch
         {
             ModuleKind.Entrance => RoomKind.Entrance,
             ModuleKind.Corridor => RoomKind.Corridor,
@@ -268,14 +271,16 @@ public sealed class PlaceFauna
     sealed class SolidCells
     {
         readonly PoiInstance _inst;
+        readonly Func<int, int, int, bool> _solid;
         readonly PInt3 _min, _size;
         readonly byte[] _known; // 0 not read yet, 1 open, 2 solid
 
-        public SolidCells(PoiInstance inst)
+        public SolidCells(PoiInstance inst, Cells cells)
         {
             _inst = inst;
-            _min = inst.Blocks.Min;
-            _size = inst.Blocks.Size;
+            _solid = cells.Solid;
+            _min = new PInt3(cells.Min.X, cells.Min.Y, cells.Min.Z);
+            _size = new PInt3(cells.Max.X - cells.Min.X, cells.Max.Y - cells.Min.Y, cells.Max.Z - cells.Min.Z);
             _known = new byte[_size.X * _size.Y * _size.Z];
             _slope = new byte[_size.X * _size.Y * _size.Z];
         }
@@ -287,13 +292,13 @@ public sealed class PlaceFauna
         {
             int i = Index(x, y, z);
             byte k = _known[i];
-            if (k == 0) _known[i] = k = Solid(_inst, x, y, z) ? (byte)2 : (byte)1;
+            if (k == 0) _known[i] = k = _solid(x, y, z) ? (byte)2 : (byte)1;
             return k == 2;
         }
 
         public void Forget(PInt3 c)
         {
-            if (!_inst.Blocks.InBounds(c)) return;
+            if (!_inst.Blocks.InBounds(c) || c.X < _min.X || c.Y < _min.Y || c.Z < _min.Z || c.X >= _min.X + _size.X || c.Y >= _min.Y + _size.Y || c.Z >= _min.Z + _size.Z) return;
             _known[Index(c.X, c.Y, c.Z)] = 0;
             _slope[Index(c.X, c.Y, c.Z)] = 0;
         }
@@ -308,7 +313,7 @@ public sealed class PlaceFauna
             byte k = _slope[i];
             if (k == 0)
             {
-                Block b = _inst.Blocks.Get(new PInt3(x, y, z));
+                Block b = _inst.Blocks.InBounds(new PInt3(x, y, z)) ? _inst.Blocks.Get(new PInt3(x, y, z)) : default;
                 PInt3 v = b.Facing.Vec();
                 int slope = b.Type is BlockType.Stair or BlockType.Ramp && Get(x, y, z) ? Wildlife.Slopes.Of(v.X, v.Z) : -1;
                 _slope[i] = k = (byte)(slope + 2);
@@ -339,6 +344,20 @@ public sealed class PlaceFauna
         return PlaceParts.Legacy ? Built(b) : Built(b) && !BlockInfo.IsPart(b.Type);
     }
 
+    /// <summary>A place's cells as its creatures meet them, and their bounds (max exclusive): its blocks, and a crashed hulk's vessel where it lies (out past the place's grid, the ground).</summary>
+    public readonly record struct Cells(Func<int, int, int, bool> Solid, Vector3I Min, Vector3I Max);
+
+    public static Cells CellsOf(PoiInstance inst)
+    {
+        BlockGrid g = inst.Blocks;
+        var min = new Vector3I(g.Min.X, g.Min.Y, g.Min.Z);
+        var max = new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z);
+        if (HullSpace.Of(inst) is not { } hull) return new Cells((x, y, z) => Solid(inst, x, y, z), min, max);
+        return new Cells((x, y, z) => hull.Cell(x, y, z) ?? (g.InBounds(new PInt3(x, y, z)) ? Solid(inst, x, y, z) : y <= Assembler.GroundY),
+            new Vector3I(Math.Min(min.X, hull.Min.X), Math.Min(min.Y, hull.Min.Y), Math.Min(min.Z, hull.Min.Z)),
+            new Vector3I(Math.Max(max.X, hull.Max.X), Math.Max(max.Y, hull.Max.Y), Math.Max(max.Z, hull.Max.Z)));
+    }
+
     /// <summary>
     /// Whether a creature stands where an open cell reaches it, as a test; set down anywhere else it is taken out (<see cref="CullUnreached"/>): a pocket under a plate laid on the ground, a sealed tank, a void between
     /// a floor and the earth, a solid cell (open air flooded from the sky, the way in and every room, six ways). Whoever
@@ -346,8 +365,8 @@ public sealed class PlaceFauna
     /// </summary>
     public static Func<Creature, bool> Reach(PoiInstance inst, PoiPlan plan)
     {
-        BlockGrid g = inst.Blocks;
-        PInt3 min = g.Min, size = g.Size;
+        Cells cells = CellsOf(inst);
+        PInt3 min = new(cells.Min.X, cells.Min.Y, cells.Min.Z), size = new(cells.Max.X - min.X, cells.Max.Y - min.Y, cells.Max.Z - min.Z);
         int Index(int x, int y, int z) => ((z - min.Z) * size.Y + y - min.Y) * size.X + x - min.X;
         bool In(int x, int y, int z) => x >= min.X && y >= min.Y && z >= min.Z && x < min.X + size.X && y < min.Y + size.Y && z < min.Z + size.Z;
         var reached = new bool[size.X * size.Y * size.Z];
@@ -365,7 +384,7 @@ public sealed class PlaceFauna
         while (stack.Count > 0)
         {
             var (x, y, z) = stack.Pop();
-            if (!In(x, y, z) || reached[Index(x, y, z)] || Solid(inst, x, y, z)) continue;
+            if (!In(x, y, z) || reached[Index(x, y, z)] || cells.Solid(x, y, z)) continue;
             reached[Index(x, y, z)] = true;
             stack.Push((x + 1, y, z)); stack.Push((x - 1, y, z)); stack.Push((x, y + 1, z));
             stack.Push((x, y - 1, z)); stack.Push((x, y, z + 1)); stack.Push((x, y, z - 1));
@@ -396,12 +415,12 @@ public sealed class PlaceFauna
     {
         PoiInstance inst = m.Inst;
         BlockGrid g = inst.Blocks;
-        return new BlockSpace((x, y, z) => Solid(inst, x, y, z),
-            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z))
+        Cells cells = CellsOf(inst);
+        return new BlockSpace(cells.Solid, cells.Min, cells.Max)
         {
             Slope = (x, y, z) =>
             {
-                Block b = g.Get(new PInt3(x, y, z));
+                Block b = g.InBounds(new PInt3(x, y, z)) ? g.Get(new PInt3(x, y, z)) : default;
                 PInt3 v = b.Facing.Vec();
                 return b.Type is BlockType.Stair or BlockType.Ramp ? Wildlife.Slopes.Of(v.X, v.Z) : -1;
             },
@@ -434,9 +453,9 @@ public sealed class PlaceFauna
         PlanetSurface.World.PlanetWorld planet = deep.Planet;
         var terrain = new WTerrain((x, z) => planet.GroundHeight(Planets.Gen.Mathx.WrapX(o.X + x, planet.Width), Planets.Gen.Mathx.Wrap(o.Z + z, planet.Height)) - o.Y, half);
         var sim = new WildSim(deep.Data, terrain, new WNav(terrain.HalfSize, 3f));
-        _cells = new SolidCells(inst);
-        var space = new BlockSpace(_cells.Get,
-            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
+        Cells cells = CellsOf(inst);
+        _cells = new SolidCells(inst, cells);
+        var space = new BlockSpace(_cells.Get, cells.Min, cells.Max) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space, Fair(deep, planet, o, space));
         _reaches = Reach(inst, Rooms);
         CullUnreached(sim, _reaches);

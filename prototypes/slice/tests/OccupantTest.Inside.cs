@@ -26,7 +26,7 @@ public partial class OccupantTest
 {
     sealed class InsideTally
     {
-        public int Places, Silent, Missing, Storeys, Held, Bare, Thin, Threats, People, FarThreats, Hulks;
+        public int Places, Silent, Missing, Storeys, Held, Bare, Thin, Threats, People, FarThreats;
         public float Floor, Far;
         public string Example = "";
         public void Note(string what) { if (Example == "") Example = $" (e.g. {what})"; }
@@ -57,7 +57,6 @@ public partial class OccupantTest
                 + $"{t.People / (float)t.Places:F1} people a place; {t.Held} of {t.Storeys} storeys off the way in's held{(t.Missing + t.Bare + t.Thin > 0 ? $"; {t.Missing} without their holders, {t.Bare} bare, {t.Thin} thin{t.Example}" : "")}");
         var all = by.Values.ToList();
         int places = all.Sum(t => t.Places), silent = all.Sum(t => t.Silent);
-        if (all.Sum(t => t.Hulks) > 0) GD.Print($"    (not counted: {all.Sum(t => t.Hulks)} crashed capital hulks, whose inside is a vessel set down in the place, of {string.Join(", ", by.Where(kv => kv.Value.Hulks > 0).Select(kv => kv.Key))})");
         string Worst(Func<InsideTally, int> of) => string.Join("; ", by.Where(kv => of(kv.Value) > 0).OrderByDescending(kv => of(kv.Value)).Take(5).Select(kv => $"{kv.Key} {of(kv.Value)}{kv.Value.Example}"));
         Check(places > (only != null ? 20 : 250) && silent <= places * 0.1f, $"{places} places of {by.Count(kv => kv.Value.Places > 0)} families on fresh worlds: {silent} silent (only a barren world's may be)");
         Check(all.Sum(t => t.Missing) == 0, $"whoever holds a place is in it: {all.Sum(t => t.Missing)} places without their holders ({Worst(t => t.Missing)})");
@@ -78,8 +77,6 @@ public partial class OccupantTest
         PoiInstance inst;
         try { inst = PoiFactory.Spawn(_lib, PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, Seed()), state, seed, null, occ); }
         catch (InvalidOperationException) { return; } // the generator gave up on a seed: the game skips such a place
-        // A crashed capital hulk's inside is a vessel the game sets down in its hollow (Hulks), not the place's rooms: counted apart.
-        if (CapitalHull.Of(inst.Layout) != null) { t.Hulks++; return; }
         PlaceMemory m = Memory(inst);
         PlaceFauna fauna = PlaceFauna.Plan(m, deep);
         PoiPlan plan = fauna.Rooms;
@@ -124,16 +121,16 @@ public partial class OccupantTest
             t.Missing++;
             t.Note($"{who}: {people} people, {sim.Creatures.Count(c => !c.Removed)} creatures");
         }
-        // The storeys off the way in's (each its rooms at one storey of the layout), and those its keepers live on: their people's spots, their machines' posts, one either side.
+        // The storeys off the way in's (each its rooms at one storey from the way in's, a hulk's by its decks), and those its keepers live on: their people's spots, their machines' posts, one either side.
         List<PlacedModule> modules = inst.Layout.Modules;
         int entry = inst.Layout.EntranceModule >= 0 && inst.Layout.EntranceModule < modules.Count ? modules[inst.Layout.EntranceModule].Storey : 0;
         IEnumerable<int> posts = plan.Holder == PlaceHolder.Machines ? inst.Enemies.Select(e => e.Module) : folk?.Spots.Select(s => s.Module) ?? Enumerable.Empty<int>();
-        var theirs = posts.Where(i => i >= 0 && i < modules.Count).Select(i => modules[i].Storey).ToHashSet();
+        var theirs = posts.Where(i => i >= 0 && i < modules.Count).Select(i => modules[i].Storey - entry).ToHashSet();
         bool keepers = plan.Holder is PlaceHolder.People or PlaceHolder.Machines || inst.State == PoiState.Active;
         int storeys = 0, held = 0, farThreats = 0;
         float far = 0f;
         // (A storey whose rooms all have a working light may be quiet: the worst of the dark keep out of it.)
-        foreach (var storey in walkable.GroupBy(r => modules[r.Index].Storey).Where(g => g.Key != entry && g.Any(r => !r.Lit && r.Kind is not (RoomKind.Corridor or RoomKind.Entrance or RoomKind.Descent))))
+        foreach (var storey in walkable.GroupBy(r => r.Storey).Where(g => g.Key != 0 && g.Any(r => !r.Lit && r.Kind is not (RoomKind.Corridor or RoomKind.Entrance or RoomKind.Descent))))
         {
             storeys++;
             bool kept = keepers && (theirs.Count == 0 || theirs.Any(s => Math.Abs(s - storey.Key) <= 1));

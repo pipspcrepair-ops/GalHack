@@ -139,6 +139,9 @@ public static class CapitalHull
     {
         public string Role = "", Size = "", Crash = "";
         public List<HullPiece> Pieces = new();
+
+        /// <summary>What is gone of piece i of a place laid out with this seed, in this state (the vessel set down and what lives in it agree).</summary>
+        public HashSet<Int3> Gone(int i, PoiState state, ulong seed) => Pieces[i].Damage(state, seed + (ulong)i * 7919UL);
     }
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<LayoutExtras, HullPlan> Plans = new();
