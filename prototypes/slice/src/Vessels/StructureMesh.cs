@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using GalHack.Structures;
 using GalHack.Structures.Presentation;
 using Godot;
@@ -48,6 +49,9 @@ public partial class StructureMesh : Node3D
     readonly Dictionary<Int3, MeshInstance3D> _chunks = new();
     readonly ChunkMeshData _scratch = new();
     readonly List<Light3D> _lights = new();
+    /// <summary>Every lit lamp and spotlight, as of the structure's version they were listed at.</summary>
+    List<(Int3 pos, Block block)> _lamps, _spots;
+    int _lampsVersion = -1;
     readonly List<LightSettings> _lightSettings = new();
     string _lightKey = "";
     readonly Slice.Surface.StructureSky _sky = new();
@@ -90,6 +94,7 @@ public partial class StructureMesh : Node3D
         {
             Relight();
             if (PowerSource != null && PowerSource() != Powered) SetPowered(!Powered);
+            UpdateLights();
         }
         if (_waiting.Count > 0) DrainQueue();
         if (Rebuilt != rebuilt || queued > 0) LastFrameMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
@@ -175,15 +180,31 @@ public partial class StructureMesh : Node3D
         }
     }
 
+    /// <summary>
+    /// The real lights while it has power: the structure's lit lamps nearest whoever is looking (all of them on a small craft; on a capital hull, the
+    /// few round the camera, so the room you stand in is lit by its own lamps), redone as the camera moves.
+    /// </summary>
     void UpdateLights()
     {
-        var lights = new List<(Int3 pos, Block block)>();
-        var spots = new List<(Int3 pos, Block block)>();
-        foreach (var (p, b) in Structure.Blocks())
+        if (_lamps == null || _lampsVersion != Structure.Version)
         {
-            BlockType t = Structure.TypeOf(b);
-            if (t.IsLight && !b.Off && lights.Count < MaxLights) lights.Add((p, b));
-            else if (t.IsSpotlight && !b.Off && spots.Count < MaxSpots) spots.Add((p, b));
+            _lamps = new();
+            _spots = new();
+            foreach (var (p, b) in Structure.Blocks())
+            {
+                BlockType t = Structure.TypeOf(b);
+                if (t.IsLight && !b.Off) _lamps.Add((p, b));
+                else if (t.IsSpotlight && !b.Off) _spots.Add((p, b));
+            }
+            _lampsVersion = Structure.Version;
+        }
+        // No power, no light: its lamps are dark until something runs them.
+        var lights = Powered ? _lamps : new List<(Int3 pos, Block block)>();
+        var spots = Powered ? _spots.Take(MaxSpots).ToList() : new List<(Int3 pos, Block block)>();
+        if (lights.Count > MaxLights)
+        {
+            Vector3 eye = IsInsideTree() && GetViewport()?.GetCamera3D() is { } camera ? ToLocal(camera.GlobalPosition) / Structure.Grid.CellSize : Vector3.Zero;
+            lights = lights.OrderBy(l => new Vector3(l.pos.X, l.pos.Y, l.pos.Z).DistanceSquaredTo(eye)).Take(MaxLights).ToList();
         }
         string key = string.Join(";", lights.ConvertAll(l => $"{l.pos}/{l.block.Rot}/{Structure.LightAt(l.pos).ToText()}")) + "|" + string.Join(";", spots.ConvertAll(l => $"{l.pos}/{l.block.Rot}"));
         if (key == _lightKey) return;

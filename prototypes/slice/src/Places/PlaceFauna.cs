@@ -154,7 +154,7 @@ public sealed class PlaceFauna
             if (byIndex.TryGetValue(d.ModuleB, out PoiRoom pb)) pb.Doors.Add((mid, -outOfChild));
         }
         // A crashed capital hulk's inside is its vessel, lying in the hollow: its holds, engine rooms and decks.
-        if (hull != null) plan.Rooms.AddRange(HullSpace.Rooms(hull, layout.Modules.Count));
+        if (hull != null && HullSpace.Of(inst) is { } vessel) plan.Rooms.AddRange(vessel.Rooms(layout.Modules.Count));
         plan.Kept = KeptBy(inst, plan.Holder);
         PoiPopulation pop;
         lock (deep.Lock) pop = PoiFauna.Populate(plan, deep.Fauna, deep.Data.Deep);

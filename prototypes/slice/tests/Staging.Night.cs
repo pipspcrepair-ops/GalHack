@@ -93,7 +93,14 @@ public sealed partial class Staging
                 var spots = new List<Vector3>();
                 for (int i = of.First; i < of.First + of.Count; i++) spots.Add(PointAt(far, i, eye));
                 float one = 0f;
+                // The ruin judged on its own: other places' points (a lived-in neighbour's lamps in the same few pixels) put out for the frame.
+                var mm = ((MultiMeshInstance3D)far.GetNode("Far points")).Multimesh;
+                var kept = new Dictionary<int, Color>();
+                if (!want)
+                    for (int i = 0; i < mm.VisibleInstanceCount; i++)
+                        if (i < of.First || i >= of.First + of.Count) { Color c = mm.GetInstanceCustomData(i); kept[i] = c; mm.SetInstanceCustomData(i, c with { B = 0f }); }
                 foreach (int x in AB(eye, mid, far, "Far points", spots, v => one = v)) yield return x;
+                foreach (var (i, c) in kept) mm.SetInstanceCustomData(i, c);
                 seen = MathF.Max(seen, one);
                 if (want && seen > 0.04f) break;
             }

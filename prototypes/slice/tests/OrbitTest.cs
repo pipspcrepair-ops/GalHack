@@ -457,11 +457,11 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
         Check(_wreck.Storage.IsEmpty && hold.All(kv => _game.Pack[kv.Key] == before[kv.Key] + kv.Value), "TAKE ALL: everything in its hold is in the bag");
 
-        // A block of the bulkhead, cut free with the survival tool.
+        // A block of the bulkhead, cut free with the survival tool (its "steel" is iron plating on the 1 m grid).
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
         _game.Tool.Mode = Slice.Player.ToolMode.Gather;
         Vector3 eye = _game.Survivor.WorldEye();
-        Int3 wall = ship.Blocks().Where(b => ship.TypeOf(b.block).Id == "steel").Select(b => b.pos)
+        Int3 wall = ship.Blocks().Where(b => ship.TypeOf(b.block).Id == "iron-plated").Select(b => b.pos)
             .OrderBy(p => CellAt(p.X, p.Y, p.Z).DistanceTo(eye)).First();
         Bill bag = _game.Pack.Storage.Contents;
         foreach (int x in _drive.HoldPrimary(CellAt(wall.X, wall.Y, wall.Z), 60 * 12, () => _game.Spaceflight.Salvaged > 0)) yield return x;

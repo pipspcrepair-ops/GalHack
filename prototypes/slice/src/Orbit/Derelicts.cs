@@ -28,16 +28,18 @@ public sealed class DerelictPlan
     public Bill Loot = new();
     /// <summary>Its way in from outside: a hull door, dead and shut, forced by hand (structure cells), if it has one.</summary>
     public Int3? Door;
+    /// <summary>A capital ship's piece: what the hull builder made of it (its rooms, its dressing, its core's seat), else null.</summary>
+    public Slice.Places.HullVessel.Result Hull;
 }
 
 /// <summary>
 /// The start system's wrecks near the world, from the POI generator's data: its start-system
 /// placement (<see cref="OrbitPlacement"/>: kinds, salvage grade, the "near" and "orbit" bands, a
 /// bearing and a distance) brought in close, and each kind built as real blocks (building's
-/// structure model; its plan is still the 2 m grid's, laid on 1 m cells) so it can be boarded, looted, salvaged block by block and claimed
+/// structure model, on the 1 m grid) so it can be boarded, looted, salvaged block by block and claimed
 /// with a core:
 /// <list type="bullet">
-/// <item>a capital ship (any site orbit.txt gives a "hull": derelict freighters, warships, drifting and generation hulks): the planet's crash-site hull builder's vessel, adrift</item>
+/// <item>a capital ship (any site orbit.txt gives a "hull": derelict freighters, warships, drifting and generation hulks): the one hull builder the planet's crashed hulks are built by (HullVessel), adrift, its rooms dressed and lit</item>
 /// <item>a broken station (broken, and any dead station or outpost: a start system holds no live faction): modules on truss tubes, a hull door, one module torn off and drifting</item>
 /// <item>a wreck field (field): hull fragments and loose cargo boxes tumbling apart</item>
 /// <item>an escape pod cluster (field): pods that launched and were never picked up</item>
@@ -122,9 +124,10 @@ public static class Derelicts
     // ---- Kinds ---------------------------------------------------------------------------------
 
     /// <summary>
-    /// A capital ship adrift: the same hull the planet's crash sites have (poi-generator's CapitalHull, the site
-    /// named by orbit.txt's "hull"), of the player's own blocks, damaged as its state says, no core; its pieces
-    /// float apart as the break left them. Its holds carry a few rolls of its salvage grade.
+    /// A capital ship adrift: the same plan the planet's crash sites have (poi-generator's CapitalHull, the site
+    /// named by orbit.txt's "hull") built by the same hull builder (HullVessel) of the player's own blocks, its rooms
+    /// dressed and lit, damaged as its state says, no core; its pieces float apart as the break left them. Its holds
+    /// carry a few rolls of its salvage grade.
     /// </summary>
     static List<DerelictPlan> Capital(PoiLibrary library, SiteDef site, OrbitPoi poi, string id, Catalogue catalogue, ItemCatalogue items, OrbitRules rules)
     {
@@ -133,17 +136,16 @@ public static class Derelicts
         var pieces = new List<DerelictPlan>();
         var rng = new Random(unchecked((int)(poi.Seed ^ (poi.Seed >> 17))));
         N.Vector3 first = plan.Pieces[0].Origin;
-        for (int i = 0; i < plan.Pieces.Count; i++)
+        List<Slice.Places.HullVessel.Result> built = Slice.Places.Hulks.Build(plan, catalogue, poi.State, poi.Seed, Slice.Places.Hulks.Deco());
+        for (int i = 0; i < built.Count; i++)
         {
-            CapitalHull.HullPiece piece = plan.Pieces[i];
-            var gone = piece.Damage(poi.State, poi.Seed + (ulong)i);
-            Structure s = Slice.Places.Hulks.Build(piece.Text(poi.Site.Name, gone), catalogue, poi.Site.Name + piece.Name);
-            if (s == null) continue;
+            Slice.Places.HullVessel.Result hull = built[i];
+            Structure s = hull.Structure;
+            s.Name = poi.Site.Name + hull.Piece.Name;
             var p = new DerelictPlan
             {
                 Id = plan.Pieces.Count == 1 ? id : $"{id}-{i + 1}", Name = s.Name, Structure = s,
-                Position = piece.Origin - first, Rotation = piece.Rotation,
-                Door = piece.Door is PoiGenerator.Gen.Int3 d ? new Int3(d.X, d.Y, d.Z) : null,
+                Position = hull.Piece.Origin - first, Rotation = hull.Piece.Rotation, Door = hull.Door, Hull = hull,
             };
             int containers = s.Blocks().Count(b => s.TypeOf(b.block).IsContainer);
             for (int r = 0; r < Math.Min(24, containers / 12 + 2); r++)

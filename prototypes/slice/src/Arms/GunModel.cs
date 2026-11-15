@@ -66,6 +66,44 @@ public static class GunModel
         b.Root.Position = new Vector3(0f, -0.08f * b.Dip, 0f);
     }
 
+    static readonly List<Built> _kicking = new();
+
+    /// <summary>
+    /// Someone else's gun goes off in their hands: it jumps straight back along its barrel into
+    /// their shoulder or body (further for a heavy gun) with a small rise of the muzzle, never
+    /// sideways, then settles over a few frames, so you see the shot leave it. (The player's own gun
+    /// kicks in the hands: Hands.Recoil.)
+    /// </summary>
+    public static void Kick(Built b, WeaponDef d)
+    {
+        if (b == null || !GodotObject.IsInstanceValid(b.Root)) return;
+        b.Kick = 1f;
+        b.KickBack = 0.05f + 0.02f * d.Recoil;
+        b.KickDegrees = 2f + 1.5f * d.Recoil;
+        if (!_kicking.Contains(b)) _kicking.Add(b);
+    }
+
+    /// <summary>
+    /// Every frame: kicked guns settle (about a tenth of a second). The kick is laid in the gun's own
+    /// frame (barrel along -Z): back along +Z, and the muzzle turned up about the one axis square to
+    /// both the barrel and the world's up, however the hand holding it is turned.
+    /// </summary>
+    public static void Settle(float dt)
+    {
+        for (int i = _kicking.Count - 1; i >= 0; i--)
+        {
+            Built b = _kicking[i];
+            if (!GodotObject.IsInstanceValid(b.Root) || b.Root.GetParent() is not Node3D hold || !hold.IsInsideTree()) { _kicking.RemoveAt(i); continue; }
+            b.Kick = MathF.Max(0f, b.Kick - dt * 9f);
+            float k = b.Kick * b.Kick;
+            Vector3 up = (hold.GlobalBasis.Inverse() * Vector3.Up).Normalized();
+            Vector3 axis = Vector3.Forward.Cross(up);
+            Basis rise = axis.LengthSquared() > 1e-4f ? new Basis(axis.Normalized(), Mathf.DegToRad(b.KickDegrees * k)) : Basis.Identity;
+            b.Root.Transform = new Transform3D(rise, Vector3.Back * b.KickBack * k);
+            if (b.Kick <= 0f) _kicking.RemoveAt(i);
+        }
+    }
+
     /// <summary>The built model: its root, the muzzle node (flashes and shots start there), and its emitters by role.</summary>
     public sealed class Built
     {
@@ -74,6 +112,8 @@ public static class GunModel
         /// <summary>The weapon row's id, and how far a reload has dipped it (0..1).</summary>
         public string Id;
         public float Dip;
+        /// <summary>How much of a shot's kick is left (1 just fired, 0 settled), and the full kick: metres back, degrees of muzzle rise.</summary>
+        public float Kick, KickBack, KickDegrees;
         public GunModelSpec Spec;
         /// <summary>Charge rings, one per stage, lit as it charges.</summary>
         public readonly List<ShaderMaterial> Rings = new();

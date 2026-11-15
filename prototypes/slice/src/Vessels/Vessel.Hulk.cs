@@ -42,9 +42,9 @@ public sealed partial class Vessel : ILiftHull
 
     /// <summary>
     /// A wreck lying where it came down on a planet: one fixed body, as a base is (nothing moves it, it walks like a
-    /// base, the ground meets it), turned as it lies, with no core.
+    /// base, the ground meets it), turned as it lies, with no core. Its colliders may come already worked out, off the main thread.
     /// </summary>
-    public static Vessel SpawnGroundWreck(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation)
+    public static Vessel SpawnGroundWreck(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation, List<ChunkColliders> colliders = null)
     {
         MassProperties mass = MassOf(s);
         Body body = zone.Physics.Register(new BodySpec
@@ -65,7 +65,7 @@ public sealed partial class Vessel : ILiftHull
         zone.AddChild(node);
         vessel.Binding = zone.Host.Bind(body, new FixedBinding(node));
         vessel.HullShapes = new StructureShapes(node);
-        vessel.Furnish(node, drawLater: true);
+        vessel.Furnish(node, drawLater: true, colliders);
         vessel.Binding.Teleport();
         vessel.Register();
         return vessel;

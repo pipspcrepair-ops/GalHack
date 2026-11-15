@@ -176,7 +176,15 @@
     "pharmacy":    { "set": "medical", "wall": { "nurse-station": 3, "shelf-row": 4 }, "island": { "range": 3 }, "fill": ["cabinet", "bin"] },
     "mortuary":    { "set": "medical", "island": { "optable-island": 5 }, "wall": { "locker-row": 3, "shelf-row": 1 }, "fill": ["gurney", "cabinet", "bin"] },
     "day-room":    { "set": "residential", "wall": { "screen-wall": 5, "book-row": 1 }, "island": { "lounge": 4 }, "zone": { "kitchen-table": 2, "cafe-pair": 2 }, "fill": ["plant", "lamp", "sideboard"], "light": ["ceiling-light"] },
-    "quarters":    { "set": "residential", "wall": { "bed-bay": 4, "single-bay": 3, "wardrobe-row": 2 }, "island": {}, "zone": { "lounge": 2, "kitchen-table": 2 }, "fill": ["nightstand", "lamp", "chest", "plant"], "light": ["ceiling-light"] }
+    "quarters":    { "set": "residential", "wall": { "bed-bay": 4, "single-bay": 3, "wardrobe-row": 2 }, "island": {}, "zone": { "lounge": 2, "kitchen-table": 2 }, "fill": ["nightstand", "lamp", "chest", "plant"], "light": ["ceiling-light"] },
+    // A capital ship's rooms (the slice's HullVessel, for wrecks and derelicts) that no place's rule covers: the bridge round its
+    // consoles, the officers' table and desks, the holds' cargo, the machinery spaces' pipes and panels. The rest take the
+    // places' own (barracks, galley, ward, workshop, armoury).
+    "ship-bridge":   { "set": "ship", "wall": { "console-station": 6, "locker-row": 1 }, "island": { "table-group": 0.6 }, "fill": ["locker", "crate", "lamp"] },
+    "ship-officers": { "set": "office", "wall": { "desk-station": 4, "shelf-row": 1 }, "island": { "table-group": 3 }, "fill": ["cabinet", "plant", "bin"] },
+    "ship-hold":     { "set": "ship", "wall": { "crate-stack": 4 }, "island": {}, "fill": ["crate"] },
+    "ship-engines":  { "set": "industrial", "wall": { "pipe-run": 3, "tank-row": 1, "workbench-station": 1 }, "island": {}, "fill": ["panel", "junction", "cylinders"] },
+    "ship-reactor":  { "set": "industrial", "wall": { "pipe-run": 3, "console-station": 2 }, "island": {}, "fill": ["panel", "junction", "valve"] }
   },
 
   // Outdoor sites: a road, an apron or a rail line laid along z (north to south). "lane" is the
@@ -211,6 +219,10 @@
     "turbine-hall": "plant", "engine-room": "plant", "magazine": "armoury",
     "vault@military": "armoury", "vault@medical": "pharmacy", "vault@industry": "storeroom", "vault@city": "storeroom",
     "hydroponics": "greenhouse", "cellblock": "prison", "guardroom": "prison", "solitary": "prison", "evidence": "prison",
+    "ship-bridge": "ship-bridge", "ship-officers": "ship-officers", "ship-crew-quarters": "barracks", "ship-barracks": "barracks", "ship-cabin": "bedroom",
+    "ship-medbay": "ward", "ship-galley": "galley", "ship-workshop": "workshop", "ship-stores": "storeroom", "ship-hold": "ship-hold", "ship-ore-hold": "ship-hold",
+    "ship-hangar": "hangar", "ship-armoury": "armoury", "ship-magazine": "armoury", "ship-sensor-room": "control-room", "ship-core-room": "control-room",
+    "ship-engine-room": "ship-engines", "ship-generator-room": "ship-engines", "ship-reactor": "ship-reactor", "ship-promenade": "resort", "ship-refinery": "assembly-hall",
     "stope": "mine", "ore-store": "mine", "vault": "precursor", "barn": "barn", "feed-store": "feed-store", "greenhouse": "greenhouse"
   },
   "roles": {
@@ -261,7 +273,9 @@
     "command": ["map", "console"], "guard-room": ["desk"], "plant": ["boiler", "tank"], "ward": ["bed"], "nurses": ["desk", "counter"],
     "theatre": ["optable"], "pharmacy": ["shelf", "counter"], "mortuary": ["optable"], "day-room": ["screen", "sofa"],
     "storeroom": ["crate", "shelf", "racking"], "warehouse": ["racking", "shelf", "rack", "crate"], "assembly-hall": ["conveyor", "bench", "station"],
-    "hangar": ["engine-stand", "bench"], "control-room": ["console"], "lab": ["bench"]
+    "hangar": ["engine-stand", "bench"], "control-room": ["console"], "lab": ["bench"],
+    "ship-bridge": ["console"], "ship-crew-quarters": ["bunk", "bed"], "ship-barracks": ["bunk", "bed"], "ship-cabin": ["bed"], "ship-medbay": ["bed"],
+    "ship-galley": ["counter", "stove"], "ship-officers": ["table", "desk"], "ship-engine-room": ["pipes", "panel"], "ship-reactor": ["panel", "console"]
   },
 
   "props": {
