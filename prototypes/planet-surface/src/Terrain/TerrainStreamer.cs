@@ -266,7 +266,9 @@ public partial class TerrainStreamer : Node3D
         if (_grounds.Crowded > 0) GD.Print($"made ground: {_grounds.PatchCount} patches, {_grounds.Crowded} cells over {GroundField.MostPerCell}");
         yield return "made ground";
         VoxelMaterial = TerrainMaterial(far: false);
+        yield return "near ground material";
         FarMaterial = TerrainMaterial(far: true);
+        yield return "far ground material";
         _horizonMaterial = TerrainMaterial(far: true);
         // Inside the square the far rings cover, the horizon's vertices a whole grid step or more in
         // drop far below any ground, so its triangles across the square's edge become walls diving
@@ -287,7 +289,7 @@ public partial class TerrainStreamer : Node3D
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink"), HorizonSink);
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink_from"), 0.25f);
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_cut"), FarHoleCut);
-        yield return "terrain materials";
+        yield return "horizon material";
         SetClip();
         yield return "ground rings";
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };

@@ -236,6 +236,25 @@ public partial class MoonTest : Node
         sky.Days = now;
         sky.Paused = false;
         sky.Track();
+        GD.Print($"  (tracking the ground's sky: {TrackCost(sky.Track)})");
+    }
+
+    static PlanetSurface.Skies.D3 D3Of(N.Vector3 q) => new(q.X, q.Y, q.Z);
+
+    /// <summary>What a call costs on the main thread: its mean and worst ms over 300 calls, and what it allocates.</summary>
+    static string TrackCost(Action track)
+    {
+        track();
+        long bytes = GC.GetAllocatedBytesForCurrentThread();
+        double total = 0, worst = 0;
+        for (int i = 0; i < 300; i++)
+        {
+            long at = Stopwatch.GetTimestamp();
+            track();
+            double ms = Stopwatch.GetElapsedTime(at).TotalMilliseconds;
+            (total, worst) = (total + ms, Math.Max(worst, ms));
+        }
+        return $"{total / 300:F3} ms a call, worst {worst:F3} ms, {(GC.GetAllocatedBytesForCurrentThread() - bytes) / 300 / 1024.0:F1} KB allocated";
     }
 
     /// <summary>The sky shader's own shadow on a point of a body (sky.gdshader's shadowed()): the share of the sun its caster hides there.</summary>
@@ -339,7 +358,8 @@ public partial class MoonTest : Node
         float sizeOff = 0f;
         string sizeWhat = "";
         double worstCpu = 0;
-        _game.Spaceflight.WorstSeamMs = 0;
+        _game.Spaceflight.WorstSeamMs = _game.Spaceflight.WorstSkyMs = _game.Spaceflight.SkyMs = 0;
+        _game.Spaceflight.SkyFrames = 0;
         float topSpeed = 0f;
         var watch = Stopwatch.StartNew();
         IEnumerable<int> Route()
@@ -383,6 +403,8 @@ public partial class MoonTest : Node
         var (p95, worst) = Spread(cpu);
         var (wallP95, wallWorst) = Spread(frames);
         GD.Print($"  frame times on the way, CPU: 95th {p95:F1} ms, worst {worst:F1} ms at {worstAt / 60f:F0} s; wall: 95th {wallP95:F1} ms, worst {wallWorst:F1} ms; {frames.Count} frames, headless, machine shared");
+        Spaceflight sf = _game.Spaceflight;
+        GD.Print($"  (tracking the skies in orbit: {sf.SkyMs / Math.Max(sf.SkyFrames, 1):F3} ms a frame on average, worst {sf.WorstSkyMs:F2} ms, over {sf.SkyFrames} frames; space's sky alone {TrackCost(() => orbit.Space.Track(_game.Surface.Planet.StarSystem, sf.Below.Sky.Days, orbit.Home.Turn.ToBasis(), D3Of(orbit.Home.ToGlobe(v.Body.Position)), v.Body.Position.ToGodot()))})");
         GD.Print($"  (the seam and skies took at most {_game.Spaceflight.WorstSeamMs:F1} ms of a frame: {_game.Spaceflight.WorstSeamParts}; the moon arrived a piece a frame: {_game.Spaceflight.MoonSurface.ArriveSteps})");
         Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 40f, $"flew {start / 1000:F1} km from high orbit to over the moon in {tick / 60f:F0} s of game time at up to {topSpeed:F0} m/s ({v.Body.Position.ToGodot().DistanceTo(Above()):F0} m off the point)");
         Check(handedOverAt > 0 && orbit.Anchor == moon, $"the moon took over as the frame on the way ({handedOverAt / 60f:F0} s out), so its ground waits where you see it");

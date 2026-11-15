@@ -85,8 +85,9 @@ public partial class Spaceflight
     /// </summary>
     float Height(Vector3 world) => Here.Height(world);
 
-    /// <summary>The most a frame has spent on the seam and the skies, and on the skies alone, ms (tests read these, and reset them).</summary>
-    public double WorstSeamMs, WorstSkyMs;
+    /// <summary>The most a frame has spent on the seam and the skies, and on the skies alone, and all the skies' time over <see cref="SkyFrames"/>, ms (tests read these, and reset them).</summary>
+    public double WorstSeamMs, WorstSkyMs, SkyMs;
+    public int SkyFrames;
 
     /// <summary>Screenshots of other bodies: the sky as seen from here, in the globe's frame, m.</summary>
     public PlanetSurface.Skies.D3? ViewFrom;
@@ -136,8 +137,9 @@ public partial class Spaceflight
             Lap("a moon arriving");
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             TrackSky();
-            Lap("skies");
-            WorstSkyMs = Math.Max(WorstSkyMs, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            Lap("the orbit's sky");
+            double sky = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            (WorstSkyMs, SkyMs, SkyFrames) = (Math.Max(WorstSkyMs, sky), SkyMs + sky, SkyFrames + 1);
             PlaceSeam();
         }
         else
@@ -164,6 +166,7 @@ public partial class Spaceflight
         {
             s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
             s.Sky.Track();
+            Lap("the sky below");
         }
         o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
     }
