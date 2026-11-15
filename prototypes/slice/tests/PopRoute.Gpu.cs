@@ -70,7 +70,7 @@ public partial class PopRoute
             views.Add(("low over the city", mid - way * (radius + 150f), 40f, -10f));
         }
         var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-msaa" })
-            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).ToList();
+            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).Append("all again").ToList();
         foreach (var (view, at, up, pitch) in views)
         {
             Vector3 eye = Lift(at, up);
@@ -134,6 +134,8 @@ public partial class PopRoute
             double all = cost["all"];
             double allCpu = renderCpu["all"], allDraws = drawCalls["all"];
             string costs = string.Join(", ", cases.Skip(1).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
+            // The whole picture measured again last: what it moved meanwhile (a place still coming in) is the measure's own error.
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: drift over the cases gpu {cost["all again"] - all:F2} ms, render cpu {renderCpu["all again"] - allCpu:F2} ms, draw calls {drawCalls["all again"] - allDraws:F0}"));
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); without each (what it costs, gpu/render cpu ms/draw calls): {costs}"));
             _game.FixedCamera = null;
         }
