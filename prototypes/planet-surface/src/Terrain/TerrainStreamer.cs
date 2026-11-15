@@ -892,30 +892,36 @@ public partial class TerrainStreamer : Node3D
             BuildFar(job);
         }
 
-        // Far chunks share the frame's upload budget with the voxels: one at most, and only if the
+        // Far chunks share the frame's upload budget with the voxels: one begins only if the
         // voxel uploads left time for it, so the two never stack into one long frame.
         // But a run of busy frames (walking with the voxels streaming) never starves them: every few frames one goes in anyway.
-        // Its node is put together over several frames, hidden (StepFarNode), and shown whole once it stands: one at a time.
+        // Its node is put together hidden, a share of each frame at a time (StepFarNode), and shown whole once it stands;
+        // the next one begins in what is left of the share.
+        long farStart = Stopwatch.GetTimestamp();
+        _farStepped = false;
         if (_building == null && !_farDone.IsEmpty) _farWaited++;
-        while (_building == null && _farDone.TryPeek(out _))
+        while (true)
         {
-            if (Stopwatch.GetElapsedTime(_frameStart).TotalMilliseconds > UploadBudgetMs && _farWaited < FarPatience) break;
-            _farWaited = 0;
-            _farDone.TryDequeue(out FarJob job);
-            _farInFlight--;
-            if (!_far.TryGetValue((job.Fx, job.Fz), out FarChunk f)) continue;
-            if (job.Error != null)
+            while (_building == null && _farDone.TryPeek(out _))
             {
-                f.InFlight = false;
-                GD.PushError($"far chunk {job.Fx},{job.Fz} failed: {job.Error}");
-                continue;
+                if (Stopwatch.GetElapsedTime(_frameStart).TotalMilliseconds > UploadBudgetMs && _farWaited < FarPatience) break;
+                _farWaited = 0;
+                _farDone.TryDequeue(out FarJob job);
+                _farInFlight--;
+                if (!_far.TryGetValue((job.Fx, job.Fz), out FarChunk f)) continue;
+                if (job.Error != null)
+                {
+                    f.InFlight = false;
+                    GD.PushError($"far chunk {job.Fx},{job.Fz} failed: {job.Error}");
+                    continue;
+                }
+                FarBuildMs[job.Lod] += job.Milliseconds;
+                FarBuilds[job.Lod]++;
+                if (job.Version != f.Version) { f.InFlight = false; continue; } // flora went stale: it is requested again
+                StartFarNode(job, f);
             }
-            FarBuildMs[job.Lod] += job.Milliseconds;
-            FarBuilds[job.Lod]++;
-            if (job.Version != f.Version) { f.InFlight = false; continue; } // flora went stale: it is requested again
-            StartFarNode(job, f);
+            if (_building == null || !StepFarNode(farStart)) break;
         }
-        if (_building != null) StepFarNode();
 
         // Drop far chunks out of range; place the rest at their copy nearest the focus.
         List<(int, int)> gone = null;
@@ -1033,15 +1039,18 @@ public partial class TerrainStreamer : Node3D
     public static double NearestCopy(double canonical, double size, double focus, double span) =>
         canonical + span * Math.Round((focus - canonical - size * 0.5) / span);
 
-    /// <summary>The far chunk whose node is being put together (hidden, a few drawings a frame), its node, the next batch to draw and its longest frame, ms.</summary>
+    /// <summary>The far chunk whose node is being put together (hidden, a few drawings a frame), its node, the next batch to draw and its time so far, ms.</summary>
     FarJob _building;
     FarChunk _buildChunk;
     Node3D _buildNode;
     int _buildNext;
     double _buildMs;
 
-    /// <summary>The most of a frame a far chunk's node takes putting itself together, ms (at least one drawing a frame).</summary>
-    const double FarNodeStepMs = 0.8;
+    /// <summary>The most of a frame far chunks' nodes take putting themselves together, ms (at least one drawing a frame).</summary>
+    const double FarNodeStepMs = 2.0;
+
+    /// <summary>Whether a drawing went in this frame.</summary>
+    bool _farStepped;
 
     /// <summary>A far chunk's node begins, hidden, with its water: its flora drawings follow a few a frame, so none of it lands in one frame.</summary>
     void StartFarNode(FarJob job, FarChunk chunk)
@@ -1063,13 +1072,17 @@ public partial class TerrainStreamer : Node3D
         _buildMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
-    /// <summary>Puts in the building node's next drawings within the frame's step, and shows it whole once it has them all.</summary>
-    void StepFarNode()
+    /// <summary>
+    /// Puts in the building node's next drawings within the frame's share (counted from <paramref name="since"/>), and shows it
+    /// whole once it has them all. True if it stands and some of the share is left.
+    /// </summary>
+    bool StepFarNode(long since)
     {
         long start = Stopwatch.GetTimestamp();
         FarJob job = _building;
-        while (_buildNext < job.Flora.Count && (Stopwatch.GetElapsedTime(start).TotalMilliseconds < FarNodeStepMs || _buildNext == 0))
+        while (_buildNext < job.Flora.Count && (Stopwatch.GetElapsedTime(since).TotalMilliseconds < FarNodeStepMs || !_farStepped))
         {
+            _farStepped = true;
             int k = _buildNext++;
             FloraBatch b = job.Flora[k];
             // A large plant with a far mesh is two drawings of the one buffer: its near mesh out to its near reach, its far one past it.
@@ -1098,8 +1111,8 @@ public partial class TerrainStreamer : Node3D
                 _buildNode.AddChild(flora);
             }
         }
-        _buildMs = Math.Max(_buildMs, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
-        if (_buildNext < job.Flora.Count) return;
+        _buildMs += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        if (_buildNext < job.Flora.Count) return false;
 
         Node3D node = _buildNode;
         (_building, _buildNode) = (null, null);
@@ -1109,7 +1122,7 @@ public partial class TerrainStreamer : Node3D
             // Gone out of range, or its flora went stale while it was put together (requested again).
             node.QueueFree();
             f.InFlight = false;
-            return;
+            return Stopwatch.GetElapsedTime(since).TotalMilliseconds < FarNodeStepMs;
         }
         f.InFlight = false;
         if (_buildMs > WorstFarNodeMs)
@@ -1117,7 +1130,7 @@ public partial class TerrainStreamer : Node3D
             WorstFarNodeMs = _buildMs;
             int flora = 0;
             foreach (var (_, _, count) in job.Flora) flora += count;
-            WorstFarNode = $"lod {job.Lod}, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0} (its longest frame)";
+            WorstFarNode = $"lod {job.Lod}, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0} (over its frames)";
         }
         NotePops(f, job);
         Node3D old = f.Node;
@@ -1129,6 +1142,7 @@ public partial class TerrainStreamer : Node3D
         node.Visible = true;
         BeginSwap(job.Fx, job.Fz, old, node);
         FarApplied?.Invoke(job.Fx, job.Fz, job.Lod, node);
+        return Stopwatch.GetElapsedTime(since).TotalMilliseconds < FarNodeStepMs;
     }
 
     /// <summary>A flora drawing's batch, its index in its far chunk's flora (two drawings share a batch).</summary>
