@@ -1,72 +1,79 @@
-# Place types: what a kind of place has, each thing's real size range in metres, and how the things relate.
-# No positions and no layouts: the planner (src/Gen/Arch/PlaceTypes.cs) rolls every spawn's own sketch from
-# these, from its seed and its world's size, so no two spawns of a type are the same place.
+# Place types: what a kind of place has and each thing's real size range in metres. No positions and no layouts:
+# each type's plan (src/Gen/Arch/PlaceTypes.Airport.cs, PlaceTypes.Ports.cs) lays its parts out by rules from every
+# spawn's own seed and its world's size, so no two spawns of a type are the same place.
 #
 #   type <id>
 #     name     what it is called
 #     tech     the tech levels it is built at
+#     plan     the rules that lay it out: airport, hub, rosettes, grid
 #     share    the most of its world's area it may take (the planner shortens the long parts toward
 #              their lower ends to fit, and says so when even those don't)
-#     part <id> <kind> [what] [sizes] [relation]...
+#     part <id> <kind> [what] [sizes]...
 #       kinds     surface <cover>      levelled made ground, laid like the world's roads (tarmac, concrete, gravel, dirt)
-#                 building <program>   a building of data/programs.txt, sized here, with its rooms planned at build
-#                 tanks | lights | fence | road <cover>
-#       sizes     len w depth h r count cab shoulder concourse: a..b is rolled by each spawn; chance p: only that
-#                 share of spawns have the part (and what is off it)
-#       relations along <part> gap a..b      parallel to it, its centre line gap metres off, either side
-#                 tee <part>                 square off its middle stretch on the far side from the landside, its end
-#                                            on the other's laid width: a T (a crosswind runway)
-#                 between <a> <b>            across the ground from one to the other (links)
-#                 beside <part> [away <q>]   off a long side of it (the side away from q), touching or gap a..b off
-#                 ends <part>                in line off each end of it (off a tee's free end only)
-#                 faces <part>               its front (doors, cab) turned to it
-#                 near <part> a..b, far <part> a..           how far from it (edge to edge)
-#                 sees <part>                nothing taller stands between it and that part
-#                 from <part>                a road from it out to the place's gate
-#                 round a..b                 round everything, that far out
+#                 building <program>   a building of data/programs.txt (or a city's lot: fire, works), sized here, with
+#                                      its rooms planned at build
+#                 tanks | lights | fence | road <cover> | pads <cover> | rail
+#       sizes     len w depth h r count cab shoulder concourse off round: a..b is rolled by each spawn; chance p: only
+#                 that share of spawns have the part
 #
 # Scaled to our worlds (owner, 14 Nov: "airports don't have to be realistic size, they can be scaled down to our
-# world. 250 m runways are fine", then "a 500m runway is fine"): the lengths between the parts keep a real airport's proportions (ICAO Annex 14 and
-# FAA AC 150/5300-13 for runway, taxiway offset, apron and approach lighting), scaled to a 400 to 600 m runway; what a
-# body or a craft uses stays true size. The biggest craft an airfield takes is a Small-class flight vessel, about 30 m
-# across: runways 30 m wide, taxiways 15, aprons twice its span deep, hangar doors over 30 m wide; rooms, doors, ceilings
-# and stairs at a person's size.
+# world. 250 m runways are fine", then "a 500m runway is fine"): the lengths between the parts keep a real airport's
+# proportions (ICAO Annex 14 and FAA AC 150/5300-13 for runway, taxiway offset, apron and approach lighting), scaled to
+# a 400 to 600 m runway; what a body or a craft uses stays true size (owner, 15 Nov: "the buildings are small... it
+# doesn't even look like a real airport"). The biggest craft an airfield takes is a Small-class flight vessel, about 30
+# m across: runways 30 m wide, taxiways 15, aprons twice its span deep, hangar doors over 30 m wide; light craft in the
+# GA hangars; rooms, doors, ceilings and stairs at a person's size.
+#   plan airport   the main runway; a second one meeting it in one paved intersection, an X or a T (crosswind, its
+#                  chance); every free runway end widened (end: how far past, how wide), approach lights off those
+#                  square to the axes; a parallel taxiway off its centre line (off) linked near both ends, else stubs
+#                  from the aprons; along the landside the terminal's apron (the terminal, its tower and the big
+#                  hangars on its back), the GA apron (ga, its small hangars on its back) and the fire station on the
+#                  taxiway, in a rolled order before the second runway; car parks behind the terminal, the service road
+#                  behind everything (road), works sheds across it, the fuel farm off its end, the access road out
+#                  round a bend to the gate; the fence round it all (round: how far out)
 
 type airport
   name Airport
   tech mid
+  plan airport
   share 0.05
-  part runway   surface tarmac   len 400..600 w 30 shoulder 5
-  part crosswind surface tarmac  len 300..450 w 30 shoulder 5 tee runway chance 0.5
-  part taxiway  surface tarmac   w 15 along runway gap 60..80
-  part link     surface tarmac   w 15 count 2..4 between runway taxiway
-  part apron    surface concrete len 200..320 depth 70..100 beside taxiway away runway
-  part terminal building terminal len 60..100 depth 30..40 h 10..14 concourse 6 beside apron away taxiway faces apron
-  part tower    building control_tower len 8..10 depth 8..10 h 18..26 cab 5..7 beside apron away taxiway near terminal 10..100 sees runway
-  part hangar   building hangar count 1..3 len 40..48 depth 30..40 h 16..20 beside apron away taxiway faces apron gap 0..6
-  part fuel     tanks count 2..3 r 3..5 h 5..8 beside taxiway away runway far terminal 100..
-  part carpark  surface tarmac   len 50..90 depth 30..50 beside terminal away apron gap 6..12
-  part access   road tarmac      w 7..8 from carpark
-  part lights   lights           len 100..200 ends runway
-  part xlights  lights           len 80..150 ends crosswind
-  part fence    fence            h 2..3 round 20..40
+  part runway    surface tarmac   len 400..600 w 30 shoulder 5
+  part crosswind surface tarmac   len 300..450 w 30 shoulder 5 chance 0.75
+  part end       surface tarmac   len 30..60 w 46..56
+  part lights    lights           len 100..200
+  part taxiway   surface tarmac   w 15 off 60..80 chance 0.7
+  part link      surface tarmac   w 15
+  part apron     surface concrete len 200..300 depth 70..100
+  part terminal  building terminal len 70..110 depth 30..44 h 14..18 concourse 6
+  part tower     building control_tower len 8..10 depth 8..10 h 24..32 cab 5..7
+  part hangar    building hangar  count 2..4 len 40..48 depth 30..40 h 16..20
+  part ga        surface concrete len 80..200 depth 40..60
+  part gahangar  building hangar  count 4..8 len 20..28 depth 16..22 h 8..10
+  part fire      building fire    len 30..36 depth 32..36 h 12..14
+  part works     building works   count 1..3 len 30..40 depth 30..36 h 8..10
+  part fuel      tanks            count 2..3 r 3..5 h 5..8
+  part carpark   surface tarmac   count 2..3 len 50..90 depth 30..50
+  part road      surface tarmac   w 7..8
+  part access    road tarmac      w 7..8
+  part fence     fence            h 2..3 round 20..40
 
-# Low tech: an airstrip scaled down again in the same proportions: an earth strip, a short gravel taxiway to a small
-# hard standing, a hangar, a lookout, a fuel dump off to one side.
+# Low tech: an airstrip by the same rules with fewer parts, scaled down again: an earth strip, a gravel taxiway to a
+# small hard standing, a hangar, a lookout, a fuel dump off to one side.
 type airstrip
   name Airstrip
   tech low
+  plan airport
   share 0.03
   part runway   surface dirt     len 240..360 w 18 shoulder 3
-  part taxiway  surface gravel   w 10 along runway gap 35..45
-  part link     surface gravel   w 10 count 1..2 between runway taxiway
-  part apron    surface gravel   len 70..110 depth 35..55 beside taxiway away runway
-  part terminal building terminal len 16..24 depth 12..16 h 4..6 beside apron away taxiway faces apron
-  part tower    building control_tower len 6..10 depth 6..10 h 8..14 cab 4..5 beside apron away taxiway near terminal 6..40 sees runway
-  part hangar   building hangar count 1 len 32..36 depth 24..30 h 10..12 beside apron away taxiway faces apron gap 0..4
-  part fuel     tanks count 1..2 r 2..3 h 3..5 beside taxiway away runway far terminal 50..
-  part carpark  surface dirt     len 15..30 depth 10..20 beside terminal away apron gap 4..8
-  part access   road dirt        w 4..6 from carpark
+  part taxiway  surface gravel   w 10 off 35..45
+  part link     surface gravel   w 10
+  part apron    surface gravel   len 90..130 depth 35..55
+  part terminal building terminal len 16..24 depth 12..16 h 4..6
+  part tower    building control_tower len 6..10 depth 6..10 h 8..14 cab 4..5
+  part hangar   building hangar  count 1 len 32..36 depth 24..30 h 10..12
+  part fuel     tanks            count 1..2 r 2..3 h 3..5
+  part carpark  surface dirt     count 1 len 15..30 depth 10..20
+  part access   road dirt        w 4..6
   part fence    fence            h 1..2 round 10..20
 
 # Spaceports for high tech (owner, 14 Nov: "high tech level space ports of varying sizes"), from the owner's references

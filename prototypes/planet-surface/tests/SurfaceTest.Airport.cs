@@ -24,7 +24,7 @@ public partial class SurfaceTest
     {
         var rand = new Random();
         string forced = PoiSiting.ForceFamily;
-        int worlds = 0, sited = 0, loadLayouts = 0, roads = 0, shared = 0, onGround = 0, walks = 0, walked = 0;
+        int worlds = 0, sited = 0, loadLayouts = 0, roads = 0, shared = 0, onGround = 0, walks = 0, walked = 0, junctions = 0, joined = 0;
         float worstOff = 0f, worstGrade = 0f;
         string worstAt = "", firstOn = "", offAt = "";
         var bad = new List<string>();
@@ -37,6 +37,8 @@ public partial class SurfaceTest
             {
                 var spec = PlanetSpec.Roll((ulong)rand.NextInt64(1, long.MaxValue), Archetype.Temperate, 0);
                 PoiSiting.ForceType = types[k % types.Length];
+                // (The first world's airport with its second runway, so the junction is always looked at.)
+                if (k == 0) PlaceTypes.Always.Add("crosswind"); else PlaceTypes.Always.Remove("crosswind");
                 PoiSite.LoadLayouts = 0;
                 PlanetWorld w = await Task.Run(() => PlanetWorld.Build(spec, Main.Catalog));
                 worlds++;
@@ -125,9 +127,10 @@ public partial class SurfaceTest
                     if (place.Sketch.Type.Id == "airport")
                     {
                         int along = Math.Max(sx, sz);
-                        if (kind == "terminal" && !(along is >= 60 and <= 102 && top is >= 10 and <= 16)) bad.Add($"terminal {sx} x {sz} m, {top} m high");
-                        if (kind == "tower" && top is < 18 or > 28) bad.Add($"tower {top} m high");
-                        if (kind == "hangar" && !(Math.Min(sx, sz) >= 30 && top >= 16)) bad.Add($"hangar {sx} x {sz} m, {top} m high");
+                        if (kind == "terminal" && !(along is >= 60 and <= 112 && top is >= 12 and <= 22)) bad.Add($"terminal {sx} x {sz} m, {top} m high");
+                        if (kind == "tower" && top is < 18 or > 36) bad.Add($"tower {top} m high");
+                        if (piece.Item.Part.Id == "hangar" && !(Math.Min(sx, sz) >= 30 && top >= 16)) bad.Add($"hangar {sx} x {sz} m, {top} m high");
+                        if (piece.Item.Part.Id == "gahangar" && !(Math.Min(sx, sz) >= 16 && top >= 8)) bad.Add($"GA hangar {sx} x {sz} m, {top} m high");
                     }
                     foreach (var c in cells)
                     {
@@ -143,22 +146,37 @@ public partial class SurfaceTest
                     }
                 }
                 // The laid ground at its real sizes.
-                // Fuel and oxidiser stores apart (a port's), and both off the terminal.
-                var stores = PlaceTypes.Pieces(place.Sketch, place.Turn).Where(p => p.Item.Part.Id is "fuel" or "oxidiser").ToList();
-                if (stores.Count == 2 && stores[1].Item.Part.Rel.FirstOrDefault(x => x.Rel == "far" && x.To[0] == "fuel") is { Gap: { } apart } && stores[0].Box.Gap(stores[1].Box) < apart.Lo)
-                    bad.Add($"{place.Sketch.Type.Id}: fuel and oxidiser {stores[0].Box.Gap(stores[1].Box):F0} m apart");
-                var runway = ground.Where(q => q.Pattern == GroundPattern.Runway || q.Layer == 4).OrderByDescending(q => q.HalfU).FirstOrDefault();
+                var runway = ground.Where(q => q.Pattern == GroundPattern.Runway).MaxBy(q => q.Layer);
                 if (place.Sketch.Type.Id == "airport" && runway != null && !(runway.HalfU * 2 is >= 400 and <= 601 && runway.HalfV * 2 is >= 29 and <= 31))
                     bad.Add($"runway {runway.HalfU * 2:F0} x {runway.HalfV * 2:F0} m");
+                // The runways' junction on the ground: one level all the way along the second runway's centre line through the
+                // main's laid width (no step), and the main's own markings on top there (unbroken through it).
+                var second = ground.FirstOrDefault(q => q.Pattern == GroundPattern.Runway && q != runway);
+                if (runway != null && second != null)
+                {
+                    junctions++;
+                    float lo = float.MaxValue, hi = float.MinValue;
+                    double t = ((runway.X - second.X) * runway.UZ - (runway.Z - second.Z) * runway.UX) / (second.UX * runway.UZ - second.UZ * runway.UX);
+                    for (double d = -30; d <= 30; d += 2)
+                    {
+                        float h = g.SurfaceHeight(Mathx.WrapX(second.X + second.UX * (t + d), W), second.Z + second.UZ * (t + d));
+                        (lo, hi) = (MathF.Min(lo, h), MathF.Max(hi, h));
+                    }
+                    double jx = second.X + second.UX * t, jz = second.Z + second.UZ * t;
+                    var top = ground.Where(q => Math.Abs(Mathx.WrapDelta(jx - q.X, W) * q.UX + (jz - q.Z) * q.UZ) < q.HalfU && Math.Abs(-Mathx.WrapDelta(jx - q.X, W) * q.UZ + (jz - q.Z) * q.UX) < q.HalfV).MaxBy(q => q.Layer);
+                    if (hi - lo > 0.1f || top != runway) bad.Add($"junction: {hi - lo:F2} m of step along the second runway, the main's markings {(top == runway ? "on top" : "under")} at it");
+                    else joined++;
+                }
             }
         }
-        finally { (PoiSiting.ForceFamily, PoiSiting.ForceType) = (forced, null); }
+        finally { (PoiSiting.ForceFamily, PoiSiting.ForceType) = (forced, null); PlaceTypes.Always.Remove("crosswind"); }
         foreach (string n in notes) GD.Print($"      {n}");
         foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
         Check(sited == worlds, $"a {family} sited on {sited} of {worlds} fresh worlds");
         Check(loadLayouts == 0, $"its share of a new world's load is no layouts: {loadLayouts} made while the worlds loaded");
         Check(roads == sited, $"the world's road comes to its gate on {roads} of {sited}");
         Check(worstOff < 1.01f && worstGrade < 0.35f, $"graded: the ground across it within {worstOff:F2} m of its level{(worstOff >= 1.01f ? $" (at {offAt})" : "")}, the run out to the land at most {worstGrade:P0} steeper than the land's own ({worstAt})");
+        if (junctions > 0) Check(joined == junctions, $"runways joined: on {joined} of {junctions} airports with two, one level along the second through the main's laid width and the main's markings unbroken over it");
         Check(walks > 0 && walked == walks, $"walked: from the landside way in through the terminal to the apron, onto each hangar's floor, up each tower to its cab: {walked} of {walks}");
         Check(bad.Count == 0 && shared == 0 && onGround == 0, $"built on its world at real sizes ({bad.Count} out), {shared} cells of one part in another, {onGround} built on its laid ground{firstOn}; the builder spent {(builder.Count > 0 ? builder.Average() : 0):F0} ms on all of an airfield's parts (worst {(builder.Count > 0 ? builder.Max() : 0):F0})");
     }

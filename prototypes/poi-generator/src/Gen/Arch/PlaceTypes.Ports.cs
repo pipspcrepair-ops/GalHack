@@ -20,6 +20,13 @@ public readonly record struct Shape(float X, float Z, float UX, float UZ, float 
         return new((ax + bx) / 2f, (az + bz) / 2f, dx / len, dz / len, len / 2f, half, 0f);
     }
 
+    /// <summary>A road's run between two points: its ends rounded and reaching half its width past them, so runs join round a bend.</summary>
+    public static Shape Run(float ax, float az, float bx, float bz, float half)
+    {
+        Shape s = Strip(ax, az, bx, bz, half);
+        return s with { HalfU = s.HalfU + half, Round = half };
+    }
+
     public static Shape Of(SketchBox b) => b.W >= b.D ? new(b.Cx, b.Cz, 1f, 0f, b.W / 2f, b.D / 2f, 0f) : new(b.Cx, b.Cz, 0f, 1f, b.D / 2f, b.W / 2f, 0f);
 
     bool IsDisc => HalfU == HalfV && Round >= HalfU;
@@ -81,6 +88,7 @@ public static partial class PlaceTypes
         var port = new PortPlan(type, seed, fit);
         switch (type.Plan)
         {
+            case "airport": port.Airport(); break;
             case "hub": port.Hub(); break;
             case "rosettes": port.Rosettes(); break;
             case "grid": port.Grid(); break;
@@ -89,14 +97,16 @@ public static partial class PlaceTypes
         return port.Finish();
     }
 
-    sealed class PortPlan
+    /// <summary>A typed place's plan as it is rolled: its parts laid by its type's rules (an airport's, a spaceport's).</summary>
+    sealed partial class PortPlan
     {
         readonly PlaceType _t;
         readonly Rng _r;
         readonly float _fit;
         public readonly Sketch S;
-        /// <summary>The access road: where it leaves the middle, and the way it runs out.</summary>
+        /// <summary>The access road: where it leaves the middle, and the way it runs out; laid long until it is cut at the fence.</summary>
         (float X, float Z, float DX, float DZ) _road;
+        SketchItem? _out;
 
         public PortPlan(PlaceType type, ulong seed, float fit)
         {
@@ -131,6 +141,9 @@ public static partial class PlaceTypes
             return item;
         }
 
+        /// <summary>Laid ground of a shape, its sizes as rolled.</summary>
+        SketchItem Lay(TypePart p, Shape sh, Dictionary<string, float> sizes) => Add(p, sh.Bounds, 0f, 0, 0, sizes, sh);
+
         /// <summary>A strip of laid ground between two points; one that must keep clear of what stands and of the pads (not a link) is left out where it can't.</summary>
         SketchItem? Strip(TypePart? p, float ax, float az, float bx, float bz, float? width = null, bool clear = false)
         {
@@ -140,14 +153,14 @@ public static partial class PlaceTypes
             sizes["w"] = w;
             Shape sh = Shape.Strip(ax, az, bx, bz, w / 2f);
             if (clear && !Free(sh, true, 1f)) return null;
-            return Add(p, sh.Bounds, 0f, 0, 0, sizes, sh);
+            return Lay(p, sh, sizes);
         }
 
         /// <summary>The road out: from where it leaves the middle, laid long for now so nothing is put across it; cut to length at the end.</summary>
         void Road(float x, float z, float dx, float dz)
         {
             _road = (x, z, dx, dz);
-            Strip(Part("access"), x, z, x + dx * 900f, z + dz * 900f);
+            _out = Strip(Part("access"), x, z, x + dx * 900f, z + dz * 900f);
         }
 
         static float Even(float v) => MathF.Round(v / 2f) * 2f;
@@ -201,10 +214,10 @@ public static partial class PlaceTypes
             return true;
         }
 
-        /// <summary>A building square to the axes about a middle, facing a way; null where it would not fit.</summary>
-        SketchItem? Building(TypePart p, float x, float z, int fx, int fz, Rng r, float clear = 6f)
+        /// <summary>A building square to the axes about a middle, facing a way (its sizes rolled, or as given); null where it would not fit.</summary>
+        SketchItem? Building(TypePart p, float x, float z, int fx, int fz, Rng r, float clear = 6f, Dictionary<string, float>? rolled = null)
         {
-            var sizes = Sizes(p, r);
+            var sizes = rolled ?? Sizes(p, r);
             float len = sizes.GetValueOrDefault("len", 2f * sizes.GetValueOrDefault("r", 10f)), depth = sizes.GetValueOrDefault("depth", len);
             if (p.What == "authority") len = depth = 2f * (sizes["r"] + sizes["wing"]);
             if (p.What == "hub") len = depth = 2f * (MathF.Max(sizes["r"], sizes.GetValueOrDefault("cab")) + 2f);
@@ -592,12 +605,11 @@ public static partial class PlaceTypes
         public Sketch Finish()
         {
             // (Without the road, laid long till now.)
-            SketchItem? road = S.Items.FirstOrDefault(i => i.Part.Kind == "road");
-            if (road != null) S.Items.Remove(road);
+            if (_out != null) S.Items.Remove(_out);
             SketchBox all = S.Items.Select(i => i.Box).Aggregate((a, b) => a.Union(b));
             TypePart? fence = Part("fence");
             var fs = fence != null ? Sizes(fence, _r.Fork("fence")) : new Dictionary<string, float>();
-            SketchBox round = all.Grow(fence?.Find("round")?.Gap?.Roll(_r.Fork("round")) ?? 20f);
+            SketchBox round = all.Grow(fs.GetValueOrDefault("round", 20f));
             var (rx, rz, dx, dz) = _road;
             // To the fence's line: where the way out leaves its box.
             float tx = dx > 0 ? (round.X1 - rx) / dx : dx < 0 ? (round.X0 - rx) / dx : float.MaxValue;

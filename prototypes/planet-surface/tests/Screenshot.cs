@@ -374,14 +374,16 @@ public partial class Screenshot : Node
         Vector3 On(PoiGenerator.Gen.Shape g, float along, float up) => new((float)(place.X + g.X + g.UX * along), y + up, (float)(place.Z + g.Z + g.UZ * along));
         if (grounds.FirstOrDefault(g => g.Item.Part.Id == "runway") is { Item: not null } rw)
             shots.Add(Aim("runway", On(rw.Lay, -rw.Lay.HalfU + 40, 1.7f) + new Vector3(rw.Lay.UZ, 0, -rw.Lay.UX) * rw.Lay.HalfV * 0.3f, On(rw.Lay, 0, 1.2f)));
-        // The T: from the crosswind's free end, looking down it to where it meets the runway.
-        if (grounds.FirstOrDefault(g => g.Item.Part.Id == "crosswind") is { Item: not null } x)
+        // The runways' junction: down the second runway at standing height from 120 m out, and from the air over it.
+        if (grounds.FirstOrDefault(g => g.Item.Part.Id == "crosswind") is { Item: not null } x && grounds.FirstOrDefault(g => g.Item.Part.Id == "runway") is { Item: not null } main)
         {
-            var (fx, fz) = PoiGenerator.Gen.PlaceTypes.Turn(x.Item.FaceX, x.Item.FaceZ, place.Turn);
-            float sign = x.Lay.UX * fx + x.Lay.UZ * fz >= 0 ? 1 : -1;
-            shots.Add(Aim("crosswind", On(x.Lay, sign * (x.Lay.HalfU - 30), 1.7f), On(x.Lay, -sign * x.Lay.HalfU, 1.2f)));
-            shots.Add(Aim("tee", On(x.Lay, sign * x.Lay.HalfU, 0) + Vector3.Up * 260, On(x.Lay, -sign * x.Lay.HalfU * 0.6f, 0)));
+            var (a, b) = (x.Lay, main.Lay);
+            float t = ((b.X - a.X) * b.UZ - (b.Z - a.Z) * b.UX) / (a.UX * b.UZ - a.UZ * b.UX), sign = t > 0 ? -1 : 1;
+            shots.Add(Aim("crosswind", On(a, t + sign * 120, 1.7f), On(a, t, 1.2f)));
+            shots.Add(Aim("junction", On(a, t + sign * 160, 0) + new Vector3(b.UX, 0, b.UZ) * 120 + Vector3.Up * 140, On(a, t, 0)));
         }
+        if (pieces.FirstOrDefault(p => p.Item.Part.Id == "gahangar") is { } ga)
+            shots.Add(Aim("ga", Out(ga, 40, 1.7f) + new Vector3(8, 0, 8), At(ga.Box, 3)));
         // A recessed pad: from beside its ramp's head at standing height, looking down into it.
         if (grounds.FirstOrDefault(g => PoiGenerator.Gen.PlaceTypes.Sink(g.Item) > 0) is { Item: not null } pad)
         {
