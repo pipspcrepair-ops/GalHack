@@ -345,7 +345,7 @@ public partial class Game : Node3D
         Zone.Wildlife.Died += OnCreatureDied;
         SetUpBodies();
         Zone.Weather.Observer = () => Survivor.WorldFeet;
-        Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
+        if (Zone.Weather.Bridge != null) Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
         Zone.Weather.Shelter = Sheltered;
         Suit.UnderCover = UnderCover;
         Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);

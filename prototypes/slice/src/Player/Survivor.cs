@@ -124,7 +124,7 @@ public sealed class Survivor
         // only airborne speed (falls, flings, the jetpack) can, and the visor warns of that.
         survivor.Legs.SprintSpeed = MathF.Min(survivor.Legs.SprintSpeed, zone.Physics.Rules.Contacts.SafeSpeed - 0.1f);
         survivor.Binding.Teleport();
-        zone.Weather.Bridge.Track(body);
+        zone.Weather.Bridge?.Track(body); // none on an airless world
         return survivor;
     }
 
