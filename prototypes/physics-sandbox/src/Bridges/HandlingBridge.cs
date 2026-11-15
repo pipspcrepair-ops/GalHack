@@ -90,33 +90,37 @@ public sealed class HandlingFlight : IFlightRules
         // off at the speed it was knocked to. With nobody at the controls it holds station instead,
         // braking like a pilot who has let go of the stick.
         PilotInput input = Input;
-        if (!input.Seated && (motion.Parked || motion.Velocity.Length() < ParkingSpeed)) input = PilotInput.LetGo;
+        if (!input.Seated && (motion.Parked || motion.Velocity.Length() < ParkingSpeed)) input = PilotInput.Station;
         if (_livePower <= 0f)
         {
-            // Dead: nothing pushes, brakes or turns. It falls (hover plates let it down themselves), holding its attitude.
+            // Dead: nothing pushes, brakes, holds or turns. It falls (hover plates let it down themselves), holding its attitude.
             System.Array.Clear(Throttle);
             Turning = 0f;
             State.ThrustLocal = Godot.Vector3.Zero;
+            motion.Coasting = true;
             if (!Stats.IsHover) motion.Velocity -= N.Vector3.UnitY * (zone.Gravity * dt);
             motion.LocalSpin = N.Vector3.Zero;
             return;
         }
         FlightModel.Step(ref State, input, _live, Conditions(zone), Tunables, dt);
+        bool holds = FlightModel.Holds(State, input, _live);
+        motion.Coasting = !holds;
         motion.Velocity = State.Velocity.ToNumerics();
         motion.Rotation = N.Quaternion.Normalize(State.Orientation.ToNumerics());
         motion.LocalSpin = State.AngularVelocity.ToNumerics();
-        Measure(zone);
+        Measure(zone, holds);
     }
 
     /// <summary>
     /// What the thrusters and gyros did this tick, as shares of all they can do: the change of velocity the flight
-    /// model made, plus holding the ship's weight up when it flies in gravity, per hull direction.
+    /// model made, plus holding the ship's weight up while the assist holds it in gravity (with the assist off, gravity
+    /// pulls and nothing pays for it), per hull direction.
     /// </summary>
-    void Measure(PhysicsFlightZone zone)
+    void Measure(PhysicsFlightZone zone, bool holds)
     {
         System.Array.Clear(Throttle);
         Godot.Vector3 a = State.ThrustLocal;
-        if (!Stats.IsHover && zone.Gravity > 0f) a += State.Orientation.Inverse() * (Godot.Vector3.Up * zone.Gravity);
+        if (holds && !Stats.IsHover && zone.Gravity > 0f) a += State.Orientation.Inverse() * (Godot.Vector3.Up * zone.Gravity);
         for (int axis = 0; axis < 3; axis++)
         {
             float c = a[axis];
@@ -147,4 +151,9 @@ public sealed class HandlingFlight : IFlightRules
     }
 
     public void ToggleCruise() => FlightModel.ToggleCruise(ref State);
+
+    public void ToggleAssist() => FlightModel.ToggleAssist(ref State);
+
+    /// <summary>Flight assist holds it (the HUD's passive thrusters); false: they fire only when told (active).</summary>
+    public bool Assisted => !State.AssistOff || Stats?.IsHover == true;
 }

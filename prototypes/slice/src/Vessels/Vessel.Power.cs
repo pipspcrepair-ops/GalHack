@@ -34,10 +34,13 @@ public sealed partial class Vessel
     /// <summary>The handling direction a thruster pushes the hull, by the structure direction it pushes toward.</summary>
     static readonly Direction[] Pushes = { Direction.Right, Direction.Left, Direction.Up, Direction.Down, Direction.Back, Direction.Forward };
 
+    /// <summary>The handling direction a thruster block pushes the hull (away from its nozzle).</summary>
+    public static Direction PushOf(Block b) => Pushes[(int)Orientations.ToWorld(b.Rot, Dir.NegZ)];
+
     /// <summary>What a device is doing now, 0 to 1, in a state its function draws in (power.json).</summary>
     double Doing(PowerState state, Int3 cell, Block b) => state switch
     {
-        PowerState.Throttle => Flying ? Flight.Throttle[(int)Pushes[(int)Orientations.ToWorld(b.Rot, Dir.NegZ)]] : 0,
+        PowerState.Throttle => Flying ? Flight.Throttle[(int)PushOf(b)] : 0,
         PowerState.Turning => Flying ? Flight.Turning : 0,
         PowerState.Hovering => Flying && Structure.Mode == CoreMode.Hover ? 1 : 0,
         PowerState.Lit => b.Off ? 0 : 1,

@@ -93,6 +93,7 @@ public partial class CoreTest : Node
         foreach (int x in _drive.Wait(90)) yield return x;
 
         foreach (int x in Craft()) yield return x;
+        foreach (int x in Assist()) yield return x;
         foreach (int x in Base()) yield return x;
         foreach (int x in AllModes()) yield return x;
         foreach (int x in LargeHover()) yield return x;

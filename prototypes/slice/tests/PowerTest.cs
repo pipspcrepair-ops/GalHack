@@ -302,7 +302,7 @@ public partial class PowerTest : Node
         foreach (int x in _drive.Wait(20)) yield return x; // past the view's quarter-second look at its power
         Check(cells == 30 && v.Powered && v.View.Powered && v.Power.ChargeMJ > 0, $"30 energy cells in its storage: its generator charges the capacitor ({v.Power.ChargeMJ:F1} MJ) and its lights come on");
         foreach (int x in _drive.Wait(60 * 12)) yield return x; // the capacitor full
-        double ground = Height(v), climbing = 0, hovering = 0;
+        double ground = Height(v), climbing = 0, hovering = 0, idle = v.Power.DrawMW; // seated on the ground: the chair and lights alone
         c.Hold(Key.Space);
         for (int t = 0; t < 900 && Height(v) < ground + 16f; t++) yield return 0;
         foreach (int x in Average(v, 30, d => climbing = d)) yield return x;
@@ -320,6 +320,12 @@ public partial class PowerTest : Node
         double burnt = (units - v.Power.FuelUnits) * data.Power.FuelUnitMJ;
         Check(Height(v) > ground + 12f && MathF.Abs(Height(v) - held) < 1f, $"it climbs off the ground and hovers hands off ({Height(v) - ground:F1} m up)");
         Check(climbing > hovering && hovering > 0, $"its thrusters draw by their throttle: {climbing:F3} MW climbing, {hovering:F3} MW holding it up");
+        // Holding a hover is thrust too: the lift thrusters carry its weight, so they draw that share of their power.
+        var stats = v.Flight.Stats;
+        double lift = v.Structure.Blocks().Where(x => v.Structure.TypeOf(x.block).IsThruster && Vessel.PushOf(x.block) == ShipHandling.Handling.Direction.Up)
+            .Sum(x => -v.Structure.TypeOf(x.block).Power);
+        double weighs = lift * stats.Weight / stats.Thrust[(int)ShipHandling.Handling.Direction.Up];
+        Check(Math.Abs(hovering - idle - weighs) < weighs * 0.15, $"hovering in place its lift thrusters draw about its weight's worth: {hovering - idle:F3} MW for {weighs:F3} ({stats.Weight / stats.Thrust[(int)ShipHandling.Handling.Direction.Up]:P0} of {lift:F3} MW of lift)");
         Check(Math.Abs(burnt - drawn) < drawn * 0.05 + 1e-6, $"its generator burns fuel from its storage as they draw: {burnt:F2} MJ of fuel for {drawn:F2} MJ drawn in 3 s ({v.Storage.Count("energy-cell")} cells left)");
         var gauges = Slice.Ui.StructureReadout.Of(v);
         Check(gauges.CapUse == v.Power.Usage && gauges.CapUse > 0 && gauges.FuelSeconds == v.Power.SecondsLeft && gauges.FuelSeconds > 60 && gauges.WarpAu == null && gauges.FoldLy == null,
