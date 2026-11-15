@@ -576,6 +576,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 ## Weather and sky
 
+- [ ] NIGHT LIGHTS AND LIGHT POLLUTION (owner, 15 Nov): "Some lights at night are important that we see at a distance, as well as having light pollution around them if there are a light of lights in an area. Something cheap". Distant lit places as cheap emissive points from kilometres off (as sci-fi-inspirations.md item 17 already has it), a soft glow over clusters, a few beams straight up from old installations, all within budget on both profiles [running: nightlights agent] [high]
 - [ ] Black holes: never the lensed thin-disc look; a thick dusty, churning accretion cloud round a glowing heart, with jets, and the cloud is a place to fly into and visit (gas, debris, derelicts); sizes: small ones with a small cloud and planets orbiting, supermassive ones with whole star systems inside their cloud (owner, 9 Nov; references in reference-photos/blackhole, local only; design doc rev 742) [queued: sky round] [normal]
 - [ ] The galactic core in the sky reads as a small nearby black hole; the galaxy's own black hole should be shrouded by a vast, star-spanning accretion disk (a bright bulge), while a small black hole with its disk is for an adjacent black hole system (owner, 9 Nov) [queued: sky round] [normal]
 - [ ] Stars, nebula and the galactic core show through night clouds again (owner, 9 Nov); likely the lightning sky-shader change [running: lightning agent, regression fix] [normal]
