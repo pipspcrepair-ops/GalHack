@@ -50,23 +50,30 @@ public sealed partial class Staging
 
     /// <summary>
     /// The scanner's place marks: <c>--view=placescan --out=FILE.png</c>, in daylight with the scanner in hand, stood
-    /// 150 m off the place with the most others within the scan's range, just scanned, looking toward the marks.
+    /// 350 m off the place with the most others within the scan's range, just scanned, looking toward the marks.
     /// </summary>
     IEnumerable<int> PlaceScanShot()
     {
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.36);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         _game.Pack.Add("scanner", 1);
         foreach (int x in CoreScanStage.Hold(Play, "scanner", _ => { })) yield return x;
         var planet = _game.Zone.Planet;
         float range = _game.PlaceScanRange;
-        var sites = planet.Pois.Where(p => !p.Family.Space && planet.Infra.City?.Sites.Contains(p) != true)
-            .Select(p => new Vector3(p.Origin.X, 0f, p.Origin.Z)).ToList();
+        var sites = _game.PlacesInScan(Vector3.Zero, float.MaxValue, 0).Select(p => p.At with { Y = 0f }).ToList();
         Vector3 best = sites.OrderByDescending(a => sites.Count(b => planet.NearestCopy(b, a).DistanceTo(a) <= range * 0.8f)).First();
-        Vector3 stand = best + new Vector3(150f, 0f, 0f);
+        Vector3 stand = best + new Vector3(350f, 0f, 0f); // beyond a place's reveal, so the marks are the scan's, not found places'
         _game.Survivor.PlaceOutside(new System.Numerics.Vector3(stand.X, _game.Zone.GroundAt(stand.X, stand.Z).Y + 1f, stand.Z));
         foreach (int x in _drive.UntilSettled()) yield return x;
+        // The sun goes down as you go east: find the hour here with the sun well up.
+        double day = 0, high = -2;
+        for (double t = 0; t < 1; t += 0.02)
+        {
+            _game.Zone.Sky.TimeOfDay = t;
+            yield return 0;
+            if (_game.Zone.Sky.ToSun.Y > high) (high, day) = (_game.Zone.Sky.ToSun.Y, t);
+        }
+        _game.Zone.Sky.TimeOfDay = day - 0.08;
         foreach (int x in _drive.Wait(60)) yield return x;
         _game.Scan();
         foreach (int x in _drive.Wait(2)) yield return x;

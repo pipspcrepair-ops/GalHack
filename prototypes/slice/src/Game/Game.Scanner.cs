@@ -11,7 +11,7 @@ namespace Slice.Game;
 /// The handheld scanner (free from the suit fabricator): a click pings what lies far off. The nearest deposit of
 /// each ore within <see cref="ScanRange"/> goes on the compass for ten seconds; every place within the scanner's
 /// scan range (the item's data) is marked for thirty, then the mark times out: a scan is a snapshot, not a standing
-/// map. A city is one place. Nothing stays marked from a ping: a deposit or a place stays on the compass and the
+/// map. A city, or an airfield of many parts, is one place. Nothing stays marked from a ping: a deposit or a place stays on the compass and the
 /// map only once you have been near it.
 /// </summary>
 public partial class Game
@@ -57,7 +57,7 @@ public partial class Game
         return true;
     }
 
-    /// <summary>The places within <paramref name="range"/> of <paramref name="feet"/> across the ground, as marks lasting until <paramref name="until"/>: each site, the city's buildings as one mark at its middle.</summary>
+    /// <summary>The places within <paramref name="range"/> of <paramref name="feet"/> across the ground, as marks lasting until <paramref name="until"/>: each site, a typed place's parts as one mark on its anchor, the city's buildings as one at its middle.</summary>
     public List<Ping> PlacesInScan(Vector3 feet, float range, double until)
     {
         var marks = new List<Ping>();
@@ -72,7 +72,7 @@ public partial class Game
         for (int i = 0; i < planet.Pois.Count; i++)
         {
             var p = planet.Pois[i];
-            if (p.Family.Space || city?.Sites.Contains(p) == true) continue;
+            if (p.Family.Space || city?.Sites.Contains(p) == true || p.Whole != null && p != (p.Whole.Anchor ?? p.Whole.Parts[0])) continue;
             Add(p.Origin.X, p.Origin.Z, p.Family.Tier == PoiTier.Wreck ? "wreck" : p.State == PoiState.Ruined ? "ruin" : "place", $"poi{i}");
         }
         if (city != null) Add((float)city.CenterX, (float)city.CenterZ, "place", "city");
