@@ -334,7 +334,7 @@ public sealed partial class Staging
     /// <summary>In a Skiff's chair, climbed clear of the ground, with flight assist just switched off (I): the active thrusters icon.</summary>
     IEnumerable<int> AssistView()
     {
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         Vector3 site = Play.FlatSpot(_game.Start, 40f, 0.6f, 0.4f, span: 14f);

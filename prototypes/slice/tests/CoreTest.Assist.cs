@@ -42,15 +42,16 @@ public partial class CoreTest
         _game.Press(Key.I);
         foreach (int x in _drive.Wait(1)) yield return x;
         Check(v.Flight.State.AssistOff && ThrusterIcon(v) == HudIcon.ThrustersActive, "I switches assist off: the icon row shows active thrusters");
-        float y0 = v.Body.Position.Y, burnt = 0f;
+        float burnt = 0f;
+        float vy0 = v.Body.Velocity.Y; // the climb may not have quite eased out yet
         for (int t = 0; t < 30; t++)
         {
             burnt = MathF.Max(burnt, v.Flight.State.ThrustLocal.Length());
             yield return 0;
         }
-        float g = _game.Zone.Physics.Zone.Strength;
-        Check(MathF.Abs(v.Body.Velocity.Y + g * 0.5f) < 0.1f * g && v.Body.Position.Y < y0 && burnt == 0f,
-            $"hands off, it falls: {v.Body.Velocity.Y:F1} m/s after half a second at {g:F1} m/s², {y0 - v.Body.Position.Y:F1} m down, no thrust fired (most {burnt:F3} m/s²)");
+        float g = _game.Zone.Physics.Zone.Strength, fell = vy0 - v.Body.Velocity.Y;
+        Check(MathF.Abs(fell - g * 0.5f) < 0.05f * g && burnt == 0f,
+            $"hands off, it falls: {fell:F2} m/s faster down after half a second at {g:F1} m/s² ({vy0:+0.0;-0.0} to {v.Body.Velocity.Y:+0.0;-0.0}), no thrust fired (most {burnt:F3} m/s²)");
 
         foreach (int x in Hold(Key.Q, 8)) yield return x;
         N.Vector3 spin = v.Controller.LocalSpin;
