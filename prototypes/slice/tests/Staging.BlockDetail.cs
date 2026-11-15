@@ -21,7 +21,7 @@ namespace Slice.Tests;
 /// armour material at 2 m and 20 m (wall-ID-2m, wall-ID-20m), the Outpost and Frigate set down
 /// through the BLUEPRINTS tab and seen from outside and from inside (bp-NAME-outside, bp-NAME-inside),
 /// a PERF line of frame time and triangles at the Frigate, the first devices powered, unpowered and
-/// damaged (status-*), and an icon sheet of every block item (icons). --part=devices|walls|blueprints|icons runs one part; the default is all of them.
+/// damaged (status-*), and an icon sheet of every block item (icons). --part=devices|walls|blueprints|icons runs one part, --devices=TEXT only the devices whose id holds it; the default is all of them.
 /// The showroom is set down whole (STAGING): one base.
 /// </summary>
 public sealed partial class Staging
@@ -49,7 +49,8 @@ public sealed partial class Staging
     IEnumerable<int> DeviceShots(string dir, string tag)
     {
         Catalogue cat = _game.Zone.Data.Catalogue;
-        List<BlockType> devices = cat.Types.Skip(1).Where(t => !t.IsArmor).ToList();
+        string only = _args.GetValueOrDefault("devices", ""); // --devices=TEXT: only the devices whose id holds it
+        List<BlockType> devices = cat.Types.Skip(1).Where(t => !t.IsArmor && t.Id.Contains(only)).ToList();
         {
             GridDef grid = cat.Grid;
             var s = new Structure(cat) { Name = "Showroom" };

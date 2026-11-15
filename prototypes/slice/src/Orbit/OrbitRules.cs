@@ -78,6 +78,8 @@ public sealed class OrbitRules
         public float TakesOverWithin { get; set; } = 2500f;
         /// <summary>A moon's own globe fades in over its far look between these distances from its ground, m.</summary>
         public float[] MoonGlobeFrom { get; set; } = { 9000f, 7000f };
+        /// <summary>A moon's surface starts being made once you are this near its ground, m: a few minutes out at a small vessel's top speed (the thruster moon's is made from the start).</summary>
+        public float MakeMoonWithin { get; set; } = 45000f;
     }
 
     static readonly JsonSerializerOptions Json = new()

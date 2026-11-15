@@ -71,6 +71,13 @@ public sealed class WalkController : IBodyController, IForceReactor
     public float Grip = 60f;
 
     /// <summary>
+    /// The gravity the walk is tuned for, m/s². In less, a stride scales as a person's does (by its Froude number): the
+    /// speeds by the square root of the share of it, the feet's push along the ground by the share, so a stride let go
+    /// stops in the same distance, and a hop off a bump carries as far, as under the tuned gravity. In more it stays as tuned.
+    /// </summary>
+    public float TunedGravity = 9.8f;
+
+    /// <summary>
     /// How hard an outside push along the ground the feet can stand against before they lose their
     /// footing, m/s² of the body's mass (about the friction of boots on rough ground). Enough to stand
     /// in a gale; hurricane-force wind on a body standing tall slides it (crouching halves the push),
@@ -208,7 +215,8 @@ public sealed class WalkController : IBodyController, IForceReactor
             JetpackFuel = MathX.MoveToward(JetpackFuel, JetpackFuelMax, dt);
             if (JetpackSpent && JetpackFuel >= MathF.Min(JetpackMinRefill, JetpackFuelMax)) JetpackSpent = false;
         }
-        float speed = Crouch ? CrouchSpeed : Sprint ? SprintSpeed : WalkSpeed;
+        float g = world.GravityAt(body).Length(), share = g > 1e-3f ? MathF.Min(g / TunedGravity, 1f) : 1f;
+        float speed = (Crouch ? CrouchSpeed : Sprint ? SprintSpeed : WalkSpeed) * MathF.Sqrt(share);
         Vector2 move = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
         Vector3 wishDir = MathX.Rotate(heading, new Vector3(move.X, 0f, move.Y));
         Vector3 h = v - up * Vector3.Dot(v, up); // velocity along the face underfoot
@@ -220,7 +228,7 @@ public sealed class WalkController : IBodyController, IForceReactor
             // so far that runs along it is all outside forces. Worked out in the walk frame, axis by
             // axis, exactly as on flat ground.
             Vector3 hf = MathX.Unrotate(frame, h), wf = MathX.Unrotate(frame, wishDir * speed);
-            var nextF = new Vector3(MathX.MoveToward(hf.X, wf.X, GroundAccel * dt), 0f, MathX.MoveToward(hf.Z, wf.Z, GroundAccel * dt));
+            var nextF = new Vector3(MathX.MoveToward(hf.X, wf.X, GroundAccel * share * dt), 0f, MathX.MoveToward(hf.Z, wf.Z, GroundAccel * share * dt));
             Vector3 next = MathX.Rotate(frame, nextF);
             Vector3 outside = body.PendingTotalForce - up * Vector3.Dot(body.PendingTotalForce, up);
             Vector3 legs = m * (next - h) / dt - outside;
