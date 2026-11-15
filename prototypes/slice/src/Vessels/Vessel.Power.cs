@@ -8,7 +8,8 @@ namespace Slice.Vessels;
 /// <summary>
 /// A structure's live power (shared/Items' <see cref="StructurePower"/>): its devices draw from the core's capacitor by
 /// what they are doing, and its generators burn fuel from its storage to keep it charged. Out of power, its machines
-/// stop, its lights go dark, its sealed rooms stop holding their air, and a flying ship loses thrust and falls.
+/// stop, its lights go dark, its sealed rooms stop holding their air, its core's gravity fails, its shield drops, and a
+/// flying ship loses thrust and falls. Its solar panels charge it by the sun on them before any fuel burns.
 /// </summary>
 public sealed partial class Vessel
 {
@@ -20,12 +21,32 @@ public sealed partial class Vessel
 
     System.Func<PowerState, Int3, Block, double> _doing;
 
-    /// <summary>One tick of its power, in real time (<paramref name="free"/>: Creative's rule, its generators burn nothing); the share it met is what its flight gets.</summary>
+    /// <summary>
+    /// One tick of its power, in real time (<paramref name="free"/>: Creative's rule, its generators burn nothing). The share
+    /// it met is what its flight gets; its core's gravity holds only while it has power.
+    /// </summary>
     public void TickPower(double dt, bool free)
     {
         _doing ??= Doing;
+        Power.Sun = SunOnPanels();
+        Power.ShieldsOn = SystemOn(StructureBar.Shields);
+        Bar.Cool(dt);
         Power.Tick(dt, PowerOn && !IsWreck && Structure.Core != null, free, _doing);
         if (Flight != null) Flight.Power = Powered ? (float)Power.Supply : 0f;
+        bool gravity = Structure.GravityOn && Powered;
+        if (Body.Core != null && Body.Core.On != gravity)
+        {
+            Body.Core.On = gravity;
+            Cabin.SetGravity(Body.Core);
+        }
+    }
+
+    /// <summary>The share of full sun on its panels: the sun's height here (day, night and latitude), less what the cloud takes.</summary>
+    double SunOnPanels()
+    {
+        if (Power.SolarMW <= 0 || Zone.Sky == null) return 0;
+        double cloud = Zone.Weather?.Sim?.Current.CloudCover ?? 0;
+        return System.Math.Clamp(Zone.Sky.ToSun.Y, 0, 1) * (1 - Power.Rules.SolarCloudCut * System.Math.Clamp(cloud, 0, 1));
     }
 
     /// <summary>Flying under its own power: on the flight model and not landed.</summary>
@@ -47,7 +68,11 @@ public sealed partial class Vessel
         PowerState.Working => Machines.TryGetValue(cell, out Constructor c) && c.Current != null ? 1 : 0,
         PowerState.Seated => SeatTaken(cell) ? 1 : 0,
         PowerState.On => 1,
-        _ => 0, // turrets, guns, shields and drives draw once phase 2 wires them in
+        PowerState.Firing => Bar.Firing(cell) ? 1 : 0,
+        PowerState.Up => Power.ShieldUp && !Power.ShieldRecharging ? 1 : 0,
+        PowerState.Recharging => Power.ShieldRecharging ? 1 : 0,
+        PowerState.Engaged => Power.Engaged(Structure.TypeOf(b).Function) ? 1 : 0,
+        _ => 0, // a turret's idle and tracking: turrets have no aim of their own in the slice yet
     };
 
     bool SeatTaken(Int3 cell)

@@ -69,13 +69,19 @@ public sealed class VesselDamage : ILocatedDamageSink
         return raw;
     }
 
-    /// <summary>A bolt or a bite on one block: armour and resistance apply. World point, and the face's normal.</summary>
-    public void Shot(Int3 cell, N.Vector3 point, N.Vector3 normal, float amount, DamageType type) =>
+    /// <summary>A bolt or a bite on one block: its shield takes it first, then armour and resistance apply. World point, and the face's normal.</summary>
+    public void Shot(Int3 cell, N.Vector3 point, N.Vector3 normal, float amount, DamageType type)
+    {
+        if ((amount = (float)_v.Power.Absorb(amount)) <= 0f) return;
         _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, -MathX.Unrotate(_v.Body.Rotation, normal), cell, type, 0f, HitKind.Shot));
+    }
 
-    /// <summary>An explosion at a world point, radius in metres: falls off with distance, as <see cref="Damage.Blast"/> does.</summary>
-    public void Blast(N.Vector3 point, float radius, float amount, DamageType type = DamageType.Explosive) =>
+    /// <summary>An explosion at a world point, radius in metres: its shield takes it first, then it falls off with distance, as <see cref="Damage.Blast"/> does.</summary>
+    public void Blast(N.Vector3 point, float radius, float amount, DamageType type = DamageType.Explosive)
+    {
+        if ((amount = (float)_v.Power.Absorb(amount)) <= 0f) return;
         _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, default, default, type, radius / Cell, HitKind.Blast));
+    }
 
     /// <summary>Lightning that strikes close enough to a structure hits its blocks, and its force fields, as a small blast.</summary>
     public void OnWeather(WeatherEvent e)

@@ -36,13 +36,15 @@ public sealed class StructureBar
 {
     public const int Slots = Slice.Items.PlayerInventory.ToolbarSlots;
 
-    /// <summary>The systems the game itself reads by name: the core's gravity, life support and the fabricators.</summary>
-    public const string Gravity = "gravity", LifeSupport = "life-support", Fabricators = "fabricators";
+    /// <summary>The systems the game itself reads by name: the core's gravity, life support, the fabricators and the shield.</summary>
+    public const string Gravity = "gravity", LifeSupport = "life-support", Fabricators = "fabricators", Shields = "shields";
 
     readonly Vessel _v;
     List<BarSlot> _functions;
     readonly List<(Int3 At, BarSlot Slot)> _guns = new();
     readonly Dictionary<Int3, Gun> _loaded = new();
+    /// <summary>Each gun block's seconds of firing left: a cadence after each shot, while it draws its power.</summary>
+    readonly Dictionary<Int3, double> _firing = new();
     /// <summary>The switched kinds with any of their blocks on (a block switched changes the structure, so this follows).</summary>
     readonly HashSet<string> _lit = new(StringComparer.Ordinal);
     int _version = -1;
@@ -166,11 +168,19 @@ public sealed class StructureBar
         else _v.SetSystem(f.Kind.Id, on);
     }
 
-    /// <summary>
-    /// The power hook: whether a kind of the bar's devices may work now. Until power phase 1 merges it is the structure's
-    /// power (a generator, switched on); then each device's draw on the capacitors decides here.
-    /// </summary>
+    /// <summary>Whether a kind of the bar's devices may work now: the structure has power to give (each draws its share of it as it works).</summary>
     public bool Powered(BarKind kind) => _v.Powered;
+
+    /// <summary>Is the gun at this cell firing (a cadence after its last shot): it draws its power while it is.</summary>
+    public bool Firing(Int3 at) => _firing.TryGetValue(at, out double left) && left > 0;
+
+    /// <summary>The guns' firing runs down with time (the power tick calls this).</summary>
+    public void Cool(double dt)
+    {
+        if (_firing.Count == 0) return;
+        foreach (Int3 at in _firing.Keys.ToList())
+            if ((_firing[at] -= dt) <= 0) _firing.Remove(at);
+    }
 
     // ---- Guns -----------------------------------------------------------------------------------
 
@@ -215,6 +225,7 @@ public sealed class StructureBar
             if (on && pressed && gun.Loaded == 0 && !gun.Reloading) gun.LoadNow(); // a gun aboard is kept loaded: it fires at once
             int shots = gun.Tick(dt, on && held, on && pressed, out _);
             if (shots <= 0) continue;
+            _firing[at] = def.SecondsPerShot;
             float cell = s.Grid.CellSize;
             N.Vector3 muzzle = s.PointOf(at, b, new N.Vector3(0f, 0f, -0.6f)) * cell, back = s.PointOf(at, b, N.Vector3.Zero) * cell;
             Vector3 from = _v.ToWorld(muzzle), dir = (from - _v.ToWorld(back)).Normalized();
