@@ -92,7 +92,7 @@ block -2 0 2 container-t1
 block 1 0 2 container-t1
 block 2 0 2 iron-plated paint=band,band,hull,hull,hull,hull
 block 3 0 2 iron-plated paint=hull
-block 4 0 2 fuel-tank-t1
+block 4 0 2 container-t1
 block 5 0 2 generator-t1
 block -7 0 3 thruster-t1 rot=+y+x
 block -6..-5 0 3 iron-plated paint=pod
@@ -140,7 +140,7 @@ block -6..-5 1 1 iron-plated paint=pod
 block -3 1 1 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 2 1 1 iron-plated paint=hull,inner,hull,hull,hull,hull
 block 4..5 1 1 iron-plated paint=pod
-block -6 1 2 fuel-tank-t1
+block -6 1 2 container-t1
 block -5 1 2 iron-plated paint=pod
 block -4 1 2 iron-plated paint=hull
 block -3 1 2 iron-plated paint=inner,hull,hull,hull,hull,hull

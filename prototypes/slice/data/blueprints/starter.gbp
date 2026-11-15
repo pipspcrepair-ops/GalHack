@@ -60,7 +60,7 @@ block -3 0 2 thruster-t1 rot=+y+x
 block -2 0 2 base-block half paint=chev
 block -1 0 2 generator-t1
 block 0 0 2 gyro-t1
-block 1 0 2 fuel-tank-t1
+block 1 0 2 container-t1
 block 2 0 2 base-block half paint=chev
 block 3 0 2 thruster-t1 rot=+y-x
 block -2 0 3 base-block slope rot=-x+z paint=chev,chev,chev,chev,hazard,chev

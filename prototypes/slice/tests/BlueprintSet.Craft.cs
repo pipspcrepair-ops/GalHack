@@ -141,9 +141,9 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
         d.Slope(P(-6, 0, 0), P(-5, 0, 0), "iron-plated", hull, Dir.NegZ, under: true).Slope(P(4, 0, 0), P(5, 0, 0), "iron-plated", hull, Dir.NegZ, under: true);
         d.Put("generator-t1", P(-6, 0, 2));
         d.Put("gyro-t1", P(-5, 0, 2));
-        d.Put("container-t1", P(-6, 1, 2));
+        d.Put("container-t3", P(-6, 1, 2)); // the light container: the pods' weight stays over the lift
         d.Put("generator-t1", P(5, 0, 2));
-        d.Put("container-t1", P(4, 0, 2));
+        d.Put("container-t3", P(4, 0, 2));
         foreach (int x in new[] { -6, -5, 4, 5 }) d.Thruster("thruster-t1", P(x, 0, 6), Dir.NegZ);
         d.Thruster("thruster-t1", P(-7, 0, 3), Dir.PosX);
         d.Thruster("thruster-t1", P(6, 0, 3), Dir.NegX);

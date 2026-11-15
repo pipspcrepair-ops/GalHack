@@ -750,9 +750,10 @@ public partial class PlayerTest : Node
         // Fuel for its generator into its storage: the cells left in the bag.
         Check(!v.Powered, "built, it has no power until there is fuel in its storage");
         _play.StoreInto(v, Fuel);
-        int fuelled = v.Storage.Count(Fuel);
+        int stored = v.Storage.Count(Fuel);
         foreach (int x in _drive.Wait(2)) yield return x;
-        Check(fuelled > 0 && v.Powered, $"{fuelled} {Fuel} in its storage: its generator charges its capacitor ({v.Power.ChargeMJ:F0} MJ)");
+        double fuelled = v.Power.FuelUnits;
+        Check(stored > 0 && v.Powered, $"{stored} {Fuel} in its storage: its generator charges its capacitor ({v.Power.ChargeMJ:F0} MJ)");
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "F at its command chair");
         if (_game.Survivor.Seated != v) yield break;
@@ -803,7 +804,7 @@ public partial class PlayerTest : Node
         float flown = new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length();
         Check(flown >= 500f, $"it flew {flown:F0} m, top speed {top:F0} m/s");
         Check(v.Controller.Frozen && v.Body.Damage == built, $"and landed on its gear, undamaged ({(v.Controller.Frozen ? "landed" : "still flying")}, {v.AboveGround:F1} m up, damage {v.Body.Damage:F3}, {built:F3} before take-off)");
-        Check(v.Storage.Count(Fuel) < fuelled, $"the flight burned fuel from its storage: {fuelled} {Fuel} to {v.Storage.Count(Fuel)}");
+        Check(v.Power.FuelUnits < fuelled, $"the flight burned fuel from its storage: {fuelled:F1} fuel units to {v.Power.FuelUnits:F1} ({v.Storage.Count(Fuel)} {Fuel} left)");
         Mark("flown");
     }
 

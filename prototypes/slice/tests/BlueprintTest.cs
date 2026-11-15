@@ -277,10 +277,10 @@ public partial class BlueprintTest : Node
         int fuel = v.Storage.Add("energy-cell", FuelCells);
         foreach (int x in _drive.Wait(5)) yield return x;
         Check(fuel == FuelCells && v.Powered && v.Power.ChargeMJ > 0, $"{name}: {fuel} energy cells in its storage, its generator charges the capacitor ({v.Power.ChargeMJ:F1} of {v.Power.CapacityMJ:F0} MJ)");
-        int fuelled = v.Storage.Count("energy-cell");
+        double fuelled = v.Power.FuelUnits;
         if (plan.Mode == CoreMode.Flight) foreach (int x in Fly(v)) yield return x;
         else if (plan.Mode == CoreMode.Hover) foreach (int x in Drive(v)) yield return x;
-        if (craft) Check(v.Storage.Count("energy-cell") < fuelled, $"{name}: the trip burned fuel from its storage ({fuelled} cells to {v.Storage.Count("energy-cell")})");
+        if (craft) Check(v.Power.FuelUnits < fuelled, $"{name}: the trip burned fuel from its storage ({fuelled:F1} fuel units to {v.Power.FuelUnits:F1}, {v.Storage.Count("energy-cell")} cells left)");
         _game.Mode = GameMode.Creative;
 
         _game.Survivor.StandUp();
