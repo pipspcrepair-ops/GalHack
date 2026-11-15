@@ -33,7 +33,6 @@ public partial class FramePacer : Node
     public const double Unpaced = 3.0, LeastRoom = 1.0, MostRoom = 4.0, Margin = 0.5;
 
     const int Kept = 480;
-    static readonly bool Debugging = OS.HasEnvironment("PACER_DEBUG");
     readonly double[] _cpu = new double[Kept], _gpu = new double[Kept], _sorted = new double[Kept];
     int _frames;
     double _fitFor, _missFor;
@@ -124,8 +123,6 @@ public partial class FramePacer : Node
         }
         else _fitFor = _missFor = 0;
         Work = Math.Max(must, gpu);
-        if (Debugging && _frames % 240 == 0)
-            GD.Print($"PACER {Refreshes} refreshes: cpu p80 {must:F1} ms (scripts {_scripts:F1}, setup {RenderingServer.GetFrameSetupTimeCpu():F1}, render {RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport):F1}, deferred {Deferred?.Invoke() ?? 0:F1}), gpu p80 {gpu:F1} ms");
         Room = Math.Clamp(Refreshes * refresh - Margin - must, LeastRoom, MostRoom);
         Cap(Refreshes == 1 ? 0 : (int)Math.Ceiling(hz / Refreshes));
     }
