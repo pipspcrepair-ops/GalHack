@@ -25,8 +25,8 @@ public partial class Place : Node3D
     /// <summary>Chunks: each is a millisecond or two to put in, and a broken wall remeshes only one or two.</summary>
     public const int ChunkSize = 16;
 
-    /// <summary>A cube's full detail drawn as one mesh rather than a mesh a chunk. Off until an edit's split back (Unmerge) is proven; PopRoute --merge=1 measures it.</summary>
-    public static bool MergeCubes;
+    /// <summary>A cube's full detail drawn as one mesh rather than a mesh a chunk (PlaceTest checks an edit splits it back; PopRoute --merge=0 for the old way).</summary>
+    public static bool MergeCubes = true;
 
     /// <summary>The cubes it stands in: each has its own body, and is drawn near or left to the planet's merged drawing as one.</summary>
     public const int GroupSize = PoiLayer.GroupSize;
@@ -458,6 +458,42 @@ public partial class Place : Node3D
         }
         PlanetSurface.Fx.Fade.Forget(this);
     }
+
+    /// <summary>Tests: a near cube drawn as one mesh, and a solid block in it (null: none).</summary>
+    internal (Int3 Key, Int3 Cell)? MergedCubeWithBlock()
+    {
+        foreach (Group g in _groups.Values)
+        {
+            if (g.Merged == null || !g.Near || g.Way != 0) continue;
+            Int3 min = g.Key * GroupSize;
+            for (int y = 0; y < GroupSize; y++)
+            for (int z = 0; z < GroupSize; z++)
+            for (int x = 0; x < GroupSize; x++)
+            {
+                Int3 c = min + new Int3(x, y, z);
+                // A floor: a block with the place's own air over it, so its going changes what is drawn.
+                if (Inst.Blocks.Get(c).Type == BlockType.Cube && Inst.Blocks.Get(c + Int3.Up).IsAir && Inst.Layout.Occupied[c + Int3.Up]) return (g.Key, c);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Tests: how a cube is drawn now: as one mesh, and how many chunk meshes, and the triangles in all of them.</summary>
+    internal (bool Merged, int Chunks, long Triangles) CubeDrawing(Int3 key)
+    {
+        Group g = GroupAt(key);
+        long tris = 0;
+        int chunks = 0;
+        foreach (MeshInstance3D m in MeshesOf(g))
+        {
+            if (m != g.Merged) chunks++;
+            if (m.Mesh is ArrayMesh am) for (int s = 0; s < am.GetSurfaceCount(); s++) tris += am.SurfaceGetArrayIndexLen(s) / 3;
+        }
+        return (g.Merged != null, chunks, tris);
+    }
+
+    /// <summary>Cubes drawn as one mesh now (tests).</summary>
+    internal int MergedGroups => _groups.Values.Count(g => g.Merged != null);
 
     /// <summary>Cubes drawn in full now (tests).</summary>
     public int NearGroups => _groups.Values.Count(g => g.Near);

@@ -57,6 +57,11 @@ public partial class ProceduralAudio : Node3D
         _clips["hit"] = Make(0.2f, (t, n) => MathF.Exp(-t * 26f) * (n * 0.65f + MathF.Sin(MathF.Tau * (150f - 300f * t) * t) * 0.6f), rng);
         _clips["pop"] = Make(0.12f, (t, n) => MathF.Exp(-t * 45f) * (MathF.Sin(MathF.Tau * (620f - 2600f * t) * t) * 0.7f + n * 0.25f), rng);
         _clips["hurt"] = Make(0.32f, (t, n) => MathF.Exp(-t * 13f) * (MathF.Sin(MathF.Tau * 62f * t) * 0.8f + n * 0.45f), rng);
+        // Cries when struck: an animal's yelp (a sharp rise and a falling, rough wail), a machine's
+        // clank and the screech of its servos.
+        _clips["yelp"] = Make(0.42f, (t, n) => MathF.Min(1f, t * 60f) * MathF.Exp(-t * 6f) * (Saw(t * (420f + 900f * t * MathF.Exp(-t * 12f) - 180f * t)) * 0.55f + n * 0.3f) * (0.7f + 0.3f * MathF.Sin(t * 70f)), rng);
+        _clips["clank"] = Make(0.5f, (t, n) => MathF.Exp(-t * 18f) * (MathF.Sin(MathF.Tau * 640f * t) * 0.5f + MathF.Sin(MathF.Tau * 1710f * t) * 0.3f + n * 0.4f)
+            + MathF.Exp(-MathF.Abs(t - 0.2f) * 14f) * Square(t * (900f - 700f * t)) * 0.2f, rng);
         // The discovery chime: two soft glassy bell notes a fifth apart, rising, under a second
         // long. Nothing like any creature's wind-up, so it never reads as a threat.
         _clips["discover"] = Make(0.75f, (t, n) => 0.3f * (Bell(t, 659.3f) + 0.85f * Bell(t - 0.11f, 987.8f)) * Math.Clamp((0.75f - t) * 16f, 0f, 1f), rng);
@@ -73,6 +78,7 @@ public partial class ProceduralAudio : Node3D
         // Something battering at a wall: a deep blow, and the crack of what's giving.
         _clips["batter"] = Make(0.9f, (t, n) => MathF.Exp(-t * 7f) * (MathF.Sin(MathF.Tau * (48f - 20f * t) * t) * 0.9f + n * 0.5f) + MathF.Exp(-MathF.Max(0f, t - 0.08f) * 25f) * (t > 0.08f ? 1f : 0f) * n * 0.4f, rng);
         MakeTells(rng);
+        MakeStrikes(rng);
 
         for (int i = 0; i < 12; i++)
         {
@@ -216,13 +222,32 @@ public partial class ProceduralAudio : Node3D
             mood == VoiceMood.Shout ? 70f : mood == VoiceMood.Whisper ? 9f : 24f);
     }
 
-    /// <summary>Someone makes a sound that isn't speech (a grunt, breath, pain, laugh, cry...), in their voice and mood.</summary>
-    public void Vocal(Species person, VocalKind kind, PersonMood mood, Vector3 at, float? volumeDb = null)
+    /// <summary>Someone makes a sound that isn't speech (a grunt, breath, pain, laugh, cry...), in their voice and mood; false while that voice is still being made.</summary>
+    public bool Vocal(Species person, VocalKind kind, PersonMood mood, Vector3 at, float? volumeDb = null)
     {
         Voice v = person.Figure?.Voice;
-        if (v == null || _throats.Count == 0 || Clip(v, 100 + (int)kind * 8 + (int)mood, take => v.Vocalize(kind, mood, take)) is not { } clip) return;
+        if (v == null || _throats.Count == 0 || Clip(v, 100 + (int)kind * 8 + (int)mood, take => v.Vocalize(kind, mood, take)) is not { } clip) return false;
         bool loud = kind is VocalKind.Call or VocalKind.Pain;
         Throat(clip, at, volumeDb ?? (loud ? 0f : kind == VocalKind.Breath ? -16f : -8f), loud ? 60f : kind == VocalKind.Breath ? 8f : 22f);
+        return true;
+    }
+
+    /// <summary>Cries out when struck (tests: how many times).</summary>
+    public int Cried;
+
+    /// <summary>
+    /// Something struck cries out, by what it is: a person in their own voice (a cry of pain; a
+    /// generic one while theirs is still being made), a Husk a wet choke, a machine a clank and a
+    /// screech, an animal a yelp as big as it is. A swarm's critters only pop.
+    /// </summary>
+    public void Cry(Species s, Vector3 at)
+    {
+        if (s.Rig == RigKind.Swarm) return;
+        Cried++;
+        if (s.Husk) Play("retch", at, 1.35f, -2f);
+        else if (s.Mechanical) Play("clank", at, Heft.Pitch(s), Heft.Loudness(s) + 2f);
+        else if (s.Figure != null) { if (!Vocal(s, VocalKind.Pain, PersonMood.Scared, at, 2f)) Play("yelp", at, 1.35f, 0f); }
+        else Play("yelp", at, Heft.Pitch(s), Heft.Loudness(s) + 2f);
     }
 
     public void Play(string clip, Vector3 at, float pitch = 1f, float volumeDb = 0f)

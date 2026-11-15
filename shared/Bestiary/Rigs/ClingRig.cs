@@ -136,8 +136,9 @@ public sealed class ClingRig : ZeroGRig
         }
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head"), s.Body.HeadSize, k, rng);
-        layout.Add(head);
+        var jaw = new Piece("jaw");
+        Parts.Head(head, s.Part("head"), s.Body.HeadSize, k, rng, jaw);
+        layout.AddHead(head, jaw);
 
         var tip = new Piece("tip") { Shadow = false };
         string tail = s.Part("tail");

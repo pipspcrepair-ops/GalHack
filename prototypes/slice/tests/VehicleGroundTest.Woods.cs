@@ -34,10 +34,7 @@ public partial class VehicleGroundTest
             _game.Survivor.StandUp();
             foreach (int x in _drive.Wait(5)) yield return x;
             _game.Survivor.PlaceOutside((v.Body.Position + N.Vector3.UnitY * 30f).ToGodot().ToNumerics());
-            _game.Zone.Physics.Unregister(v.Body);
-            _game.Zone.Physics.StuckFields.Remove(v.Field);
-            _game.Zone.Untrack(v);
-            v.Node.QueueFree();
+            _game.Zone.Remove(v);
             foreach (int x in _drive.Wait(10)) yield return x;
         }
     }

@@ -19,7 +19,7 @@ public abstract class ZeroGRig : Rig
         Animate(c, 0.016f);
     }
 
-    public sealed override void Update(WildSim w, Creature c, float dt)
+    protected sealed override void Animate(WildSim w, Creature c, float dt)
     {
         if (dt <= 0f) return;
         SmoothIntents(c, dt);
@@ -412,8 +412,9 @@ public sealed class SwimRig : ZeroGRig
         layout.Add(bell);
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head"), b.HeadSize, k, rng);
-        layout.Add(head);
+        var jaw = new Piece("jaw");
+        Parts.Head(head, s.Part("head"), b.HeadSize, k, rng, jaw);
+        layout.AddHead(head, jaw);
 
         Color veil = k.Accent.Lerp(k.Glow, 0.3f);
         for (int i = 0; i < 8; i++)
@@ -448,8 +449,9 @@ public sealed class SwimRig : ZeroGRig
         layout.Add(body);
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head"), b.HeadSize, k, rng);
-        layout.Add(head);
+        var jaw = new Piece("jaw");
+        Parts.Head(head, s.Part("head"), b.HeadSize, k, rng, jaw);
+        layout.AddHead(head, jaw);
 
         // Wings are broad and triangular, rooted along most of the body like a manta's, the
         // leading edge swept back: each panel is a flat loft along its span, its chord shrinking
@@ -568,8 +570,9 @@ public sealed class SwimRig : ZeroGRig
         }
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head"), b.HeadSize, k, rng);
-        layout.Add(head);
+        var jaw = new Piece("jaw");
+        Parts.Head(head, s.Part("head"), b.HeadSize, k, rng, jaw);
+        layout.AddHead(head, jaw);
 
         string fins = s.Part("fins");
         if (fins is "paddles" or "vanes")

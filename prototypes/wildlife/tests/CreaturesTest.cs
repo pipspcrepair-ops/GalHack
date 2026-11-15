@@ -79,6 +79,7 @@ public partial class CreaturesTest : Node
             CrouchingIsQuieter();
             WeightShows();
             NothingClipsThePlayer();
+            StrikesLand();
             WoundsShow();
             DeepPerformance();
             CrowdedPlaceCost();
@@ -1162,7 +1163,7 @@ public partial class CreaturesTest : Node
             foreach (Creature c in sim.Creatures) if (c.Species.HuntsPrey && c.State == CState.Eat) fed.Add(c);
         }
         ate = fed.Count;
-        Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= 0.9f,
+        Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= _data.Combat.TellLeast - 1e-3f,
             $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 12 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
         Check(slipped >= 1 && cameBack >= 2,
             $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony comes back once the watcher has gone ({grazing} left as they went, {cameBack} came back)");
@@ -1754,7 +1755,7 @@ public partial class CreaturesTest : Node
             c.Yaw = 0f;
             sim.Attacked += e =>
             {
-                if (!e.Hit) return;
+                if (!e.Hit || e.First) return; // the telegraphed opener comes straight, to be dodged
                 hits++;
                 if (WildSim.Flat(c.Position - p.Position).Normalized().Dot(p.Forward) > -0.3f) front++;
             };
@@ -1765,14 +1766,15 @@ public partial class CreaturesTest : Node
                 for (int i = 0; i < c.Rig.HitCount; i++)
                 {
                     Vector4 h = c.Rig.Hits[i];
-                    if (h.Y - h.W > Attacks.BodyHeight) continue;
-                    float into = h.W + Attacks.BodyRadius - WildSim.Flat(new Vector3(h.X, 0f, h.Z) - p.Position).Length();
+                    // Into their body as it is, a capsule: a head coming down from above meets the top of it.
+                    var at = new Vector3(h.X, h.Y, h.Z);
+                    float into = -Strikes.Gap(at, at, h.W, p);
                     if (into > worst) { worst = into; who = $"{size:F1} m {s.CommonName}, part {i} of {c.Rig.HitCount}, state {c.State} phase {c.Phase}"; }
                 }
             }
         }
         Check(worst < 0.25f, $"heads and bodies stop at the player's body: at worst {worst:F2} m into it, over {sized} sizes of hunter ({who})");
-        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
+        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites after the opener), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
     }
 
     /// <summary>A hit shows: it flinches, the small ones more; blood is the species' own and stays so.</summary>

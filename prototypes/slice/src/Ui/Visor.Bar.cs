@@ -33,6 +33,7 @@ public partial class Visor
             bool on = v.Bar.IsOn(f);
             string value = f.Act switch
             {
+                BarAct.Toggle when on && f.Kind.Id == StructureBar.Shields => $"{100 * v.Power.ShieldHp / System.Math.Max(1, v.Power.ShieldMaxHp):F0}%", // the shield's charge
                 BarAct.Toggle => on ? "ON" : "OFF",
                 BarAct.Select => $"{v.Bar.Rounds(f)}",
                 _ => Game.ScanWait > 0 ? $"{Game.ScanWait:F0}s" : $"{Game.ScanRangeOf(v) / 1000f:0.#}KM", // a scanner's range, or its cooldown

@@ -331,7 +331,7 @@ public partial class Game : Node3D
         Survivor.Bikes = Bikes;
         Tool.Said += Say;
         Tool.Overflowed += left => SetDown(left, Survivor.WorldFeet);
-        Tool.CreatureHit += c => Visor.Hit();
+        Tool.CreatureHit += c => Arms?.Confirm(c.Dead);
         Tool.CreatureStruck += OnCreatureStruck;
         Builder = new BuildTool(Zone, Survivor, Pack, Progress);
         Builder.Said += Say;
@@ -341,6 +341,7 @@ public partial class Game : Node3D
         Target = new PlayerTarget(this);
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
+        Zone.Wildlife.Quaked += OnQuake;
         SetUpHusks();
         Zone.Wildlife.Telegraphed += e =>
         {
@@ -768,14 +769,26 @@ public partial class Game : Node3D
         Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
         Visor.Hurt(from);
         Hands?.Jolt(from, MathF.Min(1f, e.Damage / 20f));
+        Survivor.Knock(e.Push); // thrown by the blow, by the striker's mass
         Zone.Wildlife.Audio.PlayUi("hurt", -6f); // the blow landing, not an alert
         Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
+    }
+
+    /// <summary>The ground shakes under a stomp or a heavy charge: the view shakes, harder close in, and a stomp kicks up dust round the foot.</summary>
+    void OnQuake(QuakeEvent e)
+    {
+        float near = Survivor.WorldFeet.DistanceTo(e.Position);
+        if (near < e.Reach) Hands?.Shake(e.Strength * (1f - near / e.Reach));
+        if (e.Stomp) Zone.Dust?.Puff(e.Position, Zone.Planet.Grit(e.Position), 1.2f + 3f * e.Strength);
     }
 
     /// <summary>A weapon's hit on a creature: the same smack and blood as the tool's.</summary>
     public void CreatureStruck(Creature c, Vector3 point, Vector3 dir) => OnCreatureStruck(c, point, dir);
 
-    /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
+    /// <summary>The fewest seconds between a struck thing's cries (a shot's pellets cry once).</summary>
+    public const float CryEvery = 0.35f;
+
+    /// <summary>A hit lands on a creature: a wet smack where it landed, its cry, its blood, and a critter of a swarm gone with a pop.</summary>
     void OnCreatureStruck(Creature c, Vector3 point, Vector3 dir)
     {
         Species s = c.Species;
@@ -784,6 +797,12 @@ public partial class Game : Node3D
         c.Struck(point - origin, dir); // the struck part snaps away from where it landed
         float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, s.Body.Size)), 0.6f, 1.6f);
         Zone.Wildlife.Sound(origin, a => a.Play(swarm ? "pop" : "hit", c.Position + Vector3.Up * 0.5f, pitch, -2f));
+        float now = Time.GetTicksMsec() / 1000f;
+        if (now - c.CriedAt > CryEvery)
+        {
+            c.CriedAt = now;
+            Zone.Wildlife.Sound(origin, a => a.Cry(s, c.Position + Vector3.Up * s.BodyHeight * 0.8f));
+        }
         if (swarm) Zone.Blood.Pop(point, s.Blood, 8);
         else Zone.Blood.Hit(point, dir, s.Blood, s.Body.Size);
     }

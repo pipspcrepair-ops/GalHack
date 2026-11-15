@@ -75,6 +75,8 @@ public partial class WildlifePatch : Node3D
 
     /// <summary>A creature started winding up an attack on the player: the warning before any harm.</summary>
     public event Action<AttackEvent> Telegraphed;
+    /// <summary>The ground shakes under something heavy (a stomp, a charge's footfalls), in the zone's frame.</summary>
+    public event Action<QuakeEvent> Quaked;
 
     /// <summary>A creature died, and what killed it (the player's target, another creature, or nothing).</summary>
     public event Action<Creature, ITarget> Died;
@@ -219,7 +221,7 @@ public partial class WildlifePatch : Node3D
         sim.BreakBases = Zone.Data.Rules.Wildlife.BreakBases;
         sim.Battering += (c, b) => Audio.Batter(c, b.Point);
         sim.Broke += (c, b) => Audio.Batter(c, b.Point, landed: true);
-        sim.Spat += g => Audio.Play("retch", g.Position, Math.Clamp(0.9f / MathF.Cbrt(Heft.Mass(g.From.Species) / 70f), 0.55f, 1.3f), -3f);
+        sim.Spat += g => Audio.Play("retch", g.Position, Math.Clamp(0.9f / MathF.Cbrt(Heft.Mass(g.From.Species) / 70f), 0.55f, 1.3f), RetchDb);
         sim.Splashed += (g, hit) => Splashed?.Invoke(g, hit);
         sim.Telegraph += e =>
         {
@@ -229,6 +231,12 @@ public partial class WildlifePatch : Node3D
         };
         sim.Warned += c => { Audio.Telegraph(c); Slice.Game.SoundCues.Cue(WorldOf(c), 0.8f); };
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); else Bitten?.Invoke(e); };
+        sim.Committed += e => { if (e.Creature.Move == AttackMove.Swipe) Audio.Whoosh(e.Creature, e.Creature.Position + Vector3.Up * e.Creature.Species.Body.LegLength); };
+        sim.Quaked += e =>
+        {
+            Audio.Quake(e);
+            Quaked?.Invoke(e with { Position = FromPatch(e.Position) });
+        };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
         sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };
         sim.LetGo += e => { if (e.Victim == Player) LetGo?.Invoke(e); };
@@ -640,6 +648,9 @@ public partial class WildlifePatch : Node3D
         }
         return 1f;
     }
+
+    /// <summary>How loud something vomiting is (a Husk's maggots, a spitter's bile), dB: somewhat loud, heard across a yard.</summary>
+    public const float RetchDb = 4f;
 
     /// <summary>The survivor hurts a creature, in whichever sim it lives (or someone else did: then it doesn't turn on the survivor).</summary>
     public void Damage(Creature c, float amount, bool byPlayer = true)

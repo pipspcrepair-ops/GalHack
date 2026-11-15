@@ -52,7 +52,14 @@ public partial class Hands : Node3D
     public void ResetPeaks() => PeakKick = PeakTilt = 0f;
 
     /// <summary>A light camera shake for a pilot whose vessel gun fired (strength 0..1); it dies away on its own.</summary>
-    public void Shake(float strength) => _shake = MathF.Max(_shake, strength);
+    public void Shake(float strength)
+    {
+        _shake = MathF.Max(_shake, strength);
+        PeakShake = MathF.Max(PeakShake, strength);
+    }
+
+    /// <summary>The hardest shake so far (tests).</summary>
+    public float PeakShake { get; private set; }
 
     /// <summary>The hand's kick back and the camera's tilt for a fresh shot of this kind of fire.</summary>
     public void Recoil(GunFeel feel)

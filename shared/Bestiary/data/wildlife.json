@@ -8,9 +8,23 @@
   // aimed where you stood when it committed, so stepping aside dodges it. Damage is never
   // capped. No creature is ranged yet.
   "combat": {
-    "telegraphWindup": 1.1,
-    "normalWindup": 0.45,
-    "commitFraction": 0.65,
+    "telegraphWindup": 0.4,
+    "tellPerDoubling": 0.08,
+    "tellFromSize": 0.5,
+    "tellLeast": 0.4,
+    "tellMost": 0.8,
+    "laterShare": 0.75,
+    "contactSlack": 0.04,
+    "followThrough": 0.1,
+    // Strikes beyond the bite, read from the body's parts: a stomp for megafauna on pillar
+    // legs, a charge for horned megafauna, a tail swipe for a heavy tail.
+    "strikes": {
+      "stompSize": 4, "stompLegs": 0.1, "stompLift": 0.45, "stompDown": 0.2, "stompDamage": 1.3,
+      "chargeSize": 3.5, "chargeFrom": 7, "chargeRun": 18, "chargeSpeed": 1.3, "chargeOvershoot": 0.8, "chargeDamage": 1.6, "chargeDazed": 1.6,
+      "swipeTips": ["club", "spiked", "quills"], "swipeTail": 0.7, "swipeSize": 1.5, "swipeAngle": 70, "swipeTime": 0.35, "swipeDamage": 1.0, "swipeTipped": 1.4,
+      "push": 1.6, "pushMost": 11, "quake": 0.35, "quakeReach": 14, "quakeFootfall": 0.35
+    },
+    "commitFraction": 0.5,
     "lungeSeconds": 0.25,
     "lungeReach": 1.2,
     "contactRadius": 1.0,
@@ -344,43 +358,44 @@
     ],
 
     // Each behaviour's signature attack. Its telegraph is the wind-up of the first attack on a
-    // player: the creature crouches, lowers its head or rears (by style) and its sound swells.
+    // player for a small body; heavier ones take a little longer (combat's tell rules, 0.4 to
+    // 0.8 s): a short, readable posture snap and a sound, then a fast, committed strike.
     // Fliers turn it into a dive, crawlers into a coiled strike, swarms into a sting cloud.
     "behaviours": {
       "Grazer": { "group": [2, 3], "perception": 24, "damage": 6, "speed": 1.0,
-        "attack": { "name": "Head butt", "style": "Charge", "telegraph": 1.0, "reach": 1.0, "lunge": 0.3, "sound": "bellow" },
+        "attack": { "name": "Head butt", "style": "Charge", "telegraph": 0.45, "reach": 1.0, "lunge": 0.3, "sound": "bellow" },
         "activity": { "Diurnal": 4, "Crepuscular": 2, "Nocturnal": 1 },
         "temperaments": { "Skittish": 4, "Calm": 4, "Bold": 1 } },
       "Herd": { "group": [5, 8], "perception": 28, "damage": 8, "speed": 1.0,
-        "attack": { "name": "Stampede charge", "style": "Charge", "telegraph": 1.2, "reach": 1.6, "lunge": 0.32, "sound": "bellow" },
+        "attack": { "name": "Stampede charge", "style": "Charge", "telegraph": 0.45, "reach": 1.6, "lunge": 0.32, "sound": "bellow" },
         "activity": { "Diurnal": 6, "Crepuscular": 2 },
         "temperaments": { "Skittish": 5, "Calm": 3, "Bold": 1, "Aggressive": 0.4 } },
       "Predator": { "group": [1, 2], "perception": 42, "damage": 20, "speed": 1.15,
-        "attack": { "name": "Pounce", "style": "Pounce", "telegraph": 1.1, "reach": 1.4, "lunge": 0.3, "sound": "growl" },
+        "attack": { "name": "Pounce", "style": "Pounce", "telegraph": 0.4, "reach": 1.4, "lunge": 0.3, "sound": "growl" },
         "activity": { "Nocturnal": 4, "Crepuscular": 3, "Diurnal": 1 },
         "temperaments": { "Bold": 4, "Aggressive": 4, "Skittish": 0.3 } },
       "PackHunter": { "group": [3, 6], "perception": 40, "damage": 12, "speed": 1.2,
-        "attack": { "name": "Flank bite", "style": "Lunge", "telegraph": 1.0, "reach": 1.2, "lunge": 0.25, "sound": "snarl" },
+        "attack": { "name": "Flank bite", "style": "Lunge", "telegraph": 0.35, "reach": 1.2, "lunge": 0.25, "sound": "snarl" },
         "activity": { "Nocturnal": 3, "Crepuscular": 3, "Diurnal": 1 },
         "temperaments": { "Bold": 3, "Aggressive": 5 } },
       "Ambusher": { "group": [2, 3], "perception": 14, "damage": 18, "speed": 1.3, "ambushRadius": 7,
-        "attack": { "name": "Eruption", "style": "Burst", "telegraph": 0.9, "reach": 1.2, "lunge": 0.25, "sound": "hiss" },
+        "attack": { "name": "Eruption", "style": "Burst", "telegraph": 0.35, "reach": 1.2, "lunge": 0.25, "sound": "hiss" },
         "activity": { "Nocturnal": 1 },
         "temperaments": { "Aggressive": 4, "Bold": 2 } },
       "Scavenger": { "group": [2, 4], "perception": 45, "damage": 7, "speed": 1.0,
-        "attack": { "name": "Snap", "style": "Lunge", "telegraph": 1.0, "reach": 1.0, "lunge": 0.22, "sound": "chitter" },
+        "attack": { "name": "Snap", "style": "Lunge", "telegraph": 0.35, "reach": 1.0, "lunge": 0.22, "sound": "chitter" },
         "activity": { "Crepuscular": 3, "Diurnal": 2, "Nocturnal": 2 },
         "temperaments": { "Skittish": 4, "Calm": 2, "Bold": 2 } },
       "Swarm": { "group": [1, 1], "perception": 26, "damage": 3, "speed": 1.0,
-        "attack": { "name": "Sting cloud", "style": "Sting", "telegraph": 1.0, "sound": "buzz" },
+        "attack": { "name": "Sting cloud", "style": "Sting", "telegraph": 0.4, "sound": "buzz" },
         "activity": { "Diurnal": 2, "Crepuscular": 3 },
         "temperaments": { "Calm": 2, "Aggressive": 3, "Skittish": 1 } },
       "TerritorialGiant": { "group": [1, 1], "perception": 40, "damage": 30, "speed": 0.8, "territory": 32,
-        "attack": { "name": "Trample", "style": "Rear", "telegraph": 1.8, "reach": 2.0, "lunge": 0.4, "sound": "roar" },
+        "attack": { "name": "Trample", "style": "Rear", "telegraph": 0.45, "reach": 2.0, "lunge": 0.4, "sound": "roar" },
         "activity": { "Diurnal": 4, "Crepuscular": 1 },
         "temperaments": { "Bold": 4, "Aggressive": 2, "Skittish": 0.6 } },
       "HarmlessOddity": { "group": [2, 4], "perception": 22, "damage": 0, "speed": 0.8,
-        "attack": { "name": "Shove", "style": "Lunge", "telegraph": 1.0, "sound": "grunt" },
+        "attack": { "name": "Shove", "style": "Lunge", "telegraph": 0.4, "sound": "grunt" },
         "activity": { "Diurnal": 2, "Nocturnal": 2, "Cathemeral": 1 },
         "temperaments": { "Calm": 4, "Skittish": 2, "Bold": 1 } }
     },

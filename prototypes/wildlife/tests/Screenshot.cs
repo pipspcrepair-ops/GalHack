@@ -191,6 +191,7 @@ public partial class Screenshot : Node
         if (HuskSetup()) return;
         if (ArmedSetup()) return;
         if (ActsSetup()) return;
+        if (StrikeSetup()) return;
         switch (_view)
         {
             case "discovery":
