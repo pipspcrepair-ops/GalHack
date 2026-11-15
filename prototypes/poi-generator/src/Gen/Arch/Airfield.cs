@@ -438,23 +438,17 @@ public static class Airfield
 
     // ---- the perimeter fence --------------------------------------------------------------------
 
-    /// <summary>A run of mesh on posts along its front, open at its gates.</summary>
+    /// <summary>A run of the perimeter fence along its front (<see cref="Fences"/>), its gates open in it.</summary>
     static void Fence(Plot p, SitePart part)
     {
-        Fab f = p.F;
-        int len = part.Int("fl"), h = Math.Max(1, part.Int("h", 2));
+        int len = part.Int("fl");
         var gates = part.Arg("gates").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToList();
         int at = gates.Count > 0 ? gates[0] : len / 2;
         // (Its way in on the inside, on the place's own graded ground: the land outside may fall away.)
         p.Approach(Math.Clamp(at / 2, 3, Math.Max(3, len / 2 - 4)), 2, Dir.South);
         foreach (int g in gates) p.C.X.Markers.Add(new Marker("gate", p.Cell(g, 0, 0), "fence"));
-        for (int u = 0; u < len; u++)
-        {
-            if (gates.Any(g => Math.Abs(u - g) <= 6)) continue;
-            if (Hash.Cell(p.Cell(u, 0, 0), 61) % 1000 < 30) continue; // a panel down here and there
-            for (int y = 0; y < h; y++)
-                p.Lay(u, y, 0, u % 4 == 0 ? new Block(BlockType.Pillar, Material.Steel, f.Steel.C, Role.Wall) : new Block(BlockType.Lattice, Material.Steel, f.Steel.C.Scale(1.1f), Role.Wall));
-        }
+        bool timber = p.Tech == TechLevel.Low;
+        Fences.Line((u, y, v, b) => p.Lay(u, y, v, b), len, Dir.North, timber, timber ? new Rgb(0x6a, 0x58, 0x46) : p.F.Steel.C.Scale(1.1f), gates, 6);
     }
 
     // ---- approach lights ------------------------------------------------------------------------

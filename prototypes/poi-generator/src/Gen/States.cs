@@ -32,6 +32,7 @@ public static partial class StateTransforms
             case PoiState.Abandoned:
                 if (!inst.Ruin.Falling) PowerOff(inst);
                 SetDoors(inst, rng, DoorState.Jammed, DoorState.Open);
+                Fences.Decay(inst, rng, 0.05f + 0.15f * inst.Ruin.Wear, ruined: false);
                 if (inst.Extras.Plain.Count > 0) Weathered(inst, rng, 0.015f + 0.06f * inst.Ruin.Wear, walls: false);
                 else Abandon(inst, rng);
                 break;
@@ -43,6 +44,7 @@ public static partial class StateTransforms
             case PoiState.Ruined:
                 // Mid-collapse the power still runs; the older the fall, the more of it is down, and blast takes more.
                 if (!inst.Ruin.Falling) PowerOff(inst);
+                Fences.Decay(inst, rng, 0.15f + 0.4f * inst.Ruin.Wear + 0.1f * inst.Ruin.Violence, ruined: true);
                 if (inst.Extras.Plain.Count > 0)
                 {
                     // Doors hang on or have gone, one by one.
@@ -84,9 +86,9 @@ public static partial class StateTransforms
             if (d.Cells.Count > 0 && inst.Blocks.Get(d.Cells[0]).Variant == DoorState.Blast) continue; // so do blast doors
             if (inst.Layout.Extras.Lifts.Any(l => l.StopDoors.Contains(inst.Layout.Doorways.IndexOf(d)))) continue; // lift doors follow the car
             byte state = rng.Chance(0.7f) ? usual : other;
-            foreach (Int3 c in d.Cells) inst.Blocks.At(c).Variant = state;
+            foreach (Int3 c in d.Cells) if (!Shapes.IsFence(inst.Blocks.Get(c))) inst.Blocks.At(c).Variant = state;
         }
-        foreach (Int3 c in inst.Layout.ExitCells) inst.Blocks.At(c).Variant = DoorState.Open;
+        foreach (Int3 c in inst.Layout.ExitCells) if (!Shapes.IsFence(inst.Blocks.Get(c))) inst.Blocks.At(c).Variant = DoorState.Open;
     }
 
     static void BlowDoors(PoiInstance inst)
@@ -100,7 +102,7 @@ public static partial class StateTransforms
                 else if (lift) inst.Blocks.At(c).Variant = DoorState.Closed;
                 else inst.Blocks.Set(c, Block.Air);
         }
-        foreach (Int3 c in inst.Layout.ExitCells) inst.Blocks.Set(c, Block.Air);
+        foreach (Int3 c in inst.Layout.ExitCells) if (!Shapes.IsFence(inst.Blocks.Get(c))) inst.Blocks.Set(c, Block.Air);
     }
 
     /// <summary>Floor cells inside a module you could stand in right now.</summary>
@@ -128,6 +130,7 @@ public static partial class StateTransforms
 
     static void Abandon(PoiInstance inst, Rng rng)
     {
+        if (Fences.Only(inst.Blocks)) return; // (a fence run: its own decay, nothing dropped by it)
         var nav = inst.Nav();
         foreach (var m in inst.Layout.Modules)
         {
@@ -350,7 +353,7 @@ public static partial class StateTransforms
     static bool Removable(PoiInstance inst, Int3 p)
     {
         var b = inst.Blocks.Get(p);
-        return !b.IsAir && !inst.Protected[p] && b.Role is Role.Wall or Role.Roof or Role.Window or Role.Light or Role.Decor;
+        return !b.IsAir && !inst.Protected[p] && b.Role is Role.Wall or Role.Roof or Role.Window or Role.Light or Role.Decor && !Shapes.IsFence(b); // (a fence breaks its own way: Fences.Decay)
     }
 
     /// <summary>

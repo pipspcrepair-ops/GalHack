@@ -373,6 +373,7 @@ public partial class Screenshot : Node
             var g = new Vector3(gate.Cell.X + 0.5f, gate.Cell.Y, gate.Cell.Z + 0.5f);
             var away = new Vector3(gate.OutX, 0, gate.OutZ).Normalized();
             shots.Add(Aim("gate", g + away * 70 + new Vector3(away.Z, 0, -away.X) * 25 + Vector3.Up * 22, g + Vector3.Up * 2));
+            shots.Add(Aim("gatenear", g + away * 18 + new Vector3(away.Z, 0, -away.X) * 10 + Vector3.Up * 2.5f, g + new Vector3(away.Z, 0, -away.X) * 4 + Vector3.Up * 1.2f));
         }
         if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "hangar") is { } hangar)
             shots.Add(Aim("hangar", Out(hangar, 35, 1.7f) + new Vector3(4, 0, 4), At(hangar.Box, 4)));
@@ -406,7 +407,7 @@ public partial class Screenshot : Node
             shots.Add(Aim("main", Out(terminal, 60, 1.7f) + new Vector3(12, 0, 0), At(terminal.Box, terminal.Item.H * 0.4f)));
         if (pieces.FirstOrDefault(p => p.Item.Part.Id == "town") is { } hut)
             shots.Add(Aim("town", Out(hut, 24, 1.7f) + new Vector3(6, 0, 6), At(hut.Box, 3)));
-        return which == "all" ? shots : shots.Where(s => s.Name == which).ToList();
+        return which == "all" ? shots : shots.Where(s => which.Split('+').Contains(s.Name)).ToList();
     }
 
     static double Dist(PlanetSurface.Infra.InfraRoute r, int i, PlanetSurface.Infra.CityPlan city) => Math.Abs(r.X[i] - city.CenterX) + Math.Abs(r.Z[i] - city.CenterZ);
