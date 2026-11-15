@@ -23,11 +23,10 @@ public sealed partial class Staging
         string dir = _args.GetValueOrDefault("dir", "shipbar");
         Directory.CreateDirectory(dir);
         Vector3 site = Play.FlatSpot(_game.Survivor.WorldFeet, 40f, span: 34f);
-        Fell(site, 16f);
-        Fell(site + new Vector3(0f, 0f, -14f), 16f);
+        Fell(site, 26f);
         _game.Survivor.PlaceOutside((site + new Vector3(8f, 2f, 6f)).ToNumerics());
         foreach (int x in _drive.Wait(20)) yield return x;
-        Vessel v = BarTest.Rig(_game, site, 26f, out _);
+        Vessel v = BarTest.Rig(_game, site, 20f, out _);
         foreach (int x in _drive.Wait(30)) yield return x;
         v.TakeChair(BarTest.Chair);
         _game.ThirdPerson = false;

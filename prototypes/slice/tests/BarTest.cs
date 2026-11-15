@@ -75,10 +75,11 @@ public partial class BarTest : Node
     /// The test's vessel: a 7 x 7 iron floor, its core, generator and two containers at the back, a command chair facing
     /// ahead (-z), two spotlights and two gatlings on the floor's front edge, a turret on its front corner, a portable
     /// fabricator and a light inside; landed near a site, heading north. With <paramref name="wall"/>,
-    /// a target wall of iron plates on a base, that far ahead.
+    /// a target wall of iron plates eight deep on a base, that far ahead.
     /// </summary>
     public static Vessel Rig(Game.Game game, Vector3 site, float wall, out Vessel target)
     {
+        float heading = Clearest(game, site, wall);
         Catalogue cat = game.Zone.Data.Catalogue;
         var s = new Structure(cat) { Name = "Bar Skiff", Mode = CoreMode.Flight };
         Block Make(string id) => Building.Make(s, cat.Type(id));
@@ -96,18 +97,44 @@ public partial class BarTest : Node
         s.Set(Light + new Int3(0, 0, 1), Make("iron-plated"));
         s.Set(Light, Make("light"));
         s.DirtyChunks.Clear();
-        Vessel v = Vessel.Spawn(game.Zone, s, (site + Vector3.Up * 2f).ToNumerics(), 0f, landed: true);
+        Vessel v = Vessel.Spawn(game.Zone, s, (site + Vector3.Up * 2f).ToNumerics(), heading, landed: true);
         target = null;
         if (wall <= 0f) return v;
+        // From under the ground at its foot to 6 m over the site's, wherever the ground between falls away.
+        Vector3 at = site + Ahead(heading) * wall;
+        float siteY = game.Zone.GroundAt(site.X, site.Z).Y;
+        at.Y = MathF.Min(game.Zone.GroundAt(at.X, at.Z).Y, siteY) - 2f;
+        int top = (int)MathF.Ceiling((siteY + 6f - at.Y) / cat.Grid.CellSize);
         var w = new Structure(cat) { Name = "Bar Target" };
+        // Eight deep: a gatling's round takes an iron plated block (160 against 158), and the next goes on through the hole.
         for (int x = -6; x <= 6; x++)
-            for (int y = 0; y <= 6; y++) w.Set(new Int3(x, y, 0), Building.Make(w, cat.Type("iron-plated")));
+            for (int y = 0; y <= top; y++)
+                for (int z = 0; z < 8; z++) w.Set(new Int3(x, y, -z), Building.Make(w, cat.Type("iron-plated")));
         w.Set(new Int3(0, 0, 1), Building.Make(w, cat.CoreType));
         w.DirtyChunks.Clear();
-        Vector3 at = site + new Vector3(0f, 0f, -wall);
-        at.Y = game.Zone.GroundAt(at.X, at.Z).Y - 1f;
-        target = Vessel.SpawnBase(game.Zone, w, at.ToNumerics(), 0f);
+        target = Vessel.SpawnBase(game.Zone, w, at.ToNumerics(), heading);
         return v;
+    }
+
+    /// <summary>Ahead along a heading, level.</summary>
+    static Vector3 Ahead(float heading) => GalHack.Physics.MathX.Rotate(GalHack.Physics.MathX.Yaw(heading), -N.Vector3.UnitZ).ToGodot();
+
+    /// <summary>Of sixteen headings from a site, the one whose ground rises least over the first <paramref name="reach"/> metres (the guns fire level, just above the ground).</summary>
+    static float Clearest(Game.Game game, Vector3 site, float reach)
+    {
+        float baseY = game.Zone.GroundAt(site.X, site.Z).Y, best = 0f, lowest = float.MaxValue;
+        for (int k = 0; k < 16; k++)
+        {
+            float h = k * MathF.Tau / 16f, rise = float.MinValue;
+            Vector3 ahead = Ahead(h);
+            for (float d = 4f; d <= reach; d += 1f)
+            {
+                Vector3 p = site + ahead * d;
+                rise = MathF.Max(rise, game.Zone.GroundAt(p.X, p.Z).Y - baseY);
+            }
+            if (rise < lowest) (lowest, best) = (rise, h);
+        }
+        return best;
     }
 
     IEnumerable<int> Scenario()
@@ -132,7 +159,7 @@ public partial class BarTest : Node
 
         Vector3 site = play.FlatSpot(_game.Start, 40f, span: 34f);
         _game.Survivor.PlaceOutside((site + new Vector3(8f, 2f, 6f)).ToNumerics());
-        Vessel v = Rig(_game, site, 26f, out Vessel target);
+        Vessel v = Rig(_game, site, 20f, out Vessel target);
         Structure s = v.Structure;
         foreach (int x in _drive.Wait(30)) yield return x;
         v.TakeChair(Chair);
@@ -206,8 +233,13 @@ public partial class BarTest : Node
         const string Belt = "belt-12mm";
         v.Storage.Add(Belt, 3);
         int belts = v.Storage.Count(Belt), fired = _game.Arms.MountedFired;
-        int onTarget = 0;
-        void Dealt(GalHack.Arms.HitKind kind, object thing, float amount) { if (kind == GalHack.Arms.HitKind.Block && thing == target) onTarget++; }
+        int onTarget = 0, ground = _game.Arms.GroundHits, blocks = _game.Arms.BlockHits;
+        var met = new List<string>();
+        void Dealt(GalHack.Arms.HitKind kind, object thing, float amount)
+        {
+            if (kind == GalHack.Arms.HitKind.Block && thing == target) onTarget++;
+            else if (met.Count < 4) met.Add($"{kind} {(thing as Vessel)?.Name ?? thing?.GetType().Name}");
+        }
         _game.Arms.Dealt += Dealt;
         foreach (int x in _drive.Wait(1)) yield return x;
         _game.Controls.Primary = true;
@@ -254,7 +286,9 @@ public partial class BarTest : Node
         _game.Arms.Dealt -= Dealt;
         int shots = _game.Arms.MountedFired - fired;
         Check(shots >= 8 && v.Storage.Count(Belt) == belts - 2, $"a second's burst: {shots} rounds from the two gatlings, a belt each from core storage ({belts} to {v.Storage.Count(Belt)})");
-        Check(onTarget >= shots / 2, $"and they hit the wall {target?.Name} 26 m ahead: {onTarget} of {shots} on its blocks");
+        Vector3 wallAt = target.ToWorld(new N.Vector3(0f, 3f, 0f));
+        Check(onTarget >= shots / 2, $"and they hit the wall {target?.Name} 20 m ahead: {onTarget} of {shots} on its blocks"
+            + $" (else {string.Join(", ", met)}; ground hits {_game.Arms.GroundHits - ground}, block hits {_game.Arms.BlockHits - blocks}; muzzle {muzzles[0]}, wall {wallAt}; from the muzzle ahead: {_game.Arms.Probe(muzzles[0], muzzles[0] + ahead * 40f)})");
 
         // ---- Arranging, saving and loading ----------------------------------------------------------------
         foreach (int x in play.OpenMenu(MenuTab.Core)) yield return x;
