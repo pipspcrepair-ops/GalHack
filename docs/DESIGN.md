@@ -916,6 +916,7 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 **Power and fuel**
 
 - **Generators charge capacitors, and everything draws from the capacitors** (owner, 15 Nov). Devices (thrusters, gyros, drives, shields, turrets, machines, lights, and life support such as the climate node) take their power from the structure's capacitors. Life support uses power only, never its own fuel or materials (owner, 15 Nov). Generators burn fuel to keep the capacitors charged, so the burn follows the load: idle devices cost nothing, and a structure at full thrust with shields charging burns fuel fast. Solar panels (bases and capital vessels) also charge the capacitors and are used before fuel. Their output depends on day and night, latitude and weather, which gives the choice of landing site a real cost.
+- **Turrets** draw their power from the capacitors and their ammo from core storage (owner, 15 Nov).
 - **No fuel tanks.** Generator fuel, warp fuel and hyperdrive fuel are all kept in **core storage**, the cargo containers (owner, 15 Nov). Anything that draws materials for use (generators, drives, constructors, turrets, replicators) draws from that one place. The fuel's volume competes with cargo, so a long voyage is a cargo choice.
 - **Tiered generator fuel.** The fuel made early is the least efficient: fewer units per item and per storage unit, so early fuel fills the hold fast. Better fuels come through the tech tree (the tiers follow Empyrion's biofuel, energy cells and fusion cells).
 
