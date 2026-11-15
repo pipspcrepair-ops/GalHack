@@ -41,8 +41,6 @@ public partial class PoiLayer : Node3D
 
         /// <summary>How big it stands, m: the wider way across its grid (the pop-in log's measure).</summary>
         public float Size => Site.Pending ? System.Math.Max(Site.Footprint.Max.X - Site.Footprint.Min.X, Site.Footprint.Max.Z - Site.Footprint.Min.Z) : System.Math.Max(Site.Layout.Blocks.Size.X, Site.Layout.Blocks.Size.Z);
-        /// <summary>A plain block of its footprint and height, until it has been built (PoiLayer.Tiers.cs).</summary>
-        public MeshInstance3D StandIn;
     }
 
     readonly List<Place> _places = new();

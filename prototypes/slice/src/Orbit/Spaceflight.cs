@@ -212,17 +212,23 @@ public partial class Spaceflight : Node
             }
             return;
         }
-        if (g.Zone != g.Surface) return; // the moon has no places of its own yet
-        var planet = g.Surface.Planet;
+        // Each body's places and deposits go on its own chart: a moon's are marked on the moon, never on the world.
+        SurfaceZone zone = g.Zone;
+        var planet = zone.Planet;
+        if (planet == null) return;
+        string on = ChartOf(zone);
         double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
-        Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
+        Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height, on);
         // The place in view from the bunker's way out is known from the first moment; every other place waits to be come near (or pinged).
-        ChartStartPlace();
+        if (on == null) ChartStartPlace();
         // A deposit is charted once you have been near it (a ping only marks it for a while).
-        float near = g.Surface.Data.Progress.Xp.DepositRadius;
-        foreach (var (kind, d) in _deposits.Near(g.Surface, at))
-            if (new Vector2(d.X - at.X, d.Z - at.Z).Length() <= near) Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
+        float near = zone.Data.Progress.Xp.DepositRadius;
+        foreach (var (kind, d) in _deposits.Near(zone, at))
+            if (new Vector2(d.X - at.X, d.Z - at.Z).Length() <= near) Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit", on);
     }
+
+    /// <summary>Whose chart a surface's finds go on: null for the start world's, a moon's own otherwise.</summary>
+    public string ChartOf(SurfaceZone zone) => zone == Game.Surface ? null : ZoneName(zone);
 
     /// <summary>
     /// The orbit from the first moment of a game (the loading screen calls this until it's there): its
@@ -253,7 +259,7 @@ public partial class Spaceflight : Node
         Orbit.Home.Surface = s;
         Orbit.Days = () => Below.Sky.Days;
         LightBodies(s);
-        MakeMoon();
+        MakeMoons();
     }
 
     /// <summary>A surface's sky lights the other bodies in it as space lights their globes up close: no pop as one hands over to the other.</summary>
@@ -365,7 +371,7 @@ public partial class Spaceflight : Node
         // In the band world coordinates are the surface's: what is under you is what you land on.
         StreamAhead(v.Dot((at - Here.Centre).Normalized()) < 0f || y < Ceiling, at);
         if (y >= Ceiling - Rules.Crossing.Gap) return;
-        if (Below.Arrived && Below.Streamer.ReadyAround(at, 1, needCollision: false))
+        if (Here.Ready && Below.Arrived && Below.Streamer.ReadyAround(at, 1, needCollision: false))
         {
             BeginCrossing(carrier, up: false);
             return;
@@ -473,7 +479,7 @@ public partial class Spaceflight : Node
         Vessel aboard = s.Seated ?? (s.Body.Frame != null ? s.Aboard : null);
         string sleeperZone = aboard != null ? ZoneLedger.Cabin(IdOf(aboard)) : ZoneName(s.Zone);
         yield return new Holder(ZoneLedger.Sleeper, "sleeper", sleeperZone, aboard != null ? IdOf(aboard) : null, "Sleeper", g.Pack.Storage.Contents, 0);
-        foreach (SurfaceZone zone in new SurfaceZone[] { g.Surface, Orbit, MoonSurface })
+        foreach (SurfaceZone zone in Orbit == null ? new[] { g.Surface } : Orbit.Bodies.Select(c => c.Surface).Prepend(Orbit))
         {
             if (zone?.Physics == null) continue;
             string name = ZoneName(zone);
@@ -499,7 +505,7 @@ public partial class Spaceflight : Node
         foreach (var (id, n) in from) to.Add(id, n);
     }
 
-    string ZoneName(SurfaceZone z) => z is OrbitZone ? ZoneLedger.Orbit : z == Game.Surface ? ZoneLedger.Surface : ZoneLedger.Moon;
+    string ZoneName(SurfaceZone z) => z is OrbitZone ? ZoneLedger.Orbit : z == Game.Surface ? ZoneLedger.Surface : ZoneLedger.Moon + Orbit.Bodies.FindIndex(c => c.Surface == z);
 
     /// <summary>A record id that stays with a thing for the game.</summary>
     string IdOf(object thing)

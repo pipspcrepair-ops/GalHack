@@ -338,6 +338,25 @@ public static class Debris
     // ---- where it lies ------------------------------------------------------------------------
 
     /// <summary>
+    /// Loose things left on nothing (rubble on what no longer holds it, litter and weeds on air) drop to the first floor under
+    /// them, or go if none holds them there.
+    /// </summary>
+    public static void Settle(PoiInstance inst)
+    {
+        var g = inst.Blocks;
+        var nav = inst.Nav();
+        bool Rests(Block b, Int3 under) => nav.IsRock(under) || (b.Type == BlockType.Rubble ? BlockInfo.Supports(g.Get(under).Type) : BlockInfo.Collides(g.Get(under).Type));
+        foreach (var (p, b) in g.Blocks().Where(t => t.Block.Type is BlockType.Rubble or BlockType.Plant or BlockType.Ash or BlockType.Scatter).ToList())
+        {
+            if (Rests(b, p + Int3.Down)) continue;
+            g.Set(p, Block.Air);
+            Int3 c = p;
+            while (c.Y > g.Min.Y && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
+            if (g.Get(c).IsAir && !inst.Protected[c] && Rests(b, c + Int3.Down)) g.Set(c, b);
+        }
+    }
+
+    /// <summary>
     /// Lays what came down where it came down (at most <paramref name="most"/> piles): each fallen column drops to the first floor under it, and where a
     /// lot fell in one spot it heaps, spilling chunks round it; what fell from an outer wall spills outward. A
     /// pile only goes on a cell that is clear, off the protected way, and on a floor that holds it.

@@ -275,7 +275,8 @@ public partial class SkyRig : Node3D
         Air = Atmosphere.Compute(SkySystem.For(new Planets.Gen.PlanetSpec(1, Planets.Gen.Archetype.Temperate, 0, 0)), Atmosphere.Clear(), 0.5f);
     }
 
-    public void SetWorld(PlanetWorld world)
+    /// <param name="surfaces">The far looks another sky of the same system already paints (a moon's sky takes the start world's), or null to paint them.</param>
+    public void SetWorld(PlanetWorld world, BodySurfaces surfaces = null)
     {
         _world = world;
         System = world.Sky;
@@ -307,7 +308,7 @@ public partial class SkyRig : Node3D
             _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_color"), C(giant.RingColor));
         }
         FindLitPlaces(world);
-        Surfaces = new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
+        Surfaces = surfaces ?? new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("surfaces"), Surfaces.Texture);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring"), world.StarSystem.Home.Rings);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_color"), C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));

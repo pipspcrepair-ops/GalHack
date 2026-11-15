@@ -54,7 +54,7 @@ public static class Airfield
         Rng r = p.R.Fork("terminal");
         Fab f = p.F;
         var (I1, K1) = Frame(part);
-        int storeys = Math.Clamp((int)MathF.Round(part.Num("h", 14) / 6f), 1, 3);
+        int storeys = Math.Clamp((int)MathF.Round(part.Num("h", 14) / 6f), 1, 4);
         int Kc = Math.Max(3, part.Int("concourse", 6) / 2), band0 = Kc + 2, band1 = Kc + 6, hall0 = Kc + 8;
         const int P = 3, H = 2;
         int mid = I1 / 2;

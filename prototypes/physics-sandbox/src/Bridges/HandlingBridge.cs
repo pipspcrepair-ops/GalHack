@@ -66,8 +66,9 @@ public sealed class HandlingFlight : IFlightRules
         // off at the speed it was knocked to. With nobody at the controls it holds station instead,
         // braking like a pilot who has let go of the stick.
         PilotInput input = Input;
-        if (!input.Seated && (motion.Parked || motion.Velocity.Length() < ParkingSpeed)) input = PilotInput.LetGo;
+        if (!input.Seated && (motion.Parked || motion.Velocity.Length() < ParkingSpeed)) input = PilotInput.Station;
         FlightModel.Step(ref State, input, Stats, Conditions(zone), Tunables, dt);
+        motion.Coasting = !FlightModel.Holds(State, input, Stats);
         motion.Velocity = State.Velocity.ToNumerics();
         motion.Rotation = N.Quaternion.Normalize(State.Orientation.ToNumerics());
         motion.LocalSpin = State.AngularVelocity.ToNumerics();
@@ -84,4 +85,9 @@ public sealed class HandlingFlight : IFlightRules
     }
 
     public void ToggleCruise() => FlightModel.ToggleCruise(ref State);
+
+    public void ToggleAssist() => FlightModel.ToggleAssist(ref State);
+
+    /// <summary>Flight assist holds it (the HUD's passive thrusters); false: they fire only when told (active).</summary>
+    public bool Assisted => !State.AssistOff || Stats?.IsHover == true;
 }

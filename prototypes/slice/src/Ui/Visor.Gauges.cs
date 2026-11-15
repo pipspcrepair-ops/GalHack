@@ -12,8 +12,8 @@ namespace Slice.Ui;
 /// <summary>One gauge row: its label, its value, how full its bar is (none for a reading without a scale), its alert's state and its tone.</summary>
 public readonly record struct Gauge(string Label, string Value, double? Share, Color Tone, bool Warned, bool Harmed);
 
-/// <summary>The icons of the visor's icon rows, each drawn by code.</summary>
-public enum HudIcon { HelmetShut, HelmetOpen, Vacuum, Core, Power, Gravity, Atmosphere, ThrustersPassive, ThrustersActive }
+/// <summary>The icons of the visor's icon rows and the structure's toolbar, each drawn by code.</summary>
+public enum HudIcon { HelmetShut, HelmetOpen, Vacuum, Core, Power, Gravity, Atmosphere, ThrustersPassive, ThrustersActive, Spotlight, Gun, Turret, Scanner, Shield, Fabricator }
 
 /// <summary>An icon in a row: lit (on) or dim, in its tone.</summary>
 public readonly record struct IconState(HudIcon Icon, bool On, Color Tone);
@@ -104,15 +104,15 @@ public partial class Visor
 
     /// <summary>
     /// The structure's icon row, right to left (mirroring the sleeper's): power, gravity, active air, and its thrusters, passive
-    /// (flight assist on: they hold it fixed) or active (assist off: they fire only when told). The flight model has no assist
-    /// off yet, so a structure that flies always holds. Dim where it is off or there is none (a base has no thrusters).
+    /// (flight assist on: they hold it fixed) or active (assist off: they fire only when told). Dim where it is off or there is
+    /// none (a base has no thrusters).
     /// </summary>
     public IconState[] StructureIcons(Vessel v) => new[]
     {
         new IconState(HudIcon.Power, v.PowerOn, v.Powered ? C.Good : C.Danger), // switched on with no power to give: lit in danger
         new IconState(HudIcon.Gravity, v.Structure.GravityOn, C.Holo),
         new IconState(HudIcon.Atmosphere, Game.Suit.HoldsAir(v), C.Holo),
-        new IconState(HudIcon.ThrustersPassive, v.Flight != null, C.Accent),
+        new IconState(v.Flight?.Assisted == false ? HudIcon.ThrustersActive : HudIcon.ThrustersPassive, v.Flight != null, C.Accent),
     };
 
     // ---- Drawing them --------------------------------------------------------------------------
@@ -252,6 +252,55 @@ public partial class Visor
                 Line(3, 0, -11, 0);
                 Line(3, -3, -7, -6);
                 Line(3, 3, -7, 6);
+                break;
+            case HudIcon.Spotlight:
+                // A lamp's housing and its beam spreading out ahead.
+                _hud.DrawColoredPolygon(new[] { P(-12, -4), P(-5, -6), P(-5, 6), P(-12, 4) }, ink);
+                Line(-3, -5, 11, -11);
+                Line(-3, 0, 12, 0);
+                Line(-3, 5, 11, 11);
+                break;
+            case HudIcon.Gun:
+                // A barrel with its muzzle flash ahead, a round flying.
+                _hud.DrawRect(new Rect2(P(-12, -3), new Vector2(14, 6) * u), ink);
+                Line(-6, 3, -6, 8);
+                Line(5, -5, 9, 0);
+                Line(9, 0, 5, 5);
+                Line(10, 0, 13, 0);
+                break;
+            case HudIcon.Turret:
+                // A dome on its ring, its twin barrels out to one side.
+                _hud.DrawArc(P(0, 4), 8 * u, Mathf.Pi, Mathf.Tau, 14, ink, w);
+                Line(-11, 4, 11, 4);
+                Line(-9, 8, 9, 8);
+                Line(3, -2, 12, -7);
+                Line(4, 1, 13, -4);
+                break;
+            case HudIcon.Scanner:
+                // A dish and the rings it sends out.
+                _hud.DrawArc(P(-6, 6), 6 * u, -Mathf.Pi * 0.75f, Mathf.Pi * 0.25f, 10, ink, w);
+                Line(-6, 6, -10, 11);
+                _hud.DrawArc(P(-6, 6), 11 * u, -Mathf.Pi * 0.45f, -Mathf.Pi * 0.05f, 8, ink, w);
+                _hud.DrawArc(P(-6, 6), 16 * u, -Mathf.Pi * 0.42f, -Mathf.Pi * 0.08f, 8, ink, w);
+                break;
+            case HudIcon.Shield:
+                // A shield's outline over a hull.
+                Line(-9, -9, 9, -9);
+                Line(-9, -9, -9, 1);
+                Line(9, -9, 9, 1);
+                Line(-9, 1, 0, 11);
+                Line(9, 1, 0, 11);
+                Line(0, -6, 0, 7);
+                break;
+            case HudIcon.Fabricator:
+                // A cog: the manufacturing devices.
+                Ring(0, 0, 6);
+                for (int k = 0; k < 8; k++)
+                {
+                    float a = k * Mathf.Tau / 8f;
+                    Line(MathF.Cos(a) * 7, MathF.Sin(a) * 7, MathF.Cos(a) * 11, MathF.Sin(a) * 11);
+                }
+                _hud.DrawCircle(P(0, 0), 2 * u, ink);
                 break;
         }
     }
