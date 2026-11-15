@@ -28,8 +28,8 @@ public sealed partial class Town
     public int Shooed { get; private set; }
     public int Herded { get; private set; }
 
-    /// <summary>One of the town's people fires at something that isn't you (from, to): only the shot is drawn.</summary>
-    public event System.Action<Vector3, Vector3> ShotAway;
+    /// <summary>One of the town's people fires at something that isn't you (who, from their muzzle, to): only the shot is drawn.</summary>
+    public event System.Action<Person, Vector3, Vector3> ShotAway;
 
     /// <summary>How many times the town has looked round it, and how many creatures it saw last (tests).</summary>
     public int Senses { get; private set; }
@@ -118,7 +118,7 @@ public sealed partial class Town
         if (p.Facing > 0f) return true;
         // The shot: the place's own people deal with what got this close.
         _places.Zone.Wildlife.Sim.CullStray(c, p);
-        ShotAway?.Invoke(_place.ToWorld(p.Pos + Vector3.Up * 1.5f), _places.Zone.Wildlife.WorldOf(c) + Vector3.Up * 0.6f);
+        ShotAway?.Invoke(p, Muzzle(p), _places.Zone.Wildlife.WorldOf(c) + Vector3.Up * 0.6f);
         Fought++;
         p.Threat = null;
         p.Holding = false;

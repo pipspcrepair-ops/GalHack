@@ -61,6 +61,8 @@ public struct Shot
     public bool Visual;
     public bool Detonated;
     public Vector3 Normal;
+    /// <summary>The way it was flying when it stuck (an arrow stands in what it hit along it).</summary>
+    public Vector3 Heading;
 }
 
 /// <summary>
@@ -349,6 +351,7 @@ public sealed class ShotPool
         s.Anchor = a;
         s.Pos = hit.Point;
         s.Normal = hit.Normal;
+        s.Heading = s.Vel.LengthSquared() > 1e-6f ? Vector3.Normalize(s.Vel) : -hit.Normal;
         s.Vel = Vector3.Zero;
         s.StuckAt = s.Age;
         s.NextTick = s.Age + 1f;

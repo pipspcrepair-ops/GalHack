@@ -34,12 +34,39 @@ public sealed class AllocCensus : EventListener
     {
         if (!On || e.EventName == null || !e.EventName.StartsWith("GCAllocationTick")) return;
         if (MainOnly && e.OSThreadId != Main) return;
-        int i = e.PayloadNames?.IndexOf("TypeName") ?? -1;
-        string type = (e.OSThreadId == Main ? "main " : "") + (i >= 0 ? e.Payload?[i] as string ?? "?" : "?");
+        int i = e.PayloadNames?.IndexOf("TypeName") ?? -1, k = e.PayloadNames?.IndexOf("AllocationKind") ?? -1;
+        // The large-object heap's (arrays of 85 KB and more) marked: they never fill the young generation.
+        bool large = k >= 0 && System.Convert.ToInt32(e.Payload?[k]) == 1;
+        string type = (e.OSThreadId == Main ? "main " : "") + (large ? "LOH " : "") + (i >= 0 ? e.Payload?[i] as string ?? "?" : "?");
         lock (_types)
         {
             _types[type] = _types.GetValueOrDefault(type) + 1;
             _samples++;
+        }
+    }
+
+    /// <summary>A compiler-made type (a closure, an iterator) named only by its own name: the types that declare one so named.</summary>
+    static string Owners(string key)
+    {
+        string name = key[(key.LastIndexOf(' ') + 1)..];
+        if (!name.StartsWith('<')) return "";
+        var owners = System.AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => { try { return a.GetTypes(); } catch { return System.Type.EmptyTypes; } })
+            .Where(t => t.Name == name && t.DeclaringType != null).Select(t => $"{t.DeclaringType.FullName}.{string.Join("/", Makers(t))}").Distinct().Take(8);
+        return $" (in {string.Join(" | ", owners)})";
+    }
+
+    /// <summary>The methods of a compiler-made type's owner that make one (a newobj of its constructor in their code).</summary>
+    static IEnumerable<string> Makers(System.Type made)
+    {
+        const System.Reflection.BindingFlags All = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+        var ctors = made.GetConstructors(All).Select(c => c.MetadataToken).ToHashSet();
+        foreach (var m in made.DeclaringType.GetMethods(All).Cast<System.Reflection.MethodBase>().Concat(made.DeclaringType.GetConstructors(All)))
+        {
+            byte[] il;
+            try { il = m.GetMethodBody()?.GetILAsByteArray(); } catch { continue; }
+            if (il == null) continue;
+            for (int i = 0; i + 4 < il.Length; i++)
+                if (il[i] == 0x73 && ctors.Contains(System.BitConverter.ToInt32(il, i + 1))) { yield return m.Name; break; }
         }
     }
 
@@ -48,7 +75,7 @@ public sealed class AllocCensus : EventListener
     {
         lock (_types)
         {
-            string s = _samples == 0 ? "(none)" : string.Join(", ", _types.OrderByDescending(kv => kv.Value).Take(most).Select(kv => $"{kv.Key} {kv.Value * 100.0 / _samples:F0}%"));
+            string s = _samples == 0 ? "(none)" : string.Join(", ", _types.OrderByDescending(kv => kv.Value).Take(most).Select(kv => $"{kv.Key}{Owners(kv.Key)} {kv.Value * 100.0 / _samples:F0}%"));
             _types.Clear();
             _samples = 0;
             return s;

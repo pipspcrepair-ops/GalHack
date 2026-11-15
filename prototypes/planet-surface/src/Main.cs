@@ -91,7 +91,7 @@ public partial class Main : Node3D
         AddChild(Sky);
         Streamer = new TerrainStreamer { Name = "Terrain" };
         AddChild(Streamer);
-        Pois = new PoiLayer { Name = "Pois" };
+        Pois = new PoiLayer { Name = "Pois", Sky = Sky };
         AddChild(Pois);
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
         AddChild(Infra);

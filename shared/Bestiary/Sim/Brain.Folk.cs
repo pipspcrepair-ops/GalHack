@@ -13,6 +13,8 @@ public static partial class Brain
     const float Comfort = 2.6f, MeetAt = 4f, SeeGesture = 24f;
     /// <summary>How long a warning stands before anything more can come of it, s.</summary>
     const float WarnHold = 1.6f;
+    /// <summary>Seconds a run to cover may take before it's given up.</summary>
+    const float CoverRun = 4f;
     static readonly float AimCone = MathF.Cos(Mathf.DegToRad(7f));
 
     /// <summary>
@@ -506,9 +508,20 @@ public static partial class Brain
         if (w.Time >= c.CoverIn)
         {
             c.CoverIn = w.Time + 3f;
+            Vector3 was = c.Goal;
+            bool had = c.HasGoal;
             c.HasGoal = CoverNear(w, c, foe.Position, reach, out c.Goal);
+            // A new spot gets a few seconds to reach; the same spot picked again doesn't get more.
+            if (c.HasGoal && (!had || WildSim.Flat(c.Goal - was).Length() > 1.5f)) c.CoverUntil = w.Time + CoverRun;
         }
         if (!c.HasGoal || WildSim.Flat(c.Goal - c.Position).Length() < 0.8f) return false;
+        if (w.Time > c.CoverUntil)
+        {
+            // It couldn't get there (round a rock it can't pass): it stands and fights, and looks again later.
+            c.HasGoal = false;
+            c.CoverIn = w.Time + 6f;
+            return false;
+        }
         Steer(w, c, c.Goal, c.Stats.RunSpeed);
         c.FacePoint = foe.Position;
         return true;

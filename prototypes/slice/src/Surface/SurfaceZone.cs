@@ -38,10 +38,20 @@ public partial class SurfaceZone : Node3D
     /// come later. Null: the start world, which owns the system.
     /// </summary>
     public PlanetWorld ShareFrom;
+
+    /// <summary>Another body's: the far looks its sky shares, the start world's sky's (painted once for every sky of the system), or null.</summary>
+    public PlanetSurface.Skies.BodySurfaces SkySurfaces;
+
     public Orbiter Body;
+
+    /// <summary>Another body's world is made once <see cref="Make"/> is called (as you come near it), not as it enters the scene.</summary>
+    public bool MakeLater;
 
     /// <summary>A moon or another body of the start world's system, not the start world itself.</summary>
     public bool IsOtherBody => ShareFrom != null;
+
+    /// <summary>Its world is being made, or is made.</summary>
+    public bool Making => _building != null || Planet != null;
 
     /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
     public Func<Vector3> Focus = () => Vector3.Zero;
@@ -168,22 +178,14 @@ public partial class SurfaceZone : Node3D
         PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
         PlanetSurface.Poi.PoiLayer.Tiered = true; // places are drawn by distance; a near one stands as a structure (Places/PoiPlaces)
         PlanetSurface.Infra.InfraLayer.OreTellsCollide = true; // ore rocks are solid; the survival tool breaks them down for a little ore
-        Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
+        Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois", Sky = Sky };
         AddChild(Pois);
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
         AddChild(Infra);
         PlanetSpec spec = Spec;
         if (ShareFrom != null)
         {
-            // Another body of the system: no places yet (they come with the vacuum worlds' own families), its sky the system's.
-            PlanetWorld of = ShareFrom;
-            Orbiter body = Body;
-            _building = Task.Run(() =>
-            {
-                PlanetWorld w = PlanetWorld.Build(spec, null);
-                w.ShareSystem(of, body);
-                return w;
-            });
+            if (!MakeLater) Make();
             return;
         }
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
@@ -192,6 +194,25 @@ public partial class SurfaceZone : Node3D
         // And what the new game forced onto its roll (its depth, theme, fall, mid-collapse and eras), or nothing.
         PoiGenerator.Gen.WorldForce.Current = Force ?? new PoiGenerator.Gen.WorldForce();
         _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
+    }
+
+    /// <summary>
+    /// Starts making another body's world off the main thread, if it isn't already: no places yet (they come with
+    /// the vacuum worlds' own families), its sky the system's.
+    /// </summary>
+    public void Make()
+    {
+        if (Making || ShareFrom == null) return;
+        PlanetWorld of = ShareFrom;
+        Orbiter body = Body;
+        PlanetSpec spec = Spec;
+        _building = Task.Run(() =>
+        {
+            PlanetWorld w = PlanetWorld.Build(spec, null);
+            w.ShareSystem(of, body);
+            PlanetSurface.Terrain.RockLook.Of(w); // its cliffs' look made here, not on the frame its ground is set up
+            return w;
+        });
     }
 
     // ---- Arriving --------------------------------------------------------------------------
@@ -237,11 +258,10 @@ public partial class SurfaceZone : Node3D
         Infra.Build(Planet);
         yield return "infrastructure";
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
-        Streamer.SetWorld(Planet, landing, _riverMaterial = WaterMaterial(sea: false));
-        yield return "terrain";
+        foreach (string part in Streamer.Setting(Planet, landing, _riverMaterial = WaterMaterial(sea: false))) yield return part;
         Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
         yield return "sea";
-        Sky.SetWorld(Planet);
+        Sky.SetWorld(Planet, SkySurfaces);
         yield return "sky";
         Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
@@ -481,6 +501,24 @@ public partial class SurfaceZone : Node3D
     {
         Vessels.Remove(vessel);
         _vesselOf.Remove(vessel.Body);
+    }
+
+    /// <summary>A vessel about to be taken out of the world: whoever is in it is set out first (the sleeper listens).</summary>
+    public event System.Action<Vessel> Removing;
+
+    /// <summary>
+    /// Takes a vessel out of the world for good (its last block gone, salvaged, cleared away): anyone seated in it or
+    /// aboard is set out first, so freeing its node frees only its own. Its weather, physics and tracking go with it.
+    /// </summary>
+    public void Remove(Vessel vessel)
+    {
+        if (!Vessels.Contains(vessel)) return;
+        Removing?.Invoke(vessel);
+        Weather?.Bridge?.Untrack(vessel.Body);
+        Physics.Unregister(vessel.Body);
+        Physics.StuckFields.Remove(vessel.Field);
+        Untrack(vessel);
+        vessel.Node.QueueFree();
     }
 
     public Vessel VesselOf(Body body)

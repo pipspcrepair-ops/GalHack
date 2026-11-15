@@ -35,9 +35,6 @@ public partial class ForceFields : Node3D
     /// <summary>A force field's colour (shields, later, are purple).</summary>
     public static readonly Color Blue = new(0.3f, 0.66f, 1f);
 
-    /// <summary>A placed field's sheet stops this far, m, inside its cells' outer edges: at its emitters' glowing strips.</summary>
-    public const float Inset = 0.25f;
-
     sealed class Look
     {
         public MeshInstance3D Mesh;
@@ -83,14 +80,15 @@ public partial class ForceFields : Node3D
             if (powered && Doors != null && Doors.AnyOpen(v) && v.Body.WorldPosition.ToGodot().DistanceTo(feet) < Reach(v))
                 foreach (Int3 door in v.Rooms.FieldDoors) held += ShowDoor(v, door, dt) ? 1 : 0;
             _doorFields[v] = held;
+            if (powered) v.Power.AddLoad(Draw(v)); // from its capacitors, like every device
         }
         Drop(_fields);
         Drop(_doors);
     }
 
     /// <summary>
-    /// Is the power its fields draw there? Today: a generator on it with its power on. When the
-    /// capacitors come (proto/power), whether they cover <see cref="Draw"/>.
+    /// Is the power its fields draw there: its power on and its capacitors giving (they carry <see cref="Draw"/> with
+    /// every other device's draw, and short of power every device gets the same share).
     /// </summary>
     public static bool PoweredFor(Vessel v) => !v.IsWreck && v.Powered;
 
@@ -121,49 +119,69 @@ public partial class ForceFields : Node3D
 
     static FieldTier TierOf(Vessel v, ForceField f) => v.Zone.Data.Rules.ForceFields.TierOf(f.Tier) ?? new FieldTier();
 
-    /// <summary>A tick of one placed field: its emitters counted, its strength run, its sheet drawn. With every emitter gone it is lost.</summary>
+    /// <summary>
+    /// A tick of one placed field: its strength run, its sheet drawn. One of its emitters destroyed
+    /// destroys the rest and the field with them, for good: it takes a new component to place again.
+    /// </summary>
     void Run(Vessel v, ForceField f, float dt, bool powered)
     {
         Structure s = v.Structure;
-        int emitters = Emitters(v, f);
-        if (emitters == 0)
+        if (!AllEmitters(s, f))
         {
+            for (int i = 0; i < 4; i++)
+                if (s.TryGet(f.Corner(i), out Block b) && s.TypeOf(b).IsFieldEmitter)
+                {
+                    Building.Remove(s, f.Corner(i), null);
+                    if (v.IsBase) v.Zone.Edits.ReleaseStructure(v.GroundKey(f.Corner(i)));
+                }
             s.Fields.Remove(f);
-            if (f.Holding) s.AirChanged();
+            s.AirChanged();
+            v.ApplyEdits();
             return;
         }
         FieldTier tier = TierOf(v, f);
         f.Powered = powered;
-        if (f.Tick(dt, emitters == 4, tier.Strength, tier.RegrowDelay, tier.RegrowSeconds)) s.AirChanged();
+        if (f.Tick(dt, tier.Strength, tier.RegrowSeconds)) s.AirChanged();
         Look l = LookFor(_fields, f, v);
         l.Mesh.Visible = f.Holding;
         if (!f.Holding) return;
-        l.Mesh.Transform = Frame(s.Grid.CellSize, f.Min, f.Max, f.Axis, Inset, out Vector2 size);
+        l.Mesh.Transform = Frame(s.Grid.CellSize, f.Min, f.Max, f.Axis, out Vector2 size);
         ((QuadMesh)l.Mesh.Mesh).Size = size;
         l.Material.SetShaderParameter("size", size);
         l.Material.SetShaderParameter("strength", f.Strength / tier.Strength);
         l.Material.SetShaderParameter("flash", f.Flash);
+        if (l.Mesh.GetChildCount() == 0) Strips(l.Mesh, size, s.Grid.CellSize, Emitter(s.Catalogue));
     }
 
-    /// <summary>How many of a field's corners hold an emitter. One put back by hand is turned to face its corner.</summary>
-    static int Emitters(Vessel v, ForceField f)
+    static StandardMaterial3D _strip;
+
+    /// <summary>
+    /// The emitters' light: in each corner one continuous strip along the whole inner side of its L
+    /// (both arms, the faces toward the field), on the sheet so it is lit only while the field holds.
+    /// </summary>
+    static void Strips(MeshInstance3D sheet, Vector2 size, float cell, BlockType emitter)
     {
-        Structure s = v.Structure;
-        int n = 0;
-        bool turned = false;
-        for (int i = 0; i < 4; i++)
+        _strip ??= new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = Blue };
+        // The arms' inner faces stand this far in from the field's outer edge; they run one cell from it.
+        float arm = (System.Linq.Enumerable.Max(emitter.Parts, p => MathF.Min(p.Max.X, p.Max.Y)) + 0.5f) * cell;
+        float t = 0.01f * cell, depth = 0.04f * cell, run = cell - arm;
+        foreach (float su in new[] { -1f, 1f })
+        foreach (float sv in new[] { -1f, 1f })
         {
-            Int3 c = f.Corner(i);
-            if (!s.TryGet(c, out Block b) || !s.TypeOf(b).IsFieldEmitter) continue;
-            n++;
-            int rot = f.CornerRot(i);
-            if (b.Rot == rot) continue;
-            b.Rot = (byte)rot;
-            s.Set(c, b);
-            turned = true;
+            // The L's inner corner; one strip along u on the arm's inner face, one along v, overlapping at the corner.
+            var inner = new Vector3(su * (size.X * 0.5f - arm), sv * (size.Y * 0.5f - arm), 0f);
+            foreach (var (box, at) in new[] { (new Vector3(run, t, depth), new Vector3(su * run, sv * t, 0f)), (new Vector3(t, run, depth), new Vector3(su * t, sv * run, 0f)) })
+                sheet.AddChild(new MeshInstance3D { Name = "Emitter light", Mesh = new BoxMesh { Size = box }, MaterialOverride = _strip,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Position = inner - at * 0.5f });
         }
-        if (turned) v.ApplyEdits();
-        return n;
+    }
+
+    /// <summary>Do all four of a field's corners still hold their emitter?</summary>
+    static bool AllEmitters(Structure s, ForceField f)
+    {
+        for (int i = 0; i < 4; i++)
+            if (!s.TryGet(f.Corner(i), out Block b) || !s.TypeOf(b).IsFieldEmitter) return false;
+        return true;
     }
 
     /// <summary>The field across an open outer door: in its leaves' plane, filling the doorway, fading in as the leaves draw back.</summary>
@@ -173,12 +191,7 @@ public partial class ForceFields : Node3D
         if (!s.TryGet(anchor, out Block b) || !s.TypeOf(b).IsDoor) return false;
         Look l = LookFor(_doors, (v, anchor), v);
         l.Shown = MathF.Min(1f, l.Shown + dt * 2.5f);
-        Mat3 m = Orientations.Matrix(b.Rot);
-        Int3 n = s.TypeOf(b).Size;
-        float cell = s.Grid.CellSize;
-        var size = new Vector2(0.88f * n.X, 0.96f * n.Y) * cell; // the leaf's own span (BlockDoors)
-        l.Mesh.Transform = new Transform3D(new Basis(m.X.ToVector3().ToGodot(), m.Y.ToVector3().ToGodot(), m.Z.ToVector3().ToGodot()),
-            StructureBridge.BlockCenter(s, anchor, b).ToGodot() - m.Y.ToVector3().ToGodot() * 0.02f * cell);
+        l.Mesh.Transform = DoorSheet(s, anchor, b, out Vector2 size);
         ((QuadMesh)l.Mesh.Mesh).Size = size;
         l.Material.SetShaderParameter("size", size);
         l.Material.SetShaderParameter("strength", l.Shown);
@@ -266,19 +279,85 @@ public partial class ForceFields : Node3D
         return best;
     }
 
+    /// <summary>
+    /// The nearest field emitter along a ray (zone frame, unit direction) within reach: its structure,
+    /// cell, distance and face normal. Emitters have no collider (people, creatures and vessels pass
+    /// through them, owner 16 Nov), so shots and the build tool's aim meet their parts here.
+    /// </summary>
+    public static bool EmitterAlong(SurfaceZone zone, Vector3 from, Vector3 dir, float reach, out Vessel vessel, out Int3 cell, out float distance, out Vector3 normal)
+    {
+        (vessel, cell, distance, normal) = (null, default, reach, -dir);
+        foreach (Vessel v in zone.Vessels)
+        {
+            Structure s = v.Structure;
+            if (s.Fields.Count == 0 || !IsInstanceValid(v.Node)) continue;
+            float size = s.Grid.CellSize;
+            N.Vector3 o = v.Body.ToLocal(from.ToNumerics()) / size, d = MathX.Unrotate(v.Body.Rotation, dir.ToNumerics());
+            foreach (ForceField f in s.Fields)
+                for (int i = 0; i < 4; i++)
+                {
+                    Int3 c = f.Corner(i);
+                    if (!s.TryGet(c, out Block b) || !s.TypeOf(b).IsFieldEmitter) continue;
+                    Mat3 m = Orientations.Matrix(b.Rot);
+                    foreach (Part p in s.TypeOf(b).Parts)
+                    {
+                        N.Vector3 a = c.ToVector3() + m.Apply(p.Min), z = c.ToVector3() + m.Apply(p.Max);
+                        if (!Slab(o, d, N.Vector3.Min(a, z), N.Vector3.Max(a, z), out float t, out int axis) || t * size >= distance) continue;
+                        (vessel, cell, distance) = (v, c, t * size);
+                        normal = MathX.Rotate(v.Body.Rotation, Geometry.Set(N.Vector3.Zero, axis, -MathF.Sign(Geometry.Get(d, axis)))).ToGodot();
+                    }
+                }
+        }
+        return vessel != null;
+    }
+
+    /// <summary>Where a ray from outside a box enters it ahead of its start: the distance and the axis of the face.</summary>
+    static bool Slab(N.Vector3 o, N.Vector3 d, N.Vector3 lo, N.Vector3 hi, out float t, out int axis)
+    {
+        (t, axis) = (float.MinValue, 0);
+        float far = float.MaxValue;
+        for (int k = 0; k < 3; k++)
+        {
+            float ok = Geometry.Get(o, k), dk = Geometry.Get(d, k), l = Geometry.Get(lo, k), h = Geometry.Get(hi, k);
+            if (MathF.Abs(dk) < 1e-9f)
+            {
+                if (ok < l || ok > h) return false;
+                continue;
+            }
+            float t0 = (l - ok) / dk, t1 = (h - ok) / dk;
+            if (t0 > t1) (t0, t1) = (t1, t0);
+            if (t0 > t) (t, axis) = (t0, k);
+            far = MathF.Min(far, t1);
+        }
+        return t <= far && t > 0f;
+    }
+
     // ---- The look -------------------------------------------------------------------------------
 
     /// <summary>
     /// A sheet across cells <paramref name="min"/> to <paramref name="max"/> (inclusive, structure
-    /// frame), through their middle along <paramref name="axis"/>, its edges <paramref name="inset"/>
-    /// m inside the cells' outer faces: the quad's frame and size.
+    /// frame), through their middle along <paramref name="axis"/>, its edges on the cells' outer
+    /// faces, flush with its emitters' outer edges: the quad's frame and size.
     /// </summary>
-    public static Transform3D Frame(float cell, Int3 min, Int3 max, int axis, float inset, out Vector2 size)
+    public static Transform3D Frame(float cell, Int3 min, Int3 max, int axis, out Vector2 size)
     {
         int u = (axis + 1) % 3, v = (axis + 2) % 3;
-        size = new Vector2((max[u] - min[u] + 1) * cell - 2f * inset, (max[v] - min[v] + 1) * cell - 2f * inset);
+        size = new Vector2((max[u] - min[u] + 1) * cell, (max[v] - min[v] + 1) * cell);
         Vector3 Unit(int a) => Geometry.Set(N.Vector3.Zero, a, 1f).ToGodot();
         return new Transform3D(new Basis(Unit(u), Unit(v), Unit(axis)), ((min.ToVector3() + max.ToVector3()) * 0.5f * cell).ToGodot());
+    }
+
+    /// <summary>An open door's sheet: exactly the shut leaf's span, so it meets the door's frame and sill on every side.</summary>
+    public static Transform3D DoorSheet(Structure s, Int3 anchor, in Block b, out Vector2 size)
+    {
+        BlockType t = s.TypeOf(b);
+        Part leaf = System.Linq.Enumerable.First(t.Parts, p => p.ClosedOnly && p.Style == PartStyle.Body);
+        N.Vector3 n = t.Size.ToVector3(), lo = leaf.Min * n, hi = leaf.Max * n, mid = (lo + hi) * 0.5f;
+        float cell = s.Grid.CellSize;
+        size = new Vector2(hi.X - lo.X, hi.Y - lo.Y) * cell;
+        Mat3 m = Orientations.Matrix(b.Rot);
+        return new Transform3D(new Basis(m.X.ToVector3().ToGodot(), m.Y.ToVector3().ToGodot(), m.Z.ToVector3().ToGodot()),
+            (StructureBridge.BlockCenter(s, anchor, b) + m.Apply(new N.Vector3(mid.X, mid.Y, 0f)) * cell).ToGodot());
     }
 
     static Shader _shader;
@@ -321,7 +400,7 @@ void fragment() {
     float edge = 1.0 - smoothstep(0.0, 0.3, min(e.x, e.y));
     float a = (0.07 + 0.22 * lattice + 0.12 * band + 0.08 * drift) * mix(0.3, 1.0, strength) + 0.45 * edge * strength;
     ALBEDO = tint.rgb * (1.0 + 1.5 * flash);
-    ALPHA = clamp(a + flash * 0.5, 0.0, 1.0);
+    ALPHA = clamp((a + flash * 0.5) * 0.75, 0.0, 1.0); // a quarter more see-through (owner, 16 Nov)
 }
 ";
 }

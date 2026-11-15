@@ -28,7 +28,24 @@ public sealed class Survivor
     public const float CrouchHeight = 1.1f, CrouchEyeHeight = 0.95f;
 
     /// <summary>The zone the sleeper is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
-    public SurfaceZone Zone { get; internal set; }
+    public SurfaceZone Zone
+    {
+        get => _zone;
+        internal set
+        {
+            if (_zone != null) _zone.Removing -= SetOutOf;
+            _zone = value;
+            if (_zone != null) _zone.Removing += SetOutOf;
+        }
+    }
+    SurfaceZone _zone;
+
+    /// <summary>A vessel about to be taken out of the world: seated in it or aboard, the sleeper gets up and is set out of it first, so their body stays theirs.</summary>
+    void SetOutOf(Vessel vessel)
+    {
+        if (Seated == vessel) StandUp();
+        if (Aboard == vessel) Leave();
+    }
     public readonly Body Body;
     public readonly CharacterBinding Binding;
     public readonly WalkController Legs = new();
@@ -37,6 +54,15 @@ public sealed class Survivor
 
     /// <summary>View heading and pitch, radians, within the body's walk frame.</summary>
     public float Yaw, Pitch;
+
+    /// <summary>
+    /// How far the view is drawn ahead of <see cref="Yaw"/> and <see cref="Pitch"/> this frame, radians (set by the game each
+    /// frame): the mouse moved since the last tick, which the next tick applies, and the bike's last turn drawn between ticks.
+    /// The look turns every drawn frame, not only on the frames a tick falls in.
+    /// </summary>
+    public Vector2 ViewLead;
+    public float ViewYaw => Yaw + ViewLead.X;
+    public float ViewPitch => Mathf.Clamp(Pitch + ViewLead.Y, -1.5f, 1.5f);
 
     /// <summary>The walk frame the camera uses: it eases after the body's, so hull edges roll the view smoothly.</summary>
     public N.Quaternion ViewFrame = N.Quaternion.Identity;
@@ -124,7 +150,7 @@ public sealed class Survivor
         // only airborne speed (falls, flings, the jetpack) can, and the visor warns of that.
         survivor.Legs.SprintSpeed = MathF.Min(survivor.Legs.SprintSpeed, zone.Physics.Rules.Contacts.SafeSpeed - 0.1f);
         survivor.Binding.Teleport();
-        zone.Weather.Bridge.Track(body);
+        zone.Weather.Bridge?.Track(body); // none on an airless world
         return survivor;
     }
 
@@ -389,7 +415,6 @@ public sealed class Survivor
         Binding.Teleport();
     }
 
-    /// <summary>Puts the survivor in the zone's world, upright (respawns, tests, screenshots).</summary>
     /// <summary>A blow throws the survivor (m/s, zone frame): on foot only.</summary>
     public void Knock(Vector3 push)
     {
@@ -397,7 +422,8 @@ public sealed class Survivor
         Body.Velocity += push.ToNumerics();
     }
 
-    public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default)
+    /// <summary>Puts the survivor in the zone's world, upright (respawns, tests, screenshots). <paramref name="glide"/>: drawn moving there from where they were, not jumping (a test carrying them along a route a tick at a time).</summary>
+    public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default, bool glide = false)
     {
         if (Seated != null) StandUp();
         if (OnBike != null) Dismount();
@@ -409,7 +435,8 @@ public sealed class Survivor
         ViewFrame = N.Quaternion.Identity;
         Body.OnFloor = false;
         _letGoOf = null;
-        Binding.Teleport();
+        if (glide) Binding.Glide();
+        else Binding.Teleport();
     }
 
     // ---- View ---------------------------------------------------------------------------------
@@ -417,7 +444,7 @@ public sealed class Survivor
     /// <summary>The eye, from interpolated transforms, standing on the eased view frame.</summary>
     public Transform3D Eye()
     {
-        var look = new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, Pitch);
+        var look = new Basis(Vector3.Up, ViewYaw) * new Basis(Vector3.Right, ViewPitch);
         if (Seated is Vessel seat)
             return seat.DrawTransform * new Transform3D(seat.ChairBasis * look, seat.Eye.ToGodot());
         Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;

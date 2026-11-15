@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using GalHack.Arms;
 using GalHack.Items;
 using GalHack.Physics.Engine;
@@ -68,11 +69,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         AddChild(_ray);
         Fx = new ArmsFx { Name = "ShotLooks" };
         AddChild(Fx);
-        Fx.Setup(Pool, Table.All);
+        var rows = Table.All.Concat(Zone.Data.Mounts.All).ToList();
+        Fx.Setup(Pool, rows);
         Sounds = new GunSounds { Name = "GunSounds" };
         AddChild(Sounds);
-        Sounds.Make(Table.All);
+        Sounds.Make(rows);
         Zone.FrameShifted += by => Pool.Shift(by.ToNumerics());
+        _passed = new int[Pool.Shots.Length];
         People = new SimArms(this);
     }
 
@@ -91,10 +94,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         long bytes = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
         Pool.Step(dt, this);
+        Passing(dt);
         Effects.Tick(dt, this);
-        People?.Tick(dt);
         LastStepMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
         LastStepBytes = GC.GetAllocatedBytesForCurrentThread() - bytes;
+        People?.Tick(dt); // (not the shots' own step: a body first seen gets its kit and model made)
     }
 
     // ---- The gun in hand -------------------------------------------------------------------------
@@ -271,9 +275,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     /// Someone else's weapon goes off (a person, a robot's mount): the row's own shot, pellets,
     /// spread, speed, damage, flash and report, from their muzzle along their aim, plus their own
     /// unsteadiness (degrees). The shooter is looked past until the shot has struck something. Ammo is
-    /// theirs to count. A strike row is a blow instead.
+    /// theirs to count. A strike row is a blow instead. Seen from the sleeper: the flash is sized for
+    /// how far off it is, the gun in their hands (<paramref name="model"/>) kicks, and the report is
+    /// loud. A <paramref name="look"/> shot harms nothing (a guard seeing off a stray).
     /// </summary>
-    public void FireFrom(WeaponDef d, Vector3 muzzle, Vector3 dir, float unsteady, object shooter, bool moving = false)
+    public void FireFrom(WeaponDef d, Vector3 muzzle, Vector3 dir, float unsteady, object shooter, bool moving = false, GunModel.Built model = null, bool look = false)
     {
         if (d.Delivery == Delivery.Strike) { Swing(d, muzzle, dir, shooter, Hostile); return; }
         dir = dir.LengthSquared() > 1e-6f ? dir.Normalized() : Vector3.Forward;
@@ -291,11 +297,39 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         {
             Vector3 v = Jitter(dir, spread + wide) * d.Speed;
             int slot = Pool.Spawn(d, Hostile, muzzle.ToNumerics(), v.ToNumerics(), d.Damage);
-            if (slot >= 0) Pool.Shots[slot].LastHit = shooter;
+            if (slot < 0) continue;
+            Pool.Shots[slot].LastHit = shooter;
+            Pool.Shots[slot].Visual = look;
         }
-        Game.Shots.Muzzle(d.Feel, muzzle, dir, GunModel.ColourOf(d.Tracer.Colour), 1f);
+        float far = Game.Camera != null ? Game.Camera.GlobalPosition.DistanceTo(muzzle) : 0f;
+        Game.Shots.Muzzle(d.Feel, muzzle, dir, GunModel.ColourOf(d.Tracer.Colour), ShotFx.SeenScale(far));
+        if (model != null) GunModel.Kick(model, d);
         Sounds.Play(d, VoiceKind.Report, muzzle, 0.94f + 0.12f * (float)_rng.NextDouble());
         Zone.Wildlife.Noise(muzzle, d.Noise);
+    }
+
+    /// <summary>Shots a structure's guns fired (tests).</summary>
+    public int MountedFired;
+
+    /// <summary>
+    /// A structure's fixed gun goes off (the pilot's trigger): the row's shot from its muzzle along its facing, carried at
+    /// the structure's velocity, the player's shot (it counts as theirs), its flash and report. Its own structure is looked
+    /// past, so a gun behind a fin never shoots its own hull. Ammo is the structure's to count.
+    /// </summary>
+    public void FireMounted(WeaponDef d, Vector3 muzzle, Vector3 dir, Vector3 carry, Vessel from)
+    {
+        int count = d.Pellets?.Count ?? 1;
+        for (int p = 0; p < count; p++)
+        {
+            Vector3 v = Jitter(dir, d.Spread + (count > 1 ? d.Pellets.Spread : 0f)) * d.Speed + carry;
+            int slot = Pool.Spawn(d, 0, muzzle.ToNumerics(), v.ToNumerics(), d.Damage);
+            if (slot >= 0) Pool.Shots[slot].LastHit = from;
+        }
+        MountedFired++;
+        Fired++;
+        Game.Shots.Muzzle(d.Feel, muzzle, dir, GunModel.ColourOf(d.Tracer.Colour), 1.6f);
+        Sounds.Play(d, VoiceKind.Report, muzzle, 0.94f + 0.12f * (float)_rng.NextDouble());
+        Zone.Wildlife.Noise(muzzle, d.Noise, dir);
     }
 
     /// <summary>
@@ -306,11 +340,9 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     {
         dir = dir.LengthSquared() > 1e-6f ? dir.Normalized() : Vector3.Forward;
         float reach = MathF.Max(0.5f, d.Reach);
-        if (!Sweep(from.ToNumerics(), (from + dir * reach).ToNumerics(), attacker, owner, 1f, out ShotHit hit))
-        {
-            Sounds.Play(d, VoiceKind.Mechanism, from, 1.4f, -12f); // the swish of a miss
-            return;
-        }
+        // Every swing whooshes, heavier and lower for a longer reach; one that lands thuds (Strike).
+        Sounds.Play(CombatSound.Whoosh, from + dir * reach * 0.5f, (1.25f - 0.15f * reach) * (0.92f + 0.16f * (float)_rng.NextDouble()), -2f);
+        if (!Sweep(from.ToNumerics(), (from + dir * reach).ToNumerics(), attacker, owner, 1f, out ShotHit hit)) return;
         var blow = new Shot { Live = true, Def = d, Owner = owner, Pos = from.ToNumerics(), Vel = (dir * 6f).ToNumerics(), Damage = d.Damage, State = ShotState.Flying };
         Strike(ref blow, hit, d.Damage);
         Zone.Wildlife.Noise(from, d.Noise);
@@ -440,8 +472,15 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         if (len < 1e-5f) return false;
         Vector3 dir = seg / len;
         float best = len;
-        bool found = SolidHit(a, dir, len, owner, age, ref hit);
+        bool found = SolidHit(a, dir, len, owner, age, ref hit, skip: ignore as Vessel);
         if (found) best = hit.Distance;
+        // A field emitter has no collider (it is passed through): met by its parts.
+        if (ForceFields.EmitterAlong(Zone, a, dir, best, out Vessel ev, out Int3 ec, out float ed, out Vector3 en))
+        {
+            best = ed;
+            found = true;
+            hit = new ShotHit { Kind = HitKind.Block, Thing = ev, CellX = ec.X, CellY = ec.Y, CellZ = ec.Z, Point = (a + dir * ed).ToNumerics(), Normal = en.ToNumerics(), Distance = ed, Through = ev.Structure.Grid.CellSize };
+        }
         // A force field that holds stops it (people and vessels pass; shots don't).
         if (ForceFields.Along(Zone, a, dir, best, out float fd, out Vector3 fn) is FieldHit met)
         {
@@ -518,9 +557,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     }
 
     /// <summary>The solid part of a sweep: colliders first, then the voxel ground where colliders aren't loaded.</summary>
-    bool SolidHit(Vector3 a, Vector3 dir, float len, int owner, float age, ref ShotHit hit, int ghosts = 0)
+    bool SolidHit(Vector3 a, Vector3 dir, float len, int owner, float age, ref ShotHit hit, int ghosts = 0, Vessel skip = null)
     {
-        Vessel aboard = owner == 0 ? Game.Survivor.Aboard : null;
+        // A structure's own gun's shot passes its structure, so it meets the world rather than the cabin it was fired from.
+        Vessel aboard = owner == 0 && skip == null ? Game.Survivor.Aboard : null;
         bool solid;
         Vector3 point, normal;
         GodotObject collider;
@@ -551,10 +591,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 Int3 cell = StructureBridge.CellAt(v.Structure, (v.Body.ToLocal(point.ToNumerics()) - GalHack.Physics.MathX.Unrotate(v.Body.Rotation, normal.ToNumerics()) * 0.02f));
                 // A block just taken away keeps its collider until the structure's shapes are rebuilt: nothing is
                 // there, so the ray goes on through it (a mine dropping off a shot-away block lands on what is under it).
-                if (!v.Structure.Has(cell))
+                if (!v.Structure.Has(cell) || v == skip)
                 {
                     if (ghosts >= 4 || d + 0.02f >= len) return false;
-                    if (!SolidHit(point + dir * 0.02f, dir, len - d - 0.02f, owner, age, ref hit, ghosts + 1)) return false;
+                    if (!SolidHit(point + dir * 0.02f, dir, len - d - 0.02f, owner, age, ref hit, ghosts + 1, skip)) return false;
                     hit.Distance += d + 0.02f;
                     return true;
                 }
@@ -770,7 +810,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 var c = (Creature)hit.Thing;
                 Harm(c, damage * Zone.Wildlife.HitScale(c, at), at, dir, quiet: tick, byPlayer: s.Owner == 0, kill: d.Kill);
                 if (!tick && d.Dot != null && d.Stick == null) Effects.Add(c, d.Dot.PerSecond, d.Dot.Seconds, d.Class, d.Tags, s.Owner);
-                if (!tick) Game.Visor?.Hit();
+                if (!tick && s.Owner == 0) Confirm(c.Dead);
                 break;
             case HitKind.Person:
                 var p = (Town.Person)hit.Thing;
@@ -779,9 +819,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 PersonHits++;
                 Dealt?.Invoke(HitKind.Person, p, damage);
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Creature);
+                if (!tick && s.Owner == 0) Confirm(p.Dead);
                 break;
             case HitKind.Player:
-                HurtPlayer(new HitInfo(damage, d.Class, d.Tags, s.Owner), at);
+                HurtPlayer(new HitInfo(damage, d.Class, d.Tags, s.Owner), at - dir * 10f); // marked on the side it came from
+                if (!tick) Zone.Wildlife.Audio.PlayUi("hurt", -4f); // the sleeper's own grunt as it lands
                 break;
             case HitKind.Block:
                 var v = (Vessel)hit.Thing;
@@ -804,13 +846,68 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 {
                     HurtMass(wm, damage);
                     if (!tick) Game.Shots.Impact(at, n, ImpactKind.Creature);
+                    if (!tick && s.Owner == 0) Confirm(wm.Dead);
                     break;
                 }
                 GroundHits++;
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Ground);
                 break;
         }
-        if (!tick && hit.Kind != HitKind.Creature) Sounds.Play(d, VoiceKind.Impact, at, 0.9f + 0.2f * (float)_rng.NextDouble(), -6f);
+        if (tick) return;
+        // What it struck, heard: a blow thuds, a round into anything living slaps, the rest is the row's own impact.
+        float pitch = 0.9f + 0.2f * (float)_rng.NextDouble();
+        bool living = hit.Kind is HitKind.Creature or HitKind.Person or HitKind.Player || hit.Thing is WormMass;
+        if (d.Delivery == Delivery.Strike) Sounds.Play(CombatSound.Blow, at, pitch, 2f);
+        else if (living) Sounds.Play(CombatSound.Flesh, at, pitch, 2f);
+        else Sounds.Play(d, VoiceKind.Impact, at, pitch, -6f);
+    }
+
+    /// <summary>The player's own hits and kills confirmed (tests).</summary>
+    public int Confirms, Kills;
+
+    /// <summary>The player's hit landed: a ring at the reticle (another for a kill) and a thud heard at any distance.</summary>
+    public void Confirm(bool kill)
+    {
+        Confirms++;
+        if (kill) Kills++;
+        Game.Visor?.Hit(kill);
+        Sounds.Confirm(kill);
+    }
+
+    // ---- Shots going past ---------------------------------------------------------------------------
+
+    /// <summary>How close a shot passes the sleeper's head to be heard going by, m.</summary>
+    public const float PassRadius = 3f;
+    /// <summary>Shots heard going past the sleeper (tests).</summary>
+    public int NearMisses;
+    int[] _passed;
+
+    /// <summary>
+    /// After every step: a shot someone else fired that is at its nearest to the sleeper's head now,
+    /// and close, is heard going by where it passes: a round cracks, anything slower (an arrow, a
+    /// bolt of energy) whizzes. Once a shot.
+    /// </summary>
+    void Passing(float dt)
+    {
+        N.Vector3 eye = Game.Survivor.WorldEye().ToNumerics();
+        Shot[] shots = Pool.Shots;
+        for (int i = 0; i < shots.Length; i++)
+        {
+            ref Shot s = ref shots[i];
+            if (!s.Live || s.Owner == 0 || s.Visual || s.State != ShotState.Flying || _passed[i] == s.Id) continue;
+            N.Vector3 step = s.Vel * dt;
+            float len2 = step.LengthSquared();
+            if (len2 < 1e-4f || s.Age * s.Speed < 4f) continue; // barely moving, or still at a muzzle beside you
+            N.Vector3 from = s.Pos - step;
+            float t = N.Vector3.Dot(eye - from, step) / len2;
+            if (t <= 0f || t >= 1f) continue; // still coming, or long gone
+            N.Vector3 near = from + step * t;
+            if (N.Vector3.Distance(near, eye) > PassRadius) continue;
+            _passed[i] = s.Id;
+            NearMisses++;
+            bool round = s.Def.Class != DamageClass.Energy && !GunVoice.Strung(s.Def) && s.Speed > 60f;
+            Sounds.Play(round ? CombatSound.Crack : CombatSound.Whiz, near.ToGodot(), 0.9f + 0.2f * (float)_rng.NextDouble(), 0f);
+        }
     }
 
     /// <summary>Blows and burns dealt to worm masses (tests).</summary>
@@ -865,6 +962,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     public void Blast(ref Shot s, N.Vector3 at, N.Vector3 normal, BlastPart blast)
     {
         Blasts++;
+        int caught = 0, killed = 0;
         if (s.State == ShotState.Armed) Trips++;
         Vector3 p = at.ToGodot(), n = normal.ToGodot();
         float r = blast.Radius;
@@ -885,6 +983,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 {
                     Harm(c, blast.Damage * (1f - d / r), centre, (centre - p).Normalized(), byPlayer: s.Owner == 0, kill: s.Def.Kill);
                     c.HitHeavy = MathF.Max(c.HitHeavy, 1f - d / r); // a blast staggers
+                    caught++;
+                    if (c.Dead) killed++;
                 }
             }
         }
@@ -909,9 +1009,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 {
                     if (person.Dead) continue;
                     float d = t.World(person.Pos).DistanceTo(p);
-                    if (d < r) { t.Hit(person, t.World(person.Pos) + Vector3.Up, (t.World(person.Pos) - p).Normalized(), 1f - d / r, Slice.Game.Game.EndOf(s.Def.Kill)); t.Struck(person, blast.Damage * (1f - d / r), DamageClass.Explosive, byPlayer: s.Owner == 0); PersonHits++; }
+                    if (d < r) { t.Hit(person, t.World(person.Pos) + Vector3.Up, (t.World(person.Pos) - p).Normalized(), 1f - d / r, Slice.Game.Game.EndOf(s.Def.Kill)); t.Struck(person, blast.Damage * (1f - d / r), DamageClass.Explosive, byPlayer: s.Owner == 0); PersonHits++; caught++; if (person.Dead) killed++; }
                 }
             }
+        if (s.Owner == 0 && caught > 0) Confirm(killed > 0);
         Fx.Blast(p, r * 0.55f);
         Game.Shots.Impact(p, n, ImpactKind.Ground);
         Zone.Dust?.Puff(p, Zone.Planet.Grit(p), 1.4f);

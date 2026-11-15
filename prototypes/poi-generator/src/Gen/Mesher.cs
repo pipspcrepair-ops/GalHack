@@ -401,6 +401,12 @@ public static class Mesher
 
         bool CollidesFull(Int3 p) => (Flags(p) & FCollides) != 0;
 
+        // The two cell questions as delegates made once: a method group passed as one is a new delegate every call (a
+        // shaped block's every face and collision box, the commonest allocation of a city's meshing).
+        Func<Int3, bool> _collidesFull, _hides;
+        Func<Int3, bool> CollidesFullOnce => _collidesFull ??= CollidesFull;
+        Func<Int3, bool> HidesOnce => _hides ??= Hides;
+
         /// <summary>Whether a neighbour hides a face: as <see cref="Occludes"/>, except the top of the buried ground where it may not really be (<see cref="MeshOptions.GroundShow"/>).</summary>
         bool Hides(Int3 p) => Occludes(p) && !(_o.GroundShow > 0 && IsRock(p) && p.Y > Assembler.GroundY - _o.GroundShow);
 
@@ -615,7 +621,7 @@ public static class Mesher
                 // Props collide as their real shape: a table as its top and legs, a locker as its body against the wall.
                 bool shaped = BlockInfo.IsShaped(b.Type);
                 foreach (var (lo, hi) in Shapes.CollisionBoxes(b, p))
-                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi, shaped ? (f => Shut(p, b, lo, hi, f, CollidesFull)) : null);
+                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi, shaped ? (f => Shut(p, b, lo, hi, f, CollidesFullOnce)) : null);
             }
         }
 
@@ -1090,7 +1096,7 @@ public static class Mesher
             for (int f = 0; f < 6; f++)
             {
                 if (box.SkipBottom && f == 5) continue;
-                if (shaped && Shut(p, b, box.Lo, box.Hi, f, Hides)) continue;
+                if (shaped && Shut(p, b, box.Lo, box.Hi, f, HidesOnce)) continue;
                 BoxFace(f, o + box.Lo, o + box.Hi, out V3 a, out V3 bb, out V3 c, out V3 d);
                 V3 n = Normals[f];
                 float k = box.Surface == Surface.Glow ? 1f : FaceShade[f];
@@ -1124,7 +1130,7 @@ public static class Mesher
         float BoxCode(Int3 p, Block b, Surface surf, FaceSide side)
         {
             if (!Finishes || surf is Surface.Glow or Surface.Flesh) return 0f;
-            if (surf == Surface.Glass) return PlainCode(Finish.Glass);
+            if (surf == Surface.Glass) return PlainCode(Shapes.IsFence(b) ? Finish.Mesh : Finish.Glass);
             FinishPick pick = Pick(b, side, false, 0);
             if (pick.Finish == Finish.Plain) return 0f;
             float j = Hash.Cell(p, 0x3EA2u) % 1000 / 1000f;
@@ -1475,6 +1481,7 @@ public static class Shapes
         BlockType.Spike => (new V3(0.25f, 0, 0.25f), new V3(0.75f, 1, 0.75f)),
         BlockType.Rubble => (new V3(0.05f, 0, 0.05f), new V3(0.95f, Debris.Top(b.Variant), 0.95f)),
         BlockType.Core => (new V3(0.2f, 0, 0.2f), new V3(0.8f, 1.8f, 0.8f)),
+        BlockType.Rail when (b.Variant & (FenceBit | FenceDown)) == (FenceBit | FenceDown) => (new V3(0, 0, 0), new V3(1, 0.08f, 1)),
         BlockType.Rail => (new V3(0, 0, 0), new V3(1, 1.05f, 1)),
         BlockType.Shelf or BlockType.Locker => (new V3(0.06f, 0, 0.1f), new V3(0.94f, 1f, 0.9f)),
         BlockType.Statue => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 1.65f, 0.9f)),
@@ -1770,6 +1777,70 @@ public static class Shapes
     /// <summary>A rail's Variant when it follows a round's outline (<see cref="RimRail"/>).</summary>
     public const byte RimRailVariant = 1;
 
+    /// <summary>
+    /// A perimeter fence's cell is a rail whose Variant has <see cref="FenceBit"/> (<see cref="Fences"/> lays them): its
+    /// Facing is the way out of what it fences, its line across that. The other bits: <see cref="FenceTimber"/> a post-and-rail
+    /// fence (else chain-link mesh), <see cref="FencePost"/> a post stands in the cell, <see cref="FenceSag"/> the panel leans
+    /// out, <see cref="FenceLean"/> the post leans out, <see cref="FenceDown"/> a panel lying flat on the ground, <see cref="FenceLeaf"/>
+    /// a gate's leaf (framed).
+    /// </summary>
+    public const byte FenceBit = 0x80, FenceTimber = 0x01, FencePost = 0x02, FenceSag = 0x04, FenceLean = 0x08, FenceDown = 0x10, FenceLeaf = 0x20;
+
+    public static bool IsFence(Block b) => b.Type == BlockType.Rail && (b.Variant & FenceBit) != 0;
+
+    /// <summary>
+    /// A fence cell: chain-link (a sheet of mesh drawn by the glass shader's mesh finish, a galvanised top rail over it) or
+    /// timber rails, each across its line, and its post where it has one. A sagging panel or a leaning post tilts out about its
+    /// foot, the cells above carrying the lean on; a panel down lies flat across its cell. The sheet, rail and post come
+    /// first, so a far view keeps them.
+    /// </summary>
+    static void Fence(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
+    {
+        V3 o = V3.Of(b.Facing.Vec());
+        bool alongX = o.Z != 0, timber = (b.Variant & FenceTimber) != 0;
+        // (along, up, across) in the cell to its box.
+        ShapeBox At(float a0, float y0, float c0, float a1, float y1, float c1, Rgb col, Surface surf, V3 tilt = default) => alongX
+            ? new ShapeBox(new V3(a0, y0, c0), new V3(a1, y1, c1), col, surf, false, tilt)
+            : new ShapeBox(new V3(c0, y0, a0), new V3(c1, y1, a1), col, surf, false, tilt);
+        Rgb rail = c.Scale(0.85f);
+        if ((b.Variant & FenceDown) != 0)
+        {
+            if (timber) foreach (float t in new[] { 0.25f, 0.7f }) l.Add(At(0, 0.02f, t, 1, 0.1f, t + 0.12f, c, s));
+            else
+            {
+                l.Add(At(0, 0.02f, 0.05f, 1, 0.04f, 0.95f, c, Surface.Glass));
+                l.Add(At(0, 0.02f, 0.02f, 1, 0.07f, 0.07f, rail, Surface.Metal));
+            }
+            return;
+        }
+        int k = 0;
+        while (IsFence(g.Get(p + Int3.Down * (k + 1)))) k++;
+        bool top = !IsFence(g.Get(p + Int3.Up));
+        // A lean out about the line's foot: this cell's middle k + 1/2 up the lean.
+        ShapeBox Lean(ShapeBox box, float angle)
+        {
+            if (angle == 0f) return box;
+            float shift = MathF.Sin(angle) * (k + (box.Lo.Y + box.Hi.Y) * 0.5f), drop = (1 - MathF.Cos(angle)) * (k + (box.Lo.Y + box.Hi.Y) * 0.5f);
+            V3 d = new(o.X * shift, -drop, o.Z * shift);
+            return box with { Lo = box.Lo + d, Hi = box.Hi + d, Tilt = alongX ? new V3(o.Z * angle, 0, 0) : new V3(0, 0, -o.X * angle) };
+        }
+        float sag = (b.Variant & FenceSag) != 0 ? 0.3f : 0f, lean = (b.Variant & FenceLean) != 0 ? 0.26f : 0f;
+        bool leaf = (b.Variant & FenceLeaf) != 0;
+        if (timber)
+            foreach (float y in new[] { 0.32f, 0.78f }) l.Add(Lean(At(0, y, 0.44f, 1, y + 0.13f, 0.52f, c, s), sag));
+        else
+        {
+            l.Add(Lean(At(0, 0, 0.49f, 1, top ? 0.94f : 1f, 0.51f, c, Surface.Glass), sag));
+            if (top || leaf) l.Add(Lean(At(0, top ? 0.94f : 0.96f, 0.47f, 1, top ? 1f : 1.02f, 0.53f, rail, Surface.Metal), sag));
+            if (leaf && k == 0) l.Add(Lean(At(0, 0, 0.47f, 1, 0.06f, 0.53f, rail, Surface.Metal), sag));
+        }
+        if ((b.Variant & FencePost) != 0)
+        {
+            float w = timber ? 0.08f : 0.045f;
+            l.Add(Lean(At(0.5f - w, 0, 0.5f - w, 0.5f + w, top ? 1.1f : 1f, 0.5f + w, timber ? c.Scale(0.8f) : rail, timber ? s : Surface.Metal), lean));
+        }
+    }
+
     /// <summary>A rim rail's set-out: how far in from the edge it runs, m; posts at most <c>RimSpacing</c> apart along it, m; and one at every turn sharper than <c>RimTurn</c>, radians.</summary>
     public const float RimInset = 0.08f, RimSpacing = 1.25f, RimTurn = 30 * MathF.PI / 180;
 
@@ -1917,6 +1988,7 @@ public static class Shapes
     static void Rail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
     {
         if (b.Variant == RimRailVariant) { RimRail(l, p, g, c, s); return; }
+        if (IsFence(b)) { Fence(l, b, p, g, c, s); return; }
         var (e, w, n, so, _) = RailRun(b, p, g);
         bool straight = e && w && !n && !so || n && so && !e && !w;
         bool post = !straight || ((p.X + p.Z) & 1) == 0;

@@ -26,10 +26,11 @@ namespace Slice.Tests;
 /// corner touching nothing), blue when it can; released, it spans the opening with an L-shaped
 /// emitter in each corner and uses one component. It holds the air, draws tiles x the per-tile rate,
 /// lets the sleeper walk through and stops shots. Plated emitters take less from a hit. Knocked to
-/// zero it vanishes with its emitters whole and grows back after its tier's delay; an emitter shot
-/// away keeps it down until one is put back. An open outer door holds the air while the room is
-/// powered; power off, neither field holds. Taking an emitter down takes the field down, the
-/// component coming back.
+/// zero it vanishes with its emitters whole and grows back after its tier's delay. An open outer
+/// door holds the air while the room is powered; power off, neither field holds. Taking an emitter
+/// down takes the field down, the component coming back. The sheet meets its emitters' outer edges
+/// (and a door's sheet its frame) within a millimetre. The sleeper walks through an emitter; a shot
+/// meets it, and one shot until it breaks destroys all four and the field for good.
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ForceFieldTest.tscn
 /// </summary>
@@ -91,6 +92,7 @@ public partial class ForceFieldTest : Node
         Controls c = _game.Controls;
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(v.Powered && !rig.Sealed(), $"the room, powered by its generator, leaks through its 4 x 3 opening ({v.Rooms.Sealed.Count()} sealed rooms)");
+        Flush(s, rules);
 
         // ---- Placing by dragging --------------------------------------------------------------
         const string T1 = "force-field-t1";
@@ -155,7 +157,7 @@ public partial class ForceFieldTest : Node
         pack.Add("iron-plate", 10);
         BlockType iron = s.Catalogue.Type("iron-plated");
         for (int i = 0; i < builder.Platings.Count && builder.Plating != iron; i++) { c.Wheel = 1; yield return 0; }
-        Vector3 hub = rig.World(1.67f, 0.67f, -0.27f); // corner 0's hub, from out in front
+        Vector3 hub = rig.World(1.54f, 0.54f, -0.09f); // corner 0's hub, from out in front
         foreach (int x in _drive.LookAt(hub, 8)) yield return x;
         string said = builder.Verdict;
         int plates = pack["iron-plate"];
@@ -221,20 +223,6 @@ public partial class ForceFieldTest : Node
         foreach (int x in PlaySeconds(tier.RegrowSeconds * 0.6f)) yield return x;
         Check(f.Strength == tier.Strength && f.Holding, $"and back to its cap, {f.Strength:F0}, no more");
 
-        // ---- An emitter shot away -------------------------------------------------------------
-        Int3 lost = f.Corner(2);
-        v.Hits.Shot(lost, v.ToWorld(StructureBridge.CellCenter(s, lost)).ToNumerics(), N.Vector3.UnitZ, 1e6f, DamageType.Explosive);
-        v.Hits.Flush();
-        foreach (int x in _drive.Wait(2)) yield return x;
-        Check(!s.Has(lost) && !f.Holding && s.Fields.Contains(f) && !rig.Sealed(), "an emitter destroyed takes the field down");
-        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 5f)) yield return x;
-        Check(!f.Holding && f.Strength == 0f, "and it stays down while the emitter is missing, however long");
-        s.Set(lost, Building.Make(s, emitter)); // put back, turned any old way
-        v.ApplyEdits();
-        foreach (int x in _drive.Wait(2)) yield return x;
-        Check(Whole(2) && !f.Holding, $"one put back is turned to its corner ({Orientations.Name(s.Get(lost).Rot)}); the field waits its delay");
-        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 1f)) yield return x;
-        Check(f.Holding && f.Strength == tier.Strength && rig.Sealed(), "then grows back whole: repaired");
         _game.Fields.TimeScale = 1f;
 
         // ---- The door's own field --------------------------------------------------------------
@@ -262,18 +250,137 @@ public partial class ForceFieldTest : Node
         _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
         foreach (int x in _drive.Wait(10)) yield return x;
         int components = pack[T1], ironBack = pack["iron-plate"];
-        foreach (int x in _drive.LookAt(rig.World(1.67f, 0.67f, 0.27f), 8)) yield return x;
+        foreach (int x in _drive.LookAt(rig.World(1.54f, 0.54f, 0.09f), 8)) yield return x;
         said = builder.Verdict;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && pack[T1] == components + 1 && pack["iron-plate"] > ironBack && !rig.Sealed(),
             $"deconstructing an emitter takes the field down whole: its emitters gone, the component back ({components} to {pack[T1]}), the plating's iron back; the line said \"{said}\"");
+
+        // ---- Emitters: passed through, shot, destroyed --------------------------------------------
+        f = new ForceField(FieldRig.OpeningMin, FieldRig.OpeningMax, 2, T1) { Strength = tier.Strength }; // STAGING: a second field, set down whole
+        for (int i = 0; i < 4; i++) Building.Place(s, f.Corner(i), Building.Make(s, emitter, null, f.CornerRot(i)));
+        s.Fields.Add(f);
+        v.ApplyEdits();
+        foreach (int x in _drive.Wait(3)) yield return x;
+        // Along the opening's side, so the body runs through corner 0's upright arm.
+        Vector3 start = rig.World(1.88f, 0f, -2.5f);
+        _game.Survivor.PlaceOutside((_game.Zone.GroundAt(start.X, start.Z) + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.Wait(20)) yield return x;
+        float widest = 0f;
+        foreach (int x in _drive.WalkTo(rig.World(1.88f, 0.6f, 2.5f), 0.4f, 30f))
+        {
+            N.Vector3 at = v.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()) / s.Grid.CellSize;
+            if (MathF.Abs(at.Z) < 0.5f) widest = MathF.Max(widest, MathF.Abs(at.X - 1.88f));
+            yield return x;
+        }
+        feet = v.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()) / s.Grid.CellSize;
+        Check(feet.Z > 1.5f && widest < 0.06f && f.Holding && Enumerable.Range(0, 4).All(Whole),
+            $"the sleeper walks straight through an emitter's arm, nothing in the way (feet at cell {feet.X:F2} {feet.Z:F2}, pushed aside {widest * 100f:F0} cm at most)");
+        _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Int3 target = f.Corner(2);
+        Vector3 hub2 = rig.World(5.46f, 3.46f, 0.09f); // corner 2's hub, from inside
+        swept = _game.Arms.Sweep(_game.Survivor.WorldEye().ToNumerics(), (hub2 + (hub2 - _game.Survivor.WorldEye()).Normalized()).ToNumerics(), null, 0, 0f, out shot);
+        Check(swept && shot.Kind == HitKind.Block && new Int3(shot.CellX, shot.CellY, shot.CellZ) == target, $"a shot meets the emitter it is aimed at ({shot.Kind}, block {shot.CellX} {shot.CellY} {shot.CellZ})");
+        int bolts = 0;
+        for (; bolts < 20 && s.Has(target); bolts++)
+            foreach (int x in play.ShootAt(() => hub2)) yield return x;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Check(!s.Has(target) && s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && !rig.Sealed(),
+            $"shot until it breaks ({bolts} bolts): all four emitters and the field are gone");
+        _game.Fields.TimeScale = 10f; // STAGING: the waits at ten times play speed
+        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 5f)) yield return x;
+        _game.Fields.TimeScale = 1f;
+        Check(s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && !rig.Sealed(), "nothing grows back after its timer: it takes a new component");
     }
 
     void StandOutside(FieldRig rig)
     {
         Vector3 at = rig.World(4f, 0f, -6f);
         _game.Survivor.PlaceOutside((_game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * 0.1f).ToNumerics());
+    }
+
+    /// <summary>
+    /// Sealed to the eye: a placed field's sheet ends exactly on its emitters' outer edges (any size,
+    /// any facing) and lies inside their depth; an open door's sheet meets its frame's posts, lintel
+    /// and sill (every door, every turn). Within a millimetre.
+    /// </summary>
+    void Flush(Structure s, FieldRules rules)
+    {
+        const float Mm = 1e-3f;
+        float cell = s.Grid.CellSize;
+        BlockType emitter = ForceFields.Emitter(s.Catalogue);
+        N.Vector3 V(Vector3 g) => g.ToNumerics();
+        // A sheet's four corners, structure frame, metres, as a box (flat along its normal).
+        (N.Vector3 Lo, N.Vector3 Hi) Sheet(Transform3D t, Vector2 size)
+        {
+            var pts = new[] { -1f, 1f }.SelectMany(a => new[] { -1f, 1f }.Select(b => V(t.Origin + t.Basis.X * a * size.X * 0.5f + t.Basis.Y * b * size.Y * 0.5f))).ToList();
+            return (pts.Aggregate(N.Vector3.Min), pts.Aggregate(N.Vector3.Max));
+        }
+        // A one-cell part's box in the structure frame, metres.
+        (N.Vector3 Lo, N.Vector3 Hi) Box(Int3 anchor, in Block b, N.Vector3 min, N.Vector3 max)
+        {
+            BlockType t = s.TypeOf(b);
+            Mat3 m = Orientations.Matrix(b.Rot);
+            N.Vector3 c = s.CentreOf(anchor, b), n = t.Size.ToVector3();
+            N.Vector3 p = c + m.Apply(min * n), q = c + m.Apply(max * n);
+            return (N.Vector3.Min(p, q) * cell, N.Vector3.Max(p, q) * cell);
+        }
+        var worst = (gap: 0f, what: "");
+        void Gap(float g, string what) { if (MathF.Abs(g) > MathF.Abs(worst.gap)) worst = (g, what); }
+
+        int sizes = 0;
+        foreach (int axis in new[] { 2, 0, 1 })
+        foreach (var (w, h) in new[] { (rules.MinSide, rules.MinSide), (4, 3), (7, 2), (2, 9), (rules.MaxSide, rules.MaxSide) })
+        {
+            Int3 lo = new Int3(-3, 1, 2), hi = lo.With((axis + 1) % 3, lo[(axis + 1) % 3] + w - 1).With((axis + 2) % 3, lo[(axis + 2) % 3] + h - 1);
+            var f = new ForceField(lo, hi, axis, "force-field-t1");
+            Transform3D frame = ForceFields.Frame(cell, f.Min, f.Max, f.Axis, out Vector2 size);
+            var sheet = Sheet(frame, size);
+            N.Vector3 eLo = new(float.MaxValue), eHi = new(float.MinValue);
+            for (int i = 0; i < 4; i++)
+            {
+                Block b = Building.Make(s, emitter, null, f.CornerRot(i));
+                foreach (Part p in emitter.Parts)
+                {
+                    var (a, z) = Box(f.Corner(i), b, p.Min, p.Max);
+                    (eLo, eHi) = (N.Vector3.Min(eLo, a), N.Vector3.Max(eHi, z));
+                }
+            }
+            string at = $"{w} x {h} across {"xyz"[axis]}";
+            foreach (int k in new[] { f.U, f.V })
+            {
+                Gap(Geometry.Get(sheet.Lo, k) - Geometry.Get(eLo, k), $"{at}, {"xyz"[k]} low edge");
+                Gap(Geometry.Get(sheet.Hi, k) - Geometry.Get(eHi, k), $"{at}, {"xyz"[k]} high edge");
+            }
+            float plane = Geometry.Get(sheet.Lo, axis);
+            if (plane < Geometry.Get(eLo, axis) || plane > Geometry.Get(eHi, axis)) Gap(1f, $"{at}: the sheet is outside its emitters' depth");
+            sizes++;
+        }
+
+        int doors = 0;
+        foreach (BlockType t in s.Catalogue.Types.Where(t => t is { IsDoor: true } && t.Parts.Any(p => p.ClosedOnly && p.Style == PartStyle.Body)))
+        {
+            // The opening: inside the frame's posts and under its lintel, down to the sill (the cell's floor).
+            var frame = t.Parts.Where(p => p.Style == PartStyle.Dark && !p.ClosedOnly).ToList();
+            float left = frame.Where(p => p.Min.X <= -0.5f + 1e-4f && p.Max.Y >= 0.5f - 1e-4f && p.Min.Y <= -0.5f + 1e-4f).Max(p => p.Max.X);
+            float right = frame.Where(p => p.Max.X >= 0.5f - 1e-4f && p.Max.Y >= 0.5f - 1e-4f && p.Min.Y <= -0.5f + 1e-4f).Min(p => p.Min.X);
+            float top = frame.Where(p => p.Max.Y >= 0.5f - 1e-4f && p.Min.X > -0.5f + 1e-4f && p.Max.X < 0.5f - 1e-4f).Min(p => p.Min.Y);
+            for (int rot = 0; rot < 24; rot++)
+            {
+                Block b = Building.Make(s, t, null, rot);
+                var sheet = Sheet(ForceFields.DoorSheet(s, Int3.Zero, b, out Vector2 size), size);
+                var (oLo, oHi) = Box(Int3.Zero, b, new N.Vector3(left, -0.5f, 0f), new N.Vector3(right, top, 0f));
+                string at = $"{t.Id} turned {Orientations.Name(rot)}";
+                Gap(N.Vector3.Distance(sheet.Lo, oLo), $"{at}, low corner");
+                Gap(N.Vector3.Distance(sheet.Hi, oHi), $"{at}, high corner");
+            }
+            doors++;
+        }
+        Check(sizes == 15 && doors >= 5 && MathF.Abs(worst.gap) <= Mm,
+            $"flush: {sizes} field sizes and facings meet their emitters' outer edges, {doors} doors x 24 turns meet their frames, the worst {worst.gap * 1000f:F2} mm ({worst.what})");
+        Check(rules.MinSide >= 2, $"a field is at least {rules.MinSide} x {rules.MinSide} (no 1 x 1: its four emitters would share one cell)");
     }
 
     /// <summary>The tiers and the draw, from data: linear in tiles, 4 tiles cheap against a first generator.</summary>

@@ -6,10 +6,18 @@ namespace GalHack.Arms;
 public enum VoiceKind { Report, Mechanism, Reload, Impact, Stage, Hold }
 
 /// <summary>
+/// The fight's sounds that belong to no one weapon: a projectile into flesh, a blow landing, a
+/// swing's whoosh, a round cracking past and a slower one whizzing by, and the player's own hit
+/// and kill confirmed.
+/// </summary>
+public enum CombatSound { Flesh, Blow, Whoosh, Crack, Whiz, Confirm, Kill }
+
+/// <summary>
 /// Every gun's sounds, synthesised from its parts at load: no files. What a gun is sets how it
 /// sounds: its calibre (a small round cracks high and short, a big one booms low and long), its
 /// energy (a zap and a hum instead of powder), whether it is alive (wet, breathy, no metal), and
-/// its parts (pellets add body, a blast a deep thump, fire a roar, a charge rising clicks). Each
+/// its parts (pellets add body, a blast a deep thump, fire a roar, a charge rising clicks, a shaft
+/// that sticks is loosed from a string: a twang, and a thunk where it lands). Each
 /// gun's noise comes from its own seed, so no two share a report. Mono samples at <see cref="Rate"/>.
 /// </summary>
 public static class GunVoice
@@ -17,12 +25,18 @@ public static class GunVoice
     public const int Rate = 22050;
 
     /// <summary>The traits a gun's sounds are drawn from.</summary>
-    public readonly record struct Traits(float Calibre, bool Energy, bool Organic, bool Explosive, bool Fire, bool Shock, int Pellets, bool Placed, uint Seed);
+    public readonly record struct Traits(float Calibre, bool Energy, bool Organic, bool Explosive, bool Fire, bool Shock, int Pellets, bool Placed, bool String, uint Seed);
 
     public static Traits Of(WeaponDef d) => new(
         Math.Clamp(d.Look.Calibre, 0f, 1f), d.Class == DamageClass.Energy && (d.Tags & HarmTags.Fire) == 0, d.Look.Band == Band.Living,
         d.Blast != null || d.Class == DamageClass.Explosive, (d.Tags & HarmTags.Fire) != 0, (d.Tags & HarmTags.Shock) != 0,
-        d.Pellets?.Count ?? 1, d.Placed != null, Hash(d.Id));
+        d.Pellets?.Count ?? 1, d.Placed != null, Strung(d), Hash(d.Id));
+
+    /// <summary>A bow or crossbow: a plain shaft that sticks where it lands (a living gun's worm sticks too, but bites).</summary>
+    public static bool Strung(WeaponDef d) => d.Stick != null && d.Look.Band != Band.Living && d.Class == DamageClass.Kinetic && d.Tags == HarmTags.None;
+
+    /// <summary>A gunshot: every report but a string's twang, a flame's roar, a living gun's cough and a mine's throw. Gunshots are loud and carry far.</summary>
+    public static bool Gunshot(WeaponDef d) => d.Delivery is not (Delivery.Strike or Delivery.Placed) && !Strung(d) && (d.Tags & HarmTags.Fire) == 0 && d.Look.Band != Band.Living;
 
     public static float[] Make(WeaponDef d, VoiceKind kind)
     {
@@ -30,7 +44,7 @@ public static class GunVoice
         var rng = new Noise(t.Seed ^ (uint)(kind + 1) * 2654435761u);
         return kind switch
         {
-            VoiceKind.Report => Report(t, rng),
+            VoiceKind.Report => Gunshot(d) ? Loud(Report(t, rng)) : Report(t, rng),
             VoiceKind.Mechanism => Mechanism(t, rng, d),
             VoiceKind.Reload => Reload(t, rng),
             VoiceKind.Impact => Impact(t, rng),
@@ -44,6 +58,22 @@ public static class GunVoice
     static float[] Report(Traits t, Noise n)
     {
         if (t.Fire) return Roar(n, 0.35f, 1f);
+        if (t.String)
+        {
+            // A string let go: a plucked tone that rings down, the limbs' thump, the snap of release.
+            int period = Math.Max(8, (int)(Rate / (120f + 300f * t.Calibre)));
+            var line = new float[period];
+            for (int k = 0; k < period; k++) line[k] = n.Next() * 2f - 1f;
+            int at = 0;
+            return Render(0.5f, (time, i) =>
+            {
+                float y = line[at];
+                line[at] = 0.5f * (y + line[(at + 1) % period]) * 0.994f;
+                at = (at + 1) % period;
+                float limbs = MathF.Sin(MathF.Tau * 70f * time) * MathF.Exp(-time * 40f) * 0.7f;
+                return y * 0.9f + limbs + MathF.Exp(-time * 400f) * (n.Next() * 2f - 1f) * 0.5f;
+            });
+        }
         if (t.Organic)
         {
             // A wet cough: low noise through a falling throat formant, a slap at the start.
@@ -132,6 +162,8 @@ public static class GunVoice
             });
         }
         if (t.Organic) return Render(0.2f, (time, i) => MathF.Exp(-time * 25f) * n.Band(i, 380f, 0.25f));
+        // A shaft going in: a woody thunk, low and short.
+        if (t.String) return Render(0.22f, (time, i) => MathF.Sin(MathF.Tau * (190f - 200f * time) * time) * MathF.Exp(-time * 30f) + n.Band(i, 420f, 0.2f) * MathF.Exp(-time * 45f) * 0.6f + MathF.Exp(-time * 300f) * n.Next() * 0.4f);
         if (t.Energy) return Render(0.18f, (time, i) => MathF.Exp(-time * 30f) * (n.High(i, 0.7f) * 0.6f + MathF.Sin(MathF.Tau * 900f * time) * 0.3f));
         return Render(0.16f, (time, i) => MathF.Exp(-time * 40f) * (n.Next() * 2f - 1f) * 0.6f + MathF.Exp(-time * 30f) * MathF.Sin(MathF.Tau * (2600f - 1200f * t.Calibre) * time) * 0.25f);
     }
@@ -162,7 +194,49 @@ public static class GunVoice
         return env * level * (n.Low(i, 0.18f) * 1.3f + n.Band(i, 900f, 0.08f) * 0.5f) * flutter;
     });
 
+    // ---- The fight's own sounds -------------------------------------------------------------
+
+    public static float[] Make(CombatSound kind)
+    {
+        var n = new Noise(0x9e3779b9u ^ (uint)(kind + 1) * 2246822519u);
+        float phase = 0f;
+        return kind switch
+        {
+            // A round into flesh: a wet slap over a low punch.
+            CombatSound.Flesh => Render(0.2f, (time, i) => MathF.Sin(MathF.Tau * (110f - 160f * time) * time) * MathF.Exp(-time * 26f)
+                + n.Band(i, 650f, 0.25f) * MathF.Exp(-time * 38f) * 0.8f + MathF.Exp(-time * 350f) * (n.Next() * 2f - 1f) * 0.5f),
+            // A blow that lands: a deep, heavy thud.
+            CombatSound.Blow => Render(0.3f, (time, i) =>
+            {
+                phase += (75f * MathF.Exp(-time * 6f) + 38f) / Rate;
+                return MathF.Sin(MathF.Tau * phase) * MathF.Exp(-time * 16f) + n.Low(i, 0.1f) * MathF.Exp(-time * 22f) * 0.7f + MathF.Exp(-time * 200f) * (n.Next() * 2f - 1f) * 0.3f;
+            }),
+            // A swing: air torn by something moving fast, rising then falling.
+            CombatSound.Whoosh => Render(0.32f, (time, i) => MathF.Pow(MathF.Sin(MathF.PI * time / 0.32f), 2f) * n.Band(i, 350f + 1100f * MathF.Sin(MathF.PI * time / 0.32f), 0.12f)),
+            // A round past your head: the snap, then its whine falling away.
+            CombatSound.Crack => Render(0.3f, (time, i) => MathF.Exp(-time * 260f) * n.High(i, 0.95f) * 1.4f
+                + n.Band(i, 3200f - 2400f * time / 0.3f, 0.05f) * MathF.Exp(-time * 12f) * 0.5f),
+            // A slower thing going by: a whiz that drops in pitch as it passes.
+            CombatSound.Whiz => Render(0.4f, (time, i) => MathF.Pow(MathF.Sin(MathF.PI * time / 0.4f), 3f) * n.Band(i, 1900f - 1300f * time / 0.4f, 0.06f)),
+            // Your hit landed: a solid thud and a short tick on top.
+            CombatSound.Confirm => Render(0.18f, (time, i) => MathF.Sin(MathF.Tau * (130f - 120f * time) * time) * MathF.Exp(-time * 24f)
+                + Click(time, 0f, 2400f, n) * 0.5f),
+            // Your kill: a heavier thud and a two-tone ring.
+            _ => Render(0.5f, (time, i) => MathF.Sin(MathF.Tau * (95f - 70f * time) * time) * MathF.Exp(-time * 14f)
+                + (MathF.Sin(MathF.Tau * 880f * time) + 0.7f * MathF.Sin(MathF.Tau * 1320f * time)) * 0.25f * MathF.Exp(-time * 7f) * MathF.Min(1f, time * 300f)),
+        };
+    }
+
     // ---- Building blocks ---------------------------------------------------------------------
+
+    /// <summary>Drives a normalised sound into a soft clip, so it sits louder for the same peak: a gunshot.</summary>
+    static float[] Loud(float[] s)
+    {
+        const float drive = 2.6f;
+        float norm = 0.9f / MathF.Tanh(drive * 0.9f);
+        for (int i = 0; i < s.Length; i++) s[i] = MathF.Tanh(s[i] * drive) * norm;
+        return s;
+    }
 
     static float Click(float time, float at, float freq, Noise n)
     {

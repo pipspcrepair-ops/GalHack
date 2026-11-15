@@ -27,7 +27,7 @@ public static partial class BlueprintSet
         d.Fill(P(-2, 0, 1), P(2, 0, 3), "base-block", body).Face(P(-2, 0, 3), P(2, 0, 3), Dir.PosZ, hazard);
         d.Put("generator-t1", P(-1, 0, 2));
         d.Put("gyro-t1", P(0, 0, 2));
-        d.Put("fuel-tank-t1", P(1, 0, 2));
+        d.Put("container-t1", P(1, 0, 2));
         d.Put("container-t1", P(0, 0, 3));
         d.Thruster("thruster-t1", P(-1, 0, 4), Dir.NegZ);
         d.Thruster("thruster-t1", P(1, 0, 4), Dir.NegZ);
@@ -71,7 +71,7 @@ with the generator, gyro, fuel and a locker; two mains in the tail and a retro e
         d.Put("generator-t1", P(-1, 0, 1));
         d.Put("generator-t1", P(1, 0, 1));
         d.Put("gyro-t1", P(0, 0, 1));
-        d.Put("fuel-tank-t1", P(0, 0, 2));
+        d.Put("container-t1", P(0, 0, 2));
         for (int x = -1; x <= 1; x++) d.Thruster("thruster-t1", P(x, 0, 5), Dir.NegZ);
         d.Thruster("thruster-t1", P(-2, 0, -5), Dir.PosZ);
         d.Thruster("thruster-t1", P(2, 0, -5), Dir.PosZ);
@@ -141,9 +141,9 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
         d.Slope(P(-6, 0, 0), P(-5, 0, 0), "iron-plated", hull, Dir.NegZ, under: true).Slope(P(4, 0, 0), P(5, 0, 0), "iron-plated", hull, Dir.NegZ, under: true);
         d.Put("generator-t1", P(-6, 0, 2));
         d.Put("gyro-t1", P(-5, 0, 2));
-        d.Put("fuel-tank-t1", P(-6, 1, 2));
+        d.Put("container-t3", P(-6, 1, 2)); // the light container: the pods' weight stays over the lift
         d.Put("generator-t1", P(5, 0, 2));
-        d.Put("fuel-tank-t1", P(4, 0, 2));
+        d.Put("container-t3", P(4, 0, 2));
         foreach (int x in new[] { -6, -5, 4, 5 }) d.Thruster("thruster-t1", P(x, 0, 6), Dir.NegZ);
         d.Thruster("thruster-t1", P(-7, 0, 3), Dir.PosX);
         d.Thruster("thruster-t1", P(6, 0, 3), Dir.NegX);
@@ -184,7 +184,8 @@ side jets, four lift jets, a down jet.");
         d.Put("core", P(0, -1, 0));
         d.Put("generator-t2", P(-1, -1, 2));
         d.Put("gyro-t2", P(0, -1, 2));
-        d.Put("fuel-tank-t2", P(1, -1, 2));
+        d.Put("container-t1", P(1, -1, 2));
+        d.Put("container-t1", P(1, -1, 3));
         d.Put("container-t1", P(2, -1, 2));
         foreach (int x in new[] { -4, 4 })
             foreach (int z in new[] { -6, -2, 2, 6 }) d.Put("hover-t1", P(x, -1, z));
@@ -234,8 +235,10 @@ each sponson.");
         d.Put("generator-t2", P(1, -1, -6));
         d.Put("gyro-t2", P(-1, 0, -5));
         d.Put("gyro-t2", P(0, 0, -5));
-        d.Put("fuel-tank-t2", P(-1, 0, -3));
-        d.Put("fuel-tank-t2", P(0, 0, -3));
+        d.Put("container-t1", P(-1, 0, -3));
+        d.Put("container-t1", P(-1, 0, -2));
+        d.Put("container-t1", P(0, 0, -3));
+        d.Put("container-t1", P(0, 0, -2));
         foreach (int x0 in new[] { -7, 3 })
         {
             d.Fill(P(x0, -1, -6), P(x0 + 3, 2, 8), "iron-plated", pod).Face(P(x0, -1, 8), P(x0 + 3, 2, 8), Dir.PosZ, hazard);
@@ -336,8 +339,10 @@ corners, two down jets, a side jet each way, four pads.");
         // The machine room: power and fuel at the stern end, gyros opposite, lockers down the bow.
         d.Put("generator-t2", P(-7, 1, -8));
         d.Put("generator-t2", P(-7, 1, -7));
-        d.Put("fuel-tank-t2", P(-7, 1, -6));
-        d.Put("fuel-tank-t2", P(-7, 2, -6));
+        d.Put("container-t1", P(-7, 1, -6));
+        d.Put("container-t1", P(-7, 1, -5));
+        d.Put("container-t1", P(-7, 2, -6));
+        d.Put("container-t1", P(-7, 2, -5));
         d.Put("gyro-t2", P(6, 1, -8));
         d.Put("gyro-t2", P(6, 1, -7));
         for (int z = -16; z <= -14; z++)

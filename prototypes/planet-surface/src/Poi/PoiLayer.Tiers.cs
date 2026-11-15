@@ -88,6 +88,15 @@ public partial class PoiLayer
         _tiles.AddRange(tiles.Values);
     }
 
+    /// <summary>The middle of a place's top, the copy nearest <paramref name="eye"/>: what of it is seen first from afar.</summary>
+    Vector3 Top(PoiSite site, Vector3 eye)
+    {
+        var lo = site.Footprint.Min;
+        var hi = site.Footprint.Max;
+        float top = site.Pending ? site.Footprint.Max.Y - 12 : site.Origin.Y + site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8;
+        return _world.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, top, (lo.Z + hi.Z + 1) * 0.5f), eye);
+    }
+
     /// <summary>A city tile's far mesh, once every building in it has been built.</summary>
     void StartTile(Tile tile)
     {
@@ -120,18 +129,14 @@ public partial class PoiLayer
         tile.Node.AddChild(tile.Low);
         tile.Mesh = null;
         AddChild(tile.Node);
+        Fx.PopLog.Note("city", "appears", tile.Distance, TileSize, 1f, Top(tile.First, _focus));
         foreach (Place p in tile.Members)
         {
             PoiInstance inst = p.Site.Instance;
             p.Node = new Node3D { Name = p.Site.Family.Id };
             AddLights(p.Node, inst, CityLights);
-            foreach (Node n in p.Node.GetChildren())
-                if (n is OmniLight3D l)
-                {
-                    l.DistanceFadeEnabled = true;
-                    l.DistanceFadeBegin = 500f;
-                    l.DistanceFadeLength = 120f;
-                }
+            HandOff(p.Node);
+            Far?.Add(p.Site, inst);
             // (No smoke: a city fell long ago, and nothing in it still burns.)
 
             DressFromDecoLibrary(p.Node, inst);
@@ -163,16 +168,18 @@ public partial class PoiLayer
         node.AddChild(p.Low);
         p.LowMesh = null;
         AddLights(node, inst);
-        foreach (Node n in node.GetChildren())
-            if (n is OmniLight3D l)
-            {
-                l.DistanceFadeEnabled = true;
-                l.DistanceFadeBegin = 500f;
-                l.DistanceFadeLength = 120f;
-            }
+        HandOff(node);
+        Far?.Add(p.Site, inst);
         AddSmoke(node, inst);
         DressFromDecoLibrary(node, inst);
         return node;
+    }
+
+    /// <summary>A far drawing's real lights fade out where its far points take over (FarLights: the one hand-off).</summary>
+    static void HandOff(Node3D node)
+    {
+        foreach (Node n in node.GetChildren())
+            if (n is Light3D l) FarLights.HandOff(l);
     }
 
     float Away(Place p, Vector3 camera)
@@ -231,6 +238,7 @@ public partial class PoiLayer
             }
             p.Node = BuildLow(p);
             AddChild(p.Node);
+            Fx.PopLog.Note("place", "appears", Away(p, camera), p.Size, 1f, Top(p.Site, camera));
             built = true;
             break;
         }

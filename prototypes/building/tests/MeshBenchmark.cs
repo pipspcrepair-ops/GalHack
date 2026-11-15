@@ -128,7 +128,7 @@ public static class MeshBenchmark
         var rng = new Random(1977);
         BlockType[] armour = { cat.Type("steel"), cat.Type("hardened"), cat.Type("combat") };
         BlockType glass = cat.Type("glass");
-        BlockType[] parts = { cat.Type("thruster"), cat.Type("generator"), cat.Type("container"), cat.Type("fuel-tank-t1") };
+        BlockType[] parts = { cat.Type("thruster"), cat.Type("generator"), cat.Type("container"), cat.Type("container-t4") };
         ushort[] paints =
         {
             0,

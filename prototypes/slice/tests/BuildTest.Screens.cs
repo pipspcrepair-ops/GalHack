@@ -82,7 +82,7 @@ public partial class BuildTest
     IEnumerable<int> ScreenClearChecks()
     {
         GD.Print("-- machine screens: nothing of the machine in front of the glass --");
-        Catalogue cat = _base.Structure.Catalogue;
+        Catalogue cat = _game.Zone.Data.Catalogue;
         BlockType armour = cat.Types.First(t => t != null && t.IsArmor);
         var kinds = cat.Types.Where(t => t != null && !t.IsArmor && (t.Function == "core" || Items.Machines.ForBlock(t.Id)?.Kind == MachineKind.Constructor)).ToList();
         int cast = 0, before = 0, after = 0, cases = 0, fronts = 0;

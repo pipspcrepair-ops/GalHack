@@ -68,7 +68,7 @@ public static class Attacks
     }
 
     /// <summary>Whether this attack is a shot: it carries a gun that reaches, and the target isn't already within its blow.</summary>
-    static bool Shooting(Creature c, ITarget t) => t != null && Arming.ShootReach(c, t) > 0f && WildSim.Flat(t.Position - c.Position).Length() > Range(c) + 0.3f;
+    public static bool Shooting(Creature c, ITarget t) => t != null && Arming.ShootReach(c, t) > 0f && WildSim.Flat(t.Position - c.Position).Length() > Range(c) + 0.3f;
 
     /// <summary>How far a lunge's pose throws its head forward, on top of its jaws at rest.</summary>
     public static float Stretch(Creature c) => c.Species.Rig == RigKind.Legged ? c.Species.Body.Size * 0.3f : c.Species.Body.Size * 0.08f;

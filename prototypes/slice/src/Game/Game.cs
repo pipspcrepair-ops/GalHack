@@ -56,6 +56,12 @@ public partial class Game : Node3D
     /// </summary>
     public double CraftTimeScale = 1;
 
+    /// <summary>
+    /// TEST SHORTCUT: generators run without burning fuel, as in Creative. False in play; a test of flight or handling,
+    /// not of fuel, sets it (marked where it does) for the ships it builds without storage for fuel.
+    /// </summary>
+    public bool FreePower;
+
     public readonly Controls Controls = new();
 
     public SurfaceZone Zone { get; private set; }
@@ -227,13 +233,14 @@ public partial class Game : Node3D
         Wildlife.Weapons.GameDraws = _ => true; // people hold the player's own weapon models (Slice.Arms), not the body's
         Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
-        AddChild(new GcPacer { Name = "GC pacer" });
+        AddChild(new GcPacer { Name = "GC pacer", Room = () => Pacer.Room });
         Zone.WorldRules.Mode = _mode;
         // Placed every frame from interpolated transforms, so it is not interpolated itself.
         Camera = new Camera3D { Name = "Camera", Fov = 75f, Near = 0.05f, Far = 12000f, Current = true, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
         Zone.AddChild(Camera);
         Zone.Camera = Camera;
         Zone.Focus = Focus;
+        Pacer.Deferred = () => Zone.IsBuilt ? Zone.Streamer.LastFrameMs : 0;
         Zone.Built += OnPlanetBuilt;
         StartZones();
         AddChild(new AfterStep { Name = "AfterStep", Game = this });
@@ -324,7 +331,7 @@ public partial class Game : Node3D
         Survivor.Bikes = Bikes;
         Tool.Said += Say;
         Tool.Overflowed += left => SetDown(left, Survivor.WorldFeet);
-        Tool.CreatureHit += c => Visor.Hit();
+        Tool.CreatureHit += c => Arms?.Confirm(c.Dead);
         Tool.CreatureStruck += OnCreatureStruck;
         Builder = new BuildTool(Zone, Survivor, Pack, Progress);
         Builder.Said += Say;
@@ -346,7 +353,7 @@ public partial class Game : Node3D
         Zone.Wildlife.Died += OnCreatureDied;
         SetUpBodies();
         Zone.Weather.Observer = () => Survivor.WorldFeet;
-        Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
+        if (Zone.Weather.Bridge != null) Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
         Zone.Weather.Shelter = Sheltered;
         Suit.UnderCover = UnderCover;
         Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
@@ -647,6 +654,7 @@ public partial class Game : Node3D
             _stick = Vector2.Zero;
             return;
         }
+        StepBar(vessel, c);
         if (vessel.Flight == null) return;
         var move = new Vector3(c.Axis(Key.D, Key.A), c.Axis(Key.Space, Key.Ctrl), c.Axis(Key.S, Key.W));
         var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E));
@@ -654,6 +662,7 @@ public partial class Game : Node3D
         if (vessel.Roles.Pilot != Vessel.Player) return;
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
+        if (c.WasPressed(Key.I)) vessel.Flight.ToggleAssist();
     }
 
     void ToggleTorch()
@@ -743,6 +752,7 @@ public partial class Game : Node3D
         TickPings();
         if (!hands || !(building || deconstruct || plating)) Builder.Hide();
         if (!hands || hand != HandKind.Weapon) Arms.Idle(dt);
+        FireBar(dt);
         TickMachines(dt);
         CheckDeath();
         Stats.Tick(this, dt);
@@ -775,7 +785,10 @@ public partial class Game : Node3D
     /// <summary>A weapon's hit on a creature: the same smack and blood as the tool's.</summary>
     public void CreatureStruck(Creature c, Vector3 point, Vector3 dir) => OnCreatureStruck(c, point, dir);
 
-    /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
+    /// <summary>The fewest seconds between a struck thing's cries (a shot's pellets cry once).</summary>
+    public const float CryEvery = 0.35f;
+
+    /// <summary>A hit lands on a creature: a wet smack where it landed, its cry, its blood, and a critter of a swarm gone with a pop.</summary>
     void OnCreatureStruck(Creature c, Vector3 point, Vector3 dir)
     {
         Species s = c.Species;
@@ -784,6 +797,12 @@ public partial class Game : Node3D
         c.Struck(point - origin, dir); // the struck part snaps away from where it landed
         float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, s.Body.Size)), 0.6f, 1.6f);
         Zone.Wildlife.Sound(origin, a => a.Play(swarm ? "pop" : "hit", c.Position + Vector3.Up * 0.5f, pitch, -2f));
+        float now = Time.GetTicksMsec() / 1000f;
+        if (now - c.CriedAt > CryEvery)
+        {
+            c.CriedAt = now;
+            Zone.Wildlife.Sound(origin, a => a.Cry(s, c.Position + Vector3.Up * s.BodyHeight * 0.8f));
+        }
         if (swarm) Zone.Blood.Pop(point, s.Blood, 8);
         else Zone.Blood.Hit(point, dir, s.Blood, s.Body.Size);
     }
@@ -906,9 +925,11 @@ public partial class Game : Node3D
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.
+        if (Zone.IsBuilt) Zone.Streamer.UploadBudgetMs = Pacer.Room; // what the frame's pace leaves room for
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         LoadAhead(delta);
+        Survivor.ViewLead = ViewLead();
         PoseFigure(delta);
         // Seen from outside, the whole figure; in first person only seated (its lap under the view), and never the head the eye is in.
         bool outside = ThirdPerson || FixedCamera != null;

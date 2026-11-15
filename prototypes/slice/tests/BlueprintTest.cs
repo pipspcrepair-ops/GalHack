@@ -25,11 +25,11 @@ namespace Slice.Tests;
 /// every file: it is what the set writes now (--write rewrites them); it loads, everything joined to the core; rooms and
 /// corridors a person walks are 3 m clear and 2 m wide; doors stand upright across their doorways, set in a wall, with a
 /// floor on both sides, people doors 1x2 or 2x2; a chair or cockpit is reachable on foot from the ground outside (on the
-/// structure's walk grid: half-metre steps and stairs, 1.8 m of headroom); power covers full load with fuel for an hour;
+/// structure's walk grid: half-metre steps and stairs, 1.8 m of headroom); power covers full load, its storage room for an hour's fuel;
 /// a craft lifts 1.3 times its weight on its thrusters or plates, pushes and brakes, turns, every exhaust is clear and
 /// its lift is balanced round its centre of mass. Then on a fresh random world, each one set down whole by Creative's
-/// PLACE: the sleeper sits in its chair (drawn, the camera at the chair's eye), and a craft takes off, hovers, flies,
-/// brakes and lands under the game's own keys (a hover craft runs and stops).
+/// PLACE: the sleeper sits in its chair (drawn, the camera at the chair's eye), and a craft, unpowered until fuel goes in its
+/// storage, takes off, hovers, flies, brakes and lands under the game's own keys on that fuel (a hover craft runs and stops).
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/BlueprintTest.tscn [-Extra --write | --pure]
 /// </summary>
@@ -43,6 +43,9 @@ public partial class BlueprintTest : Node
 
     /// <summary>The cheapest flyer's ceiling, ore (owner: every world is guaranteed the ores for it).</summary>
     const int StarterOre = 600;
+
+    /// <summary>Generator fuel each craft flies on, in its storage: energy cells.</summary>
+    const int FuelCells = 40;
 
     /// <summary>Whatever happens the run ends: a watchdog that exits the process after twenty minutes.</summary>
     static System.Threading.Timer _watchdog;
@@ -161,10 +164,11 @@ public partial class BlueprintTest : Node
         Check(chairs.Count > 0 && chairs.All(c => walk.SeatReached(c.pos, c.block)),
             $"{name}: {chairs.Count} chair(s) ({string.Join(", ", chairs.Select(c => s.TypeOf(c.block).Id).Distinct())}), each reached on foot from the ground outside");
 
-        // Power and fuel.
-        double hours = st.PowerUse > 0 ? st.Fuel / (1000 * st.PowerUse) : double.PositiveInfinity;
-        Check(st.Powered && st.PowerOut >= 1.2 * st.PowerUse && hours >= 1,
-            $"{name}: {st.PowerOut:F2} MW out against {st.PowerUse:F2} MW at full load, fuel for {hours:F1} h of it");
+        // Power, and room in its storage for fuel (there are no fuel tanks): an hour of full load in the early energy cells.
+        ItemDef cell = data.Items.Item("energy-cell");
+        double hourSu = st.PowerUse * 3600 / (data.Power.FuelUnitMJ * cell.FuelUnits) * cell.VolumeSu;
+        Check(st.Powered && st.PowerOut >= 1.2 * st.PowerUse && st.StorageCapacity >= hourSu,
+            $"{name}: {st.PowerOut:F2} MW out against {st.PowerUse:F2} MW at full load; {st.StorageCapacity:0} SU of storage, an hour of that in energy cells takes {hourSu:0}");
         if (!craft)
         {
             var machines = BuildingBridge.MachinesOn(data.Items, s).Select(m => m.Machine.Name).ToList();
@@ -264,13 +268,25 @@ public partial class BlueprintTest : Node
         Check(sat && _game.Figure.Visible && cam.GetCullMaskValue(CharacterModel.BodyLayer) && eyeOff < 0.03f,
             $"{name}: seated in its chair, the figure drawn, the camera at the chair's eye ({eyeOff * 100f:F1} cm off)");
 
+        // Flown as in Survival, on fuel in its storage: its generator burns it to keep the capacitor charged.
+        _game.Mode = GameMode.Survival;
+        v.Power.ChargeMJ = 0; // STAGING: PLACE set it down on Creative's free power; built, its capacitor starts empty
+        foreach (int x in _drive.Wait(2)) yield return x;
+        bool craft = plan.Mode != CoreMode.Base;
+        Check(!v.Powered, $"{name}: with nothing in its storage it has no power ({v.Power.ChargeMJ:F1} MJ)");
+        int fuel = v.Storage.Add("energy-cell", FuelCells);
+        foreach (int x in _drive.Wait(5)) yield return x;
+        Check(fuel == FuelCells && v.Powered && v.Power.ChargeMJ > 0, $"{name}: {fuel} energy cells in its storage, its generator charges the capacitor ({v.Power.ChargeMJ:F1} of {v.Power.CapacityMJ:F0} MJ)");
+        double fuelled = v.Power.FuelUnits;
         if (plan.Mode == CoreMode.Flight) foreach (int x in Fly(v)) yield return x;
         else if (plan.Mode == CoreMode.Hover) foreach (int x in Drive(v)) yield return x;
+        if (craft) Check(v.Power.FuelUnits < fuelled, $"{name}: the trip burned fuel from its storage ({fuelled:F1} fuel units to {v.Power.FuelUnits:F1}, {v.Storage.Count("energy-cell")} cells left)");
+        _game.Mode = GameMode.Creative;
 
         _game.Survivor.StandUp();
         foreach (int x in _drive.Wait(5)) yield return x;
         _game.Survivor.PlaceOutside((v.Body.Position + N.Vector3.UnitY * 30f).ToGodot().ToNumerics());
-        Playthrough.TakeAway(_game.Zone, v);
+        _game.Zone.Remove(v);
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 

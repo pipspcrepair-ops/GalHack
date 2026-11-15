@@ -86,6 +86,8 @@ public sealed class Creature
     // it may next bring its maggots up, who it is after; and how stirred its worms are (0..1).
     public ITarget Holding;
     public float HeldFor, VomitAt, MurmurAt, Stir;
+    /// <summary>When it last cried out at being struck (the game's clock, s).</summary>
+    public float CriedAt = -9f;
     public bool Seizing;
     public ITarget Quarry;
     /// <summary>The Husk holding this one face to face, if any: it can do nothing else.</summary>
@@ -173,6 +175,8 @@ public sealed class Creature
     public bool Backing;
     /// <summary>A person in a fight: when it next looks for cover (its <see cref="Goal"/> while it has some).</summary>
     public float CoverIn;
+    /// <summary>When a run to cover is given up if it hasn't got there (a spot it can't reach): then it fights from where it is.</summary>
+    public float CoverUntil;
     /// <summary>The band's last event this one has taken in (someone seen, a fright), and the last gesture of yours it answered.</summary>
     public int PartySeen, Answered;
 

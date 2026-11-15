@@ -8,7 +8,7 @@ namespace Slice.Ui;
 /// <summary>
 /// The visor's layout (design: Visor HUD layout), worked out in one place so nothing overlaps at any resolution or UI
 /// scale. Bottom left, the sleeper's gauges with their icon row above them and the hazards' row above that; bottom
-/// right, seated, the structure's gauges and icon row, mirroring them; the upper left, the surroundings. Bottom middle,
+/// right, seated, the structure's gauges and icon row, mirroring them; the upper left, the temperature. Bottom middle,
 /// from the bottom up: the toolbar with its name at its left, the selected item's line, the key hints, the shape strip
 /// with a block family in hand. The suit's lines sit above it all at the left; the jetpack's gauge stands alone at the
 /// right edge, a little above the middle.
@@ -25,7 +25,7 @@ public readonly record struct HudLayout(float Scale, Rect2 Sleeper, Rect2 Sleepe
     public const int SleeperRows = 5, StructureRows = 4;
     /// <summary>An icon in a panel's row above it, and the gap between icons.</summary>
     public const float IconCell = 34, IconGap = 6;
-    /// <summary>The surroundings' readouts at the upper left: the box's width and each row's height.</summary>
+    /// <summary>The surroundings' readout at the upper left (the temperature): the box's width and height.</summary>
     public const float SurroundW = 190, SurroundRowH = 28;
     /// <summary>The compass: its strip's width and the strip's top; in COMPASS markers mode, how many rows of labels it may grow below its strip.</summary>
     public const float CompassW = 640, CompassTop = 34;
@@ -106,7 +106,7 @@ public readonly record struct HudLayout(float Scale, Rect2 Sleeper, Rect2 Sleepe
         var menuAlerts = new Rect2(Edge * s, size.Y - (MenuAlertsFoot + Cell + AlertTimerH) * s, AlertRow * s, (Cell + AlertTimerH) * s);
         float linesH = LinesShown * 26 * s;
         var jet = new Rect2(size.X - (Edge + JetW) * s, size.Y * 0.45f - JetH * s / 2f, JetW * s, JetH * s);
-        var surroundings = new Rect2(Edge * s, 14 * s, SurroundW * s, 2 * SurroundRowH * s);
+        var surroundings = new Rect2(Edge * s, 14 * s, SurroundW * s, SurroundRowH * s);
         // The compass strip, its N/E/S/W letters (40 wide at a strip's end) and the heading under it.
         float compassW = CompassW + (compassLabels ? 220 : 40);
         var compass = new Rect2(cx - compassW * s / 2f, 14 * s, compassW * s, (CompassTop + 44 + (compassLabels ? CompassRows * 16 : 0) - 14) * s);

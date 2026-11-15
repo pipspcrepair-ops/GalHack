@@ -156,7 +156,10 @@ public partial class TerrainStreamer : Node3D
     readonly PriorityQueue<Int3, int> _queue = new();
     readonly List<(int dx, int dz)> _ring = new();
     int _heightsInFlight, _voxelInFlight, _shiftX, _shiftZ;
-    readonly int _maxInFlight = Math.Clamp(System.Environment.ProcessorCount / 2 - 1, 2, 6);
+    readonly int _maxInFlight = Math.Clamp(Cores - 1, 2, 6);
+
+    /// <summary>The processor's threads the workers are sized for (a check standing in for a smaller machine sets it before the world is built).</summary>
+    public static int Cores = System.Environment.ProcessorCount;
     int _completeRadius = -1;
 
     // ---- Far state ----
@@ -246,16 +249,29 @@ public partial class TerrainStreamer : Node3D
     /// <summary>Starts streaming a planet (dropping everything of the previous one).</summary>
     public void SetWorld(PlanetWorld world, Vector3 focus, Material water)
     {
+        foreach (string _ in Setting(world, focus, water)) { }
+    }
+
+    /// <summary>
+    /// <see cref="SetWorld"/> a piece at a time, each piece's name as it is done, for a world set up while another is
+    /// played (a moon arriving as you near it): the streamer must not run until it has all been done.
+    /// </summary>
+    public IEnumerable<string> Setting(PlanetWorld world, Vector3 focus, Material water)
+    {
         Clear();
         World = world;
         Focus = focus;
         _felledSnapshot = new HashSet<long>(world.Felled); // trees felled here before stay felled
         _waterMaterial = water;
         _roads = RoadField.Build(world.Source, world.Width, world.Height);
+        yield return "roads";
         _grounds = GroundField.Build(world.Source.Grounds, world.Width, world.Height);
         if (_grounds.Crowded > 0) GD.Print($"made ground: {_grounds.PatchCount} patches, {_grounds.Crowded} cells over {GroundField.MostPerCell}");
+        yield return "made ground";
         VoxelMaterial = TerrainMaterial(far: false);
+        yield return "near ground material";
         FarMaterial = TerrainMaterial(far: true);
+        yield return "far ground material";
         _horizonMaterial = TerrainMaterial(far: true);
         // Inside the square the far rings cover, the horizon's vertices a whole grid step or more in
         // drop far below any ground, so its triangles across the square's edge become walls diving
@@ -276,9 +292,12 @@ public partial class TerrainStreamer : Node3D
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink"), HorizonSink);
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink_from"), 0.25f);
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_cut"), FarHoleCut);
+        yield return "horizon material";
         SetClip();
+        yield return "ground rings";
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
         BuildPlantMeshes();
+        yield return "plants";
     }
 
     /// <summary>The roads the terrain shader paints, for the planet being streamed.</summary>

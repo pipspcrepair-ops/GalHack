@@ -121,7 +121,8 @@ public static class HandlingModel
     }
 
     /// <param name="carried">Tonnes parked on it (other craft riding it): its thrust has to move them too.</param>
-    public static HandlingStats Compute(IVesselStructure s, FlightConditions where, Tunables t, float carried = 0f)
+    /// <param name="power">The share of their power its devices get (1: all they ask for): thrusters, gyros and hover plates give that share of what they can.</param>
+    public static HandlingStats Compute(IVesselStructure s, FlightConditions where, Tunables t, float carried = 0f, float power = 1f)
     {
         float mass = Mass(s) + carried;
 
@@ -130,16 +131,16 @@ public static class HandlingModel
         var thrust = new float[6];
         foreach (var thruster in s.Thrusters)
             for (int d = 0; d < 6; d++)
-                thrust[d] += thruster.Thrust * Mathf.Max(0f, thruster.Facing.Normalized().Dot(Directions[d]));
+                thrust[d] += power * thruster.Thrust * Mathf.Max(0f, thruster.Facing.Normalized().Dot(Directions[d]));
 
         float torque = 0f;
-        foreach (var gyro in s.Gyros) torque += gyro.Torque;
+        foreach (var gyro in s.Gyros) torque += power * gyro.Torque;
         float rawTurn = mass > 0f ? torque / mass : 0f;
 
         float hoverLift = 0f, ride = 0f;
         foreach (var engine in s.HoverEngines)
         {
-            hoverLift += engine.Lift;
+            hoverLift += power * engine.Lift;
             ride += engine.RideHeight;
         }
         if (s.HoverEngines.Count > 0) ride /= s.HoverEngines.Count;
@@ -154,7 +155,7 @@ public static class HandlingModel
             Thrust = thrust,
             GyroTorque = torque,
             RawTurnRate = rawTurn,
-            TurnRate = Mathf.Max(Mathf.Min(rawTurn, band.MaxTurn), t.Turning.Floor),
+            TurnRate = Mathf.Max(Mathf.Min(rawTurn, band.MaxTurn), t.Turning.Floor * power),
             RollFactor = t.Turning.RollFactor,
             TopSpeedAir = speeds.TopSpeedAir,
             TopSpeedSpace = speeds.TopSpeedSpace,

@@ -38,6 +38,7 @@ public partial class ItemsTest : TestBase
         Run("Names are GalHack's own", TestNames);
         Run("Breaking down never makes material", TestDeconstructionValue);
         Run("The constructor ladder builds itself", TestLadder);
+        Run("Generator fuel: a tier ladder, the early fuel the least efficient", TestFuels);
         Run("Starter small vessel: price and time", TestStarterVessel);
         Run("Ore deposit shapes", TestDeposits);
         Run("Deposit placement rules", TestDepositRules);
@@ -139,13 +140,14 @@ public partial class ItemsTest : TestBase
         // The fabricator tiers make the right blocks.
         Constructor Make(string tier) => new(_items, _items.Machines.Get(tier), SharedStorage.Unbounded(_items, "t"), new WorldRules());
         Constructor survival = Make("survival"), smallFab = Make("small"), large = Make("large");
-        foreach (string id in new[] { "base-block", "iron-plated", "glass-plated", "concrete-plated", "container-t1", "generator-t1", "fuel-tank-t1", "fabricator-t1", "light", "ladder", "core" })
+        foreach (string id in new[] { "base-block", "iron-plated", "glass-plated", "concrete-plated", "container-t1", "generator-t1", "fabricator-t1", "light", "ladder", "core" })
             Check(survival.Knows(_items.BlockItem(id)), $"the survival constructor makes {_items.BlockItem(id).Name}");
         foreach (string id in new[] { "thruster-t1", "command-chair", "gyro-t1", "pad-t1", "hover-t1" })
             Check(!survival.Knows(_items.BlockItem(id)) && smallFab.Knows(_items.BlockItem(id)), $"{_items.BlockItem(id).Name} needs Fabricator T1");
         foreach (string id in new[] { "hardened-plated", "combat-plated", "thruster-t3" })
             Check(!smallFab.Knows(_items.BlockItem(id)) && large.Knows(_items.BlockItem(id)), $"{_items.BlockItem(id).Name} needs Fabricator T2");
-        Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Rarity == Rarity.Common), "warp cells are made in constructors from common materials");
+        Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Id == "pentaxite") && _items.Item("pentaxite").IsGathered && _items.Current("warp-fuel-ore") == "pentaxite",
+            "warp cells are refined from pentaxite, a mined ore (the old warp fuel ore reads as it), never made from common materials");
         Check(_items.Item("fold-crystal").Uses.Contains("Hyperdrive") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is hyperdrive fuel and still feeds shields");
     }
 
@@ -298,7 +300,32 @@ public partial class ItemsTest : TestBase
         // The foothold base needs nothing the carried survival constructor can't make.
         Bill foothold = _items.Blocks.Total(_items.Machines.Reference.Foothold);
         Expansion e = _items.Graph.Expand(foothold);
-        Check(e.MaxTier == 0, $"the foothold base (core, power, fuel, small constructor, storage, floor) is built from survival-constructor recipes (needs tier {e.MaxTier})");
+        Check(e.MaxTier == 0, $"the foothold base (core, power, small constructor, storage for its fuel, floor) is built from survival-constructor recipes (needs tier {e.MaxTier})");
+    }
+
+    // ---- Generator fuel ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Empyrion's ladder (ItemsConfig: bio fuel 10, small energy cell 15, energy cell 30, large 150, fusion 300): every item
+    /// with fuel units is generator fuel, and up the tech tree each holds more per item and per storage unit than the one
+    /// before. Each is made at its tier's constructor, biofuel from plant matter; the fold crystal is no generator fuel.
+    /// </summary>
+    void TestFuels()
+    {
+        var fuels = _items.Items.Where(i => i.FuelUnits > 0).OrderBy(i => i.Unlock?.Level ?? 0).ThenBy(i => i.FuelUnits).ToList();
+        foreach (ItemDef f in fuels)
+            Note($"{f.Name,-22} {f.FuelUnits,4} units  {f.VolumeSu,4:0.##} SU  {f.FuelUnits / f.VolumeSu,6:0.#} a SU  level {f.Unlock?.Level}  {_items.Machines.TierName(f.Recipe?.Tier ?? -1)} constructor, from {_items.Describe(f.Recipe?.InputsFor(1))}");
+        Check(fuels.Select(f => f.Id).SequenceEqual(new[] { "biofuel", "energy-cell", "fuel-pack", "large-fuel-pack", "fusion-cell" })
+              && fuels.Select(f => f.FuelUnits).SequenceEqual(new[] { 10, 15, 30, 150, 300 }),
+            $"five generator fuels on Empyrion's values: {string.Join(", ", fuels.Select(f => $"{f.Id} {f.FuelUnits}"))}");
+        bool climbs = fuels.Zip(fuels.Skip(1), (a, b) => b.FuelUnits > a.FuelUnits && b.FuelUnits / b.VolumeSu > a.FuelUnits / a.VolumeSu).All(x => x);
+        Check(climbs, "each fuel up the tree holds more units per item and per storage unit than the one before");
+        Check(fuels.All(f => f.Recipe != null && f.Unlock != null) && fuels.Zip(fuels.Skip(1), (a, b) => b.Recipe.Tier >= a.Recipe.Tier && b.Unlock.Level >= a.Unlock.Level).All(x => x),
+            "each is crafted, at a constructor tier and a level no lower than the fuel before it");
+        ItemDef bio = _items.Item("biofuel");
+        Check(bio.Recipe.Tier == 0 && bio.Unlock.Level == 1 && bio.Recipe.Inputs.All(i => i.Item.Source == ItemSource.Harvested),
+            "biofuel, the first, comes from plant matter at the survival constructor from level 1");
+        Check(_items.Item("fold-crystal").FuelUnits == 0 && _items.Item("warp-cell").FuelUnits == 0, "the jump fuels are not generator fuel");
     }
 
     // ---- The starter small vessel ---------------------------------------------------------

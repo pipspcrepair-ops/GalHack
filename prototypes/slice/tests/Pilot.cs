@@ -47,8 +47,8 @@ public sealed class Pilot
 
     /// <summary>
     /// SETUP SHORTCUT (printed): the Skiff's parts handed over and the tech tree opened; then its
-    /// blueprint set down on flat ground near the start and built block by block, by hand. Null if
-    /// the projector set nothing down.
+    /// blueprint set down on flat ground near the start and built block by block, by hand, and fuel
+    /// put in its storage. Null if the projector set nothing down.
     /// </summary>
     public IEnumerable<int> BuildSkiff(Action<Vessel> built)
     {
@@ -98,6 +98,7 @@ public sealed class Pilot
         }
         C.Primary = false;
         foreach (int x in _drive.Wait(5)) yield return x;
+        Playthrough.Fuel(skiff);
         built(skiff);
     }
 
@@ -181,10 +182,12 @@ public sealed class Pilot
         {
             float agl = v.AboveGround, vy = v.Body.Velocity.Y;
             float wanted = agl > 260f ? -50f : agl > 70f ? -16f : agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
-            bool onGear = agl < 3f && (MathF.Abs(vy) < 0.4f || v.Controller.Gear?.Attached == true); // hands off, and it settles
+            // Hands off once it stands on its gear (or rests just over the ground), and it settles: how high its middle
+            // stands then goes by the gear and the ground under it, so a height alone can leave a pilot nudging it down for ever.
+            bool onGear = v.Controller.Gear?.Attached == true || agl < 3f && MathF.Abs(vy) < 0.4f;
             C.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
             C.Hold(Key.Space, !onGear && vy < wanted - 0.5f);
-            if (over is Vector3 p) Creep(v, p, agl > 3f);
+            if (over is Vector3 p) Creep(v, p, agl > 3f && !onGear);
             yield return 0;
         }
         C.ReleaseAll();

@@ -452,7 +452,7 @@ public static class Fixtures
             g.Set(slot.Cell, new Block(BlockType.Cache, Material.Alloy, color, Role.Loot, Dir.North, (byte)(vault || slot.Secret ? 1 : 0)));
             inst.Caches.Add(new LootCache { Cell = slot.Cell, Module = slot.Module, InVault = vault, Secret = slot.Secret });
         }
-        if (!inst.Caches.Any(c => c.InVault))
+        if (!inst.Caches.Any(c => c.InVault) && !Fences.Only(g))
         {
             Int3 c = FreeCell(inst, layout.VaultModule, rng);
             g.Set(c, new Block(BlockType.Cache, Material.Alloy, CacheGold, Role.Loot, Dir.North, 1));
