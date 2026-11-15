@@ -31,7 +31,8 @@ public partial class PopRoute
         _frameSplit.Systems = _systemSplit;
         _frameSplit.Doing = Doing;
         _frameSplit.Reset();
-        if (_args.ContainsKey("allocs")) (_allocTypes ??= new AllocCensus { On = true, MainOnly = true }).Take();
+        // --allocs=1: the main thread's allocations by type; --allocs=all: every thread's (the main thread's marked).
+        if (_args.TryGetValue("allocs", out string allocs)) (_allocTypes ??= new AllocCensus { On = true, MainOnly = allocs != "all" }).Take();
         _systemSplit.Reset();
         var zone = _game.Zone;
         _sections0 = (double[])zone.Streamer.SectionTotals.Clone();
@@ -139,7 +140,7 @@ public partial class PopRoute
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"SPLIT {name} the patch's creatures, ms a frame: sim {(w.StepMs - _stepMs0) / frames:F2} (brains {(w.Sim.ThinkMs - _think0) / frames:F2}, moving {(w.Sim.MoveMs - _move0) / frames:F2}, rigs {(w.Sim.RigMs - _rig0) / frames:F2}), bodies {(w.ViewMs - _viewMs0) / frames:F2}"));
         GD.Print($"SPLIT {name} by system (cpu ms a frame): {_systemSplit.Report(18)}");
         GD.Print($"SPLIT {name} drawn at the end: {DrawnCensus()}");
-        if (_allocTypes != null) GD.Print($"SPLIT {name} the main thread allocated, by type: {_allocTypes.Take(16)}");
+        if (_allocTypes != null) GD.Print($"SPLIT {name} {(_allocTypes.MainOnly ? "the main thread" : "every thread")} allocated, by type: {_allocTypes.Take(24)}");
         GD.Print(string.Create(CultureInfo.InvariantCulture,
             $"SPLIT {name} live (means): creatures in the patch {_creatures / n:F0}, stepped {_stepped / n:F0}, drawn {_creaturesDrawn / n:F0}; in {w.Sites.Count} places and caves {_siteCreatures / n:F0}, stepped {_siteStepped / n:F0}, drawn {_siteDrawn / n:F0}; " +
             $"people {_people / n:F0}, drawn {_peopleDrawn / n:F0}, their towns' ticks {_townMs / n:F2} ms; sight rays {(w.SightRays - _rays0) / t:F1} a tick, path searches {paths / t:F2} a tick; " +

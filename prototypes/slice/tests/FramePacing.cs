@@ -27,6 +27,7 @@ public partial class FramePacing : Node
     ulong _tickWas;
     int _gc0, _gc1, _gc2;
     TimeSpan _paused0;
+    long _total0;
     Basis? _basisWas;
     readonly Stopwatch _clock = new();
 
@@ -49,6 +50,7 @@ public partial class FramePacing : Node
         _basisWas = null;
         (_gc0, _gc1, _gc2) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
         _paused0 = GC.GetTotalPauseDuration();
+        _total0 = GC.GetTotalAllocatedBytes(false);
         _clock.Restart();
         On = true;
     }
@@ -79,13 +81,13 @@ public partial class FramePacing : Node
     /// <summary>What was measured since <see cref="Start"/>, worked out.</summary>
     public sealed record Result(int Frames, double Fps, double Refresh, double MeanMs, double SdMs, double OffRefresh, double OffPace, double OffRefreshes,
         double P99, double Over, string Vblanks, string Ticks, double MoveSd, double MoveOff, double TurnSd, double TurnOff, double MoveOffGame, double TurnOffGame,
-        double Gc0PerS, double Gc1PerS, double Gc2PerS, double GcMsPerS, double KbPerFrame)
+        double Gc0PerS, double Gc1PerS, double Gc2PerS, double GcMsPerS, double KbPerFrame, double MbPerS)
     {
         public override string ToString() => string.Create(CultureInfo.InvariantCulture,
             $"{Frames} frames, {Fps:F1} fps against {1000 / Refresh:F1} Hz: interval mean {MeanMs:F2} ms, sd {SdMs:F2} ms, p99 {P99:F1} ms, " +
             $"over 16.7 ms {Over:F1}/min; more than 2 ms off the refresh interval {OffRefresh:F1}%, off the rate reached {OffPace:F1}%; " +
             $"refreshes a frame {Vblanks} (off the most common {OffRefreshes:F1}%); ticks a frame {Ticks}; camera step against its pace sd {MoveSd:F3}, over 25% off {MoveOff:F1}% ({MoveOffGame:F1}% by the engine's delta); " +
-            $"turn sd {TurnSd:F3}, over 25% off {TurnOff:F1}% ({TurnOffGame:F1}% by the engine's delta); gc0 {Gc0PerS:F2}/s, gc1 {Gc1PerS:F2}/s, gc2 {Gc2PerS:F2}/s, paused {GcMsPerS:F1} ms/s; main thread {KbPerFrame:F0} KB a frame");
+            $"turn sd {TurnSd:F3}, over 25% off {TurnOff:F1}% ({TurnOffGame:F1}% by the engine's delta); gc0 {Gc0PerS:F2}/s, gc1 {Gc1PerS:F2}/s, gc2 {Gc2PerS:F2}/s, paused {GcMsPerS:F1} ms/s; main thread {KbPerFrame:F0} KB a frame, every thread {MbPerS:F1} MB/s");
     }
 
     public Result Stop()
@@ -134,7 +136,7 @@ public partial class FramePacing : Node
             _dt.Count(d => Math.Abs(d - pace) > 2) * 100.0 / n, offRefreshes, sorted[Math.Min(n - 1, (int)(n * 0.99))], _dt.Count(d => d > 16.7) / (seconds / 60),
             Hist(refreshes), Hist(_ticks), moveSd, moveOff, turnSd, turnOff, moveOffGame, turnOffGame,
             (GC.CollectionCount(0) - _gc0) / seconds, (GC.CollectionCount(1) - _gc1) / seconds, (GC.CollectionCount(2) - _gc2) / seconds, (GC.GetTotalPauseDuration() - _paused0).TotalMilliseconds / seconds,
-            _alloc.Average() / 1024.0);
+            _alloc.Average() / 1024.0, (GC.GetTotalAllocatedBytes(false) - _total0) / 1048576.0 / seconds);
     }
 
     /// <summary>Every frame's numbers (interval ms, ticks, camera step m, turn rad, KB), for a closer look.</summary>

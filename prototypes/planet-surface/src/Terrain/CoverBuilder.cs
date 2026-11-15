@@ -44,6 +44,9 @@ public static class CoverBuilder
 
     readonly record struct Spot(int Plant, float Roll, Transform3D Place, Rgb Tint);
 
+    /// <summary>Each worker's list of a cell's tufts, kept for its next cell.</summary>
+    [ThreadStatic] static List<Spot> _spots;
+
     /// <summary>How far a tuft's leaves lie out from its root, at the most, metres.</summary>
     public const float Reach = 0.55f;
 
@@ -56,7 +59,8 @@ public static class CoverBuilder
         double x0 = cx * (double)CellSize, z0 = cz * (double)CellSize;
         float region = flora.RegionAt(x0 + CellSize * 0.5, z0 + CellSize * 0.5);
         var rng = new Rng(Hash.Of(pal.Map.Spec.Seed, cx, cz, 0xC07E));
-        var spots = new List<Spot>(PerSide * PerSide / 2);
+        var spots = _spots ??= new List<Spot>(PerSide * PerSide / 2);
+        spots.Clear();
         for (int j = 0; j < PerSide; j++)
         for (int i = 0; i < PerSide; i++)
         {

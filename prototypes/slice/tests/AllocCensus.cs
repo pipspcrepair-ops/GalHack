@@ -34,8 +34,10 @@ public sealed class AllocCensus : EventListener
     {
         if (!On || e.EventName == null || !e.EventName.StartsWith("GCAllocationTick")) return;
         if (MainOnly && e.OSThreadId != Main) return;
-        int i = e.PayloadNames?.IndexOf("TypeName") ?? -1;
-        string type = (e.OSThreadId == Main ? "main " : "") + (i >= 0 ? e.Payload?[i] as string ?? "?" : "?");
+        int i = e.PayloadNames?.IndexOf("TypeName") ?? -1, k = e.PayloadNames?.IndexOf("AllocationKind") ?? -1;
+        // The large-object heap's (arrays of 85 KB and more) marked: they never fill the young generation.
+        bool large = k >= 0 && System.Convert.ToInt32(e.Payload?[k]) == 1;
+        string type = (e.OSThreadId == Main ? "main " : "") + (large ? "LOH " : "") + (i >= 0 ? e.Payload?[i] as string ?? "?" : "?");
         lock (_types)
         {
             _types[type] = _types.GetValueOrDefault(type) + 1;
@@ -43,12 +45,22 @@ public sealed class AllocCensus : EventListener
         }
     }
 
+    /// <summary>A compiler-made type (a closure, an iterator) named only by its own name: the types that declare one so named.</summary>
+    static string Owners(string key)
+    {
+        string name = key[(key.LastIndexOf(' ') + 1)..];
+        if (!name.StartsWith('<')) return "";
+        var owners = System.AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => { try { return a.GetTypes(); } catch { return System.Type.EmptyTypes; } })
+            .Where(t => t.Name == name && t.DeclaringType != null).Select(t => t.DeclaringType.FullName).Distinct().Take(6);
+        return $" (in {string.Join(" | ", owners)})";
+    }
+
     /// <summary>The types most allocated since the last report, with their share, and starts over.</summary>
     public string Take(int most = 12)
     {
         lock (_types)
         {
-            string s = _samples == 0 ? "(none)" : string.Join(", ", _types.OrderByDescending(kv => kv.Value).Take(most).Select(kv => $"{kv.Key} {kv.Value * 100.0 / _samples:F0}%"));
+            string s = _samples == 0 ? "(none)" : string.Join(", ", _types.OrderByDescending(kv => kv.Value).Take(most).Select(kv => $"{kv.Key}{Owners(kv.Key)} {kv.Value * 100.0 / _samples:F0}%"));
             _types.Clear();
             _samples = 0;
             return s;
