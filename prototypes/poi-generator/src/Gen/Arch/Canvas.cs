@@ -349,9 +349,12 @@ public sealed class Canvas
     {
         if (EntranceModule < 0) EntranceModule = 0;
         if (VaultModule < 0) VaultModule = Modules.Count - 1;
-        InnerDoors();
-        Lamps();
-        Ceilings();
+        using (Prof.Time("room finish"))
+        {
+            InnerDoors();
+            Lamps();
+            Ceilings();
+        }
 
         Int3 min = EntranceCell, max = EntranceCell;
         foreach (Int3 p in Blocks.Keys) { min = Int3.Min(min, p); max = Int3.Max(max, p); }
