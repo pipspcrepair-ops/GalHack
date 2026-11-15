@@ -971,7 +971,8 @@ public sealed partial class TileBuilder
     }
 
     /// <summary>Timber and composite the tile's own pieces are built of; the rest of the matte is concrete and stone.</summary>
-    static readonly HashSet<DecoRgb> Woods = new() { Timber, TimberDark, Sleeper, PoleWood }, Composites = new() { Composite, PoleComposite, Insulator, Conduit };
+    static readonly HashSet<DecoRgb> Woods = new() { InfraLayer.Timber, InfraLayer.TimberDark, InfraLayer.Sleeper, InfraLayer.PoleWood },
+        Composites = new() { InfraLayer.Composite, InfraLayer.PoleComposite, InfraLayer.Insulator, InfraLayer.Conduit };
 
     /// <summary>
     /// What a tile piece's opaque face is drawn as (<see cref="DecoFinishes.Code"/>): steel on metal, then by what it is built of,
