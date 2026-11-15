@@ -25,7 +25,7 @@ public sealed class Temper
     /// leans it on top (-1 to 1 each): <paramref name="lean"/> toward a fight (raiders) or away from
     /// one (a column with its children), <paramref name="caution"/> toward keeping you off.
     /// </summary>
-    public static Temper Roll(string tech, float collapse, ulong seed, float lean = 0f, float caution = 0f)
+    public static Temper Roll(string tech, float collapse, ulong seed, float lean = 0f, float caution = 0f, float escalate = 0f)
     {
         var rng = Rng.For(seed, "temper");
         float t = tech switch { "low" => 0f, "high" => 1f, _ => 0.5f };
@@ -34,7 +34,7 @@ public sealed class Temper
             Wariness = Math.Clamp(rng.Range(0.1f, 0.9f) + 0.3f * (0.5f - t) + 0.35f * collapse + 0.3f * caution, 0f, 1f),
             Openness = Math.Clamp(rng.Range(0.1f, 0.9f) - 0.25f * collapse - 0.2f * caution, 0f, 1f),
             Territorial = rng.Range(0f, 1f),
-            Escalation = Math.Clamp(rng.Range(0.1f, 0.9f) + 0.2f * collapse, 0f, 1f),
+            Escalation = Math.Clamp(rng.Range(0.1f, 0.9f) + 0.2f * collapse + escalate, 0f, 1f),
         };
         float fight = MathF.Max(lean, 0f), peace = MathF.Max(-lean, 0f);
         // The odds by tech and world, then the group's own roll among them.

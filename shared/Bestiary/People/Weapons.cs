@@ -70,6 +70,9 @@ public static class Weapons
     /// The weapon someone carries in place of a role's weapon: their world's era now, and now and
     /// then a relic of a higher era before the fall (0 low, 1 mid, 2 high).
     /// </summary>
+    /// <summary>What someone not a fighter carries about town: a blade or a club low, a pistol mid, an energy pistol or a pistol high.</summary>
+    public static string Sidearm(int now, Rng rng) => now <= 0 ? (rng.Chance(0.5f) ? "machete" : "club") : now == 1 ? "pistol" : rng.Chance(0.5f) ? "energy_pistol" : "pistol";
+
     public static string ForEra(int now, int before, Rng rng)
     {
         int era = now >= 1 && before > now && rng.Chance(0.05f) ? before : now; // (a low world keeps to its own: its old long gun is the musket)

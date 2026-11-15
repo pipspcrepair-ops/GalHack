@@ -28,6 +28,8 @@ public sealed class PeopleTables
     public Dictionary<string, float> Garments { get; set; } = new();
     /// <summary>Role to its look.</summary>
     public Dictionary<string, RoleLook> Roles { get; set; } = new();
+    /// <summary>The cuts a culture that dresses everyone alike (or each sex alike) picks from: over-garments that exist.</summary>
+    public string[] Cuts { get; set; } = { "robe", "poncho", "shawl", "coat" };
     /// <summary>Gone wild: what is left of their clothes.</summary>
     public RoleLook Feral { get; set; } = new();
 }
@@ -247,10 +249,6 @@ public sealed partial class PeopleGenerator
     public List<Locale> Regions = new();
 
     /// <summary>
-    /// One person, the same every time for a seed. <paramref name="mutation"/> is how hard this
-    /// world has twisted them, 0 to 1 (see <see cref="Mutation"/>).
-    /// </summary>
-    /// <summary>
     /// The founders of a place, from the world's seed and the place's: neighbouring places of
     /// one world lean the same way more than not, and a busier place has more outsiders.
     /// </summary>
@@ -306,9 +304,15 @@ public sealed partial class PeopleGenerator
         if (Armed.Prop != "") f.Prop = Armed.Prop;
     }
 
-    public Species Person(ulong seed, PersonRole role, Occupancy occupancy = Occupancy.Friendly, float mutation = 0f, bool husk = false, bool young = false, Founders founders = null)
+    /// <summary>
+    /// One person, the same every time for a seed. <paramref name="mutation"/> is how hard this world has
+    /// twisted them, 0 to 1 (see <see cref="Mutation"/>); <paramref name="culture"/> is their community's (a
+    /// town's own; the world's where none is given), which sets who does which job, what they wear and who is armed.
+    /// </summary>
+    public Species Person(ulong seed, PersonRole role, Occupancy occupancy = Occupancy.Friendly, float mutation = 0f, bool husk = false, bool young = false, Founders founders = null, Culture culture = null, Sex? sex = null)
     {
         var rng = Rng.For(seed, "person");
+        Culture cu = culture ?? _w.Culture ?? Culture.Default;
         var look = occupancy == Occupancy.Feral ? _t.Feral
             : _t.Roles.TryGetValue(role.ToString(), out RoleLook l) ? l : new RoleLook();
         // Their folk: the place's founders', or in a mixed place now and then the other folk there;
@@ -321,7 +325,11 @@ public sealed partial class PeopleGenerator
         // A place's lean in skin is its own folk's: one of the other folk there takes their own people's range.
         if (founders != null && folk != (founders.Folk ?? Folk)) local = false;
         var f = new Figure { Role = role, Occupancy = occupancy, Folk = folk };
-        f.Sex = rng.Chance(0.5f) ? Sex.Female : Sex.Male;
+        // Which sex does this job here: the culture's say (half and half where it has none), or their band's.
+        float sexDraw = rng.Float();
+        f.Sex = sex ?? cu.SexFor(role, sexDraw);
+        f.Culture = cu;
+        f.Caste = cu.CasteOf(role);
         f.Stage = role == PersonRole.Child || young ? LifeStage.Child : role == PersonRole.Elder ? LifeStage.Elder : LifeStage.Adult;
         // A child doing a grown-up's job carries it like one: upright, kitted out, no play in them.
         f.Hardened = young && role != PersonRole.Child;
@@ -366,6 +374,7 @@ public sealed partial class PeopleGenerator
         f.Padding = occupancy == Occupancy.Feral ? 1f : dress.Padding;
         f.Cloth = dress.Colours.Length > 0 ? Hex(rng.Pick(dress.Colours)) : new Color(0.42f, 0.4f, 0.36f);
         f.Cloth = f.Cloth.Darkened(rng.Range(0f, 0.2f));
+        Garb(f, look, cu, seed);
         f.Trim = look.Trim.Length > 0 ? Hex(rng.Pick(look.Trim)) : f.Cloth.Darkened(0.35f);
         // Against the ground they stand on: darker figures on bright sand and snow, lighter on dark ground.
         f.Cloth = Apart(f.Cloth, _w.Backdrop);
@@ -394,6 +403,8 @@ public sealed partial class PeopleGenerator
                 Put(f, hz, _t.Hazard.Wear);
                 if ((region?.Band ?? _w.Climate) is ClimateBand.Mild or ClimateBand.Hot && _t.Hazard.Dress.Length > 0) f.Dress = _t.Hazard.Dress;
             }
+            // What decency asks of them here, and their culture's cut, before the job's: a slot it fills stays (in a suit, neither).
+            if (!_w.Vacuum) Decency(f, cu, seed, region?.Band ?? _w.Climate);
             Put(f, rng, look.Wear);
             // The world's story, then its era, before the weather: whatever filled a slot stays.
             if (Flavour != null) Put(f, Rng.For(seed, "flavour"), Flavour.Wear);
@@ -420,6 +431,7 @@ public sealed partial class PeopleGenerator
         if (occupancy != Occupancy.Feral && Flavour is { Prop.Length: > 0 } fl && f.Prop == "" && Rng.For(seed, "carry").Chance(fl.PropChance)) f.Prop = fl.Prop;
         // A fighter's weapon is whatever the world's era makes: spears, bows and clubs low, rifles mid, energy weapons too high.
         if (Weapons.Armed(f.Prop)) f.Prop = Weapons.ForEra(_w.Now, _w.Before, Rng.For(seed, "weapon"));
+        if (occupancy == Occupancy.Friendly) ArmsOf(f, role, occupancy, cu, seed);
         // In a rainy region, a free hand holds an umbrella now and then.
         if (f.Prop == "" && (region?.Humidity ?? 0f) > Locale.Rainy && f.Stage != LifeStage.Child && Rng.For(seed, "umbrella").Chance(0.35f) && occupancy == Occupancy.Friendly) f.Prop = "umbrella";
         f.Routine = look;
@@ -441,7 +453,7 @@ public sealed partial class PeopleGenerator
             CommonName = occupancy == Occupancy.Feral ? "wild figure" : occupancy == Occupancy.Raider ? "raider" : role.ToString().ToLowerInvariant(),
             // People go about as people (a band round a leader, by its stance); only the feral are animals.
             Behaviour = occupancy == Occupancy.Feral ? Behaviour.Predator : Behaviour.Folk,
-            Temperament = occupancy == Occupancy.Friendly ? Temperament.Calm : Temperament.Aggressive,
+            Temperament = occupancy == Occupancy.Friendly ? TemperOf(f, cu, seed) : Temperament.Aggressive,
             Tech = _w.Now <= 0 ? "low" : _w.Now == 1 ? "mid" : "high",
             Collapse = Math.Clamp(_w.Mutagen + _w.Radiation * 0.15f, 0f, 1f),
             Activity = Activity.Cathemeral,
@@ -490,6 +502,64 @@ public sealed partial class PeopleGenerator
         // Taken by the worms: the same person, in their own clothes, torn (see Husks).
         if (husk) Husks.Take(s, Rng.For(seed, "husk"), Dialect, HuskRules);
         return s;
+    }
+
+    /// <summary>
+    /// The colour their culture dresses them in over the weather's: one for everyone, one for each sex, for each
+    /// caste or for each job (its mark's hue, in full cloth). A free culture leaves the climate's colours; the
+    /// ground still moves its value (Apart), and in a suit it is the suit's colour.
+    /// </summary>
+    static void Garb(Figure f, RoleLook look, Culture cu, ulong seed)
+    {
+        var town = Rng.For(cu.Seed, "garb");
+        float a = town.Float(), b = Wrap(a + town.Range(0.33f, 0.67f));
+        float? hue = cu.Has("one_cloth") ? a
+            : cu.Has("sex_cloth") ? (cu.A(f.Sex) ? a : b)
+            : cu.Has("caste_cloth") ? Wrap(a + f.Caste * 0.37f)
+            : cu.Has("role_cloth") && look.Accent.Length > 1 ? (look.Accent[0] + look.Accent[1]) * 0.5f : null;
+        if (hue is not float h) return;
+        var own = Rng.For(seed, "garb");
+        f.Cloth = Color.FromHsv(Wrap(h + own.Range(-0.012f, 0.012f)), own.Range(0.45f, 0.6f), own.Range(0.4f, 0.55f));
+    }
+
+    /// <summary>
+    /// The piece decency asks of grown-ups here outdoors (a hood, a covered face, a shawl, covered eyes), and the
+    /// cut a culture that dresses alike gives everyone (or each sex its own). Where the cold needs a coat, the coat wins the cut.
+    /// </summary>
+    void Decency(Figure f, Culture cu, ulong seed, ClimateBand band)
+    {
+        var put = new Dictionary<string, float>();
+        if (cu.Covers(f.Sex, f.Stage == LifeStage.Child)) put[cu.Word("wear")] = 1f;
+        if (band is not (ClimateBand.Cold or ClimateBand.Frozen) && _t.Cuts.Length > 1 && (cu.Has("one_cloth") || cu.Has("sex_cloth")))
+        {
+            var town = Rng.For(cu.Seed, "cut");
+            int i = town.Int(0, _t.Cuts.Length - 1), j = (i + town.Int(1, _t.Cuts.Length - 1)) % _t.Cuts.Length;
+            put[cu.Has("sex_cloth") && !cu.A(f.Sex) ? _t.Cuts[j] : _t.Cuts[i]] = 1f;
+        }
+        if (put.Count > 0) Put(f, Rng.For(seed, "decency"), put);
+    }
+
+    /// <summary>
+    /// Who carries a weapon here, by their culture: a fighter as it says (a staff where weapons are shunned,
+    /// else nothing), any other grown-up by their side's share, and a child of nine or more by the culture and by
+    /// how desperate the world is. What they carry about town is what the era makes: a blade, a club or a pistol.
+    /// </summary>
+    void ArmsOf(Figure f, PersonRole role, Occupancy occupancy, Culture cu, ulong seed)
+    {
+        bool fighter = Fighter(role, occupancy), child = f.Stage == LifeStage.Child && !fighter;
+        if (child && f.Age < 9f) return;
+        var r = Rng.For(seed, "culture-arms");
+        bool armed = r.Chance(cu.ArmedChance(role, f.Sex, fighter, child));
+        if (fighter && !armed && Weapons.Armed(f.Prop)) f.Prop = cu.Has("staff") ? "cane" : "";
+        else if (!fighter && armed && !Weapons.Armed(f.Prop)) f.Prop = Weapons.Sidearm(_w.Now, r);
+    }
+
+    /// <summary>How hot someone runs, by their culture: their side's, the young's or everyone's share bold or aggressive; slow to anger, some skittish.</summary>
+    static Temperament TemperOf(Figure f, Culture cu, ulong seed)
+    {
+        var r = Rng.For(seed, "temper-culture");
+        if (r.Chance(cu.HotChance(f.Sex, f.Age))) return r.Chance(0.5f) ? Temperament.Aggressive : Temperament.Bold;
+        return cu.Has("calm") && r.Chance(0.3f) ? Temperament.Skittish : Temperament.Calm;
     }
 
     /// <summary>The parts of mutation that belong to a person: skin gone wrong, posture, and at the top end something else entirely.</summary>

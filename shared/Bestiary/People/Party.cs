@@ -74,7 +74,7 @@ public sealed class Party
     /// </summary>
     public static float Lean(Species s, out float caution)
     {
-        int n = 0, armed = 0, frail = 0;
+        int n = 0, armed = 0, frail = 0, hot = 0;
         bool raider = false;
         foreach (Species b in s.Hosts ?? new System.Collections.Generic.List<Species> { s })
         {
@@ -82,12 +82,14 @@ public sealed class Party
             n++;
             if (Weapons.Armed(b.Figure.Prop)) armed++;
             if (b.Figure.Stage is LifeStage.Child or LifeStage.Elder) frail++;
+            // (Their culture's hot-blooded among them.)
+            if (b.Figure.Occupancy == Occupancy.Friendly && b.Temperament is Temperament.Aggressive or Temperament.Bold) hot++;
             raider |= b.Figure.Occupancy == Occupancy.Raider;
         }
         float arms = n > 0 ? armed / (float)n : 0f, weak = n > 0 ? frail / (float)n : 0f;
         caution = Math.Clamp((s.Temperament switch { Temperament.Skittish => 0.6f, Temperament.Bold => -0.2f, Temperament.Calm => -0.3f, _ => 0f }) + 0.2f * arms, -1f, 1f);
         if (armed == 0) return -1f;
-        float lean = (raider ? 0.75f : 0f) + (s.Temperament switch { Temperament.Aggressive => 0.15f, Temperament.Bold => 0.05f, Temperament.Calm => -0.3f, _ => -0.15f }) + 0.1f * arms - 0.5f * weak;
+        float lean = (raider ? 0.75f : 0f) + (s.Temperament switch { Temperament.Aggressive => 0.15f, Temperament.Bold => 0.05f, Temperament.Calm => -0.3f, _ => -0.15f }) + 0.1f * arms - 0.5f * weak + 0.15f * hot;
         return Math.Clamp(lean, -1f, 1f);
     }
 }
