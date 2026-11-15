@@ -102,7 +102,7 @@ public partial class Pacing : Node
         foreach (int x in _drive.UntilPlaying(300)) yield return x;
         GD.Print($"PACING {FramePacing.Screens()}; window {DisplayServer.WindowGetSize()} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, fps cap {Engine.MaxFps}, " +
                  $"physics {Engine.PhysicsTicksPerSecond}/s, interpolation {GetTree().PhysicsInterpolation}, jitter fix {Engine.PhysicsJitterFix}, max steps {Engine.MaxPhysicsStepsPerFrame}, " +
-                 $"delta smoothing {ProjectSettings.GetSetting("application/run/delta_smoothing")}, trees {PlanetSurface.Terrain.PlanetFlora.TreeDensity}; world {_game.World}");
+                 $"delta smoothing {ProjectSettings.GetSetting("application/run/delta_smoothing")}, .NET processors {System.Environment.ProcessorCount}, worker pool {ProjectSettings.GetSetting("threading/worker_pool/max_threads")}, trees {PlanetSurface.Terrain.PlanetFlora.TreeDensity}; world {_game.World}");
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
         zone.Weather.Sim.Snap(WeatherKind.Clear);

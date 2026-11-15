@@ -9,23 +9,34 @@ namespace Slice.Game;
 /// refreshes: every refresh while a frame's work fits in one, else every second, third or fourth (a 240 Hz screen
 /// at 240, 120, 80 or 60 frames a second, never under 50). Frames that take one refresh and then two (a 240 Hz
 /// screen at 150 a second) stay up unevenly, and the picture judders however smoothly it moves.
-/// A frame's work is the more of what the main thread spent on it and what the GPU spent drawing it, without the waits.
+/// The pace is set by the work every frame must do: the main thread's (its physics ticks counted at the pace's
+/// own share of them) and the GPU's, without the waits. What can wait (the streamer's uploads) is given the
+/// room left in the frame (<see cref="Room"/>), so streaming neither sets the pace nor falls behind at a slower one.
 /// </summary>
 public partial class FramePacer : Node
 {
     /// <summary>The frame cap the settings ask for (0: none, so paced).</summary>
     public int Asked;
 
+    /// <summary>This frame's main-thread work that can wait for room, ms (the streamer's).</summary>
+    public Func<double> Deferred;
+
     /// <summary>Refreshes a frame stays up while paced (1 when not).</summary>
     public int Refreshes { get; private set; } = 1;
 
-    /// <summary>The work of the slowest tenth of recent frames, ms.</summary>
+    /// <summary>The work every frame must do (the slowest fifth of the last two seconds', a tick's share at the pace), ms.</summary>
     public double Work { get; private set; }
 
-    readonly double[] _work = new double[120];
-    readonly double[] _sorted = new double[120];
-    int _count;
-    double _fitFor, _missFor, _last;
+    /// <summary>Room left in a frame for what can wait, ms (<see cref="Unpaced"/> when not paced).</summary>
+    public double Room { get; private set; } = Unpaced;
+
+    public const double Unpaced = 3.0, LeastRoom = 1.0, MostRoom = 4.0, Margin = 0.5;
+
+    const int Kept = 480;
+    readonly double[] _fixed = new double[Kept], _gpu = new double[Kept], _tick = new double[Kept / 4], _sorted = new double[Kept];
+    int _frames, _ticks;
+    double _fitFor, _missFor;
+    ulong _tickWas;
     Rid _viewport;
 
     public override void _Ready()
@@ -63,6 +74,15 @@ public partial class FramePacer : Node
         _begun = 0;
     }
 
+    /// <summary>The slowest fifth's threshold of the last <paramref name="last"/> of <paramref name="count"/> samples kept in a ring.</summary>
+    double P80(double[] ring, int count, int last)
+    {
+        int n = Math.Min(count, Math.Min(ring.Length, last));
+        for (int i = 0; i < n; i++) _sorted[i] = ring[(count - 1 - i) % ring.Length];
+        Array.Sort(_sorted, 0, n);
+        return n == 0 ? 0 : _sorted[(int)(n * 0.8)];
+    }
+
     public override void _Process(double delta)
     {
         double hz = DisplayServer.ScreenGetRefreshRate(DisplayServer.WindowGetCurrentScreen());
@@ -70,39 +90,47 @@ public partial class FramePacer : Node
         if (!paced)
         {
             Refreshes = 1;
+            Room = Unpaced;
             Engine.MaxFps = Asked;
             return;
         }
-        // The last frame's main thread (its ticks and scripts up to the draw, then the renderer's own CPU) against the GPU's last frame drawn.
+        // The last frame's main thread (up to the draw, then the renderer's own CPU) less what could wait and its ticks; the GPU's last frame.
+        ulong tickNow = Engine.GetPhysicsFrames();
+        int ticks = (int)(tickNow - _tickWas);
+        _tickWas = tickNow;
+        double tick = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
+        if (ticks > 0) _tick[_ticks++ % _tick.Length] = tick;
         double cpu = _scripts + RenderingServer.GetFrameSetupTimeCpu() + RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport);
-        double work = Math.Max(cpu, RenderingServer.ViewportGetMeasuredRenderTimeGpu(_viewport));
-        // Two frames at a time: the frames queued for the screen take up one frame's unevenness (a tick's frame then one without).
-        _work[_count++ % _work.Length] = (work + _last) * 0.5;
-        _last = work;
-        int n = Math.Min(_count, _work.Length);
-        if (n < 30) return;
-        Array.Copy(_work, _sorted, n);
-        Array.Sort(_sorted, 0, n);
-        Work = _sorted[(int)(n * 0.9)];
+        _fixed[_frames % Kept] = Math.Max(0, cpu - (Deferred?.Invoke() ?? 0) - ticks * tick);
+        _gpu[_frames % Kept] = RenderingServer.ViewportGetMeasuredRenderTimeGpu(_viewport);
+        _frames++;
+        if (_frames < 30) return;
+        int window = Math.Max(30, (int)(2.0 * hz / Refreshes));
+        double fixedWork = P80(_fixed, _frames, window), gpu = P80(_gpu, _frames, window), tickWork = P80(_tick, _ticks, _tick.Length);
         double refresh = 1000.0 / hz;
+        // A frame at n refreshes carries up to this many ticks' work, and its own.
+        double Must(int n) => fixedWork + Math.Ceiling(n * refresh * Engine.PhysicsTicksPerSecond / 1000.0 - 1e-6) * tickWork;
+        bool Fits(int n, double margin) => Math.Max(Must(n) + LeastRoom, gpu) <= n * refresh - margin;
         int most = Math.Max(1, (int)(hz / 50.0));
         int need = 1;
-        while (need < most && Work > need * refresh - 0.5) need++;
-        // Fewer frames once they have missed for half a second (not for a hitch); more again once they have fitted with room for
-        // three seconds: every change of pace is itself a jolt.
+        while (need < most && !Fits(need, Margin)) need++;
+        // Fewer frames once they have missed for a second (not for a hitch, which the frames queued for the screen take up); more
+        // again once they have fitted with room to spare for three seconds: every change of pace is itself a jolt.
         if (need > Refreshes)
         {
             _fitFor = 0;
             _missFor += delta;
-            if (_missFor > 0.5) Set(need);
+            if (_missFor > 1.0) Set(need);
         }
-        else if (need < Refreshes && Work < (Refreshes - 1) * refresh - 1.0)
+        else if (need < Refreshes && Fits(Refreshes - 1, Margin + 0.5))
         {
             _missFor = 0;
             _fitFor += delta;
             if (_fitFor > 3.0) Set(Refreshes - 1);
         }
         else _fitFor = _missFor = 0;
+        Work = Math.Max(Must(Refreshes), gpu);
+        Room = Math.Clamp(Refreshes * refresh - Margin - Must(Refreshes), LeastRoom, MostRoom);
         Engine.MaxFps = Refreshes == 1 ? 0 : (int)Math.Ceiling(hz / Refreshes);
     }
 

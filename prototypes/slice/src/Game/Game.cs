@@ -234,6 +234,7 @@ public partial class Game : Node3D
         Zone.AddChild(Camera);
         Zone.Camera = Camera;
         Zone.Focus = Focus;
+        Pacer.Deferred = () => Zone.IsBuilt ? Zone.Streamer.LastFrameMs : 0;
         Zone.Built += OnPlanetBuilt;
         StartZones();
         AddChild(new AfterStep { Name = "AfterStep", Game = this });
@@ -896,6 +897,7 @@ public partial class Game : Node3D
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.
+        if (Zone.IsBuilt) Zone.Streamer.UploadBudgetMs = Pacer.Room; // what the frame's pace leaves room for
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         LoadAhead(delta);
