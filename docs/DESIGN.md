@@ -643,7 +643,7 @@ Resources climb a five-step rarity ladder (common, uncommon, rare, exotic, uniqu
 | Uncommon | Neodymium | Every planet in small deposits; rich on moons and asteroids | Magnets for thrusters and RCS |
 | Uncommon | Gold | Scattered; richer on volcanic worlds | Advanced electronics, trade value |
 | Uncommon | Gravium | High-gravity worlds | Hardened and combat steel |
-| Uncommon | Warp ore (name open) | Moons, icy bodies and asteroid fields; always on the start world's fuel moon | Warp fuel (warp cells) |
+| Uncommon | Pentaxite | Moons, icy bodies and asteroid fields; always on the start world's fuel moon | Warp fuel (warp cells) |
 | Rare | Fold crystal | Irradiated ice worlds; asteroids near dead and irradiated stars | Hyperdrive fuel, shields |
 | Rare | Emberite | Lava worlds around young and dying stars | Fusion cells, plasma weapons, high-output generators |
 | Rare | Starsilver | Barren metal worlds and dense asteroids near giant stars | Top-tier devices, hyperdrive T2, advanced constructor |
@@ -919,7 +919,7 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 **Fold crystal** (a rare crystal that folds space for jumps and feeds shields) is the hyperdrive fuel, kept in core storage like every fuel:
 
 - **Three separate fuels** (owner, 15 Nov): generator fuel (above), warp fuel and hyperdrive fuel. Warp fuel and hyperdrive fuel are both gathered, not made from common materials.
-- A hyperdrive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp fuel, a gathered resource (as Empyrion's pentaxid is), refined into warp cells, about 1 per AU. The fuel moon by the start world holds the first warp fuel deposits.
+- A hyperdrive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp fuel, gathered as pentaxite ore and refined into warp cells, about 1 per AU. The fuel moon by the start world holds the first warp fuel deposits.
 - Shields burn fold crystal only while recharging (reference: about 1,000 shield HP per unit), never while full or off. Shields must be down to warp.
 - Fold crystal deposits favour irradiated and dead stars, so fuelling long voyages pulls players toward dangerous systems.
 
