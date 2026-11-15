@@ -366,14 +366,26 @@ public sealed class Survivor
         Binding.Teleport();
     }
 
-    /// <summary>Where getting up from a seat puts you: past the chair behind it, or beside it if that's blocked.</summary>
+    /// <summary>
+    /// Where getting up from a seat puts you: past the chair behind it, or beside it if that's blocked, on the
+    /// structure's floor: a spot clear of blocks but off the deck's edge (a small open cockpit) would drop you
+    /// off it, out in space. Nearer the chair, a cell at a time, until one has floor under it.
+    /// </summary>
     static N.Vector3 StandOffset(Vessel vessel)
     {
         N.Vector3 seat = vessel.Seat.Value;
-        float r = vessel.ChairReach;
-        foreach (N.Vector3 o in new[] { new N.Vector3(0, 0.05f, r), new N.Vector3(r, 0.05f, 0), new N.Vector3(-r, 0.05f, 0), new N.Vector3(0, 0.05f, -r) })
-            if (vessel.DistanceFromHull(seat + o + N.Vector3.UnitY * 0.9f, 0.5f) >= 0.5f) return o;
-        return new N.Vector3(0f, 0.05f, r);
+        float r = vessel.ChairReach, cell = vessel.Structure.Grid.CellSize;
+        bool Clear(N.Vector3 o) => vessel.DistanceFromHull(seat + o + N.Vector3.UnitY * 0.9f, 0.5f) >= 0.5f;
+        bool Floored(N.Vector3 o) => vessel.DistanceFromHull(seat + o - N.Vector3.UnitY * 0.15f, 0.3f) < 0.02f;
+        N.Vector3? clear = null;
+        for (float d = r; d >= cell - 1e-3f; d -= cell)
+            foreach (N.Vector3 o in new N.Vector3[] { new(0, 0.05f, d), new(d, 0.05f, 0), new(-d, 0.05f, 0), new(0, 0.05f, -d) })
+            {
+                if (!Clear(o)) continue;
+                if (Floored(o)) return o;
+                clear ??= o;
+            }
+        return clear ?? new N.Vector3(0f, 0.05f, r);
     }
 
     /// <summary>Puts the survivor in a structure's cabin world at a structure-local spot, at rest relative to it.</summary>

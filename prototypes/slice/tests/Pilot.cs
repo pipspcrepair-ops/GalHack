@@ -214,11 +214,14 @@ public sealed class Pilot
     {
         int ticks = (int)(seconds * 60);
         var s = _game.Survivor;
+        Vector3 last = target();
         for (int i = 0; i < ticks; i++)
         {
-            Vector3 eye = s.WorldEye(), to = target() - eye;
+            // The target may ride a drifting, turning hull: speeds are measured against it, not the world.
+            Vector3 at = target(), eye = s.WorldEye(), to = at - eye;
             float d = to.Length();
-            Vector3 v = s.Body.WorldVelocity.ToGodot();
+            Vector3 v = s.Body.WorldVelocity.ToGodot() - (at - last) * Engine.PhysicsTicksPerSecond;
+            last = at;
             float closing = v.Dot(to.Normalized());
             _drive.Face(target());
             bool there = d < within;
@@ -234,13 +237,13 @@ public sealed class Pilot
         yield return 0;
     }
 
-    /// <summary>Stops drifting (pushing against the way you move until still).</summary>
+    /// <summary>Stops drifting (pushing against the way you move until still), against the hull you are in if any.</summary>
     public IEnumerable<int> Stop(float seconds = 6f)
     {
         var s = _game.Survivor;
         for (int i = 0; i < seconds * 60; i++)
         {
-            Vector3 v = s.Body.WorldVelocity.ToGodot();
+            Vector3 v = (s.Body.Frame == null ? s.Body.WorldVelocity : N.Vector3.Transform(s.Body.Velocity, s.Body.Frame.Rotation)).ToGodot();
             if (v.Length() < 0.1f) break;
             _drive.Face(s.WorldEye() + v.Normalized() * 5f);
             C.Hold(Key.S);
