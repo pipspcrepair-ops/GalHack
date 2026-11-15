@@ -492,6 +492,15 @@ public partial class Place : Node3D
     void DropNear(Group g, bool instant = false) => ShowNear(g, false, instant);
 
     /// <summary>The place is going back to the planet's drawing: every cube of it shows there again.</summary>
+    /// <summary>Its cubes out of sight at once (a dropped place is taken down a piece a frame).</summary>
+    internal void HideCubes()
+    {
+        foreach (Group g in _groups.Values)
+            foreach (MeshInstance3D m in g.Merged) m.Visible = false;
+        foreach (var c in _chunks.Values)
+            if (c.Mesh != null && IsInstanceValid(c.Mesh)) c.Mesh.Visible = false;
+    }
+
     internal void GiveBack()
     {
         foreach (Group g in _groups.Values)

@@ -25,6 +25,7 @@ public partial class PopRoute
     void SplitStart()
     {
         if (!_args.ContainsKey("split")) return;
+        Slice.Places.PoiPlaces.TakenDown.Clear();
         Array.Clear(Slice.Places.Place.PartMs);
         Array.Clear(Slice.Places.Place.PartWorst);
         _frameSplit ??= new FrameSplit(GetTree().Root, GetViewport().GetViewportRid());
@@ -153,6 +154,9 @@ public partial class PopRoute
         if (_allocTypes != null) GD.Print($"SPLIT {name} {(_allocTypes.MainOnly ? "the main thread" : "every thread")} allocated, by type: {_allocTypes.Take(24)}");
         GD.Print($"SPLIT {name} places' frame work, ms a frame (worst one): {string.Join(", ", Slice.Places.Place.PartNames.Select((p, i) => string.Create(CultureInfo.InvariantCulture, $"{p} {Slice.Places.Place.PartMs[i] / Math.Max(1, _frameSplit.Frames.Count):F2} ({Slice.Places.Place.PartWorst[i]:F1})")))}");
         GD.Print($"SPLIT {name} places' longest single steps: {string.Join(", ", Slice.Places.Place.PartNames.Select((p, i) => string.Create(CultureInfo.InvariantCulture, $"{p} {Slice.Places.Place.StepWorst[i]:F1} ({Slice.Places.Place.StepWhat[i] ?? "-"})")))}");
+        var down = Slice.Places.PoiPlaces.TakenDown;
+        if (down.Count > 0) GD.Print(string.Create(CultureInfo.InvariantCulture, $"SPLIT {name} places taken down: {down.Count}, ms each mean {down.Average(d => d.Ms):F1} (most {down.Max(d => d.Ms):F1}), pieces each mean {down.Average(d => d.Pieces):F0}, longest piece {down.Max(d => d.Worst):F2} ms ({down.MaxBy(d => d.Worst).Name})"));
+        down.Clear();
         Array.Clear(Slice.Places.Place.PartMs);
         Array.Clear(Slice.Places.Place.PartWorst);
         Array.Clear(Slice.Places.Place.StepWorst);

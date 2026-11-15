@@ -150,6 +150,7 @@ public partial class PoiPlaces : Node3D
             Scan(focus);
         }
         if (_job != null) Work();
+        TakeDown();
         BurnFuses(delta);
     }
 
@@ -362,9 +363,45 @@ public partial class PoiPlaces : Node3D
         p.Memory.Town?.Sit(p);
         Standing.Remove(p);
         _placeOf.Remove(p.Site);
-        ShowFar(p.Site, true);
         p.GiveBack();
-        p.QueueFree();
+        // Taken down a piece a frame (TakeDown): freed whole, a city block's thousands of nodes were one frame's 100 ms and more.
+        // Its cubes go from sight now (the far drawing's are back), and nothing of it collides or runs from here.
+        p.Ready = false;
+        p.HideCubes();
+        p.ProcessMode = ProcessModeEnum.Disabled;
+        _goingDown.Add((p, 0, 0, 0));
+    }
+
+    readonly List<(Place Place, double Ms, int Pieces, double Worst)> _goingDown = new();
+    /// <summary>Places taken down: their main-thread ms in all, the pieces, the longest piece (checks read and clear it).</summary>
+    public static readonly List<(string Name, double Ms, int Pieces, double Worst)> TakenDown = new();
+
+    /// <summary>
+    /// Frees dropped places within the frame's loading allowance, a node at a time from the last child down (one holding many
+    /// is opened up first), so no frame frees more than a small subtree. A place's far dressing shows again once it is gone.
+    /// </summary>
+    void TakeDown()
+    {
+        if (_goingDown.Count == 0) return;
+        var clock = Stopwatch.StartNew();
+        double budget = Math.Max(PlanetSurface.Fx.LoadBudget.Left(1.0), 0.001);
+        while (_goingDown.Count > 0 && clock.Elapsed.TotalMilliseconds < budget)
+        {
+            var (p, ms, pieces, worst) = _goingDown[0];
+            double began = clock.Elapsed.TotalMilliseconds;
+            Node n = p;
+            while (n.GetChildCount() > 0 && n.GetChild(n.GetChildCount() - 1) is Node last && last.GetChildCount() > 16) n = last;
+            bool done = n == p && p.GetChildCount() == 0;
+            if (done) p.Free();
+            else n.GetChild(n.GetChildCount() - 1).Free();
+            double step = clock.Elapsed.TotalMilliseconds - began;
+            (ms, pieces, worst) = (ms + step, pieces + 1, Math.Max(worst, step));
+            if (!done) { _goingDown[0] = (p, ms, pieces, worst); continue; }
+            _goingDown.RemoveAt(0);
+            TakenDown.Add((p.Site.Name, ms, pieces, worst));
+            if (!_placeOf.ContainsKey(p.Site)) ShowFar(p.Site, true);
+        }
+        PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
     }
 
     /// <summary>The far drawing's own dressing shown or hidden (its blocks give way cube by cube; its lamps, glows and smoke always stay).</summary>
