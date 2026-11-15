@@ -7,7 +7,7 @@ namespace PoiGenerator.Gen;
 
 /// <summary>
 /// What makes a broken house read as one, over <see cref="StateTransforms.Weathered"/>: wall tops fall away along
-/// cracks (a drop of at most two blocks between neighbours, never a tooth or a pinhole), the slabs round a hole sag toward
+/// cracks (a drop of at most a block between neighbours, never a tooth or a pinhole), the slabs round a hole sag toward
 /// it, and the years stain what is left by the world's wet or dry (streaks under sills and eaves, moss and damp,
 /// or dust) and leave a few readable remains by what the building was.
 /// </summary>
@@ -15,7 +15,7 @@ public static partial class StateTransforms
 {
     static readonly Rgb Dust = new(0xb4, 0xa4, 0x86), Streak = new(0x3c, 0x34, 0x2c);
 
-    /// <summary>Wall tops fall along cracks: no exposed wall stands more than two blocks over a neighbour along its line. What falls joins <paramref name="fallen"/>.</summary>
+    /// <summary>Wall tops fall along cracks: no exposed wall stands more than a block over a neighbour along its line. What falls joins <paramref name="fallen"/>.</summary>
     static void Crack(PoiInstance inst, List<(Int3, Block)> fallen)
     {
         var g = inst.Blocks;
@@ -35,8 +35,8 @@ public static partial class StateTransforms
                     if (top.TryGetValue((n.X, n.Z), out int ny)) low = Math.Min(low, ny);
                     else if (g.Get(n).IsAir && g.Get(n + Int3.Down).Role is Role.Wall or Role.Window) low = Math.Min(low, FootOf(g, n));
                 }
-                if (y - low <= 2) continue;
-                for (int cy = y; cy > low + 2; cy--)
+                if (y - low <= 1) continue;
+                for (int cy = y; cy > low + 1; cy--)
                 {
                     var p = new Int3(x, cy, z);
                     Block s = g.Get(p);
@@ -91,14 +91,14 @@ public static partial class StateTransforms
             Block above = g.Get(up);
             if (!(above.IsAir || above.Role is Role.Window)) continue;
             uint h = Hash.Cell(new Int3(p.X, 0, p.Z), 311 + (uint)inst.SpawnSeed % 5);
-            if (h % 100 >= 70 * wear) continue;
+            if (h % 100 >= 90 * wear) continue;
             Rgb tint = wet > 0.6f ? Mould : wet < 0.25f ? Dust : Streak;
             for (int k = 0; k < 3 + (int)(h % 3); k++)
             {
                 Int3 q = p + Int3.Down * k;
                 ref Block s = ref g.At(q);
                 if (s.IsAir || s.Role is not Role.Wall || !BlockInfo.IsFullCube(s.Type) || BlockInfo.IsTransparent(s.Material)) break;
-                s.Color = s.Color.Lerp(tint, (0.38f - 0.09f * k) * Math.Clamp(0.4f + wear, 0f, 1f));
+                s.Color = s.Color.Lerp(tint, (0.7f - 0.14f * k) * Math.Clamp(0.5f + wear, 0f, 1f));
             }
         }
     }
