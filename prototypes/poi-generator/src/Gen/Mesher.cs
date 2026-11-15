@@ -26,6 +26,11 @@ public sealed class MeshBuffer
     internal readonly List<int> Grid = new();
     public int VertexCount => Positions.Count / 3;
 
+    public void Clear()
+    {
+        Positions.Clear(); Normals.Clear(); Colors.Clear(); Codes.Clear(); Indices.Clear(); Grid.Clear();
+    }
+
     public void Vertex(V3 p, V3 n, float r, float g, float b, float a, float code = 0f, float seed = 0f)
     {
         Positions.Add(p.X); Positions.Add(p.Y); Positions.Add(p.Z);
@@ -69,6 +74,38 @@ public sealed class ChunkMesh
     public readonly MeshBuffer[] Surfaces = { new(), new(), new(), new(), new() };
     public readonly List<float> Collision = new(); // triangle soup, xyz per vertex
     public int Quads;
+
+    // Chunks given back once their meshes and shapes are made, their lists kept at the size they grew to: a city's places
+    // meshed into fresh lists that grew by doubling were most of what its workers allocated (the young collections' pauses).
+    static readonly System.Collections.Concurrent.ConcurrentBag<ChunkMesh> Pool = new();
+    const int Pooled = 512, LargestKept = 1 << 18;
+
+    /// <summary>A chunk to mesh into: one given back, or a new one.</summary>
+    public static ChunkMesh Rent(Int3 chunk)
+    {
+        if (!Pool.TryTake(out ChunkMesh m)) m = new ChunkMesh();
+        m.Chunk = chunk;
+        return m;
+    }
+
+    /// <summary>Done with: its lists cleared and kept for the next (never one still read).</summary>
+    public static void Return(ChunkMesh m)
+    {
+        if (m == null || Pool.Count >= Pooled || m.Collision.Capacity > LargestKept) return;
+        foreach (MeshBuffer b in m.Surfaces)
+        {
+            if (b.Positions.Capacity > LargestKept) return;
+            b.Clear();
+        }
+        m.Collision.Clear();
+        m.Quads = 0;
+        Pool.Add(m);
+    }
+
+    public static void Return(IEnumerable<ChunkMesh> all)
+    {
+        foreach (ChunkMesh m in all) Return(m);
+    }
 }
 
 public sealed class MeshOptions
@@ -383,7 +420,7 @@ public static class Mesher
         {
             int s = _o.ChunkSize;
             var c = new Int3(FloorDiv(p.X, s), FloorDiv(p.Y, s), FloorDiv(p.Z, s));
-            if (!_chunks.TryGetValue(c, out var m)) _chunks[c] = m = new ChunkMesh { Chunk = c };
+            if (!_chunks.TryGetValue(c, out var m)) _chunks[c] = m = ChunkMesh.Rent(c);
             return m;
         }
 
@@ -737,7 +774,7 @@ public static class Mesher
             int side = _o.ChunkSize;
             foreach (var (ch, planes) in _planes)
             {
-                if (!_chunks.TryGetValue(ch, out ChunkMesh chunk)) _chunks[ch] = chunk = new ChunkMesh { Chunk = ch };
+                if (!_chunks.TryGetValue(ch, out ChunkMesh chunk)) _chunks[ch] = chunk = ChunkMesh.Rent(ch);
                 V3 origin = V3.Of(ch * side);
                 foreach (var (plane, mask) in planes.Drawn) Sweep(mask, plane, side, (f, cell, size, key) => DrawRect(chunk, f, origin + V3.Of(cell), size, key));
                 foreach (var (plane, mask) in planes.Solid) Sweep(mask, plane, side, (f, cell, size, _) => SolidRect(chunk, f, origin + V3.Of(cell), size));

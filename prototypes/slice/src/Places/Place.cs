@@ -239,6 +239,7 @@ public partial class Place : Node3D
             ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
             if (g.Near) SetChunkMesh(mesh);
             SetChunkShape(mesh);
+            ChunkMesh.Return(mesh);
         }
         Memory.Modified = true;
         Places.Zone.Light.Touch();
@@ -288,6 +289,7 @@ public partial class Place : Node3D
             while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget) SetChunkMesh(built[g.Next++]);
             PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds - before);
             if (g.Next < built.Count) break;
+            ChunkMesh.Return(built); // drawn: its lists for the next cube's meshing
             g.Meshing = null;
             g.Next = 0;
             _meshing--;
@@ -354,8 +356,9 @@ public partial class Place : Node3D
         if (g.Merged == null) return;
         g.Merged.QueueFree();
         g.Merged = null;
-        foreach (ChunkMesh c in Mesher.Build(new ChunkWindow(Inst.Blocks, g.Key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(g.Key * GroupSize, collision: false)))
-            SetChunkMesh(c);
+        List<ChunkMesh> built = Mesher.Build(new ChunkWindow(Inst.Blocks, g.Key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(g.Key * GroupSize, collision: false));
+        foreach (ChunkMesh c in built) SetChunkMesh(c);
+        ChunkMesh.Return(built);
     }
 
     /// <summary>Each cube's meshes, there and then (tests and the warm-up).</summary>
@@ -365,6 +368,7 @@ public partial class Place : Node3D
         if (g.Near) return;
         var built = Mesher.Build(new ChunkWindow(Inst.Blocks, key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(key * GroupSize, collision: false));
         foreach (ChunkMesh c in built) SetChunkMesh(c);
+        ChunkMesh.Return(built);
         ShowNear(g, true, instant: true);
     }
 

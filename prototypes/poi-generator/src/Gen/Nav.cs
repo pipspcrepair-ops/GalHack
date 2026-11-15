@@ -163,13 +163,24 @@ public sealed class NavGrid
                 if (Standable(s)) into.Add(s);
     }
 
+    [ThreadStatic] static PriorityQueue<Int3, int>? _open;
+    [ThreadStatic] static Dictionary<Int3, int>? _cost;
+    [ThreadStatic] static Dictionary<Int3, Int3>? _from;
+
     /// <summary>Plain A* with a Manhattan heuristic. Returns null if there is no path.</summary>
     public List<Int3>? FindPath(Int3 start, Int3 goal, int maxNodes = 400_000)
     {
         if (!Standable(start) || !Standable(goal)) return null;
-        var open = new PriorityQueue<Int3, int>();
-        var cost = new Dictionary<Int3, int> { [start] = 0 };
-        var from = new Dictionary<Int3, Int3>();
+        // Each worker's search tables, kept at the size they grew to (a town's route searches were large tables made fresh each time).
+        if (_cost != null && _cost.EnsureCapacity(0) > 1 << 16) _open = null; // a huge search's tables aren't kept: clearing them costs more than new ones
+        if (_open == null) (_open, _cost, _from) = (new PriorityQueue<Int3, int>(), new Dictionary<Int3, int>(), new Dictionary<Int3, Int3>());
+        var open = _open;
+        var cost = _cost!;
+        var from = _from!;
+        open.Clear();
+        cost.Clear();
+        from.Clear();
+        cost[start] = 0;
         // Lifts jump many cells at once, so the heuristic must not overestimate across them.
         bool lifts = _liftLinks != null;
         open.Enqueue(start, lifts ? 0 : start.Manhattan(goal));
