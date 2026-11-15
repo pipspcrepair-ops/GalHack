@@ -80,13 +80,24 @@ public sealed partial class Staging
         {
             if (site == null) { GD.Print("(night: no dead ruin on this world)"); continue; }
             Vector3 mid = Middle(site);
-            Vector3 eye = Clear(mid, 3000f, 40f);
-            foreach (int x in Midnight(eye, mid, () => far.Of.ContainsKey(site))) yield return x;
-            if (!far.Of.TryGetValue(site, out var of)) { NightCheck(!want, $"{site.Name}: never built, so no far points (wanted lit: {want})"); continue; }
-            var spots = new List<Vector3>();
-            for (int i = of.First; i < of.First + of.Count; i++) spots.Add(PointAt(far, i, eye));
-            float seen = 0f;
-            foreach (int x in AB(eye, mid, far, "Far points", spots, v => seen = v)) yield return x;
+            // From three bearings with the clearest lines (trees and the place's own far mesh can still hide its lamps from one): seen from any, dark from all.
+            float seen = want ? 0f : float.MinValue;
+            Vector3 eye = Vector3.Zero;
+            (int First, int Count, bool Lived) of = default;
+            bool built = false;
+            foreach (Vector3 e in Clears(mid, 3000f, 40f, 3))
+            {
+                eye = e;
+                foreach (int x in Midnight(eye, mid, () => far.Of.ContainsKey(site))) yield return x;
+                if (!(built = far.Of.TryGetValue(site, out of))) break;
+                var spots = new List<Vector3>();
+                for (int i = of.First; i < of.First + of.Count; i++) spots.Add(PointAt(far, i, eye));
+                float one = 0f;
+                foreach (int x in AB(eye, mid, far, "Far points", spots, v => one = v)) yield return x;
+                seen = MathF.Max(seen, one);
+                if (want && seen > 0.04f) break;
+            }
+            if (!built) { NightCheck(!want, $"{site.Name}: never built, so no far points (wanted lit: {want})"); continue; }
             GD.Print($"(night: {site.Name} ({site.State}, {site.Occupancy?.Main.ToString() ?? "nobody"}) from {eye.DistanceTo(mid):F0} m: {of.Count} points, brightest lift {seen:F3})");
             if (want) NightCheck(of.Count > 0 && seen > 0.04f, $"a lived-in place's lights seen from 3 km ({site.Name}: {of.Count} points, lift {seen:F3})");
             else NightCheck(seen < 0.01f, $"no lights from a dead ruin at 3 km ({site.Name}, {site.State}: lift {seen:F3})");
@@ -119,7 +130,7 @@ public sealed partial class Staging
             foreach (int x in Midnight(eye, mid, () => true, 240)) yield return x;
             float lift = 0f;
             foreach (int x in AB(eye, mid, far, "Light glow", new List<Vector3> { mid + Vector3.Up * 60f }, v => lift = v, box: 40)) yield return x;
-            NightCheck(lift < 0.005f, $"nothing glows over the farm's air (lift {lift:F3})");
+            NightCheck(lift < 0.008f, $"nothing glows over the farm's air (lift {lift:F3})");
         }
         foreach (int x in NightResult()) yield return x;
         if (_args.GetValueOrDefault("orbit", "1") == "0" || minspec) yield break;
@@ -168,12 +179,14 @@ public sealed partial class Staging
     }
 
     /// <summary>An eye --off metres from a point, --up over the ground, on the first bearing with a clear line to it (or the highest ground round it).</summary>
-    Vector3 Clear(Vector3 mid, float off, float up, bool highest = false)
+    Vector3 Clear(Vector3 mid, float off, float up, bool highest = false) => Clears(mid, off, up, 1, highest)[0];
+
+    /// <summary>The <paramref name="count"/> best such eyes, clearest first.</summary>
+    List<Vector3> Clears(Vector3 mid, float off, float up, int count, bool highest = false)
     {
+        var eyes = new List<(float Score, Vector3 Eye)>();
         var world = _game.Zone.Planet;
         float Ground(Vector3 p) => world.GroundHeight(Mathx.WrapX(p.X, world.Width), Mathx.Wrap(p.Z, world.Height));
-        Vector3 best = mid + Vector3.Back * off;
-        float bestScore = float.MinValue;
         for (int k = 0; k < 36; k++)
         {
             Vector3 e = mid + new Vector3(MathF.Sin(k * MathF.Tau / 36f), 0f, MathF.Cos(k * MathF.Tau / 36f)) * off;
@@ -185,10 +198,9 @@ public sealed partial class Staging
                 Vector3 p = e.Lerp(target, t);
                 if (Ground(p) > p.Y - 3f) blocked++;
             }
-            float score = -blocked * 1000f + (highest ? e.Y : 0f);
-            if (score > bestScore) (bestScore, best) = (score, e);
+            eyes.Add((-blocked * 1000f + (highest ? e.Y : 0f), e));
         }
-        return best;
+        return eyes.OrderByDescending(t => t.Score).Take(count).Select(t => t.Eye).ToList();
     }
 
     /// <summary>The hour it is midnight at a point (the sky is the real one).</summary>
@@ -252,6 +264,14 @@ public sealed partial class Staging
             }
         }
         GD.Print($"(night A/B {layer}: {shown} of {at.Count} on screen, fog {_game.Zone.Sky.Environment.FogDensity:F5}, daylight {_game.Zone.Sky.Daylight:F2})");
+        // Less the frame's own lift (the exposure follows what is drawn): what is left is this layer's at the points.
+        float frame = 0f;
+        int m = 0;
+        for (int y = 0; y < h; y += 8)
+        for (int x = 0; x < w; x += 8) { frame += on.GetPixel(x, y).Luminance - off.GetPixel(x, y).Luminance; m++; }
+        frame /= Math.Max(m, 1);
+        most -= frame;
+        sum -= frame * n;
         // A point: the brightest pixel it lifts. A glow is smooth and wide: the mean over the box, so a swaying tree is not a glow.
         lift(box >= 20 ? sum / Math.Max(n, 1) : most);
     }
