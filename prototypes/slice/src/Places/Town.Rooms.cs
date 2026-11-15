@@ -253,7 +253,8 @@ public sealed partial class Town
     /// Their day and night walked through with no place drawn (tests): the same routine, routes and
     /// walking as in play, with <paramref name="probe"/> told where everyone is every step.
     /// </summary>
-    public void Rehearse(float seconds, float dt, Func<float, bool> night, Func<Person, int, (Species Looks, PersonRole Job)> looks, Action<Person, float> probe)
+    /// <summary>(<paramref name="apart"/>: bodies kept apart each tick as in play, for a test of who stands where; off, the walk alone.)</summary>
+    public void Rehearse(float seconds, float dt, Func<float, bool> night, Func<Person, int, (Species Looks, PersonRole Job)> looks, Action<Person, float> probe, bool apart = false)
     {
         Populate();
         for (int i = 0; i < People.Count; i++)
@@ -270,8 +271,7 @@ public sealed partial class Town
                 Day(p, dark, dt);
                 if (p.Asleep) p.Pos = p.Pos.MoveToward(_lie[p.Home] ?? p.Pos, dt);
             }
-            // Bodies apart, as every tick of play (nobody walks through anybody), then what the caller looks at.
-            KeepApart(_you, dt);
+            if (apart) KeepApart(_you, dt);
             foreach (Person p in People)
                 if (!p.Dead && !p.Gone && !p.Away) probe(p, t);
         }

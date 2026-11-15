@@ -115,7 +115,7 @@ public sealed partial class Town
         if (_places?.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = PlayerGive }); // (just inside their capsules' touch)
         _space.Resolve(dt, Open, 4);
         // (Someone who moved a long way at once, far off and updated now and then, can land on another: settle it now.)
-        if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, Open, 6);
+        if (_space.WorstOverlap > 0.015f) _space.Resolve(0f, Open, 6);
         if (_space.WorstOverlap > WorstOverlap)
         {
             WorstOverlap = _space.WorstOverlap;

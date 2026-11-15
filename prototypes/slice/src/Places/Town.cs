@@ -982,7 +982,7 @@ public sealed partial class Town
             if (StandBy(q.Pos, away, want, r, h, p.Pos) is not { } found)
             {
                 // No room here at their distance: the two go to a spot nearby that has it, or part if there's none. Never closer.
-                if (Roomy(q, want, r, h) is int spot) { GoTo(p, spot); GoTo(q, spot); p.ChatRetry = q.ChatRetry = _clock + 1f; ChatMoved++; }
+                if (Roomy(q, p, want, r, h) is int spot) { GoTo(p, spot); GoTo(q, spot); p.ChatRetry = q.ChatRetry = _clock + 1f; ChatMoved++; }
                 else { p.Partner = q.Partner = null; ChatStuck++; }
                 return;
             }
@@ -997,8 +997,12 @@ public sealed partial class Town
         if (p.Pos.DistanceSquaredTo(stand) < 1e-4f) p.ChatAt = null;
     }
 
-    /// <summary>A body's room at a point: its walking grid, a floor at that height under it, and clear of the furniture.</summary>
-    bool Room(Vector3 at, float y, float r, float h) => Open(at) && Ground(at) is float g && MathF.Abs(g - y) < 0.1f && (_parts == null || _parts.Gap(at, r, h) >= 0f);
+    /// <summary>
+    /// Room to stand and talk at a point: its walking grid, a floor at that height under it, not in a doorway, and a
+    /// stride clear of the furniture (so the way on from there starts clear).
+    /// </summary>
+    bool Room(Vector3 at, float y, float r, float h) => Open(at) && Ground(at) is float g && MathF.Abs(g - y) < 0.1f
+        && DoorWays.At(Memory, Cell(at with { Y = y })) == null && (_parts == null || _parts.Gap(at, r + 0.2f, h) >= 0f);
 
     /// <summary>
     /// A stand a distance from someone (the way given where there's room, else round them till there is), clear and over
@@ -1010,16 +1014,17 @@ public sealed partial class Town
         {
             Vector3 at = by + away.Rotated(Vector3.Up, turn) * dist;
             at.Y = by.Y;
-            if (Room(at, by.Y, r, h) && Open((at + from) * 0.5f)) return at;
+            Vector3 mid = (at + from) * 0.5f;
+            if (Room(at, by.Y, r, h) && Open(mid) && DoorWays.At(Memory, Cell(mid with { Y = by.Y })) == null) return at;
         }
         return null;
     }
 
-    /// <summary>The nearest standing spot round someone where two can stand that far apart (null: none within a dozen metres).</summary>
-    int? Roomy(Person by, float dist, float r, float h)
+    /// <summary>The nearest other standing spot round two where they can stand that far apart (null: none within a dozen metres).</summary>
+    int? Roomy(Person by, Person with, float dist, float r, float h)
     {
         PInt3 from = by.Spot >= 0 && by.Spot < Spots.Count ? Spots[by.Spot].Cell : Cell(by.Pos);
-        foreach (var (s, i) in Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag is not ("bed" or "home" or "sit") && t.s.Cell.Manhattan(from) <= 12).OrderBy(t => t.s.Cell.Manhattan(from)).Take(12))
+        foreach (var (s, i) in Spots.Select((s, i) => (s, i)).Where(t => t.i != by.Spot && t.i != with.Spot && t.s.Tag is not ("bed" or "home" or "sit") && t.s.Cell.Manhattan(from) <= 12).OrderBy(t => t.s.Cell.Manhattan(from)).Take(12))
         {
             Vector3 at = At(i);
             if (Room(at, at.Y, r, h) && StandBy(at, Vector3.Right, dist, r, h, at) != null) return i;
