@@ -491,9 +491,9 @@ public partial class Place
             double budget = PlanetSurface.Fx.LoadBudget.Left(1.5);
             while (clock.Elapsed.TotalMilliseconds < budget)
             {
-                double began = clock.Elapsed.TotalMilliseconds;
+                var step = StepClock.Start();
                 bool more = _dressing.MoveNext();
-                Worst(3, _dressStage, clock.Elapsed.TotalMilliseconds - began);
+                step.End(3, _dressStage);
                 if (!more) { _dressing = null; break; }
             }
             PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
@@ -549,6 +549,7 @@ public partial class Place
                 yield return 0;
                 clock.Restart();
             }
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
             DecoNode.CollisionLayer = room.Solid.Contains(i) ? Layers.World : SceneryLayer;
             DecoNode n;
@@ -559,8 +560,11 @@ public partial class Place
                 d.Pieces.Add(null);
                 continue;
             }
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
             d.Node.AddChild(n);
+            long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
             PlanetSurface.Fx.Fade.Set(n, 0f, 0f); // the room's pieces dissolve in together once all are in
+            long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
             d.Pieces.Add(n);
             _pieceOf[n.GetInstanceId()] = (room, i);
             if (!d.Bodies.TryGetValue(DecoNode.CollisionLayer, out StaticBody3D body))
@@ -575,9 +579,13 @@ public partial class Place
                 body.ShapeOwnerSetTransform(owner, at * xf);
             }
             // Out after half a millisecond: a step ends with at most one more piece over it.
+            // The longest part of the piece names the step (the checks' longest-step note).
+            long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
+            long most = Math.Max(Math.Max(t1 - t0, t2 - t1), Math.Max(t3 - t2, t4 - t3));
+            string part = most == t1 - t0 ? "made" : most == t2 - t1 ? "added" : most == t3 - t2 ? "dissolve set" : "shapes";
             if (clock.Elapsed.TotalMilliseconds > 0.5)
             {
-                _dressStage = pl.Piece;
+                _dressStage = $"{pl.Piece} ({part} {most * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F1})";
                 yield return 0;
                 clock.Restart();
             }

@@ -286,13 +286,23 @@ public partial class Place : Node3D
             if (g.Merging != null && !g.Modified)
             {
                 // A part a step (each a few thousand vertices handed to the renderer), within the frame's loading allowance.
-                while (g.NextPart < g.Merging.Count && (g.NextPart == 0 || clock.Elapsed.TotalMilliseconds < budget)) SetMerged(g, g.Merging[g.NextPart++]);
+                while (g.NextPart < g.Merging.Count && (g.NextPart == 0 || clock.Elapsed.TotalMilliseconds < budget))
+                {
+                    var step = StepClock.Start();
+                    SetMerged(g, g.Merging[g.NextPart++]);
+                    step.End(0, "a merged cube's part");
+                }
                 if (g.NextPart >= g.Merging.Count) g.Next = built.Count;
             }
             else
             {
                 if (g.Merged.Count > 0) FreeMerged(g); // changed while its parts went in: a mesh a chunk after all
-                while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget) SetChunkMesh(built[g.Next++]);
+                while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget)
+                {
+                    var step = StepClock.Start();
+                    SetChunkMesh(built[g.Next++]);
+                    step.End(0, "a chunk's mesh");
+                }
             }
             PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds - before);
             if (g.Next < built.Count) break;
@@ -302,7 +312,9 @@ public partial class Place : Node3D
             g.Meshing = null;
             g.Next = 0;
             _meshing--;
+            var shown = StepClock.Start();
             ShowNear(g, true);
+            shown.End(0, "a cube shown");
         }
         if (--_tierTimer > 0) return;
         _tierTimer = 8;
@@ -312,7 +324,12 @@ public partial class Place : Node3D
         {
             if (g.Meshing != null || g.Modified) continue;
             if (Dormant && (g.Near || g.Way != 0)) DropNear(g, instant: true);
-            else if (g.Near && g.Way == 0 && Away(g.Key, eye) > rules.NearDrop) DropNear(g);
+            else if (g.Near && g.Way == 0 && Away(g.Key, eye) > rules.NearDrop)
+            {
+                var step = StepClock.Start();
+                DropNear(g);
+                step.End(0, "a cube dropped");
+            }
         }
         if (Dormant) return;
         while (_meshing < 4)
@@ -593,11 +610,17 @@ public partial class Place : Node3D
         long t = System.Diagnostics.Stopwatch.GetTimestamp();
         TickTiers();
         t = Part(0, t);
+        var step = StepClock.Start();
         StepFades((float)delta);
+        step.End(1, "cubes' dissolves");
+        step = StepClock.Start();
         StepDressFades((float)delta);
+        step.End(1, "rooms' dissolves");
         t = Part(1, t);
         if (Dormant) return;
+        step = StepClock.Start();
         TickLights((float)delta);
+        step.End(2, "lamps");
         t = Part(2, t);
         TickDress();
         Part(3, t);
@@ -616,6 +639,20 @@ public partial class Place : Node3D
         if (ms <= StepWorst[part]) return;
         StepWorst[part] = ms;
         StepWhat[part] = what;
+    }
+
+    /// <summary>One step's clock: its time goes to <see cref="Worst"/> unless a garbage collection landed in it (the runtime's, not the step's).</summary>
+    internal readonly struct StepClock
+    {
+        readonly long _at;
+        readonly int _gcs;
+        StepClock(long at, int gcs) { _at = at; _gcs = gcs; }
+        public static StepClock Start() => new(System.Diagnostics.Stopwatch.GetTimestamp(), GC.CollectionCount(0));
+        public void End(int part, string what)
+        {
+            if (GC.CollectionCount(0) != _gcs) return;
+            Worst(part, what, (System.Diagnostics.Stopwatch.GetTimestamp() - _at) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+        }
     }
 
     static long Part(int i, long from)

@@ -392,8 +392,15 @@ public partial class PoiPlaces : Node3D
             Node n = p;
             while (n.GetChildCount() > 0 && n.GetChild(n.GetChildCount() - 1) is Node last && last.GetChildCount() > 16) n = last;
             bool done = n == p && p.GetChildCount() == 0;
-            if (done) p.Free();
-            else n.GetChild(n.GetChildCount() - 1).Free();
+            Node next = done ? p : n.GetChild(n.GetChildCount() - 1);
+            // A body holding a room's worth of shapes (as shape owners, not nodes) gives them up 16 at a time first.
+            var owners = next is CollisionObject3D body ? body.GetShapeOwners() : null;
+            if (owners is { Length: > 16 })
+            {
+                done = false;
+                for (int i = 0; i < 16; i++) ((CollisionObject3D)next).RemoveShapeOwner((uint)owners[owners.Length - 1 - i]);
+            }
+            else next.Free();
             double step = clock.Elapsed.TotalMilliseconds - began;
             (ms, pieces, worst) = (ms + step, pieces + 1, Math.Max(worst, step));
             if (!done) { _goingDown[0] = (p, ms, pieces, worst); continue; }
