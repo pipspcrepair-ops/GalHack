@@ -32,6 +32,9 @@ public partial class Hulks : Node
     /// <summary>Each crash site's vessels, set down.</summary>
     public readonly Dictionary<PoiSite, List<Vessel>> Down = new();
 
+    /// <summary>How long the last set-down took on the main thread (its pieces built and their collision worked out on a worker before), ms.</summary>
+    public double LastSetDownMs { get; private set; }
+
     /// <summary>A hulk's vessel was set down.</summary>
     public event Action<PoiSite, Vessel> Set;
 
@@ -40,10 +43,20 @@ public partial class Hulks : Node
 
     int _tick;
 
+    /// <summary>Wrecks set down still being dressed, a few pieces a tick.</summary>
+    readonly Queue<IEnumerator<int>> _dressing = new();
+
+    /// <summary>Every wreck set down is dressed (tests: now, all of it).</summary>
+    public void DressAll()
+    {
+        while (_dressing.TryDequeue(out var steps)) while (steps.MoveNext()) { }
+    }
+
     public override void _PhysicsProcess(double delta)
     {
         if (Zone?.Planet == null) return;
         LiftClear();
+        if (_dressing.TryPeek(out var dressing) && !dressing.MoveNext()) _dressing.Dequeue();
         foreach (var (site, task) in _building.Where(kv => kv.Value.IsCompleted).ToList())
         {
             _building.Remove(site);
@@ -78,6 +91,7 @@ public partial class Hulks : Node
         var pieces = plan.Pieces.Select((piece, i) => HullVessel.Build(plan, piece, catalogue, state, seed + (ulong)i * 7919UL, deco)).ToList();
         if (Decor.Shared?.Meshes is { } meshes)
             foreach (HullVessel.Dressing d in pieces.SelectMany(p => p.Decor)) meshes.Prepare(d.Look);
+        foreach (HullVessel.Result r in pieces) r.Colliders = PhysicsSandbox.Bridges.StructureBridge.Colliders(r.Structure);
         return pieces;
     }
 
@@ -129,14 +143,15 @@ public partial class Hulks : Node
         {
             CapitalHull.HullPiece piece = r.Piece;
             var at = (origin + new Vector3(piece.Origin.X, piece.Origin.Y, piece.Origin.Z)).ToNumerics();
-            Vessel v = Vessel.SpawnGroundWreck(Zone, r.Structure, at, piece.Rotation);
+            Vessel v = Vessel.SpawnGroundWreck(Zone, r.Structure, at, piece.Rotation, r.Colliders);
             v.Derelict = new Slice.Orbit.DerelictPlan { Id = $"hulk-{site.Origin.X}-{site.Origin.Z}-{list.Count}", Name = r.Structure.Name, Structure = r.Structure, Position = at, Rotation = piece.Rotation, Door = r.Door, Hull = r };
-            v.Dress(r.Decor);
+            _dressing.Enqueue(v.DressSteps(r.Decor).GetEnumerator());
             Stock(v, rng, site.State);
             list.Add(v);
             Set?.Invoke(site, v);
         }
         GD.Print($"hulk: {site.Family.Name} '{site.Layout.Variant?.Name}' ({site.State}) set down as {list.Count} wreck(s), {list.Sum(v => v.Structure.Count)} blocks, {pieces.Sum(p => p.Decor.Count)} pieces of dressing, {clock.Elapsed.TotalMilliseconds:F0} ms on the main thread");
+        LastSetDownMs = clock.Elapsed.TotalMilliseconds;
         return list;
     }
 

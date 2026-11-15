@@ -69,6 +69,8 @@ public sealed partial class HullVessel
         public Plan Plan;
         public ulong Seed;
         public PoiState State;
+        /// <summary>Its collision, worked out where it was built (off the main thread), or null.</summary>
+        public List<GalHack.Physics.ChunkColliders> Colliders;
     }
 
     readonly Plan H;

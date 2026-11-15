@@ -139,7 +139,7 @@ public partial class HulkTest : Node
         for (int i = 0; i < 3600 && !_game.Hulks.Down.ContainsKey(site); i++) yield return 0;
         foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in _drive.Wait(120)) yield return x;
-        Check(_game.Hulks.Down.TryGetValue(site, out List<Vessel> wrecks) && wrecks.Count == plan.Pieces.Count, $"set down as {wrecks?.Count ?? 0} wreck(s) once the sleeper came near (built on a worker)");
+        Check(_game.Hulks.Down.TryGetValue(site, out List<Vessel> wrecks) && wrecks.Count == plan.Pieces.Count, $"set down as {wrecks?.Count ?? 0} wreck(s) once the sleeper came near (built on a worker, {_game.Hulks.LastSetDownMs:F0} ms on the main thread, dressed a few pieces a tick)");
         if (wrecks == null || wrecks.Count == 0) yield break;
         Vessel v = wrecks.FirstOrDefault(w => w.Derelict.Hull?.CoreSlot != null) ?? wrecks[0];
 

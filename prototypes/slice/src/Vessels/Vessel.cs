@@ -321,9 +321,9 @@ public sealed partial class Vessel
     static MassProperties MassOf(Structure s) =>
         s.Count > 0 ? StructureBridge.Mass(s) : new MassProperties(100f, N.Vector3.Zero);
 
-    void Furnish(CollisionObject3D owner, bool drawLater = false)
+    void Furnish(CollisionObject3D owner, bool drawLater = false, List<ChunkColliders> made = null)
     {
-        List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
+        List<ChunkColliders> colliders = made ?? StructureBridge.Colliders(Structure);
         // A loose body (a wreck, cut off and free) collides in every part, fittings too: a lamp cut off a wall must lie on the ground.
         List<ChunkColliders> hull = Body.Motion == GalHack.Physics.Motion.Free ? StructureBridge.Colliders(Structure, null, fittings: true) : colliders;
         if (drawLater) foreach (ChunkColliders c in hull) _pendingShapes.Enqueue((HullShapes, c));
