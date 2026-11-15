@@ -62,7 +62,7 @@ public partial class PopRoute : Node
         // (Set by reflection: the flag is only there from places built after load on.)
         // --force-city=1: a city planned on any lived-in world (the city routes' own runs, on fresh seeds).
         if (_args.ContainsKey("force-city")) PlanetSurface.Infra.CityPlan.Force = true;
-        if (_args.ContainsKey("no-merge")) Slice.Places.Place.MergeCubes = false; // --no-merge=1: places' cubes a mesh a chunk, as before
+        if (_args.ContainsKey("merge")) Slice.Places.Place.MergeCubes = true; // --merge=1: places' cubes drawn a mesh a cube
         if (_args.ContainsKey("places-at-load"))
             typeof(PlanetSurface.World.PlanetWorld).GetField("BuildPlacesAtLoad")?.SetValue(null, true);
         ProcessPhysicsPriority = 100;
@@ -532,14 +532,15 @@ public partial class PopRoute : Node
     /// <summary>
     /// The minimum spec's stand-in (--minspec=1, on the 60 Hz screen): its pacing only. At 60 Hz every frame is near 16.7 ms, so
     /// the frame-time limits mean nothing there; the streaming limits are the owner's machine's (see the report for the stand-in's).
+    /// Camera steps off pace at most 15 %: at 60 a second a single frame up for two refreshes is a step of twice the pace (fly 10.1).
     /// </summary>
-    const double MinSpecOff = 10, MoveOffLimit = 10;
+    const double MinSpecOff = 10, MoveOffLimit = 10, MinSpecMoveOff = 15;
 
     static readonly Dictionary<string, Limit> MinSpecLimits = new()
     {
-        ["walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit, double.NaN),
-        ["bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit, double.NaN),
-        ["fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MoveOffLimit, double.NaN),
+        ["walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
+        ["bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
+        ["fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
     };
 
     int _gateFails;

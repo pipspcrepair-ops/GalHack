@@ -75,8 +75,11 @@ public partial class PopRoute
         {
             Vector3 eye = Lift(at, up);
             _game.FixedCamera = new Transform3D(Basis.LookingAt(way, Vector3.Up).Rotated(way.Cross(Vector3.Up).Normalized(), Mathf.DegToRad(pitch)), eye);
-            for (int i = 0; i < 2400 && (i < 300 || !zone.Streamer.Settled); i++)
+            // Until the ground has settled and the places round have stood up (their cubes' full detail in), a minute at most.
+            int idleFor = 0;
+            for (int i = 0; i < 3600 && (i < 300 || !zone.Streamer.Settled || idleFor < 180); i++)
             {
+                idleFor = _game.Places == null || _game.Places.Idle ? idleFor + 1 : 0;
                 _game.Survivor.PlaceOutside((eye - way * 6f + Vector3.Down * 1.6f).ToNumerics());
                 yield return 0;
             }
