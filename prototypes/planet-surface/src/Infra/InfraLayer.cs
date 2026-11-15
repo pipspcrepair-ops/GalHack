@@ -966,8 +966,22 @@ public sealed partial class TileBuilder
         {
             NV a0 = P(i, foot.Y), a1 = P(i + 1, foot.Y), b1 = P(i + 1, top.Y), b0 = P(i, top.Y);
             Quad(a0, a1, b1, b0, color, surface, 1f, new NV(foot.X, (foot.Y + top.Y) * 0.5f, foot.Z), collide);
-            Mesh.AddTriangle(surface, top, b1, b0, color, 1f);
+            Mesh.AddTriangle(surface, top, b1, b0, color, Coat(color, surface, 1f));
         }
+    }
+
+    /// <summary>Timber and composite the tile's own pieces are built of; the rest of the matte is concrete and stone.</summary>
+    static readonly HashSet<DecoRgb> Woods = new() { Timber, TimberDark, Sleeper, PoleWood }, Composites = new() { Composite, PoleComposite, Insulator, Conduit };
+
+    /// <summary>
+    /// What a tile piece's opaque face is drawn as (<see cref="DecoFinishes.Code"/>): steel on metal, then by what it is built of,
+    /// weathered; a given alpha under 1 (glass's clarity, a code already made) is kept.
+    /// </summary>
+    static float Coat(DecoRgb color, DecoSurface surface, float alpha)
+    {
+        if (alpha < 1f || surface is not (DecoSurface.Matte or DecoSurface.Metal)) return alpha;
+        DecoFinish f = surface == DecoSurface.Metal ? DecoFinish.Steel : Woods.Contains(color) ? DecoFinish.Wood : Composites.Contains(color) ? DecoFinish.Plastic : DecoFinish.Stone;
+        return DecoFinishes.Code(f, 3, false);
     }
 
     /// <summary>A box of collision only (its faces into the tile's collision, nothing drawn).</summary>
@@ -1003,6 +1017,7 @@ public sealed partial class TileBuilder
         NV n = NV.Cross(b - a, c - a);
         if (inside is NV o && NV.Dot(n, (a + c) * 0.5f - o) < 0) (b, d) = (d, b);
         else if (inside == null && n.Y < 0) (b, d) = (d, b);
+        alpha = Coat(color, surface, alpha);
         Mesh.AddTriangle(surface, a, b, c, color, alpha);
         Mesh.AddTriangle(surface, a, c, d, color, alpha);
         if (!collide) return;

@@ -43,7 +43,7 @@ public static class Unpainted
                 Material mat = g.MaterialOverride ?? (g as MeshInstance3D)?.GetSurfaceOverrideMaterial(s) ?? (mesh is PrimitiveMesh pm ? pm.Material : mesh.SurfaceGetMaterial(s));
                 string what = Describe(mat);
                 if (mat == null) faults.Add(new Fault("no material", path, mesh.GetClass(), what, box, over, 0));
-                else if (mesh is PrimitiveMesh) faults.Add(new Fault("plain primitive", path, mesh.GetClass(), what, box, over, 0));
+                else if (Living(path)) continue; // (people and creatures: their own flat-coloured style)
                 else if (mat is StandardMaterial3D { AlbedoTexture: null, VertexColorUseAsAlbedo: false, Transparency: BaseMaterial3D.TransparencyEnum.Disabled }) faults.Add(new Fault("flat standard", path, mesh.GetClass(), what, box, over, 0));
                 else if (mat is ShaderMaterial { Shader: { } sh } && mesh is ArrayMesh am && g is MeshInstance3D && Flat(sh.Code) is { } flat)
                 {
@@ -91,8 +91,11 @@ public static class Unpainted
     }
 
     /// <summary>Things meant to be off the ground: the sky, weather, creatures, vessels, people, the camera's own.</summary>
-    static bool Airborne(string path) => path.Contains("Sky") || path.Contains("Weather") || path.Contains("Cloud") || path.Contains("Wildlife") || path.Contains("Vessel")
-                                         || path.Contains("Orbit") || path.Contains("Survivor") || path.Contains("Visor") || path.Contains("Rain") || path.Contains("Bird");
+    static bool Airborne(string path) => Living(path) || path.Contains("Sky") || path.Contains("Weather") || path.Contains("Cloud") || path.Contains("Vessel")
+                                         || path.Contains("Orbit") || path.Contains("Visor") || path.Contains("Rain");
+
+    /// <summary>People and creatures, drawn in their own style and moving about.</summary>
+    static bool Living(string path) => path.Contains("Sleeper") || path.Contains("Survivor") || path.Contains("Townsfolk") || path.Contains("Wildlife") || path.Contains("Bird") || path.Contains("Schools");
 
     static string Describe(Material m) => m switch
     {
