@@ -505,10 +505,10 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 | Stage | Player goal | Key builds and unlocks | Main threats |
 | --- | --- | --- | --- |
 | 1. Wake | Stay alive | Survival tool (shoot and gather modes), suit constructor, survival replicator, O2 bottles, medkits | Exposure, hunger, wildlife |
-| 2. Foothold | A safe, powered shelter | Base core, generator, fuel tank, small constructor, galley replicator | Night predators, first Vharn scouts |
+| 2. Foothold | A safe, powered shelter | Base core, generator, capacitor, small constructor, galley replicator | Night predators, first Vharn scouts |
 | 3. Wheels | Cover the whole planet | Hover vessel, hand drill, detector, portable constructor | Vharn patrols, guarded POIs |
 | 4. Wings | Reach orbit, moons and asteroids | Small vessel, landing gear, large constructor, CPU tier 2 | Space pirates, hostile fighters |
-| 5. Capital | A mobile base that jumps between stars | Capital vessel, hyperdrive, fold crystal tank, shields, repair bay | Faction warships, higher-danger planets |
+| 5. Capital | A mobile base that jumps between stars | Capital vessel, hyperdrive, shields, repair bay | Faction warships, higher-danger planets |
 | 6. Frontier | Master the deep galaxy | CPU T3/T4, combat steel, advanced constructor, Hijack Tool T3, charged armor | Heavy capital ships, alien ruins, Husk horrors |
 
 **Character level**
@@ -643,6 +643,7 @@ Resources climb a five-step rarity ladder (common, uncommon, rare, exotic, uniqu
 | Uncommon | Neodymium | Every planet in small deposits; rich on moons and asteroids | Magnets for thrusters and RCS |
 | Uncommon | Gold | Scattered; richer on volcanic worlds | Advanced electronics, trade value |
 | Uncommon | Gravium | High-gravity worlds | Hardened and combat steel |
+| Uncommon | Warp ore (name open) | Moons, icy bodies and asteroid fields; always on the start world's fuel moon | Warp fuel (warp cells) |
 | Rare | Fold crystal | Irradiated ice worlds; asteroids near dead and irradiated stars | Hyperdrive fuel, shields |
 | Rare | Emberite | Lava worlds around young and dying stars | Fusion cells, plasma weapons, high-output generators |
 | Rare | Starsilver | Barren metal worlds and dense asteroids near giant stars | Top-tier devices, hyperdrive T2, advanced constructor |
@@ -864,11 +865,11 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 | Category | Devices | Available on |
 | --- | --- | --- |
 | Control | Core, command chairs, remote-control console | All |
-| Power | Generators sized per class, fuel tanks T1–T3, solar panels and capacitors | All; solar on bases and capital vessels |
+| Power | Generators sized per class, capacitors and solar panels (no fuel tanks: fuel sits in core storage) | All; solar on bases and capital vessels |
 | Life support | Healing booth, respawn (clone) chamber; air and gravity are built into the core | Mostly bases and capital vessels |
 | Food | Replicators T1–T3 | Portable (T1); small vessels, bases and capital vessels |
 | Propulsion | Thrusters (small, medium, large, jet), RCS gyros, hover engines, landing gear, docking pads | Per class |
-| Travel | Warp drive and warp cell tank; hyperdrive T1/T2 and fold crystal tank | Warp drive on small and capital vessels; hyperdrive on capital vessels only |
+| Travel | Warp drive; hyperdrive T1/T2 (their fuels sit in core storage) | Warp drive on small and capital vessels; hyperdrive on capital vessels only |
 | Production | Constructors (small, large, advanced), deconstructor, blueprint factory | Constructors on all; factory on bases and capital vessels |
 | Storage | Cargo containers in several sizes, all adding to one shared storage | All, with volume caps per class |
 | Defense | Shield generator and extenders, turrets, fixed weapons, detector, spotlights | Per class (section 15) |
@@ -903,9 +904,9 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 
 **Power and fuel**
 
-- Generators produce on demand, and fuel burn scales with the load. Idle devices cost nothing; a structure at full thrust with shields charging burns fuel fast.
-- A structure needs a generator and a fuel tank with fuel in it. Tank capacity (reference): T1 1,200, T2 2,700, T3 6,000 fuel units.
-- Solar panels and capacitors (bases and capital vessels) are used before fuel. Output depends on day and night, latitude and weather, which gives landing site choice a real cost.
+- **Generators charge capacitors, and everything draws from the capacitors** (owner, 15 Nov). Devices (thrusters, gyros, drives, shields, turrets, machines, lights) take their power from the structure's capacitors. Generators burn fuel to keep the capacitors charged, so the burn follows the load: idle devices cost nothing, and a structure at full thrust with shields charging burns fuel fast. Solar panels (bases and capital vessels) also charge the capacitors and are used before fuel. Their output depends on day and night, latitude and weather, which gives the choice of landing site a real cost.
+- **No fuel tanks.** Generator fuel, warp fuel and hyperdrive fuel are all kept in **core storage**, the cargo containers (owner, 15 Nov). Anything that draws materials for use (generators, drives, constructors, turrets, replicators) draws from that one place. The fuel's volume competes with cargo, so a long voyage is a cargo choice.
+- **Tiered generator fuel.** The fuel made early is the least efficient: fewer units per item and per storage unit, so early fuel fills the hold fast. Better fuels come through the tech tree (the tiers follow Empyrion's biofuel, energy cells and fusion cells).
 
 | Fuel item | Fuel units (reference) | Source |
 | --- | --- | --- |
@@ -915,9 +916,10 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 | Large burnstone pack | 150 | Mid-tier recipe |
 | Fusion cell | 300 | High-tier recipe |
 
-**Fold crystal** (a rare crystal that folds space for jumps and feeds shields) sits in one shared tank per structure:
+**Fold crystal** (a rare crystal that folds space for jumps and feeds shields) is the hyperdrive fuel, kept in core storage like every fuel:
 
-- A hyperdrive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp cells, made in constructors from common materials, about 1 per AU, kept in their own tank.
+- **Three separate fuels** (owner, 15 Nov): generator fuel (above), warp fuel and hyperdrive fuel. Warp fuel and hyperdrive fuel are both gathered, not made from common materials.
+- A hyperdrive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp fuel, a gathered resource (as Empyrion's pentaxid is), refined into warp cells, about 1 per AU. The fuel moon by the start world holds the first warp fuel deposits.
 - Shields burn fold crystal only while recharging (reference: about 1,000 shield HP per unit), never while full or off. Shields must be down to warp.
 - Fold crystal deposits favour irradiated and dead stars, so fuelling long voyages pulls players toward dangerous systems.
 
