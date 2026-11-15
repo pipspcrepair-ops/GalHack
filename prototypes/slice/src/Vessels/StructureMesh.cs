@@ -108,6 +108,7 @@ public partial class StructureMesh : Node3D
             Rebuild(c, colliders: false);
             done++;
         }
+        if (done > 0) UpdateLights(); // a lamp switched on or off has its real light follow
     }
 
     /// <summary>Its devices' lights and screens dim or light up together: one value per chunk, nothing rebuilt.</summary>

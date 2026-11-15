@@ -32,8 +32,7 @@ public partial class StandIn : Node3D
             uint c = t.IsArmor ? s.Palette[a.Paint.PY].Base : t.Color;
             solid[p] = ChunkColor(c);
         }
-        var st = new SurfaceTool();
-        st.Begin(Mesh.PrimitiveType.Triangles);
+        var st = new Boxes();
         var done = new HashSet<Int3>();
         foreach (var (p, colour) in solid)
         {
@@ -45,12 +44,11 @@ public partial class StandIn : Node3D
             Box(st, new Vector3((x0 + x1) * 0.5f, p.Y, p.Z) * cell, new Vector3(x1 - x0 + 1, 1, 1) * cell, colour);
         }
         _body ??= Add("Body", new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.9f, CullMode = BaseMaterial3D.CullModeEnum.Disabled });
-        _body.Mesh = st.Commit();
-        st.Clear();
-        st.Begin(Mesh.PrimitiveType.Triangles);
+        _body.Mesh = st.Mesh();
+        st = new Boxes();
         foreach (var (p, colour) in lamps) Box(st, new Vector3(p.X, p.Y, p.Z) * cell, Vector3.One * 1.6f * cell, colour);
         _lights ??= Add("Lights", new StandardMaterial3D { VertexColorUseAsAlbedo = true, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, CullMode = BaseMaterial3D.CullModeEnum.Disabled });
-        _lights.Mesh = lamps.Count > 0 ? st.Commit() : null;
+        _lights.Mesh = lamps.Count > 0 ? st.Mesh() : null;
     }
 
     MeshInstance3D Add(string name, Material material)
@@ -69,7 +67,7 @@ public partial class StandIn : Node3D
         (Vector3.Back, Vector3.Right, Vector3.Up), (Vector3.Forward, Vector3.Up, Vector3.Right),
     };
 
-    static void Box(SurfaceTool st, Vector3 centre, Vector3 size, Color colour)
+    static void Box(Boxes st, Vector3 centre, Vector3 size, Color colour)
     {
         Vector3 half = size * 0.5f;
         foreach (var (n, u, v) in Faces)
@@ -77,10 +75,29 @@ public partial class StandIn : Node3D
             Vector3 mid = centre + n * half, su = u * half, sv = v * half;
             foreach (Vector3 c in new[] { mid - su + sv, mid + su + sv, mid + su - sv, mid - su + sv, mid + su - sv, mid - su - sv })
             {
-                st.SetColor(colour);
-                st.SetNormal(n);
-                st.AddVertex(c);
+                st.Points.Add(c);
+                st.Normals.Add(n);
+                st.Colours.Add(colour);
             }
+        }
+    }
+
+    /// <summary>Triangles gathered as plain arrays, made into one mesh surface at once.</summary>
+    sealed class Boxes
+    {
+        public readonly List<Vector3> Points = new(), Normals = new();
+        public readonly List<Color> Colours = new();
+
+        public ArrayMesh Mesh()
+        {
+            var arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Godot.Mesh.ArrayType.Max);
+            arrays[(int)Godot.Mesh.ArrayType.Vertex] = Points.ToArray();
+            arrays[(int)Godot.Mesh.ArrayType.Normal] = Normals.ToArray();
+            arrays[(int)Godot.Mesh.ArrayType.Color] = Colours.ToArray();
+            var mesh = new ArrayMesh();
+            mesh.AddSurfaceFromArrays(Godot.Mesh.PrimitiveType.Triangles, arrays);
+            return mesh;
         }
     }
 }

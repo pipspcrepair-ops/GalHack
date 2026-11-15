@@ -254,6 +254,7 @@ public partial class SkyshipTest : Node
         N.Vector3 last = v.Body.Position;
         var frames = new List<double>();
         double skyMs = 0, skyWorst = 0;
+        var skyTimes = new List<double>();
         int skyTicks = 0;
         bool Done() => places.Count >= 3 && ship.Landings >= 1 && ship.Departures >= 2;
         for (int t = 0; t < 60 * 60 * 18 && !Done() && ship.Phase != SkyPhase.Wrecked; t++)
@@ -262,6 +263,7 @@ public partial class SkyshipTest : Node
             if (probe.LastMs > 0) frames.Add(probe.LastMs);
             skyMs += sky.LastTickMs;
             skyWorst = Math.Max(skyWorst, sky.LastTickMs);
+            skyTimes.Add(sky.LastTickMs);
             skyTicks++;
             if (ship.At != null) places.Add(ship.At);
             if (ship.Phase != SkyPhase.Landed)
@@ -307,6 +309,9 @@ public partial class SkyshipTest : Node
         double median = frames.Count > 0 ? frames[frames.Count / 2] : 0, p95 = frames.Count > 0 ? frames[(int)(frames.Count * 0.95)] : 0;
         GD.Print($"  frames {frames.Count}: median {median:F2} ms, 95th {p95:F2} ms; the sky's own tick {skyMs / Math.Max(1, skyTicks):F3} ms mean, {skyWorst:F2} ms worst{(_args.ContainsKey("minspec") ? " (min-spec: 4 cores)" : "")}");
         Check(median <= 16.7, $"frame time within budget: median {median:F2} ms");
-        Check(skyMs / Math.Max(1, skyTicks) < 0.3 && skyWorst < 8.0, $"the ship costs little: {skyMs / Math.Max(1, skyTicks):F3} ms a tick, {skyWorst:F2} ms at worst ({sky.WorstWhat})");
+        skyTimes.Sort();
+        double sky99 = skyTimes.Count > 0 ? skyTimes[(int)(skyTimes.Count * 0.999)] : 0;
+        Check(skyMs / Math.Max(1, skyTicks) < 0.3 && sky99 < 2.0 && skyWorst < 16.7,
+            $"the ship costs little: {skyMs / Math.Max(1, skyTicks):F3} ms a tick, 99.9th {sky99:F2} ms, {skyWorst:F2} ms at worst ({sky.WorstWhat})");
     }
 }

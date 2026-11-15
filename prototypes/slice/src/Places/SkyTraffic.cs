@@ -56,7 +56,7 @@ public partial class SkyTraffic : Node
     /// <summary>Why there is no ship, when there is none (tests).</summary>
     public string Missing { get; private set; }
 
-    List<PoiSite> _settled, _looks;
+    List<PoiSite> _settled, _looks, _stops;
     StandIn _standIn;
     Random _rng;
     bool _settledOnCollision, _night;
@@ -100,8 +100,7 @@ public partial class SkyTraffic : Node
         for (int i = 0; i < 8 && s == null; i++) s = SmallCraft.Roll(Zone.Data.Catalogue, role, CraftStyle.Freeholder, _rng.Next(), gravity);
         if (s == null) { Missing = "no roll met its needs"; return; }
         // Its home: the nearest inhabited place to the start that isn't on top of it.
-        PoiSite home = _settled.OrderBy(p => Distance(p, _start) < 400f ? float.MaxValue : Distance(p, _start)).FirstOrDefault()
-                       ?? _looks.OrderBy(p => Distance(p, _start)).FirstOrDefault();
+        PoiSite home = _stops.OrderBy(p => (_settled.Contains(p) ? 0f : 1500f) + (Distance(p, _start) < 400f ? 1e6f : Distance(p, _start))).FirstOrDefault();
         N.Vector3? at = null;
         if (home != null)
         {
@@ -162,13 +161,19 @@ public partial class SkyTraffic : Node
 
     // ---- Places ---------------------------------------------------------------------------------------------
 
-    /// <summary>The places it lands at (inhabited, or a town, port or city) and the places a scout looks at (anything bigger than a shed).</summary>
+    /// <summary>The inhabited places (or towns, ports and cities), the places a scout looks at (anything bigger than a shed), and the stops it puts down at.</summary>
     void Stops()
     {
         var wholes = new HashSet<object>();
         var sites = Zone.Planet.Pois.Where(p => p.Whole == null || wholes.Add(p.Whole)).Where(p => p.Stamp != null).ToList();
         _settled = sites.Where(p => p.Occupancy != null || p.Tier >= PoiTier.Town).ToList();
         _looks = sites.Where(p => p.Tier >= PoiTier.Site && !p.Family.Id.StartsWith("flavour_")).ToList();
+        // Where it puts down: the inhabited places within its reach of the start; where they are few, the nearest other places too.
+        _stops = _settled.Where(p => Distance(p, _start) < RouteReach).ToList();
+        foreach (PoiSite p in _looks.Where(p => !_stops.Contains(p)).OrderBy(p => Distance(p, _start)))
+            if (_stops.Count < 4) _stops.Add(p);
+        if (_stops.Count < 2) _stops = _settled.Concat(_looks).Distinct().ToList();
+        _roofs = sites.Select(s => (s.Center.X, s.Center.Z, MathF.Max(s.Stamp.MaxX - s.Stamp.MinX, s.Stamp.MaxZ - s.Stamp.MinZ) * 0.5f + 60f, s.Origin.Y + Buildings(s))).ToArray();
     }
 
     /// <summary>A place's middle in the frame, nearest a point.</summary>
@@ -187,7 +192,7 @@ public partial class SkyTraffic : Node
     public PoiSite NextStop(Skyship ship, bool lands, bool awayFromThreat = false)
     {
         N.Vector3 p = ship.Vessel.Body.Position, threat = Threat();
-        List<PoiSite> pool = lands && _settled.Count > 1 ? _settled : _looks.Count > 1 ? _looks : _settled;
+        List<PoiSite> pool = lands || _looks.Count < 2 ? _stops : _looks;
         var ranked = pool.Where(s => s != ship.At && s != ship.Bound).Select(s =>
         {
             N.Vector3 c = CentreOf(s, p);
@@ -293,16 +298,22 @@ public partial class SkyTraffic : Node
             N.Vector3 q = from + dir * d;
             top = MathF.Max(top, MathF.Max(Zone.GroundAt(q.X, q.Z).Y, sea));
         }
-        foreach (PoiSite s in _looks.Concat(_settled))
+        var planet = Zone.Planet;
+        double fx = Mathx.WrapX(from.X, planet.Width), fz = Mathx.Wrap(from.Z, planet.Height);
+        foreach (var (x, z, reach, roof) in _roofs)
         {
-            N.Vector3 c = CentreOf(s, from);
-            float reach = MathF.Max(s.Stamp.MaxX - s.Stamp.MinX, s.Stamp.MaxZ - s.Stamp.MinZ) * 0.5f + 60f;
-            N.Vector3 rel = MathX.Flat(c - from);
-            float along = Math.Clamp(N.Vector3.Dot(rel, dir), 0f, ahead);
-            if (MathX.Flat(rel - dir * along).Length() < reach) top = MathF.Max(top, s.Origin.Y + Buildings(s));
+            if (roof <= top) continue;
+            float rx = (float)Mathx.WrapDelta(x - fx, planet.Width), rz = (float)Mathx.WrapDelta(z - fz, planet.Height);
+            if (MathF.Abs(rx) > ahead + reach || MathF.Abs(rz) > ahead + reach) continue;
+            float along = Math.Clamp(rx * dir.X + rz * dir.Z, 0f, ahead);
+            float sx = rx - dir.X * along, sz = rz - dir.Z * along;
+            if (sx * sx + sz * sz < reach * reach) top = roof;
         }
         return top;
     }
+
+    /// <summary>Every place's middle (canonical), its reach and how high its buildings may stand: what the way ahead is held over.</summary>
+    (double X, double Z, float Reach, float Roof)[] _roofs;
 
     /// <summary>The height a place's buildings may reach over its pad, m: a city's towers stand tall.</summary>
     static float Buildings(PoiSite s) => s.Tier >= PoiTier.City ? 90f : s.Tier >= PoiTier.Town ? 40f : 25f;

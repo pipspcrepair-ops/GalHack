@@ -204,8 +204,12 @@ public sealed class Skyship
         float speed = Math.Clamp(d * 0.12f, 0f, Cruise);
         if (d > 3f) _heading = SkyPilot.HeadingOf(dir);
         // Down to a hover over the spot, held over the ground still between.
-        float floor = MathF.Max(Spot.Y + 30f, _traffic.HighestAhead(p, dir, d) + 25f);
-        Steer(dir * speed + N.Vector3.UnitY * Vertical(floor, p.Y), _heading);
+        if ((_altitudeIn -= dt) <= 0f)
+        {
+            _altitudeIn = 0.5f;
+            _altitude = MathF.Max(Spot.Y + 30f, _traffic.HighestAhead(p, dir, d) + 25f);
+        }
+        Steer(dir * speed + N.Vector3.UnitY * Vertical(_altitude, p.Y), _heading);
         float flat = MathX.Flat(Vessel.Body.Velocity).Length();
         if (_search != null)
         {

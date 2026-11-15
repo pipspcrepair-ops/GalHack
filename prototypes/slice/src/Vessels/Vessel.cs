@@ -93,7 +93,7 @@ public sealed partial class Vessel
         {
             _lightsOn = value;
             SetDecoLights(value);
-            bool changed = false;
+            bool changed = false, others = Structure.DirtyChunks.Count > 0;
             foreach (var (cell, block) in Structure.Blocks().ToList())
             {
                 Block b = block;
@@ -102,7 +102,14 @@ public sealed partial class Vessel
                 Structure.Set(cell, b);
                 changed = true;
             }
-            if (changed) ApplyEdits();
+            if (!changed) return;
+            if (others) ApplyEdits();
+            else
+            {
+                // Only lamps switched: nothing collides or weighs differently, so only their chunks are redrawn, within the frame's budget.
+                View.Queue(Structure.DirtyChunks);
+                Structure.DirtyChunks.Clear();
+            }
         }
     }
 
