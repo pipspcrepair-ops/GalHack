@@ -259,12 +259,12 @@ public static class Building
     // stripping them give back the old plating's worth by the block's hit-point share, rounded
     // down, so a damaged block returns less. Shape, orientation and paint are untouched.
 
-    /// <summary>Sprays <paramref name="plated"/>'s plates onto an armour block: a bare base takes them, a plated one swaps its plating. The block comes out whole.</summary>
+    /// <summary>Sprays <paramref name="plated"/>'s plates onto a block that takes plating (armour, a field emitter): a bare base takes them, a plated one swaps its plating. The block comes out whole.</summary>
     public static UpgradeStatus Plate(Structure s, Int3 p, BlockType plated, Inventory inventory = null)
     {
         if (!s.TryGetBlock(p, out p, out Block b)) return UpgradeStatus.Empty;
         BlockType t = s.TypeOf(b);
-        if (!t.IsArmor || !plated.IsPlated) return UpgradeStatus.NotArmor;
+        if (!TakesPlating(t) || !plated.IsPlated) return UpgradeStatus.NotArmor;
         if (t == plated) return UpgradeStatus.AlreadyBest;
         if ((t.Base ?? t) != plated.Base) return UpgradeStatus.WrongBase;
         Block next = b;
@@ -282,7 +282,7 @@ public static class Building
     {
         if (!s.TryGetBlock(p, out p, out Block b)) return UpgradeStatus.Empty;
         BlockType t = s.TypeOf(b);
-        if (!t.IsArmor) return UpgradeStatus.NotArmor;
+        if (!TakesPlating(t)) return UpgradeStatus.NotArmor;
         if (!t.IsPlated) return UpgradeStatus.AlreadyBest;
         inventory?.Add(PlatingWorth(s, b));
         float share = b.Hp / s.StatsOf(b).MaxHp;
@@ -292,6 +292,9 @@ public static class Building
         s.Set(p, bare);
         return UpgradeStatus.Upgraded;
     }
+
+    /// <summary>Armour, and any block plated or with platings of its own (a field emitter).</summary>
+    public static bool TakesPlating(BlockType t) => t.IsArmor || t.IsPlated || t.Platings.Count > 0;
 
     /// <summary>What a block's plating is worth back: its plates by the block's hit-point share, rounded down.</summary>
     public static Dictionary<string, int> PlatingWorth(Structure s, in Block b)

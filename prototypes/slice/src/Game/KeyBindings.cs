@@ -49,7 +49,7 @@ public sealed class KeyBindings
             new("mirror", Key.X, "Mirror", "mirror build", Build),
             new("style", Key.G, "Deco style / gear", "next style · landing gear", Build),
             new("cruise", Key.C, "Cruise", "hold speed", Build),
-            new("switch-bar", Key.Y, "Switch toolbar", "yours · structure", Build),
+            new("switch-bar", Key.Y, "Switch toolbar", "bag · structure", Build),
             new("terminal", Key.Tab, "Suit terminal", "menu", Menus),
             new("map", Key.M, "Map", "open · close", Menus),
             new("debug", Key.F3, "Debug readout", "numbers", Menus),

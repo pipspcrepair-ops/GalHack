@@ -99,7 +99,7 @@ public sealed class YouSection : IMenuSection
         g.Bar(new Rect2(b.X, statsY + 20, BagW, 8), used, cap, used > cap * 0.9 ? C.Warn : C.Good, 24);
         bool mine = pack.Bar == BarSource.Personal;
         float barY = statsY + 36;
-        g.Caption($"YOUR TOOLBAR [1-9]{(mine ? " · IN USE" : "")}", new Vector2(b.X, barY), BagW, mine ? C.Accent : C.Dim);
+        g.Caption($"BAG [1-9]{(mine ? " · IN USE" : "")}", new Vector2(b.X, barY), BagW, mine ? C.Accent : C.Dim);
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
         {
             var r = new Rect2(new Vector2(b.X + i * Step, barY + 28), new Vector2(Cell, Cell));
@@ -282,7 +282,7 @@ public sealed class YouSection : IMenuSection
         {
             ("HEALTH", $"{v.Health:F0}", v.Health / rules.Health.Max, C.Good),
             ("FOOD", $"{suit.FoodShare * 100:F0}%", suit.FoodShare, C.Accent2),
-            ("OXYGEN", $"{suit.OxygenShare * 100:F0}%", suit.OxygenShare, C.Holo),
+            ("AIR", $"{suit.OxygenShare * 100:F0}%", suit.OxygenShare, C.Holo),
             ("STAMINA", $"{v.Stamina:F0}", v.Stamina / rules.Stamina.Max, C.Accent),
             ("BODY TEMP", $"{v.BodyTemperature:F1}°C", 1 - Math.Abs(v.BodyTemperature - rules.Temperature.Normal) / 4.0, C.Good),
             ("RADIATION", $"{v.Radiation:F1}", 1 - v.Radiation / (rules.Radiation.DamageAbove * 1.5), C.Warn),

@@ -84,7 +84,7 @@ public sealed class BlueprintsSection : IMenuSection
         return Owned(s.Aboard) ? s.Aboard : null;
     }
 
-    static bool Owned(Vessel v) => v != null && !v.IsWreck && !v.IsRuin && v.Structure.Core != null && v.Structure.Owner == Building.DefaultOwner;
+    static bool Owned(Vessel v) => v?.IsPlayers == true;
 
     Vessel _target;
 

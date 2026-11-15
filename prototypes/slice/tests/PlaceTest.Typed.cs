@@ -77,7 +77,7 @@ public partial class PlaceTest
             // (Out of the last one by its own way in first, as a player leaves a hall. Across a spaceport's field, whose
             // recessed pads are pits a body walking straight would fall into, set down 30 m out from the next.)
             if (leave is { } back) foreach (int x in Watched(drive.WalkTo(back, 2f, 120f, dig: false, hop: false))) yield return x;
-            if (!landside && field.Sketch.Type.Plan != null)
+            if (!landside && field.Sketch.Type.Plan != "airport")
             {
                 game.Survivor.PlaceOutside((way + front * 30f + Vector3.Up * 0.3f).ToNumerics());
                 foreach (int x in drive.UntilSettled(30)) yield return x;

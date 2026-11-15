@@ -11,10 +11,10 @@
   "speeds": {
     "hover": { "topSpeedAir": 50, "topSpeedSpace": 50 },
     "bands": [
-      { "below": 20,   "topSpeedAir": 70, "topSpeedSpace": 130, "maxTurn": 90 },
-      { "below": 100,  "topSpeedAir": 70, "topSpeedSpace": 130, "maxTurn": 60 },
-      { "below": 1000, "topSpeedAir": 60, "topSpeedSpace": 100, "maxTurn": 30 },
-      { "below": 0,    "topSpeedAir": 50, "topSpeedSpace": 80,  "maxTurn": 15 }
+      { "below": 20,   "topSpeedAir": 70, "topSpeedSpace": 200, "maxTurn": 90 },
+      { "below": 100,  "topSpeedAir": 70, "topSpeedSpace": 200, "maxTurn": 60 },
+      { "below": 1000, "topSpeedAir": 60, "topSpeedSpace": 200, "maxTurn": 30 },
+      { "below": 0,    "topSpeedAir": 50, "topSpeedSpace": 200, "maxTurn": 15 }
     ],
     "_note": "Top speeds and the turn cap go by mass band (tonnes, docs/grid-figures.md section 5): the first band the mass is below, the last (below 0) for anything heavier. Hover Mode takes hover's top speeds whatever its mass, and its band's turn cap."
   },

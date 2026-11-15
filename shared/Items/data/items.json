@@ -139,9 +139,18 @@
     { "id": "lattice-processor", "name": "Lattice processor", "short": "LAT-PRC", "category": "component", "rarity": "unique", "mass": 3.0, "volume": 2 },
     { "id": "lattice-matrix", "name": "Lattice matrix", "short": "LAT-MTX", "category": "component", "rarity": "unique", "mass": 6.0, "volume": 4 },
     { "id": "charge-plating", "name": "Charge plating", "short": "CHRGPLT", "category": "component", "rarity": "unique", "mass": 8.0, "volume": 2 },
+    // Force fields: one component makes one field of any size, drawn across an opening on a structure,
+    // with its four corner emitters. Each tier is its own tech line (not shields'): what a field of
+    // it can take, and how soon and fast it grows back, are the slice's data (slice.json forceFields).
+    { "id": "force-field-t1", "name": "Force field T1", "short": "FIELD T1", "category": "component", "rarity": "common", "mass": 8.0, "volume": 3, "stack": 10,
+      "uses": "Any size · blue", "unlock": { "level": 6, "cost": 2, "parent": "core", "tab": "structures" } },
+    { "id": "force-field-t2", "name": "Force field T2", "short": "FIELD T2", "category": "component", "rarity": "uncommon", "mass": 12.0, "volume": 3, "stack": 10,
+      "uses": "Any size · blue", "unlock": { "level": 12, "cost": 3, "parent": "force-field-t1", "tab": "structures" } },
+    { "id": "force-field-t3", "name": "Force field T3", "short": "FIELD T3", "category": "component", "rarity": "rare", "mass": 16.0, "volume": 3, "stack": 10,
+      "uses": "Any size · blue", "unlock": { "level": 20, "cost": 5, "parent": "force-field-t2", "tab": "structures" } },
 
     // ---- Consumables ------------------------------------------------------------------------
-    { "id": "o2-bottle", "name": "O2 bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2, "uses": "+75 suit oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "o2-bottle", "name": "Air bottle", "short": "AIR", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2, "uses": "+75 suit oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "medkit", "name": "Medkit", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "unlock": { "level": 2, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
     // Generator fuel, Empyrion's ladder (ItemsConfig: bio fuel 10, small energy cell 15, energy cell 30, large 150, fusion
     // 300). Generators burn it from core storage; the fuel made early is the least efficient, in units per item and per SU.

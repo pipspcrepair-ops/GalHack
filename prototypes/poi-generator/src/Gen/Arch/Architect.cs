@@ -40,7 +40,7 @@ public static class Architect
             // A part of a typed place brings its own plan (PlaceTypes.Piece); otherwise the variant's or the family's.
             SiteDef? site = hints?.Site ?? ((variant.Site ?? family.Site) is { } id ? lib.Sites[id] : null);
             // A place type is sited from its sketch and each of its parts laid out on its own; off a world, its first building stands for it.
-            if (site == null && family.Types.Count > 0) site = PlaceTypes.Sample(lib, family, seed, hints?.Tech);
+            if (site == null && family.Types.Count > 0) site = PlaceTypes.Sample(lib, family, seed, hints?.Tech, variant.Port);
             string kitId = family.Style ?? site?.Style ?? lib.Programs[variant.Program ?? family.Program!].Style;
             var canvas = new Canvas(lib.Kits[kitId]) { Tech = hints?.Tech };
             canvas.X.Wrong = rng.Chance(family.Wrong);

@@ -82,36 +82,94 @@ public partial class PoiTest
                 foreach (SketchItem i in s.Items.Where(i => i.Part.Kind == "building" && i.Part.Size.ContainsKey("len") && i.Part.Size.ContainsKey("depth")))
                     if (Math.Abs(i.Box.Long - Math.Max(i.Rolled["len"], i.Rolled["depth"])) > 2 || Math.Abs(i.Box.Short - Math.Min(i.Rolled["len"], i.Rolled["depth"])) > 2)
                         bad.Add($"{t.Id}.{i.Part.Id} drawn {i.Box.W:F0} x {i.Box.D:F0}, rolled {i.Rolled["len"]:F0} x {i.Rolled["depth"]:F0}");
-                // A tower that sees something: nothing as tall stands between its cab and that thing's nearest edge.
-                foreach (SketchItem tower in s.Of("tower").Where(x => x.Part.Find("sees") != null))
+                // A tower sees the runway: nothing as tall stands between its cab and the runway's nearest edge.
+                foreach (SketchItem tower in s.Of("tower").Where(_ => s.Of("runway").Any()))
                 {
-                    SketchBox rw = s.Box(tower.Part.Find("sees")!.Value.To[0]);
+                    SketchBox rw = s.Box("runway");
                     float tz = tower.Box.Cz < rw.Cz ? rw.Z0 : rw.Z1;
                     foreach (SketchItem o in s.Items.Where(o => o.Part.Kind == "building" && o != tower && o.H >= tower.H))
                         if (o.Box.Crosses(tower.Box.Cx, tower.Box.Cz, Math.Clamp(tower.Box.Cx, rw.X0, rw.X1), tz)) bad.Add($"{t.Id}: {o.Part.Id} ({o.H:F0} m) blocks the tower's ({tower.H:F0} m) view of the runway");
                 }
-                if (t.Plan != null) Port(t, s, bad);
+                if (t.Plan != "airport") Port(t, s, bad);
                 if (t.Id != "airport") continue;
                 SketchItem runway = s.Of("runway").First(), apron = s.Of("apron").First(), terminal = s.Of("terminal").First();
                 void Real(bool ok, string what) { if (!ok) bad.Add($"airport: {what}"); }
                 Real(runway.Rolled["len"] is >= 400 and <= 600 && runway.Rolled["w"] == 30 && runway.Box.D >= 40, $"runway {runway.Rolled["len"]:F0} x {runway.Rolled["w"]:F0} m ({runway.Box.D:F0} with shoulders)");
                 Real(s.Of("taxiway").All(x => Math.Abs(x.Box.D - 15) < 0.5f), "taxiway 15 m");
                 Real(apron.Box.W >= 200 && apron.Box.D >= 70, $"apron {apron.Box.W:F0} x {apron.Box.D:F0} m");
-                Real(terminal.Box.W is >= 60 and <= 100, $"terminal {terminal.Box.W:F0} m long");
-                Real(s.Of("tower").All(x => x.H is >= 18 and <= 26), $"tower {s.Of("tower").First().H:F0} m");
-                Real(s.Of("hangar").Any() && s.Of("hangar").All(x => x.Box.W is >= 40 and <= 48 && x.H >= 16), $"hangars {string.Join(", ", s.Of("hangar").Select(x => $"{x.Box.W:F0} m span {x.H:F0} m high"))}");
                 Real(s.Of("fuel").All(f => f.Box.Gap(terminal.Box) >= 100), $"fuel farm {s.Of("fuel").Min(f => f.Box.Gap(terminal.Box)):F0} m from the terminal ({Boxes(s)})");
-                Real(s.Of("lights").Count() == 2, "approach lights off each end");
-                // The T: square to the runway, its end on the runway's laid width, its lights off its free end only.
-                foreach (SketchItem x in s.Of("crosswind"))
-                    Real(x.Box.D > x.Box.W && x.Box.X0 > runway.Box.X0 && x.Box.X1 < runway.Box.X1 && (Math.Abs(x.Box.Z1 - runway.Box.Cz) <= 16 || Math.Abs(x.Box.Z0 - runway.Box.Cz) <= 16)
-                        && s.Of("xlights").Count() == 1, $"crosswind {x.Box.X0:F0},{x.Box.Z0:F0}..{x.Box.X1:F0},{x.Box.Z1:F0} off the runway {runway.Box.X0:F0},{runway.Box.Z0:F0}..{runway.Box.X1:F0},{runway.Box.Z1:F0}");
+                Real(s.Of("lights").Count() >= 2, "approach lights off each end of the main runway");
             }
-        // (How many airports are a T, over many more of them: only the plan is rolled.)
-        if (_lib.Types.FirstOrDefault(t => t.Id == "airport") is { } airport)
-            for (; airports < 64; airports++) if (PlaceTypes.Plan(airport, FreshSeed(rand), 16000, 8000).Of("crosswind").Any()) tees++;
         foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
-        Check(bad.Count == 0 && tees > 0 && tees < airports, $"every type's parts in their real ranges on {n} fresh sketches ({bad.Count} out); {tees} of {airports} airports with a crosswind runway teed off the main one");
+        Check(bad.Count == 0, $"every type's parts in their real ranges on {n} fresh sketches ({bad.Count} out)");
+    }
+
+    /// <summary>The least a building of each role at an airport is, m (its frontage, its depth, its height), as a real one is.</summary>
+    static readonly Dictionary<string, (float Len, float Depth, float H)> Least = new()
+    {
+        ["terminal"] = (60, 30, 14), ["tower"] = (8, 8, 24), ["hangar"] = (40, 30, 16), ["gahangar"] = (20, 16, 8),
+        ["fire"] = (30, 32, 12), ["works"] = (30, 30, 8),
+    };
+
+    /// <summary>How many of each role an airport has at least: a terminal, its tower, big and small hangars, a fire station, works, fuel.</summary>
+    static readonly Dictionary<string, int> Fewest = new() { ["terminal"] = 1, ["tower"] = 1, ["hangar"] = 2, ["gahangar"] = 2, ["fire"] = 1, ["works"] = 1, ["fuel"] = 1 };
+
+    /// <summary>
+    /// Airports on 64 fresh plans, as the owner's reference reads (a regional airport from the air): the second runway meets
+    /// the main in one paved intersection, an X running on through it or a T whose end lies across the main's whole laid
+    /// width (no gap short of its far edge, nothing poking more than a few metres past it, no strip stuck to its side), well
+    /// in from the main's ends, nothing laid or standing on either runway but its own taxiways; every building at least its
+    /// role's real size; and the buildings by role (a terminal, a tower, two or more big hangars and small ones, a fire
+    /// station, works and fuel), with X, T and single-runway spawns all among them.
+    /// </summary>
+    void Airports()
+    {
+        var rand = new Random();
+        var bad = new List<string>();
+        var kinds = new Dictionary<string, int>();
+        var roles = new Dictionary<string, List<int>>();
+        PlaceType airport = _lib.Types.First(t => t.Id == "airport");
+        for (int k = 0; k < 64; k++)
+        {
+            Sketch s = PlaceTypes.Plan(airport, FreshSeed(rand), 16000, 8000);
+            Gen.Shape main = s.Of("runway").First().Outline;
+            void Real(bool ok, string what) { if (!ok) bad.Add(what); }
+            string kind = "single";
+            foreach (SketchItem x in s.Of("crosswind"))
+            {
+                Gen.Shape c = x.Outline;
+                bool tee = x.Rolled["tee"] > 0.5f;
+                kind = tee ? "T" : "X";
+                // Along its centre line, where it crosses the main's centre line and the main's two laid edges.
+                float cross = -(c.Z - main.Z) / c.UZ, edge = main.HalfV / MathF.Abs(c.UZ);
+                float near = MathF.Min(MathF.Abs(cross - edge), MathF.Abs(cross + edge)), far = MathF.Max(MathF.Abs(cross - edge), MathF.Abs(cross + edge));
+                float jx = c.X + c.UX * cross;
+                Real(MathF.Abs(jx - main.X) < main.HalfU - 60f, $"{kind}: the junction {jx - main.X:F0} m along a {2 * main.HalfU:F0} m runway, at its end");
+                if (tee) Real(far >= c.HalfU - 0.5f && far <= c.HalfU + 0.5f && near < c.HalfU, $"T: its end {c.HalfU - far:F1} m short of the main's far edge");
+                else Real(far <= c.HalfU - 40f, $"X: it runs on only {c.HalfU - far:F0} m past the main");
+                // Its end square enough that no corner pokes more than 6 m past the main's far edge.
+                if (tee) Real(c.HalfV * MathF.Abs(c.UX) <= 6f, $"T: a corner {c.HalfV * MathF.Abs(c.UX):F1} m past the main");
+            }
+            kinds[kind] = kinds.GetValueOrDefault(kind) + 1;
+            foreach (SketchItem o in s.Items.Where(i => i.Part.Id is not ("runway" or "crosswind" or "end" or "taxiway" or "link") && i.Part.Kind is not ("fence" or "lights")))
+                foreach (SketchItem rw in s.Items.Where(i => i.Part.Id is "runway" or "crosswind"))
+                    Real(!o.Outline.Hits(rw.Outline), $"{o.Part.Id} on the {rw.Part.Id}");
+            foreach (var (role, least) in Least)
+                foreach (SketchItem b in s.Of(role))
+                    Real(b.Box.Long >= least.Len - 0.5f && b.Box.Short >= Math.Min(least.Len, least.Depth) - 0.5f && b.H >= least.H, $"{role} {b.Box.W:F0} x {b.Box.D:F0} m, {b.H:F0} m high (at least {least.Len} x {least.Depth}, {least.H})");
+            foreach (var (role, fewest) in Fewest)
+            {
+                int n = s.Of(role).Count();
+                if (!roles.TryGetValue(role, out var list)) roles[role] = list = new List<int>();
+                list.Add(n);
+                Real(n >= fewest, $"{n} {role} (at least {fewest})");
+            }
+            if (!roles.TryGetValue("buildings", out var all)) roles["buildings"] = all = new List<int>();
+            all.Add(s.Items.Count(i => i.Part.Kind == "building"));
+        }
+        foreach (string b in bad.GroupBy(b => b).Select(g => $"{g.Key} ({g.Count()})").Take(10)) GD.Print($"      {b}");
+        GD.Print("      by role, fewest..most: " + string.Join(", ", roles.Select(kv => $"{kv.Key} {kv.Value.Min()}..{kv.Value.Max()}")));
+        Check(bad.Count == 0 && kinds.Count == 3, $"64 fresh airports: runways in one paved intersection ({string.Join(", ", kinds.OrderBy(x => x.Key).Select(x => $"{x.Value} {x.Key}"))}), buildings at their roles' real sizes and counts ({bad.Count} out)");
     }
 
     /// <summary>A spaceport's proportions and parts by its plan, on one fresh sketch (see <see cref="Scale"/>).</summary>
@@ -302,12 +360,20 @@ public partial class PoiTest
                     if (x0 < p.Box.X0 - slack || x1 > p.Box.X1 + slack || z0 < p.Box.Z0 - slack || z1 > p.Box.Z1 + slack || what is "terminal" or "hangar" && (x1 - x0 < p.Box.W - 2 || z1 - z0 < p.Box.D - 2))
                         bad.Add($"{t.Id}.{what} ({p.Front}) built {x0}..{x1} x {z0}..{z1}, its box {p.Box.X0:F0}..{p.Box.X1:F0} x {p.Box.Z0:F0}..{p.Box.Z1:F0}");
                     float L = p.Front is Dir.North or Dir.South ? x1 - x0 : z1 - z0;
-                    bool hall = t.Plan != null && what == "hangar" && p.Item.Part.Id != "airhangar";
+                    bool hall = t.Plan != "airport" && what == "hangar" && p.Item.Part.Id != "airhangar";
+                    // A spaceport's main building dominating it at a real scale: the authority complex, the hub's tower, the terminal.
+                    if (p.Item.Part.Id == "terminal" && t.Plan != "airport")
+                    {
+                        var (wide, high) = t.Plan switch { "rosettes" => (150, 56), "hub" => (52, 44), _ => (150, 18) };
+                        if (Math.Max(x1 - x0, z1 - z0) < wide || top < high) bad.Add($"{t.Id}.{what}: {x1 - x0} x {z1 - z0} m, {top} m high (at least {wide} across and {high} high)");
+                    }
                     if (t.Id == "airport" || hall)
                     {
                         void Real(bool ok, string why) { if (!ok) bad.Add($"{t.Id}.{what}: {why}"); }
-                        if (what == "terminal") Real(L is >= 60 and <= 100 && top is >= 10 and <= 16, $"{L} m long, {top} m high");
-                        if (what == "tower") Real(top is >= 18 and <= 28, $"{top} m high");
+                        if (what == "terminal") Real(L is >= 60 and <= 112 && top is >= 12 and <= 22, $"{L} m long, {top} m high");
+                        if (what == "tower") Real(top is >= 18 and <= 36, $"{top} m high");
+                        // (A fire station or a works shed as a city builds one: its frontage, and its drill tower or its shed's roof.)
+                        if (what == "city") Real(Math.Max(x1 - x0, z1 - z0) >= 30 && top >= (p.Item.Part.Id == "fire" ? 12 : 8), $"{p.Item.Part.Id} {x1 - x0} x {z1 - z0} m, {top} m high");
                         if (what == "hangar")
                         {
                             // The door: the widest run of open cells along its front at 4 m, and how high it stays open.
@@ -324,7 +390,8 @@ public partial class PoiTest
                             // (A port's hall takes its craft (a hub's freight hall a Small-class one): its door as wide, an eighth as high.)
                             float craft = t.Plan == "hub" ? 30f : t.Craft;
                             if (hall) Real(door >= craft && high >= craft / 8f, $"door {door} m wide and {high} m high for {craft:F0} m craft");
-                            else if (t.Id == "airport") Real(L is >= 40 and <= 48 && top >= 16 && door >= 30 && high >= 8, $"{L} m span, {top} m high, door {door} m wide and {high} m high");
+                            else if (t.Id == "airport" && p.Item.Part.Id == "hangar") Real(L is >= 40 and <= 48 && top >= 16 && door >= 30 && high >= 8, $"{L} m span, {top} m high, door {door} m wide and {high} m high");
+                            else if (t.Id == "airport") Real(L >= 20 && top >= 8 && door >= 12 && high >= 4, $"GA hangar {L} m span, {top} m high, door {door} m wide and {high} m high");
                         }
                     }
                     if (p.Item.Part.Id is "terminal" or "tower")

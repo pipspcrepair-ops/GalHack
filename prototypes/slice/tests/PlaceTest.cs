@@ -1267,7 +1267,7 @@ public partial class PlaceTest : Node
         foreach (int x in drive.WalkTo(door + along * 1.8f, 0.6f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         Vector3 f = game.Survivor.WorldFeet;
         Check((f - door).Dot(along) > 0.5f && game.Doors.Opened >= 1, $"it opens as you walk up (your own structure), and you walk through ({(f - door).Dot(along):F1} m past it)");
-        Check(game.Doors.OpenDoors(game.Places).Any(), "an open door is there to read (a force field's hook)");
+        Check(game.Doors.AnyOpen(gate), "an open door is there to read (its force field's hook)");
         foreach (int x in drive.WalkTo(past, 1f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in drive.Wait(90)) yield return x;
         Vector3 walked = game.Survivor.WorldFeet;

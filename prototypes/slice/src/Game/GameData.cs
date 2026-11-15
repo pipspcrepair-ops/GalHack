@@ -143,6 +143,7 @@ public sealed class SliceRules
     public WildlifeRules Wildlife { get; set; } = new();
     public TorchRules Torch { get; set; } = new();
     public ContainerRules Containers { get; set; } = new();
+    public FieldRules ForceFields { get; set; } = new();
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -288,6 +289,27 @@ public sealed class SliceRules
         public float Angle { get; set; } = 32f;
         public float Energy { get; set; } = 5.5f;
         public float Attenuation { get; set; } = 1f;
+    }
+
+    /// <summary>Force fields: each tier by its component's item id, the draw on the capacitors, and the sizes a field may be drawn.</summary>
+    public sealed class FieldRules
+    {
+        public Dictionary<string, FieldTier> Tiers { get; set; } = new();
+        /// <summary>MW for each 1 m tile of a field that is up; an open outer door's field, MW.</summary>
+        public double DrawPerTile { get; set; } = 0.01;
+        public double DoorDraw { get; set; } = 0.0005;
+        public int MinSide { get; set; } = 2;
+        public int MaxSide { get; set; } = 48;
+
+        public FieldTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out FieldTier t) ? t : null;
+    }
+
+    /// <summary>What a field of one tier can take before it fizzles (its cap), seconds at zero before it starts growing back, and seconds to grow from zero to its cap.</summary>
+    public sealed class FieldTier
+    {
+        public float Strength { get; set; } = 600f;
+        public float RegrowDelay { get; set; } = 30f;
+        public float RegrowSeconds { get; set; } = 20f;
     }
 
     public sealed class ContainerRules

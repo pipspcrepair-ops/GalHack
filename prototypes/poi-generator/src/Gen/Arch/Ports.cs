@@ -8,10 +8,10 @@ namespace PoiGenerator.Gen;
 /// <summary>
 /// What stands at a high-tech spaceport (data/place-types.txt, PlaceTypes.Ports), each a place of its own on the player's
 /// 2 m lattice at the size its sketch rolled, its front (k 0) the way it serves, and every round thing round:
-///   a hub: the domed control tower on its roundabout: a round base, a slim shaft climbed by a ladder, a glazed saucer of a
-///     cab under a dome;
-///   an authority building: a round core stepping in storey by storey, its rooms round a ladder, and three wings, halls
-///     with a craft's door at their ends, off its sides and back;
+///   a hub: the domed control tower on its roundabout: a round base and a glazed tier stepped in over it, a slim shaft
+///     climbed by a ladder, a glazed saucer of a cab under a dome;
+///   an authority building: a broad podium and a tower stepping in storey by storey to its glazed crown, its rooms round a
+///     ladder, and three wings, halls with a craft's door at their ends and their roofs terraced down, off its sides and back;
 ///   a dome: a startown hut, one round room under a dome, furnished by what it was;
 ///   a pad: a recessed pad's blast wall, a ring from the pit's floor to a block over the field, cut where its ramp comes down;
 ///   a siding: a rail track on its ballast out from a freight hall.
@@ -54,23 +54,31 @@ public static class Ports
     // ---- the hub ----------------------------------------------------------------------------------
 
     /// <summary>
-    /// A round base a storey high with a mouth at its front; a slim shaft of storeys over it, each a room, one ladder up
-    /// them all; the cab a glazed saucer wider than the shaft, a faceted dome over it, its consoles round the glass.
+    /// A round base a storey high with a mouth at its front, a glazed tier stepped in over it; a slim shaft of storeys over
+    /// that, each a room, one ladder up them all; the cab a glazed saucer wider than the shaft, a faceted dome over it, its
+    /// consoles round the glass.
     /// </summary>
     static void Hub(Plot p, SitePart part)
     {
         Canvas c = p.C;
         Fab f = p.F;
         double mid = part.Int("fl") / 4.0;
-        double rb = Math.Max(4, part.Num("r", 12) / 2.0 - 0.5), rs = Math.Max(2.5, rb * 0.42), rc = Math.Max(rs + 2, part.Num("cab", 9) / 2.0 - 0.5);
-        int storeys = Math.Max(2, (int)Math.Round((part.Num("h", 32) - 10) / 6.0));
+        double rb = Math.Max(4, part.Num("r", 12) / 2.0 - 0.5), rs = Math.Max(2.5, rb * 0.42), rc = Math.Max(rs + 2, part.Num("cab", 9) / 2.0 - 0.5), r1 = Math.Max(rs + 2, rb * 0.7);
+        int storeys = Math.Max(2, (int)Math.Round((part.Num("h", 32) - 16) / 6.0));
         int m = (int)Math.Floor(mid);
         p.Approach(m, (int)Math.Floor(mid - rb) - 2, Dir.North);
-        // The base: one tall storey, its roof a terrace round the shaft.
+        // The base: one tall storey, its roof a terrace round an upper tier stepped in, the waiting hall, glazed all round.
         p.Drum(mid, mid, rb, 0, H, f.Wall, j => j == 1 ? new Stuff2(Material.Glass, f.Glass) : f.Wall);
         p.Disc(mid, mid, rb, H + 1, Solid(f.Roof, Role.Roof));
         Floor(p, mid, rb - 1, 0);
         int lobby = p.Room(ModuleKind.Hall, "concourse", 0, (int)(mid - rb), 0, (int)(mid - rb), (int)(mid + rb), H, (int)(mid + rb), Within(p, mid, rb - 1));
+        p.Drum(mid, mid, r1, H + 2, 2 * H + 1, f.Wall, j => j == 2 * H + 1 ? new Stuff2(Material.Glass, f.Glass) : f.Wall);
+        p.Disc(mid, mid, r1, 2 * H + 2, Solid(f.Roof, Role.Roof));
+        Floor(p, mid, r1 - 1, H + 2);
+        int tier = p.Room(ModuleKind.Hall, "waiting hall", 1, (int)(mid - r1), H + 2, (int)(mid - r1), (int)(mid + r1), 2 * H + 1, (int)(mid + r1), Within(p, mid, r1 - 1));
+        c.Link(lobby, tier);
+        p.Level(1, H + 2, "waiting hall");
+        p.Lamp(2 * m, 2 * (2 * H + 1) + 1, 2 * m + 3, tier, 1.2f, 14f);
         p.Mouth(m - 1, 0, (int)Math.Floor(mid - rb) - 1, m + 1, 1, (int)Math.Floor(mid - rb) + 1, lobby, p.Yard);
         p.Mouth(m - 1, 0, (int)Math.Floor(mid + rb) - 1, m + 1, 1, (int)Math.Floor(mid + rb) + 1, lobby, p.Yard);
         for (int a = 0; a < 6; a++)
@@ -82,15 +90,15 @@ public static class Ports
         p.Lamp(2 * m, 2 * H + 1, 2 * m, lobby, 1.6f, 18f);
         p.Spawn(2 * m + 3, 0, 2 * m + 3, lobby);
         // The shaft: storeys of 6 m, a room each.
-        int below = lobby, j0 = H + 2;
+        int below = tier, j0 = 2 * H + 3;
         for (int s = 0; s < storeys; s++)
         {
             int j = j0 + s * P;
             p.Drum(mid, mid, rs, j, j + H - 1, f.Wall, jj => jj == j + 1 ? new Stuff2(Material.Glass, f.Glass) : f.Wall);
             p.Disc(mid, mid, rs, j + H, Solid(f.Floor, Role.Floor));
-            int room = p.Room(ModuleKind.Room, p.R.Pick(new[] { "equipment", "radio room", "office", "rest room" }), s + 1, (int)(mid - rs), j, (int)(mid - rs), (int)(mid + rs), j + H - 1, (int)(mid + rs), Within(p, mid, rs - 1));
+            int room = p.Room(ModuleKind.Room, p.R.Pick(new[] { "equipment", "radio room", "office", "rest room" }), s + 2, (int)(mid - rs), j, (int)(mid - rs), (int)(mid + rs), j + H - 1, (int)(mid + rs), Within(p, mid, rs - 1));
             c.Link(below, room);
-            p.Level(s + 1, j, "floor " + (s + 1));
+            p.Level(s + 2, j, "floor " + (s + 2));
             p.Lamp(2 * m + 1, 2 * j + 3, 2 * m + 1, room, 0.8f, 8f);
             below = room;
         }
@@ -100,9 +108,9 @@ public static class Ports
         p.Drum(mid, mid, rc, jc, jc + H - 1, new Stuff2(Material.Glass, f.Glass), jj => jj == jc ? f.Wall : new Stuff2(Material.Glass, f.Glass));
         p.Cap(mid, mid, rc, jc + H, f.Roof);
         Floor(p, mid, rc - 1, jc);
-        int cab = p.Room(ModuleKind.Vault, "control cab", storeys + 1, (int)(mid - rc), jc, (int)(mid - rc), (int)(mid + rc), jc + H - 1, (int)(mid + rc), Within(p, mid, rc - 1));
+        int cab = p.Room(ModuleKind.Vault, "control cab", storeys + 2, (int)(mid - rc), jc, (int)(mid - rc), (int)(mid + rc), jc + H - 1, (int)(mid + rc), Within(p, mid, rc - 1));
         c.Link(below, cab);
-        p.Level(storeys + 1, jc, "cab");
+        p.Level(storeys + 2, jc, "cab");
         for (int a = 0; a < 8; a++)
         {
             double t = a * Math.Tau / 8;
@@ -120,9 +128,12 @@ public static class Ports
     // ---- the authority building -------------------------------------------------------------------
 
     /// <summary>
-    /// The core round the middle of its box: storeys of 6 m stepping in a block each, glazed in bands, a lobby with its
-    /// mouth to the front, rooms above, flight operations at the top; a ladder through them all. A wing off each side and
-    /// the back: a hall the width the type rolled, out to the box's edge, a craft's door across its end, a door into the core.
+    /// The reference's three-winged complex, dominating its port. The core round the middle of its box: a broad podium
+    /// whose lobby is a hall three storeys high, open to the front and to each wing; over it a tower of 6 m storeys
+    /// stepping in toward its top, glazed in bands, a room each round a ladder up the middle; on top the crown, three
+    /// blocks wider than the storey under it and glazed all round (flight operations), a mast over it. A wing off each side and
+    /// the back: a hall the width the type rolled out to the box's edge, its roof stepping down in terraces from twice the
+    /// podium's height at the core to two storeys at its end, a craft's door across its end.
     /// </summary>
     static void Authority(Plot p, SitePart part)
     {
@@ -131,9 +142,12 @@ public static class Ports
         int L = part.Int("fl") / 2;
         double mid = L / 2.0;
         int m = (int)Math.Floor(mid);
-        double rb = Math.Max(5, part.Num("r", 20) / 2.0 - 0.5);
-        int hw = Math.Max(3, part.Int("span", 26) / 4), storeys = Math.Clamp((int)Math.Round((part.Num("h", 34) - 2) / 6.0), 3, 7), wh = 4;
-        var stuff = new Stuff2(Material.Glass, f.Glass);
+        double rb = Math.Max(8, part.Num("r", 20) / 2.0 - 0.5);
+        const int Podium = 6, Steps = 3;
+        // Storeys of the tower over the podium, under the crown and its mast.
+        int hw = Math.Max(3, part.Int("span", 26) / 4), storeys = Math.Clamp((int)Math.Round((part.Num("h", 60) / 2.0 - Podium - 5) / P), 3, 14);
+        int[] tops = { Podium + 4, (Podium + 4 + 5) / 2, 5 };
+        var glass = new Stuff2(Material.Glass, f.Glass);
         p.Approach(m, (int)Math.Floor(mid - rb) - 2, Dir.North);
         // The wings first: their walls run up to the core's.
         var wings = new List<int>();
@@ -150,23 +164,34 @@ public static class Ports
                 _ => (m - hw, meet, m + hw, L - 1),
             };
             bool alongI = w < 2;
+            int length = alongI ? i1 - i0 : k1 - k0;
+            // Its roof by how far out from the core: tall at the core, a terrace down at each third.
+            int Top(int i, int k) => tops[Math.Min(Steps - 1, (w == 0 ? i1 - i : w == 1 ? i - i0 : k - k0) * Steps / (length + 1))];
             for (int k = k0; k <= k1; k++)
                 for (int i = i0; i <= i1; i++)
                 {
-                    bool inCore = Plot.In(mid, mid, rb, i, k);
-                    if (inCore) continue;
+                    if (Plot.In(mid, mid, rb, i, k))
+                    {
+                        // Over the podium's rim, the wing's end wall up to its roof.
+                        if (!Plot.In(mid, mid, rb - 1, i, k)) p.Fill(i, Podium + 1, k, i, tops[0], k, Solid(f.Wall, Role.Wall));
+                        continue;
+                    }
+                    int top = Top(i, k), inward = Top(w == 0 ? i + 1 : w == 1 ? i - 1 : i, w == 2 ? k - 1 : k);
                     bool side = alongI ? k == k0 || k == k1 : i == i0 || i == i1, end = alongI ? (w == 0 ? i == i0 : i == i1) : k == k1;
-                    if (side || end) p.Fill(i, 0, k, i, wh - 1, k, Solid(f.Wall, Role.Wall));
-                    p.Fill(i, wh, k, i, wh, k, Solid(f.Roof, Role.Roof));
+                    if (side || end) p.Fill(i, 0, k, i, top - 1, k, Solid(f.Wall, Role.Wall));
+                    p.Fill(i, top, k, i, top, k, Solid(f.Roof, Role.Roof));
+                    // The riser up to the next terrace in, standing on this one's roof.
+                    if (inward > top) p.Fill(i, top + 1, k, i, inward, k, Solid(f.Wall, Role.Wall));
                 }
             p.Pave(i0 + 1, k0 + 1, i1 - 1, k1 - 1, f.Floor);
-            int hall = p.Room(ModuleKind.Hall, uses[w], 0, i0 + 1, 0, k0 + 1, i1 - 1, wh - 1, k1 - 1, cell => p.BlockAt(cell) is var (bi, bk) && !Plot.In(mid, mid, rb, bi, bk));
+            int hall = p.Room(ModuleKind.Hall, uses[w], 0, i0 + 1, 0, k0 + 1, i1 - 1, tops[0] - 1, k1 - 1,
+                cell => p.BlockAt(cell) is var (bi, bk) && !Plot.In(mid, mid, rb, bi, bk) && cell.Y < 2 * Top(bi, bk));
             wings.Add(hall);
             // A craft's door across its end, two thirds its width; benches, crates and machines down its sides.
             int d = Math.Max(2, hw * 2 / 3);
-            if (alongI) p.Mouth(w == 0 ? i0 : i1, 0, m - d, w == 0 ? i0 : i1, wh - 2, m + d, hall, p.Yard);
-            else p.Mouth(m - d, 0, k1, m + d, wh - 2, k1, hall, p.Yard);
-            for (int a = 2; a < (alongI ? i1 - i0 : k1 - k0) - 2; a += 2)
+            if (alongI) p.Mouth(w == 0 ? i0 : i1, 0, m - d, w == 0 ? i0 : i1, tops[^1] - 2, m + d, hall, p.Yard);
+            else p.Mouth(m - d, 0, k1, m + d, tops[^1] - 2, k1, hall, p.Yard);
+            for (int a = 2; a < length - 2; a += 2)
                 foreach (int s in new[] { -1, 1 })
                 {
                     int pick = p.R.Range(0, 4);
@@ -174,47 +199,55 @@ public static class Ports
                     int u = alongI ? 2 * (i0 + a) : 2 * (m + s * (hw - 1)) + (s > 0 ? 1 : 0), v = alongI ? 2 * (m + s * (hw - 1)) + (s > 0 ? 1 : 0) : 2 * (k0 + a);
                     p.Prop(u, 0, v, pick == 1 ? BlockType.Bench : pick == 2 ? BlockType.Crate : BlockType.Machine, Material.Steel, pick == 2 ? f.Rust.C : f.Steel.C);
                 }
-            p.Lamp(alongI ? 2 * ((i0 + i1) / 2) : 2 * m, 2 * wh - 1, alongI ? 2 * m : 2 * ((k0 + k1) / 2), hall, 1.8f, 20f);
-            p.Weathers(i0 - 1, 0, k0 - 1, i1 + 1, wh + 1, k1 + 1, wh);
+            int li = alongI ? (i0 + i1) / 2 : m, lk = alongI ? m : (k0 + k1) / 2;
+            p.Lamp(2 * li, 2 * Top(li, lk) - 1, 2 * lk, hall, 1.8f, 20f);
+            p.Weathers(i0 - 1, 0, k0 - 1, i1 + 1, tops[0] + 1, k1 + 1, tops[^1]);
         }
-        // The core: its lobby as tall as the wings, the storeys over it stepping in, open to the front and to each wing.
+        // The core: the lobby in the podium, the tower's storeys over it stepping in to a little over half its width, the crown.
+        double rTop = Math.Max(5, rb * 0.55), step = (rb - 2 - rTop) / Math.Max(1, storeys - 1);
         int below = -1, jTop = 0;
-        for (int s = 0; s < storeys; s++)
+        for (int s = 0; s <= storeys + 1; s++)
         {
-            double r = Math.Max(rb * 0.55, rb - s);
-            int j = s == 0 ? 0 : wh + 1 + (s - 1) * P, h = s == 0 ? wh : H;
+            bool crown = s == storeys + 1;
+            double r = s == 0 ? rb : crown ? rTop + 3 : rb - 2 - (s - 1) * step;
+            int j = s == 0 ? 0 : Podium + 1 + (s - 1) * P, h = s == 0 ? Podium : H;
             jTop = j;
-            p.Drum(mid, mid, r, j, j + h - 1, f.Wall, jj => jj == j + h - 1 ? stuff : f.Wall);
-            p.Disc(mid, mid, r, j + h, Solid(s == storeys - 1 ? f.Roof : f.Floor, s == storeys - 1 ? Role.Roof : Role.Floor));
+            // Glazed in a band at the top of each storey; the crown all glass, over the storey under it on a slab of its own.
+            if (crown) p.Disc(mid, mid, r, j - 1, Solid(f.Floor, Role.Floor));
+            p.Drum(mid, mid, r, j, j + h - 1, f.Wall, jj => crown || jj == j + h - 1 ? glass : f.Wall);
+            p.Disc(mid, mid, r, j + h, Solid(crown ? f.Roof : f.Floor, crown ? Role.Roof : Role.Floor));
             Floor(p, mid, r - 1, j);
-            string what = s == 0 ? "lobby" : s == storeys - 1 ? "flight operations" : p.R.Pick(new[] { "offices", "port housing", "customs", "medical", "beacon room" });
-            int room = p.Room(s == storeys - 1 ? ModuleKind.Vault : s == 0 ? ModuleKind.Hall : ModuleKind.Room, what, s, (int)(mid - r), j, (int)(mid - r), (int)(mid + r), j + h - 1, (int)(mid + r), Within(p, mid, r - 1));
+            string what = s == 0 ? "lobby" : crown ? "flight operations" : p.R.Pick(new[] { "offices", "port housing", "customs", "medical", "beacon room" });
+            int room = p.Room(crown ? ModuleKind.Vault : s == 0 ? ModuleKind.Hall : ModuleKind.Room, what, s, (int)(mid - r), j, (int)(mid - r), (int)(mid + r), j + h - 1, (int)(mid + r), Within(p, mid, r - 1));
             if (s == 0)
             {
-                p.Mouth(m - 1, 0, (int)Math.Floor(mid - rb) - 1, m + 1, 1, (int)Math.Floor(mid - rb) + 1, room, p.Yard);
+                p.Mouth(m - 2, 0, (int)Math.Floor(mid - rb) - 1, m + 2, 2, (int)Math.Floor(mid - rb) + 1, room, p.Yard);
                 int edge = (int)Math.Floor(mid + rb - 1);
-                p.Mouth(L - 1 - edge - 1, 0, m - 1, L - 1 - edge + 1, 1, m + 1, room, wings[0]);
-                p.Mouth(edge - 1, 0, m - 1, edge + 1, 1, m + 1, room, wings[1]);
-                p.Mouth(m - 1, 0, edge - 1, m + 1, 1, edge + 1, room, wings[2]);
+                p.Mouth(L - 1 - edge - 1, 0, m - 2, L - 1 - edge + 1, 2, m + 2, room, wings[0]);
+                p.Mouth(edge - 1, 0, m - 2, edge + 1, 2, m + 2, room, wings[1]);
+                p.Mouth(m - 2, 0, edge - 1, m + 2, 2, edge + 1, room, wings[2]);
                 p.Spawn(2 * m + 4, 0, 2 * m + 4, room);
             }
             else
             {
                 c.Link(below, room);
-                p.Level(s, j, s == storeys - 1 ? "operations" : "floor " + s);
+                p.Level(s, j, crown ? "operations" : "floor " + s);
                 for (int a = 0; a < 6; a++)
                 {
                     double t = a * Math.Tau / 6 + 0.5;
-                    p.Prop((int)Math.Round(2 * (mid + (r - 2) * Math.Cos(t))), 2 * j, (int)Math.Round(2 * (mid + (r - 2) * Math.Sin(t))), s == storeys - 1 ? BlockType.Machine : a % 2 == 0 ? BlockType.Table : BlockType.Shelf, Material.Steel, f.Panel.C);
+                    p.Prop((int)Math.Round(2 * (mid + (r - 2) * Math.Cos(t))), 2 * j, (int)Math.Round(2 * (mid + (r - 2) * Math.Sin(t))), crown ? BlockType.Machine : a % 2 == 0 ? BlockType.Table : BlockType.Shelf, Material.Steel, f.Panel.C);
                 }
             }
             p.Lamp(2 * m + 1, 2 * (j + h) - 1, 2 * m + 5, room, 1.2f, 14f);
-            if (s == storeys - 1)
+            if (crown)
             {
                 c.VaultModule = c.CoreModule = room;
                 c.AddSlot(SlotKind.Core, p.Cell(2 * m + 4, 2 * j, 2 * m), room);
                 p.Terminal(2 * m - 4, 2 * j, 2 * m, room);
                 p.Cache(2 * m, 2 * j, 2 * m - 4, room);
+                // The mast over it, a beacon on its tip.
+                p.Fill(m, j + h + 1, m, m, j + h + 4, m, Solid(f.Steel, Role.Decor));
+                p.Put(2 * m, 2 * (j + h + 5), 2 * m, new Block(BlockType.Cube, Material.Lumen, f.Emergency, Role.Light));
             }
             below = room;
         }

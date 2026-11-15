@@ -222,7 +222,7 @@ public sealed class TechSection : IMenuSection
         int rows = lay.Lanes.Sum(l => l.Rows);
         float tileH = Math.Min(MaxTileH, (GridArea.Size.Y - LaneGap * (lay.Lanes.Count - 1) + Gap) / rows - Gap);
         // A lane beside the visor's alerts' row (bottom left, over every menu) starts right of it.
-        Rect2 alerts = HudLayout.Compute(new Vector2(Gui.Width, Gui.Height), 1f).Alerts.Grow(4);
+        Rect2 alerts = HudLayout.Compute(new Vector2(Gui.Width, Gui.Height), 1f).MenuAlerts.Grow(4);
         var bands = new List<(float Y, float H, float X, int Cols)>();
         float y = GridArea.Position.Y;
         foreach (var (_, cells, laneRows) in lay.Lanes)
