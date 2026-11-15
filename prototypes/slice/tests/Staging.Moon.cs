@@ -38,7 +38,8 @@ public sealed partial class Staging
         if (second)
         {
             Vector3 from = v.Body.Position.ToGodot();
-            moon = o.Moons.Where(c => c != o.Moon).OrderBy(c => !c.Body.Spec.Airless).ThenBy(c => from.DistanceTo(c.Centre)).FirstOrDefault(); // a bare moon first, the kind the thruster moon is
+            bool air = _args.GetValueOrDefault("air") == "1"; // --air=1: one with air first
+            moon = o.Moons.Where(c => c != o.Moon).OrderBy(c => c.Body.Spec.Airless == air).ThenBy(c => from.DistanceTo(c.Centre)).FirstOrDefault(); // else a bare one first, the kind the thruster moon is
             if (moon == null)
             {
                 GD.Print("(screenshot: no second moon to fly to in this system)");

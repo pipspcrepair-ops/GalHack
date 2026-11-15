@@ -133,6 +133,7 @@ public partial class Spaceflight
             Below.Sky.RunClock(delta);
             KeepOneClock();
             MoonComing();
+            Lap("a moon arriving");
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             TrackSky();
             Lap("skies");

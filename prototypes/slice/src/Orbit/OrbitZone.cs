@@ -211,7 +211,7 @@ public partial class OrbitZone : SurfaceZone
     IEnumerable<int> Build()
     {
         var (paint, wrecks) = _preparing.Result;
-        Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces);
+        Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces, (float)Rules.Globe.Atmosphere);
         yield return 0;
         foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
         Home.Ready = true;

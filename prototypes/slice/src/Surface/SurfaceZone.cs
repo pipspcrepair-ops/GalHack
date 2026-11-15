@@ -253,8 +253,7 @@ public partial class SurfaceZone : Node3D
         Infra.Build(Planet);
         yield return "infrastructure";
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
-        Streamer.SetWorld(Planet, landing, _riverMaterial = WaterMaterial(sea: false));
-        yield return "terrain";
+        foreach (string part in Streamer.Setting(Planet, landing, _riverMaterial = WaterMaterial(sea: false))) yield return part;
         Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
         yield return "sea";
         Sky.SetWorld(Planet);

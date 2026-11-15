@@ -629,14 +629,18 @@ public partial class Globe : Node3D
             float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, r, air_radius) : -1.0;
             DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + r * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
             vec3 eye = eye_up * (ground + eye_height);
-            vec3 low = eye + r * max(-dot(eye, r), 0.0);
+            float along = max(-dot(eye, r), 0.0);
+            vec3 low = eye + r * along;
             float lowest = length(low);
             float h = (lowest - ground) / thickness;
             // Past the limb it thins away with height; over the ground, with how steeply the ray goes down through the air.
             float x = lowest / ground;
             float graze = sqrt(2.0 * thickness / ground) / max(sqrt(max(1.0 - x * x, 0.0)), 0.0001);
             float thick = h >= 0.0 ? exp(-4.5 * h) * clamp(1.0 - h, 0.0, 1.0) : min(graze * graze, 1.0) * x * x;
-            float day = smoothstep(-0.3, 0.35, dot(low / lowest, sun_dir));
+            // Lit as the ground is where the ray meets it (the point it passes lowest is inside the world, and its light
+            // there would end at a straight line across the disc); past the limb, where it passes lowest.
+            vec3 lit = h >= 0.0 ? low : eye + r * (along - sqrt(max(ground * ground - lowest * lowest, 0.0)));
+            float day = smoothstep(-0.3, 0.35, dot(normalize(lit), sun_dir));
             ALBEDO = color * thick * day * strength;
         }
         """;
@@ -737,7 +741,8 @@ public partial class Globe : Node3D
     /// <summary>How the ring stands against the sheet this frame: its centre's distance from the sheet's, m, and its inner edge in radii of the sheet.</summary>
     public (float Off, float Inner) RingFit { get; private set; }
 
-    const float AirStrength = 1.1f;
+    /// <summary>How bright the air seen from outside is (the far look of a world with air draws the same over its disc).</summary>
+    public const float AirStrength = 1.1f;
     const float ShroudShell = 40f;
 
     /// <summary>Where the rim of air's shell stands off the eye, m: in front of the sheet in space, behind what you fly near.</summary>

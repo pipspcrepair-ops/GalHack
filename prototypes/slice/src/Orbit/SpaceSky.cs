@@ -100,6 +100,9 @@ public partial class SpaceSky : Node3D
         uniform float light_energy = 1.6;
         uniform vec3 ambient : source_color = vec3(0.035, 0.038, 0.055);
         uniform float fade = 1.0;    // how much of it this far look draws: its own globe takes over near it
+        uniform vec3 air_color : source_color = vec3(0.0);
+        uniform float air = 0.0;     // a world with air: its globe's air over the disc (Globe.AirSource), this strong
+        uniform float air_thickness = 0.15; // its air's height, in its radii
         {{Globe.UmbraCode}}
         {{BurleyCode}}
         varying vec3 normal_w;
@@ -138,6 +141,12 @@ public partial class SpaceSky : Node3D
             // A giant's own bands; a world or moon lit as its globe is (Globe's ground, the sky's bodies()).
             vec3 shaded = banded ? surface * (0.07 + 0.93 * lit + 0.22 * limb)
                 : surface * (sun * (ambient + light_color * light_energy * burley(n, to_light, -normalize(view_w))) + glows * 0.8);
+            if (air > 0.0) {
+                // Its globe's air over the ground, the same sums: thicker toward the limb, lit where the ray meets the ground.
+                float x = length(cross(n, normalize(view_w)));
+                float graze = sqrt(2.0 * air_thickness) / max(sqrt(max(1.0 - x * x, 0.0)), 0.0001);
+                shaded += air_color * min(graze * graze, 1.0) * x * x * smoothstep(-0.3, 0.35, dot(n, to_light)) * air;
+            }
             ALBEDO = shaded + vec3(0.16, 0.03, 0.012) * red * (1.0 - sun);
             ALPHA = fade; // in the transparent queue, for its order against the rings, which write no depth
         }
@@ -175,7 +184,8 @@ public partial class SpaceSky : Node3D
         }
         """;
 
-    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces)
+    /// <param name="atmosphere">How high a world's air stands round its globe, in its radii: the far look's air is the globe's.</param>
+    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces, float atmosphere)
     {
         _surfaces = surfaces;
         _rules = rules;
@@ -224,6 +234,12 @@ public partial class SpaceSky : Node3D
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("surfaces"), surfaces?.Texture);
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("light_color"), colour);
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("light_energy"), rules.SunEnergy);
+            if (b.Kind != OrbiterKind.GasGiant && b.Spec is { Airless: false } spec)
+            {
+                material.SetShaderParameter(PlanetSurface.Fx.Names.Of("air"), Globe.AirStrength);
+                material.SetShaderParameter(PlanetSurface.Fx.Names.Of("air_color"), C(ArchetypeLook.For(spec).Atmosphere));
+                material.SetShaderParameter(PlanetSurface.Fx.Names.Of("air_thickness"), atmosphere);
+            }
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("ambient"), Environment.AmbientLightColor);
             var node = new MeshInstance3D
             {

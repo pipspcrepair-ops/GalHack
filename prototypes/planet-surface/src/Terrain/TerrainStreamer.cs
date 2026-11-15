@@ -246,14 +246,25 @@ public partial class TerrainStreamer : Node3D
     /// <summary>Starts streaming a planet (dropping everything of the previous one).</summary>
     public void SetWorld(PlanetWorld world, Vector3 focus, Material water)
     {
+        foreach (string _ in Setting(world, focus, water)) { }
+    }
+
+    /// <summary>
+    /// <see cref="SetWorld"/> a piece at a time, each piece's name as it is done, for a world set up while another is
+    /// played (a moon arriving as you near it): the streamer must not run until it has all been done.
+    /// </summary>
+    public IEnumerable<string> Setting(PlanetWorld world, Vector3 focus, Material water)
+    {
         Clear();
         World = world;
         Focus = focus;
         _felledSnapshot = new HashSet<long>(world.Felled); // trees felled here before stay felled
         _waterMaterial = water;
         _roads = RoadField.Build(world.Source, world.Width, world.Height);
+        yield return "roads";
         _grounds = GroundField.Build(world.Source.Grounds, world.Width, world.Height);
         if (_grounds.Crowded > 0) GD.Print($"made ground: {_grounds.PatchCount} patches, {_grounds.Crowded} cells over {GroundField.MostPerCell}");
+        yield return "made ground";
         VoxelMaterial = TerrainMaterial(far: false);
         FarMaterial = TerrainMaterial(far: true);
         _horizonMaterial = TerrainMaterial(far: true);
@@ -276,9 +287,12 @@ public partial class TerrainStreamer : Node3D
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink"), HorizonSink);
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink_from"), 0.25f);
         FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_cut"), FarHoleCut);
+        yield return "terrain materials";
         SetClip();
+        yield return "ground rings";
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
         BuildPlantMeshes();
+        yield return "plants";
     }
 
     /// <summary>The roads the terrain shader paints, for the planet being streamed.</summary>
