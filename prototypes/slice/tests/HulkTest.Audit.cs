@@ -70,7 +70,9 @@ public sealed class WreckAudit
             while (h < 11 && Empty(up + Int3.UnitY * h)) h++;
             if (h >= 2 && h < 11 && Enclosed(up)) candidates[up] = h;
         }
-        // Walkable floor is what joins up into a deck's worth (through its doorways): a cargo stack's top or a cranny is not.
+        // Walkable floor is what joins up into a deck's worth and is got into, by a door or a stair: a cargo stack's top, a cranny
+        // or the void left inside a mass of solid is not.
+        bool Stairs(Int3 p) => s.TryGet(p, out Block b) && s.TypeOf(b).Function == "stairs";
         var seen = new HashSet<Int3>();
         foreach (Int3 start in candidates.Keys)
         {
@@ -79,14 +81,16 @@ public sealed class WreckAudit
             var q = new Queue<Int3>();
             q.Enqueue(start);
             seen.Add(start);
+            bool way = false;
             while (q.Count > 0)
             {
                 Int3 c = q.Dequeue();
                 if (candidates.ContainsKey(c)) part.Add(c);
+                way |= doors.Contains(c) || Stairs(c - Int3.UnitY) || Stairs(c + Int3.UnitX) || Stairs(c - Int3.UnitX) || Stairs(c + Int3.UnitZ) || Stairs(c - Int3.UnitZ);
                 foreach (Int3 n in new[] { c + Int3.UnitX, c - Int3.UnitX, c + Int3.UnitZ, c - Int3.UnitZ })
                     if ((candidates.ContainsKey(n) || doors.Contains(n)) && seen.Add(n)) q.Enqueue(n);
             }
-            if (part.Count < 40) continue;
+            if (part.Count < 40 || !way) continue;
             foreach (Int3 c in part)
             {
                 a.FloorCells.Add(c);

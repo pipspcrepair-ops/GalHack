@@ -148,11 +148,18 @@ public sealed partial class HullVessel
     }
 
     /// <summary>What a bay holds on a deck, port and starboard, and how many rooms a side.</summary>
+    /// <remarks>
+    /// A deck given over to machinery (null) is solid but for its corridors: the deck over a hall (its cargo gear and
+    /// trunking), the decks over the engines, the power bay's middle decks. Corridors dominate a ship's plan (Empyrion's
+    /// derelicts 59% of the floor): most of a hull is the machinery and the ways round it.
+    /// </remarks>
     (string Port, string Stbd, int N) Program(string bay, int d)
     {
         bool top = d == H.Decks - 1;
         return (bay, d) switch
         {
+            ("hold" or "ore-hold" or "hangar" or "refinery" or "promenade", 2) or ("engine", >= 2) => (null, null, 0),
+            ("power", >= 2) when !top => (null, null, 0),
             ("bow", 0) => ("hold", "hold", 1),
             ("bow", 1) => ("stores", "stores", 1),
             ("bow", _) when top => ("sensor-room", "stores", 1),
@@ -196,6 +203,7 @@ public sealed partial class HullVessel
             if (side > 0 && core.Bay != null) from = core.S + 7;
             if (c1 - from < 4) continue;
             string purpose = side < 0 ? port : stbd;
+            if (purpose == null) continue;
             if (purpose == "reactor")
             {
                 // The reactor, and behind it the core room, reached only through it.
