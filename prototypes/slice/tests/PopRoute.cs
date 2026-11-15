@@ -62,7 +62,8 @@ public partial class PopRoute : Node
         // (Set by reflection: the flag is only there from places built after load on.)
         // --force-city=1: a city planned on any lived-in world (the city routes' own runs, on fresh seeds).
         if (_args.ContainsKey("force-city")) PlanetSurface.Infra.CityPlan.Force = true;
-        if (_args.ContainsKey("merge")) Slice.Places.Place.MergeCubes = true; // --merge=1: places' cubes drawn a mesh a cube
+        if (_args.TryGetValue("merge", out string mc) && mc == "0") Slice.Places.Place.MergeCubes = false; // --merge=0: places' cubes a mesh a chunk
+        if (_args.TryGetValue("deco-shadows", out string ds) && ds == "0") GalHack.Deco.Engine.DecoShadows.On = false; // --deco-shadows=0: every piece casts
         if (_args.ContainsKey("places-at-load"))
             typeof(PlanetSurface.World.PlanetWorld).GetField("BuildPlacesAtLoad")?.SetValue(null, true);
         ProcessPhysicsPriority = 100;
@@ -527,6 +528,14 @@ public partial class PopRoute : Node
         ["bike"] = new(88, 350, 220, 150, 60, 20, 10, 30, MoveOffLimit),
         ["fly"] = new(72, 350, 360, 250, 150, 25, 10, 55, MoveOffLimit),
         ["space"] = new(72, 350, 360, 250, 150, 25, 10), // (the fly route's, at a vessel's top speed in space)
+        // The largest city or town (--only=city --force-city=1), from where it stood on the 16 Nov build with the city tricks
+        // (seed 550338, a forced city of 200 buildings): it paces at 60 a second (CPU-bound: the places' main-thread work, physics,
+        // the renderer, and 110 to 260 MB a second allocated), so these hold it from drifting, not to where it should be.
+        // Frames over 16.7 ms mean nothing at 60 a second. Measured: p99 27.0, 27.6, 38.5 ms; frames off the most common 53, 36,
+        // 58 %; near ground 104, 88, 40 m; column wait 95th 154, 268, 549 ms.
+        ["city walk"] = new(88, double.NaN, 220, double.NaN, double.NaN, 32, 10, 60, MoveOffLimit),
+        ["city bike"] = new(72, double.NaN, 360, double.NaN, double.NaN, 32, 10, 45, MoveOffLimit),
+        ["city fly"] = new(double.NaN, double.NaN, 700, double.NaN, double.NaN, 45, 10, 65, MoveOffLimit),
     };
 
     /// <summary>
@@ -541,6 +550,10 @@ public partial class PopRoute : Node
         ["walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
         ["bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
         ["fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
+        // The city at 60 a second on the stand-in: frames off the most common 3.6, 4.2 and 9.7 % (16 Nov).
+        ["city walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, 15, MinSpecMoveOff, double.NaN),
+        ["city bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, 15, MinSpecMoveOff, double.NaN),
+        ["city fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, 15, MinSpecMoveOff, double.NaN),
     };
 
     int _gateFails;
