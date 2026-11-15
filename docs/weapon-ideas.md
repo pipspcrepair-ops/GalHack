@@ -211,7 +211,7 @@ How to read an entry. The first line gives code and name (type), then band, moun
 ### 4.7 Bows, slings, air and spring
 
 **BW1 Cord Sling** (sling) | L | Hand | S | `charge lob kin none`
-*Does:* whirl and release any stone or scrap. *Look and sound:* a rising whirr, a flat snap. *Why:* no ammo item at all, so a castaway always has a ranged answer. *Cost:* hard to aim, weak. *Ammo:* any rock. *Counter:* armour.
+*Does:* whirl and release any stone or scrap. *Look and sound:* a rising whirr, a flat snap. *Why:* no ammo item at all, so a sleeper always has a ranged answer. *Cost:* hard to aim, weak. *Ammo:* any rock. *Counter:* armour.
 
 **BW2 Hunter's Bow** (recurve bow) | L | Hand | S | `charge bolt kin bolts`
 *Does:* hold to draw; arrows drop and can be picked up. Takes trick heads: fire, rope, whistle, blunt. *Look and sound:* a creak, a soft thrum, feathers. *Why:* silent hunting that doesn't scare the herd, and trick heads make it a tool. *Cost:* a full draw tires you. *Ammo:* arrows; recoverable. *Counter:* armour, range.
