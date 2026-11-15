@@ -139,13 +139,24 @@ public sealed class DecoPlanner
         if (_chosen.TryGetValue(key, out DecoPiece p) && (extra == null || extra(p)) && !Full(p)) return p;
         // A support (a mine's timber set) only ever spans a way, set by Supports: never a wall piece, a fill or a row.
         bool span = key == SupportKey;
-        var own = _cat.OfSet(_room.Set).Where(x => roles.Any(x.Has) && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
-        var borrowed = _cat.InSet(_room.Set).Where(x => x.Set != _room.Set && roles.Any(x.Has) && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
-        // Pieces that play the first-named role come first.
-        var all = own.Concat(borrowed).ToList();
+        // Its own set's pieces, then those it borrows (each list made once and kept: a room tries thousands of picks).
+        List<DecoPiece> all = _pickAll;
+        List<float> weights = _pickWeights;
+        all.Clear();
+        weights.Clear();
+        bool Fits(DecoPiece x)
+        {
+            bool role = false;
+            foreach (string r in roles) role |= x.Has(r);
+            return role && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x);
+        }
+        foreach (DecoPiece x in _cat.OfSet(_room.Set))
+            if (Fits(x)) all.Add(x);
+        foreach (DecoPiece x in _cat.InSet(_room.Set))
+            if (x.Set != _room.Set && Fits(x)) all.Add(x);
         if (all.Count == 0) return null;
         // The room's own era first by far: a high world's room takes its high pieces where it has them, older ones only to fill in.
-        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x)).ToList();
+        foreach (DecoPiece x in all) weights.Add((x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x));
         p = all[Math.Max(0, _rng.PickWeighted(weights))];
         _chosen[key] = p;
         return p;
@@ -395,7 +406,9 @@ public sealed class DecoPlanner
         return true;
     }
 
-    // TryPlace's lists, and Routes' distances and queue, kept between tries (never held past one).
+    // Pick's candidates and weights, TryPlace's lists, and Routes' distances and queue, kept between tries (never held past one).
+    readonly List<DecoPiece> _pickAll = new();
+    readonly List<float> _pickWeights = new();
     int[] _dist;
     Queue<int> _routeQueue;
     readonly List<DecoPlacement> _added = new(), _all = new();
@@ -434,7 +447,16 @@ public sealed class DecoPlanner
     HashSet<string> FocusOf(DecoTemplate t, string[] focus)
     {
         var roles = t.Anchor.Concat(t.Ends).Concat(t.Middle).Concat(t.Members).ToHashSet();
-        return _cat.InSet(_room.Set).Where(p => p.Roles.Any(roles.Contains)).SelectMany(p => p.Roles).Where(focus.Contains).ToHashSet();
+        var found = new HashSet<string>();
+        foreach (DecoPiece p in _cat.InSet(_room.Set))
+        {
+            bool plays = false;
+            foreach (string r in p.Roles) plays |= roles.Contains(r);
+            if (!plays) continue;
+            foreach (string r in p.Roles)
+                if (Array.IndexOf(focus, r) >= 0) found.Add(r);
+        }
+        return found;
     }
 
     /// <summary>

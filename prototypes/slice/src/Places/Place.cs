@@ -56,9 +56,11 @@ public partial class Place : Node3D
         public bool Modified;
         public Task<List<ChunkMesh>> Meshing;
         /// <summary>The cube's chunks merged on the meshing worker, one surface a material (null: drawn a chunk at a time, as a changed cube is).</summary>
-        public MeshBuild.Surface[] Merging;
-        /// <summary>Its full detail as one mesh (a draw a material, where it was a draw a material a chunk), while its blocks are as built.</summary>
-        public MeshInstance3D Merged;
+        public List<MeshBuild.Surface[]> Merging;
+        /// <summary>Its full detail as a few merged meshes (a draw a material each, where it was a draw a material a chunk), while its blocks are as built.</summary>
+        public readonly List<MeshInstance3D> Merged = new();
+        /// <summary>The next merged part to put in.</summary>
+        public int NextPart;
         public int Next;
         /// <summary>How far its full detail has dissolved in over the merged cube (0..1), and which way it is going (+1, -1, 0: still).</summary>
         public float Blend;
@@ -283,12 +285,19 @@ public partial class Place : Node3D
             double before = clock.Elapsed.TotalMilliseconds;
             if (g.Merging != null && !g.Modified)
             {
-                SetMerged(g);
-                g.Next = built.Count;
+                // A part a step (each a few thousand vertices handed to the renderer), within the frame's loading allowance.
+                while (g.NextPart < g.Merging.Count && (g.NextPart == 0 || clock.Elapsed.TotalMilliseconds < budget)) SetMerged(g, g.Merging[g.NextPart++]);
+                if (g.NextPart >= g.Merging.Count) g.Next = built.Count;
             }
-            while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget) SetChunkMesh(built[g.Next++]);
+            else
+            {
+                if (g.Merged.Count > 0) FreeMerged(g); // changed while its parts went in: a mesh a chunk after all
+                while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget) SetChunkMesh(built[g.Next++]);
+            }
             PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds - before);
             if (g.Next < built.Count) break;
+            g.Merging = null;
+            g.NextPart = 0;
             ChunkMesh.Return(built); // drawn: its lists for the next cube's meshing
             g.Meshing = null;
             g.Next = 0;
@@ -332,30 +341,61 @@ public partial class Place : Node3D
         g.Meshing = Task.Run(() => GalHack.Testing.AllocMeter.Measure("place cubes", () =>
         {
             List<ChunkMesh> built = Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false));
-            if (merge) g.Merging = MeshBuild.Merge(built);
+            if (merge) g.Merging = Parts(built);
             return built;
         }));
     }
 
-    /// <summary>A cube's full detail as one mesh, from its chunks merged on the worker.</summary>
-    void SetMerged(Group g)
+    /// <summary>The most vertices a merged part holds: about a millisecond's handing over to the renderer.</summary>
+    const int PartVertices = 12000;
+
+    /// <summary>A cube's chunks merged on the worker into parts of at most <see cref="PartVertices"/> (a chunk bigger alone is a part of its own).</summary>
+    static List<MeshBuild.Surface[]> Parts(List<ChunkMesh> built)
     {
-        g.Merged?.QueueFree();
+        var parts = new List<MeshBuild.Surface[]>();
+        var bin = new List<ChunkMesh>();
+        int verts = 0;
+        foreach (ChunkMesh c in built)
+        {
+            int n = 0;
+            foreach (MeshBuffer b in c.Surfaces) n += b.VertexCount;
+            if (n == 0) continue;
+            if (bin.Count > 0 && verts + n > PartVertices)
+            {
+                parts.Add(MeshBuild.Merge(bin));
+                bin.Clear();
+                verts = 0;
+            }
+            bin.Add(c);
+            verts += n;
+        }
+        if (bin.Count > 0) parts.Add(MeshBuild.Merge(bin));
+        return parts;
+    }
+
+    /// <summary>One part of a cube's full detail in as a mesh, from its chunks merged on the worker.</summary>
+    void SetMerged(Group g, MeshBuild.Surface[] part)
+    {
         var mesh = new ArrayMesh();
-        for (int s = 0; s < g.Merging.Length; s++) MeshBuild.AddSurface(mesh, g.Merging[s], _materials.BySurface[s]);
-        g.Merging = null;
-        g.Merged = mesh.GetSurfaceCount() == 0 ? null : new MeshInstance3D { Name = $"Cube {g.Key}", Mesh = mesh };
-        if (g.Merged == null) return;
-        AddChild(g.Merged);
-        if (!g.Near || g.Way != 0) PlanetSurface.Fx.Fade.Set(g.Merged, 0f, g.Way != 0 ? g.Blend : 0f);
+        for (int s = 0; s < part.Length; s++) MeshBuild.AddSurface(mesh, part[s], _materials.BySurface[s]);
+        if (mesh.GetSurfaceCount() == 0) return;
+        var m = new MeshInstance3D { Name = $"Cube {g.Key} {g.Merged.Count}", Mesh = mesh };
+        g.Merged.Add(m);
+        AddChild(m);
+        if (!g.Near || g.Way != 0) PlanetSurface.Fx.Fade.Set(m, 0f, g.Way != 0 ? g.Blend : 0f);
+    }
+
+    void FreeMerged(Group g)
+    {
+        foreach (MeshInstance3D m in g.Merged) m.QueueFree();
+        g.Merged.Clear();
     }
 
     /// <summary>A merged cube about to change: back to a mesh a chunk, built here and now (an edit is rare; the rest of the cube is redrawn as it was).</summary>
     void Unmerge(Group g)
     {
-        if (g.Merged == null) return;
-        g.Merged.QueueFree();
-        g.Merged = null;
+        if (g.Merged.Count == 0) return;
+        FreeMerged(g);
         List<ChunkMesh> built = Mesher.Build(new ChunkWindow(Inst.Blocks, g.Key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(g.Key * GroupSize, collision: false));
         foreach (ChunkMesh c in built) SetChunkMesh(c);
         ChunkMesh.Return(built);
@@ -402,7 +442,7 @@ public partial class Place : Node3D
 
     IEnumerable<MeshInstance3D> MeshesOf(Group g)
     {
-        if (g.Merged != null) yield return g.Merged;
+        foreach (MeshInstance3D m in g.Merged) yield return m;
         foreach (var (ch, c) in _chunks)
             if (c.Mesh != null && GroupOf(ch) == g.Key) yield return c.Mesh;
     }
@@ -439,8 +479,7 @@ public partial class Place : Node3D
         Places.Zone.Pois.FadeGroup(Site, g.Key, 0f, done: true);
         Places.Zone.Pois.HideGroup(Site, g.Key, way > 0);
         if (way > 0) return;
-        g.Merged?.QueueFree();
-        g.Merged = null;
+        FreeMerged(g);
         foreach (Int3 ch in _chunks.Keys.ToList())
         {
             if (GroupOf(ch) != g.Key) continue;
@@ -468,7 +507,7 @@ public partial class Place : Node3D
     {
         foreach (Group g in _groups.Values)
         {
-            if (g.Merged == null || !g.Near || g.Way != 0) continue;
+            if (g.Merged.Count == 0 || !g.Near || g.Way != 0) continue;
             Int3 min = g.Key * GroupSize;
             for (int y = 0; y < GroupSize; y++)
             for (int z = 0; z < GroupSize; z++)
@@ -490,14 +529,14 @@ public partial class Place : Node3D
         int chunks = 0;
         foreach (MeshInstance3D m in MeshesOf(g))
         {
-            if (m != g.Merged) chunks++;
+            if (!g.Merged.Contains(m)) chunks++;
             if (m.Mesh is ArrayMesh am) for (int s = 0; s < am.GetSurfaceCount(); s++) tris += am.SurfaceGetArrayIndexLen(s) / 3;
         }
-        return (g.Merged != null, chunks, tris);
+        return (g.Merged.Count > 0, chunks, tris);
     }
 
     /// <summary>Cubes drawn as one mesh now (tests).</summary>
-    internal int MergedGroups => _groups.Values.Count(g => g.Merged != null);
+    internal int MergedGroups => _groups.Values.Count(g => g.Merged.Count > 0);
 
     /// <summary>Cubes drawn in full now (tests).</summary>
     public int NearGroups => _groups.Values.Count(g => g.Near);
@@ -557,6 +596,17 @@ public partial class Place : Node3D
     /// <summary>Every standing place's frame work by part (cubes in and out, dissolves, lamps, rooms dressed), ms in all and the worst one call (checks read and clear them).</summary>
     public static readonly string[] PartNames = { "cubes", "dissolves", "lamps", "dressing" };
     public static readonly double[] PartMs = new double[4], PartWorst = new double[4];
+    /// <summary>The longest single step seen in each part, and what it was (checks read and clear them).</summary>
+    public static readonly double[] StepWorst = new double[4];
+    public static readonly string[] StepWhat = new string[4];
+
+    /// <summary>A step of a part took this long: kept if the longest yet.</summary>
+    internal static void Worst(int part, string what, double ms)
+    {
+        if (ms <= StepWorst[part]) return;
+        StepWorst[part] = ms;
+        StepWhat[part] = what;
+    }
 
     static long Part(int i, long from)
     {

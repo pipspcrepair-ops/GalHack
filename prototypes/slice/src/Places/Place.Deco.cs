@@ -455,6 +455,8 @@ public partial class Place
     }
 
     bool _dressByRoom;
+    /// <summary>What the dressing's last step did (the checks' longest-step note).</summary>
+    string _dressStage;
     IEnumerator<int> _dressing;
     int _dressTimer;
 
@@ -476,7 +478,12 @@ public partial class Place
             var clock = System.Diagnostics.Stopwatch.StartNew();
             double budget = PlanetSurface.Fx.LoadBudget.Left(1.5);
             while (clock.Elapsed.TotalMilliseconds < budget)
-                if (!_dressing.MoveNext()) { _dressing = null; break; }
+            {
+                double began = clock.Elapsed.TotalMilliseconds;
+                bool more = _dressing.MoveNext();
+                Worst(3, _dressStage, clock.Elapsed.TotalMilliseconds - began);
+                if (!more) { _dressing = null; break; }
+            }
             PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
             return;
         }
@@ -523,6 +530,13 @@ public partial class Place
         {
             if (taken != null && taken.Contains(i)) { d.Pieces.Add(null); continue; }
             DecoPlacement pl = room.Plan.Placements[i];
+            // A look new to the game is handed to the engine a surface a step first (a big piece in one go was the long step).
+            while (!decor.Meshes.Warm(pl.Look))
+            {
+                _dressStage = pl.Piece;
+                yield return 0;
+                clock.Restart();
+            }
             var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
             DecoNode.CollisionLayer = room.Solid.Contains(i) ? Layers.World : SceneryLayer;
             DecoNode n;
@@ -550,6 +564,7 @@ public partial class Place
             }
             if (clock.Elapsed.TotalMilliseconds > 1.2)
             {
+                _dressStage = pl.Piece;
                 yield return 0;
                 clock.Restart();
             }
@@ -562,6 +577,7 @@ public partial class Place
             DecoMeshData mesh = cut || room.Wires == null ? WiresOf(room, taken) : room.Wires;
             d.Node.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, decor.Meshes.Materials) });
         }
+        _dressStage = "the room's wires and dissolve";
         PlanetSurface.Fx.PopLog.Note("props", "room dressed", Away(room, FromWorld(Places.EyeAt())), 1.2f, 1f / (60f * DressBlendSeconds));
         d.Blend = 0f;
         d.Way = 1;

@@ -150,10 +150,13 @@ public sealed class DecoCatalogue
     public DecoSet Set(string id) => _setById.TryGetValue(id, out DecoSet s) ? s : throw new KeyNotFoundException($"unknown deco set '{id}'");
     public bool HasSet(string id) => _setById.ContainsKey(id);
 
+    // Each set's pieces worked out once (the catalogue never changes once loaded): rooms are planned asking for them thousands of times.
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, DecoPiece[]> _ofSet = new(), _inSet = new();
+
     /// <summary>Pieces whose own set is <paramref name="set"/>.</summary>
-    public IEnumerable<DecoPiece> OfSet(string set) => _pieces.Where(p => p.Set == set);
+    public IReadOnlyList<DecoPiece> OfSet(string set) => _ofSet.GetOrAdd(set ?? "", k => _pieces.Where(p => p.Set == k).ToArray());
     /// <summary>Pieces that furnish <paramref name="set"/>, its own first, then those it borrows.</summary>
-    public IEnumerable<DecoPiece> InSet(string set) => _pieces.Where(p => p.Set == set).Concat(_pieces.Where(p => p.Set != set && p.Also.Contains(set)));
+    public IReadOnlyList<DecoPiece> InSet(string set) => _inSet.GetOrAdd(set ?? "", k => _pieces.Where(p => p.Set == k).Concat(_pieces.Where(p => p.Set != k && p.Also.Contains(k))).ToArray());
     /// <summary>Pieces that furnish a set and play a role in it.</summary>
     public IEnumerable<DecoPiece> WithRole(string set, string role) => InSet(set).Where(p => p.Has(role));
 

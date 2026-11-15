@@ -152,8 +152,11 @@ public partial class PopRoute
         GD.Print($"SPLIT {name} drawn at the end: {DrawnCensus()}");
         if (_allocTypes != null) GD.Print($"SPLIT {name} {(_allocTypes.MainOnly ? "the main thread" : "every thread")} allocated, by type: {_allocTypes.Take(24)}");
         GD.Print($"SPLIT {name} places' frame work, ms a frame (worst one): {string.Join(", ", Slice.Places.Place.PartNames.Select((p, i) => string.Create(CultureInfo.InvariantCulture, $"{p} {Slice.Places.Place.PartMs[i] / Math.Max(1, _frameSplit.Frames.Count):F2} ({Slice.Places.Place.PartWorst[i]:F1})")))}");
+        GD.Print($"SPLIT {name} places' longest single steps: {string.Join(", ", Slice.Places.Place.PartNames.Select((p, i) => string.Create(CultureInfo.InvariantCulture, $"{p} {Slice.Places.Place.StepWorst[i]:F1} ({Slice.Places.Place.StepWhat[i] ?? "-"})")))}");
         Array.Clear(Slice.Places.Place.PartMs);
         Array.Clear(Slice.Places.Place.PartWorst);
+        Array.Clear(Slice.Places.Place.StepWorst);
+        Array.Clear(Slice.Places.Place.StepWhat);
         if (GalHack.Testing.AllocMeter.On) GD.Print($"SPLIT {name} workers allocated, MB a second by job: {GalHack.Testing.AllocMeter.Take(_allocClock.Elapsed.TotalSeconds)}");
         GD.Print(string.Create(CultureInfo.InvariantCulture,
             $"SPLIT {name} live (means): creatures in the patch {_creatures / n:F0}, stepped {_stepped / n:F0}, drawn {_creaturesDrawn / n:F0}; in {w.Sites.Count} places and caves {_siteCreatures / n:F0}, stepped {_siteStepped / n:F0}, drawn {_siteDrawn / n:F0}; " +
