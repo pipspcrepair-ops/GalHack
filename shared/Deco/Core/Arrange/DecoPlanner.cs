@@ -346,9 +346,9 @@ public sealed class DecoPlanner
             if (pl.Support < 0 && _room.Doors.Any(d => _room.Apron(d, 0.9f, 0).Overlaps(r.Shrink(0.02f)))) return false;
             if (_plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) return false;
             if (added.Any(o => o != pl && added.IndexOf(o) < added.IndexOf(pl) && DecoLayout.Clash(_forge, o, pl))) return false;
-            // The room's rules (DecoRules): nothing taller than a sill before a window, a fire only at a chimney breast, what the room
+            // The room's rules (DecoRules): nothing taller than a sill before a window, a fire only at a chimney breast and nothing else there, what the room
             // is arranged round on a solid wall, a narrow room lined along its one wall.
-            if (DecoRules.BeforeWindow(_forge, _room, pl) || DecoRules.OffFlue(_forge, _room, pl)) return false;
+            if (DecoRules.BeforeWindow(_forge, _room, pl) || DecoRules.OffFlue(_forge, _room, pl) || DecoRules.BeforeBreast(_forge, _room, pl)) return false;
             // (Alone, under a window's sill if it is low enough.)
             bool behind = focal && DecoRules.OpeningBehind(_room, r, loose ? DecoLayout.Heights(_forge, pl).Hi : float.MaxValue);
             if (pl.Support < 0 && DecoLayout.Blocks(_forge, pl) && (behind || _lining is DecoWall only && DecoRules.Off(_room, r, only) > 0.15f)) return false;

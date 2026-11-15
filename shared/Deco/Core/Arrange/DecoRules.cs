@@ -115,6 +115,14 @@ public static class DecoRules
         return !room.Flues.Any(f => Span(room, r, f.Wall) is var s && s.Off <= 0.3f && s.Lo >= f.Offset - f.Width / 2 - 0.1f && s.Hi <= f.Offset + f.Width / 2 + 0.1f);
     }
 
+    /// <summary>Anything but the fire standing before a chimney breast (within 0.6 m of it, across its width): the breast is kept for the hearth.</summary>
+    public static bool BeforeBreast(DecoForge forge, DecoRoom room, DecoPlacement pl)
+    {
+        if (pl.Support >= 0 || forge.Catalogue.Piece(pl.Piece) is not { } p || p.Has("hearth") || !DecoLayout.Blocks(forge, pl) || p.Mount == DecoMount.Ceiling) return false;
+        DecoRect r = DecoLayout.Footprint(forge, pl);
+        return room.Flues.Any(f => Span(room, r, f.Wall) is var s && s.Off <= 0.6f && Overlaps(s.Lo, s.Hi, f, 0f));
+    }
+
     /// <summary>
     /// Stands against a wall with a doorway in its width, or a window it rises above the sill of (<paramref name="top"/>: its
     /// height; a bed's head or a sofa's back may sit under a sill where a small room has no solid wall for it).

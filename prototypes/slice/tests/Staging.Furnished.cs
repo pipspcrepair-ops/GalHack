@@ -28,15 +28,17 @@ public sealed partial class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.4);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        // --chimney=1: the nearest of the family with a chimney stack (a living room with its fireplace).
+        // --chimney=1: the nearest of the family whose room (--room) has a chimney breast (a living room with its fireplace).
+        string named = _args.GetValueOrDefault("room");
         PoiSite site = _args.ContainsKey("chimney") && _args.TryGetValue("family", out string fam)
-            ? _game.Zone.Planet.Pois.Where(s => s.Family.Id == fam).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(40).FirstOrDefault(s => s.Instance.Layout.Extras.Lasting.Count > 0) ?? Named()
+            ? _game.Zone.Planet.Pois.Where(s => s.Family.Id == fam).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(250)
+                .FirstOrDefault(s => s.Instance.Layout.Extras.Lasting.Count > 0 && RoomDecor.Rooms(s.Instance).Any(d => d.Room.Flues.Count > 0 && (named == null || d.Room.RoomId?.Contains(named) == true))) ?? Named()
             : Named();
+        GD.Print($"FURNISHED place {site.Family.Id} at {_game.Places.DistanceTo(site, _game.Survivor.WorldFeet):0} m, {site.Instance.Layout.Extras.Lasting.Count} stack blocks");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
         PartSet parts = PlaceParts.Of(p.Memory);
         // The most crowded dressed room on the way-in's level or near it; --room=X a room whose id has X in it (one with a chimney breast and windows first).
-        string named = _args.GetValueOrDefault("room");
         PlaceRoom room = p.Memory.Rooms.Values.Where(r => named == null || r.Room.RoomId?.Contains(named) == true)
             .OrderByDescending(r => named == null ? 0f : (r.Room.Flues.Count > 0 ? 2f : 0f) + (r.Room.Windows.Count > 0 ? 1f : 0f))
             .ThenByDescending(r => (r.Room.Width * r.Room.Depth >= 24 ? 0.3f : 0f) + (r.Plan.Placements.Count - p.Memory.DecoTaken.GetValueOrDefault(r.Module)?.Count ?? 0) / (float)(r.Room.Width * r.Room.Depth) - MathF.Abs(r.Corner.Y) * 0.05f).First();

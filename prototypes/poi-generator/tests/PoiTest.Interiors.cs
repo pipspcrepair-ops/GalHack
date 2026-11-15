@@ -142,7 +142,7 @@ public partial class PoiTest
             Check(doorless == 0, T($"a door in every door-sized way between rooms ({doorless} of {narrow} without){First("door")}"));
             Check(oneCeiling == 0, T($"no place one ceiling all through ({oneCeiling} of {places}){First("ceiling")}"));
             Check(window == 0, T($"nothing taller than a sill stands before a window ({window} pieces){First("window")}"));
-            Check(offFlue == 0, T($"a fire only at a chimney breast, never by a window ({offFlue} of {fires} fires){First("flue")}"));
+            Check(offFlue == 0, T($"a fire only at a chimney breast, never by a window, nothing else before a breast ({offFlue} pieces; {fires} fires){First("flue")}"));
             Check(focalWall == 0, T($"what a room is arranged round stands on a solid wall, under a sill at most ({focalWall} before a doorway or a window){First("focal wall")}"));
             Check(unreached == 0, T($"a clear walk a metre wide from the doors to every piece's use side, drawers out ({unreached} pieces cut off){First("reach")}"));
             Check(lining == 0, T($"a room under {DecoRules.Narrow} m across lined along one wall ({lining} with furniture off it){First("narrow")}"));
@@ -196,7 +196,7 @@ public partial class PoiTest
                 var forge = decor.Forge;
                 windowed = used.Placements.Count(p => DecoRules.BeforeWindow(forge, d.Room, p));
                 fires = used.Placements.Count(p => p.Support < 0 && forge.Catalogue.Piece(p.Piece).Has("hearth"));
-                offFlue = used.Placements.Count(p => DecoRules.OffFlue(forge, d.Room, p));
+                offFlue = used.Placements.Count(p => DecoRules.OffFlue(forge, d.Room, p) || DecoRules.BeforeBreast(forge, d.Room, p));
                 focalWall = used.Placements.Any(p => p.Group == used.FocalGroup && used.FocalGroup >= 0 && p.Support < 0 && DecoLayout.Blocks(forge, p) && DecoRules.OpeningBehind(d.Room, DecoLayout.Footprint(forge, p), DecoLayout.Heights(forge, p).Hi));
                 cut = DecoRules.Unreached(forge, d.Room, used.Placements).Count;
                 narrowOff = DecoRules.OffLining(forge, d.Room, used.Placements);
