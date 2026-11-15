@@ -85,7 +85,7 @@ public partial class PopRoute
             }
             TagAll();
             var parts = Kinds();
-            Viewport.Msaa msaa = GetViewport().Msaa3D;
+            Game.AntiAliasing aa = _game.Settings.Aa;
             bool glow = env.GlowEnabled;
             var cost = new Dictionary<string, double>();
             var renderCpu = new Dictionary<string, double>();
@@ -96,7 +96,7 @@ public partial class PopRoute
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = c == "-shadows" ? 0u : uint.MaxValue;
                 env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                 env.GlowEnabled = c != "-glow" && glow;
-                GetViewport().Msaa3D = c == "-msaa" ? Viewport.Msaa.Disabled : msaa;
+                Game.Game.SetAntiAliasing(GetViewport(), c == "-msaa" ? Game.AntiAliasing.Off : aa);
                 foreach (var (kind, list) in parts)
                     foreach (var (g, cast, shown) in list)
                     {
@@ -130,7 +130,7 @@ public partial class PopRoute
             zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
             env.BackgroundMode = Godot.Environment.BGMode.Sky;
             env.GlowEnabled = glow;
-            GetViewport().Msaa3D = msaa;
+            Game.Game.SetAntiAliasing(GetViewport(), aa);
             double all = cost["all"];
             double allCpu = renderCpu["all"], allDraws = drawCalls["all"];
             string costs = string.Join(", ", cases.Skip(1).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
