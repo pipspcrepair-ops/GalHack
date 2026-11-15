@@ -9,7 +9,7 @@ using PInt3 = PoiGenerator.Gen.Int3;
 namespace Slice.Tests;
 
 /// <summary>
-/// A place nobody marked, in the game itself (--view=incidental --what=sewer|ruin): the eye standing height (1.7 m) a few metres
+/// A place nobody marked, in the game itself (--view=incidental --what=sewer|ruin, --nth=N for the Nth ruin): the eye standing height (1.7 m) a few metres
 /// off it and again 30 m off, for the sewer with a lamp over the junction it looks at (it is dark down there), for the nearest
 /// roadside ruin in daylight. --rounded=0 builds the underground as it was before the sections were shaped. Frames go beside --out.
 /// </summary>
@@ -22,6 +22,7 @@ public sealed partial class Staging
         var world = _game.Surface.Planet;
         string what = _args.GetValueOrDefault("what", "sewer");
         (Vector3 target, Vector3 dir)? spot = null;
+        var spots = new List<(Vector3 target, Vector3 dir)>();
         if (what == "sewer" && world.StartTown?.Under?.Built is { } built)
         {
             // The first junction chamber on a long enough arm: look at it down the bore that leads there.
@@ -42,16 +43,20 @@ public sealed partial class Staging
         }
         else if (what == "ruin")
         {
-            var ruin = world.Infra.Ruins.FirstOrDefault(r => r.Stamp != null && world.Infra.Town?.Houses.Contains(r) != true);
-            if (ruin != null)
+            foreach (var ruin in world.Infra.Ruins.Where(r => r.Stamp != null && world.Infra.Town?.Houses.Contains(r) != true).Skip(int.Parse(_args.GetValueOrDefault("nth", "0"))).Take(int.Parse(_args.GetValueOrDefault("count", "1"))))
             {
                 var (rx, rz) = ruin.Center;
                 var c = new Vector3((float)rx, 0f, (float)rz);
                 c.Y = world.GroundHeight(Planets.Gen.Mathx.WrapX(c.X, world.Width), Planets.Gen.Mathx.Wrap(c.Z, world.Height)) + 3f;
-                spot = (c, new Vector3(1f, 0f, 0.4f).Normalized());
+                spots.Add((c, new Vector3(1f, 0f, 0.4f).Normalized()));
             }
         }
-        if (spot is not { } s) { GD.Print($"(incidental: no {what} on this world)"); yield break; }
+        if (spot != null) spots.Add(spot.Value);
+        if (spots.Count == 0) { GD.Print($"(incidental: no {what} on this world)"); yield break; }
+        int shot = 0;
+        foreach (var s in spots)
+        {
+        shot++;
         foreach (var (name, back) in new[] { ("near", what == "sewer" ? 6f : 14f), ("far", 30f) })
         {
             Vector3 centre = world.NearestCopy(s.target, _game.Survivor.WorldFeet);
@@ -77,8 +82,13 @@ public sealed partial class Staging
                 yield return 0;
                 if (i > 200 && _game.Zone.Streamer.Settled && !_game.Zone.Pois.MidPending) break;
             }
-            Snap($"{what}-{name}");
+            // A plain grey stand-in block (a place not built yet) standing off the ground in view is a fault of the places layer, not of the ruin.
+            foreach (Node n in _game.Zone.Pois.GetChildren())
+                if (n is MeshInstance3D { Visible: true } m && m.Name.ToString().StartsWith("Stand-in") && m.GlobalPosition.DistanceTo(eye) < 150f && m.Mesh is BoxMesh box)
+                    GD.Print($"(stand-in in view: {m.Name}, {m.GlobalPosition.DistanceTo(eye):0} m off, base {m.GlobalPosition.Y - box.Size.Y * 0.5f - world.GroundHeight(Planets.Gen.Mathx.WrapX(m.GlobalPosition.X, world.Width), Planets.Gen.Mathx.Wrap(m.GlobalPosition.Z, world.Height)):0.0} m over the ground, {box.Size.X:0} x {box.Size.Y:0} x {box.Size.Z:0})");
+            Snap($"{what}{(spots.Count > 1 ? shot.ToString() : "")}-{name}");
             lamp?.QueueFree();
+        }
         }
         _game.FixedCamera = null;
     }
