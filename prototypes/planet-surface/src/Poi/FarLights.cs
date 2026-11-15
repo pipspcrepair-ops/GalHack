@@ -193,6 +193,17 @@ public partial class FarLights : Node3D
             _fresh.Add(PointCount - 1);
             count++;
         }
+        // Fires people keep in the open (a place's campfire marks): a warm, wavering point, lit only where someone lives.
+        if (lived)
+            foreach (Marker m in inst.Markers)
+                if (m.Kind == "campfire")
+                {
+                    float phase = (float)(Hash.Cell(m.Cell, 11) % 1000) / 160f;
+                    float x = site.Origin.X + m.Cell.X + 0.5f, y = site.Origin.Y + m.Cell.Y + 0.6f, z = site.Origin.Z + m.Cell.Z + 0.5f;
+                    _pointData.AddRange(new[] { 1.4f, 0f, 0f, x, 0f, 1.4f, 0f, y, 0f, 0f, 1.4f, z, 1f, 0.55f, 0.22f, 1.4f, 4f, phase, 1f, 0f });
+                    _fresh.Add(PointCount - 1);
+                    count++;
+                }
         Of[site] = (first, count, lived);
     }
 
@@ -303,6 +314,7 @@ public partial class FarLights : Node3D
             float mode = INSTANCE_CUSTOM.x, s = clock + INSTANCE_CUSTOM.y;
             float wave = mode > 1.5 && mode < 2.5 ? (mod(s, 1.6) < 0.25 ? 1.0 : 0.05)
                 : mode > 0.5 && mode < 1.5 ? (sin(s * 23.0) * sin(s * 7.3) > 0.55 ? 0.15 : 0.9)
+                : mode > 3.5 ? 0.8 + 0.12 * sin(s * 5.1) * sin(s * 3.3) + 0.08 * sin(s * 13.0)
                 : mode > 2.5 ? 0.6 + 0.4 * sin(s * 0.9) : 1.0;
             // The old halo's 40 to 120 m fade near; full past the hand-off, where it is all that is left of the lamp.
             float a = smoothstep(40.0, 120.0, d) * mix(0.55, 1.0, far) * mix(1.0, far * 0.8, inner);
@@ -361,11 +373,16 @@ public partial class FarLights : Node3D
                 if (ray.y < 0.0) t1 = min(t1, tg); else t0 = max(t0, tg);
             }
             if (t1 <= t0) discard;
+            // A per-pixel noise (interleaved gradient): it jitters the samples along the ray, and dithers the result by about
+            // one step of the screen's colour, so a faint wide gradient never shows as shells.
+            float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
             float sum = 0.0;
-            for (int i = 0; i < 4; i++) sum += lit(eye + ray * mix(t0, t1, (float(i) + 0.5) / 4.0));
-            float along = (t1 - t0) / radius * sum / 4.0;
+            for (int i = 0; i < 6; i++) sum += lit(eye + ray * mix(t0, t1, (float(i) + n) / 6.0));
+            float along = (t1 - t0) / radius * sum / 6.0;
             float d = length(centre - eye);
-            ALBEDO = COLOR.rgb * along * strength * 0.06 * night * haze(max(d - radius, 0.0));
+            vec3 glow = COLOR.rgb * along * strength * 0.06 * night * haze(max(d - radius, 0.0));
+            float level = max(glow.r, max(glow.g, glow.b));
+            ALBEDO = max(glow + (n - 0.5) * (1.5 / 255.0) * smoothstep(0.0, 3.0 / 255.0, level), vec3(0.0));
             ALPHA = 1.0;
         }
         """;
