@@ -119,7 +119,7 @@ public sealed partial class Staging
         if (room != null)
         {
             // From the door's side of the room, at eye height, toward its far side.
-            var door = room.Doors.Count > 0 ? room.Doors[0].Inside : (room.U0, room.V0);
+            (int U, int V) door = room.Doors.Count > 0 ? room.Doors[0].Inside : (room.U0, room.V0);
             float cu = (room.U0 + room.U1) / 2f, cv = (room.V0 + room.V1) / 2f;
             Vector3 eye = At(room, door.U + (cu - door.U) * 0.1f, door.V + (cv - door.V) * 0.1f, 1.7f);
             Vector3 look = At(room, cu + (cu - door.U) * 0.6f, cv + (cv - door.V) * 0.6f, 1.0f);
