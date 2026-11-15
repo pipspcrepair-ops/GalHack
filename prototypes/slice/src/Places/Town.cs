@@ -958,7 +958,7 @@ public sealed partial class Town
         Person q = p.Partner;
         if (p.Sitting || p.Path != null && p.Step < p.Path.Count || !q.Sitting && q.Partner == p && p.GetHashCode() < q.GetHashCode()) return;
         // (Not while pressed, giving way or with you at their shoulder: nobody leans into you to keep their distance.)
-        if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f || (p.Pos - _you).LengthSquared() < 2.25f) return;
+        if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f || (p.Pos - _you).LengthSquared() < 2.25f) { ChatHeld++; return; }
         d.Y = 0f;
         float gap = d.Length(), want = Culture.Trait("chat", 1.1f), r = BodyRadius(p), h = Height(p);
         if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) return;
@@ -971,13 +971,19 @@ public sealed partial class Town
                 stand.Y = p.Pos.Y;
                 if (!Clear(stand) || !Clear((stand + p.Pos) * 0.5f)) continue;
                 Vector3 to = p.Pos.MoveToward(stand, 0.7f * dt);
-                if (Clear(to)) p.Pos = to;
+                if (!Clear(to)) continue;
+                p.Pos = to;
+                ChatSet++;
                 return;
             }
         // No stand clear round them: a step straight back, where there is one.
         Vector3 back = p.Pos + away * Math.Clamp(want - gap, -0.7f * dt, 0.7f * dt);
         if (Clear(back)) p.Pos = back;
+        else ChatStuck++;
     }
+
+    /// <summary>Steps taken toward a chatting distance, steps that found no way, and steps held off by a push or by you (tests).</summary>
+    public int ChatSet, ChatStuck, ChatHeld;
 
     static readonly float[] Turns = { 0f, 0.8f, -0.8f, 1.6f, -1.6f, 2.4f, -2.4f, MathF.PI };
 

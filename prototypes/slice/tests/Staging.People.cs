@@ -217,16 +217,7 @@ public sealed partial class Staging
         GD.Print($"(town: {site.Name}, {site.Instance.Mood}, {site.Instance.Townsfolk.People.Count} people)");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
-        // Local noon here: the hour of the brightest sky at this place.
-        double noon = 0.5, brightest = -1;
-        for (int k = 0; k < 24; k++)
-        {
-            _game.Zone.Sky.TimeOfDay = k / 24.0;
-            yield return 0;
-            yield return 0;
-            if (_game.Zone.Sky.ToSun.Y > brightest) { brightest = _game.Zone.Sky.ToSun.Y; noon = k / 24.0; }
-        }
-        _game.Zone.Sky.TimeOfDay = noon - 0.06;
+        foreach (int x in ToNoon()) yield return x;
         foreach (int x in _drive.Wait(300)) yield return x;
         Town town = p.Memory.Town;
         var people = town.People.Where(q => !q.Indoors && !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
@@ -277,6 +268,88 @@ public sealed partial class Staging
             foreach (int x in Shot(Path.Combine(frames, $"f{i:000}.png"))) yield return x;
         }
         GD.Print($"(people cost: worst tick {worst:F2} ms for {town.People.Count} while shooting, {people.Count} out; walker {walker.Role} at {walker.Now:F1} m/s)");
+    }
+
+    /// <summary>Just before local noon here: the hour of the brightest sky at this place.</summary>
+    IEnumerable<int> ToNoon()
+    {
+        double noon = 0.5, brightest = -1;
+        for (int k = 0; k < 24; k++)
+        {
+            _game.Zone.Sky.TimeOfDay = k / 24.0;
+            yield return 0;
+            yield return 0;
+            if (_game.Zone.Sky.ToSun.Y > brightest) { brightest = _game.Zone.Sky.ToSun.Y; noon = k / 24.0; }
+        }
+        _game.Zone.Sky.TimeOfDay = noon - 0.06;
+    }
+
+    /// <summary>
+    /// --view=culture: the nearest town's people at the evening gathering while the sun is still up (else late in the
+    /// morning), from a roof's height (--out with -above) and from the street (--out), round their busiest knot, to set
+    /// cultures side by side (--layer forces one, e.g. --layer=sexes.split,garb.uniform).
+    /// </summary>
+    IEnumerable<int> CultureView()
+    {
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        string above = Path.ChangeExtension(_args.GetValueOrDefault("out", "culture.png"), null) + "-above.png";
+        Vector3 from = _game.Survivor.WorldFeet;
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        // A settlement where people live, not a held ruin: the family forced (--force-family) first, peaceful first, then the nearest.
+        string forced = _args.GetValueOrDefault("force-family", "");
+        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk is { People.Count: > 4 } && s.Family.Tags.Contains("settlement"))
+            .OrderBy(s => s.Family.Id == forced ? 0 : 1).ThenBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0).ThenBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault();
+        if (site == null) { GD.Print("(no settlement on this world)"); yield break; }
+        foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
+        Place p = _game.Places.PlaceOf(site);
+        // The gathering hour (Town.Evening) where the sun stands highest then, if it is well up; else before noon. The sky held still.
+        _game.Zone.Sky.Paused = true;
+        double best = 0.73;
+        float high = -2f;
+        foreach (double t in new[] { 0.71, 0.73, 0.75, 0.77 })
+        {
+            _game.Zone.Sky.TimeOfDay = t;
+            for (int i = 0; i < 4; i++) yield return 0;
+            if (_game.Zone.Sky.ToSun.Y > high) { high = _game.Zone.Sky.ToSun.Y; best = t; }
+        }
+        if (high >= 0.15f) _game.Zone.Sky.TimeOfDay = best;
+        else foreach (int x in ToNoon()) yield return x;
+        // The moment the most of them are out together, over a minute.
+        Town town = p.Memory.Town;
+        List<Town.Person> people = new(), knot = new();
+        for (int look = 0; look < 6; look++)
+        {
+            foreach (int x in _drive.Wait(600)) yield return x;
+            var now = town.People.Where(q => !q.Indoors && !q.Dead && !q.Away && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
+            if (now.Count == 0) continue;
+            Town.Person busy = now.OrderByDescending(q => now.Count(o => o.Pos.DistanceTo(q.Pos) < 10f)).First();
+            var near = now.Where(o => o.Pos.DistanceTo(busy.Pos) < 10f).ToList();
+            if (near.Count > knot.Count) { knot = near; people = now; }
+            if (knot.Count >= 8) break;
+        }
+        if (knot.Count == 0) { GD.Print($"(nobody out at {site.Name})"); yield break; }
+        GD.Print($"(culture view: {site.Name} at {_game.Zone.Sky.TimeOfDay:F2}, {people.Count} of {town.People.Count} out, {knot.Count} together; their culture: {town.Culture})");
+        Vector3 mid = knot.Select(q => p.ToWorld(q.Pos)).Aggregate(Vector3.Zero, (a, b) => a + b) / knot.Count;
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        _game.Visor.Visible = false;
+        foreach (var (r, up, name) in new[] { (9f, 6f, "above"), (5.5f, 1.7f, "street") })
+        {
+            Vector3 eye = mid + Vector3.Back * r;
+            int most = -1;
+            for (int a = 0; a < 16; a++)
+            {
+                Vector3 c = mid + new Vector3(MathF.Cos(a * MathF.Tau / 16f), 0f, MathF.Sin(a * MathF.Tau / 16f)) * r;
+                c.Y = _game.Zone.GroundAt(c.X, c.Z).Y + up;
+                int n = people.Count(o => space.IntersectRay(PhysicsRayQueryParameters3D.Create(c, p.ToWorld(o.Pos) + Vector3.Up * 1.2f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull)).Count == 0);
+                if (n > most) { most = n; eye = c; }
+            }
+            _game.Survivor.PlaceOutside(Ground(eye + (eye - mid).Normalized() * 2.5f).ToNumerics());
+            Look(eye, mid + Vector3.Up * 1f);
+            foreach (int x in _drive.Wait(20)) yield return x;
+            GD.Print($"({name}: {most} of {people.Count} in sight)");
+            // (The street is the view's own last frame, saved as --out.)
+            if (name == "above") foreach (int x in Shot(above)) yield return x;
+        }
     }
 
     IEnumerable<int> FaunaView()

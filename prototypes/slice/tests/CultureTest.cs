@@ -349,7 +349,9 @@ public partial class CultureTest : Node
             var b = others.Where(p => !cu.A(p.Sex)).ToList();
             float sa = a.Count(Armed) / (float)Math.Max(1, a.Count), sb = b.Count(Armed) / (float)Math.Max(1, b.Count);
             float wantFight = cu.Trait("fight", 1f), wantA = cu.ArmedChance(PersonRole.Worker, cu.Lead, false, false), wantB = cu.ArmedChance(PersonRole.Worker, Culture.Other(cu.Lead), false, false);
-            Check(MathF.Abs(fight - wantFight) <= 0.1f && MathF.Abs(sa - wantA) <= 0.1f && MathF.Abs(sb - wantB) <= 0.1f,
+            // (Within 10 points, or three standard deviations of a sample this size.)
+            bool Near(float got, float want, int n) => MathF.Abs(got - want) <= MathF.Max(0.1f, 3f * MathF.Sqrt(want * (1f - want) / Math.Max(1, n)));
+            Check(Near(fight, wantFight, fighters.Count) && Near(sa, wantA, a.Count) && Near(sb, wantB, b.Count),
                 $"arms {arms}: guards {Pct(fight)} armed ({Pct(wantFight)}), others of side A {Pct(sa)} ({Pct(wantA)}), of side B {Pct(sb)} ({Pct(wantB)})");
             if (arms == "none") Check(People(f.Gen, 300).Count(Armed) == 0, "no weapons at all where the culture has none");
         }
@@ -418,7 +420,7 @@ public partial class CultureTest : Node
             Culture cu = f.World.Culture;
             var chat = new List<float>();
             var pairs = new HashSet<(Town.Person, Town.Person)>();
-            int mixed = 0, adultPairs = 0, kids = 0, kept = 0, places = 0;
+            int mixed = 0, adultPairs = 0, kids = 0, kept = 0, places = 0, chatSet = 0, chatStuck = 0, chatHeld = 0;
             float leash = cu.Trait("minder");
             bool packs = cu.Has("packs");
             int side = (int)cu.Trait("minder_side");
@@ -471,9 +473,14 @@ public partial class CultureTest : Node
                             }
                         }
                     });
+                chatSet += town.ChatSet;
+                chatStuck += town.ChatStuck;
+                chatHeld += town.ChatHeld;
             }
             GD.Print($"     {name}: {places} towns, {chat.Count} chat samples, {adultPairs} pairs of grown-ups, {kids} child samples");
             float want = cu.Trait("chat", 1.1f), median = chat.Count > 0 ? chat.OrderBy(d => d).ElementAt(chat.Count / 2) : float.NaN;
+            var sorted = chat.OrderBy(d => d).ToList();
+            if (sorted.Count > 4) GD.Print($"     {name}: chat quartiles {sorted[sorted.Count / 4]:F2} / {median:F2} / {sorted[3 * sorted.Count / 4]:F2} m, {Pct(sorted.Count(d => d < 0.3f) / (float)sorted.Count)} under 0.3 m; stands taken {chatSet}, stuck {chatStuck}, held off {chatHeld}");
             Check(chat.Count >= 10 && MathF.Abs(median - want) <= 0.15f * want, $"{name}: two talking stand {median:F2} m apart (median; the culture's {want:F2} m)");
             float mix = adultPairs > 0 ? mixed / (float)adultPairs : float.NaN;
             float wantMix = cu.Trait("mix", 1f);
