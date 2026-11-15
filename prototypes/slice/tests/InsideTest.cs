@@ -106,7 +106,7 @@ public partial class InsideTest : Node
         int entry = modules[place.Inst.Layout.EntranceModule].Storey, way = modules.Max(m => m.Storey) > entry ? 1 : -1;
         Dictionary<int, int> hops = fauna?.Rooms is { } plan ? PoiFauna.Hops(plan) : new();
         var stops = (fauna?.Rooms.Rooms ?? new List<PoiRoom>()).Where(r => r.Kind is RoomKind.Room or RoomKind.Hall && hops.ContainsKey(r.Index) && (modules[r.Index].Storey - entry) * way >= 0)
-            .GroupBy(r => modules[r.Index].Storey).OrderBy(g => Math.Abs(g.Key - entry)).Take(4).Select(g => g.OrderBy(r => hops[r.Index]).First()).ToList();
+            .GroupBy(r => modules[r.Index].Storey).OrderBy(g => Math.Abs(g.Key - entry)).Take(Arg("shots") != null ? 6 : 4).Select(g => g.OrderBy(r => hops[r.Index]).First()).ToList();
         // The storeys its keepers live on (their people's spots, their machines' posts) and one either side are theirs to keep clear.
         IEnumerable<int> posts = fauna?.Rooms.Holder == PlaceHolder.Machines ? place.Inst.Enemies.Select(e => e.Module) : place.Inst.Townsfolk?.Spots.Select(s => s.Module) ?? Enumerable.Empty<int>();
         var theirs = fauna?.Rooms.Holder is PlaceHolder.People or PlaceHolder.Machines ? posts.Where(i => i >= 0 && i < modules.Count).Select(i => modules[i].Storey).ToHashSet() : new HashSet<int>();
@@ -115,7 +115,7 @@ public partial class InsideTest : Node
         game.Zone.Wildlife.Attacked += e => { if (e.Hit) { blows++; if (!e.Creature.Shown) unseen++; } };
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         var best = (Seen: -1, Where: "");
-        int bare = 0, hidden = 0;
+        int bare = 0, hidden = 0, shot = 0;
         foreach (PoiRoom r in stops)
         {
             Int3 goal = new((int)r.FloorCenter.X, (int)MathF.Floor(r.Min.Y), (int)r.FloorCenter.Z);
@@ -129,13 +129,14 @@ public partial class InsideTest : Node
             if (storey != 0 && there == 0 && !theirs.Any(s => Math.Abs(s - modules[r.Index].Storey) <= 1)) bare++;
             hidden += missed;
             if (seen > best.Seen) best = (seen, $"{r.Purpose} on storey {storey}");
-            if (Arg("shots") is { } dir && seen > 0 && best.Seen == seen)
+            // The picture: at the stop with the most drawn, facing the nearest in a clear line from the eye.
+            if (Arg("shots") is { } dir && seen > shot && Nearest(place, r, place.FromWorld(game.Zone.Camera.GlobalPosition)) is Vector3 t)
             {
-                Vector3? target = Nearest(place, r, place.FromWorld(game.Zone.Camera.GlobalPosition));
-                if (target is Vector3 t) foreach (int x in drive.LookAt(place.ToWorld(t + Vector3.Up * 0.7f), 40)) { game.Suit.Vitals.Health = max; yield return x; }
+                shot = seen;
+                foreach (int x in drive.LookAt(place.ToWorld(t + Vector3.Up * 0.7f), 40)) { game.Suit.Vitals.Health = max; yield return x; }
                 string file = System.IO.Path.Combine(dir, $"inside-{family}-{occ}.png");
                 GetViewport().GetTexture().GetImage().SavePng(file);
-                GD.Print($"  (shot: {file})");
+                GD.Print($"  (shot: {file}, storey {storey})");
             }
         }
         Check(stops.Count >= 2 && bare == 0, $"on each storey walked off the way in's ({stops.Count - 1}), something that comes at you or someone is on it within 30 m: {bare} bare; the most drawn at once {best.Seen}, in the {best.Where}");
@@ -163,13 +164,13 @@ public partial class InsideTest : Node
             + $"and {people.Count} people ({people.Count(p => p.View is { Visible: true })} drawn); {all.Count(c => !c.Dormant)} of the place's stepped, its sim step {step:F2} ms", threats.Count + people.Count, seen, missed);
     }
 
-    /// <summary>The nearest drawn threat or person on a room's storey in a clear line from the eye (else the nearest), local.</summary>
+    /// <summary>The nearest drawn threat or person on a room's storey in a clear line from the eye, local; null if none is.</summary>
     static Vector3? Nearest(Place place, PoiRoom room, Vector3 eye)
     {
         bool OnStorey(Vector3 p) => p.Y > room.Min.Y - 1f && p.Y < room.Max.Y;
         BlockSpace space = PlaceFauna.SpaceOf(place.Memory);
         var points = (place.Memory.Fauna?.Sim?.Creatures.Where(c => c.Shown && !c.Removed && c.Species.Importance != Importance.Ambient).Select(c => c.Position) ?? Enumerable.Empty<Vector3>())
-            .Concat(place.Memory.Town?.People.Where(p => p.View is { Visible: true }).Select(p => p.Pos) ?? Enumerable.Empty<Vector3>()).Where(OnStorey);
-        return points.OrderBy(p => (SpaceMath.Clear(space, eye, p + Vector3.Up * 0.8f, 0f) ? 0f : 1000f) + (p - eye).Length()).Cast<Vector3?>().FirstOrDefault();
+            .Concat(place.Memory.Town?.People.Where(p => p.View is { Visible: true }).Select(p => p.Pos) ?? Enumerable.Empty<Vector3>());
+        return points.Where(p => OnStorey(p) && SpaceMath.Clear(space, eye, p + Vector3.Up * 0.8f, 0f)).OrderBy(p => (p - eye).Length()).Cast<Vector3?>().FirstOrDefault();
     }
 }
