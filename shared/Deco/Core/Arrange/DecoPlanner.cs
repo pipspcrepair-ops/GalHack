@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -182,6 +182,8 @@ public sealed class DecoPlanner
                     (new Vector2(1, 0), a.Depth, 90, a.Width / 2 + gap + c.Depth / 2),
                 };
                 int[] cap = sides.Select(s => s.len + 0.1f >= cw * 0.9f ? Math.Max(1, (int)((s.len + 0.15f) / (cw + 0.12f))) : 0).ToArray();
+                // Longer than every side (a sofa at a coffee table): one each side of its length, facing across it, none at its ends.
+                if (cap.Sum() == 0) cap = a.Width >= a.Depth ? new[] { 1, 1, 0, 0 } : new[] { 0, 0, 1, 1 };
                 int[] n = new int[4];
                 for (int placed = 0, guard = 0; placed < want && guard < 40; guard++)
                 {
@@ -418,7 +420,7 @@ public sealed class DecoPlanner
         {
             DecoTemplate t = _arr.Templates[id];
             // (Seat rows are laid by Rows, facing their own focus.)
-            if (t.Kind == "rows" || FocusOf(t, focus).Count == 0) continue;
+            if (t.Kind == "rows" || FocusOf(t, focus).Count == 0) { No("nofocus"); continue; } // DIAG
             DecoWall entry = _room.Doors.Count > 0 ? _room.Doors[0].Wall : DecoWall.South;
             DecoWall facing = entry switch { DecoWall.North => DecoWall.South, DecoWall.South => DecoWall.North, DecoWall.West => DecoWall.East, _ => DecoWall.West };
             var walls = new List<DecoWall> { facing };
@@ -430,7 +432,7 @@ public sealed class DecoPlanner
             for (int count = most; count >= (lengthens ? t.CountMin : -1) && (!alone || count == most); count--)
             {
                 List<Member> inst = Instance(t, count);
-                if (inst == null || !inst.Any(m => m.Piece.Roles.Any(focus.Contains))) break;
+                if (inst == null || !inst.Any(m => m.Piece.Roles.Any(focus.Contains))) { No(inst == null ? "noinst" : "instnofocus"); break; } // DIAG
                 if (alone) inst = inst.Where(m => m.Piece.Roles.Any(focus.Contains)).Take(1).Select(m => new Member { Piece = m.Piece, Yaw = m.Yaw, Role = m.Role }).ToList();
                 var (lo, hi) = Extent(inst);
                 if (!t.OnWall)

@@ -32,8 +32,12 @@ public sealed partial class Staging
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
         PartSet parts = PlaceParts.Of(p.Memory);
-        // The most crowded dressed room on the way-in's level or near it.
-        PlaceRoom room = p.Memory.Rooms.Values.OrderByDescending(r => (r.Room.Width * r.Room.Depth >= 24 ? 0.3f : 0f) + (r.Plan.Placements.Count - p.Memory.DecoTaken.GetValueOrDefault(r.Module)?.Count ?? 0) / (float)(r.Room.Width * r.Room.Depth) - MathF.Abs(r.Corner.Y) * 0.05f).First();
+        // The most crowded dressed room on the way-in's level or near it; --room=X a room whose id has X in it (one with a chimney breast and windows first).
+        string named = _args.GetValueOrDefault("room");
+        PlaceRoom room = p.Memory.Rooms.Values.Where(r => named == null || r.Room.RoomId?.Contains(named) == true)
+            .OrderByDescending(r => named == null ? 0f : (r.Room.Flues.Count > 0 ? 2f : 0f) + (r.Room.Windows.Count > 0 ? 1f : 0f))
+            .ThenByDescending(r => (r.Room.Width * r.Room.Depth >= 24 ? 0.3f : 0f) + (r.Plan.Placements.Count - p.Memory.DecoTaken.GetValueOrDefault(r.Module)?.Count ?? 0) / (float)(r.Room.Width * r.Room.Depth) - MathF.Abs(r.Corner.Y) * 0.05f).First();
+        GD.Print($"FURNISHED room {room.Room.RoomId}: windows {room.Room.Windows.Count}, chimney breasts {room.Room.Flues.Count}, pieces {string.Join(" ", room.Plan.Placements.Select(x => x.Piece))}");
         float floor = room.Corner.Y + room.Floor;
         Town town = Town.Walking(p.Memory);
         Species looks = _game.Zone.Wildlife.Life.People.Person(Wildlife.Rng.Mix(site.Instance.SpawnSeed, 9), PersonRole.Worker, Occupancy.Friendly);
