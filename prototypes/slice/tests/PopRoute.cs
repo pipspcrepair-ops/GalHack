@@ -290,6 +290,8 @@ public partial class PopRoute : Node
         int size = FarBuilder.Size;
         PopLog.Take();
         // A place or city tile coming in is seen if it is in frame, nearer than the camera draws and not behind the ground.
+        // Places not drawn yet within the camera's reach as the route sets off: each would appear along the way.
+        int unshown0 = _game.Zone.Pois.Unshown(_game.Camera?.Far ?? 4000f);
         PopLog.Sees = at => _game.Camera is { } c && c.IsPositionInFrustum(at) && c.GlobalPosition.DistanceTo(at) < c.Far && !Behind(c.GlobalPosition, at);
         _frames.Clear();
         _gpu.Clear();
@@ -420,7 +422,7 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE {name} {speed:F0} m/s {length:F0} m: near ground complete to m {Q(complete.Select(c => (double)c).ToList(), true)}; " +
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
                  $"queue {Q(pending.Select(c => (double)c).ToList())}; far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
-                 $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; places appearing at m {Q(placesIn.Select(q => (double)q.Distance).ToList(), true)}, {placesSeen} of them in plain view (at m {Q(placesIn.Where(q => q.Seen).Select(q => (double)q.Distance).ToList(), true)}); flora or cover jumps over 5% within 120 m {nearJumps}; " +
+                 $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; places appearing at m {Q(placesIn.Select(q => (double)q.Distance).ToList(), true)}, {placesSeen} of them in plain view (at m {Q(placesIn.Where(q => q.Seen).Select(q => (double)q.Distance).ToList(), true)}), {unshown0} not drawn within the camera's reach at the start; flora or cover jumps over 5% within 120 m {nearJumps}; " +
                  $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; streaming: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
         // good test build, about the same), with room for a machine other runs share.
