@@ -39,7 +39,7 @@ public partial class PowerTest
     {
         GD.Print("-- solar panels --");
         PowerRules rules = data.Power;
-        Structure s = Build(data, "1 0 0 solar-panel", "2 0 0 solar-panel", "-1 0 0 generator-t1", "-2 0 0 container-t1", "0 0 -1 light");
+        Structure s = Build(data, "-1 0 0 generator-t1", "-2 0 0 container-t1", "0 0 -1 light", "0 1 0 solar-panel", "-1 1 0 solar-panel");
         var store = new SharedStorage(data.Items, "Sun", BuildingBridge.StorageCapacity(s));
         var p = new StructurePower(rules, s, store);
         Func<PowerState, Int3, Block, double> lit = (st, c, b) => st == PowerState.Lit ? 1 : 0;
@@ -71,7 +71,7 @@ public partial class PowerTest
     {
         GD.Print("-- the shield --");
         PowerRules rules = data.Power;
-        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "3 0 0 shield-generator");
+        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "2 0 0 shield-generator");
         var store = new SharedStorage(data.Items, "Shield", BuildingBridge.StorageCapacity(s));
         store.Add("biofuel", 20);
         store.Add("fold-crystal", 3);
@@ -112,7 +112,7 @@ public partial class PowerTest
     {
         GD.Print("-- the drives --");
         PowerRules rules = data.Power;
-        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "0 5 0 warp-drive", "0 10 0 hyperdrive-t1", "6 0 0 shield-generator");
+        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "2 0 0 shield-generator", "0 1 0 warp-drive", "0 3 0 hyperdrive-t1");
         var store = new SharedStorage(data.Items, "Drives", BuildingBridge.StorageCapacity(s));
         store.Add("biofuel", 50);
         store.Add("warp-cell", 5);
@@ -148,7 +148,7 @@ public partial class PowerTest
     IEnumerable<int> Armed(GameData data)
     {
         GD.Print("-- a base with a gun, a shield, a solar panel and gravity --");
-        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "0 0 -1 gatling", "2 0 1 shield-generator", "0 1 0 solar-panel", "-2 0 0 iron-plated");
+        Structure s = Build(data, "1 0 0 generator-t1", "-1 0 0 container-t1", "0 0 -1 gatling", "2 0 0 shield-generator", "0 1 0 solar-panel", "-2 0 0 iron-plated");
         s.Name = "Armed base";
         s.GravityOn = true;
         Vector3 spot = new Playthrough(_game).FlatSpot(_game.Survivor.WorldFeet, 50f, span: 10f);
@@ -199,22 +199,14 @@ public partial class PowerTest
             $"the bar's SHIELD switched off: down, and the next round hits the plate ({before:F0} to {v.Structure.Get(at).Hp:F0})");
         v.SetSystem(StructureBar.Shields, true);
 
-        // An outage drops the gravity; power back brings it back.
+        // An outage drops the gravity; power back brings it back. The panel comes off first, so the sun can't keep it going.
+        Building.Remove(v.Structure, new Int3(0, 1, 0), null);
+        v.ApplyEdits();
         foreach (ItemDef f in data.Power.Fuels) v.Storage.Remove(f.Id, v.Storage.Count(f.Id));
         p.BurningUnits = 0;
         p.ChargeMJ = 0; // STAGING: run dry at once
-        p.Sun = 0;
         foreach (int x in _drive.Wait(10)) yield return x;
-        bool dark = _game.Zone.Sky.ToSun.Y <= 0;
-        if (dark) Check(!v.Powered && !v.Body.Core.On && v.Structure.GravityOn, "out of fuel at night: no power, and its gravity fails though still switched on");
-        else GD.Print("  (day: the panel keeps it powered, so the outage is checked with the panel taken off)");
-        if (!dark)
-        {
-            Building.Remove(v.Structure, new Int3(0, 1, 0), null);
-            v.ApplyEdits();
-            foreach (int x in _drive.Wait(10)) yield return x;
-            Check(!v.Powered && !v.Body.Core.On && v.Structure.GravityOn, "out of fuel, its panel gone: no power, and its gravity fails though still switched on");
-        }
+        Check(!v.Powered && !v.Body.Core.On && v.Structure.GravityOn, "out of fuel, its panel gone: no power, and its gravity fails though still switched on");
         v.Storage.Add("biofuel", 5);
         foreach (int x in _drive.Wait(10)) yield return x;
         Check(v.Powered && v.Body.Core.On, "fuel back in its storage: power, and its gravity with it");
