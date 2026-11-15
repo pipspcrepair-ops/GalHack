@@ -95,7 +95,7 @@ public sealed class GameData
         foreach (GalHack.Arms.WeaponDef w in arms.All)
         {
             bool strike = w.Delivery == GalHack.Arms.Delivery.Strike; // a hand weapon needs no ammo; bare hands are no item
-            if (strike && !items.Has(w.Item)) continue;
+            if (strike && !items.Has(w.Item) || w.Mount) continue; // a vessel gun is no item either
             if (!items.TryGet(w.Item, out var item) || item.Category != GalHack.Items.ItemCategory.Weapon)
                 throw new InvalidDataException($"weapon '{w.Id}': '{w.Item}' is not a weapon item");
             foreach (GalHack.Arms.WeaponDef m in w.Modes)

@@ -50,6 +50,8 @@ public partial class Visor : CanvasLayer
     public bool Flashing(Alert a) => (Game.Suit?.Last.Warnings & a) != 0;
 
     public bool ThreatShowing => _time < _threatUntil;
+    /// <summary>Whether the visor's edge is reddened on the side a hit came from (tests).</summary>
+    public bool HurtShowing => _time < _hurtUntil;
 
     /// <summary>Tests only: holds the glass's frost and red pulse at these levels (the visor staging view).</summary>
     public (float frost, float harm)? PinnedGlass;

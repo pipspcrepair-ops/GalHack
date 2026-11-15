@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Arms;
 using GalHack.Physics.Engine;
 using Godot;
@@ -47,6 +48,8 @@ public partial class ArmsFx : Node3D
     /// <summary>A slot's drawn width (m) and how faded it is (0 solid, 1 gone).</summary>
     public float WidthOf(int slot) => _slots[slot].Basis.X.Length();
     public float FadeOf(int slot) => _slots[slot].Transparency;
+    /// <summary>How wide one pixel is a metre from the eye, this frame.</summary>
+    public float Pixel => _pixel;
 
     /// <summary>The fewest pixels wide a streak is drawn, and its head's glow.</summary>
     public const float MinPixels = 2.5f, HeadPixels = 10f;
@@ -88,8 +91,9 @@ public partial class ArmsFx : Node3D
         _eyeMat = new ShaderMaterial { Shader = new Shader { Code = EyeCode } };
         ImageTexture bloom = Slice.Player.ShotFx.FlashTexture(false);
         foreach (WeaponDef w in weapons)
-            foreach (WeaponDef m in w.Modes)
+            foreach (WeaponDef m in w.Modes.Prepend(w)) // the row itself too: someone else fires it without a mode
             {
+                if (_tracers.ContainsKey(m)) continue;
                 Color c = GunModel.ColourOf(m.Tracer.Colour);
                 // A round's streak is hotter than its colour (over one: it blooms); an arrow is wood.
                 float hot = Glows(m.Tracer) ? 1.6f : 1f;

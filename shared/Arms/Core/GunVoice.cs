@@ -35,8 +35,8 @@ public static class GunVoice
     /// <summary>A bow or crossbow: a plain shaft that sticks where it lands (a living gun's worm sticks too, but bites).</summary>
     public static bool Strung(WeaponDef d) => d.Stick != null && d.Look.Band != Band.Living && d.Class == DamageClass.Kinetic && d.Tags == HarmTags.None;
 
-    /// <summary>A gunshot: every report but a string's twang, a flame's roar and a living gun's cough. Gunshots are loud and carry far.</summary>
-    public static bool Gunshot(WeaponDef d) => d.Delivery != Delivery.Strike && !Strung(d) && (d.Tags & HarmTags.Fire) == 0 && d.Look.Band != Band.Living;
+    /// <summary>A gunshot: every report but a string's twang, a flame's roar, a living gun's cough and a mine's throw. Gunshots are loud and carry far.</summary>
+    public static bool Gunshot(WeaponDef d) => d.Delivery is not (Delivery.Strike or Delivery.Placed) && !Strung(d) && (d.Tags & HarmTags.Fire) == 0 && d.Look.Band != Band.Living;
 
     public static float[] Make(WeaponDef d, VoiceKind kind)
     {

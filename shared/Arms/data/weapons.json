@@ -229,17 +229,17 @@
       "damage": 6, "rpm": 70, "noise": 3, "blocks": 0, "feel": "throw",
       "look": { "band": "low", "calibre": 0.2, "body": 0.1, "stock": "fist", "accent": "6b4a2e" } },
 
-    // Vessel guns (design, section 9): mounted on a structure, never carried, so no item. Their shots
+    // Vessel guns (design, section 9): "mount", on a structure, never carried, so no item. Their shots
     // are the same shots, slower than real so a fast ship can jink: about 600 m/s from a small
     // craft's gun, 250 to 350 from a capital turret (the slowest).
-    { "id": "craft-gatling", "code": "VG1", "name": "Craft Gatling",
+    { "id": "craft-gatling", "code": "VG1", "name": "Craft Gatling", "mount": true,
       "trigger": "auto", "delivery": "bolt", "class": "kin",
       "damage": 30, "rpm": 900, "magazine": 200, "reload": 3.0, "speed": 600, "life": 1.5,
       "spread": 0.4, "spreadMoving": 0.6, "recoil": 0, "noise": 160, "blocks": 1.0,
       "feel": "vessel_gun", "tracer": { "colour": "ffd070", "width": 0.05, "length": 6.0, "body": "tracer", "light": true },
       "look": { "band": "mid", "calibre": 0.8, "barrel": 0.9, "body": 0.6, "stock": "none", "mag": "box", "sight": "none", "vents": 3, "accent": "5d6448" } },
 
-    { "id": "plasma-turret", "code": "VT1", "name": "Plasma Turret",
+    { "id": "plasma-turret", "code": "VT1", "name": "Plasma Turret", "mount": true,
       "trigger": "auto", "delivery": "bolt", "class": "en",
       "damage": 220, "rpm": 40, "magazine": 20, "reload": 4.0, "speed": 300, "life": 3.0,
       "spread": 0.3, "spreadMoving": 0.3, "recoil": 0, "noise": 220, "blocks": 1.6,

@@ -787,7 +787,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 if (!tick && s.Owner == 0) Confirm(p.Dead);
                 break;
             case HitKind.Player:
-                HurtPlayer(new HitInfo(damage, d.Class, d.Tags, s.Owner), at);
+                HurtPlayer(new HitInfo(damage, d.Class, d.Tags, s.Owner), at - dir * 10f); // marked on the side it came from
                 if (!tick) Zone.Wildlife.Audio.PlayUi("hurt", -4f); // the sleeper's own grunt as it lands
                 break;
             case HitKind.Block:
