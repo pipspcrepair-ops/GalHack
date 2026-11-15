@@ -130,7 +130,8 @@ public static class CapitalHull
         /// <summary>Half the beam at v, m (to the outside of the shell).</summary>
         public float HalfWidth(float v) => (Half + 0.5f) * Taper(v) * (1f - 0.06f * Math.Clamp((v - (L - 5)) / 5f, 0f, 1f));
 
-        int Chamfer => Decks >= 4 ? 3 : 2;
+        /// <summary>How far the shoulders slope in at 45 degrees to the roof, m: the upper third of the flank, as a hull leans in to its back.</summary>
+        public int Shoulder => Math.Max(3, Top / 3);
 
         /// <summary>The hull's solid as drawn (metres in its frame): the hull, the tower and the nacelles.</summary>
         public bool Solid(float u, float y, float v) => InHull(u, y, v) || InTower(u, y, v) || InNacelle(u, y, v);
@@ -142,7 +143,7 @@ public static class CapitalHull
             if (au > hw) return false;
             float fore = MathF.Min(Top / 3f, Bz / 2f), rake = MathF.Min(Top * 0.5f, Bz * 0.6f);
             float bottom = -0.5f + MathF.Max(0f, fore - (v + 0.5f)) + MathF.Max(0f, au - (hw - 2f));
-            float top = Top + 0.5f - MathF.Max(0f, rake - (v + 0.5f)) - MathF.Max(0f, au - (hw - Chamfer)) - MathF.Max(0f, (v + 0.5f) - (L - 2));
+            float top = Top + 0.5f - MathF.Max(0f, rake - (v + 0.5f)) - MathF.Max(0f, au - (hw - Shoulder)) - MathF.Max(0f, (v + 0.5f) - (L - 2));
             // The dorsal spine down the back, from the bow to the engines, sloped either side and at its ends.
             float spine = MathF.Max(0f, 1.5f - MathF.Max(0f, au - 1f)) * Math.Clamp(MathF.Min(v - Bz, L - 6 - v) / 1.5f, 0f, 1f);
             return y >= bottom && y <= top + spine;
@@ -151,7 +152,7 @@ public static class CapitalHull
         public bool InTower(float u, float y, float v)
         {
             float df = v - (TV0 - 0.5f), db = TV1 + 0.5f - v, ds = MathF.Min(u - (TU0 - 0.5f), TU1 + 0.5f - u);
-            if (df < 0f || db < 0f || ds < 0f || y < Top - 0.5f || y > TowerTop + 0.5f) return false;
+            if (df < 0f || db < 0f || ds < 0f || y < Top * 0.5f || y > TowerTop + 0.5f) return false; // (its walls run down the shoulders into the hull)
             if (df + ds < 2f) return false; // its forward corners cut off
             return y <= TowerTop + 0.5f - MathF.Max(0f, 2f - MathF.Min(MathF.Min(df, db), ds));
         }
@@ -281,7 +282,7 @@ sealed class Hulk
         if (S.Size == "huge" && R.Chance(0.15f)) target = R.Between(250, 270);
         // Each bay its own proportions about the hull's length; the crew's and the power bays hold a stair core and a full
         // set of rooms beside it on every deck.
-        int Len(int share, int lo, int hi) => Math.Clamp(target / share + R.Range(-4, 5), lo, hi);
+        int Len(int share, int lo, int hi) => Math.Clamp(Math.Max(target / share, lo) + R.Range(-3, 6), lo, hi);
         int bow = Len(6, 14, 34), engine = Len(8, 12, 24), power = Len(7, 22, 32), crew = Len(6, 22, 32);
         string[] middle = S.Role switch
         {
@@ -302,7 +303,7 @@ sealed class Hulk
         // The role's bays share what is left of the length, each a little longer or shorter than its share.
         for (int i = 0; i < n; i++)
         {
-            int share = i == n - 1 ? left - (v - bow - crew) : left / n + R.Range(-4, 5);
+            int share = i == n - 1 ? left - (v - bow - crew) : Math.Max(left / n, 14) + R.Range(-3, 6);
             Add(kinds[i], Math.Clamp(share, 14, 34));
         }
         Add("power", power);
@@ -317,7 +318,7 @@ sealed class Hulk
         bool aft = S.Role is "freighter" or "miner";
         CapitalHull.Bay bay = H.Bays.First(b => b.Kind == (aft ? "power" : "crew"));
         // Wide enough for the stair core coming up through it beside the spine (u 3 to 7, walled).
-        int tw = Math.Clamp((int)(H.Half * 0.6f), 9, H.Half - 3);
+        int tw = Math.Clamp((int)(H.Half * 0.6f), 9, Math.Max(9, H.Half - H.Shoulder));
         H.TU0 = -tw;
         H.TU1 = tw;
         H.TV0 = bay.V0 + 1;

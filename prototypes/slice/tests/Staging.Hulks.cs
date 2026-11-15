@@ -90,8 +90,8 @@ public sealed partial class Staging
         }
         _game.Visor.Visible = false;
         var (lo, hi) = ship.Structure.Bounds();
-        // (The orbit zone stands in the scene where its frame is laid out: a fixed camera wants the scene's own points.)
-        Vector3 Local(float x, float y, float z) => ship.Zone.ToGlobal(ship.ToWorld(new N.Vector3(x, y, z)));
+        // (A fixed camera wants the scene's own points: where the hull is drawn, which in orbit is not its physics frame.)
+        Vector3 Local(float x, float y, float z) => ship.Node.ToGlobal(new Vector3(x, y, z));
         Vector3 mid = Local((lo.X + hi.X) * 0.5f, (lo.Y + hi.Y) * 0.5f, (lo.Z + hi.Z) * 0.5f);
         float span = hi.Z - lo.Z;
         Vector3 eye = Local(hi.X + span * 0.6f, hi.Y + span * 0.3f, lo.Z - span * 0.3f);
@@ -114,7 +114,7 @@ public sealed partial class Staging
         var cells = v.Decos.SelectMany(d => d.Cells).ToHashSet();
         int Dressed(HullVessel.Space sp) => sp.Floor.Count(f => cells.Contains(new Int3(f.U, sp.Y, f.V - hull.Piece.V0)));
         // A point of a space at a height over its floor, in the world (hull frame u and v, metres).
-        Vector3 At(HullVessel.Space sp, float u, float v0, float up) => v.Zone.ToGlobal(v.ToWorld(new N.Vector3(u, sp.Y - 0.5f + up, v0 - hull.Piece.V0) * s.Grid.CellSize));
+        Vector3 At(HullVessel.Space sp, float u, float v0, float up) => v.Node.ToGlobal(new Vector3(u, sp.Y - 0.5f + up, v0 - hull.Piece.V0) * s.Grid.CellSize);
         string want = _args.GetValueOrDefault("room", "");
         HullVessel.Space room = hull.Spaces.Where(sp => !sp.Corridor && !sp.Hall && sp.Floor.Count >= 20 && (want == "" || sp.Purpose == want))
             .OrderBy(sp => Array.IndexOf(new[] { "galley", "medbay", "crew-quarters", "officers", "bridge" }, sp.Purpose) is int i && i >= 0 ? i : 9).ThenByDescending(Dressed).FirstOrDefault();

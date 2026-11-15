@@ -44,7 +44,7 @@ public partial class HulkTest
         var shapes = new List<string>();
         float floor = 0, corridor = 0, machines = 0, clear4 = 0, lowLoose = 0, rooms = 0, dressed = 0, lit = 0, litRooms = 0, pieces = 0;
         double slowest = 0;
-        var byPurpose = new Dictionary<string, (int Floor, int Corridor)>();
+        var byPurpose = new Dictionary<string, (int Floor, int Corridor, int Taken)>();
         foreach (var (site, spec) in specs)
         {
             ulong seed = (ulong)Random.Shared.NextInt64();
@@ -83,7 +83,7 @@ public partial class HulkTest
                 WreckAudit a = WreckAudit.Of(r.Structure);
                 var loose = a.LowCells.Where(c => !r.Crushed.Contains(c) && !Stair(r, c)).ToList();
                 GD.Print($"      {name}{r.Piece.Name}: {a}; {r.Decor.Count} pieces of dressing; built in {clock.Elapsed.TotalMilliseconds / wrecks.Count:F0} ms" +
-                         (loose.Count > 0 ? $"; under 4 m outside the crush: {string.Join(", ", loose.GroupBy(c => c.Y).Select(g => $"{g.Count()} at y {g.Key} (e.g. {g.First()} under {Over(r.Structure, g.First())})"))}" : ""));
+                         (loose.Count > 0 ? $"; under 4 m outside the crush: {string.Join(", ", loose.GroupBy(c => c.Y).Select(g => $"{g.Count()} at y {g.Key} (e.g. {g.First()} in {r.Spaces.FirstOrDefault(s => s.Y == g.Key && s.Floor.Contains((g.First().X, g.First().Z + r.Piece.V0)))?.Purpose ?? "no space"} under {Over(r.Structure, g.First())})"))}" : ""));
                 floor += a.Floor;
                 corridor += a.Corridor;
                 machines += a.Machines;
@@ -102,7 +102,7 @@ public partial class HulkTest
                 {
                     var on = s.Floor.Select(f => new Int3(f.U, s.Y, f.V - r.Piece.V0)).Where(a.FloorCells.Contains).ToList();
                     var k = byPurpose.GetValueOrDefault(s.Purpose);
-                    byPurpose[s.Purpose] = (k.Floor + on.Count, k.Corridor + on.Count(a.CorridorCells.Contains));
+                    byPurpose[s.Purpose] = (k.Floor + on.Count, k.Corridor + on.Count(a.CorridorCells.Contains), k.Taken + s.Taken.Count);
                 }
             }
             // Every room lit as it was built (the years since broke some of the lamps).
@@ -130,7 +130,7 @@ public partial class HulkTest
         Check(shapes.Distinct().Count() == shapes.Count, $"each hull its own: {shapes.Distinct().Count()} different plans of {shapes.Count}");
         Check(rooms > 0 && dressed >= rooms * 0.9f && lit >= litRooms, $"rooms dressed and lit for their purpose: {dressed} of {rooms} dressed ({pieces} pieces), {lit} of {litRooms} lit as built");
         float share = corridor / Math.Max(1f, floor), per100 = machines * 100f / Math.Max(1f, floor);
-        GD.Print($"      floor by purpose (corridor share): {string.Join(", ", byPurpose.OrderByDescending(kv => kv.Value.Floor).Select(kv => $"{kv.Key} {kv.Value.Floor} m² ({kv.Value.Corridor * 100 / Math.Max(1, kv.Value.Floor)}%)"))}");
+        GD.Print($"      floor by purpose (corridor share): {string.Join(", ", byPurpose.OrderByDescending(kv => kv.Value.Floor).Select(kv => $"{kv.Key} {kv.Value.Floor} m² ({kv.Value.Corridor * 100 / Math.Max(1, kv.Value.Floor)}%, {kv.Value.Taken} taken)"))}");
         Check(share is >= 0.5f and <= 0.7f, $"corridors {share:P0} of {floor:F0} m² of floor (Empyrion's derelicts 59%)");
         Check(per100 is >= 2.2f and <= 3.3f, $"{per100:F2} machines and containers per 100 m² of floor (Empyrion's wrecks 2.7)");
         Check(clear4 >= floor * 0.9f && lowLoose <= floor * 0.02f, $"4 m decks: {clear4 / Math.Max(1f, floor):P0} of the floor 4 m clear; under that only where crushed or on the stairs but {lowLoose:F0} m²");
@@ -163,7 +163,8 @@ public partial class HulkTest
         if (!Check(ship != null, "a start system with a derelict capital ship in its near orbit")) yield break;
         WreckAudit a = WreckAudit.Of(ship.Structure);
         GD.Print($"      {ship.Name}: {a}; {ship.Hull.Decor.Count} pieces of dressing");
-        Check(ship.Structure.Core == null && ship.Hull.Decor.Count > 0 && a.Length >= 60 && a.Clear4 >= a.Floor * 0.85f,
-            $"{ship.Name} is the hull builder's: coreless, {a.Length} m long, {ship.Hull.Decor.Count} pieces of dressing, {a.Clear4 * 100f / Math.Max(1, a.Floor):F0}% of its floor 4 m clear");
+        int length = ship.Hull.Plan.L + ship.Hull.Plan.Nac;
+        Check(ship.Structure.Core == null && ship.Hull.Decor.Count > 0 && length >= 60 && a.Clear4 >= a.Floor * 0.85f,
+            $"{ship.Name} is the hull builder's: coreless, a {length} m hull ({a.Length} m of it in this piece), {ship.Hull.Decor.Count} pieces of dressing, {a.Clear4 * 100f / Math.Max(1, a.Floor):F0}% of its floor 4 m clear");
     }
 }

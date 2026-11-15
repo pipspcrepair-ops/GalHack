@@ -595,7 +595,9 @@ public sealed partial class HullVessel
                 _ => 0xffddaa,
             };
             int top = s.Y + s.Height - 1, placed = 0;
-            var spots = s.Floor.Where(c => Mod(c.U, step) == step / 2 && Mod(c.V, step) == step / 2 && (!s.Corridor || Math.Abs(c.U) <= 1 || s.Purpose == "stair")).ToList();
+            // A room's lamps on a grid; a corridor's down the middle of each run of it 3 m wide (the spine, the flank passages).
+            bool Middle((int U, int V) c) => s.Floor.Contains((c.U - 1, c.V)) && s.Floor.Contains((c.U + 1, c.V)) && !s.Floor.Contains((c.U - 2, c.V)) && !s.Floor.Contains((c.U + 2, c.V));
+            var spots = s.Floor.Where(c => Mod(c.V, step) == step / 2 && (s.Corridor && s.Purpose != "stair" ? Middle(c) : Mod(c.U, step) == step / 2)).ToList();
             if (spots.Count == 0) spots = s.Floor.OrderBy(c => Math.Abs(c.U - (s.U0 + s.U1) / 2.0) + Math.Abs(c.V - (s.V0 + s.V1) / 2.0)).Take(1).ToList();
             // Its spots, or failing every one of those (a ceiling open over a stair, a machine under it), the nearest cell to its middle that takes one.
             foreach (var (u, v) in spots.Concat(s.Floor.OrderBy(c => Math.Abs(c.U - (s.U0 + s.U1) / 2.0) + Math.Abs(c.V - (s.V0 + s.V1) / 2.0))))
