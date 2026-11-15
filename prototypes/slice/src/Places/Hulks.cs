@@ -9,17 +9,16 @@ using PoiGenerator.Gen;
 using Slice.Surface;
 using Slice.Vessels;
 using N = System.Numerics;
-using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Places;
 
 /// <summary>
 /// The crashed capital ships on the planet, as real vessels. A hulk's place (poi-generator's CapitalHull) is laid
-/// out round a vessel plan: the ground cut away where the hull lies buried, its ramps and its yard. When the
-/// survivor comes within reach, the plan's pieces are built of the player's own large-grid blocks, damaged as
-/// the place's state and the crash say, and set down in the hollow as coreless wrecks, pitched as they came down.
-/// Their containers hold the salvage. A core set into one claims it; fixed, it lifts off and flies.
-/// They stay once set down: nothing of a wreck is taken back while the game runs.
+/// out round a vessel plan: the ground cut away where the hull lies in it, its ramps and its yard. When the sleeper
+/// comes within reach, each piece of the plan is built of the player's own blocks (HullVessel: its rooms dressed and
+/// lit, damaged as the place's state and the crash say) on a worker, then set down in the hollow as a coreless wreck,
+/// pitched as it came down. Its containers hold the salvage. A core set into one claims it; fixed, it lifts off and
+/// flies. They stay once set down: nothing of a wreck is taken back while the game runs.
 /// </summary>
 public partial class Hulks : Node
 {
@@ -27,7 +26,7 @@ public partial class Hulks : Node
     public Func<Vector3> Focus = () => Vector3.Zero;
     public PoiPlaces Places;
 
-    /// <summary>How near a hulk's place the survivor comes before its vessel is set down, m.</summary>
+    /// <summary>How near a hulk's place the sleeper comes before its vessel is built and set down, m.</summary>
     public float Reach = 1500f;
 
     /// <summary>Each crash site's vessels, set down.</summary>
@@ -36,22 +35,44 @@ public partial class Hulks : Node
     /// <summary>A hulk's vessel was set down.</summary>
     public event Action<PoiSite, Vessel> Set;
 
+    /// <summary>Hulks being built off the main thread, by site.</summary>
+    readonly Dictionary<PoiSite, System.Threading.Tasks.Task<List<HullVessel.Result>>> _building = new();
+
     int _tick;
 
     public override void _PhysicsProcess(double delta)
     {
         if (Zone?.Planet == null) return;
         LiftClear();
+        foreach (var (site, task) in _building.Where(kv => kv.Value.IsCompleted).ToList())
+        {
+            _building.Remove(site);
+            SetDown(site, task.Result);
+            return; // one a tick at most: each is tens of thousands of blocks
+        }
         if (++_tick % 30 != 0) return;
         Vector3 at = Focus();
         foreach (PoiSite site in Zone.Planet.Pois)
         {
-            if (site.Layout == null || Down.ContainsKey(site) || CapitalHull.Of(site.Layout) == null) continue;
+            if (site.Layout == null || Down.ContainsKey(site) || _building.ContainsKey(site) || CapitalHull.Of(site.Layout) == null) continue;
             Vector3 o = Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y, site.Origin.Z), at);
             if (new Vector2(o.X - at.X, o.Z - at.Z).Length() > Reach) continue;
-            SetDown(site);
-            return; // one a tick at most: each is a few thousand blocks
+            CapitalHull.HullPlan plan = CapitalHull.Of(site.Layout);
+            Catalogue catalogue = Zone.Data.Catalogue;
+            PoiState state = site.State;
+            ulong seed = site.Layout.Seed;
+            GalHack.Deco.DecoPoi deco = Deco();
+            _building[site] = System.Threading.Tasks.Task.Run(() => Build(plan, catalogue, state, seed, deco));
         }
+    }
+
+    /// <summary>Every piece of a hulk's plan as a wreck, its dressing's looks made ready (worker-safe).</summary>
+    public static List<HullVessel.Result> Build(CapitalHull.HullPlan plan, Catalogue catalogue, PoiState state, ulong seed, GalHack.Deco.DecoPoi deco)
+    {
+        var pieces = plan.Pieces.Select((piece, i) => HullVessel.Build(plan, piece, catalogue, state, seed + (ulong)i * 7919UL, deco)).ToList();
+        if (Decor.Shared?.Meshes is { } meshes)
+            foreach (HullVessel.Dressing d in pieces.SelectMany(p => p.Decor)) meshes.Prepare(d.Look);
+        return pieces;
     }
 
     readonly HashSet<(Vessel, ulong)> _excepted = new();
@@ -80,47 +101,36 @@ public partial class Hulks : Node
     }
 
     /// <summary>Builds and sets down a crash site's vessels now (also for tests).</summary>
-    public List<Vessel> SetDown(PoiSite site)
+    public List<Vessel> SetDown(PoiSite site) =>
+        Down.TryGetValue(site, out var done) ? done : SetDown(site, CapitalHull.Of(site.Layout) is { } plan ? Build(plan, Zone.Data.Catalogue, site.State, site.Layout.Seed, Deco()) : new());
+
+    static GalHack.Deco.DecoPoi _deco;
+
+    /// <summary>The hulks' own dresser (its planner is its own; the library's pieces and looks are shared), or null without the library.</summary>
+    public static GalHack.Deco.DecoPoi Deco() =>
+        Decor.Shared is not { } d ? null : _deco?.Forge == d.Forge ? _deco : _deco = new GalHack.Deco.DecoPoi(d.Forge, d.Poi.Arrangements);
+
+    List<Vessel> SetDown(PoiSite site, List<HullVessel.Result> pieces)
     {
         if (Down.TryGetValue(site, out var done)) return done;
         var list = new List<Vessel>();
         Down[site] = list;
-        CapitalHull.HullPlan plan = CapitalHull.Of(site.Layout);
-        if (plan == null) return list;
-        Catalogue catalogue = Zone.Data.Catalogue;
         Vector3 origin = Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y, site.Origin.Z), Focus());
         ulong seed = site.Layout.Seed;
         var rng = new Random(unchecked((int)(seed ^ (seed >> 32))));
-        for (int i = 0; i < plan.Pieces.Count; i++)
+        foreach (HullVessel.Result r in pieces)
         {
-            CapitalHull.HullPiece piece = plan.Pieces[i];
-            HashSet<PoiGenerator.Gen.Int3> gone = piece.Damage(site.State, seed + (ulong)i * 7919UL);
-            Structure s = Build(piece.Text(site.Family.Name, gone), catalogue, site.Family.Name + piece.Name);
-            if (s == null) continue;
+            CapitalHull.HullPiece piece = r.Piece;
             var at = (origin + new Vector3(piece.Origin.X, piece.Origin.Y, piece.Origin.Z)).ToNumerics();
-            Vessel v = Vessel.SpawnGroundWreck(Zone, s, at, piece.Rotation);
-            v.Derelict = new Slice.Orbit.DerelictPlan { Id = $"hulk-{site.Origin.X}-{site.Origin.Z}-{i}", Name = s.Name, Structure = s, Position = at, Rotation = piece.Rotation };
+            Vessel v = Vessel.SpawnGroundWreck(Zone, r.Structure, at, piece.Rotation);
+            v.Derelict = new Slice.Orbit.DerelictPlan { Id = $"hulk-{site.Origin.X}-{site.Origin.Z}-{list.Count}", Name = r.Structure.Name, Structure = r.Structure, Position = at, Rotation = piece.Rotation, Door = r.Door, Hull = r };
+            v.Dress(r.Decor);
             Stock(v, rng, site.State);
             list.Add(v);
             Set?.Invoke(site, v);
         }
-        GD.Print($"hulk: {site.Family.Name} '{site.Layout.Variant?.Name}' ({site.State}) set down as {list.Count} wreck(s), {list.Sum(v => v.Structure.Count)} blocks");
+        GD.Print($"hulk: {site.Family.Name} '{site.Layout.Variant?.Name}' ({site.State}) set down as {list.Count} wreck(s), {list.Sum(v => v.Structure.Count)} blocks, {pieces.Sum(p => p.Decor.Count)} pieces of dressing");
         return list;
-    }
-
-    /// <summary>A blueprint's text built as a structure of the catalogue's blocks; a wreck has no core, every other rule holds.</summary>
-    public static Structure Build(string text, Catalogue catalogue, string name)
-    {
-        BlueprintData data = Blueprint.Parse(text);
-        var errors = Blueprint.Validate(data, catalogue).Where(e => !e.StartsWith("no core") && !e.Contains("not attached") && !e.Contains("attached to the core")).ToList();
-        if (errors.Count > 0)
-        {
-            GD.PushError($"hulk '{name}': {string.Join("; ", errors.Take(5))}");
-            return null;
-        }
-        Structure s = Blueprint.Build(data, catalogue);
-        s.DirtyChunks.Clear();
-        return s;
     }
 
     /// <summary>The holds' salvage: a few rolls of the wreck tables for the containers that came through, fewer the worse its state.</summary>

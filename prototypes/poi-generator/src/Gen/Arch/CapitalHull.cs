@@ -2,39 +2,37 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NV3 = System.Numerics.Vector3;
+using NQ = System.Numerics.Quaternion;
 
 namespace PoiGenerator.Gen;
 
 /// <summary>
-/// Capital ships come down as hulks, composed from rules, never drawn by hand: one generator for every
-/// crashed or derelict capital vessel. A role (freighter, warship, liner, miner, carrier) gives the bays
-/// stem to stern; a size class gives the beam and how many cargo bays; the world's tech era gives the
-/// plating, and the faction's kit its livery (stripes, a hull number, chevrons and checks: design, ships and
-/// structures). How it came down (broken back, nose down, scattered, long hauler) gives its pose.
+/// Capital ships come down as hulks and drift in orbit as derelicts, composed from rules, never drawn by hand:
+/// one plan for every crashed or derelict capital vessel. A role (freighter, warship, liner, miner, carrier)
+/// gives the bays stem to stern; a size class gives the length, the beam and the decks (Empyrion's capital
+/// wrecks run 50 x 26 x 102 m at the median, p90 98 x 48 x 174 m, its derelicts up to 276 m long:
+/// docs/place-patterns.md 1.4); the world's tech era gives the plating and the faction's kit its livery. How it
+/// came down (broken back, nose down, scattered, long hauler) gives its pose.
 ///
-/// It is built as a player builds a capital vessel on the large grid, 2 m blocks and 45 degree slopes: a
-/// tapered, raked bow, chamfered shoulders, a bridge tower with its windows forward, three decks 6 m apart
-/// (a floor block and 4 m clear, Empyrion's usual deck) joined by switchback stairs, a spine corridor on
-/// every deck, holds and the hangar two decks tall with a catwalk through them, the reactor, the fuel and
-/// the core room amidships, the engine room against the stern and banks of real thruster blocks behind it,
-/// command chairs and consoles on the bridge. Sizes follow Empyrion's capital vessels (community builds run
-/// about 90 to 135 m, its crashed Titan lies in three pieces): 160 to 210 m long and 36 to 52 m in the beam.
+/// The plan is the ship's own: its envelope (a tapered, raked bow, chamfered shoulders and bilges, a bridge tower,
+/// engine nacelles), decks 5 m apart (a 1 m deck and 4 m clear), its bays, the ways in the crash left and the
+/// tears it made. The vessel itself, the player's own blocks room by room, is built from this plan where it is
+/// set down (the slice's HullVessel); the place round it here is the ground it lies in, its ramps and its yard.
 ///
-/// The route is Empyrion's for a crashed vessel: you walk round it to find the ways in (a cargo ramp, the
-/// breaches the crash tore), climb its decks, and the loot is deepest where the dead core sits behind the
-/// reactor and on the bridge at the top. A tilt is a shear of whole cells, with a ramp wherever a floor
-/// steps, so every deck can still be walked.
+/// The hull's frame: u across (cells -Half..Half, the middle cell on the centre line), y up from the keel slab
+/// (cell 0), v from the stem aft (cells 0..L-1, nacelles behind to L+Nac-1). A cell's middle is its coordinates.
 /// </summary>
 public static class CapitalHull
 {
     public sealed record Spec(string Role, string Size, string Crash);
 
-    /// <summary>A size class: the beam and how many cargo bays (holds, cabins, ore holds) the role carries.</summary>
-    public static (int Beam, int Bays) SizeOf(string size) => size switch
+    /// <summary>A size class: the length and half-beam ranges (m) and the decks.</summary>
+    public static (int L0, int L1, int H0, int H1, int Decks) SizeOf(string size) => size switch
     {
-        "medium" => (36, 2),
-        "huge" => (52, 4),
-        _ => (44, 3),
+        "medium" => (64, 96, 12, 14, 3),
+        "huge" => (150, 250, 20, 25, 5),
+        _ => (96, 148, 15, 19, 4),
     };
 
     public static void Compose(Canvas c, Rng rng, LayoutHints? hints, TechLevel tech, SitePart part)
@@ -42,7 +40,10 @@ public static class CapitalHull
         Dir front = hints?.Front ?? Dir.North;
         var p = new Plot(c, rng, tech, front);
         Civic.Wear(p);
-        new Hulk(p, SpecOf(part), rng.Fork("hull"), front is Dir.North or Dir.East or Dir.South or Dir.West ? (int)front : 0).Build();
+        var hulk = new Hulk(p, SpecOf(part), rng.Fork("hull"), front is Dir.North or Dir.East or Dir.South or Dir.West ? (int)front : 0);
+        hulk.Build();
+        Remember(c.X, hulk.Result);
+        hulk.EmitPlace();
         p.Finish();
     }
 
@@ -60,77 +61,139 @@ public static class CapitalHull
         Civic.Wear(p);
         var hulk = new Hulk(p, spec, rng.Fork("hull"));
         hulk.Build();
-        return hulk.Result!;
+        return hulk.Result;
     }
 
-    /// <summary>One structure of a hulk: its blocks as the player's large grid, block statements by cell (no core).</summary>
+    /// <summary>One structure of a hulk: the stretch of the hull it is (cells V0..V1-1, and the nacelles when it is the last), and where it lies.</summary>
     public sealed class HullPiece
     {
         public string Name = "";
-        /// <summary>Every block as built, before the crash (what a full repair puts back).</summary>
-        public readonly Dictionary<Int3, string> Intact = new();
-        /// <summary>The blocks the crash itself tore away or crushed.</summary>
-        public readonly HashSet<Int3> Torn = new();
-        /// <summary>The hull door from outside (the boarding way in), if this piece has it.</summary>
-        public Int3? Door;
-        /// <summary>The core room's empty seat: where a core claims it.</summary>
-        public Int3? CoreSlot;
-        /// <summary>Where its origin (the middle of its block 0, 0, 0) lies, metres in the place's frame, and its turn.</summary>
-        public System.Numerics.Vector3 Origin;
-        public System.Numerics.Quaternion Rotation = System.Numerics.Quaternion.Identity;
-        public string Header = "";
+        public int V0, V1;
+        /// <summary>The stern piece carries the nacelles.</summary>
+        public bool Last;
+        /// <summary>Where its structure's cell 0, 0, 0 (the hull's cell 0, 0, V0) lies, metres in the place's frame, and its turn.</summary>
+        public NV3 Origin;
+        public NQ Rotation = NQ.Identity;
+        /// <summary>Its pitch (radians, bow up positive) as it lies.</summary>
+        public float Pitch;
 
-        /// <summary>The blueprint text (galhack.blueprint) of what stands: the intact plan less the blocks given.</summary>
-        public string Text(string name, ISet<Int3> without)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.Append("schema galhack.blueprint\nversion 1\n").Append($"name \"{name}{Name}\"\n").Append("grid large\nmode capital\ngravity on\n").Append(Header);
-            foreach (var (c, s) in Intact.OrderBy(kv => kv.Key.Y).ThenBy(kv => kv.Key.Z).ThenBy(kv => kv.Key.X))
-                if (!without.Contains(c))
-                {
-                    int sp = s.IndexOf(' ');
-                    string type = sp < 0 ? s : s[..sp], rest = sp < 0 ? "" : s[sp..];
-                    sb.Append(System.FormattableString.Invariant($"block {c.X} {c.Y} {c.Z} {type}{rest}\n"));
-                }
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// What is gone, by how it came down and what the years did since: the crash's own tears, then a share of
-        /// the devices wrecked (the more so the worse its state) and holes knocked in the shell. Never all of
-        /// anything that matters: a third of the thrusters, generators, chairs and fuel tanks come through, so it
-        /// is worth the work.
-        /// </summary>
-        public HashSet<Int3> Damage(PoiState state, ulong seed)
-        {
-            var gone = new HashSet<Int3>(Torn);
-            var rng = new Rng(seed);
-            float devices = state switch { PoiState.Active => 0.1f, PoiState.Abandoned => 0.3f, PoiState.Infested => 0.4f, _ => 0.55f };
-            float shell = state switch { PoiState.Active => 0.005f, PoiState.Abandoned => 0.015f, PoiState.Infested => 0.02f, _ => 0.05f };
-            foreach (string kind in new[] { "thruster", "generator", "fueltank", "warptank", "warpdrive", "gyro", "chair", "cpuext3", "light", "door", "smallfab", "largefab" })
-            {
-                var all = Intact.Where(kv => kv.Value == kind || kv.Value.StartsWith(kind + " ")).Select(kv => kv.Key).Where(c => !gone.Contains(c)).ToList();
-                int keep = kind is "thruster" or "generator" or "chair" or "fueltank" ? Math.Max(1, all.Count / 3) : 0;
-                foreach (Int3 c in all.OrderBy(_ => rng.Float()).Take(Math.Max(0, Math.Min(all.Count - keep, (int)MathF.Round(all.Count * devices))))) gone.Add(c);
-            }
-            // Holes in the shell, a few blocks round each.
-            var skin = Intact.Where(kv => kv.Value.StartsWith("steel") && kv.Value.Contains("paint=hull")).Select(kv => kv.Key).ToList();
-            int holes = (int)(skin.Count * shell / 6f);
-            for (int h = 0; h < holes && skin.Count > 0; h++)
-            {
-                Int3 at = skin[rng.Range(0, skin.Count)];
-                foreach (Int3 c in skin.Where(c => Math.Abs(c.X - at.X) + Math.Abs(c.Y - at.Y) + Math.Abs(c.Z - at.Z) <= 1)) gone.Add(c);
-            }
-            if (CoreSlot is Int3 slot) gone.Remove(slot);
-            if (Door is Int3 door) gone.Remove(door);
-            return gone;
-        }
+        public bool Holds(int v) => v >= V0 && (v < V1 || Last);
     }
+
+    /// <summary>A bay of the hull, stem to stern: what it is for (bow, crew, hold, hangar, power, engine...) and its cells along v.</summary>
+    public sealed record Bay(string Kind, int V0, int V1)
+    {
+        /// <summary>A bay whose lower two decks are one hall (holds, hangars, the engine room).</summary>
+        public bool Hall => Kind is "hold" or "hangar" or "engine" or "promenade" or "ore-hold" or "refinery";
+    }
+
+    /// <summary>A way in from outside: an opening in a flank (side +1 starboard, -1 port) or an open face (side 0), from deck 0's floor up.</summary>
+    public sealed record Way(int Side, int V0, int Width, int Height, string What);
 
     public sealed class HullPlan
     {
         public string Role = "", Size = "", Crash = "";
-        public List<HullPiece> Pieces = new();
+        public TechLevel Tech;
+        public ulong Seed;
+        public Faction Faction;
+
+        /// <summary>Decks are 5 m apart: a 1 m deck and 4 m clear over it.</summary>
+        public const int Pitch = 5;
+        /// <summary>The bridge tower's decks over the hull's roof.</summary>
+        public const int TowerDecks = 2;
+
+        /// <summary>A deck's walking level: the first cell over its slab.</summary>
+        public static int Walk(int d) => Pitch * d + 1;
+
+        public int L, Half, Decks, Bz;
+        /// <summary>The roof's level (the slab over the top deck).</summary>
+        public int Top => Pitch * Decks;
+        public int TowerTop => Pitch * (Decks + TowerDecks);
+        public readonly List<Bay> Bays = new();
+        public int TU0, TU1, TV0, TV1;
+        /// <summary>The nacelles (u spans) behind the stern, Nac cells long, NY0..NY1 high.</summary>
+        public readonly List<(int U0, int U1)> Nacelles = new();
+        public int Nac, NY0, NY1;
+        public int Break = -1, Cut = -1;
+        public readonly List<HullPiece> Pieces = new();
+        public readonly List<Way> Ways = new();
+        /// <summary>The hull door from outside (starboard, deck 0), at this v.</summary>
+        public int DoorV = -1;
+        public bool Round, Spiked, Pods;
+        /// <summary>The livery, by paint name: hull, trim, wall, deck, orange, teal, dark, machine, hazard, black.</summary>
+        public readonly Dictionary<string, Rgb> Paints = new();
+        /// <summary>Where the crash struck hardest (v), and how far the crushing reaches from it: the top deck there is 2 m clear.</summary>
+        public int Impact = -1, Crush;
+
+        public Bay BayAt(int v) => Bays.FirstOrDefault(b => v >= b.V0 && v < b.V1) ?? Bays[^1];
+
+        float Taper(float v)
+        {
+            float t = Math.Clamp((v + 0.5f) / Bz, 0f, 1f);
+            return Round ? 0.32f + 0.68f * MathF.Sqrt(1f - (1f - t) * (1f - t)) : 0.26f + 0.74f * MathF.Pow(t, 0.8f);
+        }
+
+        /// <summary>Half the beam at v, m (to the outside of the shell).</summary>
+        public float HalfWidth(float v) => (Half + 0.5f) * Taper(v) * (1f - 0.06f * Math.Clamp((v - (L - 5)) / 5f, 0f, 1f));
+
+        int Chamfer => Decks >= 4 ? 3 : 2;
+
+        /// <summary>The hull's solid as drawn (metres in its frame): the hull, the tower and the nacelles.</summary>
+        public bool Solid(float u, float y, float v) => InHull(u, y, v) || InTower(u, y, v) || InNacelle(u, y, v);
+
+        public bool InHull(float u, float y, float v)
+        {
+            if (v < -0.5f || v > L - 0.5f) return false;
+            float hw = HalfWidth(v), au = MathF.Abs(u);
+            if (au > hw) return false;
+            float fore = MathF.Min(Top / 3f, Bz / 2f), rake = MathF.Min(Top * 0.5f, Bz * 0.6f);
+            float bottom = -0.5f + MathF.Max(0f, fore - (v + 0.5f)) + MathF.Max(0f, au - (hw - 2f));
+            float top = Top + 0.5f - MathF.Max(0f, rake - (v + 0.5f)) - MathF.Max(0f, au - (hw - Chamfer)) - MathF.Max(0f, (v + 0.5f) - (L - 2));
+            return y >= bottom && y <= top;
+        }
+
+        public bool InTower(float u, float y, float v)
+        {
+            float df = v - (TV0 - 0.5f), db = TV1 + 0.5f - v, ds = MathF.Min(u - (TU0 - 0.5f), TU1 + 0.5f - u);
+            if (df < 0f || db < 0f || ds < 0f || y < Top - 0.5f || y > TowerTop + 0.5f) return false;
+            if (df + ds < 2f) return false; // its forward corners cut off
+            return y <= TowerTop + 0.5f - MathF.Max(0f, 2f - MathF.Min(MathF.Min(df, db), ds));
+        }
+
+        public bool InNacelle(float u, float y, float v)
+        {
+            if (v < L - 1.5f || v > L + Nac - 0.5f || y < NY0 - 0.5f || y > NY1 + 0.5f) return false;
+            foreach (var (u0, u1) in Nacelles)
+            {
+                float du = MathF.Min(u - (u0 - 0.5f), u1 + 0.5f - u);
+                if (du < 0f) continue;
+                float dy = MathF.Min(y - (NY0 - 0.5f), NY1 + 0.5f - y);
+                if (du + dy >= 2f) return true;
+            }
+            return false;
+        }
+
+        /// <summary>The crash tore this cell away: the ragged faces where the hull broke or parted.</summary>
+        public bool Torn(int u, int y, int v)
+        {
+            if (Break >= 0 && y >= 1)
+            {
+                int reach = 3 + (int)(Hash.Cell(new Int3(u >> 1, y >> 1, 0), 37) % 3) + (y > Top - 4 ? 1 : 0);
+                if (MathF.Abs(v - Break + 0.5f) < reach) return true;
+            }
+            if (Cut >= 0 && y >= Walk(1) && v >= Cut - 4 && v < Cut + 6)
+            {
+                int edge = v < Cut ? Cut - 1 - v : v - Cut - 2;
+                if (edge < (int)(Hash.Cell(new Int3(u >> 1, y >> 1, 1), 53) % 4)) return true;
+            }
+            return Cut >= 0 && v >= Cut && v < Cut + 2;
+        }
+
+        /// <summary>How far the roof is crushed down into the top deck at v (cells): 2 near where it struck, nothing elsewhere.</summary>
+        public int Crushed(int v) => Impact >= 0 && Math.Abs(v - Impact) < Crush ? 2 : 0;
+
+        /// <summary>The piece a cell of the hull belongs to.</summary>
+        public HullPiece? PieceOf(int v) => Pieces.FirstOrDefault(p => v >= p.V0 && v < p.V1) ?? (v >= L ? Pieces[^1] : null);
     }
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<LayoutExtras, HullPlan> Plans = new();
@@ -141,1456 +204,265 @@ public static class CapitalHull
     public static HullPlan? Of(Layout layout) => Plans.TryGetValue(layout.Extras, out HullPlan? plan) ? plan : null;
 }
 
-/// <summary>One hulk, built in its own frame (u across, centred; v from the bow aft; y up from the keel) and set down in its pose.</summary>
+/// <summary>One hulk's plan, and the place it lies in (the plan's frame: u across, v from its front back, y up from the ground).</summary>
 sealed class Hulk
 {
-    const int Pitch = 6, D = 3, TDecks = 2, Chamfer = 3, Rake = 12;
-    static int Walk(int d) => Pitch * d + 2;
-    static readonly int HullTop = Walk(D), TowerTop = Walk(D + TDecks);
-
-    enum Bay { Bow, Crew, Hold, Hangar, Power, Engine, Armoury, Barracks, Magazine, Cabins, Promenade, Med, OreHold, Refinery }
-    static bool IsHall(Bay b) => b is Bay.Hold or Bay.Hangar or Bay.Engine or Bay.Promenade or Bay.OreHold or Bay.Refinery;
-
-    sealed record BayRec(Bay Kind, int V0, int V1);
-
-    sealed class Room
-    {
-        public ModuleKind Kind;
-        public string Purpose = "";
-        public int Deck, WalkY, Top;
-        public readonly HashSet<Int3> Cells = new();
-    }
-
-    sealed record DoorRec(List<Int3> Cells, List<Int3> Back, Dir Facing, int A, int B);
-
-    /// <summary>A stretch of the hull (the whole of it, or a piece a crash tore off) and where it lies.</summary>
-    sealed class Piece
-    {
-        public int V0, V1, OffU, OffV;
-        public float Pitch;
-        public System.Numerics.Vector3 Pivot, At;
-        /// <summary>Floors are level in the hull's own frame: nothing steps.</summary>
-        public Func<int, int> Dy = _ => 0;
-    }
-
-    /// <summary>A way in from outside: an opening in a flank (side +1 starboard, -1 port) or an open face, onto a room's floor.</summary>
-    sealed record Way(int Side, int V0, int Width, int Room, string What);
-
     readonly Plot P;
     readonly Rng R;
     readonly CapitalHull.Spec S;
-    readonly int W, Half;
-    int L, Bz, Nac = 8;
-    readonly List<BayRec> Bays = new();
-    int TU0, TU1, TV0, TV1, TowerBay = -1;
-    readonly Dictionary<int, int> StairAt = new(); // bay index -> stair start v
-    int[,] Hmin = new int[0, 0], Hmax = new int[0, 0], Inner = new int[0, 0];
-    int UMin;
-    readonly Dictionary<Int3, Block> B = new();
-    readonly HashSet<Int3> Open = new();
-    readonly Dictionary<Int3, int> Owner = new();
-    readonly List<Room> Rooms = new();
-    readonly List<DoorRec> Doors = new();
-    readonly List<(int A, int B)> Links = new();
-    readonly List<(SlotKind K, Int3 C, int Room)> Slots = new();
-    readonly List<(Int3 C, int Room)> Lamps = new();
-    readonly Dictionary<Int3, Block> Props = new();
-    readonly HashSet<Int3> Reserved = new();
-    readonly List<Piece> Pieces = new();
-    readonly List<Way> Ways = new();
-    readonly List<(int U0, int U1)> Nacelles = new();
-    int[] Spine = new int[D];
-    int Vault = -1, BridgeRoom = -1, Cut = -1, Break = -1;
-    /// <summary>The hull door's block, if it has one.</summary>
-    Int3? HullDoor;
-    bool Round, Spiked, Pods;
+    readonly int Quarter;
+    public readonly CapitalHull.HullPlan Result = new();
+    CapitalHull.HullPlan H => Result;
 
-    Stuff2 Plate, Trim, InnerS, FloorS, Orange, Teal, Dark, MachineS, Grate;
-    Rgb Hazard, Black;
+    /// <summary>A stretch of the hull as it lies: pitched about its keel point Pivot, which sits at At in the plan's frame.</summary>
+    sealed class Pose
+    {
+        public int V0, V1, OffU, OffV;
+        public float Pitch;
+        public NV3 Pivot, At;
+    }
 
-    public CapitalHull.HullPlan? Result;
-    readonly int Q;
-    /// <summary>Devices by cell: thrusters on the nacelles and pods (facing their exhaust), command chairs (facing forward).</summary>
-    readonly Dictionary<Int3, (string Id, Dir Facing)> Devices = new();
+    readonly List<Pose> Poses = new();
 
     public Hulk(Plot p, CapitalHull.Spec s, Rng r, int q = 0)
     {
-        Q = q;
         P = p;
         S = s;
         R = r;
-        (W, _) = CapitalHull.SizeOf(s.Size);
-        Half = W / 2;
+        Quarter = q;
     }
 
-    static Stuff2 K(Plot p, char symbol, Stuff2 fallback) =>
-        p.C.Kit.BySymbol(symbol) is { } e ? new Stuff2(e.Material, e.Colors[0]) : fallback;
+    static Rgb K(Plot p, char symbol, Rgb fallback) => p.C.Kit.BySymbol(symbol) is { } e ? e.Colors[0] : fallback;
 
     public void Build()
     {
-        Paints();
-        Plan();
-        Pose();
-        PlaceStairs();
-        Columns();
-        Fill();
-        Decks();
-        Openings();
-        Furnish();
-        Exterior();
-        var intact = Blocks();
-        Tear();
-        var after = Blocks();
-        var plan = new CapitalHull.HullPlan { Role = S.Role, Size = S.Size, Crash = S.Crash, Pieces = Vessel(intact, after, Q) };
-        CapitalHull.Remember(P.C.X, plan);
-        Result = plan;
-        EmitPlace();
+        H.Role = S.Role;
+        H.Size = S.Size;
+        H.Crash = S.Crash;
+        H.Tech = P.Tech;
+        H.Seed = R.NextU64();
+        H.Faction = P.C.Kit.Faction;
+        Livery();
+        Bays();
+        Shape();
+        Poses_();
+        Ways();
+        Pieces();
     }
 
-    // ---- what it is made of ------------------------------------------------------------------------
+    // ---- what it is made of ---------------------------------------------------------------------------
 
-    void Paints()
+    void Livery()
     {
         Fab f = P.F;
-        Faction faction = P.C.Kit.Faction;
-        Plate = K(P, 'a', f.Wall);
-        Plate = P.Tech switch
+        Rgb plate = K(P, 'a', f.Wall.C);
+        plate = P.Tech switch
         {
-            TechLevel.Low => new Stuff2(Material.Steel, Plate.C.Lerp(new Rgb(0x7a, 0x6a, 0x5a), 0.35f)),
-            TechLevel.High => new Stuff2(Material.Alloy, Plate.C.Scale(1.04f)),
-            _ => new Stuff2(Plate.M == Material.Concrete ? Material.Steel : Plate.M, Plate.C),
+            TechLevel.Low => plate.Lerp(new Rgb(0x7a, 0x6a, 0x5a), 0.35f),
+            TechLevel.High => plate.Scale(1.04f),
+            _ => plate,
         };
-        Trim = new Stuff2(Plate.M, Plate.C.Scale(0.72f));
-        InnerS = K(P, '%', f.Panel);
-        if (InnerS.M is Material.Concrete or Material.Rock or Material.Timber) InnerS = new Stuff2(Material.Steel, InnerS.C);
-        FloorS = new Stuff2(Material.Steel, K(P, '_', f.Floor).C);
-        Orange = K(P, 'k', f.Accent);
-        Teal = K(P, 't', f.Accent);
-        MachineS = K(P, 'm', f.Steel);
-        Dark = new Stuff2(Material.Steel, new Rgb(0x2a, 0x2e, 0x34));
-        Grate = new Stuff2(Material.Steel, f.Grating.C);
-        Hazard = f.Hazard;
-        Black = f.Black;
+        H.Paints["hull"] = plate;
+        H.Paints["trim"] = plate.Scale(0.72f);
+        H.Paints["wall"] = K(P, '%', f.Panel.C);
+        H.Paints["deck"] = K(P, '_', f.Floor.C);
+        H.Paints["orange"] = K(P, 'k', f.Accent.C);
+        H.Paints["teal"] = K(P, 't', f.Accent.C);
+        H.Paints["machine"] = K(P, 'm', f.Steel.C);
+        H.Paints["dark"] = new Rgb(0x2a, 0x2e, 0x34);
+        H.Paints["hazard"] = f.Hazard;
+        H.Paints["black"] = f.Black;
         // The faction's hand on the shape: a bulbous bow and stacked pods for the traders, rams for raiders.
-        Round = faction == Faction.Exchange || S.Role == "liner";
-        Pods = S.Role == "freighter" || faction == Faction.Exchange;
-        Spiked = faction == Faction.Reavers || S.Role == "miner";
+        H.Round = H.Faction == Faction.Exchange || S.Role == "liner";
+        H.Pods = S.Role == "freighter" || H.Faction == Faction.Exchange;
+        H.Spiked = H.Faction == Faction.Reavers || S.Role == "miner";
     }
 
-    // ---- the plan: bays stem to stern ---------------------------------------------------------------
+    // ---- the bays, stem to stern -----------------------------------------------------------------------
 
-    void Plan()
+    void Bays()
     {
-        var (_, n) = CapitalHull.SizeOf(S.Size);
-        var list = new List<(Bay, int)> { (Bay.Bow, 24), (Bay.Crew, 22) };
-        switch (S.Role)
+        var (l0, l1, h0, h1, decks) = CapitalHull.SizeOf(S.Size);
+        H.Decks = decks;
+        H.Half = R.Between(h0, h1);
+        int target = R.Between(l0, l1);
+        // Now and then a huge hull runs on toward the longest Empyrion's derelicts reach.
+        if (S.Size == "huge" && R.Chance(0.15f)) target = R.Between(250, 270);
+        int bow = Math.Clamp(target / 6, 14, 34), engine = Math.Clamp(target / 8, 12, 24), power = Math.Clamp(target / 8, 14, 24), crew = Math.Clamp(target / 7, 14, 24);
+        string[] middle = S.Role switch
         {
-            case "warship":
-                list.AddRange(new[] { (Bay.Armoury, 20), (Bay.Hangar, 26) });
-                for (int i = 1; i < n; i++) list.Add((Bay.Barracks, 20));
-                list.Add((Bay.Magazine, 18));
-                break;
-            case "liner":
-                for (int i = 0; i < n; i++) list.Add((Bay.Cabins, 20));
-                list.AddRange(new[] { (Bay.Promenade, 26), (Bay.Med, 18) });
-                break;
-            case "miner":
-                for (int i = 0; i < n; i++) list.Add((Bay.OreHold, 22));
-                list.Add((Bay.Refinery, 24));
-                break;
-            case "carrier":
-                for (int i = 0; i < Math.Max(2, n - 1); i++) list.Add((Bay.Hangar, 30));
-                break;
-            default:
-                for (int i = 0; i < n; i++) list.Add((Bay.Hold, 22));
-                list.Add((Bay.Hangar, 26));
-                break;
-        }
-        list.Add((Bay.Power, 24));
-        list.Add((Bay.Engine, 20));
+            "warship" => new[] { "armoury", "hangar", "barracks", "magazine" },
+            "liner" => new[] { "cabins", "promenade", "med" },
+            "miner" => new[] { "ore-hold", "refinery" },
+            "carrier" => new[] { "hangar", "barracks" },
+            _ => new[] { "hold", "hangar" },
+        };
+        int left = target - bow - crew - power - engine;
+        int n = Math.Max(middle.Length, (int)MathF.Round(left / 24f));
+        // The first of the role's bays repeats as the hull grows (more holds, more cabins), the rest follow it once each.
+        var kinds = Enumerable.Repeat(middle[0], n - middle.Length + 1).Concat(middle.Skip(1)).ToList();
         int v = 0;
-        foreach (var (kind, len0) in list)
-        {
-            // Each hull its own proportions: the cargo bays a block longer or shorter.
-            int len = len0 + (kind is Bay.Hold or Bay.Cabins or Bay.OreHold or Bay.Hangar ? 2 * R.Range(-1, 2) : 0);
-            Bays.Add(new BayRec(kind, v, v + len));
-            v += len;
-        }
-        L = v;
-        Bz = Bays[0].V1;
-        // A hauler's bridge stands aft over its power, as a cargo ship's does; a warship's, a liner's and a carrier's forward.
-        bool aft = S.Role is "freighter" or "miner";
-        TowerBay = Bays.FindIndex(b => b.Kind == (aft ? Bay.Power : Bay.Crew));
+        void Add(string kind, int len) { H.Bays.Add(new CapitalHull.Bay(kind, v, v + len)); v += len; }
+        Add("bow", bow);
+        Add("crew", crew);
+        foreach (string k in kinds) Add(k, Math.Clamp(left / n + R.Range(-2, 3), 14, 34));
+        Add("power", power);
+        Add("engine", engine);
+        H.L = v;
+        H.Bz = H.Bays[0].V1;
     }
 
-    // ---- how it came down -----------------------------------------------------------------------------
+    void Shape()
+    {
+        // The tower: forward over the crew for a warship, a liner or a carrier, aft over the power for a hauler.
+        bool aft = S.Role is "freighter" or "miner";
+        CapitalHull.Bay bay = H.Bays.First(b => b.Kind == (aft ? "power" : "crew"));
+        int tw = Math.Max(6, (int)(H.Half * 0.55f));
+        H.TU0 = -tw;
+        H.TU1 = tw;
+        H.TV0 = bay.V0 + 1;
+        H.TV1 = Math.Min(bay.V1 - 2, H.TV0 + Math.Clamp(H.Half, 14, 20));
+        // Nacelles off the stern, two or three by the beam.
+        int n = H.Half >= 17 ? 3 : 2, span = (2 * H.Half + 1 - 6) / n, w = Math.Max(5, span - 2);
+        for (int i = 0; i < n; i++)
+        {
+            int c = -H.Half + 3 + span * i + span / 2;
+            H.Nacelles.Add((c - w / 2, c - w / 2 + w - 1));
+        }
+        H.Nac = Math.Clamp(H.L / 12, 8, 16);
+        H.NY0 = 2;
+        H.NY1 = Math.Min(H.Top - 2, CapitalHull.HullPlan.Walk(2) + 1);
+    }
+
+    // ---- how it came down ------------------------------------------------------------------------------
 
     /// <summary>
-    /// How it came down, as a real pose: each piece of the hull a rigid body pitched about its keel and
-    /// sunk into the ground, the way the vessel structure is set down. Rise is the keel's climb a metre
-    /// aft; the pivot (a keel point) is set at a depth under the ground.
+    /// How it came down, as a real pose: each piece of the hull a rigid body pitched about its keel and sunk into
+    /// the ground, the way the vessel structure is set down. Rise is the keel's climb a metre aft; the pivot (a
+    /// keel point) is set at a depth under the ground.
     /// </summary>
-    void Pose()
+    void Poses_()
     {
-        int u0 = 0, v0 = 24;
-        Piece Make(int a, int b, int pivotV, float rise, float depth, int du = 0, int dv = 0) => new()
+        int u0 = 0, v0 = 24, L = H.L;
+        Pose Make(int a, int b, int pivotV, float rise, float depth, int du = 0, int dv = 0) => new()
         {
             V0 = a, V1 = b, OffU = u0 + du, OffV = v0 + dv, Pitch = -MathF.Atan(rise),
-            Pivot = new System.Numerics.Vector3(0, 0, pivotV), At = new System.Numerics.Vector3(u0 + du, depth, v0 + dv + pivotV),
+            Pivot = new NV3(0, -0.5f, pivotV), At = new NV3(u0 + du + 0.5f, depth, v0 + dv + pivotV + 0.5f),
         };
         switch (S.Crash)
         {
             case "nose":
-                // Nose down: the bow ploughed in nine metres deep, the stern up on it at about four degrees.
-                Pieces.Add(Make(0, L, 0, 0.075f, -9f - R.Range(0, 2)));
+                // Nose down: the bow ploughed in deep, the stern up on it at about four degrees, the bow crushed.
+                Poses.Add(Make(0, L, 0, 0.075f, -9f - R.Range(0, 2)));
+                H.Impact = H.Bz / 2;
+                H.Crush = H.Bz;
                 break;
             case "scattered":
             {
-                // Broken apart: the fore hull lies nearly level where it stopped, the stern section with the
-                // hangar, the power and the engines tumbled further on down the furrow, the cargo strewn between.
-                int bay = Bays.FindIndex(b => b.Kind == Bay.Hangar);
-                if (bay < 0) bay = Bays.FindLastIndex(b => IsHall(b.Kind) && b.Kind != Bay.Engine);
-                Cut = Bays[bay].V0;
+                // Broken apart: the fore hull lies nearly level where it stopped, the stern section with the hangar,
+                // the power and the engines tumbled further on down the furrow, the cargo strewn between.
+                CapitalHull.Bay bay = H.Bays.FirstOrDefault(b => b.Kind == "hangar") ?? H.Bays.Last(b => b.Hall && b.Kind != "engine");
+                H.Cut = bay.V0;
                 int gap = 34 + 2 * R.Range(0, 5), side = R.Chance(0.5f) ? 1 : -1;
-                Pieces.Add(Make(0, Cut, Cut, 0.03f, -2f));
-                Pieces.Add(Make(Cut + 2, L, Cut + 2, -0.05f, -2f, side * (6 + 2 * R.Range(0, 3)), gap));
+                Poses.Add(Make(0, H.Cut, H.Cut, 0.03f, -2f));
+                Poses.Add(Make(H.Cut + 2, L, H.Cut + 2, -0.05f, -2f, side * (6 + 2 * R.Range(0, 3)), gap));
+                H.Impact = H.Cut;
+                H.Crush = 10;
                 break;
             }
             case "long":
-                // A long hauler that came down flat on its belly and slid: level, buried seven metres along its whole
-                // length at the end of a long furrow. (Level is also what lets it lift off without digging: a tilt widens
-                // every block's margin in the lift-off's cut.)
-                Pieces.Add(Make(0, L, L, 0f, -7f));
+                // A long hauler that came down flat on its belly and slid: level, buried along its whole length at the
+                // end of a long furrow (level is also what lets it lift off without levelling through the ground).
+                Poses.Add(Make(0, L, L, 0f, -7f));
                 break;
             default:
             {
-                // Broken back: it came down on its belly and its keel gave amidships, both halves sunk at the
-                // break with the hull torn open over it, bow and stern up either side.
-                int mid = Bays.Where(b => IsHall(b.Kind) && b.Kind != Bay.Engine).Select(b => (b.V0 + b.V1) / 2).OrderBy(m => Math.Abs(m - L / 2)).FirstOrDefault(L / 2) & ~1;
-                Break = mid;
-                Pieces.Add(Make(0, mid, mid, -0.07f, -6f));
-                Pieces.Add(Make(mid, L, mid, 0.07f, -6f));
+                // Broken back: it came down on its belly and its keel gave amidships, both halves sunk at the break
+                // with the hull torn open over it, bow and stern up either side.
+                int mid = H.Bays.Where(b => b.Hall && b.Kind != "engine").Select(b => (b.V0 + b.V1) / 2).OrderBy(m => Math.Abs(m - L / 2)).FirstOrDefault(L / 2);
+                H.Break = mid;
+                Poses.Add(Make(0, mid, mid, -0.07f, -6f));
+                Poses.Add(Make(mid, L, mid, 0.07f, -6f));
+                H.Impact = mid;
+                H.Crush = 12;
                 break;
             }
         }
     }
 
-    /// <summary>A point of the hull's frame (metres from the bow keel's centre line) where it lies in the plan's frame.</summary>
-    System.Numerics.Vector3 ToPlot(Piece p, System.Numerics.Vector3 ship) =>
-        p.At + System.Numerics.Vector3.Transform(ship - p.Pivot, System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, p.Pitch));
+    /// <summary>A point of the hull's frame where it lies in the plan's frame.</summary>
+    static NV3 ToPlot(Pose p, NV3 ship) => p.At + NV3.Transform(ship - p.Pivot, NQ.CreateFromAxisAngle(NV3.UnitX, p.Pitch));
 
-    System.Numerics.Vector3 FromPlot(Piece p, System.Numerics.Vector3 plot) =>
-        p.Pivot + System.Numerics.Vector3.Transform(plot - p.At, System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, -p.Pitch));
-    Piece? PieceOf(int v)
+    static NV3 FromPlot(Pose p, NV3 plot) => p.Pivot + NV3.Transform(plot - p.At, NQ.CreateFromAxisAngle(NV3.UnitX, -p.Pitch));
+
+    Pose? PoseOf(int v)
     {
-        if (v >= L) v = L - 1;
-        if (v < 0) v = 0;
-        foreach (Piece p in Pieces) if (v >= p.V0 && v < p.V1) return p;
-        return null;
+        v = Math.Clamp(v, 0, H.L - 1);
+        return Poses.FirstOrDefault(p => v >= p.V0 && v < p.V1);
     }
 
-    int Dy(int v) => PieceOf(v)?.Dy(v) ?? 0;
+    // ---- the ways in -----------------------------------------------------------------------------------
 
-    /// <summary>The floor runs level over [v0, v1): one piece, no step.</summary>
-    bool Flat(int v0, int v1)
+    bool NearTear(int v, int margin) => H.Break >= 0 && Math.Abs(v - H.Break) < 6 + margin || H.Cut >= 0 && v >= H.Cut - 4 - margin && v < H.Cut + 6 + margin;
+
+    void Ways()
     {
-        Piece? p = PieceOf(v0);
-        if (p == null) return false;
-        for (int v = v0; v < v1; v++)
-            if (PieceOf(v) != p || p.Dy(v) != p.Dy(v0)) return false;
-        return true;
-    }
-
-    bool StepAt(Int3 c) => PieceOf(c.Z) is { } p && (PieceOf(c.Z + 1) is { } a && a == p && p.Dy(c.Z + 1) != p.Dy(c.Z) || PieceOf(c.Z - 1) is { } b && b == p && p.Dy(c.Z - 1) != p.Dy(c.Z));
-
-    bool NearTear(int v, int margin) => Break >= 0 && Math.Abs(v - Break) < 6 + margin || Cut >= 0 && v >= Cut - 4 - margin && v < Cut + 6 + margin;
-
-    void PlaceStairs()
-    {
-        foreach (int i in Enumerable.Range(0, Bays.Count).Where(i => Bays[i].Kind is Bay.Crew or Bay.Power))
-        {
-            BayRec bay = Bays[i];
-            int sv = bay.V0 + 2;
-            for (int s = 0; s < 8; s += 2)
-                if (Flat(bay.V0 + 2 + s - 2, bay.V0 + 2 + s + 8) && !NearTear(bay.V0 + 2 + s, 2)) { sv = bay.V0 + 2 + s; break; }
-            StairAt[i] = sv;
-        }
-        int ts = StairAt[TowerBay];
-        TU0 = W >= 44 ? -12 : -10;
-        TU1 = Math.Min(18, Half);
-        TV0 = ts - 8;
-        TV1 = ts + 14;
-    }
-
-    // ---- the hull's shape -------------------------------------------------------------------------------
-
-    float HalfW(float v)
-    {
-        if (v >= Bz) return Half;
-        float t = Math.Clamp(v / Bz, 0f, 1f);
-        return Half * (Round ? 0.3f + 0.7f * MathF.Sqrt(1f - (1f - t) * (1f - t)) : 0.26f + 0.74f * t);
-    }
-
-    bool InHull(int u, int v) => v >= 0 && v < L && MathF.Abs(u + 0.5f) < HalfW(v + 0.5f);
-    bool InTower(int u, int v) => u >= TU0 && u < TU1 && v >= TV0 && v < TV1;
-
-    int HullCorner(int cu, int cv)
-    {
-        float d = HalfW(cv) - Math.Abs(cu);
-        int h = (int)MathF.Floor(HullTop - Chamfer + d);
-        h = Math.Min(h, HullTop);
-        h = Math.Min(h, HullTop - Rake + cv);
-        h = Math.Min(h, HullTop - 2 + (L - cv));
-        return Math.Max(h, 2);
-    }
-
-    int TowerCorner(int cu, int cv) => Math.Min(TowerTop, TowerTop - 2 + Math.Min(Math.Min(cu - TU0, TU1 - cu), TV1 - cv));
-
-    int CornerAt(int u, int v, int cu, int cv)
-    {
-        int h = -1;
-        if (InHull(u, v)) h = HullCorner(cu, cv);
-        if (InTower(u, v)) h = Math.Max(h, TowerCorner(cu, cv));
-        return h;
-    }
-
-    int Col(int[,] a, int u, int v) => u - UMin < 0 || u - UMin >= a.GetLength(0) || v < 0 || v >= a.GetLength(1) ? -1 : a[u - UMin, v];
-
-    void Columns()
-    {
-        UMin = -Half - 2;
-        int nu = W + 4;
-        Hmin = new int[nu, L];
-        Hmax = new int[nu, L];
-        Inner = new int[nu, L];
-        for (int v = 0; v < L; v++)
-            for (int u = UMin; u < UMin + nu; u++)
-            {
-                if (!InHull(u, v) && !InTower(u, v)) { Hmin[u - UMin, v] = Hmax[u - UMin, v] = -1; continue; }
-                int a = CornerAt(u, v, u, v), b = CornerAt(u, v, u + 1, v), c = CornerAt(u, v, u, v + 1), d = CornerAt(u, v, u + 1, v + 1);
-                Hmin[u - UMin, v] = Math.Min(Math.Min(a, b), Math.Min(c, d));
-                Hmax[u - UMin, v] = Math.Max(Math.Max(a, b), Math.Max(c, d));
-            }
-        // The inside: a block in from every face, a block of keel under it.
-        for (int v = 0; v < L; v++)
-            for (int u = UMin; u < UMin + nu; u++)
-            {
-                int m = int.MaxValue;
-                for (int dv = -2; dv <= 2; dv++)
-                    for (int du = -2; du <= 2; du++) m = Math.Min(m, Col(Hmin, u + du, v + dv));
-                Inner[u - UMin, v] = m < 4 ? 0 : m - 2;
-            }
-    }
-
-    int InnerTop(int u, int v) => Col(Inner, u, v);
-    bool Usable(int d, int u, int v) => InnerTop(u, v) >= Walk(d) + 4;
-
-    void Fill()
-    {
-        for (int v = 0; v < L; v++)
-            for (int u = UMin; u < UMin + W + 4; u++)
-            {
-                int lo = Col(Hmin, u, v), hi = Col(Hmax, u, v), top = InnerTop(u, v);
-                if (lo < 0) continue;
-                for (int y = 0; y < lo; y++)
-                {
-                    bool inner = y >= 2 && y < top;
-                    Block b = !inner ? new Block(BlockType.Cube, Plate.M, Plate.C, Role.Wall)
-                        : y % Pitch < 2 ? new Block(BlockType.Cube, FloorS.M, FloorS.C, Role.Floor)
-                        : new Block(BlockType.Cube, InnerS.M, InnerS.C, Role.Wall);
-                    B[new Int3(u, y, v)] = b;
-                }
-                int nw = CornerAt(u, v, u, v), ne = CornerAt(u, v, u + 1, v), sw = CornerAt(u, v, u, v + 1), se = CornerAt(u, v, u + 1, v + 1);
-                for (int y = lo; y < hi; y++)
-                    if (Plot.Piece(nw > y, ne > y, sw > y, se > y, Plate) is { } piece) B[new Int3(u, y, v)] = piece;
-            }
-    }
-
-    // ---- decks and rooms ----------------------------------------------------------------------------------
-
-    int NewRoom(ModuleKind kind, string purpose, int deck, int walk, int top)
-    {
-        Rooms.Add(new Room { Kind = kind, Purpose = purpose, Deck = deck, WalkY = walk, Top = top });
-        return Rooms.Count - 1;
-    }
-
-    void Take(int room, Int3 c)
-    {
-        if (Owner.ContainsKey(c)) return;
-        Owner[c] = room;
-        Open.Add(c);
-        B.Remove(c);
-        Rooms[room].Cells.Add(c);
-    }
-
-    void Drop(Int3 c)
-    {
-        if (Owner.Remove(c, out int r)) Rooms[r].Cells.Remove(c);
-        Open.Remove(c);
-    }
-
-    /// <summary>Carves a room's box from deck d0 through d1 (4 m clear each, the floors between gone), where every deck of it fits.</summary>
-    int Carve(int room, int u0, int u1, int v0, int v1, int d0, int d1, Func<int, int, bool>? keep = null)
-    {
-        int n = 0;
-        for (int v = v0; v < v1; v++)
-            for (int u = u0; u < u1; u++)
-            {
-                if (!Usable(d1, u, v) || PieceOf(v) == null || keep != null && !keep(u, v)) continue;
-                for (int y = Walk(d0); y < Walk(d1) + 4; y++) Take(room, new Int3(u, y, v));
-                n++;
-            }
-        return n;
-    }
-
-    int Area(int u0, int u1, int v0, int v1, int d)
-    {
-        int n = 0;
-        for (int v = v0; v < v1; v++)
-            for (int u = u0; u < u1; u++)
-                if (Usable(d, u, v) && PieceOf(v) != null && !Owner.ContainsKey(new Int3(u, Walk(d), v))) n++;
-        return n;
-    }
-
-    void Decks()
-    {
-        for (int d = 0; d < D; d++) Spine[d] = NewRoom(ModuleKind.Corridor, "corridor", d, Walk(d), Walk(d) + 4);
-        // The stairs first: each a switchback tower beside the spine.
-        foreach (var (bay, sv) in StairAt) Stair(sv, 0, bay == TowerBay ? D + TDecks - 1 : D - 1);
-        for (int i = 0; i < Bays.Count; i++)
-        {
-            BayRec bay = Bays[i];
-            bool hall = IsHall(bay.Kind);
-            int stairV = StairAt.TryGetValue(i, out int sv) ? sv : -1;
-            if (hall)
-            {
-                Carve(Spine[0], -2, 2, bay.V0, bay.V0 + 2, 0, 0);
-                int walkway = NewRoom(ModuleKind.Corridor, "catwalk", 1, Walk(1), Walk(1) + 4);
-                Carve(walkway, -1, 1, bay.V0, bay.V1, 1, 1);
-                Links.Add((walkway, Spine[1]));
-                int h = NewRoom(ModuleKind.Hall, HallPurpose(bay.Kind), 0, Walk(0), Walk(1) + 4);
-                Carve(h, -Half, Half, bay.V0 + 2, bay.V1, 0, 1);
-                Links.Add((h, Spine[0]));
-                // The catwalk through it on deck 1: grating on beams, a rail each side.
-                for (int v = bay.V0 + 2; v < bay.V1; v++)
-                    for (int u = -2; u < 2; u++)
-                    {
-                        var deck = new Int3(u, Walk(1) - 1, v);
-                        if (Owner.GetValueOrDefault(deck, -1) != h) continue;
-                        Drop(deck);
-                        B[deck] = new Block(BlockType.Lattice, Grate.M, Grate.C, Role.Floor);
-                        if (u is -2 or 1)
-                        {
-                            var rail = deck + Int3.Up;
-                            Drop(rail);
-                            B[rail] = new Block(BlockType.Rail, Material.Steel, Hazard, Role.Decor);
-                        }
-                    }
-            }
-            for (int d = hall ? 2 : 0; d < D; d++)
-            {
-                Carve(Spine[d], -2, 2, bay.V0, bay.V1, d, d);
-                var (port, stbd, n) = Sides(bay.Kind, d);
-                int sFrom = stairV >= 0 ? stairV + 6 : bay.V0 + 2;
-                if (bay.Kind == Bay.Power && d == 0)
-                {
-                    // The reactor, and behind it the core room: only through the reactor.
-                    int reactor = SideRoom("reactor", d, -Half, -4, bay.V0 + 2, bay.V1 - 10, -1);
-                    int core = SideRoom("core-room", d, -Half, -4, bay.V1 - 8, bay.V1, reactor);
-                    if (core >= 0) { Rooms[core].Kind = ModuleKind.Vault; Vault = core; }
-                }
-                else Split(port, d, -Half, -4, bay.V0 + 2, bay.V1, n);
-                Split(stbd, d, 4, Half, sFrom, bay.V1, n);
-            }
-        }
-        // The tower: the officers' deck, the bridge over it.
-        {
-            int sv = StairAt[TowerBay];
-            bool Keep(int u, int v) => !(u >= 2 && u < 16 && v >= sv - 2 && v < sv + 6);
-            int officers = NewRoom(ModuleKind.Room, "officers", D, Walk(D), Walk(D) + 4);
-            Carve(officers, TU0 + 2, TU1 - 2, TV0 + 2, TV1 - 2, D, D, Keep);
-            BridgeRoom = NewRoom(ModuleKind.Room, "bridge", D + 1, Walk(D + 1), Walk(D + 1) + 4);
-            Carve(BridgeRoom, TU0 + 2, TU1 - 2, TV0 + 2, TV1 - 2, D + 1, D + 1, Keep);
-        }
-        foreach (var (bay, sv) in StairAt) StairDoors(sv, 0, bay == TowerBay ? D + TDecks - 1 : D - 1);
-        if (Vault < 0) Vault = BridgeRoom;
-    }
-
-    static string HallPurpose(Bay b) => b switch
-    {
-        Bay.Hangar => "hangar", Bay.Engine => "engine-room", Bay.Promenade => "promenade", Bay.OreHold => "ore-hold", Bay.Refinery => "refinery", _ => "hold",
-    };
-
-    static (string Port, string Stbd, int N) Sides(Bay b, int d) => (b, d) switch
-    {
-        (Bay.Bow, 0) => ("stores", "stores", 1),
-        (Bay.Bow, 1) => ("crew-quarters", "crew-quarters", 1),
-        (Bay.Bow, _) => ("sensor-room", "stores", 1),
-        (Bay.Crew, 0) => ("workshop", "stores", 1),
-        (Bay.Crew, 1) => ("crew-quarters", "crew-quarters", 2),
-        (Bay.Crew, _) => ("mess", "med-ward", 1),
-        (Bay.Power, 0) => ("reactor", "fuel-tanks", 1),
-        (Bay.Power, 1) => ("generator-room", "workshop", 1),
-        (Bay.Power, _) => ("crew-quarters", "stores", 1),
-        (Bay.Engine, _) => ("engineering", "stores", 1),
-        (Bay.Hangar, _) => ("workshop", "crew-quarters", 2),
-        (Bay.Armoury, 0) => ("armoury", "armoury", 1),
-        (Bay.Armoury, _) => ("barracks", "barracks", 2),
-        (Bay.Barracks, _) => ("barracks", "barracks", 2),
-        (Bay.Magazine, 0) => ("magazine", "magazine", 1),
-        (Bay.Magazine, 1) => ("armoury", "stores", 1),
-        (Bay.Magazine, _) => ("barracks", "barracks", 1),
-        (Bay.Cabins, _) => ("cabin", "cabin", 3),
-        (Bay.Med, 0) => ("med-ward", "med-ward", 1),
-        (Bay.Med, _) => ("med-ward", "stores", 1),
-        _ => ("stores", "crew-quarters", 2),
-    };
-
-    void Split(string purpose, int d, int u0, int u1, int v0, int v1, int n)
-    {
-        int total = v1 - v0, len = (total - 2 * (n - 1)) / n;
-        if (len < 6) { n = 1; len = total; }
-        for (int i = 0; i < n; i++)
-        {
-            int a = v0 + i * (len + 2), b = i == n - 1 ? v1 : a + len;
-            SideRoom(purpose, d, u0, u1, a, b, -1);
-        }
-    }
-
-    /// <summary>A room off the spine (or, from = another room, off that one through a bulkhead door), or none where too little of it fits.</summary>
-    int SideRoom(string purpose, int d, int u0, int u1, int v0, int v1, int from)
-    {
-        if (v1 - v0 < 4 || Area(u0, u1, v0, v1, d) < 20) return -1;
-        int r = NewRoom(ModuleKind.Room, purpose, d, Walk(d), Walk(d) + 4);
-        Carve(r, u0, u1, v0, v1, d, d);
-        bool ok = from >= 0 ? BulkheadDoor(from, r, u0, u1, v0 - 2, d) : SpineDoor(r, d, u0 > 0);
-        if (!ok)
-        {
-            foreach (Int3 c in Rooms[r].Cells.ToList()) { Drop(c); B[c] = new Block(BlockType.Cube, InnerS.M, InnerS.C, Role.Wall); }
-            return -1;
-        }
-        return r;
-    }
-
-    readonly List<(int Deck, int U, int V)> _doorAt = new();
-
-    bool DoorFree(int d, int u, int v) => !_doorAt.Any(x => x.Deck == d && Math.Abs(x.U - u) < 4 && Math.Abs(x.V - v) < 4);
-
-    /// <summary>A door through the spine's wall (the front layer at u = 2 or -4), facing east, where the floor is level about it.</summary>
-    bool SpineDoor(int r, int d, bool stbd)
-    {
-        int front = stbd ? 2 : -4, roomU = stbd ? 4 : -5, spineU = stbd ? 1 : -2, y = Walk(d);
-        var vs = Rooms[r].Cells.Where(c => c.Y == y && c.X == roomU).Select(c => c.Z).Distinct().ToList();
-        if (vs.Count == 0) return false;
-        double mid = vs.Average();
-        foreach (int v in vs.OrderBy(v => Math.Abs(v + 0.5 - mid)))
-        {
-            if (!vs.Contains(v + 1) || !Flat(v - 2, v + 4) || NearTear(v, 1) || !DoorFree(d, front, v)) continue;
-            if (Owner.GetValueOrDefault(new Int3(spineU, y, v), -1) != Spine[d] || Owner.GetValueOrDefault(new Int3(spineU, y, v + 1), -1) != Spine[d]) continue;
-            MakeDoor(r, Spine[d], d, front, v, alongV: true);
-            return true;
-        }
-        return false;
-    }
-
-    /// <summary>A door through a bulkhead between two rooms (the wall's front layer at v = wall), facing south.</summary>
-    bool BulkheadDoor(int a, int b, int u0, int u1, int wall, int d)
-    {
-        int y = Walk(d);
-        double mid = (u0 + u1) / 2.0;
-        foreach (int u in Enumerable.Range(u0, u1 - u0).OrderBy(u => Math.Abs(u + 0.5 - mid)))
-        {
-            if (!Flat(wall - 2, wall + 4)) return false;
-            bool fits = Owner.GetValueOrDefault(new Int3(u, y, wall - 1), -1) == a && Owner.GetValueOrDefault(new Int3(u + 1, y, wall - 1), -1) == a
-                && Owner.GetValueOrDefault(new Int3(u, y, wall + 2), -1) == b && Owner.GetValueOrDefault(new Int3(u + 1, y, wall + 2), -1) == b;
-            if (!fits || !DoorFree(d, u, wall)) continue;
-            MakeDoor(a, b, d, wall, u, alongV: false);
-            return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// The standard door: alongV, in a wall across u (front layer u = at, cells v, v + 1), facing east; else in a
-    /// wall across v (front layer v = at, cells u = along, along + 1), facing south. The back layer is left open.
-    /// </summary>
-    void MakeDoor(int a, int b, int d, int at, int along, bool alongV)
-    {
-        int y0 = Walk(d);
-        var cells = new List<Int3>();
-        var back = new List<Int3>();
-        for (int s = 0; s < 2; s++)
-            for (int y = y0; y < y0 + DoorSize.Tall; y++)
-            {
-                cells.Add(alongV ? new Int3(at, y, along + s) : new Int3(along + s, y, at));
-                back.Add(alongV ? new Int3(at + 1, y, along + s) : new Int3(along + s, y, at + 1));
-            }
-        foreach (Int3 c in cells.Concat(back)) { B.Remove(c); Open.Add(c); }
-        Doors.Add(new DoorRec(cells, back, alongV ? Dir.East : Dir.South, a, b));
-        _doorAt.Add((d, alongV ? at : along, alongV ? along : at));
-        for (int s = -3; s <= 4; s++)
-            for (int t = -1; t <= 2; t++)
-                Reserved.Add(alongV ? new Int3(at + s, y0, along + t) : new Int3(along + t, y0, at + s));
-    }
-
-    /// <summary>
-    /// A switchback stair tower beside the spine from deck d0 to deck d1: landings across both lanes at its
-    /// near end (u 4, 5) on every other deck and its far end (u 12, 13) between, flights of six steps between
-    /// them, the lanes at v = sv and sv + 2. Its walls are the hull's own fill.
-    /// </summary>
-    void Stair(int sv, int d0, int d1)
-    {
-        int r = NewRoom(ModuleKind.Stair, "stair", d0, Walk(d0), Walk(d1) + 4);
-        for (int k = 0; k <= d1 - d0; k++)
-        {
-            int d = d0 + k, ua = k % 2 == 0 ? 4 : 12;
-            for (int v = sv; v < sv + 4; v++)
-                for (int u = ua; u < ua + 2; u++)
-                    for (int y = Walk(d); y < Walk(d) + 4; y++) Take(r, new Int3(u, y, v));
-            if (k == d1 - d0) break;
-            for (int t = 0; t < 6; t++)
-            {
-                int u = k % 2 == 0 ? 6 + t : 11 - t, y = Walk(d) + t;
-                for (int v = k % 2 == 0 ? sv : sv + 2, e = v + 2; v < e; v++)
-                {
-                    var c = new Int3(u, y, v);
-                    Take(r, c);
-                    Open.Remove(c);
-                    B[c] = new Block(BlockType.Stair, FloorS.M, FloorS.C.Scale(1.08f), Role.Traverse, k % 2 == 0 ? Dir.East : Dir.West);
-                    for (int up = 1; up <= 4; up++) { var a = c + Int3.Up * up; if (Owner.TryGetValue(a, out int o) && o != r) Drop(a); Take(r, a); }
-                }
-            }
-        }
-        for (int v = sv - 2; v < sv + 6; v++)
-            for (int u = 2; u < 16; u++) Reserved.Add(new Int3(u, 0, v));
-    }
-
-    void StairDoors(int sv, int d0, int d1)
-    {
-        int r = Owner[new Int3(4, Walk(d0), sv)];
-        for (int k = 0; k <= d1 - d0; k++)
-        {
-            int d = d0 + k, y = Walk(d);
-            if (k % 2 == 0)
-            {
-                int other = Owner.GetValueOrDefault(new Int3(1, y, sv), -1);
-                if (other >= 0 && Owner.GetValueOrDefault(new Int3(1, y, sv + 1), -1) == other) MakeDoor(other, r, d, 2, sv, alongV: true);
-            }
-            else
-            {
-                int other = Owner.GetValueOrDefault(new Int3(12, y, sv + 6), -1);
-                if (other >= 0 && Owner.GetValueOrDefault(new Int3(13, y, sv + 6), -1) == other) MakeDoor(r, other, d, sv + 4, 12, alongV: false);
-            }
-        }
-    }
-
-    // ---- the ways in --------------------------------------------------------------------------------------
-
-    void Openings()
-    {
-        // A hull door: through the starboard flank into the crew bay's first room, the way a boarding party comes in.
-        {
-            int crew = Bays.FindIndex(b => b.Kind == Bay.Crew);
-            int y = Walk(0), u = Half - 2;
-            var room = Owner.Where(kv => kv.Key.X == u - 1 && kv.Key.Y == y && kv.Key.Z >= Bays[crew].V0 && kv.Key.Z < Bays[crew].V1 && (kv.Key.Z & 1) == 0
-                    && Owner.GetValueOrDefault(kv.Key + new Int3(0, 0, 1), -1) == kv.Value && Rooms[kv.Value].Kind == ModuleKind.Room)
-                .OrderBy(kv => kv.Key.Z).Select(kv => (Z: kv.Key.Z, Room: kv.Value)).FirstOrDefault((Z: -1, Room: -1));
-            if (room.Room >= 0) { MakeDoor(room.Room, room.Room, 0, u, room.Z, alongV: true); HullDoor = new Int3(u >> 1, y >> 1, room.Z >> 1); }
-        }
+        // The hull door: through the starboard flank into the crew bay's side passage, the way a boarding party comes in.
+        CapitalHull.Bay crew = H.Bays.First(b => b.Kind == "crew");
+        H.DoorV = crew.V0 + 4;
         // The cargo ramp: down from a hangar or a hold onto the ground, its bay door open.
-        int bay = Bays.FindIndex(b => b.Kind == Bay.Hangar && (Cut < 0 || b.V0 >= Cut));
-        if (bay < 0) bay = Bays.FindLastIndex(b => IsHall(b.Kind) && b.Kind != Bay.Engine);
+        CapitalHull.Bay cargo = H.Bays.FirstOrDefault(b => b.Kind == "hangar" && (H.Cut < 0 || b.V0 >= H.Cut))
+                                ?? H.Bays.Last(b => b.Hall && b.Kind != "engine");
         int side = R.Chance(0.5f) ? 1 : -1;
-        BayRec cargo = Bays[bay];
-        int hall = Owner.GetValueOrDefault(new Int3(0, Walk(0), cargo.V0 + 4), -1);
-        int ov = Enumerable.Range(cargo.V0 + 4, Math.Max(1, cargo.V1 - cargo.V0 - 12)).FirstOrDefault(v => Flat(v - 3, v + 9) && !NearTear(v, 2), cargo.V0 + 4);
-        Flank(side, ov, 6, 6, hall, "cargo");
+        int ov = Enumerable.Range(cargo.V0 + 3, Math.Max(1, cargo.V1 - cargo.V0 - 10)).FirstOrDefault(v => !NearTear(v, 2), cargo.V0 + 3);
+        H.Ways.Add(new CapitalHull.Way(side, ov, 6, 6, "cargo"));
         switch (S.Crash)
         {
             case "nose":
             {
                 // Where the hull meets the ground, the crash tore its flank open.
-                var holds = Bays.Where(b => IsHall(b.Kind) && b.Kind != Bay.Engine).ToList();
-                int at = -1;
-                foreach (BayRec b in holds)
-                    for (int v = b.V0 + 4; v < b.V1 - 8 && at < 0; v++)
-                        if (Walk(0) + Dy(v) is >= -3 and <= 1 && Flat(v - 3, v + 7)) at = v;
-                if (at < 0) at = holds[0].V0 + 4;
-                Flank(-side, at, 4, 5, Owner.GetValueOrDefault(new Int3(0, Walk(0), at + 1), hall), "breach");
+                CapitalHull.Bay b = H.Bays.First(x => x.Hall && x.Kind != "engine");
+                H.Ways.Add(new CapitalHull.Way(-side, b.V0 + 3, 4, 5, "breach"));
                 break;
             }
             case "long":
             {
-                BayRec b = Bays.First(x => IsHall(x.Kind) && x.Kind != Bay.Engine);
-                int at = Enumerable.Range(b.V0 + 4, b.V1 - b.V0 - 10).FirstOrDefault(v => Flat(v - 3, v + 9), b.V0 + 4);
-                Flank(-side, at, 6, 4, Owner.GetValueOrDefault(new Int3(0, Walk(0), at + 1), hall), "breach");
+                CapitalHull.Bay b = H.Bays.First(x => x.Hall && x.Kind != "engine");
+                H.Ways.Add(new CapitalHull.Way(-side, b.V0 + 4, 6, 4, "breach"));
                 break;
             }
             case "broken":
-                foreach (int s in new[] { 1, -1 })
-                    Ways.Add(new Way(s, Break - 2, 4, Owner.GetValueOrDefault(new Int3(0, Walk(0), Break), hall), "break"));
+                foreach (int s in new[] { 1, -1 }) H.Ways.Add(new CapitalHull.Way(s, H.Break - 2, 4, 5, "break"));
                 break;
             case "scattered":
-                Ways.Add(new Way(0, Cut - 1, 0, Owner.GetValueOrDefault(new Int3(0, Walk(0), Cut - 1), -1), "fore-face"));
-                Ways.Add(new Way(0, Cut + 2, 0, Owner.GetValueOrDefault(new Int3(0, Walk(0), Cut + 2), hall), "aft-face"));
+                H.Ways.Add(new CapitalHull.Way(0, H.Cut - 1, 0, 0, "fore-face"));
+                H.Ways.Add(new CapitalHull.Way(0, H.Cut + 2, 0, 0, "aft-face"));
                 break;
         }
     }
 
-    /// <summary>An opening through a flank onto deck 0, width by height, its edge cells taken into the room.</summary>
-    void Flank(int side, int v0, int width, int height, int room, string what)
+    // ---- the vessel's pieces ---------------------------------------------------------------------------
+
+    void Pieces()
     {
-        if (room < 0) return;
-        for (int v = v0; v < v0 + width; v++)
-            for (int k = 0; k < 4; k++)
-            {
-                int u = side > 0 ? Half - 1 - k : -Half + k;
-                for (int y = Walk(0); y < Walk(0) + height + (what == "breach" ? (int)(Hash.Cell(new Int3(v, 0, 0), 91) % 3) : 0); y++)
-                {
-                    var c = new Int3(u, y, v);
-                    if (Owner.ContainsKey(c)) continue;
-                    B.Remove(c);
-                    Take(room, c);
-                }
-                for (int y = Walk(0) - 1; y >= 0; y--) B[new Int3(u, y, v)] = new Block(BlockType.Cube, Plate.M, Plate.C, Role.Floor);
-            }
-        for (int v = v0 - 3; v < v0 + width + 3; v++)
-            for (int u = -Half; u < Half; u++)
-                if (side > 0 ? u >= Half - 8 : u < -Half + 8) Reserved.Add(new Int3(u, 0, v));
-        Ways.Add(new Way(side, v0, width, room, what));
-    }
-
-    /// <summary>The crash's own damage: the broken back torn open to the sky, ragged faces where the hull parted.</summary>
-    void Tear()
-    {
-        if (Break >= 0)
-            foreach (Int3 c in B.Keys.Concat(Open).ToList())
-            {
-                if (c.Y < 2) continue;
-                int reach = 3 + (int)(Hash.Cell(new Int3(c.X / 2, c.Y / 2, 0), 37) % 3) + (c.Y > HullTop - 4 ? 1 : 0);
-                if (Math.Abs(c.Z - Break + 0.5) < reach) { B.Remove(c); Open.Add(c); }
-            }
-        if (Cut >= 0)
-            foreach (Int3 c in B.Keys.ToList())
-            {
-                if (c.Y < Walk(1) || c.Z < Cut - 4 || c.Z >= Cut + 6) continue;
-                int edge = c.Z < Cut ? Cut - 1 - c.Z : c.Z - Cut - 2;
-                if (edge < (int)(Hash.Cell(new Int3(c.X / 2, c.Y / 2, 1), 53) % 4)) { B.Remove(c); Open.Add(c); }
-            }
-    }
-
-    bool Torn(Int3 c) => !B.ContainsKey(c) && !Owner.ContainsKey(c) && Open.Contains(c);
-
-    // ---- what's in the rooms ------------------------------------------------------------------------------------
-
-    bool Supports(Int3 c) => B.TryGetValue(c, out Block b) && BlockInfo.Supports(b.Type);
-
-    bool Floor(Room r, Int3 c) => c.Y == r.WalkY && Open.Contains(c) && Open.Contains(c + Int3.Up) && Supports(c + Int3.Down) && !Props.ContainsKey(c);
-
-    bool Free(Room r, Int3 c) => Floor(r, c) && !Reserved.Contains(c) && !Reserved.Contains(c with { Y = 0 }) && !StepAt(c) && !Slots.Any(s => s.C == c);
-
-    bool ByWall(Int3 c) => Dirs.Horizontal.Any(h => B.TryGetValue(c + h.Vec(), out Block b) && BlockInfo.IsFullCube(b.Type));
-
-    Dir AwayFromWall(Int3 c) => Dirs.Horizontal.FirstOrDefault(h => B.TryGetValue(c - h.Vec(), out Block b) && BlockInfo.IsFullCube(b.Type), Dir.North);
-
-    Block Dev(BlockType t, Stuff2 s, Dir f = Dir.North) => new(t, s.M, s.C, Role.Decor, f);
-    Block Fur(BlockType t, Stuff2 s, Dir f = Dir.North) => new(t, s.M, s.C, Role.Prop, f);
-
-    void Furnish()
-    {
-        for (int i = 0; i < Rooms.Count; i++)
+        foreach (Pose p in Poses)
         {
-            Room r = Rooms[i];
-            if (r.Cells.Count == 0) continue;
-            var floor = r.Cells.Where(c => Floor(r, c)).OrderBy(c => c.Z).ThenBy(c => c.X).ToList();
-            if (floor.Count == 0) continue;
-            var free = floor.Where(c => Free(r, c)).ToList();
-            var wall = free.Where(ByWall).ToList();
-            var placed = new HashSet<Int3>(Props.Keys);
-            if (free.Count == 0) continue;
-            switch (r.Purpose)
-            {
-                case "hold": Containers(r, free, "cargo"); break;
-                case "ore-hold": Containers(r, free, "ore"); break;
-                case "hangar": Hangar(r, free); break;
-                case "engine-room": Engines(r, free); break;
-                case "reactor": Reactor(i, r, free); break;
-                case "core-room": CoreRoom(i, r, free); break;
-                case "fuel-tanks": Grid(free, 4, 2, c => Dev(BlockType.Tank, MachineS.Scale(0.9f))); break;
-                case "generator-room": Grid(free, 4, 2, c => Dev(BlockType.Machine, MachineS)); break;
-                case "refinery": Grid(free, 6, 3, c => Dev(BlockType.Machine, MachineS)); break;
-                case "magazine": Grid(free, 3, 2, c => Fur(BlockType.Crate, Dark.Scale(1.4f))); break;
-                case "bridge": Bridge(i, r, free); break;
-                case "crew-quarters" or "barracks" or "cabin":
-                    Along(wall, 2, c => Fur(BlockType.Bunk, new Stuff2(Material.Cloth, K(P, 'b', Teal).C), AwayFromWall(c)));
-                    break;
-                case "mess" or "promenade": Islands(free, c => Fur(BlockType.Table, InnerS.Scale(1.2f))); break;
-                case "med-ward":
-                    Along(wall, 3, c => Fur(BlockType.Bed, new Stuff2(Material.Cloth, new Rgb(0xc8, 0xcc, 0xc4)), AwayFromWall(c)));
-                    break;
-                case "stores" or "armoury":
-                    Along(wall, 2, c => Fur(r.Purpose == "armoury" ? BlockType.Locker : BlockType.Shelf, Dark.Scale(1.5f), AwayFromWall(c)));
-                    break;
-                case "workshop": Along(wall, 3, c => Fur(BlockType.Bench, MachineS, AwayFromWall(c))); break;
-                case "engineering" or "sensor-room" or "officers":
-                    Along(wall, 3, c => Dev(BlockType.Terminal, MachineS, AwayFromWall(c)));
-                    break;
-            }
-            // Loot where the plan says it goes: the holds, the stores, the bridge and the core room most.
-            int caches = r.Purpose switch { "hold" or "ore-hold" or "hangar" => 2, "stores" or "armoury" or "magazine" or "officers" or "workshop" => 1, "crew-quarters" or "cabin" or "barracks" or "med-ward" => R.Chance(0.4f) ? 1 : 0, _ => 0 };
-            foreach (Int3 c in Shuffle(wall.Where(c => Free(r, c) && Dirs.Horizontal.Any(h => Free(r, c + h.Vec())))).Take(caches)) Slots.Add((SlotKind.Loot, c, i));
-            int spawns = r.Kind == ModuleKind.Hall ? 3 : r.Purpose is "corridor" ? 2 : r.Purpose is "catwalk" or "stair" ? 0 : R.Chance(0.5f) ? 1 : 0;
-            foreach (Int3 c in Shuffle(floor.Where(c => Free(r, c) && !ByWall(c))).Take(spawns)) Slots.Add((SlotKind.Spawn, c, i));
-            Keep(r, i, placed);
-            // Lamps in the ceiling.
-            foreach (Int3 c in floor.Where(c => (c.X & 7) == 3 && (c.Z & 7) == 3))
-            {
-                var lamp = c with { Y = r.Top };
-                if (B.TryGetValue(lamp, out Block b) && BlockInfo.IsFullCube(b.Type)) Lamps.Add((lamp, i));
-            }
-        }
-    }
-
-    IEnumerable<Int3> Shuffle(IEnumerable<Int3> cells) => cells.OrderBy(c => Hash.Cell(c, (uint)R.Range(0, 1 << 20)));
-
-    void Along(List<Int3> wall, int every, Func<Int3, Block> make)
-    {
-        int n = 0;
-        foreach (Int3 c in wall)
-            if (n++ % every == 0 && !Props.ContainsKey(c)) Props[c] = make(c);
-    }
-
-    void Grid(List<Int3> free, int every, int tall, Func<Int3, Block> make)
-    {
-        var set = new HashSet<Int3>(free);
-        foreach (Int3 c in free)
-        {
-            if (Mod(c.X, every) != 1 || Mod(c.Z, every) != 1) continue;
-            var foot = new[] { c, c + new Int3(1, 0, 0), c + new Int3(0, 0, 1), c + new Int3(1, 0, 1) };
-            if (!foot.All(set.Contains)) continue;
-            foreach (Int3 f in foot)
-                for (int y = 0; y < tall; y++) if (Open.Contains(f + Int3.Up * y)) Props[f + Int3.Up * y] = make(f);
-        }
-    }
-
-    void Islands(List<Int3> free, Func<Int3, Block> make)
-    {
-        foreach (Int3 c in free)
-            if (!ByWall(c) && Mod(c.X, 3) == 0 && Mod(c.Z, 2) == 0 && !Dirs.Horizontal.Any(h => ByWall(c + h.Vec()))) Props[c] = make(c);
-    }
-
-    static int Mod(int a, int m) => ((a % m) + m) % m;
-
-    /// <summary>Cargo containers in rows down both sides of a hold, two high, aisles between, the middle kept clear.</summary>
-    void Containers(Room r, List<Int3> free, string what)
-    {
-        var set = new HashSet<Int3>(free);
-        Rgb[] cargo = { Orange.C, Teal.C, Hazard, new Rgb(0x3a, 0x5a, 0x9a), new Rgb(0x8a, 0x2a, 0x22), Plate.C.Scale(0.85f) };
-        foreach (int s in new[] { -1, 1 })
-            for (int row = 5; row + 2 <= Half - 3; row += 4)
-            {
-                int u0 = s > 0 ? row : -row - 2;
-                var vs = free.Where(c => c.X == u0).Select(c => c.Z).OrderBy(v => v).ToList();
-                if (vs.Count == 0) continue;
-                for (int v = vs[0] + 1; v + 6 <= vs[^1]; v += 7)
-                {
-                    var foot = new List<Int3>();
-                    for (int dv = 0; dv < 6; dv++) for (int du = 0; du < 2; du++) foot.Add(new Int3(u0 + du, r.WalkY, v + dv));
-                    if (!foot.All(set.Contains)) continue;
-                    int high = what == "ore" ? 1 : 2 + (int)(Hash.Cell(new Int3(u0, 0, v), 7) % 2) * 2;
-                    Rgb col = cargo[Hash.Cell(new Int3(u0, 1, v), 11) % (uint)cargo.Length];
-                    foreach (Int3 f in foot)
-                        for (int y = 0; y < high; y++)
-                        {
-                            Int3 at = f + Int3.Up * y;
-                            if (!Open.Contains(at)) continue;
-                            Props[at] = what == "ore"
-                                ? new Block(BlockType.Rubble, Material.Rock, new Rgb(0x6a, 0x5e, 0x50), Role.Decor, Dir.North, (byte)(Hash.Cell(at, 3) % 4))
-                                : new Block(BlockType.Cube, Material.Steel, ((at.Z - v) % 6 == 0 || y % 2 == 1 && (at.Z - v) % 2 == 0) ? col.Scale(0.7f) : col, Role.Decor);
-                        }
-                }
-            }
-    }
-
-    void Hangar(Room r, List<Int3> free)
-    {
-        // A landing square in hazard paint on the deck, fuel tanks and crates along the far wall.
-        foreach (Int3 c in free)
-            if ((Math.Abs(c.X) == 8 || Math.Abs(c.X) == 9) && c.Z % 2 == 0) Props[c] = new Block(BlockType.Plate, Material.Concrete, ((c.Z >> 1) & 1) == 0 ? Hazard : Black, Role.Floor);
-        Along(free.Where(c => ByWall(c) && Math.Abs(c.X) > 10).ToList(), 3, c => Dev(BlockType.Tank, MachineS.Scale(0.9f)));
-    }
-
-    void Engines(Room r, List<Int3> free)
-    {
-        // A drive unit against the stern bulkhead behind each nacelle, a block clear of the catwalk overhead.
-        var set = new HashSet<Int3>(free);
-        int back = free.Max(c => c.Z);
-        foreach (var (u0, u1) in Nacelles.Count > 0 ? Nacelles : DefaultNacelles())
-            for (int u = Math.Max(u0 + 1, -Half + 3); u < Math.Min(u1 - 1, Half - 3); u++)
-            {
-                if (u >= -3 && u < 3) continue;
-                for (int v = back - 4; v <= back; v++)
-                {
-                    var c = new Int3(u, r.WalkY, v);
-                    if (!set.Contains(c)) continue;
-                    for (int y = 0; y < 4; y++)
-                        if (Open.Contains(c + Int3.Up * y)) Props[c + Int3.Up * y] = Dev(y == 3 || (u & 3) == 0 ? BlockType.Machine : BlockType.Tank, y == 1 ? Dark.Scale(1.3f) : MachineS);
-                }
-            }
-        // Coolant tanks in a row along each side.
-        Along(free.Where(c => ByWall(c) && c.Z < back - 6 && Math.Abs(c.X) > 6).ToList(), 3, c => Dev(BlockType.Tank, Teal.Scale(0.6f)));
-    }
-
-    void Reactor(int i, Room r, List<Int3> free)
-    {
-        // The reactor: a column of tanks banded with light, a walkway round it.
-        var mid = free.OrderBy(c => Math.Abs(c.X - free.Average(f => f.X)) + Math.Abs(c.Z - free.Average(f => f.Z))).First();
-        for (int du = -1; du <= 1; du++)
-            for (int dv = -1; dv <= 1; dv++)
-                for (int y = 0; y < 4; y++)
-                {
-                    Int3 c = mid + new Int3(du, y, dv);
-                    if (!Open.Contains(c) || Reserved.Contains(c with { Y = r.WalkY })) continue;
-                    Props[c] = y == 2 ? new Block(BlockType.Cube, Material.Lumen, new Rgb(0x8f, 0xd8, 0xff), Role.Light) : Dev(du == 0 && dv == 0 ? BlockType.Machine : BlockType.Tank, MachineS);
-                }
-        foreach (Int3 c in free.Where(c => ByWall(c) && Hash.Cell(c, 5) % 5 == 0).Take(1)) Slots.Add((SlotKind.Terminal, c, i));
-    }
-
-    void CoreRoom(int i, Room r, List<Int3> free)
-    {
-        // The dead core's housing in the middle, its consoles round it, the ship's most valuable things.
-        var mid = free.OrderBy(c => Math.Abs(c.X - free.Average(f => f.X)) + Math.Abs(c.Z - free.Average(f => f.Z))).First();
-        for (int du = 0; du <= 1; du++)
-            for (int dv = 0; dv <= 1; dv++)
-                for (int y = 0; y < 2; y++)
-                {
-                    Int3 c = mid + new Int3(du, y, dv);
-                    if (Open.Contains(c)) Props[c] = Dev(BlockType.Machine, y == 1 ? Dark : MachineS);
-                }
-        var walls = free.Where(c => ByWall(c) && !Props.ContainsKey(c)).ToList();
-        if (walls.Count > 0) Slots.Add((SlotKind.Terminal, walls[walls.Count / 2], i));
-        foreach (Int3 c in walls.Where((_, k) => k % 5 == 1).Take(2)) Slots.Add((SlotKind.Loot, c, i));
-    }
-
-    void Bridge(int i, Room r, List<Int3> free)
-    {
-        // Consoles along the forward windows, a chair at each, the command chair behind them, the plot table aft.
-        int front = r.Cells.Where(c => c.Y == r.WalkY).Min(c => c.Z);
-        var set = new HashSet<Int3>(free);
-        foreach (Int3 c in free.Where(c => c.Z == front && Mod(c.X, 3) != 2))
-        {
-            Props[c] = Dev(BlockType.Terminal, MachineS, Dir.South);
-            Int3 seat = c + new Int3(0, 0, 2);
-            if (set.Contains(seat)) Devices[seat] = ("chair", Dir.North);
-        }
-        Int3 command = free.Where(c => c.Z == front + 6).OrderBy(c => Math.Abs(c.X - 2)).FirstOrDefault(new Int3(int.MinValue, 0, 0));
-        if (command.X != int.MinValue) Devices[command] = ("chair", Dir.North);
-        foreach (Int3 c in free.Where(c => c.Z == front + 9 && c.X >= -2 && c.X <= 0)) Props[c] = Fur(BlockType.Table, MachineS);
-        var walls = free.Where(c => ByWall(c) && !Props.ContainsKey(c) && c.Z > front + 4).ToList();
-        if (walls.Count > 0) Slots.Add((SlotKind.Terminal, walls[0], i));
-        if (walls.Count > 3) Slots.Add((SlotKind.Loot, walls[^1], i));
-    }
-
-    /// <summary>
-    /// Every way through a room stays open: from the doorways, every floor cell, cache, console and spawn is
-    /// still reached on foot, or the props put down last come out again until it is.
-    /// </summary>
-    void Keep(Room r, int i, HashSet<Int3> before)
-    {
-        var added = Props.Keys.Where(c => !before.Contains(c) && r.Cells.Contains(c) && c.Y == r.WalkY && BlockInfo.Collides(Props[c].Type)).ToList();
-        bool Clear(Int3 c) => !Props.TryGetValue(c, out Block pb) || !BlockInfo.Collides(pb.Type);
-        for (int guard = 0; guard < 200; guard++)
-        {
-            var walk = new HashSet<Int3>(r.Cells.Where(c => c.Y == r.WalkY && Open.Contains(c) && Open.Contains(c + Int3.Up) && Clear(c) && Supports(c + Int3.Down)));
-            // From where the doorways and openings let in.
-            var starts = walk.Where(c => Reserved.Contains(c)).ToList();
-            if (starts.Count == 0) starts = walk.Take(1).ToList();
-            var seen = new HashSet<Int3>();
-            var q = new Queue<Int3>();
-            foreach (Int3 s in starts) if (seen.Add(s)) q.Enqueue(s);
-            while (q.Count > 0)
-            {
-                Int3 c = q.Dequeue();
-                foreach (Dir h in Dirs.Horizontal)
-                {
-                    Int3 n = c + h.Vec();
-                    if (walk.Contains(n) && seen.Add(n)) q.Enqueue(n);
-                }
-            }
-            bool Reached(Int3 c) => seen.Contains(c) || Dirs.Horizontal.Any(h => seen.Contains(c + h.Vec()));
-            bool ok = walk.All(seen.Contains) && Slots.Where(s => s.Room == i).All(s => Reached(s.C))
-                && starts.All(seen.Contains);
-            if (ok || added.Count == 0) return;
-            // Take out a piece standing next to a cell nobody reaches first, else the last put down.
-            int at = added.FindLastIndex(c => Dirs.Horizontal.Any(h => walk.Contains(c + h.Vec()) && !seen.Contains(c + h.Vec())));
-            if (at < 0) at = added.Count - 1;
-            Int3 last = added[at];
-            added.RemoveAt(at);
-            for (int y = 0; y < 8; y++) Props.Remove(last + Int3.Up * y);
-        }
-    }
-
-    IEnumerable<(int, int)> DefaultNacelles() => NacelleSpans();
-
-    List<(int, int)> NacelleSpans()
-    {
-        int n = W >= 44 ? 3 : 2, span = (W - 8) / n, w = (span - 2) & ~1;
-        var list = new List<(int, int)>();
-        for (int i = 0; i < n; i++)
-        {
-            int c = -Half + 4 + span * i + span / 2;
-            list.Add((c - w / 2, c - w / 2 + w));
-        }
-        return list;
-    }
-
-    // ---- the outside --------------------------------------------------------------------------------------------
-
-    bool Shell(Int3 c) => B.TryGetValue(c, out Block b) && b.Role is Role.Wall or Role.Roof && b.Material == Plate.M && b.Color.Equals(Plate.C);
-
-    void Paint(Int3 c, Rgb col)
-    {
-        if (B.TryGetValue(c, out Block b) && BlockInfo.Collides(b.Type)) { b.Color = col; B[c] = b; }
-    }
-
-    void Exterior()
-    {
-        Windows();
-        Livery();
-        Engines();
-        Topside();
-    }
-
-    void Windows()
-    {
-        // The bridge's windows across its front and down its sides, a lower band for the officers' deck.
-        foreach (var (room, d, rows) in new[] { (BridgeRoom, D + 1, 3), (Owner.GetValueOrDefault(new Int3(0, Walk(D), TV0 + 4), -1), D, 2) })
-        {
-            if (room < 0) continue;
-            for (int y = Walk(d) + 1; y < Walk(d) + 1 + rows; y++)
-            {
-                for (int u = TU0 + 2; u < TU1 - 2; u++) Glaze(new Int3(u, y, TV0), new Int3(u, y, TV0 + 1), room);
-                for (int v = TV0 + 2; v < TV0 + 10; v++)
-                {
-                    Glaze(new Int3(TU0, y, v), new Int3(TU0 + 1, y, v), room);
-                    Glaze(new Int3(TU1 - 1, y, v), new Int3(TU1 - 2, y, v), room);
-                }
-            }
-        }
-        // Portholes down the flanks for the crew's rooms.
-        foreach (var (r, i) in Rooms.Select((r, i) => (r, i)).Where(x => x.r.Purpose is "crew-quarters" or "mess" or "med-ward" or "cabin" or "barracks" or "officers"))
-            foreach (Int3 c in r.Cells.Where(c => c.Y == r.WalkY + 1 && Mod(c.Z, 6) == 2).ToList())
-                foreach (int s in new[] { 1, -1 })
-                {
-                    Int3 inner = c + new Int3(s, 0, 0), outer = c + new Int3(2 * s, 0, 0);
-                    if (!InHull(outer.X, outer.Z) || InHull(outer.X + s, outer.Z) || !Shell(inner) || !Shell(outer)) continue;
-                    for (int dv = 0; dv < 2; dv++) Glaze(outer + new Int3(0, 0, dv), inner + new Int3(0, 0, dv), i);
-                }
-    }
-
-    void Glaze(Int3 outer, Int3 inner, int room)
-    {
-        if (!B.ContainsKey(outer) || !B.ContainsKey(inner) && !Owner.ContainsKey(inner)) return;
-        if (!Owner.ContainsKey(inner) && !Shell(inner)) return;
-        B[outer] = new Block(BlockType.Pane, Material.Glass, P.F.Glass, Role.Window);
-        if (!Owner.ContainsKey(inner)) { B.Remove(inner); Take(room, inner); }
-    }
-
-    bool OuterFlank(int u, int v) => InHull(u, v) && (!InHull(u + 1, v) || !InHull(u - 1, v));
-
-    void Livery()
-    {
-        foreach (Int3 c in B.Keys.ToList())
-        {
-            if (!Shell(c)) continue;
-            bool flank = OuterFlank(c.X, c.Z) && c.Y < HullTop - Chamfer;
-            bool tower = InTower(c.X, c.Z) && c.Y >= HullTop && (c.X == TU0 || c.X == TU1 - 1 || c.Z == TV0 || c.Z == TV1 - 1);
-            if (flank)
-            {
-                // The corporate bands down both flanks, chevrons on the bow, hazard checks on the stern.
-                if (c.Y is 12 or 13) Paint(c, Orange.C);
-                else if (c.Y == 14) Paint(c, Teal.C);
-                else if (c.Z < Bz && c.Y >= 3 && c.Y < 11 && Mod(c.Z - c.Y, 6) < 3) Paint(c, Mod(c.Z - c.Y, 12) < 6 ? Orange.C : Black);
-                else if (c.Z >= L - 4 && c.Y < 11 && ((c.Z / 2 + c.Y / 2) & 1) == 0) Paint(c, Hazard);
-            }
-            else if (tower)
-            {
-                if (c.Y >= TowerTop - 4) Paint(c, ((c.X / 2 + c.Z / 2 + c.Y / 2) & 1) == 0 ? Hazard : Black);
-                else if (c.Y < Walk(D) + 1) Paint(c, Orange.C);
-            }
-            else if (c.Z >= L - 2 && c.Y < HullTop - 2) Paint(c, ((c.X / 2 + c.Y / 2) & 1) == 0 ? Trim.C : Plate.C.Scale(0.9f));
-        }
-        // The hull number, two metres to a stroke, by the bow on both flanks.
-        string number = (11 + R.Range(0, 88)).ToString();
-        int wide = number.Length * 8 - 2;
-        Stencil(number, Half - 1, 2, Bz + 4 + wide - 1, -1, Black);
-        Stencil(number, -Half, 2, Bz + 4, 1, Black);
-        // Bay doors: the hangar's shut one on the far side in a hazard frame.
-        foreach (BayRec b in Bays.Where(b => b.Kind == Bay.Hangar))
-        {
-            int s = Ways.FirstOrDefault(w => w.What == "cargo")?.Side ?? 1;
-            int u = s > 0 ? -Half : Half - 1;
-            for (int v = b.V0 + 4; v < b.V1 - 3; v++)
-                for (int y = 2; y < 11; y++)
-                {
-                    bool frame = v == b.V0 + 4 || v == b.V1 - 4 || y == 10;
-                    Paint(new Int3(u, y, v), frame ? (((v + y) >> 1 & 1) == 0 ? Hazard : Black) : Dark.C.Scale(1.2f));
-                }
-        }
-        // A hazard frame round each way in.
-        foreach (Way w in Ways.Where(w => w.Side != 0))
-        {
-            int u = w.Side > 0 ? Half - 1 : -Half;
-            for (int v = w.V0 - 1; v <= w.V0 + w.Width; v++)
-                for (int y = Walk(0); y <= Walk(0) + 7; y++)
-                    if (v == w.V0 - 1 || v == w.V0 + w.Width || y == Walk(0) + 7) Paint(new Int3(u, y, v), ((v + y) >> 1 & 1) == 0 ? Hazard : Black);
-        }
-        // Scorched round the tears.
-        foreach (Int3 c in B.Keys.Where(c => NearTear(c.Z, 0) && Shell(c) && Hash.Cell(c, 23) % 3 != 0).ToList()) Paint(c, Plate.C.Lerp(new Rgb(0x20, 0x1c, 0x1a), 0.7f));
-        if (P.Tech == TechLevel.Low)
-            foreach (Int3 c in B.Keys.Where(c => Shell(c) && Hash.Cell(new Int3(c.X / 3, c.Y / 3, c.Z / 3), 29) % 7 == 0).ToList()) Paint(c, new Rgb(0x7a, 0x4a, 0x30));
-    }
-
-    void Stencil(string text, int u, int y0, int v0, int dir, Rgb ink)
-    {
-        const int scale = 2;
-        int at = 0;
-        foreach (char ch in text)
-        {
-            string g = Plot.Font[ch - '0'];
-            for (int row = 0; row < 5; row++)
-                for (int col = 0; col < 3; col++)
-                {
-                    if (g[row * 3 + col] != '1') continue;
-                    for (int sy = 0; sy < scale; sy++)
-                        for (int sa = 0; sa < scale; sa++)
-                        {
-                            int a = at + col * scale + sa, y = y0 + (4 - row) * scale + sy;
-                            Paint(new Int3(u, y, v0 + dir * a), ink);
-                        }
-                }
-            at += 4 * scale;
-        }
-    }
-
-    void Engines()
-    {
-        // Nacelles off the stern, each faced with a bank of thrusters; the nozzles' face kept on one level.
-        while (Nac < 12 && !(PieceOf(L - 1) is { } last && last.Dy(L + Nac - 1) == last.Dy(L + Nac) && last.Dy(L + Nac) == last.Dy(L + Nac + 1))) Nac++;
-        Nacelles.AddRange(NacelleSpans());
-        const int yb = 2, yt = 16;
-        foreach (var (u0, u1) in Nacelles)
-        {
-            for (int v = L; v < L + Nac; v++)
-                for (int u = u0; u < u1; u++)
-                    for (int y = yb; y < yt; y++)
-                    {
-                        bool edge = u == u0 || u == u1 - 1 || y == yt - 1;
-                        B[new Int3(u, y, v)] = new Block(BlockType.Cube, Trim.M, edge && (v & 3) < 2 ? Trim.C.Scale(0.8f) : Trim.C, Role.Wall);
-                    }
-            for (int u = u0; u < u1; u++) B[new Int3(u, yt, L + Nac / 2)] = new Block(BlockType.Pipe, Material.Steel, MachineS.C, Role.Decor, Dir.East);
-            for (int u = u0 + 1; u + 1 < u1; u += 2)
-                for (int y = yb + 1; y + 1 < yt; y += 2)
-                    Devices[new Int3(u, y, L + Nac)] = ("thruster", Dir.South);
-        }
-        // Manoeuvring thrusters in pods on both flanks just aft of the bow.
-        foreach (int s in new[] { 1, -1 })
-        {
-            int v0 = Bz + 18;
-            for (int v = v0; v < v0 + 4; v++)
-                for (int y = 8; y < 12; y++)
-                    for (int k = 0; k < 2; k++) B[new Int3(s > 0 ? Half + k : -Half - 1 - k, y, v)] = new Block(BlockType.Cube, Trim.M, Trim.C, Role.Wall);
-            for (int y = 8; y < 12; y += 2)
-            {
-                Devices[new Int3(s > 0 ? Half + 2 : -Half - 4, y, v0 + 1)] = ("thruster", s > 0 ? Dir.East : Dir.West);
-            }
-        }
-    }
-
-    /// <summary>On the hull's back: the spine, cargo pods, radiators, vents, masts on the tower, rams and turrets as the role and faction have them.</summary>
-    void Topside()
-    {
-        int top = HullTop;
-        bool Roof(int u, int v) => Col(Hmin, u, v) == top && Col(Hmax, u, v) == top && !InTower(u, v) && !NearTear(v, 2);
-        void Box(int u0, int u1, int v0, int v1, int h, Func<Int3, Block> make)
-        {
-            for (int v = v0; v < v1; v++)
-                for (int u = u0; u < u1; u++)
-                {
-                    if (!Roof(u, v)) return;
-                }
-            for (int v = v0; v < v1; v++)
-                for (int u = u0; u < u1; u++)
-                    for (int y = top; y < top + h; y++) B[new Int3(u, y, v)] = make(new Int3(u, y, v));
-        }
-        // The dorsal spine, with a main along it.
-        for (int v = Bz; v < L - 4; v++)
-            if (Roof(-1, v) && Roof(0, v))
-            {
-                for (int u = -2; u < 2; u++) if (Roof(u, v)) B[new Int3(u, top, v)] = new Block(BlockType.Cube, Trim.M, Trim.C, Role.Wall);
-                B[new Int3(-1, top + 1, v)] = new Block(BlockType.Pipe, Material.Steel, MachineS.C, Role.Decor, Dir.South);
-                B[new Int3(0, top + 1, v)] = new Block(BlockType.Pipe, Material.Steel, Teal.C.Scale(0.8f), Role.Decor, Dir.South);
-            }
-        Rgb[] pods = { Orange.C, Teal.C, Hazard, new Rgb(0x3a, 0x5a, 0x9a), new Rgb(0x8a, 0x2a, 0x22) };
-        foreach (BayRec b in Bays)
-        {
-            if (Pods && b.Kind is Bay.Hold or Bay.Cabins)
-                foreach (int s in new[] { -1, 1 })
-                    for (int v = b.V0 + 2; v + 8 <= b.V1; v += 10)
-                    {
-                        Rgb col = pods[Hash.Cell(new Int3(s, 0, v), 17) % (uint)pods.Length];
-                        int u0 = s > 0 ? 5 : -13;
-                        Box(u0, u0 + 8, v, v + 8, 4, c => new Block(BlockType.Cube, Material.Steel, c.Y == top + 3 || (c.Z - v) % 4 == 0 ? col.Scale(0.75f) : col, Role.Decor));
-                    }
-            if (b.Kind is Bay.Power or Bay.Engine)
-                for (int v = b.V0 + 2; v < b.V1 - 2; v += 4)
-                    foreach (int s in new[] { -1, 1 })
-                        for (int u = 4; u < Math.Min(14, Half - 6); u++)
-                            if (Roof(s * u, v))
-                                for (int y = top; y < top + 4; y++) B[new Int3(s * u, y, v)] = new Block(BlockType.Lattice, Material.Steel, Grate.C.Scale(1.2f), Role.Decor);
-            if (S.Role == "warship" && b.Kind is Bay.Armoury or Bay.Barracks or Bay.Magazine or Bay.Crew)
-            {
-                int v = (b.V0 + b.V1) / 2 - 2;
-                Box(-2, 2, v, v + 4, 2, c => new Block(BlockType.Machine, Material.Steel, Dark.C.Scale(1.3f), Role.Decor));
-                if (Col(Hmin, 0, v) == top)
-                    for (int dv = -6; dv < 0; dv++) foreach (int u in new[] { -1, 0 }) if (B.ContainsKey(new Int3(u, top + 1, v))) B[new Int3(u, top + 1, v + dv)] = new Block(BlockType.Pipe, Material.Steel, Dark.C, Role.Decor, Dir.North);
-            }
-        }
-        // Vents and boxes scattered over the back.
-        for (int v = Bz + 2; v < L - 6; v += 5)
-        {
-            int u = (int)(Hash.Cell(new Int3(v, 0, 3), 19) % (uint)Math.Max(1, Half - 6)) * (v % 2 == 0 ? 1 : -1);
-            if (Math.Abs(u) < 4) continue;
-            Box(u, u + 2, v, v + 2, 1, c => new Block(BlockType.Machine, Material.Steel, MachineS.C, Role.Decor));
-        }
-        // Masts on the tower, a warning light on each.
-        foreach (var (u, h) in new[] { (TU0 + 3, 12), (TU1 - 4, 8), ((TU0 + TU1) / 2, 6) })
-        {
-            int v = TV1 - 5;
-            for (int y = TowerTop; y < TowerTop + h; y++) B[new Int3(u, y, v)] = new Block(BlockType.Rib, Material.Steel, MachineS.C, Role.Decor);
-            B[new Int3(u, TowerTop + h, v)] = new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x30, 0x20), Role.Light);
-            if (h >= 8)
-                for (int k = -2; k <= 2; k++) if (k != 0) B[new Int3(u + k, TowerTop + h - 3, v)] = new Block(BlockType.Lattice, Material.Steel, MachineS.C, Role.Decor);
-        }
-        // A ram or a drill on the stem.
-        if (Spiked)
-            for (int i = 0; i < 5; i++)
-                for (int y = 6 + i % 2 * 2; y < 8 + i % 2 * 2; y++)
-                {
-                    int u = -2 + i;
-                    if (InHull(u, 1) || InHull(u, 2)) for (int v = -3; v < 1; v++) B[new Int3(u, y, v)] = new Block(v == -3 ? BlockType.Spike : BlockType.Rib, Material.Steel, Dark.C.Scale(1.4f), Role.Decor);
-                }
-    }
-
-    // ---- the vessel: the player's own blocks ----------------------------------------------------------------------
-
-    /// <summary>
-    /// The hull as the player's large-grid blocks (2 m), each piece its own structure with no core: every block of the
-    /// plan read off the hull's 1 m drawing, eight cells a block. Shell, decks and bulkheads are steel in the livery's
-    /// paint, the windows glass, slopes on the bow and shoulders, a door wherever a person goes through a wall, lights
-    /// in the ceilings, and the devices where the rooms have them: thrusters on the nacelles and under the keel,
-    /// generators in the reactor and generator rooms, fuel tanks, containers in the holds, gyros by the drives,
-    /// command chairs on the bridge, CPU extenders and an empty seat for the core in the core room. A mass of solid
-    /// fill nobody can reach is left hollow, as a builder would.
-    /// </summary>
-    Dictionary<Int3, string> Blocks()
-    {
-        var paints = new (string Id, Rgb C)[]
-        {
-            ("hull", Plate.C), ("trim", Trim.C), ("wall", InnerS.C), ("deck", FloorS.C), ("orange", Orange.C), ("teal", Teal.C),
-            ("dark", Dark.C), ("machine", MachineS.C), ("hazard", Hazard), ("hazard", Black), ("blue", new Rgb(0x3a, 0x5a, 0x9a)), ("red", new Rgb(0x8a, 0x2a, 0x22)),
-        };
-        string PaintOf(Rgb c) => paints.OrderBy(p => Math.Abs(p.C.R - c.R) + Math.Abs(p.C.G - c.G) + Math.Abs(p.C.B - c.B)).First().Id;
-        var doorAt = new Dictionary<Int3, DoorRec>();
-        foreach (DoorRec d in Doors) doorAt[Bk(d.Cells[0])] = d;
-        var lo = new Int3(int.MaxValue, int.MaxValue, int.MaxValue);
-        var hi = new Int3(int.MinValue, int.MinValue, int.MinValue);
-        foreach (Int3 c in B.Keys.Concat(Props.Keys).Concat(Devices.Keys)) { lo = Int3.Min(lo, Bk(c)); hi = Int3.Max(hi, Bk(c)); }
-        var map = new Dictionary<Int3, string>();
-        for (int bz = lo.Z; bz <= hi.Z; bz++)
-            for (int by = lo.Y; by <= hi.Y; by++)
-                for (int bx = lo.X; bx <= hi.X; bx++)
-                {
-                    var b = new Int3(bx, by, bz);
-                    if (Read(b, doorAt, PaintOf) is { } s) map[b] = s;
-                }
-        // Hollow: steel shut in on all six sides by more steel is mass nobody needs.
-        var keep = new Dictionary<Int3, string>();
-        foreach (var (b, s) in map)
-        {
-            bool shut = s.StartsWith("steel ") && !s.Contains("slope") && new[] { Int3.Up, Int3.Down, new Int3(1, 0, 0), new Int3(-1, 0, 0), new Int3(0, 0, 1), new Int3(0, 0, -1) }
-                .All(n => map.TryGetValue(b + n, out string o) && o.StartsWith("steel ") && !o.Contains("slope"));
-            if (!shut) keep[b] = s;
-        }
-        return keep;
-    }
-
-    static Int3 Bk(Int3 c) => new(c.X >> 1, c.Y >> 1, c.Z >> 1);
-
-    IEnumerable<Int3> CellsOf(Int3 b)
-    {
-        for (int z = 0; z < 2; z++) for (int y = 0; y < 2; y++) for (int x = 0; x < 2; x++) yield return new Int3(2 * b.X + x, 2 * b.Y + y, 2 * b.Z + z);
-    }
-
-    /// <summary>One block of the plan from the eight cells it covers, or none.</summary>
-    string? Read(Int3 b, Dictionary<Int3, DoorRec> doorAt, Func<Rgb, string> paintOf)
-    {
-        if (doorAt.TryGetValue(b, out DoorRec? door)) return door.Facing == Dir.East ? "door rot=+y+x" : "door";
-        var cells = CellsOf(b).ToList();
-        // Devices, from what the rooms were fitted with.
-        foreach (Int3 c in cells)
-        {
-            if (Devices.TryGetValue(c, out var dev)) return dev.Id != "thruster" ? dev.Id : dev.Facing switch
-            {
-                Dir.East => "thruster rot=+y-x", Dir.West => "thruster rot=+y+x", Dir.Down => "thruster rot=+z+y", _ => "thruster",
-            };
-        }
-        foreach (Int3 c in cells)
-        {
-            if (!Props.TryGetValue(c, out Block p)) continue;
-            string room = Owner.TryGetValue(c, out int r) ? Rooms[r].Purpose : "";
-            string? device = (p.Type, room) switch
-            {
-                (BlockType.Machine, "core-room") => "cpuext3",
-                (BlockType.Machine or BlockType.Tank, "reactor" or "generator-room") => "steel paint=machine",
-                (BlockType.Machine, "engine-room") => Mod(b.X + b.Z, 4) == 0 ? "gyro" : Mod(b.X + b.Z, 4) == 1 ? "warpdrive" : "steel paint=machine",
-                (BlockType.Tank, "fuel-tanks" or "engine-room" or "hangar") => (b.X & 1) == 0 ? "fueltank" : "warptank",
-                // A container where each stack stands on the hold's floor; the rest of the stack is its painted steel.
-                (BlockType.Cube, "hold") when b.Y == Walk(0) / 2 && Mod(b.Z, 3) == 0 => "container",
-                (BlockType.Cube, "hold") => $"steel paint={paintOf(p.Color)}",
-                (BlockType.Crate, "magazine") => "container",
-                (BlockType.Machine, "refinery") => "largefab",
-                (BlockType.Bench, "workshop") => "smallfab",
-                (BlockType.Cube, _) when p.Material == Material.Lumen => "light",
-                _ => null,
-            };
-            if (device != null) return device;
-        }
-        if (cells.Any(c => B.TryGetValue(c, out Block l) && l.Role == Role.Light && l.Material == Material.Lumen) && cells.Count(c => B.TryGetValue(c, out Block x) && BlockInfo.IsFullCube(x.Type)) >= 4)
-            return "light";
-        int panes = cells.Count(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Pane);
-        if (panes >= 2) return "glass";
-        if (cells.Any(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Lattice && x.Role == Role.Floor)) return "steel paint=deck";
-        if (cells.FirstOrDefault(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Stair) is var st && B.TryGetValue(st, out Block stair) && stair.Type == BlockType.Stair)
-            return stair.Facing == Dir.East ? "steel slope rot=+y-x paint=deck" : "steel slope rot=+y+x paint=deck";
-        if (cells.Any(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Rib)) return "steel cylinder paint=machine";
-        // Structure: how much of the block is solid, and which way a sloped top faces.
-        float solid = 0f;
-        var lean = System.Numerics.Vector3.Zero;
-        var colors = new Dictionary<string, int>();
-        bool roof = false;
-        foreach (Int3 c in cells)
-        {
-            if (!B.TryGetValue(c, out Block x) || !BlockInfo.Collides(x.Type) || x.Role is Role.Prop or Role.Debris) continue;
-            float w = x.Type switch { BlockType.Ramp => 0.5f, BlockType.Corner => 0.17f, BlockType.InvCorner => 0.83f, BlockType.Cube or BlockType.Breakable or BlockType.Machine => 1f, _ => 0f };
-            if (w == 0f) continue;
-            roof |= x.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner;
-            solid += w;
-            lean += w * new System.Numerics.Vector3(c.X - 2 * b.X - 0.5f, c.Y - 2 * b.Y - 0.5f, c.Z - 2 * b.Z - 0.5f);
-            string id = paintOf(x.Color);
-            colors[id] = colors.GetValueOrDefault(id) + 1;
-        }
-        if (solid < 2.5f) return null;
-        string paint = colors.OrderByDescending(kv => kv.Value).First().Key;
-        if (solid >= 5.5f || !roof) return $"steel paint={paint}";
-        // A slope: high where the solid leans, its sloped face toward where it is empty.
-        var flat = new System.Numerics.Vector2(lean.X, lean.Z);
-        if (flat.Length() < 0.3f) return $"steel paint={paint}";
-        string forward = MathF.Abs(flat.X) >= MathF.Abs(flat.Y) ? (flat.X > 0 ? "-x" : "+x") : (flat.Y > 0 ? "-z" : "+z");
-        return forward == "-z" ? $"steel slope paint={paint}" : $"steel slope rot=+y{forward} paint={paint}";
-    }
-
-    /// <summary>The blueprint's paints: the livery's colours by name, as the blocks use them.</summary>
-    string PaintLines() =>
-        $"paint hull base={Hex(Plate.C)} grime=3 texture=plates\npaint trim base={Hex(Trim.C)} grime=3\npaint wall base={Hex(InnerS.C)} grime=2\n" +
-        $"paint deck base={Hex(FloorS.C)} grime=3 texture=ribbed\npaint orange base={Hex(Orange.C)} grime=2\npaint teal base={Hex(Teal.C)} grime=2\n" +
-        $"paint dark base={Hex(Dark.C)} grime=2\npaint machine base={Hex(MachineS.C)} grime=2\npaint hazard base={Hex(Hazard)} accent={Hex(Black)} pattern=hazard grime=2\n" +
-        "paint blue base=3a5a9a grime=2\npaint red base=8a2a22 grime=2\n";
-
-    static string Hex(Rgb c) => $"{c.R:x2}{c.G:x2}{c.B:x2}";
-
-    /// <summary>
-    /// Thrust to lift it: down-firing thrusters set into the keel under the engine room, the hangar and the holds
-    /// until their push is half again the hull's weight at a heavy world's gravity, generators enough to run every
-    /// thruster, and CPU extenders enough for their load. All of it is in the plan, and the crash takes its share.
-    /// </summary>
-    void Lift(Dictionary<Int3, string> map, Piece piece)
-    {
-        const double g = 9.81 * 1.3, kn = 1200, draw = 1.5, mw = 12;
-        double Mass() => map.Values.Sum(s => s.StartsWith("steel") ? 1 : s.StartsWith("glass") ? 0.6 : s.StartsWith("generator") ? 6 : s.StartsWith("thruster") ? 3 : 2);
-        int Count(string id) => map.Values.Count(s => s.StartsWith(id + " ") || s == id);
-        var keel = map.Where(kv => kv.Key.Y == 0 && kv.Value.StartsWith("steel") && !kv.Value.Contains("slope")).Select(kv => kv.Key)
-            .Where(b => Bays.Any(bay => IsHall(bay.Kind) && 2 * b.Z >= bay.V0 + 4 && 2 * b.Z < bay.V1 - 2) && Math.Abs(2 * b.X) < Half - 4)
-            .OrderBy(b => (b.X + b.Z) & 1).ThenBy(b => Math.Abs(b.X)).ThenBy(b => b.Z).ToList();
-        int at = 0;
-        // One warp drive and its two cell tanks, a few gyros: the rest of the engine room's machinery is plain.
-        foreach (var (kind, keep) in new[] { ("warpdrive", 1), ("warptank", 2), ("gyro", 6) })
-            foreach (Int3 b in map.Where(kv => kv.Value == kind).Select(kv => kv.Key).OrderBy(b => b.Z).ThenBy(b => b.X).Skip(keep).ToList()) map[b] = "steel paint=machine";
-        while (Count("thruster rot=+z+y") * kn < 1.3 * Mass() * g && at < keel.Count) map[keel[at++]] = "thruster rot=+z+y";
-        // Power for them all: more generators in the power rooms' free floor.
-        var floor = Rooms.Where(r => r.Purpose is "generator-room" or "reactor" or "engine-room" or "fuel-tanks" or "hangar" or "workshop" or "stores" or "hold").OrderBy(r => r.Purpose is "generator-room" or "reactor" ? 0 : 1).SelectMany(r => r.Cells.Where(c => c.Y == r.WalkY))
-            .Select(Bk).Distinct().Where(b => !map.ContainsKey(b) && map.TryGetValue(b + Int3.Down, out string u) && u.StartsWith("steel") && PieceOf(2 * b.Z) == piece)
-            .Where(b => ((b.X ^ b.Z) & 1) == 0).ToList();
-        int f = 0;
-        double Draw() => Count("thruster") * draw + Count("warpdrive") * 4 + Count("gyro") * 0.5 + Count("door") * 0.01 + Count("light") * 0.005 + Count("chair") * 0.05 + 2;
-        while (Count("generator") * mw < Draw() * 1.1 && f < floor.Count) map[floor[f++]] = "generator";
-        // CPU for it all: two lattice extenders in the core room lift it to tier 3 (found in wrecks like this, design 883).
-        var room = Vault >= 0 ? Rooms[Vault].Cells.Where(c => c.Y == Rooms[Vault].WalkY).Select(Bk).Distinct()
-            .Where(b => PieceOf(2 * b.Z) == piece && map.TryGetValue(b + Int3.Down, out string fl) && fl.StartsWith("steel")).ToList() : new List<Int3>();
-        foreach (Int3 b in room.Where(b => !map.ContainsKey(b) || map[b] != "cpuext3").OrderBy(b => b.X).ThenBy(b => b.Z).Take(Math.Max(0, 2 - Count("cpuext3"))).ToList()) map[b] = "cpuext3";
-    }
-
-    /// <summary>The plan's vessel pieces, before the crash: the hull as a builder made it, ready to be claimed once fixed.</summary>
-    List<CapitalHull.HullPiece> Vessel(Dictionary<Int3, string> intact, Dictionary<Int3, string> after, int q)
-    {
-        var pieces = new List<CapitalHull.HullPiece>();
-        foreach (Piece p in Pieces)
-        {
-            var mine = new Dictionary<Int3, string>();
-            foreach (var (b, s) in intact)
-                if (PieceOf(2 * b.Z) == p && !(Cut >= 0 && 2 * b.Z >= Cut && 2 * b.Z < Cut + 2)) mine[b] = s;
-            var planned = new Dictionary<Int3, string>(mine);
-            Lift(mine, p);
-            int oz = p.V0 >> 1;
             var piece = new CapitalHull.HullPiece
             {
-                Name = Pieces.Count == 1 ? "" : p == Pieces[0] ? " (fore)" : " (aft)",
-                Header = PaintLines(),
+                Name = Poses.Count == 1 ? "" : p == Poses[0] ? " (fore)" : " (aft)",
+                V0 = p.V0, V1 = p.V1, Last = p == Poses[^1], Pitch = p.Pitch,
             };
-            foreach (var (b, s) in mine)
-            {
-                var local = new Int3(b.X, b.Y, b.Z - oz);
-                piece.Intact[local] = s;
-                // What lift and power the plan needed was fitted to it; the crash took what it tore from the hull as drawn.
-                bool fitted = !planned.TryGetValue(b, out string? drawn) || drawn != s;
-                if (!fitted && (!after.TryGetValue(b, out string? now) || now != s)) piece.Torn.Add(local);
-            }
-            if (HullDoor is Int3 hd && PieceOf(2 * hd.Z) == p) piece.Door = new Int3(hd.X, hd.Y, hd.Z - oz);
-            // The empty seat for a core: the core room's middle, on its floor.
-            Room? core = Vault >= 0 ? Rooms[Vault] : null;
-            if (core != null && core.Cells.Count > 0 && PieceOf(core.Cells.First().Z) == p)
-            {
-                var floorBlocks = core.Cells.Where(c => c.Y == core.WalkY).Select(Bk).Distinct().Where(b => !mine.ContainsKey(b) && mine.ContainsKey(b + Int3.Down)).ToList();
-                if (floorBlocks.Count > 0)
-                {
-                    double mx = floorBlocks.Average(b => b.X), mz = floorBlocks.Average(b => b.Z);
-                    Int3 slot = floorBlocks.OrderBy(b => Math.Abs(b.X - mx) + Math.Abs(b.Z - mz)).First();
-                    piece.CoreSlot = new Int3(slot.X, slot.Y, slot.Z - oz);
-                }
-            }
-            // Where it lies: the structure's origin (the middle of its first block) and its turn, in the place's frame.
-            var origin = new System.Numerics.Vector3(1f, 1f, 2 * oz + 1f);
-            System.Numerics.Vector3 plot = ToPlot(p, origin);
-            var turn = System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, -q * MathF.PI / 2f);
-            piece.Origin = Turn(plot, q);
-            piece.Rotation = System.Numerics.Quaternion.Normalize(turn * System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, p.Pitch));
-            pieces.Add(piece);
+            // Where it lies: its structure's origin (the middle of the hull's cell 0, 0, V0) and its turn, in the place's frame.
+            NV3 plot = ToPlot(p, new NV3(0, 0, p.V0));
+            var turn = NQ.CreateFromAxisAngle(NV3.UnitY, -Quarter * MathF.PI / 2f);
+            piece.Origin = Turn(plot, Quarter);
+            piece.Rotation = NQ.Normalize(turn * NQ.CreateFromAxisAngle(NV3.UnitX, p.Pitch));
+            H.Pieces.Add(piece);
         }
-        return pieces;
     }
 
     /// <summary>A point of the plan's frame (u along its front, v back from it) in the place's own frame, its front turned q quarters.</summary>
-    static System.Numerics.Vector3 Turn(System.Numerics.Vector3 p, int q) => q switch
+    static NV3 Turn(NV3 p, int q) => q switch
     {
         1 => new(-p.Z, p.Y, p.X),
         2 => new(-p.X, p.Y, -p.Z),
@@ -1598,59 +470,72 @@ sealed class Hulk
         _ => p,
     };
 
-    // ---- setting it down --------------------------------------------------------------------------------------------
+    // ---- setting it down -------------------------------------------------------------------------------
 
     /// <summary>
-    /// The place round the vessel: the ground cut away where the hull lies buried (occupied cells, which the planet
-    /// carves), the ramps and cuttings up to its ways in, the yard you arrive at, a heap of wreckage with the best
-    /// of what was thrown clear, and the debris down the furrow. The vessel itself is set down by the world.
+    /// The place round the vessel: the ground cut away where the hull lies in it (open to the sky over it, as it came
+    /// down, and wide enough for it to level as it lifts: the lift-off's margins are its lever arm times its tilt),
+    /// the ramps and cuttings up to its ways in, the yard you arrive at, a heap of wreckage with the best of what was
+    /// thrown clear, and the debris down the furrow. The vessel itself is set down by the world. Nobody waits inside:
+    /// a wreck's danger is outside it (place-patterns 2.3).
     /// </summary>
-    void EmitPlace()
+    public void EmitPlace()
     {
         var plot = P;
-        // The ground's hollow where the hull lies in it.
-        foreach (Piece p in Pieces)
+        foreach (Pose p in Poses)
         {
-            int v1 = p == Pieces[^1] ? L + Nac + 4 : p.V1;
-            var corners = new List<System.Numerics.Vector3>();
-            foreach (float u in new[] { -Half - 6f, Half + 6f })
-                foreach (float y in new[] { 0f, TowerTop + 16f })
-                    foreach (float v in new[] { (float)p.V0, (float)v1 }) corners.Add(ToPlot(p, new System.Numerics.Vector3(u, y, v)));
-            int x0 = (int)MathF.Floor(corners.Min(c => c.X)), x1 = (int)MathF.Ceiling(corners.Max(c => c.X));
-            int y0 = (int)MathF.Floor(corners.Min(c => c.Y)), z0 = (int)MathF.Floor(corners.Min(c => c.Z)), z1 = (int)MathF.Ceiling(corners.Max(c => c.Z));
+            bool last = p == Poses[^1];
+            int v1 = last ? H.L + H.Nac : p.V1;
+            float tilt = MathF.Abs(p.Pitch), arm = (v1 - p.V0) * 0.5f;
+            NV3 middle = ToPlot(p, new NV3(0, H.Top * 0.5f, (p.V0 + v1) * 0.5f));
+            var corners = new List<NV3>();
+            foreach (float u in new[] { -H.Half - 1f, H.Half + 1f })
+                foreach (float y in new[] { -0.5f, H.TowerTop + 0.5f })
+                    foreach (float v in new[] { p.V0 - 0.5f, v1 - 0.5f }) corners.Add(ToPlot(p, new NV3(u, y, v)));
+            float grow = arm * MathF.Sin(tilt) + 1f;
+            int x0 = (int)MathF.Floor(corners.Min(c => c.X) - grow), x1 = (int)MathF.Ceiling(corners.Max(c => c.X) + grow);
+            int y0 = (int)MathF.Floor(corners.Min(c => c.Y) - grow), z0 = (int)MathF.Floor(corners.Min(c => c.Z) - grow), z1 = (int)MathF.Ceiling(corners.Max(c => c.Z) + grow);
+            if (y0 >= 0) continue;
             for (int z = z0; z <= z1; z++)
-                for (int y = y0; y < 0; y++)
-                    for (int x = x0; x <= x1; x++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    // Up the column from the deepest the hull reaches: once the hull (or the room it needs to level) is met,
+                    // every cell over it is open to the sky.
+                    bool open = false;
+                    for (int y = y0; y < 0; y++)
                     {
-                        System.Numerics.Vector3 s = FromPlot(p, new System.Numerics.Vector3(x + 0.5f, y + 0.5f, z + 0.5f));
-                        int u = (int)MathF.Floor(s.X), sy = (int)MathF.Floor(s.Y), v = (int)MathF.Floor(s.Z);
-                        if (v < p.V0 - 1 || v > v1 || sy < 0) continue;
-                        // A metre clear of the hull all round: the ground broke away from it, and nothing holds it as it lifts.
-                        bool Hull(int hu, int hv) { var c = new Int3(hu, sy, hv); return B.ContainsKey(c) || Open.Contains(c) || Col(Hmin, hu, hv) > sy; }
-                        if (Hull(u, v) || Hull(u + 1, v) || Hull(u - 1, v) || Hull(u, v + 1) || Hull(u, v - 1)) plot.Air(x, y, z);
+                        if (!open)
+                        {
+                            var c = new NV3(x + 0.5f, y + 0.5f, z + 0.5f);
+                            float margin = tilt > 0.01f ? (c - middle).Length() * MathF.Sin(tilt) : 0f;
+                            open = Near(p, c, margin + 0.45f, last);
+                        }
+                        if (open) plot.Air(x, y, z);
                     }
+                }
         }
         // The ways in from the ground: ramps up, cuts down.
         var clear = new HashSet<(int, int)>();
         var outside = new List<int>();
-        int yardU = int.MinValue, yardV = 0;
-        foreach (Way w in Ways)
+        int yardU = int.MinValue, yardV = 0, walk0 = CapitalHull.HullPlan.Walk(0);
+        foreach (CapitalHull.Way w in H.Ways)
         {
-            if (PieceOf(w.V0) is not { } p) continue;
+            if (PoseOf(w.V0) is not { } p) continue;
             if (w.Side == 0)
             {
-                System.Numerics.Vector3 face = ToPlot(p, new System.Numerics.Vector3(0, Walk(0), w.V0));
+                NV3 face = ToPlot(p, new NV3(0, walk0, w.V0));
                 int fv = (int)MathF.Round(face.Z), fu = (int)MathF.Round(face.X), dir = w.What == "fore-face" ? 1 : -1;
                 for (int k = -2; k < 10; k++)
-                    for (int u = fu - Half - 2; u < fu + Half + 2; u++) clear.Add((u, fv + dir * k));
-                if (yardU == int.MinValue) { yardU = fu + Half + 6; yardV = fv + dir * 6; }
+                    for (int u = fu - H.Half - 2; u < fu + H.Half + 2; u++) clear.Add((u, fv + dir * k));
+                if (yardU == int.MinValue) { yardU = fu + H.Half + 6; yardV = fv + dir * 6; }
                 continue;
             }
-            System.Numerics.Vector3 sill = ToPlot(p, new System.Numerics.Vector3(w.Side > 0 ? Half : -Half, Walk(0), w.V0 + w.Width / 2f));
+            NV3 sill = ToPlot(p, new NV3(w.Side * (H.HalfWidth(w.V0) + 0.5f), walk0 - 0.5f, w.V0 + w.Width / 2f - 0.5f));
             int walk = (int)MathF.Round(sill.Y);
-            int s = w.Side, uo = (int)MathF.Round(sill.X) + (s > 0 ? 0 : -1), vs = (int)MathF.Round(sill.Z) - w.Width / 2;
+            int s = w.Side, uo = (int)MathF.Floor(sill.X) + (s > 0 ? 0 : -1), vs = (int)MathF.Round(sill.Z) - w.Width / 2;
             var cells = new List<(int, int, int)>();
             int n = Math.Abs(walk);
+            Rgb trim = H.Paints["trim"];
             for (int i = 0; i < n; i++)
             {
                 int u = uo + s * i;
@@ -1659,8 +544,8 @@ sealed class Hulk
                     if (walk > 0)
                     {
                         int y = walk - 1 - i;
-                        plot.Put(u, y, v, new Block(BlockType.Ramp, Material.Steel, Trim.C.Scale(1.1f), Role.Floor, s > 0 ? Dir.West : Dir.East));
-                        for (int fy = 0; fy < y; fy++) plot.Put(u, fy, v, new Block(BlockType.Cube, Trim.M, Trim.C.Scale(0.8f), Role.Wall));
+                        plot.Put(u, y, v, new Block(BlockType.Ramp, Material.Steel, trim.Scale(1.1f), Role.Floor, s > 0 ? Dir.West : Dir.East));
+                        for (int fy = 0; fy < y; fy++) plot.Put(u, fy, v, new Block(BlockType.Cube, Material.Steel, trim.Scale(0.8f), Role.Wall));
                         cells.Add((u, y, v));
                         for (int up = 1; up <= 3; up++) cells.Add((u, y + up, v));
                     }
@@ -1688,8 +573,9 @@ sealed class Hulk
                 for (int y = 0; y < 3; y++) heap.Add((hu + du, y, hv + dv));
         int wreckage = plot.RoomOf(ModuleKind.Vault, "wreckage", 0, heap);
         plot.Yards(outside.Append(wreckage).ToArray());
+        Rgb[] crates = { H.Paints["orange"], H.Paints["teal"], H.Paints["hazard"] };
         foreach (var (du, dv) in new[] { (-3, -3), (3, -3), (-3, 3), (3, 3), (0, 3) })
-            plot.Prop(hu + du, 0, hv + dv, BlockType.Crate, Material.Scrap, new[] { Orange.C, Teal.C, Hazard }[(du + dv + 9) % 3].Scale(0.8f));
+            plot.Prop(hu + du, 0, hv + dv, BlockType.Crate, Material.Scrap, crates[(du + dv + 9) % 3].Scale(0.8f));
         plot.Cache(hu, 0, hv, wreckage);
         plot.Cache(hu + 2, 0, hv - 2, wreckage);
         plot.Spawn(hu - 2, 0, hv, wreckage);
@@ -1699,19 +585,38 @@ sealed class Hulk
         Debris(clear);
     }
 
+    /// <summary>Is a point of the plan's frame within a margin of the hull as this piece lies?</summary>
+    bool Near(Pose p, NV3 plot, float margin, bool last)
+    {
+        NV3 s = FromPlot(p, plot);
+        if (s.Z < p.V0 - 0.5f - margin || s.Z > (last ? H.L + H.Nac : p.V1) - 0.5f + margin) return false;
+        if (H.Solid(s.X, s.Y, s.Z)) return true;
+        if (margin <= 0f) return false;
+        for (int k = 0; k < 6; k++)
+        {
+            NV3 d = k switch { 0 => NV3.UnitX, 1 => -NV3.UnitX, 2 => NV3.UnitY, 3 => -NV3.UnitY, 4 => NV3.UnitZ, _ => -NV3.UnitZ };
+            NV3 q = s + d * margin;
+            if (q.Z >= p.V0 - 0.5f && q.Z <= (last ? H.L + H.Nac : p.V1) - 0.5f && H.Solid(q.X, q.Y, q.Z)) return true;
+        }
+        return false;
+    }
+
     static int Div2(int a) => a >= 0 ? a / 2 : (a - 1) / 2;
 
     /// <summary>Is the plan's ground cell (u, v) under the hull, or within two metres of it (nothing is laid there: the vessel stands there)?</summary>
     bool UnderHull(int u, int v)
     {
-        foreach (Piece p in Pieces)
-            for (float y = -16f; y <= TowerTop; y += 2f)
+        foreach (Pose p in Poses)
+        {
+            bool last = p == Poses[^1];
+            for (float y = -16f; y <= H.TowerTop; y += 2f)
             {
-                System.Numerics.Vector3 s = FromPlot(p, new System.Numerics.Vector3(u + 0.5f, y, v + 0.5f));
-                int su = (int)MathF.Floor(s.X), sv = (int)MathF.Floor(s.Z);
-                if (sv < p.V0 - 2 || sv > (p == Pieces[^1] ? L + Nac + 4 : p.V1 + 1)) continue;
-                if (Math.Abs(su) <= Half + 6 && (sv >= L || InHull(su, Math.Clamp(sv, 0, L - 1)) || InHull(su - 2, Math.Clamp(sv, 0, L - 1)) || InHull(su + 2, Math.Clamp(sv, 0, L - 1)))) return true;
+                NV3 s = FromPlot(p, new NV3(u + 0.5f, y, v + 0.5f));
+                if (s.Z < p.V0 - 2.5f || s.Z > (last ? H.L + H.Nac + 3 : p.V1 + 1)) continue;
+                float vz = Math.Clamp(s.Z, 0f, H.L - 1f);
+                if (MathF.Abs(s.X) <= H.Half + 6 && (s.Z >= H.L || MathF.Abs(s.X) <= H.HalfWidth(vz) + 2f)) return true;
             }
+        }
         return false;
     }
 
@@ -1719,25 +624,26 @@ sealed class Hulk
     void Debris(HashSet<(int, int)> clear)
     {
         var rng = R.Fork("debris");
-        Piece last = Pieces[^1], first = Pieces[0];
-        int stern = L + Nac + last.OffV, bow = first.OffV;
+        Pose last = Poses[^1], first = Poses[0];
+        int stern = H.L + H.Nac + last.OffV, half = H.Half;
+        Rgb plate = H.Paints["hull"];
+        Rgb[] cargo = { H.Paints["orange"], H.Paints["teal"], H.Paints["hazard"] };
         var spots = new List<(int U, int V, int R)>();
         // Down the furrow behind it.
-        for (int i = 0; i < 26; i++) spots.Add((last.OffU + rng.Range(-Half, Half), stern + 6 + rng.Range(0, 60), 2));
+        for (int i = 0; i < 26; i++) spots.Add((last.OffU + rng.Range(-half, half), stern + 6 + rng.Range(0, 60), 2));
         // Along both flanks.
         for (int i = 0; i < 24; i++)
         {
-            int v = rng.Range(0, L);
-            Piece? p = PieceOf(v);
-            if (p == null) continue;
+            int v = rng.Range(0, H.L);
+            if (PoseOf(v) is not { } p) continue;
             int s = rng.Chance(0.5f) ? 1 : -1;
-            spots.Add((p.OffU + s * (Half + 3 + rng.Range(0, 18)), v + p.OffV, 1));
+            spots.Add((p.OffU + s * (half + 3 + rng.Range(0, 18)), v + p.OffV, 1));
         }
         // Where it broke: the spill between the pieces, or out of the broken back.
-        if (Cut >= 0)
-            for (int i = 0; i < 30; i++) spots.Add((first.OffU + rng.Range(-Half, Half), Cut + first.OffV + rng.Range(2, last.OffV - first.OffV), 3));
-        if (Break >= 0)
-            for (int i = 0; i < 20; i++) spots.Add((first.OffU + (rng.Chance(0.5f) ? 1 : -1) * (Half + 2 + rng.Range(0, 14)), Break + first.OffV + rng.Range(-12, 12), 3));
+        if (H.Cut >= 0)
+            for (int i = 0; i < 30; i++) spots.Add((first.OffU + rng.Range(-half, half), H.Cut + first.OffV + rng.Range(2, last.OffV - first.OffV), 3));
+        if (H.Break >= 0)
+            for (int i = 0; i < 20; i++) spots.Add((first.OffU + (rng.Chance(0.5f) ? 1 : -1) * (half + 2 + rng.Range(0, 14)), H.Break + first.OffV + rng.Range(-12, 12), 3));
         foreach (var (u, v, kind) in spots)
         {
             int n = 1 + rng.Range(0, kind + 1);
@@ -1749,10 +655,10 @@ sealed class Hulk
                 int pick = rng.Range(0, 10);
                 Block b = pick switch
                 {
-                    < 3 => new Block(BlockType.Ramp, Plate.M, Plate.C.Scale(rng.Float(0.6f, 0.9f)), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)]),
-                    < 5 => new Block(BlockType.Corner, Plate.M, Plate.C.Scale(rng.Float(0.5f, 0.85f)), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)]),
+                    < 3 => new Block(BlockType.Ramp, Material.Steel, plate.Scale(rng.Float(0.6f, 0.9f)), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)]),
+                    < 5 => new Block(BlockType.Corner, Material.Steel, plate.Scale(rng.Float(0.5f, 0.85f)), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)]),
                     < 7 => new Block(BlockType.Rubble, Material.Scrap, new Rgb(0x5a, 0x50, 0x48), Role.Debris, Dir.North, (byte)rng.Range(0, 4)),
-                    < 9 when kind == 3 => new Block(BlockType.Cube, Material.Steel, new[] { Orange.C, Teal.C, Hazard }[rng.Range(0, 3)].Scale(0.8f), Role.Debris),
+                    < 9 when kind == 3 => new Block(BlockType.Cube, Material.Steel, cargo[rng.Range(0, 3)].Scale(0.8f), Role.Debris),
                     _ => new Block(BlockType.Crate, Material.Scrap, new Rgb(0x6a, 0x5a, 0x48), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)], 1),
                 };
                 P.Lay(cu, 0, cv, b);

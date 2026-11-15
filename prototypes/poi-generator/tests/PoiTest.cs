@@ -1991,11 +1991,11 @@ public partial class PoiTest : Node
             {
                 var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, s, 21);
                 int top = p.Blocks.Blocks().Where(b => b.Cell.Y >= 0 && BlockInfo.Collides(b.Block.Type)).Select(b => b.Cell.Y + 1).DefaultIfEmpty(0).Max();
-                // A crashed hulk stands as the vessel it is (its 2 m blocks set down in the place's frame), not in the place's own blocks.
+                // A crashed hulk stands as the vessel it is (its blocks set down in the place's frame), not in the place's own blocks: its tower's top.
                 if (CapitalHull.Of(p.Layout) is { } hull)
                     foreach (var piece in hull.Pieces)
-                        foreach (Int3 c in piece.Intact.Keys)
-                            top = Math.Max(top, (int)MathF.Floor(piece.Origin.Y + System.Numerics.Vector3.Transform(new System.Numerics.Vector3(c.X, c.Y, c.Z) * 2f, piece.Rotation).Y + 1f));
+                        foreach (int v in new[] { hull.TV0 - piece.V0, hull.TV1 - piece.V0 })
+                            top = Math.Max(top, (int)MathF.Floor(piece.Origin.Y + System.Numerics.Vector3.Transform(new System.Numerics.Vector3(0, hull.TowerTop, v), piece.Rotation).Y + 1f));
                 bool light = p.Lights.Count > 0 || p.Blocks.Blocks().Any(b => b.Cell.Y >= 0 && b.Block.Material is Gen.Material.Lumen or Gen.Material.Glyph or Gen.Material.Crystal);
                 if (s == PoiState.Ruined) top = Math.Max(top, f.Rise); // a ruin may have lost its top; it still needs its light
                 if (top < f.Rise || !light) bad.Add($"{f.Id} {s}: top {top} m (wants {f.Rise}), light {light}");

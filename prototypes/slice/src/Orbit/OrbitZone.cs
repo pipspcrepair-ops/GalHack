@@ -215,6 +215,7 @@ public partial class OrbitZone : SurfaceZone
             yield return 0;
             Vessel wreck = Vessel.SpawnDerelict(this, p.Structure, ToWorld(p.Position), N.Quaternion.Normalize(Turn * p.Rotation));
             wreck.Derelict = p;
+            wreck.Dress(p.Hull?.Decor);
             if (!p.Loot.IsEmpty)
             {
                 GalHack.Items.Bill left = wreck.Storage.AddAll(p.Loot);

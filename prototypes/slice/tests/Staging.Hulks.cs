@@ -83,9 +83,8 @@ public sealed partial class Staging
         foreach (int x in Frame(from, stern, $"{dir}/{tag}-stern.png", 120)) yield return x;
 
         // Claimed, filled in, lifted off: the ground it lay in cut and crumbling, the hull rising out of its bed.
-        CapitalHull.HullPiece piece = plan.Pieces[0];
-        string why = piece.CoreSlot is PoiGenerator.Gen.Int3 slot ? v.ClaimWith(new GalHack.Structures.Int3(slot.X, slot.Y, slot.Z)) : "no seat";
-        int put = HulkTest.Fill(v, piece, _game.Zone.Data.Catalogue);
+        string why = v.Derelict.Hull?.CoreSlot is GalHack.Structures.Int3 slot ? v.ClaimWith(slot) : "no seat";
+        int put = HulkTest.Fill(v, _game.Zone.Data.Catalogue);
         v.SwitchMode(CoreMode.Flight);
         foreach (int x in _drive.Wait(30)) yield return x;
         // Watched from the ground off its flank, low, where its keel leaves the ground it lay in.
