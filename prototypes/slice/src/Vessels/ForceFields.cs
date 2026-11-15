@@ -118,20 +118,29 @@ public partial class ForceFields : Node3D
 
     static FieldTier TierOf(Vessel v, ForceField f) => v.Zone.Data.Rules.ForceFields.TierOf(f.Tier) ?? new FieldTier();
 
-    /// <summary>A tick of one placed field: its emitters counted, its strength run, its sheet drawn. With every emitter gone it is lost.</summary>
+    /// <summary>
+    /// A tick of one placed field: its strength run, its sheet drawn. One of its emitters destroyed
+    /// destroys the rest and the field with them, for good: it takes a new component to place again.
+    /// </summary>
     void Run(Vessel v, ForceField f, float dt, bool powered)
     {
         Structure s = v.Structure;
-        int emitters = Emitters(v, f);
-        if (emitters == 0)
+        if (!AllEmitters(s, f))
         {
+            for (int i = 0; i < 4; i++)
+                if (s.TryGet(f.Corner(i), out Block b) && s.TypeOf(b).IsFieldEmitter)
+                {
+                    Building.Remove(s, f.Corner(i), null);
+                    if (v.IsBase) v.Zone.Edits.ReleaseStructure(v.GroundKey(f.Corner(i)));
+                }
             s.Fields.Remove(f);
-            if (f.Holding) s.AirChanged();
+            s.AirChanged();
+            v.ApplyEdits();
             return;
         }
         FieldTier tier = TierOf(v, f);
         f.Powered = powered;
-        if (f.Tick(dt, emitters == 4, tier.Strength, tier.RegrowDelay, tier.RegrowSeconds)) s.AirChanged();
+        if (f.Tick(dt, tier.Strength, tier.RegrowSeconds)) s.AirChanged();
         Look l = LookFor(_fields, f, v);
         l.Mesh.Visible = f.Holding;
         if (!f.Holding) return;
@@ -166,25 +175,12 @@ public partial class ForceFields : Node3D
         }
     }
 
-    /// <summary>How many of a field's corners hold an emitter. One put back by hand is turned to face its corner.</summary>
-    static int Emitters(Vessel v, ForceField f)
+    /// <summary>Do all four of a field's corners still hold their emitter?</summary>
+    static bool AllEmitters(Structure s, ForceField f)
     {
-        Structure s = v.Structure;
-        int n = 0;
-        bool turned = false;
         for (int i = 0; i < 4; i++)
-        {
-            Int3 c = f.Corner(i);
-            if (!s.TryGet(c, out Block b) || !s.TypeOf(b).IsFieldEmitter) continue;
-            n++;
-            int rot = f.CornerRot(i);
-            if (b.Rot == rot) continue;
-            b.Rot = (byte)rot;
-            s.Set(c, b);
-            turned = true;
-        }
-        if (turned) v.ApplyEdits();
-        return n;
+            if (!s.TryGet(f.Corner(i), out Block b) || !s.TypeOf(b).IsFieldEmitter) return false;
+        return true;
     }
 
     /// <summary>The field across an open outer door: in its leaves' plane, filling the doorway, fading in as the leaves draw back.</summary>
@@ -282,6 +278,59 @@ public partial class ForceFields : Node3D
         return best;
     }
 
+    /// <summary>
+    /// The nearest field emitter along a ray (zone frame, unit direction) within reach: its structure,
+    /// cell, distance and face normal. Emitters have no collider (people, creatures and vessels pass
+    /// through them, owner 16 Nov), so shots and the build tool's aim meet their parts here.
+    /// </summary>
+    public static bool EmitterAlong(SurfaceZone zone, Vector3 from, Vector3 dir, float reach, out Vessel vessel, out Int3 cell, out float distance, out Vector3 normal)
+    {
+        (vessel, cell, distance, normal) = (null, default, reach, -dir);
+        foreach (Vessel v in zone.Vessels)
+        {
+            Structure s = v.Structure;
+            if (s.Fields.Count == 0 || !IsInstanceValid(v.Node)) continue;
+            float size = s.Grid.CellSize;
+            N.Vector3 o = v.Body.ToLocal(from.ToNumerics()) / size, d = MathX.Unrotate(v.Body.Rotation, dir.ToNumerics());
+            foreach (ForceField f in s.Fields)
+                for (int i = 0; i < 4; i++)
+                {
+                    Int3 c = f.Corner(i);
+                    if (!s.TryGet(c, out Block b) || !s.TypeOf(b).IsFieldEmitter) continue;
+                    Mat3 m = Orientations.Matrix(b.Rot);
+                    foreach (Part p in s.TypeOf(b).Parts)
+                    {
+                        N.Vector3 a = c.ToVector3() + m.Apply(p.Min), z = c.ToVector3() + m.Apply(p.Max);
+                        if (!Slab(o, d, N.Vector3.Min(a, z), N.Vector3.Max(a, z), out float t, out int axis) || t * size >= distance) continue;
+                        (vessel, cell, distance) = (v, c, t * size);
+                        normal = MathX.Rotate(v.Body.Rotation, Geometry.Set(N.Vector3.Zero, axis, -MathF.Sign(Geometry.Get(d, axis)))).ToGodot();
+                    }
+                }
+        }
+        return vessel != null;
+    }
+
+    /// <summary>Where a ray from outside a box enters it ahead of its start: the distance and the axis of the face.</summary>
+    static bool Slab(N.Vector3 o, N.Vector3 d, N.Vector3 lo, N.Vector3 hi, out float t, out int axis)
+    {
+        (t, axis) = (float.MinValue, 0);
+        float far = float.MaxValue;
+        for (int k = 0; k < 3; k++)
+        {
+            float ok = Geometry.Get(o, k), dk = Geometry.Get(d, k), l = Geometry.Get(lo, k), h = Geometry.Get(hi, k);
+            if (MathF.Abs(dk) < 1e-9f)
+            {
+                if (ok < l || ok > h) return false;
+                continue;
+            }
+            float t0 = (l - ok) / dk, t1 = (h - ok) / dk;
+            if (t0 > t1) (t0, t1) = (t1, t0);
+            if (t0 > t) (t, axis) = (t0, k);
+            far = MathF.Min(far, t1);
+        }
+        return t <= far && t > 0f;
+    }
+
     // ---- The look -------------------------------------------------------------------------------
 
     /// <summary>
@@ -350,7 +399,7 @@ void fragment() {
     float edge = 1.0 - smoothstep(0.0, 0.3, min(e.x, e.y));
     float a = (0.07 + 0.22 * lattice + 0.12 * band + 0.08 * drift) * mix(0.3, 1.0, strength) + 0.45 * edge * strength;
     ALBEDO = tint.rgb * (1.0 + 1.5 * flash);
-    ALPHA = clamp(a + flash * 0.5, 0.0, 1.0);
+    ALPHA = clamp((a + flash * 0.5) * 0.75, 0.0, 1.0); // a quarter more see-through (owner, 16 Nov)
 }
 ";
 }

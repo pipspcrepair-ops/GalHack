@@ -26,10 +26,11 @@ namespace Slice.Tests;
 /// corner touching nothing), blue when it can; released, it spans the opening with an L-shaped
 /// emitter in each corner and uses one component. It holds the air, draws tiles x the per-tile rate,
 /// lets the sleeper walk through and stops shots. Plated emitters take less from a hit. Knocked to
-/// zero it vanishes with its emitters whole and grows back after its tier's delay; an emitter shot
-/// away keeps it down until one is put back. An open outer door holds the air while the room is
-/// powered; power off, neither field holds. Taking an emitter down takes the field down, the
-/// component coming back.
+/// zero it vanishes with its emitters whole and grows back after its tier's delay. An open outer
+/// door holds the air while the room is powered; power off, neither field holds. Taking an emitter
+/// down takes the field down, the component coming back. The sheet meets its emitters' outer edges
+/// (and a door's sheet its frame) within a millimetre. The sleeper walks through an emitter; a shot
+/// meets it, and one shot until it breaks destroys all four and the field for good.
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ForceFieldTest.tscn
 /// </summary>
@@ -156,7 +157,7 @@ public partial class ForceFieldTest : Node
         pack.Add("iron-plate", 10);
         BlockType iron = s.Catalogue.Type("iron-plated");
         for (int i = 0; i < builder.Platings.Count && builder.Plating != iron; i++) { c.Wheel = 1; yield return 0; }
-        Vector3 hub = rig.World(1.56f, 0.56f, -0.09f); // corner 0's hub, from out in front
+        Vector3 hub = rig.World(1.54f, 0.54f, -0.09f); // corner 0's hub, from out in front
         foreach (int x in _drive.LookAt(hub, 8)) yield return x;
         string said = builder.Verdict;
         int plates = pack["iron-plate"];
@@ -222,20 +223,6 @@ public partial class ForceFieldTest : Node
         foreach (int x in PlaySeconds(tier.RegrowSeconds * 0.6f)) yield return x;
         Check(f.Strength == tier.Strength && f.Holding, $"and back to its cap, {f.Strength:F0}, no more");
 
-        // ---- An emitter shot away -------------------------------------------------------------
-        Int3 lost = f.Corner(2);
-        v.Hits.Shot(lost, v.ToWorld(StructureBridge.CellCenter(s, lost)).ToNumerics(), N.Vector3.UnitZ, 1e6f, DamageType.Explosive);
-        v.Hits.Flush();
-        foreach (int x in _drive.Wait(2)) yield return x;
-        Check(!s.Has(lost) && !f.Holding && s.Fields.Contains(f) && !rig.Sealed(), "an emitter destroyed takes the field down");
-        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 5f)) yield return x;
-        Check(!f.Holding && f.Strength == 0f, "and it stays down while the emitter is missing, however long");
-        s.Set(lost, Building.Make(s, emitter)); // put back, turned any old way
-        v.ApplyEdits();
-        foreach (int x in _drive.Wait(2)) yield return x;
-        Check(Whole(2) && !f.Holding, $"one put back is turned to its corner ({Orientations.Name(s.Get(lost).Rot)}); the field waits its delay");
-        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 1f)) yield return x;
-        Check(f.Holding && f.Strength == tier.Strength && rig.Sealed(), "then grows back whole: repaired");
         _game.Fields.TimeScale = 1f;
 
         // ---- The door's own field --------------------------------------------------------------
@@ -263,12 +250,49 @@ public partial class ForceFieldTest : Node
         _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
         foreach (int x in _drive.Wait(10)) yield return x;
         int components = pack[T1], ironBack = pack["iron-plate"];
-        foreach (int x in _drive.LookAt(rig.World(1.56f, 0.56f, 0.09f), 8)) yield return x;
+        foreach (int x in _drive.LookAt(rig.World(1.54f, 0.54f, 0.09f), 8)) yield return x;
         said = builder.Verdict;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && pack[T1] == components + 1 && pack["iron-plate"] > ironBack && !rig.Sealed(),
             $"deconstructing an emitter takes the field down whole: its emitters gone, the component back ({components} to {pack[T1]}), the plating's iron back; the line said \"{said}\"");
+
+        // ---- Emitters: passed through, shot, destroyed --------------------------------------------
+        f = new ForceField(FieldRig.OpeningMin, FieldRig.OpeningMax, 2, T1) { Strength = tier.Strength }; // STAGING: a second field, set down whole
+        for (int i = 0; i < 4; i++) Building.Place(s, f.Corner(i), Building.Make(s, emitter, null, f.CornerRot(i)));
+        s.Fields.Add(f);
+        v.ApplyEdits();
+        foreach (int x in _drive.Wait(3)) yield return x;
+        // Along the opening's side, so the body runs through corner 0's upright arm.
+        Vector3 start = rig.World(1.88f, 0f, -2.5f);
+        _game.Survivor.PlaceOutside((_game.Zone.GroundAt(start.X, start.Z) + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.Wait(20)) yield return x;
+        float widest = 0f;
+        foreach (int x in _drive.WalkTo(rig.World(1.88f, 0.6f, 2.5f), 0.4f, 30f))
+        {
+            N.Vector3 at = v.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()) / s.Grid.CellSize;
+            if (MathF.Abs(at.Z) < 0.5f) widest = MathF.Max(widest, MathF.Abs(at.X - 1.88f));
+            yield return x;
+        }
+        feet = v.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()) / s.Grid.CellSize;
+        Check(feet.Z > 1.5f && widest < 0.06f && f.Holding && Enumerable.Range(0, 4).All(Whole),
+            $"the sleeper walks straight through an emitter's arm, nothing in the way (feet at cell {feet.X:F2} {feet.Z:F2}, pushed aside {widest * 100f:F0} cm at most)");
+        _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Int3 target = f.Corner(2);
+        Vector3 hub2 = rig.World(5.46f, 3.46f, 0.09f); // corner 2's hub, from inside
+        swept = _game.Arms.Sweep(_game.Survivor.WorldEye().ToNumerics(), (hub2 + (hub2 - _game.Survivor.WorldEye()).Normalized()).ToNumerics(), null, 0, 0f, out shot);
+        Check(swept && shot.Kind == HitKind.Block && new Int3(shot.CellX, shot.CellY, shot.CellZ) == target, $"a shot meets the emitter it is aimed at ({shot.Kind}, block {shot.CellX} {shot.CellY} {shot.CellZ})");
+        int bolts = 0;
+        for (; bolts < 20 && s.Has(target); bolts++)
+            foreach (int x in play.ShootAt(() => hub2)) yield return x;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Check(!s.Has(target) && s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && !rig.Sealed(),
+            $"shot until it breaks ({bolts} bolts): all four emitters and the field are gone");
+        _game.Fields.TimeScale = 10f; // STAGING: the waits at ten times play speed
+        foreach (int x in PlaySeconds(tier.RegrowDelay + tier.RegrowSeconds + 5f)) yield return x;
+        _game.Fields.TimeScale = 1f;
+        Check(s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && !rig.Sealed(), "nothing grows back after its timer: it takes a new component");
     }
 
     void StandOutside(FieldRig rig)
@@ -342,7 +366,7 @@ public partial class ForceFieldTest : Node
             var frame = t.Parts.Where(p => p.Style == PartStyle.Dark && !p.ClosedOnly).ToList();
             float left = frame.Where(p => p.Min.X <= -0.5f + 1e-4f && p.Max.Y >= 0.5f - 1e-4f && p.Min.Y <= -0.5f + 1e-4f).Max(p => p.Max.X);
             float right = frame.Where(p => p.Max.X >= 0.5f - 1e-4f && p.Max.Y >= 0.5f - 1e-4f && p.Min.Y <= -0.5f + 1e-4f).Min(p => p.Min.X);
-            float top = frame.Where(p => p.Max.Y >= 0.5f - 1e-4f && p.Min.X > -0.5f + 1e-4f).Min(p => p.Min.Y);
+            float top = frame.Where(p => p.Max.Y >= 0.5f - 1e-4f && p.Min.X > -0.5f + 1e-4f && p.Max.X < 0.5f - 1e-4f).Min(p => p.Min.Y);
             for (int rot = 0; rot < 24; rot++)
             {
                 Block b = Building.Make(s, t, null, rot);

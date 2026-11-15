@@ -130,11 +130,13 @@
     },
     // A force field's corner emitter: an L whose arms (+x, +y) run along the field's two edges from
     // its corner, the field across its face (z). It comes with the field (one force field component
-    // makes a field of any size and its four emitters); this item only replaces one shot away. Plated
-    // like armour, from the same plates: the plated ones are their base under plates (same shape and work).
-    // Its light, one strip along the whole inner side of the L, is drawn with the field (lit only while it holds).
+    // makes a field of any size and its four emitters); one destroyed destroys the rest and the field.
+    // Plated like armour, from the same plates: the plated ones are their base under plates (same shape
+    // and work). Nothing collides with it (people, creatures and vessels pass through, owner 16 Nov);
+    // shots and the build tool's aim meet its parts (ForceFields.EmitterAlong). Its light, one strip
+    // along the whole inner side of the L, is drawn with the field (lit only while it holds).
     {
-      "id": "forcefield-emitter", "name": "Force field emitter", "function": "field-emitter", "hp": 120, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.05, "color": "2b2d42","attach": ["-x", "-y", "+z", "-z"], "airtight": "none", "covers": "none", "collide": "parts",
+      "id": "forcefield-emitter", "name": "Force field emitter", "function": "field-emitter", "hp": 120, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.05, "color": "2b2d42","attach": ["-x", "-y", "+z", "-z"], "airtight": "none", "covers": "none", "collide": "none",
       "parts": [
         {"box": [-0.5, -0.5, -0.087, -0.42, -0.42, 0.087], "style": "dark"},
         {"box": [-0.42, -0.5, -0.073, 0.5, -0.42, 0.073], "style": "body"},

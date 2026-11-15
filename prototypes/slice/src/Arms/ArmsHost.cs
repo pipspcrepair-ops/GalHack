@@ -442,6 +442,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         float best = len;
         bool found = SolidHit(a, dir, len, owner, age, ref hit);
         if (found) best = hit.Distance;
+        // A field emitter has no collider (it is passed through): met by its parts.
+        if (ForceFields.EmitterAlong(Zone, a, dir, best, out Vessel ev, out Int3 ec, out float ed, out Vector3 en))
+        {
+            best = ed;
+            found = true;
+            hit = new ShotHit { Kind = HitKind.Block, Thing = ev, CellX = ec.X, CellY = ec.Y, CellZ = ec.Z, Point = (a + dir * ed).ToNumerics(), Normal = en.ToNumerics(), Distance = ed, Through = ev.Structure.Grid.CellSize };
+        }
         // A force field that holds stops it (people and vessels pass; shots don't).
         if (ForceFields.Along(Zone, a, dir, best, out float fd, out Vector3 fn) is FieldHit met)
         {
