@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Godot;
 
 namespace Slice.Game;
@@ -8,7 +9,7 @@ namespace Slice.Game;
 /// refreshes: every refresh while a frame's work fits in one, else every second, third or fourth (a 240 Hz screen
 /// at 240, 120, 80 or 60 frames a second, never under 50). Frames that take one refresh and then two (a 240 Hz
 /// screen at 150 a second) stay up unevenly, and the picture judders however smoothly it moves.
-/// A frame's work is what the main thread spent on it and what the GPU spent drawing it, without the waits.
+/// A frame's work is the more of what the main thread spent on it and what the GPU spent drawing it, without the waits.
 /// </summary>
 public partial class FramePacer : Node
 {
@@ -24,15 +25,42 @@ public partial class FramePacer : Node
     readonly double[] _work = new double[120];
     readonly double[] _sorted = new double[120];
     int _count, _since;
-    double _fitFor;
-    ulong _ticks;
+    double _fitFor, _last;
     Rid _viewport;
 
     public override void _Ready()
     {
-        ProcessPriority = int.MaxValue; // after everything else this frame's scripts did
         _viewport = GetViewport().GetViewportRid();
         RenderingServer.ViewportSetMeasureRenderTime(_viewport, true);
+    }
+
+    public override void _EnterTree()
+    {
+        GetTree().PhysicsFrame += Begin;
+        GetTree().ProcessFrame += Begin;
+        RenderingServer.FramePreDraw += Drawing;
+    }
+
+    public override void _ExitTree()
+    {
+        GetTree().PhysicsFrame -= Begin;
+        GetTree().ProcessFrame -= Begin;
+        RenderingServer.FramePreDraw -= Drawing;
+    }
+
+    /// <summary>The main thread's time from a frame's first tick or step to its draw (no waiting in it: that comes after the draw), ms.</summary>
+    double _scripts;
+    long _begun;
+
+    void Begin()
+    {
+        if (_begun == 0) _begun = Stopwatch.GetTimestamp();
+    }
+
+    void Drawing()
+    {
+        if (_begun != 0) _scripts = (Stopwatch.GetTimestamp() - _begun) * 1000.0 / Stopwatch.Frequency;
+        _begun = 0;
     }
 
     public override void _Process(double delta)
@@ -45,14 +73,12 @@ public partial class FramePacer : Node
             Engine.MaxFps = Asked;
             return;
         }
-        // This frame's main thread (its ticks, its scripts, the renderer's own CPU) against the GPU's last frame drawn.
-        ulong ticks = Engine.GetPhysicsFrames();
-        double cpu = Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0
-                   + Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0 * (ticks - _ticks)
-                   + RenderingServer.GetFrameSetupTimeCpu() + RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport);
-        _ticks = ticks;
+        // The last frame's main thread (its ticks and scripts up to the draw, then the renderer's own CPU) against the GPU's last frame drawn.
+        double cpu = _scripts + RenderingServer.GetFrameSetupTimeCpu() + RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport);
         double work = Math.Max(cpu, RenderingServer.ViewportGetMeasuredRenderTimeGpu(_viewport));
-        _work[_count++ % _work.Length] = work;
+        // Two frames at a time: the frames queued for the screen take up one frame's unevenness (a tick's frame then one without).
+        _work[_count++ % _work.Length] = (work + _last) * 0.5;
+        _last = work;
         _since++;
         int n = Math.Min(_count, _work.Length);
         if (n < 30) return;

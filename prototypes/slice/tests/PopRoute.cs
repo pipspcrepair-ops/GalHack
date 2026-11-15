@@ -412,7 +412,7 @@ public partial class PopRoute : Node
         }
         SplitReport(name, tick);
         FramePacing.Result pace = _pacing.Stop();
-        GD.Print($"ROUTE {name} pacing: {pace}");
+        GD.Print($"ROUTE {name} pacing (paced at {_game.Pacer.Refreshes} refreshes a frame, work p90 {_game.Pacer.Work:F1} ms): {pace}");
         int over = _frames.Count(t => t > 16.7);
         _frames.Sort();
         _gpu.Sort();
@@ -434,10 +434,14 @@ public partial class PopRoute : Node
             Gate($"{name}: shadow casters redrawn in view", farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes, lim.ShadowPops, false, "/min");
             Gate($"{name}: frames over 16.7 ms", over / minutes, lim.Over, false, "/min");
             Gate($"{name}: frame p99", P(_frames, 0.99), lim.P99, false, "ms");
+            // Pacing: frames that stay up longer or shorter than the rest (an uneven picture however fast), and the camera's
+            // steps against its own pace by the engine's clock (anything moved in ticks and drawn without interpolation).
+            Gate($"{name}: frames more than 2 ms off the rate reached", pace?.OffPace ?? double.NaN, lim.OffPace, false, "%");
+            Gate($"{name}: camera steps over 25% off its pace", pace?.MoveOffGame ?? double.NaN, lim.MoveOff, false, "%");
         }
     }
 
-    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops);
+    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops, double OffPace, double MoveOff);
 
     /// <summary>
     /// Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames
@@ -452,9 +456,9 @@ public partial class PopRoute : Node
     /// </summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10), // (a walk sees too few trees and columns to judge them appearing)
-        ["bike"] = new(88, 350, 220, 150, 60, 20, 10),
-        ["fly"] = new(72, 350, 360, 250, 150, 25, 10),
+        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10, double.NaN, double.NaN), // (a walk sees too few trees and columns to judge them appearing)
+        ["bike"] = new(88, 350, 220, 150, 60, 20, 10, double.NaN, double.NaN),
+        ["fly"] = new(72, 350, 360, 250, 150, 25, 10, double.NaN, double.NaN),
     };
 
     int _gateFails;
