@@ -101,6 +101,18 @@ public static class Strikes
                && (c.Space == null || SpaceMath.Clear(c.Space, now, t.Position + Vector3.Up * (Attacks.BodyHeight * 0.5f))); // never through a wall, floor or ceiling
     }
 
+    /// <summary>Whether any of its body is already into the victim's.</summary>
+    public static bool Bumped(Creature c, ITarget t)
+    {
+        for (int i = 0; i < c.Rig.HitCount; i++)
+        {
+            Vector4 h = c.Rig.Hits[i];
+            var p = new Vector3(h.X, h.Y, h.Z);
+            if (Gap(p, p, h.W, t) < 0f) return true;
+        }
+        return false;
+    }
+
     /// <summary>How far a sphere of radius r moved from a to b passes from the victim's body (a person's capsule, or a creature's own hit spheres).</summary>
     public static float Gap(Vector3 a, Vector3 b, float r, ITarget t)
     {

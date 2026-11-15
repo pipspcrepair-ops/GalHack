@@ -182,7 +182,7 @@ public sealed class CombatRules
     public float Tell(float telegraph, float size) =>
         Math.Clamp((telegraph > 0f ? telegraph : TelegraphWindup) + TellPerDoubling * MathF.Log2(MathF.Max(1f, size / TellFromSize)), TellLeast, TellMost);
     /// <summary>Share of a wind-up after which the creature commits to its aim; moving after that dodges.</summary>
-    public float CommitFraction { get; set; } = 0.65f;
+    public float CommitFraction { get; set; } = 0.5f;
     public float LungeSeconds { get; set; } = 0.25f;
     /// <summary>How far past its reach a lunge carries, in metres.</summary>
     public float LungeReach { get; set; } = 1.2f;

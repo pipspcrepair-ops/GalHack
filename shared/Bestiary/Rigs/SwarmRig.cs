@@ -138,4 +138,7 @@ public sealed class SwarmRig : Rig
         layout.Add(member);
         return layout;
     }
+
+    /// <summary>A swarm stings with its dense core, not the loose edge of the cloud.</summary>
+    public override Vector4 Striker(Creature c) => HitCount > 0 ? new Vector4(Hits[0].X, Hits[0].Y, Hits[0].Z, Hits[0].W * 0.5f) : default;
 }

@@ -220,7 +220,13 @@ public static class Attacks
                     c.StrikeSteps = c.Rig.Steps; // the ground pounds under a heavy charge
                     Strikes.Quake(w, c, c.Position, false, false, w.Combat.Strikes.QuakeFootfall);
                 }
-                if (Strikes.Touch(w, c, t, out float gap)) Land(w, c, t, true, gap);
+                float gap = float.NaN;
+                if (c.Space != null)
+                {
+                    if (c.PhaseTime >= c.PhaseLength) Land(w, c, t, InPlaceHit(w, c, t), gap);
+                }
+                else if (Strikes.Touch(w, c, t, out gap)) Land(w, c, t, true, gap);
+                else if (c.Move is AttackMove.Bite or AttackMove.Charge && Strikes.Bumped(c, t)) Land(w, c, t, false, gap); // its body met them before its striking part did: nothing passes through anyone
                 else if (c.Move == AttackMove.Charge && c.PhaseTime < c.PhaseLength * 0.9f && c.LungeTo == c.Position && c.PhaseTime > 0.05f)
                 {
                     // Ran into something solid: it stops hard and stands dazed.
@@ -360,7 +366,7 @@ public static class Attacks
         }
         if (Mouthed(c)) c.Gape = 1f; // jaws wide for the bite
         // It drives its jaws a little into the aim point, so they meet whoever stands there; contact stops it.
-        float stop = Jaws(c) + Stretch(c) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius) - 0.3f;
+        float stop = c.Rig.Reach(c, c.StrikeAt.Y) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius) - 0.5f;
         Vector3 go = WildSim.Flat(aim + Approach(c, c.AttackTarget, c.Position, aim) * stop - c.Position);
         float d = go.Length();
         Vector3 along = d > 0.01f ? go / d : c.Forward;
@@ -372,6 +378,20 @@ public static class Attacks
         c.StrikePoint = c.LungeTo + dir * MathF.Min(stop, at.Length()); // someone already inside its reach is bitten where they stand
         c.Yaw = MathF.Atan2(-dir.X, -dir.Z);
         c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / (c.Species.Flight == FlightKind.Hover ? MostLungeSpeed : MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f)));
+    }
+
+    /// <summary>
+    /// In a cave or a place the lunge is a flight through the open, judged where it ends: the
+    /// rigs there don't all pose on the place's floor yet, so its drawn parts can't be the judge.
+    /// </summary>
+    static bool InPlaceHit(WildSim w, Creature c, ITarget t)
+    {
+        Vector3 end = c.StrikePoint;
+        float rise = end.Y - t.Position.Y;
+        return t.Attackable
+               && WildSim.Flat(t.Position - end).Length() <= w.Combat.ContactRadius + c.Radius * 0.4f
+               && rise > -0.8f && rise < 2.3f
+               && SpaceMath.Clear(c.Space, end, t.Position + Vector3.Up * (BodyHeight * 0.5f)); // never through a wall, floor or ceiling
     }
 
     /// <summary>The strike is over: it met the victim (the moment its part touched them) or it didn't, and the jaws snap shut either way.</summary>

@@ -444,6 +444,21 @@ public sealed class LeggedRig : Rig
         }
     }
 
+    /// <summary>
+    /// How far ahead of its middle its head reaches for a bite at this height: the neck swung down
+    /// from its base (forequarters dipped and thrown forward, as in the lunge) until the head is there.
+    /// Something lower than it can get its head is reached only as far as its chin.
+    /// </summary>
+    public override float Reach(Creature c, float y)
+    {
+        Proportions b = Species.Body;
+        if (_heads.Length == 0 || _neckLen <= b.Size * 0.12f) return base.Reach(c, y);
+        float big = Math.Clamp(MathF.Max((b.Size - 1.5f) / 4f, (_hipRest - 0.8f) / 1.6f), 0f, 1f);
+        float baseY = c.Position.Y + _hipRest * (1f - 0.35f * big) + b.Height * 0.53f;
+        float ahead = b.Size * (0.42f + 0.22f), len = _neckLen + b.HeadSize * 0.9f, dy = baseY - y;
+        return ahead + (dy < len ? MathF.Sqrt(len * len - dy * dy) : 0f);
+    }
+
     /// <summary>What it strikes with now: a stomping foot, its tail's tip, or its head (horns and jaws).</summary>
     public override Vector4 Striker(Creature c)
     {
@@ -466,7 +481,13 @@ public sealed class LeggedRig : Rig
             return new Vector4(best.X, best.Y, best.Z, radius);
         }
         if (_heads.Length == 0) return base.Striker(c);
+        // Twin heads: whichever is nearer the victim.
         Vector3 head = Pose[_heads[0]] * new Vector3(0, 0, -b.HeadSize * 0.5f);
+        for (int h = 1; h < _heads.Length; h++)
+        {
+            Vector3 other = Pose[_heads[h]] * new Vector3(0, 0, -b.HeadSize * 0.5f);
+            if (other.DistanceSquaredTo(c.StrikeAt) < head.DistanceSquaredTo(c.StrikeAt)) head = other;
+        }
         return new Vector4(head.X, head.Y, head.Z, b.HeadSize * 0.6f);
     }
 

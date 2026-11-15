@@ -48,6 +48,7 @@ public partial class CreaturesTest
         PlanetFauna world = _gen.Generate((ulong)rng.NextInt64(), 0.3f, false);
         Species giant = Hunter(world.Species.First(s => s.Rig == RigKind.Legged && !s.Flies && !s.Mechanical), 7f);
         giant.Body.LegStyle = LegStyle.Upright;
+        giant.Body.Legs = Math.Max(4, giant.Body.Legs / 2 * 2);
         giant.Body.LegThickness = giant.Body.Width * 0.25f;
         giant.Body.TailLength = giant.Body.Size * 0.8f;
         giant.Parts["tail"] = "club";
@@ -107,6 +108,9 @@ public partial class CreaturesTest
         sim.Targets.Add(p);
         Creature c = sim.Spawn(s, Vector3.Zero);
         c.Yaw = 0f;
+        // It knows where they are, even behind it (by sight it couldn't, and would turn to face them first).
+        c.Noticed = p;
+        c.NoticedAt = 0f;
         var told = new HashSet<Creature>();
         Vector3 partWas = default, partBefore = default;
         bool lunging = false, opened = false;
@@ -156,6 +160,10 @@ public partial class CreaturesTest
             if (e.Gap > log.WorstGap) { log.WorstGap = e.Gap; log.Worst = $"{s.Body.Size:F1} m {s.CommonName} {e.Move}"; }
             log.DeepestGap = MathF.Min(log.DeepestGap, e.Gap);
         };
+        // The first strike starts where the case put them; the rest come as its brain sees fit.
+        sim.Step(Dt);
+        c.Yaw = 0f;
+        Attacks.Start(sim, c, p);
         for (float t = 0f; t < 30f && strikes < 3; t += Dt)
         {
             Vector4 part = c.Rig.Striker(c);

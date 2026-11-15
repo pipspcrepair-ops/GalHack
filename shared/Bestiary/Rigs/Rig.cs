@@ -96,21 +96,24 @@ public abstract class Rig
 
     /// <summary>
     /// The part a strike is made with, as a sphere (xyz centre, w radius) in the world: by default
-    /// whatever of the body is furthest forward (the head, for nearly everything). 0 radius: none.
+    /// whatever of the body is nearest where the strike goes (<see cref="Creature.StrikeAt"/>): the
+    /// part a body with no jaws attacks with. 0 radius: none.
     /// </summary>
     public virtual Vector4 Striker(Creature c)
     {
-        Vector3 f = c.Space != null ? -c.Facing.Z : c.Forward, from = c.Position;
         Vector4 best = default;
-        float most = float.MinValue;
+        float least = float.MaxValue;
         for (int i = 0; i < HitCount; i++)
         {
             Vector4 s = Hits[i];
-            float ahead = (new Vector3(s.X, s.Y, s.Z) - from).Dot(f) + s.W;
-            if (ahead > most) { most = ahead; best = s; }
+            float d = (new Vector3(s.X, s.Y, s.Z) - c.StrikeAt).Length() - s.W;
+            if (d < least) { least = d; best = s; }
         }
         return best;
     }
+
+    /// <summary>How far ahead of its middle its striking part can reach, for a strike at this height: by default its jaws as it stands, thrown forward.</summary>
+    public virtual float Reach(Creature c, float y) => Attacks.Jaws(c) + Attacks.Stretch(c);
 
     // ---- Feet, for the contact test ---------------------------------------------------
 
