@@ -66,6 +66,7 @@ public partial class FloraTest : Node
             Vacuum();
             Scatter();
             TreeHeights();
+            TreeCount();
             await Canopies();
             NothingOverOpenings();
             }
