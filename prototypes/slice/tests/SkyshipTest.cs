@@ -277,6 +277,7 @@ public partial class SkyshipTest : Node
         int skyTicks = 0;
         double tookOff = double.NaN, landedWith = double.NaN, leastCharge = double.PositiveInfinity, leastSupply = 1;
         SkyPhase lastPhase = ship.Phase;
+        if (ship.Phase != SkyPhase.Landed) tookOff = v.Power.FuelUnits; // already off the ground when the watch began
         bool Done() => places.Count >= 3 && ship.Landings >= 1 && ship.Departures >= 2;
         for (int t = 0; t < 60 * 60 * 18 && !Done() && ship.Phase != SkyPhase.Wrecked; t++)
         {

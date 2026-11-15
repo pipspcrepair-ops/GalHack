@@ -98,6 +98,7 @@ public partial class SkyTraffic : Node
     {
         if (Off || Zone?.Planet == null || !Zone.Arrived || Zone.IsOtherBody || Missing != null) return;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        int gcs = GC.CollectionCount(0);
         string what;
         if (Ship == null) { Spawn(); what = "spawn"; }
         else
@@ -107,7 +108,7 @@ public partial class SkyTraffic : Node
             if (++_tick % 10 == 0) { Upkeep(); what += " + upkeep"; }
         }
         LastTickMs = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, what);
+        if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, what + (GC.CollectionCount(0) != gcs ? ", a garbage collection in it" : ""));
     }
 
     // ---- The ship ---------------------------------------------------------------------------------------------

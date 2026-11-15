@@ -56,7 +56,7 @@ public sealed partial class Staging
             N.Vector3 p = v.Body.Position, vel = MathX.Flat(v.Body.Velocity);
             Vector3 under = SkyGround((p + vel * 9f).ToGodot() + side * 25f, 1.7f);
             foreach (int x in SkyHold(under, () => v.Body.Position.ToGodot(), 60)) yield return x;
-            under = Open(under);
+            foreach (int x in Open(under, q => under = q)) yield return x;
             for (int i = 0; i < 60 * 20 && MathX.Flat(v.Body.Position - under.ToNumerics()).Length() > 90f; i++)
             {
                 _game.FixedCamera = SkyLook(under, v.Body.Position.ToGodot());
@@ -69,23 +69,24 @@ public sealed partial class Staging
         // At night from about 800 m off: its lamps carry as far points, as a town's do.
         Vector3 off = SkyGround(v.Body.Position.ToGodot() + side * 800f, 1.7f);
         foreach (int x in SkyHold(off, () => v.Body.Position.ToGodot(), 150)) yield return x;
-        off = Open(off);
+        foreach (int x in Open(off, q => off = q)) yield return x;
         _game.FixedCamera = SkyLook(off, v.Body.Position.ToGodot());
         GD.Print($"skyship: night-far {ship.Phase}, {off.DistanceTo(v.Body.Position.ToGodot()):F0} m off, {v.AboveGround:F0} m up, lights {(v.LightsOn ? "on" : "off")}");
         foreach (int x in Shot($"{dir}/skyship-night-far.png")) yield return x;
         _game.FixedCamera = null;
     }
 
-    /// <summary>The nearest point to this one with no tree or crown within a few metres, for a camera to stand on.</summary>
-    Vector3 Open(Vector3 p)
+    /// <summary>The nearest point to this one with no tree, rock or crown of the terrain's scatter within 12 m, for a camera to stand on (the scatter worked out as the ship's landings do).</summary>
+    IEnumerable<int> Open(Vector3 p, Action<Vector3> set)
     {
-        for (float r = 0f; r < 60f; r += 6f)
+        for (float r = 0f; r < 80f; r += 6f)
             for (int k = 0; k < (r == 0f ? 1 : 12); k++)
             {
                 Vector3 q = SkyGround(p + new Vector3(MathF.Cos(k * 0.52f), 0f, MathF.Sin(k * 0.52f)) * r, 1.7f);
-                if (!_game.Zone.Streamer.SolidsNear(q, 8f, canopies: true).Any()) return q;
+                List<PlanetSurface.Terrain.FloraSolid> near;
+                while ((near = _game.Sky.ScatterNear(q.ToNumerics(), 12f)) == null) yield return 0;
+                if (near.Count == 0) { set(q); yield break; }
             }
-        return p;
     }
 
     Vector3 SkyGround(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };
