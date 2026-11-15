@@ -367,25 +367,33 @@ public sealed class Survivor
     }
 
     /// <summary>
-    /// Where getting up from a seat puts you: past the chair behind it, or beside it if that's blocked, on the
-    /// structure's floor: a spot clear of blocks but off the deck's edge (a small open cockpit) would drop you
-    /// off it, out in space. Nearer the chair, a cell at a time, until one has floor under it.
+    /// Where getting up from a seat puts you: the nearest spot round the chair with floor under it and room to
+    /// stand (nothing in its cells up to head height, the chair included). A spot merely clear of blocks could be
+    /// off a small open cockpit's edge, dropping you off it into space. None: behind the chair, as before.
     /// </summary>
     static N.Vector3 StandOffset(Vessel vessel)
     {
-        N.Vector3 seat = vessel.Seat.Value;
-        float r = vessel.ChairReach, cell = vessel.Structure.Grid.CellSize;
-        bool Clear(N.Vector3 o) => vessel.DistanceFromHull(seat + o + N.Vector3.UnitY * 0.9f, 0.5f) >= 0.5f;
-        bool Floored(N.Vector3 o) => vessel.DistanceFromHull(seat + o - N.Vector3.UnitY * 0.15f, 0.3f) < 0.02f;
-        N.Vector3? clear = null;
-        for (float d = r; d >= cell - 1e-3f; d -= cell)
-            foreach (N.Vector3 o in new N.Vector3[] { new(0, 0.05f, d), new(d, 0.05f, 0), new(-d, 0.05f, 0), new(0, 0.05f, -d) })
-            {
-                if (!Clear(o)) continue;
-                if (Floored(o)) return o;
-                clear ??= o;
-            }
-        return clear ?? new N.Vector3(0f, 0.05f, r);
+        GalHack.Structures.Structure s = vessel.Structure;
+        float cell = s.Grid.CellSize;
+        N.Vector3 seat = vessel.Seat.Value, up = N.Vector3.UnitY;
+        GalHack.Structures.Int3 at = PhysicsSandbox.Bridges.StructureBridge.CellAt(s, seat);
+        int reach = (int)MathF.Ceiling(vessel.ChairReach / cell), tall = (int)MathF.Ceiling(1.8f / cell);
+        N.Vector3? best = null;
+        float nearest = float.MaxValue;
+        for (int dy = -1; dy <= 1; dy++)
+        for (int dz = -reach; dz <= reach; dz++)
+        for (int dx = -reach; dx <= reach; dx++)
+        {
+            var c = new GalHack.Structures.Int3(at.X + dx, at.Y + dy, at.Z + dz);
+            if (!(s.TryGet(new GalHack.Structures.Int3(c.X, c.Y - 1, c.Z), out var floor) && s.IsSolid(floor))) continue;
+            bool room = true;
+            for (int k = 0; k < tall && room; k++) room = !s.TryGet(new GalHack.Structures.Int3(c.X, c.Y + k, c.Z), out _);
+            N.Vector3 feet = PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, c) - up * (cell * 0.5f - 0.05f);
+            if (!room || vessel.DistanceFromHull(feet + up * 0.9f, 0.3f) < 0.3f) continue;
+            float d = N.Vector3.Distance(feet, seat);
+            if (d < nearest) (best, nearest) = (feet - seat, d);
+        }
+        return best ?? new N.Vector3(0f, 0.05f, vessel.ChairReach);
     }
 
     /// <summary>Puts the survivor in a structure's cabin world at a structure-local spot, at rest relative to it.</summary>
