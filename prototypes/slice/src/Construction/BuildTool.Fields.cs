@@ -70,7 +70,6 @@ public sealed partial class BuildTool
             _drag = new FieldDrag { Vessel = TargetVessel, First = PlaceCell, Far = PlaceCell, Axis = FacingAxis(TargetVessel) };
         }
         Vessel v = _drag.Vessel;
-        Structure s = v.Structure;
         _drag.Far = DragTo(v, _drag) ?? _drag.Far;
         var drawn = new ForceField(_drag.First, _drag.Far, _drag.Axis, item.Id);
         string why = FieldProblem(v, drawn, _drag.Far) ?? SourceProblem(v, item, slotIndex);
