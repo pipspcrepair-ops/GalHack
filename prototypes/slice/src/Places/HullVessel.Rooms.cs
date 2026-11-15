@@ -198,8 +198,18 @@ public sealed partial class HullVessel
             if (len < 6) { n = 1; len = total; }
             for (int i = 0; i < n; i++)
             {
-                int a = from + i * (len + 4);
-                Band(purpose, d, side, a, i == n - 1 ? c1 : a + len - 1, passages);
+                int a = from + i * (len + 4), z = i == n - 1 ? c1 : a + len - 1;
+                // A deep band (12 m or more) takes a passage down its middle, a room either side of it.
+                int outer = Reach(d, (a + z) / 2) - (passages ? 3 : 0), m = (3 + outer) / 2 - 1;
+                if (passages && outer - 2 >= 12)
+                {
+                    Band(purpose, d, side, a, z, passages, 3, m - 2);
+                    Band(purpose, d, side, a, z, passages, m + 3, outer);
+                    for (int v = a; v <= z; v++)
+                        for (int u = m; u <= m + 1; u++)
+                            if (ZoneAt(d, side * u, v) == Fill && !InCore(side * u, v, 1)) SetZone(d, side * u, v, corridor);
+                }
+                else Band(purpose, d, side, a, z, passages);
                 if (i == n - 1) continue;
                 // The passage after it: two cells wide from the spine's wall out to the flank passage.
                 for (int v = a + len + 1; v <= a + len + 2; v++)
@@ -212,13 +222,13 @@ public sealed partial class HullVessel
     int _vault = -1;
 
     /// <summary>One room on a side of a deck over v0..v1: its cells from the spine's wall out to the flank passage's (or the shell).</summary>
-    int? Band(string purpose, int d, int side, int v0, int v1, bool passages)
+    int? Band(string purpose, int d, int side, int v0, int v1, bool passages, int inner = 3, int limit = int.MaxValue)
     {
         var cells = new List<(int, int)>();
         for (int v = v0; v <= v1; v++)
         {
-            int r = Reach(d, v), outer = r >= 9 && passages ? r - 3 : r;
-            for (int a = 3; a <= outer; a++)
+            int r = Reach(d, v), outer = Math.Min(limit, r >= 9 && passages ? r - 3 : r);
+            for (int a = inner; a <= outer; a++)
                 if (ZoneAt(d, side * a, v) == Fill && !InCore(side * a, v, 1)) cells.Add((side * a, v));
         }
         if (cells.Count < 12) return null;

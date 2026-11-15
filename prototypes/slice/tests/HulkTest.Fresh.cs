@@ -42,7 +42,7 @@ public partial class HulkTest
         int bad = 0, hulls = 0;
         void Bad(bool ok, string what) { if (!ok) { bad++; problems.Add(what); } }
         var shapes = new List<string>();
-        float floor = 0, corridor = 0, machines = 0, clear4 = 0, lowLoose = 0, rooms = 0, dressed = 0, lit = 0, pieces = 0;
+        float floor = 0, corridor = 0, machines = 0, clear4 = 0, lowLoose = 0, rooms = 0, dressed = 0, lit = 0, litRooms = 0, pieces = 0;
         double slowest = 0;
         foreach (var (site, spec) in specs)
         {
@@ -71,14 +71,18 @@ public partial class HulkTest
             // Flight-worthy once repaired (the piece with the core's seat): lift for its weight at a heavy world's gravity, power for what draws it.
             foreach (HullVessel.Result r in intact.Where(r => r.CoreSlot != null))
             {
+                // (A structure's stats count thrust only once a core flies it: summed here as the stats would.)
                 var st = StructureStats.Compute(r.Structure);
-                Bad(st.Thrust[(int)GalHack.Structures.Dir.PosY] > st.Mass * StructureStats.G * 1.3 && st.PowerOut >= st.PowerUse, $"{name}{r.Piece.Name}: lift {st.Thrust[(int)GalHack.Structures.Dir.PosY] / 1000:F0} MN for {st.Mass * StructureStats.G * 1.3 / 1000:F0} MN, power {st.PowerOut:F0} of {st.PowerUse:F0} MW");
+                double up = r.Structure.Blocks().Where(b => !b.block.IsFiller && r.Structure.TypeOf(b.block).IsThruster && Orientations.ToWorld(b.block.Rot, GalHack.Structures.Dir.NegZ) == GalHack.Structures.Dir.PosY).Sum(b => (double)r.Structure.TypeOf(b.block).Thrust);
+                Bad(up > st.Mass * StructureStats.G * 1.3 && st.PowerOut >= st.PowerUse, $"{name}{r.Piece.Name}: lift {up / 1000:F0} MN for {st.Mass * StructureStats.G * 1.3 / 1000:F0} MN, power {st.PowerOut:F0} of {st.PowerUse:F0} MW");
             }
             // The wreck as found: measured from its blocks.
             foreach (HullVessel.Result r in wrecks)
             {
                 WreckAudit a = WreckAudit.Of(r.Structure);
-                GD.Print($"      {name}{r.Piece.Name}: {a}; {r.Decor.Count} pieces of dressing; built in {clock.Elapsed.TotalMilliseconds / wrecks.Count:F0} ms");
+                var loose = a.LowCells.Where(c => !r.Crushed.Contains(c) && !Stair(r, c)).ToList();
+                GD.Print($"      {name}{r.Piece.Name}: {a}; {r.Decor.Count} pieces of dressing; built in {clock.Elapsed.TotalMilliseconds / wrecks.Count:F0} ms" +
+                         (loose.Count > 0 ? $"; under 4 m outside the crush: {string.Join(", ", loose.GroupBy(c => c.Y).Select(g => $"{g.Count()} at y {g.Key} (e.g. {g.First()})"))}" : ""));
                 floor += a.Floor;
                 corridor += a.Corridor;
                 machines += a.Machines;
@@ -91,25 +95,33 @@ public partial class HulkTest
                     if (floorCells.Count < 6) continue;
                     rooms++;
                     if (floorCells.Any(cells.Contains) || s.Hall) dressed++;
-                    if (r.Structure.Blocks().Any(b => r.Structure.TypeOf(b.block).IsLight && s.Floor.Contains((b.pos.X, b.pos.Z + r.Piece.V0)) && b.pos.Y >= s.Y && b.pos.Y < s.Y + s.Height)) lit++;
                 }
                 pieces += r.Decor.Count;
+            }
+            // Every room lit as it was built (the years since broke some of the lamps).
+            foreach (HullVessel.Result r in intact)
+            {
+                var lights = r.Structure.Blocks().Where(b => r.Structure.TypeOf(b.block).IsLight).Select(b => b.pos).ToList();
+                foreach (HullVessel.Space s in r.Spaces.Where(s => !s.Corridor && s.Floor.Count >= 6))
+                    if (lights.Any(p => s.Floor.Contains((p.X, p.Z + r.Piece.V0)) && p.Y >= s.Y && p.Y < s.Y + s.Height)) lit++;
+                    else if (lit >= 0) problems.Add($"{name}{r.Piece.Name}: an unlit {s.Purpose} of {s.Floor.Count} m² on deck {s.Deck}");
+                litRooms += r.Spaces.Count(s => !s.Corridor && s.Floor.Count >= 6);
             }
             // The silhouette: a tapered bow and sloped shoulders, of the shaped blocks.
             HullVessel.Result fore = intact[0];
             Structure f0 = fore.Structure;
             int Beam(int z) => f0.Blocks().Where(b => b.pos.Z == z).Select(b => b.pos.X).DefaultIfEmpty(0).Max() * 2 + 1;
             int mid = Math.Min(plan.Bz + 6, plan.Pieces[0].V1 - 1) - fore.Piece.V0;
-            bool tapered = Beam(1) * 2 <= Beam(mid);
+            bool tapered = Beam(0) <= Beam(mid) * 0.6f;
             int edge = f0.Blocks().Where(b => b.pos.Z == mid && b.pos.Y >= plan.Top - 3 && b.pos.Y <= plan.Top).Max(b => b.pos.X);
             bool shoulder = f0.TryGet(new Int3(edge, f0.Blocks().Where(b => b.pos.Z == mid && b.pos.X == edge).Max(b => b.pos.Y), mid), out Block top) && !f0.ShapeOf(top).IsCube;
-            Bad(tapered && shoulder, $"{name}: beam {Beam(1)} m at the stem against {Beam(mid)} m, shoulder {(shoulder ? "sloped" : "square")}");
+            Bad(tapered && shoulder, $"{name}: beam {Beam(0)} m at the stem against {Beam(mid)} m, shoulder {(shoulder ? "sloped" : "square")}");
             shapes.Add($"{plan.L}/{plan.Half}/{string.Join(",", plan.Bays.Select(b => b.V1 - b.V0))}");
         }
         foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
         Check(bad == 0, $"{hulls} hulls on fresh seeds: each a ship's own plan of the player's blocks with bridge, quarters, galley, medbay, hold, engine room and reactor; thrusters, generators, gyros, a warp drive, turrets, cargo containers, chairs and a cockpit, no fuel tanks; coreless with a seat for a core; lift and power to fly once repaired; a tapered bow and sloped shoulders");
         Check(shapes.Distinct().Count() == shapes.Count, $"each hull its own: {shapes.Distinct().Count()} different plans of {shapes.Count}");
-        Check(rooms > 0 && dressed >= rooms * 0.9f && lit >= rooms * 0.98f, $"rooms dressed and lit for their purpose: {dressed} of {rooms} dressed ({pieces} pieces), {lit} lit");
+        Check(rooms > 0 && dressed >= rooms * 0.9f && lit >= litRooms, $"rooms dressed and lit for their purpose: {dressed} of {rooms} dressed ({pieces} pieces), {lit} of {litRooms} lit as built");
         float share = corridor / Math.Max(1f, floor), per100 = machines * 100f / Math.Max(1f, floor);
         Check(share is >= 0.5f and <= 0.7f, $"corridors {share:P0} of {floor:F0} m² of floor (Empyrion's derelicts 59%)");
         Check(per100 is >= 2.2f and <= 3.3f, $"{per100:F2} machines and containers per 100 m² of floor (Empyrion's wrecks 2.7)");

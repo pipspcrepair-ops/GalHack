@@ -289,8 +289,10 @@ sealed class Hulk
         int target = R.Between(l0, l1);
         // Now and then a huge hull runs on toward the longest Empyrion's derelicts reach.
         if (S.Size == "huge" && R.Chance(0.15f)) target = R.Between(250, 270);
-        // The crew's and the power bays hold a stair core and a full set of rooms beside it on every deck.
-        int bow = Math.Clamp(target / 6, 14, 34), engine = Math.Clamp(target / 8, 12, 24), power = Math.Clamp(target / 7, 22, 30), crew = Math.Clamp(target / 6, 22, 30);
+        // Each bay its own proportions about the hull's length; the crew's and the power bays hold a stair core and a full
+        // set of rooms beside it on every deck.
+        int Len(int share, int lo, int hi) => Math.Clamp(target / share + R.Range(-4, 5), lo, hi);
+        int bow = Len(6, 14, 34), engine = Len(8, 12, 24), power = Len(7, 22, 32), crew = Len(6, 22, 32);
         string[] middle = S.Role switch
         {
             "warship" => new[] { "armoury", "hangar", "barracks", "magazine" },
@@ -307,7 +309,7 @@ sealed class Hulk
         void Add(string kind, int len) { H.Bays.Add(new CapitalHull.Bay(kind, v, v + len)); v += len; }
         Add("bow", bow);
         Add("crew", crew);
-        foreach (string k in kinds) Add(k, Math.Clamp(left / n + R.Range(-2, 3), 14, 34));
+        foreach (string k in kinds) Add(k, Math.Clamp(left / n + R.Range(-4, 7), 14, 34));
         Add("power", power);
         Add("engine", engine);
         H.L = v;
@@ -324,7 +326,7 @@ sealed class Hulk
         H.TU0 = -tw;
         H.TU1 = tw;
         H.TV0 = bay.V0 + 1;
-        H.TV1 = Math.Min(bay.V1 - 2, H.TV0 + Math.Clamp(H.Half, 14, 20));
+        H.TV1 = Math.Min(bay.V1 - 2, H.TV0 + Math.Clamp(H.Half + R.Range(-2, 3), 14, 22));
         // Nacelles off the stern, two or three by the beam.
         int n = H.Half >= 17 ? 3 : 2, span = (2 * H.Half + 1 - 6) / n, w = Math.Max(5, span - 2);
         for (int i = 0; i < n; i++)
@@ -332,7 +334,7 @@ sealed class Hulk
             int c = -H.Half + 3 + span * i + span / 2;
             H.Nacelles.Add((c - w / 2, c - w / 2 + w - 1));
         }
-        H.Nac = Math.Clamp(H.L / 12, 8, 16);
+        H.Nac = Math.Clamp(H.L / 12 + R.Range(-1, 3), 8, 18);
         H.NY0 = 2;
         H.NY1 = Math.Min(H.Top - 2, CapitalHull.HullPlan.Walk(2) + 1);
     }

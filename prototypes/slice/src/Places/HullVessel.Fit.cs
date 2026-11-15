@@ -107,12 +107,9 @@ public sealed partial class HullVessel
             if (s.Hall) { HallDoors(s); continue; }
             if (s.Purpose == "core-room") continue;
             if (s.Purpose is "officers" or "bridge") continue; // the tower's decks open on the stair core
-            bool made = false;
-            foreach (bool outer in new[] { false, true })
-            {
-                if (outer && (!made || s.Area < 40)) break;
-                made |= RoomDoor(s, outer);
-            }
+            // A door on its inboard side, else its outboard; a big room has both.
+            bool made = RoomDoor(s, false);
+            if (!made || s.Area >= 40) RoomDoor(s, true);
         }
         // The core room: only through the reactor.
         if (_vault >= 0)
@@ -138,8 +135,10 @@ public sealed partial class HullVessel
         int side = Math.Sign(s.U0 + s.U1);
         foreach (int v in Enumerable.Range(s.V0, s.V1 - s.V0 + 1).OrderBy(v => Math.Abs(v + 0.5 - mid)))
         {
-            int room = outer ? s.Floor.Where(c => c.V == v).Select(c => Math.Abs(c.U)).DefaultIfEmpty(0).Max() : 3;
-            int wall = side * (outer ? room + 1 : 2), into = side * (outer ? room + 2 : 1);
+            var row = s.Floor.Where(c => c.V == v).Select(c => Math.Abs(c.U)).ToList();
+            if (row.Count == 0) continue;
+            int room = outer ? row.Max() : row.Min(), step = outer ? 1 : -1;
+            int wall = side * (room + step), into = side * (room + 2 * step);
             bool Ok(int w) => s.Floor.Contains((side * room, w)) && ZoneAt(s.Deck, wall, w) == Fill && ZoneAt(s.Deck, into, w) is int z && z >= 0 && Out.Spaces[z].Corridor
                               && !s.Doors.Any(d => Math.Abs(d.Wall.V - w) < 4);
             if (!Ok(v)) continue;
@@ -301,12 +300,12 @@ public sealed partial class HullVessel
         foreach (Space hall in Live.Where(s => s.Hall).OrderBy(s => s.Purpose == "engine-room" ? 0 : 1))
         {
             int r = hall.Floor.Max(c => Math.Abs(c.U));
-            for (int v = hall.V0 + 1; v + size.Z - 1 <= hall.V1 - 1 && up < need; v += size.Z + 2)
+            for (int v = hall.V0 + 3; v + size.Z - 1 <= hall.V1 - 2 && up < need; v += size.Z + 2)
                 foreach (int side in new[] { -1, 1 })
                 {
-                    // In the line of the holds' second row of cargo, an aisle either side of it.
-                    int u = side > 0 ? 7 : -7 - size.X + 1;
-                    if (up >= need || r < 7 + size.X + 1) continue;
+                    // In the line of the holds' first row of cargo, either side of the way down the middle.
+                    int u = side > 0 ? 2 : -2 - size.X + 1;
+                    if (up >= need || r < 2 + size.X + 1) continue;
                     bool flat = true;
                     for (int dv = 0; dv < size.Z && flat; dv++)
                         for (int du = 0; du < size.X && flat; du++) flat = Mask(u + du, 0, v + dv) == 255 && hall.Floor.Contains((u + du, v + dv)) && !hall.Taken.Contains((u + du, v + dv));
