@@ -504,14 +504,10 @@ public sealed partial class HullVessel
         if (Cat.TryGetType("cockpit-t1", out BlockType cockpit))
         {
             Int3 size = Footprint.WorldSize(cockpit, rot);
-            int u = -size.X / 2;
-            // At the forward windows, or as near them as the stair's landing leaves room.
-            for (int v = front; v < front + 4; v++)
-                if (Fits(cockpit, At(u, s.Y, v), rot, Free))
-                {
-                    Device(cockpit, u, s.Y, v, rot, s);
-                    break;
-                }
+            // At the forward windows on the centre line, or as near it to port (away from the stair core's landing) as leaves the way clear.
+            var at = (from v in Enumerable.Range(front, 4) from du in Enumerable.Range(0, 6) select (U: -size.X / 2 - du, V: v))
+                .FirstOrDefault(c => Fits(cockpit, At(c.U, s.Y, c.V), rot, Free), (U: int.MinValue, V: 0));
+            if (at.U != int.MinValue) Device(cockpit, at.U, s.Y, at.V, rot, s);
         }
         BlockType chair = Cat.Type("command-chair");
         foreach (int u in new[] { -7, -5, 4, 6 })

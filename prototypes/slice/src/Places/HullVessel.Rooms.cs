@@ -207,7 +207,7 @@ public sealed partial class HullVessel
 
     /// <summary>
     /// A bay's rooms on a deck: each side's band between the spine and the flank passage, split along the bay into rooms
-    /// of up to about 10 m with a passage between each two (walled both sides), as a ship's transverse passages join its
+    /// of about 8 m (rooms of about 88 m², Empyrion's median) with a passage between each two (walled both sides), as a ship's transverse passages join its
     /// spine to its flanks.
     /// </summary>
     void Rooms(Bay b, int d, int corridor)
@@ -234,7 +234,7 @@ public sealed partial class HullVessel
                 if (Band("core-room", d, side, c1 - 6, c1, passages) is int vault) _vault = vault;
                 continue;
             }
-            int total = c1 - from + 1, n = Math.Max(n0, (int)MathF.Round((total + 4) / 14f));
+            int total = c1 - from + 1, n = Math.Max(n0, (int)MathF.Round((total + 4) / 12f));
             int len = (total - 4 * (n - 1)) / n;
             if (len < 6) { n = 1; len = total; }
             for (int i = 0; i < n; i++)

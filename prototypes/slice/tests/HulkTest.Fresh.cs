@@ -109,7 +109,7 @@ public partial class HulkTest
             foreach (HullVessel.Result r in intact)
                 foreach (List<Int3> part in WreckAudit.Of(r.Structure).Unreached)
                     if (r.Spaces.FirstOrDefault(s => part.Any(c => s.Y == c.Y && s.Floor.Contains((c.X, c.Z + r.Piece.V0)))) is HullVessel.Space lost)
-                        Bad(false, $"{name}{r.Piece.Name}: {part.Count} m² of floor no door or stair gets into, the {lost.Purpose} on deck {lost.Deck} at {part[0]}");
+                        Bad(false, $"{name}{r.Piece.Name}: {part.Count} m² of floor no door or stair gets into, the {lost.Purpose} on deck {lost.Deck}, x {part.Min(c => c.X)}..{part.Max(c => c.X)} y {part.Min(c => c.Y)}..{part.Max(c => c.Y)} z {part.Min(c => c.Z)}..{part.Max(c => c.Z)}");
             // Every room lit as it was built (the years since broke some of the lamps).
             foreach (HullVessel.Result r in intact)
             {
@@ -159,13 +159,20 @@ public partial class HulkTest
         GD.Print("-- a derelict capital ship in orbit --");
         var data = _game.Zone.Data;
         DerelictPlan ship = null;
+        var map = new GlobeMap(16000, 8000, 16000 / Math.Tau);
+        DerelictPlan Of(ulong system) => Derelicts.Plan(WorldChoice.Library, system, map, 16000 / Math.Tau * 1.2, OrbitRules.Shared, data.Catalogue, data.Items).FirstOrDefault(p => p.Hull != null);
+        ulong seed = 0;
         for (int i = 0; i < 12 && ship == null; i++)
         {
-            var map = new GlobeMap(16000, 8000, 16000 / Math.Tau);
-            ship = Derelicts.Plan(WorldChoice.Library, (ulong)Random.Shared.NextInt64(), map, 16000 / Math.Tau * 1.2, OrbitRules.Shared, data.Catalogue, data.Items).FirstOrDefault(p => p.Hull != null);
+            seed = (ulong)Random.Shared.NextInt64();
+            ship = Of(seed);
             yield return 0;
         }
         if (!Check(ship != null, "a start system with a derelict capital ship in its near orbit")) yield break;
+        // A save keeps what play changed on top of the seed (DESIGN 21: edits stored as differences), so the seed must build it again block for block.
+        DerelictPlan again = Of(seed);
+        Check(again?.Id == ship.Id && Blueprint.Save(again.Structure) == Blueprint.Save(ship.Structure) && again.Loot.Equals(ship.Loot) && again.Hull.Decor.Count == ship.Hull.Decor.Count,
+            $"{ship.Name} built again from its system's seed block for block, its hold and its dressing the same (what a save keeps its changes against)");
         WreckAudit a = WreckAudit.Of(ship.Structure);
         GD.Print($"      {ship.Name}: {a}; {ship.Hull.Decor.Count} pieces of dressing");
         int length = ship.Hull.Plan.L + ship.Hull.Plan.Nac;
