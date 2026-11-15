@@ -149,7 +149,7 @@ public partial class PowerTest : Node
         // More than the generators make: the capacitor carries the rest, then everything gets its share.
         p.AddLoad(p.GeneratorMW * 2);
         p.Tick(1.0 / 60, true, false, Idle);
-        Check(p.Supply == 1 && p.ChargeMJ < p.CapacityMJ && Math.Abs(p.Load - 2) < 1e-9, $"a load of twice the generator's {p.GeneratorMW:F2} MW: the capacitor makes up the difference ({p.ChargeMJ:F2} MJ left)");
+        Check(p.Supply == 1 && p.ChargeMJ < p.CapacityMJ && Math.Abs(p.Usage - 2) < 1e-9, $"a load of twice the generator's {p.GeneratorMW:F2} MW: the capacitor makes up the difference ({p.ChargeMJ:F2} MJ left)");
         for (int i = 0; i < 60 * 60 && p.ChargeMJ > 0; i++) { p.AddLoad(p.GeneratorMW * 2); p.Tick(1.0 / 60, true, false, Idle); }
         p.AddLoad(p.GeneratorMW * 2);
         p.Tick(1.0 / 60, true, false, Idle);
