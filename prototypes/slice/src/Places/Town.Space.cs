@@ -133,7 +133,7 @@ public sealed partial class Town
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
         }
         // Two stood still in each other with no room to part (sent to the one spot in a narrow way): the second goes elsewhere.
-        if (_space.WorstOverlap > 0.05f)
+        if (_space.WorstOverlap > 0.015f)
             for (int i = 0; i < _bodies.Count; i++)
             {
                 Person p = _bodies[i];
@@ -143,7 +143,7 @@ public sealed partial class Town
                     Person o = _bodies[j];
                     if (MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
                     float d = new Vector2(o.Pos.X - p.Pos.X, o.Pos.Z - p.Pos.Z).Length();
-                    if (d >= BodyRadius(o) + BodyRadius(p) - 0.05f) continue;
+                    if (d >= BodyRadius(o) + BodyRadius(p) - 0.015f) continue;
                     p.Wait = 0f;
                     p.Partner = null;
                     break;

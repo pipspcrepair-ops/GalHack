@@ -965,6 +965,8 @@ public sealed partial class Town
     void ChatApart(Person p, Vector3 d, float dt)
     {
         Person q = p.Partner;
+        // (Two at work, a medic seeing to someone, are close by their work; and not while the way somewhere is being worked out.)
+        if (p.Working || q.Working || p.Asked >= 0 || q.Asked >= 0) return;
         if (p.Sitting || p.Path != null && p.Step < p.Path.Count || !q.Sitting && q.Partner == p && p.GetHashCode() < q.GetHashCode()) return;
         // (Not while pressed, giving way or with you at their shoulder: nobody leans into you to keep their distance.)
         if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f || (p.Pos - _you).LengthSquared() < 2.25f) { ChatHeld++; return; }
