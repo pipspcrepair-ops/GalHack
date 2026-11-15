@@ -47,6 +47,9 @@ public sealed class VesselDamage : ILocatedDamageSink
     public int HitsTaken { get; private set; }
     public int BlocksLost { get; private set; }
 
+    /// <summary>Hits from shots and blasts (everything but crashes) since the start: what a vessel that runs from harm runs from.</summary>
+    public int ShotsTaken { get; private set; }
+
     /// <summary>The last flush's cost, ms, and how many chunks it left to redraw.</summary>
     public double LastFlushMs { get; private set; }
 
@@ -125,6 +128,7 @@ public sealed class VesselDamage : ILocatedDamageSink
         foreach (Pending p in _queue)
         {
             HitsTaken++;
+            if (p.Kind != HitKind.Crash) ShotsTaken++;
             float before = report.Dealt;
             switch (p.Kind)
             {
