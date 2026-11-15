@@ -187,8 +187,8 @@ public sealed class Suit : IDamageSink
     readonly Dictionary<Int3, Room> _roomAt = new();
     bool _sealedAboard;
 
-    /// <summary>Whether a structure has active air: powered, with a sealed room aboard (known for the one the survivor sits in or stands aboard).</summary>
-    public bool HoldsAir(Vessel v) => v != null && v.Structure == _roomsOf && _sealedAboard && v.Powered;
+    /// <summary>Whether a structure has active air: its life support running (powered, switched on), with a sealed room aboard (known for the one the survivor sits in or stands aboard).</summary>
+    public bool HoldsAir(Vessel v) => v != null && v.Structure == _roomsOf && _sealedAboard && v.LifeSupport;
 
     /// <summary>The room (sealed or leaking) the survivor's chest is in, of the structure they sit in or stand aboard, this tick.</summary>
     Room _roomHere;
@@ -250,7 +250,7 @@ public sealed class Suit : IDamageSink
         if (v != null)
         {
             Exposure world = Outside(here, Sim.Time, out double raw);
-            bool powered = v.Powered;
+            bool powered = v.LifeSupport;
             Dictionary<Int3, RoomAir> rooms = _roomsAir.GetValue(v, _ => new Dictionary<Int3, RoomAir>());
             // A door open or the hull holed: a room that is no longer sealed takes the outside's air.
             foreach (var (key, was) in rooms)

@@ -54,7 +54,7 @@ public sealed class KeyBindings
             new("map", Key.M, "Map", "open · close", Menus),
             new("debug", Key.F3, "Debug readout", "numbers", Menus),
         };
-        for (int i = 0; i < 9; i++) list.Add(new($"slot-{i + 1}", Key.Key1 + i, $"Slot {i + 1}", "", Toolbar));
+        for (int i = 0; i < 9; i++) list.Add(new($"slot-{i + 1}", Key.Key1 + i, $"Slot {i + 1}", "bag · structure", Toolbar));
         return list.ToArray();
     }
 

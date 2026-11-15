@@ -1,5 +1,5 @@
 // Blocks manufacturing needs that building's catalogue doesn't have yet: the production machines,
-// the drives, two fixed weapons with their own ammo, the force field emitter and the scanners. Same format and units as
+// the drives, two fixed weapons with their own ammo, the spotlight, the force field emitter and the scanners. Same format and units as
 // prototypes/building/data/components.json. Whoever loads the building catalogue appends these to
 // its components, as the physics sandbox does with its vessel parts; nothing in
 // prototypes/building changes. Their bills are in blocks.json. The fabricator ladder is the
@@ -165,6 +165,18 @@
         {"box": [-0.32, -0.28, -0.455, -0.06, -0.06, -0.45], "style": "dark"},
         {"box": [0.06, -0.28, -0.455, 0.32, -0.06, -0.45], "style": "dark"},
         {"box": [-0.425, -0.05, -0.2, 0.425, 0.05, 0.2], "style": "accent"}
+      ]
+    },
+    // An exterior spotlight: a lamp on the hull throwing a beam out of its lens (-z), switched with the
+    // structure's other spotlights from the pilot's toolbar, apart from the lights inside. Figures
+    // from Empyrion's spotlight (hp, a little power), scaled like the light.
+    {
+      "id": "spotlight", "name": "Spotlight", "function": "spotlight", "hp": 120, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.02, "color": "3a3f47", "glow": "fff1d0", "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "parts", "power": -0.001,
+      "parts": [
+        {"box": [-0.32, -0.32, 0.42, 0.32, 0.32, 0.5], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.26, -0.26, -0.1, 0.26, 0.26, 0.42], "style": "body"},
+        {"cylinder": "z", "segments": 14, "box": [-0.3, -0.3, -0.16, 0.3, 0.3, -0.1], "style": "dark"},
+        {"cylinder": "z", "segments": 14, "box": [-0.22, -0.22, -0.165, 0.22, 0.22, -0.16], "style": "glow"}
       ]
     },
     // A force field's corner emitter: an L whose arms (+x, +y) run along the field's two edges from
