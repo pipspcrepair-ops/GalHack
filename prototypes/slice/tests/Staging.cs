@@ -60,6 +60,7 @@ public sealed partial class Staging
             "uiround" => UiRoundShots(),
             "notices" => NoticesShots(),
             "markers" => MarkersShot(),
+            "placescan" => PlaceScanShot(),
             "corescan" => CoreScanShot(),
             "fabicons" => FabIconShots(),
             "loot" => Loot(),

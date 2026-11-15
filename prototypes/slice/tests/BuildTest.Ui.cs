@@ -348,7 +348,7 @@ public partial class BuildTest
             "the heading reads right at 0, 90, 180, 270 and 359.9");
     }
 
-    /// <summary>The handheld scanner: free in the suit fabricator; a click pings what is far off onto the compass for ten seconds, fading, and nothing stays.</summary>
+    /// <summary>The handheld scanner: free in the suit fabricator; a click pings the ores far off onto the compass for ten seconds, fading, and nothing stays (places: PlaceScanTest).</summary>
     IEnumerable<int> ScannerChecks()
     {
         ItemDef scanner = Items.Item("scanner");
@@ -365,12 +365,12 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(2)) yield return x;
         int pinged = _game.Visor.Markers().Count(m => m.Kind == "ping");
         double at = _game.Stats.Seconds;
-        Check(pinged > 0 && _game.Pings.Count == pinged, $"a click pings {pinged} things onto the compass ({string.Join(", ", _game.Pings.Select(p => p.Label ?? "?"))})");
+        Check(pinged > 0 && _game.Pings.Count(p => p.Place == null) == pinged, $"a click pings {pinged} ores onto the compass ({string.Join(", ", _game.Pings.Select(p => p.Label ?? p.Place))})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 8.5, 12)) yield return x;
         var late = _game.Visor.Markers().Where(m => m.Kind == "ping").ToList();
         Check(late.Count == pinged && late.All(m => m.Alpha < 1f && m.Alpha > 0f), $"after 8.5 s they are still marked, fading (alpha {(late.Count > 0 ? late[0].Alpha : 0):F2})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 10.2, 5)) yield return x;
-        Check(_game.Visor.Markers().All(m => m.Kind != "ping"), "after ten seconds the pings are gone");
+        Check(_game.Visor.Markers().All(m => m.Kind != "ping"), "after ten seconds the ore pings are gone");
         Check(_game.Spaceflight.Charts.OfKind("deposit").Count() == charted, "and nothing pinged stays charted: only going near a deposit marks it");
     }
 

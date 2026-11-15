@@ -451,8 +451,11 @@ public partial class Visor : CanvasLayer
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        // The scan's marks: an ore by name, a place by its icon and distance alone (a found place's own marker stands for it).
+        var named = marks.Where(m => m.Kind == "place").Select(m => new Vector2(m.At.X, m.At.Z)).ToList();
         foreach (Game.Game.Ping p in Game.Pings)
-            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+            if (p.Place == null) marks.Add(new(p.Label.ToUpperInvariant(), p.At, C.Holo, Game.PingAlpha(p), "ping"));
+            else if (!named.Any(n => n.DistanceTo(new Vector2(p.At.X, p.At.Z)) < 1f)) marks.Add(new("", Ground(p.At, PlaceLift), C.Accent, Game.PingAlpha(p), p.Place));
         // The handheld scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
         foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
         return marks;

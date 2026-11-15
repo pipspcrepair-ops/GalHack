@@ -1,23 +1,26 @@
 using System.Collections.Generic;
 using Godot;
 using Planets.Gen;
+using PoiGenerator.Gen;
+using Slice.Items;
 using Slice.Surface;
 
 namespace Slice.Game;
 
 /// <summary>
-/// The handheld scanner (free from the suit fabricator): a click pings what lies far off, the nearest
-/// deposit of each ore and the places nobody has found yet, and the compass marks each ping for ten
-/// seconds while it fades. Nothing stays marked from a ping: a deposit or a place stays on the
-/// compass and the map only once you have been near it.
+/// The handheld scanner (free from the suit fabricator): a click pings what lies far off. The nearest deposit of
+/// each ore within <see cref="ScanRange"/> goes on the compass for ten seconds; every place within the scanner's
+/// scan range (the item's data) is marked for thirty, then the mark times out: a scan is a snapshot, not a standing
+/// map. A city is one place. Nothing stays marked from a ping: a deposit or a place stays on the compass and the
+/// map only once you have been near it.
 /// </summary>
 public partial class Game
 {
-    /// <summary>A ping on the compass: what it is (an ore's name, or null for a place not yet found), where, and until when.</summary>
-    public readonly record struct Ping(string Label, Vector3 At, double Until, bool Place);
+    /// <summary>A ping: an ore's name (null for a place), where, until when, a place's icon (null for an ore), and a place's chart key.</summary>
+    public readonly record struct Ping(string Label, Vector3 At, double Until, string Place = null, string Key = null);
 
-    /// <summary>How long a ping stays on the compass, seconds, and how far the handheld scanner reaches, m.</summary>
-    public const double PingSeconds = 10;
+    /// <summary>How long an ore's ping and a place's mark last, seconds, and how far the handheld scanner finds ore, m.</summary>
+    public const double PingSeconds = 10, MarkSeconds = 30;
     public const float ScanRange = 600f;
 
     /// <summary>The seconds between pings.</summary>
@@ -35,28 +38,45 @@ public partial class Game
     /// <summary>Seconds until the scanner can ping again (0: ready).</summary>
     public double ScanWait => System.Math.Max(0, _scanReady - Stats.Seconds);
 
-    /// <summary>A ping: every ore's nearest deposit and the unfound places within reach go on the compass for a while.</summary>
+    /// <summary>How far the held scanner's scan marks places, m (0: none held).</summary>
+    public float PlaceScanRange =>
+        Pack.Hand == HandKind.Scanner && Zone?.Data?.Items.TryGet(Pack.HandItem, out var item) == true ? item.Scan : 0f;
+
+    /// <summary>A ping: every ore's nearest deposit and every place within reach go on the compass for a while.</summary>
     public bool Scan()
     {
         if (ScanWait > 0 || InOrbit || Zone.Planet == null) return false;
         _scanReady = Stats.Seconds + ScanCooldown;
         _pings.Clear();
         Vector3 feet = Survivor.WorldFeet;
-        double until = Stats.Seconds + PingSeconds;
         foreach (var kind in DepositFinder.Kinds)
             if (DepositFinder.Nearest(Zone, kind, feet, ScanRange) is Vector3 at)
-                _pings.Add(new Ping(kind == Planets.Gen.DepositKind.Water ? "ice" : kind.ToString().ToLowerInvariant(), at, until, false));
-        var planet = Zone.Planet;
-        for (int i = 0; i < planet.Pois.Count; i++)
-        {
-            var o = planet.Pois[i].Origin;
-            Vector3 at = planet.NearestCopy(new Vector3(o.X, feet.Y, o.Z), feet);
-            if (new Vector2(at.X - feet.X, at.Z - feet.Z).Length() > ScanRange) continue;
-            if (Spaceflight.Charts.Has($"poi{i}")) continue; // found already: it is on the compass for good
-            _pings.Add(new Ping(null, at, until, true));
-        }
+                _pings.Add(new Ping(kind == Planets.Gen.DepositKind.Water ? "ice" : kind.ToString().ToLowerInvariant(), at, Stats.Seconds + PingSeconds));
+        _pings.AddRange(PlacesInScan(feet, PlaceScanRange, Stats.Seconds + MarkSeconds));
         Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, Survivor.WorldEye(), 1.4f, -10f);
         return true;
+    }
+
+    /// <summary>The places within <paramref name="range"/> of <paramref name="feet"/> across the ground, as marks lasting until <paramref name="until"/>: each site, the city's buildings as one mark at its middle.</summary>
+    public List<Ping> PlacesInScan(Vector3 feet, float range, double until)
+    {
+        var marks = new List<Ping>();
+        var planet = Zone.Planet;
+        if (range <= 0f || planet == null) return marks;
+        var city = planet.Infra.City;
+        void Add(float x, float z, string icon, string key)
+        {
+            Vector3 at = planet.NearestCopy(new Vector3(x, feet.Y, z), feet);
+            if (new Vector2(at.X - feet.X, at.Z - feet.Z).Length() <= range) marks.Add(new Ping(null, at, until, icon, key));
+        }
+        for (int i = 0; i < planet.Pois.Count; i++)
+        {
+            var p = planet.Pois[i];
+            if (p.Family.Space || city?.Sites.Contains(p) == true) continue;
+            Add(p.Origin.X, p.Origin.Z, p.Family.Tier == PoiTier.Wreck ? "wreck" : p.State == PoiState.Ruined ? "ruin" : "place", $"poi{i}");
+        }
+        if (city != null) Add((float)city.CenterX, (float)city.CenterZ, "place", "city");
+        return marks;
     }
 
     void TickPings() => _pings.RemoveAll(p => p.Until < Stats.Seconds);

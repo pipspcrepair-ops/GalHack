@@ -47,4 +47,38 @@ public sealed partial class Staging
             GD.Print($"marker {p.Mark.Kind} {p.Mark.Tag} at {p.At} {(p.Pinned ? "pinned" : "")} {(p.Labelled ? "labelled" : "icon")} {Visor.Distance(p.Distance)}");
         foreach (int x in Shot(_args.GetValueOrDefault("out", "user://markers.png"))) yield return x;
     }
+
+    /// <summary>
+    /// The scanner's place marks: <c>--view=placescan --out=FILE.png</c>, in daylight with the scanner in hand, stood
+    /// 150 m off the place with the most others within the scan's range, just scanned, looking toward the marks.
+    /// </summary>
+    IEnumerable<int> PlaceScanShot()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.36);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Zone.Wildlife.Frozen = true;
+        _game.Pack.Add("scanner", 1);
+        foreach (int x in CoreScanStage.Hold(Play, "scanner", _ => { })) yield return x;
+        var planet = _game.Zone.Planet;
+        float range = _game.PlaceScanRange;
+        var sites = planet.Pois.Where(p => !p.Family.Space && planet.Infra.City?.Sites.Contains(p) != true)
+            .Select(p => new Vector3(p.Origin.X, 0f, p.Origin.Z)).ToList();
+        Vector3 best = sites.OrderByDescending(a => sites.Count(b => planet.NearestCopy(b, a).DistanceTo(a) <= range * 0.8f)).First();
+        Vector3 stand = best + new Vector3(150f, 0f, 0f);
+        _game.Survivor.PlaceOutside(new System.Numerics.Vector3(stand.X, _game.Zone.GroundAt(stand.X, stand.Z).Y + 1f, stand.Z));
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.Wait(60)) yield return x;
+        _game.Scan();
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Vector3 eye = _game.Survivor.WorldEye(), sum = Vector3.Zero;
+        foreach (Visor.Marker m in _game.Visor.Markers().Where(m => m.Tag == ""))
+            sum += new Vector3(m.At.X - eye.X, 0f, m.At.Z - eye.Z).Normalized();
+        Vector3 look = sum.LengthSquared() > 0.01f ? sum.Normalized() : Vector3.Forward;
+        foreach (int x in _drive.LookAt(eye + look * 60f + Vector3.Up * 2f, 12)) yield return x;
+        _game.Controls.Mouse = new Vector2(-100, -100);
+        foreach (int x in _drive.Wait(20)) yield return x;
+        foreach (var p in _game.Visor.LayoutMarkers(_game.GetViewport().GetVisibleRect().Size, _game.Visor.UiScale))
+            GD.Print($"marker {p.Mark.Kind} {p.Mark.Tag} at {p.At} {(p.Pinned ? "pinned" : "")} {(p.Labelled ? "labelled" : "icon")} {Visor.Distance(p.Distance)}");
+        foreach (int x in Shot(_args.GetValueOrDefault("out", "user://placescan.png"))) yield return x;
+    }
 }
