@@ -869,8 +869,9 @@ public sealed partial class Town
                 // They stay at their stall or their work; now and then a step and back.
                 p.Working = p.Role == "worker";
                 p.Wait = 8f + (float)_rng.NextDouble() * 10f;
-                // Now and then to a bench or a counter in the rooms round them, and back.
-                if (_rng.NextDouble() < 0.4 && Haunt(p, p.Role == "vendor" ? Keep : Bench) is int at && at != p.Spot) { GoTo(p, at); p.Working = true; }
+                // Now and then to a bench or a counter in the rooms round them, and back; and straight away when someone else stands on their spot.
+                bool taken = People.Any(o => o != p && !o.Dead && !o.Indoors && o.Spot == p.Spot && o.Pos.DistanceSquaredTo(p.Pos) < 0.36f);
+                if ((taken || _rng.NextDouble() < 0.4) && Haunt(p, p.Role == "vendor" ? Keep : Bench) is int at && at != p.Spot) { GoTo(p, at); p.Working = true; }
                 return;
             case "guard":
                 // A short beat: to a spot nearby and back to the post; unwelcome, you, they keep the post.
@@ -1044,14 +1045,29 @@ public sealed partial class Town
     /// <summary>The nearest other standing spot round two where they can stand that far apart (null: none within a dozen metres).</summary>
     int? Roomy(Person by, Person with, float dist, float r, float h)
     {
-        PInt3 from = by.Spot >= 0 && by.Spot < Spots.Count ? Spots[by.Spot].Cell : Cell(by.Pos);
-        foreach (var (s, i) in Spots.Select((s, i) => (s, i)).Where(t => t.i != by.Spot && t.i != with.Spot && t.s.Tag is not ("bed" or "home" or "sit") && t.s.Cell.Manhattan(from) <= 12).OrderBy(t => t.s.Cell.Manhattan(from)).Take(12))
+        if (by.Spot < 0 || by.Spot >= Spots.Count) return null;
+        // (Spots and the furniture stand still: each spot's neighbours and each spot's room at a distance are worked out once.)
+        if (!_nearSpots.TryGetValue(by.Spot, out int[] near))
         {
-            Vector3 at = At(i);
-            if (Room(at, at.Y, r, h) && StandBy(at, Vector3.Right, dist, r, h, at) != null) return i;
+            PInt3 from = Spots[by.Spot].Cell;
+            _nearSpots[by.Spot] = near = Spots.Select((s, i) => (s, i)).Where(t => t.i != by.Spot && t.s.Tag is not ("bed" or "home" or "sit") && t.s.Cell.Manhattan(from) <= 12)
+                .OrderBy(t => t.s.Cell.Manhattan(from)).Take(13).Select(t => t.i).ToArray();
+        }
+        foreach (int i in near)
+        {
+            if (i == with.Spot) continue;
+            if (!_roomAt.TryGetValue((i, dist), out bool room))
+            {
+                Vector3 at = At(i);
+                _roomAt[(i, dist)] = room = Room(at, at.Y, r, h) && StandBy(at, Vector3.Right, dist, r, h, at) != null;
+            }
+            if (room) return i;
         }
         return null;
     }
+
+    readonly System.Collections.Generic.Dictionary<int, int[]> _nearSpots = new();
+    readonly System.Collections.Generic.Dictionary<(int, float), bool> _roomAt = new();
 
     /// <summary>Steps taken toward a chatting distance, pairs gone elsewhere for room, pairs parted for want of it, and steps held off by a push or by you (tests).</summary>
     public int ChatSet, ChatMoved, ChatStuck, ChatHeld;
