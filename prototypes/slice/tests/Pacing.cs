@@ -42,6 +42,7 @@ public partial class Pacing : Node
         if (_args.TryGetValue("screen", out string sc)) DisplayServer.WindowSetCurrentScreen(int.Parse(sc));
         DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen); // the owner's borderless, at the screen's own size
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
+        if (_args.ContainsKey("city")) PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
         if (_args.TryGetValue("trees", out string tr)) PlanetSurface.Terrain.PlanetFlora.TreeDensity = float.Parse(tr, System.Globalization.CultureInfo.InvariantCulture);
         ProcessPhysicsPriority = 100;
         _game = new Game.Game { Interactive = false, SettingsPath = _args.GetValueOrDefault("settings"), World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };

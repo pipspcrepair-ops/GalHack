@@ -6,6 +6,7 @@ using System.Linq;
 using GalHack.Physics.Engine;
 using Godot;
 using PlanetSurface.Fx;
+using PlanetSurface.Poi;
 using PlanetSurface.Terrain;
 using Slice.Game;
 
@@ -59,6 +60,8 @@ public partial class PopRoute : Node
         DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled); // after the move: set before it, a 60 Hz screen ran unsynced
         // (Set by reflection: the flag is only there from places built after load on.)
+        // --force-city=1: a city planned on any lived-in world (the city routes' own runs, on fresh seeds).
+        if (_args.ContainsKey("force-city")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.ContainsKey("places-at-load"))
             typeof(PlanetSurface.World.PlanetWorld).GetField("BuildPlacesAtLoad")?.SetValue(null, true);
         ProcessPhysicsPriority = 100;
@@ -292,8 +295,10 @@ public partial class PopRoute : Node
     {
         var world = game.Zone.Planet;
         if (world.Infra?.City is { Sites.Count: > 0 } c) return (new Vector3((float)c.CenterX, 0f, (float)c.CenterZ), (float)c.Radius, $"the city, {c.Sites.Count} buildings");
-        var town = world.Pois.Where(p => p.Tier is PoiGenerator.Gen.PoiTier.Town or PoiGenerator.Gen.PoiTier.City or PoiGenerator.Gen.PoiTier.Spaceport)
-            .OrderByDescending(p => (double)(p.Stamp.MaxX - p.Stamp.MinX) * (p.Stamp.MaxZ - p.Stamp.MinZ)).FirstOrDefault();
+        // A city, then a town, then any settlement, then a spaceport: the largest of the first kind there is.
+        static int Rank(PoiSite p) => p.Tier == PoiGenerator.Gen.PoiTier.City ? 0 : p.Tier == PoiGenerator.Gen.PoiTier.Town ? 1 : p.Family.Tags.Contains("settlement") ? 2 : p.Tier == PoiGenerator.Gen.PoiTier.Spaceport ? 3 : 4;
+        var town = world.Pois.Where(p => Rank(p) < 4).OrderBy(Rank)
+            .ThenByDescending(p => (double)(p.Stamp.MaxX - p.Stamp.MinX) * (p.Stamp.MaxZ - p.Stamp.MinZ)).FirstOrDefault();
         if (town == null) return null;
         var (x, z) = town.Center;
         return (new Vector3((float)x, 0f, (float)z), (float)Math.Max(town.Stamp.MaxX - town.Stamp.MinX, town.Stamp.MaxZ - town.Stamp.MinZ) * 0.5f, $"{town.Name} ({town.Family.Id}, {town.Tier})");
