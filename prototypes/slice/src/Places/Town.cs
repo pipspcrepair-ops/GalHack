@@ -144,6 +144,10 @@ public sealed partial class Town
         /// <summary>How long you've been leaning on them.</summary>
         public float PressFor;
         public float Pursue;
+        /// <summary>The stand they're taking to talk to whom, and when they may look for one again after finding none.</summary>
+        public Vector3? ChatAt;
+        public Person ChatWith;
+        public float ChatRetry;
         public BodyAct Answer;
         public float AnswerAt, AnswerFor, LookFor;
         public Vector3 LookAt;
@@ -961,25 +965,46 @@ public sealed partial class Town
         if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f || (p.Pos - _you).LengthSquared() < 2.25f) { ChatHeld++; return; }
         d.Y = 0f;
         float gap = d.Length(), want = Culture.Trait("chat", 1.1f), r = BodyRadius(p), h = Height(p);
-        if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) return;
-        Vector3 away = gap > 0.05f ? -d / gap : Vector3.Right;
-        bool Clear(Vector3 at) => Open(at) && (_parts == null || _parts.Gap(at, r, h) >= 0f);
-        foreach (float reach in new[] { want, MathF.Max(gap, 0.75f * want), MathF.Max(gap, 0.5f * want) })
-            foreach (float turn in Turns)
+        if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) { p.ChatAt = null; return; }
+        // (A stand must be clear of the furniture; a step toward it, from a spot at a counter or a bench, only no deeper in than they are.)
+        float here = _parts == null ? 0f : MathF.Min(0f, _parts.Gap(p.Pos, r, h)) - 1e-3f;
+        // (And always a floor under them at the height they stand: never off a ledge or a landing.)
+        bool Floor(Vector3 at) => Open(at) && Ground(at) is float g && MathF.Abs(g - p.Pos.Y) < 0.1f;
+        bool Clear(Vector3 at) => Floor(at) && (_parts == null || _parts.Gap(at, r, h) >= 0f);
+        bool Step(Vector3 at) => Floor(at) && (_parts == null || _parts.Gap(at, r, h) >= here);
+        // (A stand found is kept till they're on it: the looking is done once, not every tick; finding none, they look again in a while.)
+        if (p.ChatAt is not { } stand || p.ChatWith != q)
+        {
+            if (_clock < p.ChatRetry) return;
+            Vector3? found = null;
+            Vector3 away = gap > 0.05f ? -d / gap : Vector3.Right * (p.GetHashCode() < q.GetHashCode() ? -1f : 1f);
+            for (int k = 0; k < 3 && found == null; k++)
             {
-                Vector3 stand = q.Pos + away.Rotated(Vector3.Up, turn) * reach;
-                stand.Y = p.Pos.Y;
-                if (!Clear(stand) || !Clear((stand + p.Pos) * 0.5f)) continue;
-                Vector3 to = p.Pos.MoveToward(stand, 0.7f * dt);
-                if (!Clear(to)) continue;
-                p.Pos = to;
-                ChatSet++;
+                float reach = k == 0 ? want : MathF.Max(gap, (1f - 0.25f * k) * want);
+                foreach (float turn in Turns)
+                {
+                    Vector3 at = q.Pos + away.Rotated(Vector3.Up, turn) * reach;
+                    at.Y = p.Pos.Y;
+                    if (Clear(at) && Step((at + p.Pos) * 0.5f) && Step(p.Pos.MoveToward(at, 0.1f))) { found = at; break; }
+                }
+            }
+            if (found == null)
+            {
+                // No stand clear round them: a step straight back, where there is one, else a look again in a while.
+                Vector3 back = p.Pos + away * Math.Clamp(want - gap, -0.7f * dt, 0.7f * dt);
+                if (Step(back)) { p.Pos = back; ChatSet++; }
+                else { p.ChatRetry = _clock + 1f; ChatStuck++; }
                 return;
             }
-        // No stand clear round them: a step straight back, where there is one.
-        Vector3 back = p.Pos + away * Math.Clamp(want - gap, -0.7f * dt, 0.7f * dt);
-        if (Clear(back)) p.Pos = back;
-        else ChatStuck++;
+            stand = found.Value;
+            p.ChatAt = stand;
+            p.ChatWith = q;
+        }
+        Vector3 to = p.Pos.MoveToward(stand, 0.7f * dt);
+        if (!Step(to)) { p.ChatAt = null; p.ChatRetry = _clock + 0.5f; ChatStuck++; return; }
+        p.Pos = to;
+        ChatSet++;
+        if (p.Pos.DistanceSquaredTo(stand) < 1e-4f) p.ChatAt = null;
     }
 
     /// <summary>Steps taken toward a chatting distance, steps that found no way, and steps held off by a push or by you (tests).</summary>
