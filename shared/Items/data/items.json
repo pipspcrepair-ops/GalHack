@@ -166,6 +166,6 @@
     // ---- Tools ------------------------------------------------------------------------------
     { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20, "unlock": { "level": 1, "cost": 0, "tab": "misc" } },
     { "id": "climate-node", "name": "Climate node", "short": "CLIMATE", "category": "tool", "rarity": "common", "mass": 12.0, "volume": 12,
-      "uses": "Set down by a core · its power · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
+      "uses": "Set down · a core's power · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
   ]
 }

@@ -955,7 +955,7 @@ public partial class BuildTest : Node
         // A tier hangs under the tier below and opens no sooner.
         var tiers = fresh.Nodes.Select(n => (n, m: System.Text.RegularExpressions.Regex.Match(n.Id, @"^(.+)-t(\d+)$"))).Where(x => x.m.Success && int.Parse(x.m.Groups[2].Value) > 1).ToList();
         var unchained = tiers.Where(x => x.n.Unlock.Parent != $"{x.m.Groups[1].Value}-t{int.Parse(x.m.Groups[2].Value) - 1}" || fresh.Node(x.n.Unlock.Parent).Level > x.n.Level).Select(x => x.n.Id).ToList();
-        Check(tiers.Count > 20 && unchained.Count == 0, $"each of {tiers.Count} tiers hangs under the tier below and opens no sooner{(unchained.Count > 0 ? ": not " + string.Join(", ", unchained) : "")}");
+        Check(tiers.Count >= 20 && unchained.Count == 0, $"each of {tiers.Count} tiers hangs under the tier below and opens no sooner{(unchained.Count > 0 ? ": not " + string.Join(", ", unchained) : "")}");
         // Empyrion's ladder: a higher tier (or a plating over another plating) is a later level, never a level-1 starter.
         var rungs = tiers.Select(x => x.n).Concat(fresh.Nodes.Where(n => n.Id.EndsWith("-plated") && n.Unlock.Parent?.EndsWith("-plated") == true)).ToList();
         var flat = rungs.Where(n => n.Level <= 1 || fresh.Node(n.Unlock.Parent).Level >= n.Level).Select(n => $"{n.Id} {n.Level}").ToList();

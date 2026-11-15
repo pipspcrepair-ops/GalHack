@@ -55,7 +55,9 @@ public static class CoreCraft
         Structure s = Ship(zone.Data.Catalogue, false, _ => true);
         var cell = new Int3(2, 1, 2);
         Building.Place(s, cell, Building.Make(s, zone.Data.Catalogue.Type("weather-forecast")));
+        Building.Place(s, new Int3(-2, 1, 2), Building.Make(s, zone.Data.Catalogue.Type("container-t1"))); // core storage, for its generator's fuel
         Vessel v = Vessel.Spawn(zone, s, (at + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        v.Storage.Add("biofuel", 40);
         v.Settle();
         return (v, cell);
     }
