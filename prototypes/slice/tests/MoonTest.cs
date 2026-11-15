@@ -144,12 +144,17 @@ public partial class MoonTest : Node
         Check(centre <= home * PlanetSurface.Skies.StarSystem.ThrusterMoonTo * 1.01 && gap is > 6000 and < 14000,
             $"the thruster moon is {moon.Name}, {centre / 1000:F1} km from the world's centre ({centre / home:F1} radii): {gap / 1000:F1} km of open space from the top of the climb to its ground, Empyrion's 8.3 to 12.3 km");
         Check(moon.Spec != null && moon.Spec.Airless, $"it is a vacuum world you can land on: {moon.Spec}");
-        // Over its turning world it nearly holds still (it goes round the way the world turns), so a small vessel catches it.
-        double day = _game.Surface.Planet.Sky.DayMinutes * 60.0, worstSpeed = 0;
+        // It goes round its world at no more than the system's cap, and over the turning world it moves slower than a
+        // vessel flies in space (checked once the Skiff is built, from its own handling), so it is caught in a short flight.
+        double day = _game.Surface.Planet.Sky.DayMinutes * 60.0, round = Math.Tau * moon.Orbit / (moon.Period * day);
         PlanetSurface.Skies.D3 Over(double t) => model.Orient(t).ToGlobe(model.Position(moon, t) - model.Position(model.Home, t));
-        for (double t = 0; t < 2; t += 0.05) worstSpeed = Math.Max(worstSpeed, (Over(t + 0.001) - Over(t)).Length / (0.001 * day));
-        Check(worstSpeed < 65, $"over the turning world it moves at {worstSpeed:F0} m/s at most, under half a small vessel's 130, so it is caught in a short flight (a {day / 60:F0} minute day)");
+        _moonOverWorld = 0;
+        for (double t = 0; t < 2; t += 0.05) _moonOverWorld = Math.Max(_moonOverWorld, (Over(t + 0.001) - Over(t)).Length / (0.001 * day));
+        Check(round <= StarSystem.MoonSpeedCap + 1e-6, $"it goes round the world at {round:F1} m/s, within the {StarSystem.MoonSpeedCap:F0} m/s every moon keeps to (a {moon.Period:F2} day month of {day / 60:F0} minute days)");
     }
+
+    /// <summary>The thruster moon's fastest over the turning world, m/s (the system's check).</summary>
+    double _moonOverWorld;
 
     // ---- Its light -----------------------------------------------------------------------------
 
@@ -281,6 +286,11 @@ public partial class MoonTest : Node
         AirCells.Give(_game);
         Check(_skiff?.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built: {_skiff?.Structure.Count} of {_game.StarterPlan.Count} blocks");
         if (_skiff?.Structure.Count != _game.StarterPlan.Count) _skiff = null;
+        else
+        {
+            float top = _skiff.Stats.TopSpeedSpace;
+            Check(_moonOverWorld < top * 0.5, $"over the turning world the moon moves at {_moonOverWorld:F0} m/s at most, under half the Skiff's {top:F0} in space, so it is caught in a short flight");
+        }
     }
 
     // ---- Up and out ----------------------------------------------------------------------------
@@ -413,7 +423,7 @@ public partial class MoonTest : Node
         Spaceflight sf = _game.Spaceflight;
         GD.Print($"  (tracking the skies in orbit: {sf.SkyMs / Math.Max(sf.SkyFrames, 1):F3} ms a frame on average, worst {sf.WorstSkyMs:F2} ms, over {sf.SkyFrames} frames; space's sky alone {TrackCost(() => orbit.Space.Track(_game.Surface.Planet.StarSystem, sf.Below.Sky.Days, orbit.Home.Turn.ToBasis(), D3Of(orbit.Home.ToGlobe(v.Body.Position)), v.Body.Position.ToGodot()))})");
         GD.Print($"  (the seam and skies took at most {_game.Spaceflight.WorstSeamMs:F1} ms of a frame: {_game.Spaceflight.WorstSeamParts}; the moon arrived a piece a frame: {_game.Spaceflight.MoonSurface.ArriveSteps})");
-        Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 40f, $"flew {start / 1000:F1} km from high orbit to over the moon in {tick / 60f:F0} s of game time at up to {topSpeed:F0} m/s ({v.Body.Position.ToGodot().DistanceTo(Above()):F0} m off the point)");
+        Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 40f, $"flew {start / 1000:F1} km from high orbit to over the moon in {tick / 60f:F0} s of game time at up to {topSpeed:F0} m/s (its top in space {v.Stats.TopSpeedSpace:F0}) ({v.Body.Position.ToGodot().DistanceTo(Above()):F0} m off the point)");
         Check(handedOverAt > 0 && orbit.Anchor == moon, $"the moon took over as the frame on the way ({handedOverAt / 60f:F0} s out), so its ground waits where you see it");
         Check(shown, $"the moon was in view every frame of the way, its far look handing over to its own globe ({lost ?? "never lost"})");
         Check(sized > 0 && sizeOff < 0.01f, $"every body was drawn at its true angular size every frame of the way, within 1%, so nothing pops ({sized} looks; the worst {sizeOff:P2} off{(sizeWhat == "" ? "" : ": " + sizeWhat)})");

@@ -171,7 +171,7 @@ public partial class Spaceflight
                 c.Globe.Visible = false;
                 continue;
             }
-            DrawFar(c, eye);
+            DrawFar(c, eye, show);
         }
     }
 
@@ -193,8 +193,8 @@ public partial class Spaceflight
         return false;
     }
 
-    /// <summary>A body you are not near, drawn as a whole globe at its true place.</summary>
-    void DrawFar(Celestial c, Vector3 eye)
+    /// <summary>A body you are not near, drawn as a whole globe at its true place; its air as much as it shows (<paramref name="shown"/>: the far look's air the rest).</summary>
+    void DrawFar(Celestial c, Vector3 eye, float shown)
     {
         N.Vector3 q = c.ToGlobe(eye.ToNumerics());
         float distance = q.Length();
@@ -205,7 +205,7 @@ public partial class Spaceflight
         Vector3 south = MathX.Rotate(frame, N.Vector3.UnitZ).ToGodot();
         N.Quaternion map = c.Map.Frame(gx, gz);
         float R = c.GlobeRadius;
-        bool air = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir;
+        float air = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir ? Globe.AirShare(c.World.Sky.Density) : 0f;
         int umbrae = Orbit.Space.Umbrae(Game.Surface.Planet.StarSystem, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
         c.Globe.Draw(new WorldView
         {
@@ -232,7 +232,7 @@ public partial class Spaceflight
             ToSun = (Orbit.Home.Turn.ToBasis() * Orbit.Space.ToSun).Normalized(),
             FogDensity = 0f,
             FogColor = Colors.Black,
-            Rim = air ? 1f : 0f,
+            Rim = air * shown,
             TrueDepth = true,
             TrueCentre = c.Centre,
         });

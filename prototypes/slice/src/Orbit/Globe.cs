@@ -741,8 +741,7 @@ public partial class Globe : Node3D
     /// <summary>How the ring stands against the sheet this frame: its centre's distance from the sheet's, m, and its inner edge in radii of the sheet.</summary>
     public (float Off, float Inner) RingFit { get; private set; }
 
-    /// <summary>How bright the air seen from outside is (the far look of a world with air draws the same over its disc).</summary>
-    public const float AirStrength = 1.1f;
+    const float AirStrength = 1.1f;
     const float ShroudShell = 40f;
 
     /// <summary>Where the rim of air's shell stands off the eye, m: in front of the sheet in space, behind what you fly near.</summary>
@@ -796,15 +795,12 @@ public partial class Globe : Node3D
         Weather.Bind(_clouds, C(look.CloudColor));
         AddChild(Instance("Clouds", grid, _clouds));
         yield return 0;
-        var shell = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
-        _air = new ShaderMaterial { Shader = new Shader { Code = AirSource } };
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(look.Atmosphere));
+        (_airMesh, _air) = AirMesh(C(look.Atmosphere));
         _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), AirShell);
-        _airMesh = Instance("Atmosphere", shell, _air);
         AddChild(_airMesh);
         _shroud = new ShaderMaterial { Shader = new Shader { Code = ShroudSource }, RenderPriority = 100 };
         _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), ShroudShell);
-        _shroudMesh = Instance("Shroud", shell, _shroud);
+        _shroudMesh = Instance("Shroud", Shell, _shroud);
         _shroudMesh.Visible = false;
         AddChild(_shroudMesh);
         _ringMaterial = new ShaderMaterial { Shader = new Shader { Code = RingSource }, RenderPriority = 5 }; // nearer than anything else up there
@@ -877,7 +873,6 @@ public partial class Globe : Node3D
         }
         _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lift"), v.CloudLift);
         _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
         _ring.Visible = _hasRing && v.RingShown > 0.002f;
         if (_ring.Visible)
         {
@@ -902,13 +897,39 @@ public partial class Globe : Node3D
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("globe_centre"), v.TrueCentre);
         }
         _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("air_radius"), Radius + _airThickness);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), v.Up);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground"), rho);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("thickness"), _airThickness);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_height"), v.Height);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), AirStrength * v.Rim);
-        _airMesh.Visible = v.Rim > 0.002f;
+        _airMesh.Visible = Air(_air, v.Up, rho, _airThickness, v.Height, v.Rim, v.ToSun);
     }
+
+    static readonly SphereMesh Shell = new() { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
+    static Shader _airShader;
+
+    /// <summary>A world's air seen from outside, over its disc and round its limb, in its colour: a shell round the eye, drawn by every look of a world with air (its globe and space's far look of it).</summary>
+    public static (MeshInstance3D Mesh, ShaderMaterial Material) AirMesh(Color color)
+    {
+        var m = new ShaderMaterial { Shader = _airShader ??= new Shader { Code = AirSource } };
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), color);
+        return (Instance("Atmosphere", Shell, m), m);
+    }
+
+    /// <summary>
+    /// Lays an air shell out for this frame: the world's centre down <paramref name="up"/> from the eye, its ground's radius and its air's
+    /// thickness (any one unit), the eye's height over the ground, how much of it shows (<paramref name="rim"/>), the way to the sun.
+    /// Whether it draws at all.
+    /// </summary>
+    public static bool Air(ShaderMaterial m, Vector3 up, float ground, float thickness, float height, float rim, Vector3 toSun)
+    {
+        if (rim <= 0.002f) return false;
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), up);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground"), ground);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("thickness"), thickness);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_height"), height);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), AirStrength * rim);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), toSun);
+        return true;
+    }
+
+    /// <summary>How much of a world's air shows from outside, 0 to 1, by its sky's density: thin air hardly at all.</summary>
+    public static float AirShare(float density) => 1f - MathF.Exp(-2.5f * MathF.Max(density, 0f));
 
     /// <summary>The shroud over everything past the vessel: how thick (0 to 1), the air's colour low in the view and overhead, and its glow toward the sun.</summary>
     public void Shroud(float amount, Color low, Color high, Color glow, Vector3 toSun)
