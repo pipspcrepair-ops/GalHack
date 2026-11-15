@@ -291,20 +291,39 @@ public partial class BuildTest
         foreach (MapLevel level in Enum.GetValues<MapLevel>()) pages.Add(($"map: {level}", () => _game.Menu.OpenMap(level)));
         foreach (var entry in _game.Menu.Root.Blueprints.Library.Starters)
             pages.Add(($"blueprints: {entry.Name}", () => { _game.Menu.Open(MenuTab.Blueprints); _game.Menu.Root.Blueprints.Select(entry); }));
+        // A vessel carrying everything the Core tab shows (lights and their styles, the pilot's bar, a fabricator), off on its
+        // own ground: both pages of its settings column, which must end above the alerts' corner.
+        Vector3 home = _game.Survivor.WorldFeet;
+        Slice.Vessels.Vessel was = _game.Survivor.Aboard;
+        System.Numerics.Vector3 wasAt = was?.Body.ToLocal(_game.Survivor.Body.WorldPosition) ?? default;
+        Vector3 site = _play.FlatSpot(home, 150f, span: 14f);
+        Slice.Vessels.Vessel full = BarTest.Rig(_game, site, 0f, out _);
+        foreach (bool numbers in new[] { false, true })
+            pages.Add(($"core: {full.Name}, {(numbers ? "numbers" : "settings")}", () =>
+            {
+                _game.Survivor.PlaceOutside((site + new Vector3(5f, 2f, 0f)).ToNumerics());
+                _game.Menu.OpenCore(full);
+                _game.Menu.Root.Core.Structure.ShowNumbers = numbers;
+            }));
         foreach (var (name, open) in pages)
         {
             open();
             foreach (int x in _drive.Wait(3)) yield return x;
             NoteLines($"menu, {name}", _game.Menu.Root);
             List<string> problems = _game.Menu.Root.Gui.TextProblems();
+            problems.AddRange(_game.Menu.Root.Gui.Texts.Where(t => t.Box.End.Y > Gui.Height).Select(t => $"\"{t.Text}\" is below the menu's bottom"));
             List<string> strip = RowProblems(_game.Menu.Root);
             strip.AddRange(SlotProblems(_game.Menu.Root));
             Check(problems.Count == 0 && strip.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0,
                 $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' row and the notices' corner clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
         }
         _game.Menu.Root.You.ShowBlocks = false;
+        _game.Menu.Root.Core.Structure.ShowNumbers = false;
         _game.Menu.Close();
         Gui.Measure = false;
+        if (was != null) _game.Survivor.PlaceAboard(was, wasAt);
+        else _game.Survivor.PlaceOutside(home.ToNumerics());
+        foreach (int x in _drive.Wait(10)) yield return x;
     }
 
     /// <summary>At the start, before anything else is found or pinged, the compass holds the bunker and the place in view from its way out, and nothing else.</summary>

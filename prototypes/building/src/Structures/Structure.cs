@@ -412,7 +412,7 @@ public sealed class Structure
         }
         foreach (Part p in t.Parts)
         {
-            if (p.ClosedOnly && b.Open) continue;
+            if (!p.Shows(b)) continue;
             System.Numerics.Vector3 lo = Footprint.PartPoint(t, p.Min), hi = Footprint.PartPoint(t, p.Max);
             if (q.X > lo.X + Eps && q.Y > lo.Y + Eps && q.Z > lo.Z + Eps && q.X < hi.X - Eps && q.Y < hi.Y - Eps && q.Z < hi.Z - Eps) return true;
         }
