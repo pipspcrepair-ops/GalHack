@@ -92,7 +92,7 @@ public partial class OccupantTest
                 {
                     int n = Threats(r);
                     int h = hops.GetValueOrDefault(r.Index, 99);
-                    if (r.Depth >= 1) { deepT += n; deepR++; }
+                    if (r.Level >= 1) { deepT += n; deepR++; } // off the way in's storey, down or up (E7)
                     else if (h <= 1) { nearT += n; nearR++; }
                     else { groundT += n; groundR++; }
                     if (r.Kind == RoomKind.Entrance && n > 0 && rooms.Count > 2 && !spawns.Any(s => s.Room == r.Index && (s.Species.Husk || s.Species.Corrupted || s.Nest >= 0))) gateLoud++;
@@ -123,11 +123,11 @@ public partial class OccupantTest
         }
         foreach (var (k, b) in byState.OrderBy(kv => kv.Key)) GD.Print($"    {k}: {b.Places} places, {b.Threats / (float)Math.Max(1, b.Places):F1} threats and {b.Vermin / (float)Math.Max(1, b.Places):F1} vermin a place");
         float near_ = nearT / Math.Max(1f, nearR), ground = groundT / Math.Max(1f, groundR), deep_ = deepT / Math.Max(1f, deepR);
-        GD.Print($"    threats a room: by the way in {near_:F2}, further in {ground:F2}, below ground {deep_:F2}; {threats * 100f / Math.Max(1f, floor):F2} a 100 m2 of floor in ordinary abandoned places");
+        GD.Print($"    threats a room: by the way in {near_:F2}, further in on its storey {ground:F2}, off its storey (below ground or up) {deep_:F2}; {threats * 100f / Math.Max(1f, floor):F2} a 100 m2 of floor in ordinary abandoned places");
         Check(threats * 100f / Math.Max(1f, floor) is > 0.6f and < 1.5f, $"ordinary places are held at 0.8 to 1.2 threats a 100 m2 of floor (place-patterns E2): {threats * 100f / Math.Max(1f, floor):F2}");
         Check(silent <= places * 0.15f, $"few places are silent on fresh worlds: {silent} of {places} (aliveness follows the world)");
         Check(withSomething == places - silent, $"every place that isn't silent has something in it: {withSomething} of {places - silent}");
-        Check(deep_ >= near_ * 1.5f && deep_ > ground, $"encounters build with depth: {near_:F2} a room by the way in, {ground:F2} further in, {deep_:F2} below ground");
+        Check(deep_ >= near_ * 1.5f && deep_ > ground, $"encounters build further in, down or up: {near_:F2} a room by the way in, {ground:F2} further in on its storey, {deep_:F2} off it");
         Check(levels > 20 && levelsHeld >= levels * 0.9f, $"the dark has its monsters: {levelsHeld} of {levels} levels below ground have one");
         Check(gateLoud == 0, $"the way in is quiet: {gateLoud} places have something waiting in it");
         Check(quietOf > 20 && quietOk >= quietOf * 0.9f, $"one room in five is quiet: {quietOk} of {quietOf} places of five rooms or more");
