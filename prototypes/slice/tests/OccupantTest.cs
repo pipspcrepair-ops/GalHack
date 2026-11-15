@@ -49,6 +49,7 @@ public partial class OccupantTest : Node
             // -- --spawns: only placement by purpose (OccupantTest.Spawns).
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--spawns") >= 0) { PlacementChecks(); Finish(); return; }
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--unseen") >= 0) { Unseen(); Finish(); return; }
+            if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--inside") >= 0) { Inside(); Finish(); return; }
             bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0, dark = Array.IndexOf(OS.GetCmdlineUserArgs(), "--dark") >= 0;
             if (!own && !dark && Array.IndexOf(OS.GetCmdlineUserArgs(), "--queued") < 0)
             {
@@ -291,27 +292,29 @@ public partial class OccupantTest : Node
         Check(haunts == hollowPlaces && hauntsOk == haunts, $"and they keep to the ground round it outside: {hauntsOk} of {hollowPlaces} have Hollows haunting their ground");
     }
 
-    static bool UnderRoom(PoiInstance inst, int module) => inst.Layout.Modules.FirstOrDefault(m => m.Index == module) is { Storey: < 0 };
-
     /// <summary>Why a place doesn't hold what its occupant says (null when it does), and a note of what it holds.</summary>
     static string Judge(Occupant o, PoiInstance inst, PlaceFauna.Deep deep, WorldLife life, out string note)
     {
         var memory = new PlaceMemory(new PoiSite { Instance = inst, Family = inst.Family, Name = inst.Family.Id });
-        PoiPopulation pop = PlaceFauna.Plan(memory, deep).Population;
+        PlaceFauna fauna = PlaceFauna.Plan(memory, deep);
+        PoiPopulation pop = fauna.Population;
+        bool FarIn(int room) => fauna.Rooms.Rooms.Find(r => r.Index == room) is { Level: >= 1 };
         int people = inst.Townsfolk?.People.Count ?? 0;
         bool hostile = inst.Mood == Mood.Hostile;
         var spawns = pop.Silent ? new List<PoiSpawn>() : pop.Spawns;
         int vermin = spawns.Count(s => s.Species.Role == DeepRole.Subsister || s.Species.Passive);
         int hunters = spawns.Count - vermin;
+        // Those who keep a place clear keep the storeys they are on: what hunts on the rest isn't among them.
+        int amongThem = spawns.Count(s => !(s.Species.Role == DeepRole.Subsister || s.Species.Passive) && (fauna.Rooms.Kept?.Contains(s.Room) ?? true));
         int nests = pop.Nests.Count, machines = spawns.Count(s => s.Species.Mechanical), husks = spawns.Count(s => s.Species.Husk) + pop.Masses.Count;
         int twisted = spawns.Count(s => s.Species.Figure == null && s.Species.Mutation > 0.3f && !s.Species.Mechanical);
         int cyborgs = spawns.Count(s => s.Species.Id.StartsWith("cyborg", StringComparison.Ordinal));
-        note = $"{people} people{(hostile ? " hostile" : "")}, {nests} nests, {hunters} hunters, {vermin} vermin, {machines} machines, {husks} Husk signs";
+        note = $"{people} people{(hostile ? " hostile" : "")}, {nests} nests, {hunters} hunters ({hunters - amongThem} on storeys nobody keeps), {vermin} vermin, {machines} machines, {husks} Husk signs";
         switch (o)
         {
             case Occupant.Empty or Occupant.Sleepers:
-                // Nobody's above; below ground the dark has its own all the same (the owner's rule for dark places).
-                return spawns.Any(s => !s.Species.Passive && s.Species.Role != DeepRole.Subsister && !UnderRoom(inst, s.Room)) || nests > 0 || people > 0 ? "more than vermin above ground" : null;
+                // Nobody's on the way in's storey; further in, below ground or up its storeys, the dark has its own all the same (the owner's rule for dark places).
+                return spawns.Any(s => !s.Species.Passive && s.Species.Role != DeepRole.Subsister && !FarIn(s.Room)) || nests > 0 || people > 0 ? "more than vermin on the way in's storey" : null;
             case Occupant.Nesters:
                 return nests > 0 ? "a nest built" : spawns.Count(s => s.Species.Role is DeepRole.Nester or DeepRole.DerelictNester) < 2 ? "no nesters" : people > 0 ? "people" : null;
             case Occupant.Prowlers:
@@ -319,14 +322,14 @@ public partial class OccupantTest : Node
             case Occupant.Turned or Occupant.Warped:
                 return husks < 1 ? "no Husks" : null;
             case Occupant.Machines or Occupant.Robots or Occupant.Guardians:
-                return machines < 2 ? "no machines" : hunters - machines > 0 ? "wild hunters among the machines" : null;
+                return machines < 2 ? "no machines" : amongThem - machines > 0 ? "wild hunters among the machines" : null;
             case Occupant.Cyborgs:
                 return cyborgs < 2 ? "no cyborgs" : null;
             case Occupant.Gang or Occupant.Faction:
-                return people < 2 || !hostile ? $"no raiders holding it ({people} people, {inst.Mood})" : hunters > 0 ? "wild hunters among the raiders" : Town.For(memory) == null ? "no town for them" : null;
+                return people < 2 || !hostile ? $"no raiders holding it ({people} people, {inst.Mood})" : amongThem > 0 ? "wild hunters among the raiders" : Town.For(memory) == null ? "no town for them" : null;
             default:
-                // Squatters, scavengers, cultists, keepers, copies: people, nobody's enemy, and only vermin about.
-                return people < 2 ? "no people" : hostile ? "hostile" : hunters > 0 ? "wild hunters among them" : Town.For(memory) == null ? "no town for them" : null;
+                // Squatters, scavengers, cultists, keepers, copies: people, nobody's enemy, and only vermin about them.
+                return people < 2 ? "no people" : hostile ? "hostile" : amongThem > 0 ? "wild hunters among them" : Town.For(memory) == null ? "no town for them" : null;
         }
     }
 }

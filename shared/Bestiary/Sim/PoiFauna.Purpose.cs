@@ -64,8 +64,8 @@ public static partial class PoiFauna
     }
 
     /// <summary>
-    /// Every place has something by its state: a place with rooms has vermin at least; below ground,
-    /// the dark has its monsters (one per level down, the deepest first, never in a lit room).
+    /// Every place has something by its state: a place with rooms has vermin at least; further in,
+    /// the dark has its monsters (one on each storey down or up from the way in, never in a lit room).
     /// </summary>
     static void Floor(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng, bool infested, List<PoiRoom> walkable, PopulationRules pr)
     {
@@ -77,14 +77,11 @@ public static partial class PoiFauna
             Subsisters(pop, fauna, theme, vermin, rng, infested, 4f, pr);
         }
         if (walkable.Count == 0) return;
-        int deepest = 0;
-        foreach (PoiRoom r in walkable) deepest = Math.Max(deepest, r.Depth);
-        for (int d = 1; d <= deepest; d++)
+        foreach (var storey in walkable.Where(r => r.Level >= 1).GroupBy(r => (r.Level, Below: r.Depth > 0)))
         {
-            int level = d;
-            if (pop.Spawns.Exists(s => Threat(s) && poi.Rooms.Find(r => r.Index == s.Room)?.Depth == level)) continue;
-            var dark = walkable.FindAll(r => r.Depth == level && !r.Lit && r.Kind is not (RoomKind.Entrance or RoomKind.Corridor));
-            if (dark.Count == 0) dark = walkable.FindAll(r => r.Depth == level && !r.Lit);
+            if (pop.Spawns.Exists(s => Threat(s) && storey.Any(r => r.Index == s.Room))) continue;
+            var dark = storey.Where(r => !r.Lit && r.Kind is not (RoomKind.Entrance or RoomKind.Corridor)).ToList();
+            if (dark.Count == 0) dark = storey.Where(r => !r.Lit).ToList();
             if (dark.Count == 0) continue;
             dark.Sort((a, b) => (b.Size.X * b.Size.Z).CompareTo(a.Size.X * a.Size.Z));
             PoiRoom room = dark[0];
@@ -96,20 +93,21 @@ public static partial class PoiFauna
     /// <summary>
     /// Density by danger (place-patterns E2): threats per 100 m² of floor from 1 in an ordinary place (0.8 to 1.2 once the quiet rules thin it)
     /// to 3 in the most dangerous, half that in a wreck. Groups go where something already is, then
-    /// into the dark rooms deepest first; a group's size follows its room's volume. Nobody's place
-    /// fills only its dark below ground. The quiet rules run after, so its empty rooms stay empty.
+    /// into the dark rooms furthest in first; a group's size follows its room's volume. Nobody's place
+    /// fills only its storeys off the way in's (below ground, or up a tower), at the rate for the floor it fills.
+    /// The quiet rules run after, so its empty rooms stay empty.
     /// </summary>
     static void Dense(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng, bool infested, List<PoiRoom> walkable, bool empty)
     {
         Dictionary<int, int> hops = Hops(poi);
-        var rooms = walkable.FindAll(r => r.Kind is not (RoomKind.Entrance or RoomKind.Corridor) && (r.Depth >= 1 || !empty && hops.GetValueOrDefault(r.Index, 9) > 1));
+        var rooms = walkable.FindAll(r => r.Kind is not (RoomKind.Entrance or RoomKind.Corridor) && (r.Level >= 1 || !empty && hops.GetValueOrDefault(r.Index, 9) > 1));
         if (rooms.Count == 0) return;
         float floor = 0f;
-        foreach (PoiRoom r in walkable) floor += r.Size.X * r.Size.Z;
+        foreach (PoiRoom r in empty ? rooms : walkable) floor += r.Size.X * r.Size.Z;
         int want = (int)MathF.Round(floor / 100f * Mathf.Lerp(1f, 3f, Math.Clamp(poi.Danger, 0f, 1f)) * (poi.Derelict ? 0.5f : 1f));
-        // Where something is first, then the deepest and darkest.
+        // Where something is first, then the furthest in and darkest.
         var score = new Dictionary<int, float>();
-        foreach (PoiRoom r in rooms) score[r.Index] = (pop.Spawns.Exists(s => s.Room == r.Index && Threat(s)) ? 100f : 0f) + r.Depth * 10f + (r.Lit ? 0f : 5f) + rng.Range(0f, 2f);
+        foreach (PoiRoom r in rooms) score[r.Index] = (pop.Spawns.Exists(s => s.Room == r.Index && Threat(s)) ? 100f : 0f) + r.Level * 10f + (r.Lit ? 0f : 5f) + rng.Range(0f, 2f);
         rooms.Sort((a, b) => score[b.Index].CompareTo(score[a.Index]));
         int have = pop.Spawns.FindAll(Threat).Count;
         // At most four rooms in five hold something (E3).
@@ -181,7 +179,7 @@ public static partial class PoiFauna
         Dictionary<int, int> hops = Hops(poi);
         // (Whoever holds the place keeps it: its own kinds are never thinned.)
         bool Movable(PoiSpawn s) => Threat(s) && s.Route == null && s.Nest < 0 && s.Role is not (DeepRole.Nester or DeepRole.DerelictNester) && !s.Species.Husk && !s.Species.Corrupted && !poi.Holders.Exists(h => s.Species.Id.StartsWith(h.Id, StringComparison.Ordinal));
-        bool Near(PoiSpawn s, int most) => hops.TryGetValue(s.Room, out int h) && h <= most && poi.Rooms.Find(r => r.Index == s.Room)?.Depth == 0;
+        bool Near(PoiSpawn s, int most) => hops.TryGetValue(s.Room, out int h) && h <= most && poi.Rooms.Find(r => r.Index == s.Room)?.Level == 0;
         pop.Spawns.RemoveAll(s => Movable(s) && Near(s, 0) && poi.Rooms.Count > 2);
         var close = pop.Spawns.FindAll(s => Movable(s) && Near(s, 1));
         if (close.Count > 1)
@@ -203,10 +201,10 @@ public static partial class PoiFauna
             if (q == null || !Occupied(q.Index)) continue;
             pop.Spawns.RemoveAll(s => Movable(s) && s.Room == p.Index);
         }
-        // One room in five quiet at least: the shallowest occupied ones go first.
+        // One room in five quiet at least: the occupied ones nearest the way in go first.
         int most = rooms.Count - (int)MathF.Ceiling(rooms.Count * 0.2f);
         var held = rooms.FindAll(r => Occupied(r.Index));
-        held.Sort((a, b) => a.Depth != b.Depth ? a.Depth.CompareTo(b.Depth) : hops.GetValueOrDefault(a.Index, 99).CompareTo(hops.GetValueOrDefault(b.Index, 99)));
+        held.Sort((a, b) => a.Level != b.Level ? a.Level.CompareTo(b.Level) : hops.GetValueOrDefault(a.Index, 99).CompareTo(hops.GetValueOrDefault(b.Index, 99)));
         for (int i = 0; held.Count - i > most && i < held.Count; i++)
             pop.Spawns.RemoveAll(s => Movable(s) && s.Room == held[i].Index);
 

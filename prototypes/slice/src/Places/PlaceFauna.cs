@@ -92,10 +92,14 @@ public sealed class PlaceFauna
                 Wildlife.Rng.For(inst.SpawnSeed, "den-severity").Float()) * (turned ? 1f : 0.4f);
         }
         HoldersOf(inst, deep.Life, plan);
+        // A working place nobody lives in or holds (no faction's) has no garrison to keep it clear: it holds what any place does.
+        if (plan.Holder == PlaceHolder.Wild && inst.State == PoiState.Active && inst.Family.Faction == Faction.None && inst.Townsfolk is not { People.Count: > 0 })
+            (plan.Holder, plan.State) = (PlaceHolder.Empty, PlaceState.Abandoned);
         // What the world's dark holds, for the dark rooms; and now and then an armed group.
         plan.Dark.AddRange(deep.Life.Dark);
         plan.Armed = deep.Life.Armed;
         var byIndex = new Dictionary<int, PoiRoom>();
+        int entry = layout.EntranceModule >= 0 && layout.EntranceModule < layout.Modules.Count ? layout.Modules[layout.EntranceModule].Storey : 0;
         foreach (PlacedModule m in layout.Modules)
         {
             if (m.Kind == ModuleKind.Outdoor)
@@ -122,7 +126,8 @@ public sealed class PlaceFauna
                 Min = new Vector3(inside.X0, inside.Y, inside.Z0),
                 Max = new Vector3(inside.X1 + 1, inside.Y + inside.Height, inside.Z1 + 1),
                 Depth = Math.Max(0, -m.Storey),
-                Dark = (inst.State != PoiState.Active || m.Underground) && !lit,
+                Storey = m.Storey - entry,
+                Dark =(inst.State != PoiState.Active || m.Underground) && !lit,
                 Lit = lit,
                 Purpose = m.Purpose ?? "",
                 Loot = caches.Count,
@@ -147,12 +152,30 @@ public sealed class PlaceFauna
             if (byIndex.TryGetValue(d.ModuleA, out PoiRoom pa)) pa.Doors.Add((mid, outOfChild));
             if (byIndex.TryGetValue(d.ModuleB, out PoiRoom pb)) pb.Doors.Add((mid, -outOfChild));
         }
+        plan.Kept = KeptBy(inst, plan.Holder);
         PoiPopulation pop;
         lock (deep.Lock) pop = PoiFauna.Populate(plan, deep.Fauna, deep.Data.Deep);
         return new PlaceFauna { Population = pop, Rooms = plan };
     }
 
     static bool Has(OccupancyRoll o, Occupant who) => o.Main == who || o.Second == who || o.Trace == who;
+
+    /// <summary>
+    /// What those who keep a place clear really hold: the storeys of their spots (people) or posts (machines), and
+    /// one either side. Null where nothing says where they are (they hold it all).
+    /// </summary>
+    static HashSet<int> KeptBy(PoiInstance inst, PlaceHolder holder)
+    {
+        List<PlacedModule> modules = inst.Layout.Modules;
+        IEnumerable<int> at = holder switch
+        {
+            PlaceHolder.People => inst.Townsfolk?.Spots.Select(s => s.Module) ?? Enumerable.Empty<int>(),
+            PlaceHolder.Machines => inst.Enemies.Select(e => e.Module),
+            _ => Enumerable.Empty<int>(),
+        };
+        var storeys = at.Where(i => i >= 0 && i < modules.Count).Select(i => modules[i].Storey).ToHashSet();
+        return storeys.Count == 0 ? null : modules.Where(m => storeys.Any(s => Math.Abs(m.Storey - s) <= 1)).Select(m => m.Index).ToHashSet();
+    }
 
     /// <summary>
     /// Who holds a place, from its rolled occupant (who the world's theme and fall put there), and
@@ -192,8 +215,9 @@ public sealed class PlaceFauna
                 plan.Holders.AddRange(life.Cyborgs);
                 break;
         }
-        // Holders with nobody to be: the place is only what lives in any place.
-        if (plan.Holder is PlaceHolder.Beasts or PlaceHolder.Machines && plan.Holders.Count == 0) plan.Holder = PlaceHolder.Empty;
+        // Holders with nobody to be, or people who found no room to settle: the place is only what lives in any place.
+        if (plan.Holder is PlaceHolder.Beasts or PlaceHolder.Machines && plan.Holders.Count == 0 || plan.Holder == PlaceHolder.People && inst.Townsfolk is not { People.Count: > 0 })
+            plan.Holder = PlaceHolder.Empty;
     }
 
     /// <summary>Occupants that are creatures (beasts, machines, the Husks), not the town's people.</summary>
