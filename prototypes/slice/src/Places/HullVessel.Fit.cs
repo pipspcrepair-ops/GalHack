@@ -386,6 +386,8 @@ public sealed partial class HullVessel
         Lift();
         foreach (Space s in Live.Where(s => s.Purpose is "hold" or "ore-hold")) Rows(s, 3, 6, cargo: true);
         foreach (Space s in Live.Where(s => s.Purpose is "stores" or "armoury" or "magazine")) Rows(s, 1, 6, cargo: false);
+        if (Best("generator", new Int3(1, 1, 3), Turn(Dir.PosY, Dir.PosX), t => t.Power) is { } bank)
+            foreach (Space s in Live.Where(s => s.Purpose == "generator-room")) Rows(s, 1, 9, cargo: false, bank);
         foreach (Space s in Live.Where(s => s.Purpose == "engine-room")) EngineRoom(s);
         foreach (Space s in Live.Where(s => s.Purpose == "bridge")) Bridge(s);
         foreach (Space s in Live.Where(s => s.Purpose == "workshop"))
@@ -423,9 +425,13 @@ public sealed partial class HullVessel
     /// cargo three wide, 6 m long and two or three high in a hall (one under a 4 m deck), a store's or an armoury's
     /// shelving one wide. A row too narrow for the space left by the wall is made narrower, never left a wide gap.
     /// </summary>
-    void Rows(Space s, int width, int length, bool cargo)
+    void Rows(Space s, int width, int length, bool cargo, BlockType machine = null)
     {
         string[] colours = { "orange", "teal", "hazard", "blue", "red", "hull" };
+        // A row is as long as the room leaves with a 2 m aisle at either end.
+        length = Math.Min(length, s.V1 - s.V0 - 3);
+        if (length < 3) return;
+        int along = Turn(Dir.PosY, Dir.PosX);
         var doorways = new HashSet<(int, int)>(s.Doors.SelectMany(d => Around(d.Inside, 2)));
         foreach (int side in new[] { -1, 1 })
         {
@@ -442,6 +448,17 @@ public sealed partial class HullVessel
                         for (int du = 0; du < w && clear; du++)
                             clear = s.Floor.Contains((u0 + du, v + dv)) && !s.Taken.Contains((u0 + du, v + dv)) && !doorways.Contains((u0 + du, v + dv));
                     if (!clear) continue;
+                    if (machine != null)
+                    {
+                        // Machines in the row, end to end along it, two high.
+                        Int3 size = Footprint.WorldSize(machine, along);
+                        for (int dv = 0; dv + size.Z <= length; dv += size.Z)
+                            for (int y = s.Y; y + size.Y <= s.Y + 2; y += size.Y)
+                                if (size.X <= w) Device(machine, u0, y, v + dv, along, s, Paint["machine"]);
+                        for (int dv = 0; dv < length; dv++)
+                            for (int du = 0; du < w; du++) s.Taken.Add((u0 + du, v + dv));
+                        continue;
+                    }
                     int high = s.Hall ? Rng.Next(2, 4) * 2 + (s.Purpose == "ore-hold" ? -2 : 0) : 3;
                     ushort paint = cargo ? Paint[colours[Rng.Next(colours.Length)]] : Paint["machine"];
                     for (int dv = 0; dv < length; dv++)

@@ -209,9 +209,10 @@ public sealed partial class HullVessel
             for (int i = 0; i < n; i++)
             {
                 int a = from + i * (len + 4), z = i == n - 1 ? c1 : a + len - 1;
-                // A deep band (12 m or more) takes a passage down its middle, a room either side of it.
-                int outer = Reach(d, (a + z) / 2) - (passages ? 4 : 0), m = (3 + outer) / 2 - 1;
-                if (passages && outer - 2 >= 12)
+                // A deep band takes a passage down its middle, a room either side of it: from 12 m, or 10 m for the crew's
+                // berths (cabins 3 m deep, a bunk along the wall).
+                int outer = Reach(d, (a + z) / 2) - (passages ? 4 : 0), depth = outer - 2, m = 4 + (depth - 4) / 2;
+                if (passages && depth >= (purpose is "crew-quarters" or "barracks" or "cabin" ? 10 : 12))
                 {
                     Band(purpose, d, side, a, z, passages, 3, m - 2);
                     Band(purpose, d, side, a, z, passages, m + 3, outer);

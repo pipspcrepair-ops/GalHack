@@ -83,7 +83,7 @@ public partial class HulkTest
                 WreckAudit a = WreckAudit.Of(r.Structure);
                 var loose = a.LowCells.Where(c => !r.Crushed.Contains(c) && !Stair(r, c)).ToList();
                 GD.Print($"      {name}{r.Piece.Name}: {a}; {r.Decor.Count} pieces of dressing; built in {clock.Elapsed.TotalMilliseconds / wrecks.Count:F0} ms" +
-                         (loose.Count > 0 ? $"; under 4 m outside the crush: {string.Join(", ", loose.GroupBy(c => c.Y).Select(g => $"{g.Count()} at y {g.Key} (e.g. {g.First()})"))}" : ""));
+                         (loose.Count > 0 ? $"; under 4 m outside the crush: {string.Join(", ", loose.GroupBy(c => c.Y).Select(g => $"{g.Count()} at y {g.Key} (e.g. {g.First()} under {Over(r.Structure, g.First())})"))}" : ""));
                 floor += a.Floor;
                 corridor += a.Corridor;
                 machines += a.Machines;
@@ -135,6 +135,14 @@ public partial class HulkTest
         Check(per100 is >= 2.2f and <= 3.3f, $"{per100:F2} machines and containers per 100 m² of floor (Empyrion's wrecks 2.7)");
         Check(clear4 >= floor * 0.9f && lowLoose <= floor * 0.02f, $"4 m decks: {clear4 / Math.Max(1f, floor):P0} of the floor 4 m clear; under that only where crushed or on the stairs but {lowLoose:F0} m²");
         Check(slowest < 20000, $"the slowest hull built in {slowest:F0} ms on a worker");
+    }
+
+    /// <summary>What a low floor cell has over it: the first block up, its type and how high.</summary>
+    static string Over(Structure s, Int3 c)
+    {
+        for (int h = 1; h < 11; h++)
+            if (s.TryGet(c + Int3.UnitY * h, out Block b) && s.TypeOf(b).Collide != Collide.None) return $"{s.TypeOf(b).Id}/{s.ShapeOf(b).Id} at +{h}";
+        return "nothing";
     }
 
     /// <summary>Is a structure cell on a stair core's landings or flights (their headroom is the flight's)?</summary>

@@ -44,16 +44,17 @@ public sealed partial class Staging
         Vector3 Ground(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };
         float sea = _game.Zone.Planet.Source.WaterLevel;
 
-        // From the ground, three-quarters on from the bow side (the taper and the shoulders read best), dry land, the hull in sight.
+        // From a rise off its bow quarter, three-quarters on (the taper, the shoulders, the tower and the engines read best), dry land, the hull in sight.
         Vector3 along = (Local(0, 0, 10) - Local(0, 0, 0)).Normalized(), side = along.Cross(Vector3.Up).Normalized();
-        Vector3 far = Ground(mid + side * span * 0.8f - along * span * 0.35f, 1.7f);
+        float rise = MathF.Max(12f, span * 0.12f);
+        Vector3 far = Ground(mid + side * span * 0.8f - along * span * 0.35f, rise);
         float best = float.MinValue;
         for (int k = 0; k < 24; k++)
-            foreach (float r in new[] { 0.6f, 0.8f, 1.0f })
+            foreach (float r in new[] { 0.8f, 1.0f, 1.2f })
             {
                 float a = k * MathF.Tau / 24f;
-                Vector3 c = Ground(mid + (side * MathF.Cos(a) + along * MathF.Sin(a)) * span * r, 1.7f);
-                if (c.Y - 1.7f < sea + 0.5f || _game.Zone.Streamer.FloraNear(c, 4f).Any()) continue;
+                Vector3 c = Ground(mid + (side * MathF.Cos(a) + along * MathF.Sin(a)) * span * r, rise);
+                if (c.Y - rise < sea + 0.5f || _game.Zone.Streamer.FloraNear(c, 4f).Any()) continue;
                 bool hidden = false;
                 for (float s = 0.05f; s < 0.7f && !hidden; s += 0.05f)
                 {
@@ -114,8 +115,8 @@ public sealed partial class Staging
         // A point of a space at a height over its floor, in the world (hull frame u and v, metres).
         Vector3 At(HullVessel.Space sp, float u, float v0, float up) => v.ToWorld(new N.Vector3(u, sp.Y - 0.5f + up, v0 - hull.Piece.V0) * s.Grid.CellSize);
         string want = _args.GetValueOrDefault("room", "");
-        HullVessel.Space room = hull.Spaces.Where(sp => !sp.Corridor && !sp.Hall && sp.Floor.Count >= 30 && (want == "" || sp.Purpose == want))
-            .OrderByDescending(sp => sp.Purpose is "bridge" or "galley" or "crew-quarters" or "medbay" ? 1 : 0).ThenByDescending(Dressed).FirstOrDefault();
+        HullVessel.Space room = hull.Spaces.Where(sp => !sp.Corridor && !sp.Hall && sp.Floor.Count >= 20 && (want == "" || sp.Purpose == want))
+            .OrderBy(sp => Array.IndexOf(new[] { "galley", "medbay", "crew-quarters", "officers", "bridge" }, sp.Purpose) is int i && i >= 0 ? i : 9).ThenByDescending(Dressed).FirstOrDefault();
         if (room != null)
         {
             // From the door's side of the room, at eye height, toward its far side.
