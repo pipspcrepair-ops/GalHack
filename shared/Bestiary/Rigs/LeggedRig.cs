@@ -37,7 +37,7 @@ public sealed class LeggedRig : Rig
     readonly float _hipRest, _neckLen, _tailLen, _neckRest;
     float _gait, _neckPitch, _sag;
     /// <summary>The tail's tip and how thick it hits there (a club or spikes hit wider); the stomping leg (-1 none) and the height its foot was lifted to.</summary>
-    Vector3 _tailTip;
+    Vector3[] _tailPts = Array.Empty<Vector3>();
     readonly float _tailTipRadius;
     int _stompLeg = -1;
     Vector3 _stompLifted;
@@ -184,9 +184,9 @@ public sealed class LeggedRig : Rig
         bool thrown = c.Move == AttackMove.Bite;
         _leaping = thrown && (c.Phase == AttackPhase.Lunge || (c.Phase == AttackPhase.Recover && c.PhaseTime < 0.25f));
         _gait += speed * dt / MathF.Max(0.15f, legLen * 0.9f);
-        // A big body drops its forequarters into a bite, to bring its head down onto you.
-        float big = Math.Clamp((L - 1.5f) / 4f, 0f, 1f), dip = thrown ? Lunging * big : 0f;
-        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing - 0.3f * dip);
+        // A big or tall body drops its forequarters into a bite, to bring its head down onto you.
+        float big = Math.Clamp(MathF.Max((L - 1.5f) / 4f, (_hipRest - 0.8f) / 1.6f), 0f, 1f), dip = thrown ? Lunging * big : 0f;
+        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing - 0.35f * dip);
         float bob = MathF.Sin(_gait * MathF.Tau * 2f) * 0.035f * legLen * MathF.Min(1f, speed / walk);
         float breathe = MathF.Sin(c.Age * 1.7f + c.Id) * 0.01f * H;
         float bodyY = groundMid + hip + H * 0.25f + bob + breathe;
@@ -426,9 +426,12 @@ public sealed class LeggedRig : Rig
             if (sweep > 0f)
             {
                 lag *= 1f - sweep;
-                float drop = MathF.Asin(Math.Clamp((c.StrikeAt.Y - p.Y) / MathF.Max(0.1f, _tailLen), -0.95f, 0.5f));
+                float reach = Math.Clamp(WildSim.Flat(c.StrikeAt - p).Length(), 0.1f, _tailLen);
+                float drop = MathF.Asin(Math.Clamp((c.StrikeAt.Y - p.Y) / reach, -0.95f, 0.5f));
                 pitchAcc = Mathf.Lerp(pitchAcc, drop + 0.03f * chain.Length, sweep);
             }
+            if (t == 0 && _tailPts.Length != chain.Length + 1) _tailPts = new Vector3[chain.Length + 1];
+            if (t == 0) _tailPts[0] = p;
             for (int i = 0; i < chain.Length; i++)
             {
                 yawAcc += MathF.Sin(c.Age * 2.2f - i * 0.8f + c.Id) * amp * (1f - sweep) / chain.Length * 2f + lag / chain.Length + swing * 1.5f / chain.Length;
@@ -436,8 +439,8 @@ public sealed class LeggedRig : Rig
                 Vector3 dir = bodyT.Basis * Geo.Backward(yawAcc, pitchAcc);
                 Pose[chain[i]] = Geo.Segment(p, p + dir * seg, bodyT.Basis.X);
                 p += dir * seg;
+                if (t == 0) _tailPts[i + 1] = p;
             }
-            if (t == 0) _tailTip = p;
         }
     }
 
@@ -446,7 +449,22 @@ public sealed class LeggedRig : Rig
     {
         Proportions b = Species.Body;
         if (c.Move == AttackMove.Stomp && _stompLeg >= 0) return new Vector4(_legs[_stompLeg].Drawn.X, _legs[_stompLeg].Drawn.Y, _legs[_stompLeg].Drawn.Z, MathF.Max(0.12f, b.LegThickness * 0.5f));
-        if (c.Move == AttackMove.Swipe && _tails.Length > 0) return new Vector4(_tailTip.X, _tailTip.Y, _tailTip.Z, _tailTipRadius);
+        if (c.Move == AttackMove.Swipe && _tailPts.Length > 1)
+        {
+            // The whole tail sweeps: the part of it nearest the victim strikes, thicker toward the root, a club at the tip.
+            Vector3 best = _tailPts[^1];
+            float bestD = float.MaxValue, along = 1f;
+            for (int i = 0; i + 1 < _tailPts.Length; i++)
+            {
+                Vector3 a = _tailPts[i], d = _tailPts[i + 1] - a;
+                float k = d.LengthSquared() > 1e-6f ? Math.Clamp((c.StrikeAt - a).Dot(d) / d.LengthSquared(), 0f, 1f) : 0f;
+                Vector3 q = a + d * k;
+                float dist = q.DistanceSquaredTo(c.StrikeAt);
+                if (dist < bestD) { bestD = dist; best = q; along = (i + k) / (_tailPts.Length - 1); }
+            }
+            float radius = along > 0.85f ? _tailTipRadius : Mathf.Lerp(b.Width * 0.2f, b.Width * 0.06f, along);
+            return new Vector4(best.X, best.Y, best.Z, radius);
+        }
         if (_heads.Length == 0) return base.Striker(c);
         Vector3 head = Pose[_heads[0]] * new Vector3(0, 0, -b.HeadSize * 0.5f);
         return new Vector4(head.X, head.Y, head.Z, b.HeadSize * 0.6f);

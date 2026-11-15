@@ -117,6 +117,7 @@ public static class Attacks
         Strikes.Local(c, target.Position, out _, out float side);
         c.StrikeLimb = side < 0f ? -1 : 1;
         c.StrikeYaw = c.Yaw;
+        c.StrikeAt = target.Position + Vector3.Up;
         c.StrikeLanded = false;
         c.StrikerWasOn = false;
         c.Swipe = 0f;
@@ -359,7 +360,7 @@ public static class Attacks
         }
         if (Mouthed(c)) c.Gape = 1f; // jaws wide for the bite
         // It drives its jaws a little into the aim point, so they meet whoever stands there; contact stops it.
-        float stop = Jaws(c) + Stretch(c) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius) - 0.2f;
+        float stop = Jaws(c) + Stretch(c) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius) - 0.3f;
         Vector3 go = WildSim.Flat(aim + Approach(c, c.AttackTarget, c.Position, aim) * stop - c.Position);
         float d = go.Length();
         Vector3 along = d > 0.01f ? go / d : c.Forward;

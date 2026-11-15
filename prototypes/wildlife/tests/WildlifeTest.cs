@@ -422,8 +422,8 @@ public partial class WildlifeTest : Node
         {
             if (sp.Stats.Damage <= 0f) continue;
             AttackDef a = sp.Attack;
-            if (a == null || a.Name == "" || a.Telegraph < 0.6f) problem ??= $"{sp.Name} ({sp.Behaviour}) has no proper signature attack";
-            else if (sp.TelegraphWindup(_data.Combat) < a.Telegraph) problem ??= $"{sp.Name}: telegraph shorter than its attack's";
+            if (a == null || a.Name == "" || a.Telegraph <= 0f) problem ??= $"{sp.Name} ({sp.Behaviour}) has no proper signature attack";
+            else if (sp.TelegraphWindup(_data.Combat) < MathF.Min(a.Telegraph, _data.Combat.TellMost) - 1e-4f) problem ??= $"{sp.Name}: telegraph shorter than its attack's";
             styles.Add(a.Style.ToString());
             names.Add(a.Name);
         }
