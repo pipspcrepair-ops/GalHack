@@ -1296,7 +1296,6 @@ public partial class PlaceTest : Node
     /// </summary>
     IEnumerable<int> Systems(WorldChoice world)
     {
-        Place.MergeCubes = true; // the merged cubes' split is checked below
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
@@ -1333,7 +1332,7 @@ public partial class PlaceTest : Node
         }
         places.Eye = null;
         Check(p.NearGroups > 0 && p.NearGroups < p.Groups || p.Groups <= 8, $"the cubes near the eye are drawn in full ({p.NearGroups} of {p.Groups}), the rest stay merged");
-        // A cube drawn as one mesh (Place.MergeCubes, on for this check) splits back to a mesh a chunk when a block of it goes:
+        // A cube drawn as one mesh (Place.MergeCubes) splits back to a mesh a chunk when a block of it goes:
         // the block is gone from the drawing and the rest of the cube is drawn as it was.
         for (int i = 0; i < 90; i++) // the near cubes' dissolve over the merged drawing (0.45 s)
         {

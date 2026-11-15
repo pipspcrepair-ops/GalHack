@@ -25,8 +25,8 @@ public partial class Place : Node3D
     /// <summary>Chunks: each is a millisecond or two to put in, and a broken wall remeshes only one or two.</summary>
     public const int ChunkSize = 16;
 
-    /// <summary>A cube's full detail drawn as one mesh rather than a mesh a chunk. Off until an edit's split back (Unmerge) is proven; PopRoute --merge=1 measures it.</summary>
-    public static bool MergeCubes;
+    /// <summary>A cube's full detail drawn as one mesh rather than a mesh a chunk (PlaceTest checks an edit splits it back; PopRoute --merge=0 for the old way).</summary>
+    public static bool MergeCubes = true;
 
     /// <summary>The cubes it stands in: each has its own body, and is drawn near or left to the planet's merged drawing as one.</summary>
     public const int GroupSize = PoiLayer.GroupSize;
