@@ -32,6 +32,31 @@ public partial class PopRoute
         Under(_game.Zone.Wildlife, 19);
     }
 
+    /// <summary>The places' and people's drawings by kind: a place's blocks (its chunks), its dressing, the people, and the places' far drawings.</summary>
+    static readonly Dictionary<string, int> Parts = new() { ["blocks"] = 0, ["dressing"] = 1, ["people"] = 2, ["far places"] = 3 };
+
+    Dictionary<string, List<(GeometryInstance3D G, GeometryInstance3D.ShadowCastingSetting Cast, bool Shown)>> Kinds()
+    {
+        var kinds = Parts.Keys.ToDictionary(k => k, _ => new List<(GeometryInstance3D, GeometryInstance3D.ShadowCastingSetting, bool)>());
+        static bool InPerson(Node n)
+        {
+            for (; n != null; n = n.GetParent())
+                if (n.GetType().Name == "PersonView") return true;
+            return false;
+        }
+        if (_game.Places != null)
+            foreach (Node n in _game.Places.FindChildren("*", "GeometryInstance3D", true, false))
+            {
+                var g = (GeometryInstance3D)n;
+                string kind = InPerson(g) ? "people" : g.Name.ToString().StartsWith("Chunk") ? "blocks" : "dressing";
+                kinds[kind].Add((g, g.CastShadow, g.Visible));
+            }
+        if (_game.Zone.Pois != null)
+            foreach (Node n in _game.Zone.Pois.FindChildren("*", "GeometryInstance3D", true, false))
+                kinds["far places"].Add(((GeometryInstance3D)n, ((GeometryInstance3D)n).CastShadow, ((GeometryInstance3D)n).Visible));
+        return kinds;
+    }
+
     IEnumerable<int> GpuCost(Vector3 start, Vector3 way)
     {
         var zone = _game.Zone;
@@ -44,7 +69,8 @@ public partial class PopRoute
             views.Add(("in the city", mid - way * 60f, 1.7f, -2f));
             views.Add(("low over the city", mid - way * (radius + 150f), 40f, -10f));
         }
-        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-msaa" }).ToList();
+        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-msaa" })
+            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).ToList();
         foreach (var (view, at, up, pitch) in views)
         {
             Vector3 eye = Lift(at, up);
@@ -55,9 +81,12 @@ public partial class PopRoute
                 yield return 0;
             }
             TagAll();
+            var parts = Kinds();
             Viewport.Msaa msaa = GetViewport().Msaa3D;
             bool glow = env.GlowEnabled;
             var cost = new Dictionary<string, double>();
+            var renderCpu = new Dictionary<string, double>();
+            var drawCalls = new Dictionary<string, double>();
             foreach (string c in cases)
             {
                 foreach (var (name, layer) in GpuLayers) cam.SetCullMaskValue(layer, c != "-" + name);
@@ -65,24 +94,44 @@ public partial class PopRoute
                 env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                 env.GlowEnabled = c != "-glow" && glow;
                 GetViewport().Msaa3D = c == "-msaa" ? Viewport.Msaa.Disabled : msaa;
+                foreach (var (kind, list) in parts)
+                    foreach (var (g, cast, shown) in list)
+                    {
+                        if (!IsInstanceValid(g)) continue;
+                        g.CastShadow = c == $"-{kind} shadows" ? GeometryInstance3D.ShadowCastingSetting.Off : cast;
+                        g.Visible = c != $"-{kind} drawn" && shown;
+                    }
                 var gpu = new List<double>();
+                var cpu = new List<double>();
+                var draws = new List<double>();
                 for (int i = 0; i < 100; i++)
                 {
                     _game.Survivor.PlaceOutside((eye - way * 6f + Vector3.Down * 1.6f).ToNumerics());
                     yield return 0;
-                    if (i >= 20) gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
+                    if (i < 20) continue;
+                    gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
+                    cpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp) + RenderingServer.GetFrameSetupTimeCpu());
+                    draws.Add(RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame));
                 }
                 gpu.Sort();
+                cpu.Sort();
+                draws.Sort();
                 cost[c] = gpu[gpu.Count / 2];
+                renderCpu[c] = cpu[cpu.Count / 2];
+                drawCalls[c] = draws[draws.Count / 2];
             }
+            foreach (var (_, list) in parts)
+                foreach (var (g, cast, shown) in list)
+                    if (IsInstanceValid(g)) (g.CastShadow, g.Visible) = (cast, shown);
             foreach (var (_, layer) in GpuLayers) cam.SetCullMaskValue(layer, true);
             zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
             env.BackgroundMode = Godot.Environment.BGMode.Sky;
             env.GlowEnabled = glow;
             GetViewport().Msaa3D = msaa;
             double all = cost["all"];
-            string parts = string.Join(", ", cases.Skip(1).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}")));
-            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all {all:F2} ms; without each (what it costs): {parts}"));
+            double allCpu = renderCpu["all"], allDraws = drawCalls["all"];
+            string costs = string.Join(", ", cases.Skip(1).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); without each (what it costs, gpu/render cpu ms/draw calls): {costs}"));
             _game.FixedCamera = null;
         }
     }
