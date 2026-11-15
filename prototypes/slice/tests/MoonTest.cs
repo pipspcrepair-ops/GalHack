@@ -316,7 +316,7 @@ public partial class MoonTest : Node
                 float want = from.DistanceTo(c.Centre) - c.GlobeRadius, got = hit.Count > 0 ? from.DistanceTo((Vector3)hit["position"]) : float.NaN;
                 Celestial first = hit.Count > 0 && hit["collider"].AsGodotObject() is Node n ? orbit.Bodies.FirstOrDefault(o => o.Sphere == n.GetParent()) : null;
                 if (first != null && first != c) GD.Print($"  ({when}: {c.Name} stands behind {first.Name}, which the ray meets first)");
-                else Check(first == c && MathF.Abs(got - want) < (c.IsHome ? 2f : 6f), $"{when}: {c.Name} is solid at its true radius, its ground {(c.Surface?.Arrived == true ? "there" : "not there yet")} (a ray from the Skiff meets it {got:F0} m out, {want:F0} m expected)");
+                else Check(first == c && MathF.Abs(got - want) < 2f + (c.Shift - c.ShiftWas).Length(), $"{when}: {c.Name} is solid at its true radius, its ground {(c.Surface?.Arrived == true ? "there" : "not there yet")} (a ray from the Skiff meets it {got:F0} m out, {want:F0} m expected, within the {(c.Shift - c.ShiftWas).Length():F0} m it goes in a tick)");
             }
             // The bodies near with no ground here (other moons, a giant and its moons): solid too, unless another stands in front.
             int met = 0, hidden = 0;
@@ -412,6 +412,11 @@ public partial class MoonTest : Node
     /// </summary>
     void PaintedAlike(Celestial moon, Image far)
     {
+        if (!moon.Body.Spec.Airless)
+        {
+            GD.Print($"  ({moon.Name} has air: its far look carries its clouds painted in, its globe draws them as a layer of their own, so the ground's paint is not compared)");
+            return;
+        }
         Vector3 a = Mean(far), b = Mean(moon.Painting.Result.Albedo);
         static float Lum(Vector3 c) => 0.2126f * c.X + 0.7152f * c.Y + 0.0722f * c.Z;
         float bright = Lum(b) / Lum(a);

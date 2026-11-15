@@ -16,7 +16,7 @@ namespace Slice.Tests;
 /// (a frame on each side, on one line from it, measured), its ground close up, and the sleeper
 /// standing on it by the landed Skiff (the last frame). And the moon's light from the ground: a
 /// crescent, a full moon and an eclipsed moon at moments found on the system's own clock.
-/// "moon2" goes to the nearest other moon instead, the cruise out to it skipped (printed): the
+/// "moon2" goes to another moon instead (the nearest bare one, if any), the cruise out skipped (printed): the
 /// Skiff set off it for the hand-over, then just inside its reach.
 /// </summary>
 public sealed partial class Staging
@@ -38,7 +38,7 @@ public sealed partial class Staging
         if (second)
         {
             Vector3 from = v.Body.Position.ToGodot();
-            moon = o.Moons.Where(c => c != o.Moon).OrderBy(c => from.DistanceTo(c.Centre)).FirstOrDefault();
+            moon = o.Moons.Where(c => c != o.Moon).OrderBy(c => !c.Body.Spec.Airless).ThenBy(c => from.DistanceTo(c.Centre)).FirstOrDefault(); // a bare moon first, the kind the thruster moon is
             if (moon == null)
             {
                 GD.Print("(screenshot: no second moon to fly to in this system)");
@@ -103,7 +103,7 @@ public sealed partial class Staging
             yield return 0;
         }
         _game.Controls.ReleaseAll();
-        foreach (int x in _pilot.Land(v)) yield return x;
+        foreach (int x in _pilot.Land(v, OrbitTest.FlatSpot(_game.Zone, v.Body.Position.ToGodot(), 40f))) yield return x; // on dry, level ground
         Hurry(1);
         Where("landed");
         // Out of the seat and onto the moon's ground, the world it came from in its sky.
