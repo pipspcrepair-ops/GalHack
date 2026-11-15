@@ -164,6 +164,8 @@ public sealed class BlockType
     public bool IsContainer => Function == "container";
     /// <summary>A weather forecast block: the structure it is on broadcasts the weather warnings.</summary>
     public bool IsForecast => Function == "forecast";
+    /// <summary>A scanner: a scan from the structure marks the places within its tier's range.</summary>
+    public bool IsScanner => Function == "scanner";
     /// <summary>A seat that gives control: the command chair, or a cockpit built round one.</summary>
     public bool IsCommandChair => Function == "chair";
     /// <summary>A force field's corner emitter (any plating).</summary>

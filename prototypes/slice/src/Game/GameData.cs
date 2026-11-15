@@ -156,6 +156,8 @@ public sealed class SliceRules
     public ContainerRules Containers { get; set; } = new();
     public FieldRules ForceFields { get; set; } = new();
     public BarRules StructureBar { get; set; } = new();
+    /// <summary>How far a structure's scan marks places, m, by scanner block id.</summary>
+    public Dictionary<string, float> Scanners { get; set; } = new();
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -330,7 +332,7 @@ public sealed class SliceRules
         public List<BarKind> Kinds { get; set; } = new();
     }
 
-    /// <summary>A kind of slot on the structure's toolbar: its label, the block functions that bring it, what its key does, its icon, its end, a slot per block type or one, a scanner's range (m).</summary>
+    /// <summary>A kind of slot on the structure's toolbar: its label, the block functions that bring it, what its key does, its icon, its end, and a slot per block type or one.</summary>
     public sealed class BarKind
     {
         public string Id { get; set; } = "";
@@ -340,7 +342,6 @@ public sealed class SliceRules
         public string Icon { get; set; } = "";
         public string End { get; set; } = "left";
         public bool PerType { get; set; }
-        public float Range { get; set; }
     }
 
     public sealed class ContainerRules

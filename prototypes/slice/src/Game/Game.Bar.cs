@@ -23,11 +23,4 @@ public partial class Game
         bool trigger = !Menu.IsOpen && v.Roles.Pilot == Vessel.Player;
         v.Bar.Fire(Arms, dt, trigger && Controls.Primary, trigger && Controls.PrimaryPressed);
     }
-
-    /// <summary>
-    /// The structure's scanner (its toolbar's scan slot): the places within its range of where it is are marked for a while.
-    /// The one hook for proto/scanner's scan from a point (its scanner block and its marks); until that merges, the
-    /// handheld scanner's ping from the seat.
-    /// </summary>
-    public bool StructureScan(Godot.Vector3 from, float range) => Scan();
 }

@@ -135,6 +135,15 @@ public static class Mesher
     /// <summary>Faces carry their finish codes (off only to measure what they cost: every face then draws plain).</summary>
     public static bool Finishes = true;
 
+    /// <summary>
+    /// A round thing's rim piece in cell <paramref name="n"/> beside a block whose face toward it (face <paramref name="f"/>) the piece
+    /// takes in whole, as a block would: a cut whose flat side is that face, a sloped piece that fills it. The face then lies between
+    /// two solids and neither draws it.
+    /// </summary>
+    public static bool RimCovers(IReadOnlyList<RoundBody>? rounds, Block nb, Int3 n, int f) =>
+        f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f))
+        || nb.Type == BlockType.RoundSlope && Round.BodyAt(rounds, n) is { } body && Round.Fills(body, n, Dirs.All[f].Opposite());
+
     static readonly V3[] Normals =
     {
         new(0, 0, -1), new(1, 0, 0), new(0, 0, 1), new(-1, 0, 0), new(0, 1, 0), new(0, -1, 0),
@@ -846,13 +855,13 @@ public static class Mesher
                     Face(chunk, surf, p, f, col, glass ? 0.35f : 1f, code != 0f ? 1f : jitter, ao: surf != Surface.Glow, code);
                 }
                 if (glyph) Glyph(chunk, p, f, b.Color);
-                if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true);
+                if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true, code: FaceCode(p, b, Normals[f], false, Surface.Matte)); // (the crack in the wall's own finish)
                 if (_o.Collision && (!CollidesFull(n) || IsRock(n))) CollideFace(chunk, p, f);
             }
         }
 
         /// <summary>A glyph on one face: one of a few line figures, picked by the cell.</summary>
-        void Glyph(ChunkMesh chunk, Int3 p, int f, Rgb color, Surface surface = Surface.Glow, bool crack = false)
+        void Glyph(ChunkMesh chunk, Int3 p, int f, Rgb color, Surface surface = Surface.Glow, bool crack = false, float code = 0f)
         {
             const float t = 0.07f, lift = 0.012f;
             uint h = Hash.Cell(p, (uint)(41 + f));
@@ -901,7 +910,7 @@ public static class Mesher
                 // Wind it so it faces outward, then emit clockwise for Godot.
                 if (V3.Dot(V3.Cross(b - a, c - a), n) < 0) (b, d) = (d, b);
                 int i0 = buf.VertexCount;
-                foreach (V3 v in new[] { a, b, c, d }) buf.Vertex(v, n, color.R / 255f, color.G / 255f, color.B / 255f, 1f);
+                foreach (V3 v in new[] { a, b, c, d }) buf.Vertex(v, n, color.R / 255f, color.G / 255f, color.B / 255f, 1f, code, code != 0f ? _seed : 0f);
                 buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2 });
             }
         }
@@ -1291,10 +1300,8 @@ public static class Mesher
             }
         }
 
-        /// <summary>A round thing's rim piece beside a block whose face toward it (face <paramref name="f"/>) the piece takes in whole, as a block would: a cut whose flat side is that face, a sloped piece that fills it.</summary>
-        bool RimCovers(Block nb, Int3 n, int f) =>
-            f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f))
-            || nb.Type == BlockType.RoundSlope && Round.BodyAt(_rounds, n) is { } body && Round.Fills(body, n, Dirs.All[f].Opposite());
+        /// <summary>See <see cref="Mesher.RimCovers(IReadOnlyList{RoundBody}, Block, Int3, int)"/>.</summary>
+        bool RimCovers(Block nb, Int3 n, int f) => Mesher.RimCovers(_rounds, nb, n, f);
 
         /// <summary>
         /// A course of a round thing that runs in or out as it rises (<see cref="Round.Pieces"/>): its outside and inside shaded

@@ -157,7 +157,7 @@ public sealed class StructureBar
                 if (!Picked.Remove(f.Key)) Picked.Add(f.Key);
                 return;
             case BarAct.Run:
-                if (Powered(f.Kind)) game.StructureScan(_v.ToWorld(_v.Body.CenterOfMass), f.Kind.Range);
+                if (Powered(f.Kind)) game.Scan(_v); // the structure's scanners' scan, at their range
                 return;
         }
         bool on = !IsOn(f);

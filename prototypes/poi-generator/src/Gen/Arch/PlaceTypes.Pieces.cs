@@ -41,9 +41,9 @@ public static partial class PlaceTypes
         return types.Except(fitting).Select(t => Plan(t, seed, worldWidth, worldHeight)).FirstOrDefault(s => !s.TooBig) ?? last!;
     }
 
-    /// <summary>A typed family's layout off a world (a test, the viewer, its landmark): its tallest building, as a fresh sketch of it rolls it.</summary>
-    public static SiteDef Sample(PoiLibrary lib, FamilyDef family, ulong seed, TechLevel? tech) =>
-        Pieces(PlanFor(lib, family, tech, seed, 16000, 8000), 0).Where(p => p.Item.Part.Kind == "building").MaxBy(p => p.Item.H)!.Plan;
+    /// <summary>A typed family's layout off a world (a test, the viewer, its landmark): its tallest building, as a fresh sketch of it rolls it (a spaceport of its variant's class).</summary>
+    public static SiteDef Sample(PoiLibrary lib, FamilyDef family, ulong seed, TechLevel? tech, Starport? port = null) =>
+        Pieces(PlanFor(lib, family, tech, seed, 16000, 8000, port), 0).Where(p => p.Item.Part.Kind == "building").MaxBy(p => p.Item.H)!.Plan;
 
     /// <summary>A point of the sketch turned by quarter turns about its middle.</summary>
     public static (float X, float Z) Turn(float x, float z, int turn) => (turn & 3) switch { 0 => (x, z), 1 => (-z, x), 2 => (-x, -z), _ => (z, -x) };
@@ -84,7 +84,8 @@ public static partial class PlaceTypes
             if (i.Part.Kind == "fence") { pieces.AddRange(FenceRuns(s, i, turn)); continue; }
             string? what = i.Part.Kind switch
             {
-                "building" => i.Part.What == "control_tower" ? "tower" : i.Part.What,
+                // (A fire station or a works shed is a city's lot of that kind, its street the way it faces.)
+                "building" => i.Part.What switch { "control_tower" => "tower", "fire" or "works" => "city", var w => w },
                 "tanks" => "fuel",
                 "lights" => "lights",
                 "pads" when Sink(i) > 0 => "pad",
@@ -107,12 +108,16 @@ public static partial class PlaceTypes
                 (rolled["gu"], rolled["gv"]) = (gu * 100f, gv * 100f);
                 rolled["ramp"] = s.Of("link").FirstOrDefault()?.Rolled.GetValueOrDefault("w", 12f) ?? 12f;
             }
-            pieces.Add(Piece(i, Turn(i.Box, turn), front, what, rolled));
+            SketchBox box = Turn(i.Box, turn);
+            bool ns = front is Dir.North or Dir.South;
+            pieces.Add(what == "city"
+                ? Piece(i, box, front, what, rolled, ("kind", i.Part.What), ("w", $"{(ns ? box.W : box.D) / 2:F0}"), ("d", $"{(ns ? box.D : box.W) / 2:F0}"), ("storeys", "2"))
+                : Piece(i, box, front, what, rolled));
         }
         return pieces;
     }
 
-    static TypePiece Piece(SketchItem item, SketchBox box, Dir front, string what, IReadOnlyDictionary<string, float> rolled, string? gates = null)
+    static TypePiece Piece(SketchItem item, SketchBox box, Dir front, string what, IReadOnlyDictionary<string, float> rolled, params (string Key, string Value)[] args)
     {
         bool ns = front is Dir.North or Dir.South;
         int L = (int)(ns ? box.W : box.D), D = (int)(ns ? box.D : box.W);
@@ -122,7 +127,7 @@ public static partial class PlaceTypes
         part.Args["fl"] = I(L);
         part.Args["fd"] = I(D);
         foreach (var (k, v) in rolled) if (k is not ("len" or "depth" or "w")) part.Args[k] = I(v);
-        if (gates != null) part.Args["gates"] = gates;
+        foreach (var (k, v) in args) part.Args[k] = v;
         var plan = new SiteDef { Id = item.Part.Id, Name = item.Part.Id, Style = Style, Parts = { part } };
         // The plan's frame turned to its front (Plot.Cell): where its box's corner falls against its cell (0, 0).
         var (mx, mz) = front switch { Dir.East => (-D, 0), Dir.South => (-L, -D), Dir.West => (0, -L), _ => (0, 0) };
@@ -172,7 +177,7 @@ public static partial class PlaceTypes
                 bool reversed = way is Dir.South or Dir.West;
                 var mine = at.Where(g => g >= a0 + 6 && g <= a1 - 6).Select(g => (int)MathF.Round(reversed ? a1 - g : g - a0)).ToList();
                 var rolled = new Dictionary<string, float>(fence.Rolled);
-                yield return Piece(fence, run, way, "fence", rolled, mine.Count > 0 ? string.Join(",", mine) : null);
+                yield return mine.Count > 0 ? Piece(fence, run, way, "fence", rolled, ("gates", string.Join(",", mine))) : Piece(fence, run, way, "fence", rolled);
             }
         }
     }

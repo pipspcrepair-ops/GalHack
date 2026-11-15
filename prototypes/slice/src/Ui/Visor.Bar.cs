@@ -35,7 +35,7 @@ public partial class Visor
             {
                 BarAct.Toggle => on ? "ON" : "OFF",
                 BarAct.Select => $"{v.Bar.Rounds(f)}",
-                _ => Game.ScanWait > 0 ? $"{Game.ScanWait:F0}s" : "",
+                _ => Game.ScanWait > 0 ? $"{Game.ScanWait:F0}s" : $"{Game.ScanRangeOf(v) / 1000f:0.#}KM", // a scanner's range, or its cooldown
             };
             shown[i] = new BarShown(f.Label, value, on, IconOf(f.Kind), f.Act);
         }
