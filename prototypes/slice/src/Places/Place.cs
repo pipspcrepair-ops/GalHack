@@ -178,8 +178,8 @@ public partial class Place : Node3D
         }
     }
 
-    /// <summary>The most of a chunk's collision one shape holds, floats (a triangle is nine): the physics builds a shape's face tree as it joins its body, in one go.</summary>
-    const int ShapePiece = 1024 * 9;
+    /// <summary>The most of a chunk's collision one shape holds, floats (a triangle is nine): the physics builds a shape's face tree as it joins its body, in one go (1,024 triangles was a step of up to 5.7 ms).</summary>
+    const int ShapePiece = 512 * 9;
 
     void SetChunkMesh(ChunkMesh chunk)
     {
