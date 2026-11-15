@@ -161,6 +161,9 @@ public sealed class VesselDamage : ILocatedDamageSink
     void Lost(DamageReport report)
     {
         BlocksLost += report.Destroyed.Count;
+        // Remembered where they stood, for a repair to restore (a core comes back only by hand).
+        foreach (var (p, b) in report.Destroyed)
+            if (!S.TypeOf(b).IsCore) Fallen[p] = b;
         if (_v.IsBase)
             foreach (var (p, _) in report.Destroyed) _v.Zone.Edits?.ReleaseStructure(new TerrainDigging.Terrain.VolumeKey(_v.Body.Id, p.X, p.Y, p.Z));
 
@@ -186,17 +189,22 @@ public sealed class VesselDamage : ILocatedDamageSink
 
     // ---- Repair -------------------------------------------------------------------------------
 
+    /// <summary>Blocks destroyed by harm (not taken down), by the anchor cell they stood on: a repair can restore them.</summary>
+    public readonly Dictionary<Int3, Block> Fallen = new();
+
     /// <summary>
     /// Gives a damaged block back a share of its health, paid for from the structure's shared
-    /// storage: that share of the block's bill, rounded up. The look steps back as it heals.
+    /// storage (or <paramref name="from"/>, the sleeper's bag): that share of the block's bill,
+    /// rounded up. The look steps back as it heals.
     /// </summary>
-    public RepairStatus Repair(Int3 cell, float share = 1f)
+    public RepairStatus Repair(Int3 cell, float share = 1f, SharedStorage from = null)
     {
         if (!Building.IsDamaged(S, cell)) return RepairStatus.NotDamaged;
         if (!_v.Zone.WorldRules.Creative)
         {
+            from ??= _v.Storage;
             Bill bill = RepairBill(cell, share);
-            if (!_v.Storage.TryTake(bill)) return RepairStatus.NotEnoughMaterials;
+            if (!from.TryTake(bill)) return RepairStatus.NotEnoughMaterials;
             S.CargoSu = _v.Storage.UsedSu;
         }
         Building.Repair(S, cell, share);

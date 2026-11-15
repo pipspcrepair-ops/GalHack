@@ -110,12 +110,12 @@ public partial class CoreScanTest : Node
         foreach (int x in drive.Wait(30)) yield return x;
         Check(!visor.Markers().Any(m => m.Kind == "core" && m.At.DistanceTo(stage.Core) < 0.1f), "beyond the range, no marker on that core");
 
-        // Back in range with the scanner, then with the survival tool in hand: nothing.
+        // Back in range with the scanner, then with the Sleeper tool in hand: nothing.
         foreach (int x in stage.Go(game, drive)) yield return x;
         Check(visor.Markers().Any(m => m.Kind == "core"), "back in range with the scanner: markers again");
-        game.Pack.Add("survival-tool", 1);
-        foreach (int x in CoreScanStage.Hold(play, "survival-tool", _ => { })) yield return x;
-        Check(game.Pack.Hand == HandKind.Tool && !visor.Markers().Any(m => m.Kind == "core"), "with the survival tool in hand: no marker");
+        game.Pack.Add("sleeper-tool", 1);
+        foreach (int x in CoreScanStage.Hold(play, "sleeper-tool", _ => { })) yield return x;
+        Check(game.Pack.Hand == HandKind.Tool && !visor.Markers().Any(m => m.Kind == "core"), "with the Sleeper tool in hand: no marker");
         Check(!visor.LayoutMarkers(Size, 1f).Any(p => p.Mark.Kind == "core"), "nor on the drawn layout");
         foreach (int x in play.Select(scanSlot)) yield return x;
 

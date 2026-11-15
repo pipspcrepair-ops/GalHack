@@ -480,7 +480,8 @@ public partial class Visor : CanvasLayer
         string label = Game.UsePrompt();
         if (string.IsNullOrEmpty(label)) label = Game.Builder.Projecting ? Game.Builder.Verdict : Game.Pack.Hand switch
         {
-            HandKind.Tool => Game.Tool.Mode is ToolMode.Deconstruct or ToolMode.Plate ? Game.Builder.Verdict : Game.Tool.TargetLabel,
+            HandKind.Tool => Game.Tool.TargetLabel,
+            HandKind.Plater => Game.Builder.Verdict,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "[LMB] USE",
             HandKind.Vehicle => "[LMB] SET DOWN",
@@ -555,13 +556,9 @@ public partial class Visor : CanvasLayer
         {
             case HandKind.Tool:
                 string toolName = Game.Zone.Data.Rules.Tool.TierOf(pack.HandItem).Name.ToUpperInvariant();
-                return Game.Tool.Mode switch
-                {
-                    ToolMode.Shoot => $"{toolName} · SHOOT",
-                    ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
-                    ToolMode.Plate => $"{toolName} · PLATE · {Game.Builder.PlateOf(Game.Builder.Plating).Name}",
-                    _ => $"{toolName} · GATHER",
-                };
+                return Game.Tool.Mode == ToolMode.Repair ? $"{toolName} · REPAIR" : $"{toolName} · ATTACK/GATHER";
+            case HandKind.Plater:
+                return $"{items.Item(pack.HandItem).Name.ToUpperInvariant()} · {Game.Builder.PlateOf(Game.Builder.Plating).Name}";
             case HandKind.Vehicle:
                 return "HOVER BIKE";
             case HandKind.Weapon when Game.Zone.Data.Arms.OfItem(pack.HandItem) is GalHack.Arms.WeaponDef w:
@@ -591,12 +588,8 @@ public partial class Visor : CanvasLayer
         HandKind hand = Game.Pack.Hand;
         string keys = hand switch
         {
-            HandKind.Tool => Game.Tool.Mode switch
-            {
-                ToolMode.Deconstruct => $"{Bound("tool-mode")} MODE  [LMB] TAKE DOWN   ",
-                ToolMode.Plate => $"{Bound("tool-mode")} MODE  [WHEEL] PLATE  [LMB] SPRAY  [RMB] STRIP   ",
-                _ => $"{Bound("tool-mode")} MODE   ",
-            },
+            HandKind.Tool => $"{Bound("tool-mode")} MODE   ",
+            HandKind.Plater => "[WHEEL] PLATE  [LMB] SPRAY  [RMB] STRIP   ",
             HandKind.Weapon => Game.Zone.Data.Arms.OfItem(Game.Pack.HandItem)?.Modes.Count > 1 ? $"{Bound("rotate")} RELOAD  {Bound("tool-mode")} MODE   " : $"{Bound("rotate")} RELOAD   ",
             HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => $"[WHEEL] PIECE  {Bound("style")} THEME  {Bound("rotate")} TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  {Bound("rotate", "tilt")} TURN  {Bound("mirror")} MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",

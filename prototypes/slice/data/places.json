@@ -21,7 +21,7 @@
   "nearRadius": 64,
   "nearDrop": 90,
 
-  // Salvage: the survival tool (gather mode) takes a place apart for materials. Each block has
+  // Salvage: the Sleeper tool (gather mode) takes a place apart for materials. Each block has
   // the POI generator's own hit points (BlockInfo.HitPoints: a breakable wall 60, glass 80,
   // timber 120, most 600, concrete and rock 900, armour 3000); each dig pulse does this much.
   "salvage": {

@@ -27,7 +27,7 @@ public partial class SliceAudio : Node
     AudioStreamPlayer3D _step;
     AudioStreamWav _chirp;
     float _stepTimer;
-    int _shots, _placed, _taken;
+    int _placed, _taken;
     float _saveIn;
 
     /// <summary>The four volumes, as they are saved.</summary>
@@ -251,8 +251,7 @@ public partial class SliceAudio : Node
             }
         }
 
-        // Shots, placements and take-downs, from the tools' counters.
-        if (g.Tool.Shots != _shots) { _shots = g.Tool.Shots; _ui.Play("zap", g.Tool.Muzzle(), 1.3f, -10f); }
+        // Placements and take-downs, from the build tool's counters (the Sleeper tool plays its own crackle and thunder).
         if (g.Builder.Placed != _placed) { _placed = g.Builder.Placed; _ui.Play("place", g.Survivor.WorldEye(), 1f, -8f); }
         if (g.Builder.TakenDown != _taken) { _taken = g.Builder.TakenDown; _ui.Play("remove", g.Survivor.WorldEye(), 1f, -8f); }
     }

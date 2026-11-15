@@ -54,9 +54,9 @@ public partial class BuildTest
 
         // The three hand tools are one model in three liveries, told apart by colour.
         static Color Hull(ItemModel m) => (Color)((m.Root.GetChild<MeshInstance3D>(0).MaterialOverride as ShaderMaterial).GetShaderParameter("base_color"));
-        ItemModel plain = ItemModels.Build(Items.Item("survival-tool")), drill = ItemModels.Build(Items.Item("mining-drill")), plasma = ItemModels.Build(Items.Item("plasma-drill"));
+        ItemModel plain = ItemModels.Build(Items.Item("sleeper-tool")), drill = ItemModels.Build(Items.Item("mining-drill")), plasma = ItemModels.Build(Items.Item("plasma-drill"));
         Check(ItemModels.Signature(plain.Root) == ItemModels.Signature(drill.Root) && ItemModels.Signature(drill.Root) == ItemModels.Signature(plasma.Root),
-            "the survival tool, the mining drill and the plasma drill are one model (the one in the hands)");
+            "the Sleeper tool, the mining drill and the plasma drill are one model (the one in the hands)");
         Check(Hull(plain) != Hull(drill) && Hull(drill) != Hull(plasma) && Hull(plain) != Hull(plasma), "in three liveries, so their icons can be told apart");
         plain.Root.Free();
         drill.Root.Free();
@@ -85,7 +85,7 @@ public partial class BuildTest
         foreach (int x in _play.ToToolbar("plasma-drill", 6)) yield return x;
         foreach (int x in _play.BlockToToolbar("steel", 5)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        foreach (var (id, slot) in new[] { ("survival-tool", 0), ("mining-drill", 7), ("plasma-drill", 6), ("scanner", 8) })
+        foreach (var (id, slot) in new[] { ("sleeper-tool", 0), ("mining-drill", 7), ("plasma-drill", 6), ("scanner", 8) })
         {
             foreach (int x in _play.Select(slot)) yield return x;
             foreach (int x in _drive.Wait(3)) yield return x;

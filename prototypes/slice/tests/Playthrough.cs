@@ -85,20 +85,20 @@ public sealed class Playthrough
         }
     }
 
-    /// <summary>The first thing anyone does: Tab, the suit fabricator's free survival tool, dragged onto toolbar slot 1 and in hand.</summary>
+    /// <summary>The first thing anyone does: Tab, the suit fabricator's free Sleeper tool, dragged onto toolbar slot 1 and in hand.</summary>
     public IEnumerable<int> MakeTool()
     {
         foreach (int x in OpenMenu(MenuTab.You)) yield return x;
-        foreach (int x in Order("fab", "survival-tool", 1)) yield return x;
-        foreach (int x in WaitFor(() => Pack["survival-tool"] > 0, 15)) yield return x;
-        foreach (int x in ToToolbar("survival-tool", 0)) yield return x;
+        foreach (int x in Order("fab", "sleeper-tool", 1)) yield return x;
+        foreach (int x in WaitFor(() => Pack["sleeper-tool"] > 0, 15)) yield return x;
+        foreach (int x in ToToolbar("sleeper-tool", 0)) yield return x;
         foreach (int x in CloseMenu()) yield return x;
         foreach (int x in Select(0)) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
     }
 
     /// <summary>
-    /// The start, as a player plays it: wake empty-handed in the cryopod, make the survival tool
+    /// The start, as a player plays it: wake empty-handed in the cryopod, make the Sleeper tool
     /// (free, Tab, YOU), F opens the pod, step out, E on the locker and TAKE ALL, (a shot at the
     /// wall, which wears it, and the tool on the floor,) up the stairwell to the surface, 50 m away, back
     /// down into the bunker, and out again.
@@ -112,7 +112,7 @@ public sealed class Playthrough
             $"{label}wakes in the cryopod, its lid shut, {under:F1} m under the ground");
         check(Pack.Storage.IsEmpty && Pack.Hand == HandKind.Empty && Game.ToolHint != null, $"{label}empty-handed, the visor saying: {Game.ToolHint}");
         foreach (int x in MakeTool()) yield return x;
-        check(Pack.Grid[0].Item == "survival-tool" && Pack.Hand == HandKind.Tool && Game.ToolHint == null, $"{label}Tab: the suit fabricator makes the survival tool, free; dragged to the toolbar, it is in hand and the hint is gone");
+        check(Pack.Grid[0].Item == "sleeper-tool" && Pack.Hand == HandKind.Tool && Game.ToolHint == null, $"{label}Tab: the suit fabricator makes the Sleeper tool, free; dragged to the toolbar, it is in hand and the hint is gone");
         foreach (int x in Drive.Tap(Key.F)) yield return x;
         foreach (int x in Drive.Wait(40)) yield return x;
         check(b.Mine.Open, $"{label}F opens the cryopod");
@@ -486,19 +486,27 @@ public sealed class Playthrough
         foreach (int x in Drive.Wait(1)) yield return x;
     }
 
-    /// <summary>The survival tool in hand, in a mode (Q switches).</summary>
+    /// <summary>The Sleeper tool in hand, in a mode (Q switches).</summary>
     public IEnumerable<int> Tool(Slice.Player.ToolMode mode)
     {
-        int slot = Enumerable.Range(0, PlayerInventory.ToolbarSlots).First(i => Pack.Grid[i].Item == "survival-tool");
+        int slot = Enumerable.Range(0, PlayerInventory.ToolbarSlots).First(i => Pack.Grid[i].Item == "sleeper-tool");
         foreach (int x in Select(slot)) yield return x;
         for (int i = 0; i < 3 && Game.Tool.Mode != mode; i++) foreach (int x in Drive.Tap(Key.Q)) yield return x;
         foreach (int x in Drive.Wait(1)) yield return x;
     }
 
-    /// <summary>Fires the tool at a point: look, click, let the bolt fly.</summary>
+    /// <summary>The plating gun in hand (made free in the suit fabricator if there's none): onto a toolbar slot and selected.</summary>
+    public IEnumerable<int> PlatingGun()
+    {
+        if (!Pack.Has(PlayerInventory.PlatingGun)) Pack.Add(PlayerInventory.PlatingGun, 1);
+        foreach (int x in CoreScanStage.Hold(this, PlayerInventory.PlatingGun, _ => { })) yield return x;
+        foreach (int x in Drive.Wait(1)) yield return x;
+    }
+
+    /// <summary>Fires the tool at a point: look, click, let the blast go.</summary>
     public IEnumerable<int> ShootAt(Func<Vector3> at, int shots = 1)
     {
-        foreach (int x in Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+        foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
         for (int s = 0; s < shots; s++)
         {
             foreach (int x in Drive.LookAt(at(), 4)) yield return x;
@@ -527,7 +535,7 @@ public sealed class Playthrough
             if (d.Kind != kind) continue;
             zone.Planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
-            // Dry, and near enough the surface for the survival tool (it can't cut deep rock): what the scanner shows.
+            // Dry, and near enough the surface for the Sleeper tool (it can't cut deep rock): what the scanner shows.
             if ((!retry && _triedDeposits.Contains(((int)at.X, (int)at.Z))) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > Slice.Surface.DepositFinder.MaxDepth) continue;
             if (retry && NearestOre(at, at, kind) == null) continue; // dug out
             // Not in or beside a place (its rooms are dug into the ground under it).

@@ -71,7 +71,7 @@ public partial class GunFeelShots : Node
             foreach (int x in drive.ClimbOut(_game.Bunker)) yield return x;
             foreach (int x in drive.UntilSettled()) yield return x;
         }
-        foreach (int x in _play.Tool(_feel is "gather" or "hold" ? ToolMode.Gather : ToolMode.Shoot)) yield return x;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
         Vector3 target = _where == "outside"
             ? _game.Zone.GroundAt(feet.X + 7f, feet.Z + 4f)
@@ -96,7 +96,7 @@ public partial class GunFeelShots : Node
             _game.Shots.SetProcess(false);
             _game.Hands.SetProcess(false);
             foreach (int x in drive.Wait(2)) yield return x;
-            GD.Print($"gather: beam showing {_game.Shots.BeamShowing}");
+            GD.Print($"gather: lightning showing {_game.Shots.SparksShowing}");
             yield break;
         }
         GunFeel feel = GunFeel.Get(_feel);
@@ -105,8 +105,8 @@ public partial class GunFeelShots : Node
         Vector3 muzzle = _game.Tool.Muzzle();
         if (feel == GunFeel.Tool)
         {
-            _game.Shots.Fire(muzzle, target, default, null, feel.Id, _game.Tool.HeldMuzzle);
-            yield return 0; // a tick on, the beam is out of the barrel and the flash still up
+            _game.Shots.Lightning(_game.Tool.Muzzle, target, ShotFx.LightningBlue, 6f, 11f, 0.09f);
+            yield return 0; // a tick on, the bolt is out and the flash still up
         }
         else _game.Shots.Muzzle(feel.Id, muzzle, _game.Survivor.WorldLook());
         _game.Shots.SetProcess(false); // in this very tick, before any frame has counted the flash down

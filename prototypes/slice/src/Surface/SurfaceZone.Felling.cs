@@ -9,7 +9,7 @@ using N = System.Numerics;
 namespace Slice.Surface;
 
 /// <summary>
-/// The one way a plant goes for good, whatever takes it (the survival tool, a structure coming down on it, PLACE
+/// The one way a plant goes for good, whatever takes it (the Sleeper tool, a structure coming down on it, PLACE
 /// clearing a site), and the planet's trees as the shared physics sees them: a vessel breaks one whose trunk can't
 /// take it (<see cref="PhysicsWorld.ResolveContacts"/>), and it goes as a harvested tree goes.
 /// </summary>

@@ -28,7 +28,7 @@
     // The starting kit in the bunker's locker: a few days' food and air, not a ship.
     "startKit": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
     // What the sleeper has on the toolbar from the start, slot 1 first: nothing. They wake
-    // empty-handed and make the survival tool, free, in the suit fabricator.
+    // empty-handed and make the Sleeper tool, free, in the suit fabricator.
     "toolbar": [ ]
   },
 
@@ -73,8 +73,34 @@
     "digInterval": 0.18,
     "cutReach": 4,
     "shotDamage": 18,
-    "shotInterval": 0.22,
-    "shotRange": 120,
+    // Attack/gather is a short blast of lightning (design: the Sleeper tool). Blasts at things that
+    // aren't being gathered come every shotInterval; gathering pulses keep digInterval.
+    "shotInterval": 0.3,
+    "lightning": {
+      // How far the blast reaches, m.
+      "range": 9,
+      // A person in front: a chip of damage, then held in their flinch for stunSeconds; not again
+      // until restunSeconds after it ends.
+      "personDamage": 4,
+      "stunSeconds": 1.1,
+      "restunSeconds": 1.5,
+      // A block on a core that isn't a sleeper's: damage per blast, and the share of its bill that
+      // comes away as its hit points do (a block blasted to nothing gives this share of its bill).
+      "blockDamage": 30,
+      "extractShare": 0.3,
+      // The tool's kick (the hand's recoil and the camera's tilt, degrees) and the flash that lights
+      // the surroundings (energy, range m, seconds).
+      "kick": 1.1,
+      "cameraKick": 0.5,
+      "flashEnergy": 6,
+      "flashRange": 11,
+      "flashSeconds": 0.09,
+      // Thunder with every blast, no closer together than this, s.
+      "thunderGap": 0.28
+    },
+    // Repair is a green cone: each pulse gives a damaged block this share of its health back (paid
+    // for from the bag, else the core's storage), or restores one destroyed block in it.
+    "repair": { "range": 6, "angle": 14, "interval": 0.25, "share": 0.25 },
     // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
     // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
     // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
@@ -82,9 +108,9 @@
     // wearing down from the centre out.
     "gatherRate": 3,
     "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 1.5, "boulderStone": 3 },
-    // The hand tools: each a faster survival tool (the tech tree unlocks them by level).
+    // The hand tools: each a faster Sleeper tool (the tech tree unlocks them by level).
     "tiers": {
-      "survival-tool": { "name": "Survival tool", "rate": 1, "radius": 1.42, "shot": 1 },
+      "sleeper-tool": { "name": "Sleeper tool", "rate": 1, "radius": 1.42, "shot": 1 },
       "mining-drill":  { "name": "Mining drill",  "rate": 2.5, "radius": 1.6, "shot": 1.4 },
       "plasma-drill":  { "name": "Plasma drill",  "rate": 5,   "radius": 1.9, "shot": 2 }
     }

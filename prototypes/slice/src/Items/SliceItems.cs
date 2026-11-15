@@ -14,7 +14,7 @@ public sealed record ConsumableEffect(double Food, double Oxygen, double Health)
 /// <summary>
 /// shared/Items' catalogue as the slice plays it: read where it lives, with the slice's own
 /// additions (data/items.json) appended as it loads, so nothing in shared/Items is copied or
-/// changed on disk. The additions are the survival tool, the suit fabricator and what it makes,
+/// changed on disk. The additions are the Sleeper tool, the suit fabricator and what it makes,
 /// core items, and what creatures leave behind.
 /// </summary>
 public static class SliceItems

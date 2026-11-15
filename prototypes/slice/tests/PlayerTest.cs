@@ -188,7 +188,7 @@ public partial class PlayerTest : Node
         Bill raw = Plan();
         GD.Print($"  the whole loop needs {_game.Zone.Data.Items.Describe(raw)} from the ground");
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
-        Check(_game.Pack.Hand == HandKind.Tool, "1 puts the survival tool in hand");
+        Check(_game.Pack.Hand == HandKind.Tool, "1 puts the Sleeper tool in hand");
         foreach (int x in _drive.Wait(10)) yield return x;
         Check(_game.Hands.Visible, "it shows in the first-person hands");
         var kinds = new (DepositKind kind, string ore)[] { (DepositKind.Iron, "iron-ore"), (DepositKind.Copper, "copper-ore"), (DepositKind.Carbon, "carbon-ore"), (DepositKind.Silicon, "silicon-ore") };
@@ -323,7 +323,7 @@ public partial class PlayerTest : Node
         IEnumerable<int> FlyAtPrey()
         {
             GD.Print($"  (the {_prey.Species.CommonName} stands {Above():F0} m up a bank: up over it on the jetpack, shooting)");
-            foreach (int x in _play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+            foreach (int x in _play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
             float was = _prey.Health;
             foreach (int x in _drive.HopToward(w.FromPatch(_prey.Rig.BoundsCenter), 14f, 2f,
                 () =>
@@ -605,15 +605,15 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(_base.Machines.Count == 1 && _base.Powered && _base.Storage.CapacitySu > 0 && _base.Storage.Count(Fuel) > 0,
             $"the base has a constructor, storage ({_base.Storage.CapacitySu:F0} SU) and power, its generator burning the {_base.Storage.Count(Fuel)} {Fuel} put in its storage");
-        // Take one down with the tool's deconstruct mode: the block item comes back.
+        // Take one down with the tool's attack/gather: our block comes back whole.
         string steel = _play.BlockItem("steel");
         int stock = _game.Pack[steel];
-        foreach (int x in _play.Tool(ToolMode.Deconstruct)) yield return x;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
         Vector3 far = _base.ToWorld(StructureBridge.CellCenter(_base.Structure, new Int3(0, 0, -2)) + new N.Vector3(0, 0, -1f));
         foreach (int x in _drive.LookAt(far, 6)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(!_base.Structure.Has(new Int3(0, 0, -2)) && _game.Pack[steel] == stock + 1, "the tool's deconstruct mode takes a block down and gives its item back to the bag");
+        Check(!_base.Structure.Has(new Int3(0, 0, -2)) && _game.Pack[steel] == stock + 1, "the Sleeper tool's blast takes our block down and gives its item back to the bag");
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
         foreach (int x in _play.BlockToToolbar("steel", 8)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
@@ -977,7 +977,7 @@ public partial class PlayerTest : Node
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(30)) yield return x;
         Bill carried = _game.Pack.Storage.Contents;
-        // What stays on the body: every toolbar stack, and the survival tool wherever it sits.
+        // What stays on the body: every toolbar stack, and the Sleeper tool wherever it sits.
         _game.Pack.Grid.Reconcile();
         var onBar = new List<string>();
         var stays = new Bill();
@@ -987,7 +987,7 @@ public partial class PlayerTest : Node
             onBar.Add(bar.ToString());
             if (bar.Item != null) stays.Add(bar.Item, bar.Count);
         }
-        string toolId = Slice.Items.PlayerInventory.SurvivalTool;
+        string toolId = Slice.Items.PlayerInventory.SleeperTool;
         if (carried[toolId] > stays[toolId]) stays.Add(toolId, carried[toolId] - stays[toolId]);
         Bill drops = new();
         foreach (var (id, n) in carried) if (n > stays[id]) drops.Add(id, n - stays[id]);
@@ -1021,7 +1021,7 @@ public partial class PlayerTest : Node
             GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
         Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(drops),
             $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the sleeper: the bag is in a backpack where they fell ({_game.Zone.Data.Items.Describe(drops, 4)})");
-        Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.Backpack?.Storage.Count(toolId) == 0, "the survival tool is never dropped: it stays with the body");
+        Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.Backpack?.Storage.Count(toolId) == 0, "the Sleeper tool is never dropped: it stays with the body");
         Check(_game.Pack.Storage.Contents.Equals(stays) && Enumerable.Range(0, _game.Pack.Grid.Toolbar).All(i => _game.Pack.Grid[i].ToString() == onBar[i]),
             $"everything on the toolbar stays, slot for slot ({_game.Zone.Data.Items.Describe(stays, 4)})");
         foreach (int x in _drive.Wait(30)) yield return x;

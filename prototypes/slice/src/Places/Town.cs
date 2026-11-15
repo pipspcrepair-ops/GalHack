@@ -513,7 +513,10 @@ public sealed partial class Town
         {
             Person p = People[who];
             if (p.Gone) continue;
-            if (_held.Contains(p) && !p.Dead)
+            p.StunReady = MathF.Max(0f, p.StunReady - tickDt);
+            p.StunFor = MathF.Max(0f, p.StunFor - tickDt);
+            // Whoever a Husk holds, or a stun has caught, stays where they are.
+            if ((p.StunFor > 0f || _held.Contains(p)) && !p.Dead)
             {
                 p.Now = 0f;
                 Pose(p, who, (player - p.Pos).Length(), tickDt);

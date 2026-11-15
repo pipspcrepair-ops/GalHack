@@ -12,7 +12,7 @@ using Structure = GalHack.Structures.Structure;
 namespace Slice.Construction;
 
 /// <summary>
-/// The survival tool's plating mode, the plating gun (docs/one-metre-grid.md section 3): aimed at
+/// The Sleeper tool's plating mode, the plating gun (docs/one-metre-grid.md section 3): aimed at
 /// an armour block or a force field's emitter (the same plates harden it), the left button sprays
 /// the picked plating on (a bare base block takes it, a
 /// plated one swaps it, the old plates coming back by its hit-point share, rounded down), or, on

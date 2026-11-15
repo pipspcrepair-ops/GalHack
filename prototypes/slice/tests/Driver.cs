@@ -142,7 +142,7 @@ public sealed class Driver
                 }
             }
             // Getting nowhere for a while (a pit, a bank too steep): dig a way out ahead with the
-            // survival tool, as a player in a hole would.
+            // Sleeper tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
             else noProgress += 1f / 60f;
             bool canDig = dig && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;

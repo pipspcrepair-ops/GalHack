@@ -309,7 +309,7 @@ public partial class ShotFx : Node3D
     public int Beams { get; private set; }
 
     /// <summary>
-    /// The survival tool's gather and deconstruct beam, from the barrel tip to the point being worked:
+    /// The plating gun's beam, from the barrel tip to the block being plated:
     /// one pooled cylinder, called every frame the tool works, and it goes out a frame or two after the
     /// last call. No flash, no smoke.
     /// </summary>
@@ -430,6 +430,7 @@ public partial class ShotFx : Node3D
             Place(b);
         }
         TickFlashes(dt);
+        TickLightning(dt);
         if (_beam != null && _beam.Visible)
         {
             _beamAge += dt;

@@ -40,7 +40,7 @@ public sealed class PlaceRules
 }
 
 /// <summary>
-/// Something outside a place's own blocks that the survival tool can salvage: the POI and
+/// Something outside a place's own blocks that the Sleeper tool can salvage: the POI and
 /// infrastructure agent's flavour ruins and vehicle wrecks register here. It holds a finite
 /// bill; each <see cref="HitPoints"/> of work takes the next share of it, and once it is empty
 /// <see cref="Emptied"/> runs (take the wreck's last panels away, say).
@@ -153,7 +153,7 @@ public partial class PoiPlaces
     }
 
     /// <summary>
-    /// One dig pulse of the survival tool on a place: a hidden room's wall breaks (60 points, one
+    /// One dig pulse of the Sleeper tool on a place: a hidden room's wall breaks (60 points, one
     /// pulse), a piece of the room's dressing or a block comes away once its hit points are worked
     /// through, giving its materials (the piece's salvage class or bill, the block's material). In
     /// a town that is anyone's but yours, the people take it badly.

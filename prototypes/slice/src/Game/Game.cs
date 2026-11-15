@@ -71,7 +71,7 @@ public partial class Game : Node3D
     public Suit Suit { get; private set; }
     public PlayerInventory Pack { get; private set; }
     public Progress Progress { get; private set; }
-    public SurvivalTool Tool { get; private set; }
+    public SleeperTool Tool { get; private set; }
     public BuildTool Builder { get; private set; }
     public ShotFx Shots { get; private set; }
     public PlayerTarget Target { get; private set; }
@@ -313,8 +313,9 @@ public partial class Game : Node3D
 
         Shots = new ShotFx { Name = "Shots" };
         Zone.AddChild(Shots);
-        Tool = new SurvivalTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
+        Tool = new SleeperTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
         Arms = new Slice.Arms.ArmsHost { Name = "Arms", Game = this };
+        Tool.Arms = Arms;
         Zone.AddChild(Arms);
         var debris = new PlanetSurface.Fx.Debris
         {
@@ -334,6 +335,7 @@ public partial class Game : Node3D
         Tool.CreatureHit += c => Arms?.Confirm(c.Dead);
         Tool.CreatureStruck += OnCreatureStruck;
         Builder = new BuildTool(Zone, Survivor, Pack, Progress);
+        Tool.Builder = Builder;
         Builder.Said += Say;
         Builder.Spilled += SetDown;
         WireProgress();
@@ -561,11 +563,8 @@ public partial class Game : Node3D
             if (c.WasPressed(Key.Q)) Arms.NextMode();   // fire mode or shell type
             if (c.WasPressed(Key.R)) Arms.Reload();
         }
-        if (hand == HandKind.Tool && c.WasPressed(Key.Q))
-        {
-            Tool.Mode = Tool.Mode switch { ToolMode.Gather => ToolMode.Shoot, ToolMode.Shoot => ToolMode.Deconstruct, ToolMode.Deconstruct => ToolMode.Plate, _ => ToolMode.Gather };
-        }
-        bool plating = hand == HandKind.Tool && Tool.Mode == ToolMode.Plate;
+        if (hand == HandKind.Tool && c.WasPressed(Key.Q)) Tool.Mode = Tool.Mode == ToolMode.Gather ? ToolMode.Repair : ToolMode.Gather;
+        bool plating = hand == HandKind.Plater;
         if (plating && c.Wheel != 0) Builder.NextPlating(c.Wheel);
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
@@ -591,7 +590,7 @@ public partial class Game : Node3D
     const double DoubleTap = 0.4;
     double _numberAt = -1;
 
-    /// <summary>The survival tool has been in your hands. Until then the visor says how to make it.</summary>
+    /// <summary>The Sleeper tool has been in your hands. Until then the visor says how to make it.</summary>
     public bool ToolEquipped { get; private set; }
 
     /// <summary>The hint at waking, until the tool is equipped; null after.</summary>
@@ -726,15 +725,9 @@ public partial class Game : Node3D
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
         if (hand == HandKind.Tool) ToolEquipped = true;
         if (hands && Spaceflight.TakeHands(dt, hand, primary, pressed)) hands = false; // in space: salvage, claiming
-        bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct, plating = hand == HandKind.Tool && Tool.Mode == ToolMode.Plate;
+        bool plating = hand == HandKind.Plater;
         bool building = Builder.Projecting || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         if (hands && Builder.Projecting) Builder.Tick(dt, HandKind.Blueprint, Pack.InHand, Pack.Selected, primary, pressed, Controls.SecondaryPressed);
-        else if (hands && deconstruct)
-        {
-            Builder.TickDeconstruct(pressed);
-            if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel dv && dv.Structure.TryGet(Builder.TargetCell, out _))
-                Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
-        }
         else if (hands && plating)
         {
             Builder.TickPlate(pressed, Controls.SecondaryPressed);
@@ -749,7 +742,7 @@ public partial class Game : Node3D
         else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
         else if (hands && hand == HandKind.Scanner && pressed) Scan();
         TickPings();
-        if (!hands || !(building || deconstruct || plating)) Builder.Hide();
+        if (!hands || !(building || plating || hand == HandKind.Tool && Tool.OnStructure)) Builder.Hide();
         if (!hands || hand != HandKind.Weapon) Arms.Idle(dt);
         FireBar(dt);
         TickMachines(dt);

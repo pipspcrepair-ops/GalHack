@@ -153,7 +153,7 @@ public partial class ForceFieldTest : Node
         Check(Math.Abs(draw - f.Tiles * rules.DrawPerTile) < 1e-9, $"it draws its tiles x the per-tile rate: {f.Tiles} x {rules.DrawPerTile} = {draw:0.###} MW");
 
         // ---- Plating an emitter hardens it ---------------------------------------------------
-        foreach (int x in play.Tool(ToolMode.Plate)) yield return x;
+        foreach (int x in play.PlatingGun()) yield return x;
         pack.Add("iron-plate", 10);
         BlockType iron = s.Catalogue.Type("iron-plated");
         for (int i = 0; i < builder.Platings.Count && builder.Plating != iron; i++) { c.Wheel = 1; yield return 0; }
@@ -204,7 +204,7 @@ public partial class ForceFieldTest : Node
         foreach (int x in play.ShootAt(() => rig.World(3.5f, 2f, 0f))) yield return x;
         float bolt = _game.Zone.Data.Rules.Tool.ShotDamage;
         Check(ForceFields.Hits == hits + 1 && Math.Abs(strength - f.Strength - bolt) < 0.01f && f.Holding,
-            $"a survival tool bolt hits it: {strength:F0} to {f.Strength:F0} ({bolt:F0}), still up");
+            $"a Sleeper tool bolt hits it: {strength:F0} to {f.Strength:F0} ({bolt:F0}), still up");
 
         // ---- Knocked down, it grows back --------------------------------------------------------
         _game.Fields.TimeScale = 10f; // STAGING: the waits at ten times play speed
@@ -246,7 +246,7 @@ public partial class ForceFieldTest : Node
         for (int i = 0; i < 300 && BlockDoors.IsOpen(v, FieldRig.Door); i++) yield return 0;
 
         // ---- Taken down whole ---------------------------------------------------------------
-        foreach (int x in play.Tool(ToolMode.Deconstruct)) yield return x;
+        foreach (int x in play.Tool(ToolMode.Gather)) yield return x;
         _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
         foreach (int x in _drive.Wait(10)) yield return x;
         int components = pack[T1], ironBack = pack["iron-plate"];

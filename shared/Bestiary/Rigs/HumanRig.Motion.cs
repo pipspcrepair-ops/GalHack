@@ -194,12 +194,20 @@ public sealed partial class HumanRig
         _doll?.Shove(_hitPart, dir, _hitHeavy);
     }
 
+    /// <summary>Seconds the last hit's flinch is held at its height (a stun): the body stays caught in it.</summary>
+    public float HoldFlinch;
+
     /// <summary>Time since the last pose, from the clock the game drives with (0 the first time or if it went back).</summary>
     void Tick(float clock)
     {
         _dt = float.IsNaN(_clock) ? 0f : Math.Clamp(clock - _clock, 0f, 0.1f);
         _clock = clock;
-        _hitAge += _dt;
+        if (HoldFlinch > 0f)
+        {
+            HoldFlinch -= _dt;
+            _hitAge = MathF.Min(_hitAge + _dt, 0.07f); // the snap's height (Envelope)
+        }
+        else _hitAge += _dt;
     }
 
     // ---- Dead -----------------------------------------------------------------------------------

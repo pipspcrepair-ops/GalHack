@@ -245,10 +245,11 @@ public sealed class SliceRules
         public float DigInterval { get; set; } = 0.18f;
         public float CutReach { get; set; } = 4f;
         public float ShotDamage { get; set; } = 18f;
-        public float ShotInterval { get; set; } = 0.22f;
-        public float ShotRange { get; set; } = 120f;
+        public float ShotInterval { get; set; } = 0.3f;
+        public LightningRules Lightning { get; set; } = new();
+        public RepairRules Repair { get; set; } = new();
 
-        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the survival tool), against each thing's durability.</summary>
+        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the Sleeper tool), against each thing's durability.</summary>
         public float GatherRate { get; set; } = 3f;
         public DurabilityRules Durability { get; set; } = new();
         /// <summary>Each hand tool by item id: the faster drills the tech tree unlocks.</summary>
@@ -257,10 +258,36 @@ public sealed class SliceRules
         public ToolTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out ToolTier t) ? t : new ToolTier();
     }
 
-    /// <summary>How much a hand tool does: its gather rate as a multiple of the survival tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
+    /// <summary>The Sleeper tool's attack/gather blast: a short arc of lightning (see data/slice.json).</summary>
+    public sealed class LightningRules
+    {
+        public float Range { get; set; } = 9f;
+        public float PersonDamage { get; set; } = 4f;
+        public float StunSeconds { get; set; } = 1.1f;
+        public float RestunSeconds { get; set; } = 1.5f;
+        public float BlockDamage { get; set; } = 30f;
+        public float ExtractShare { get; set; } = 0.3f;
+        public float Kick { get; set; } = 1.1f;
+        public float CameraKick { get; set; } = 0.5f;
+        public float FlashEnergy { get; set; } = 6f;
+        public float FlashRange { get; set; } = 11f;
+        public float FlashSeconds { get; set; } = 0.09f;
+        public float ThunderGap { get; set; } = 0.28f;
+    }
+
+    /// <summary>The Sleeper tool's repair cone: reach, half-angle in degrees, pulse interval and the health share a pulse gives back.</summary>
+    public sealed class RepairRules
+    {
+        public float Range { get; set; } = 6f;
+        public float Angle { get; set; } = 14f;
+        public float Interval { get; set; } = 0.25f;
+        public float Share { get; set; } = 0.25f;
+    }
+
+    /// <summary>How much a hand tool does: its gather rate as a multiple of the Sleeper tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
     public sealed class ToolTier
     {
-        public string Name { get; set; } = "Survival tool";
+        public string Name { get; set; } = "Sleeper tool";
         public float Rate { get; set; } = 1f;
         public float Radius { get; set; } = 1.42f;
         public float Shot { get; set; } = 1f;

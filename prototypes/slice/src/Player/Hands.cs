@@ -9,9 +9,9 @@ namespace Slice.Player;
 /// <summary>
 /// The first-person hands: a gloved hand holding what is in it low on the right of the view. What it
 /// holds is the item's own model from <see cref="ItemModels"/> (the same one its inventory icon is
-/// rendered from): the survival tool or a drill, its emitter lit by mode (teal to gather, red to
-/// shoot, amber to build), the handheld scanner; a block, a core or a device in hand shows the
-/// plain tool, amber. It kicks back on each shot and sways a little as you walk. Shown when a
+/// rendered from): the Sleeper tool or a drill, its emitter lit by mode (blue to attack and gather,
+/// green to repair), the handheld scanner; a block, a core or a device in hand shows the plain
+/// tool, amber, and the plating gun the plain tool, teal. It kicks back on each shot and sways a little as you walk. Shown when a
 /// held model, a block, a core or a device is in hand, hidden in a seat or in third person.
 /// Procedural boxes and cylinders, no assets.
 /// </summary>
@@ -80,7 +80,7 @@ public partial class Hands : Node3D
     /// <summary>The hardest blow felt so far (tests).</summary>
     public float PeakJolt { get; private set; }
 
-    /// <summary>The muzzle's offset in the camera's frame (matches <see cref="SurvivalTool.Muzzle"/>).</summary>
+    /// <summary>The muzzle's offset in the camera's frame (matches <see cref="SleeperTool.Muzzle"/>).</summary>
     public static readonly Vector3 MuzzleOffset = new(0.17f, -0.15f, -0.55f);
 
     public override void _Ready()
@@ -130,7 +130,7 @@ public partial class Hands : Node3D
         if (g?.Tool != null && g.Tool.Shots != _shotsSeen)
         {
             _shotsSeen = g.Tool.Shots;
-            Recoil(GunFeel.Get(g.Tool.Feel));
+            Recoil(g.Tool.Kick);
         }
         _kick = Mathf.MoveToward(_kick, 0f, dt / 0.15f);
         _shake = Mathf.MoveToward(_shake, 0f, dt * 4f);
@@ -143,7 +143,7 @@ public partial class Hands : Node3D
         bool model = ItemModels.IsHeld(item);
         // (Not while a Husk has your head: its face is all there is to see.)
         bool show = g?.Survivor != null && g.Survivor.Seated == null && !g.ThirdPerson && g.FixedCamera == null && !g.Suit.Dead && g.HeldBy == null
-                    && (model || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint);
+                    && (model || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint or HandKind.Plater);
         Visible = show;
         if (!show) return;
         ItemModel now = model ? Held(item.Id, item) : Held(PlainTool);
@@ -155,7 +155,8 @@ public partial class Hands : Node3D
         }
         _shown.Root.Visible = true;
         Color tint = hand == HandKind.Scanner ? (g.ScanWait > 0 ? new Color("ffb703") : new Color("2ec4b6"))
-            : hand != HandKind.Tool ? new Color("ffb703") : g.Tool.Mode == ToolMode.Shoot ? new Color("ef233c") : new Color("2ec4b6");
+            : hand == HandKind.Plater ? new Color("2ec4b6") : hand != HandKind.Tool ? new Color("ffb703")
+            : g.Tool.Mode == ToolMode.Repair ? ShotFx.RepairGreen : ShotFx.LightningBlue;
         if (tint != _tint)
         {
             _tint = tint;

@@ -112,6 +112,23 @@ public sealed class Creature
     public ITarget ProvokedBy;
     public float ProvokedAt = -999f;
 
+    /// <summary>Seconds left held in the flinch of a stun, and until another stun can take it.</summary>
+    public float StunFor, StunReady;
+
+    /// <summary>
+    /// A stun (the Sleeper tool's arc on a person): held where it stands, caught in the flinch of the
+    /// hit just taken, doing nothing, for a moment. Not again until a while after. False if it didn't take.
+    /// </summary>
+    public bool Stun(float seconds, float again)
+    {
+        if (Dead || StunReady > 0f) return false;
+        StunFor = seconds;
+        StunReady = seconds + again;
+        if (Rig is HumanRig human) human.HoldFlinch = seconds;
+        return true;
+    }
+
+
     // Brain.
     public CState State = CState.Wander;
     public float StateTime, Think;

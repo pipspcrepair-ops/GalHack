@@ -573,6 +573,7 @@ public sealed class WildSim
             Stepped++;
             c.Age += dt;
             c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
+            c.StunReady = MathF.Max(0f, c.StunReady - dt);
             if (c.HeldBy != null && (c.HeldBy.Removed || c.HeldBy.Dead || c.HeldBy.Holding != c.AsTarget)) c.HeldBy = null;
             if (c.Dead) UpdateCorpse(c, dt);
             else if (c.HeldBy != null)
@@ -583,6 +584,13 @@ public sealed class WildSim
                 c.FacePoint = c.HeldBy.Position;
                 c.LookAt = c.HeldBy.Position + Vector3.Up * 1.5f;
                 c.Rear = 0.6f;
+            }
+            else if (c.StunFor > 0f)
+            {
+                // Stunned: caught where it stands, in its flinch, for a moment.
+                c.StunFor -= dt;
+                c.Desired = Vector3.Zero;
+                c.Velocity = Vector3.Zero;
             }
             else if (Frozen)
             {

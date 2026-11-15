@@ -34,7 +34,8 @@ public sealed record GunFeel(
     /// <summary>One multiplier for every flash's size (for size samples; the sizes below are the ones the owner chose).</summary>
     public static float FlashScale = 1f;
 
-    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Star, new Color(1f, 0.25f, 0.2f), 0.084f, 0.7f, 3.5f, 2, 0f, 0f, 0.6f, 0.12f);
+    /// <summary>The Sleeper tool's blast of lightning: a blue bloom at the tip (its kick comes from the tool's data).</summary>
+    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Bloom, new Color(0.45f, 0.7f, 1f), 0.1f, 1.8f, 5f, 2, 0f, 0f, 0.6f, 0.12f);
 
     static readonly Dictionary<string, GunFeel> Table = Build(
         Tool,
@@ -56,7 +57,7 @@ public sealed record GunFeel(
         new("flame", FlashStyle.Mist, new Color(1f, 0.55f, 0.2f), 0.06f, 1.4f, 5f, 2, 0.3f, 0.5f, 0.05f, 0.01f),
         new("throw", FlashStyle.Mist, new Color(0.7f, 0.7f, 0.7f), 0.02f, 0f, 1f, 2, 0f, 0f, 0.4f, 0.05f));
 
-    /// <summary>The feel for an id; the survival tool's if unknown.</summary>
+    /// <summary>The feel for an id; the Sleeper tool's if unknown.</summary>
     public static GunFeel Get(string id) => id != null && Table.TryGetValue(id, out GunFeel f) ? f : Tool;
 
     public static IEnumerable<GunFeel> All => Table.Values;

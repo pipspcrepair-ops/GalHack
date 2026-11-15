@@ -12,7 +12,7 @@ namespace Slice.Player;
 /// both ask <see cref="ItemModels"/>, which asks here. Its parts sit where the glove holds them
 /// (the grip at about 0.17, -0.21, -0.33 in the hands' frame) and the barrel points down -Z.
 ///
-/// The survival tool, the mining drill and the plasma drill are the one tool at three levels, so they
+/// The Sleeper tool, the mining drill and the plasma drill are the one tool at three levels, so they
 /// are one model in three liveries: the plainest is cream, and each step up takes more of its
 /// rarity's colour (the one the bag draws round the slot) into its hull and plates.
 /// </summary>

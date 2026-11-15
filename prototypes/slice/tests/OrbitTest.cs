@@ -457,7 +457,7 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
         Check(_wreck.Storage.IsEmpty && hold.All(kv => _game.Pack[kv.Key] == before[kv.Key] + kv.Value), "TAKE ALL: everything in its hold is in the bag");
 
-        // A block of the bulkhead, cut free with the survival tool (its "steel" is iron plating on the 1 m grid).
+        // A block of the bulkhead, cut free with the Sleeper tool (its "steel" is iron plating on the 1 m grid).
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
         _game.Tool.Mode = Slice.Player.ToolMode.Gather;
         Vector3 eye = _game.Survivor.WorldEye();
@@ -468,7 +468,7 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Wait(4)) yield return x;
         Bill got = _game.Spaceflight.SalvageTaken;
         Check(_game.Spaceflight.Salvaged == 1 && ship.Count == blocks - 1 && !got.IsEmpty && got.All(kv => _game.Pack[kv.Key] == bag[kv.Key] + kv.Value),
-            $"held on a block, the survival tool cuts it free: {ship.Count} blocks left, {_game.Zone.Data.Items.Describe(got, 3)} in the bag (a third of its bill)");
+            $"held on a block, the Sleeper tool cuts it free: {ship.Count} blocks left, {_game.Zone.Data.Items.Describe(got, 3)} in the bag (a third of its bill)");
         _salvagedTo = ship.Count;
         _lootedFrom = hold.Total;
 

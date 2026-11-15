@@ -13,7 +13,7 @@ using S = GalHack.Structures;
 namespace Slice.Tests;
 
 /// <summary>
-/// The plating gun (the survival tool's PLATE mode), on a fresh random world, through the game's
+/// The plating gun, on a fresh random world, through the game's
 /// own keys: a base block on a base, aimed at. A locked plating is refused; the left button sprays
 /// iron plates on; a damaged iron block re-plated with hardened plates gives back its iron by its
 /// hit-point share, rounded down; a damaged hardened block sprayed again is repaired with plates
@@ -83,8 +83,8 @@ public partial class PlatingTest : Node
         Vector3 face = v.ToWorld(StructureBridge.CellCenter(s, cell) + new N.Vector3(0f, 0f, s.Grid.CellSize * 0.5f));
         _game.Survivor.PlaceOutside((face + new Vector3(0f, -0.4f, 3f)).ToNumerics());
         foreach (int x in _drive.Wait(60)) yield return x;
-        foreach (int x in play.Tool(ToolMode.Plate)) yield return x;
-        Check(_game.Tool.Mode == ToolMode.Plate, "Q steps the survival tool into PLATE mode");
+        foreach (int x in play.PlatingGun()) yield return x;
+        Check(_game.Pack.Hand == Slice.Items.HandKind.Plater, "the plating gun in hand");
         var builder = _game.Builder;
         var pack = _game.Pack;
         pack.Add("iron-plate", 10);

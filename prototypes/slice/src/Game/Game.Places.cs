@@ -16,7 +16,7 @@ namespace Slice.Game;
 /// <summary>
 /// The planet's places as part of the game: they stand up as real structures as you come near
 /// (<see cref="PoiPlaces"/>), E opens their doors and their caches,
-/// the survival tool salvages them and breaks their hidden walls, ladders and lift shafts carry
+/// the Sleeper tool salvages them and breaks their hidden walls, ladders and lift shafts carry
 /// you, their creatures and caves live and hunt, and their towns go about their day.
 /// </summary>
 public partial class Game

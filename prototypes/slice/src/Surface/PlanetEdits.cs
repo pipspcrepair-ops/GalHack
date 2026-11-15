@@ -9,7 +9,7 @@ using N = System.Numerics;
 namespace Slice.Surface;
 
 /// <summary>
-/// The one way the slice changes the ground: the survival tool's digs and the physics module's
+/// The one way the slice changes the ground: the Sleeper tool's digs and the physics module's
 /// craters, both through <see cref="PlanetTerrain"/> (terrain-digging's rules, on every copy of a
 /// cell across a seam). Each edit rebuilds the streamed chunks it touched, clears the flora that
 /// stood in it, and wakes and stuck-checks the bodies nearby.
@@ -38,7 +38,7 @@ public sealed class PlanetEdits : ITerrainEditor
         return new CraterResult(edit.Removed.Count, edit.Bedrock + edit.Outside, changed);
     }
 
-    /// <summary>The survival tool's dig: a small ball of cells around one cell.</summary>
+    /// <summary>The Sleeper tool's dig: a small ball of cells around one cell.</summary>
     public PlanetEdit Dig(Int3 center, float radius)
     {
         PlanetEdit edit = Terrain.Dig(center, radius);

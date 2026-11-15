@@ -9,7 +9,7 @@
 //                 to bountiful. yield multiplies the ore a dug cell gives (machines.json
 //                 oreUnitsPerCell). baseChance picks the base grade.
 //   ores          which shapes each ore grows in, with weights. Commons favour shallow shapes a
-//                 crashed player can dig with the survival tool; rarer ores sit deeper and
+//                 crashed player can dig with the Sleeper tool; rarer ores sit deeper and
 //                 richer, so finding them means digging.
 {
   "schema": "galhack.deposits",

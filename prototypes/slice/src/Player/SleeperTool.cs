@@ -5,6 +5,9 @@ using GalHack.Items;
 using GalHack.Physics.Engine;
 using GalHack.Terrain;
 using Godot;
+using GalHack.Arms;
+using HitKind = GalHack.Arms.HitKind;
+using SInt3 = GalHack.Structures.Int3;
 using Planets.Gen;
 using Planets.Look;
 using PlanetSurface.Fx;
@@ -19,23 +22,24 @@ using Layers = GalHack.Physics.Layers;
 
 namespace Slice.Player;
 
-/// <summary>
-/// The tool's modes (Q steps through them): gather, shoot, deconstruct, which takes a block down
-/// and gives its item back, and plate, the plating gun (the build tool does those two:
-/// <c>BuildTool.TickDeconstruct</c>, <c>BuildTool.TickPlate</c>).
-/// </summary>
-public enum ToolMode { Gather, Shoot, Deconstruct, Plate }
+/// <summary>The Sleeper tool's two modes (Q switches): attack/gather (blue) and repair (green).</summary>
+public enum ToolMode { Gather, Repair }
 
 /// <summary>
-/// The survival tool, an item on the toolbar: in Gather mode it digs a small ball of ground under
-/// the crosshair (terrain-digging's rules: bedrock and anchored ground refuse) and cuts plants;
-/// in Shoot mode it is a short blaster whose bolt you can see fly from the muzzle and land, with
-/// sparks and a scorch where it strikes. Shots hurt creatures and the blocks they hit. Every ray
-/// asks the world the survivor is in (<see cref="WorldRay"/>), so inside a vessel the tool meets
-/// the vessel's own walls: it digs nothing through a floor, and a shot damages the wall it hits.
-/// Dug ore and cut plants go into the pack as shared/Items' raw items.
+/// The Sleeper tool, an item on the toolbar (design: the Sleeper tool). Attack/gather is one mode:
+/// every pulse is a short blast of lightning from the barrel tip, with a crackle, a thunderclap, a
+/// flash that lights the surroundings and a kick. What it meets decides what it does (the shot
+/// pipeline's own hit test, <see cref="Slice.Arms.ArmsHost.Sweep"/>): a person gets a short arc that
+/// chips a little damage and stuns them in their flinch; a creature takes the blast; a block on a
+/// core a sleeper owns, or on no core, comes away whole into the bag; a block on anyone else's core
+/// takes damage, arcs crawling over it, and gives up a share of what it was made of as it goes; ore,
+/// ground, plants and places are gathered as before (terrain-digging's rules: bedrock and anchored
+/// ground refuse), with the lightning arcing to what is worked. Repair is a luminous green cone,
+/// harmless to anyone and anything: it mends a damaged block, or restores a destroyed one, when the
+/// bag or the core's storage holds what it takes. Every ray asks the world the sleeper is in
+/// (<see cref="WorldRay"/>), so inside a vessel the tool meets the vessel's own walls.
 /// </summary>
-public sealed class SurvivalTool
+public sealed class SleeperTool
 {
     readonly SurfaceZone _zone;
     readonly Survivor _survivor;
@@ -50,9 +54,14 @@ public sealed class SurvivalTool
     public Debris Debris;
     public Sfx Sfx;
     public ShotFx Fx;
+    /// <summary>The shot pipeline: its hit test, its sound pool and the hit confirmation (set by the game).</summary>
+    public Slice.Arms.ArmsHost Arms;
+    /// <summary>The build tool: blocks that come away whole go through its take-down, destroyed ones come back through its restore.</summary>
+    public Slice.Construction.BuildTool Builder;
 
-    /// <summary>What firing feels like (<see cref="GunFeel"/> id): the flash at the muzzle and the kick.</summary>
-    public string Feel = GunFeel.Tool.Id;
+    /// <summary>The kick of a blast: the tool's flash with the data's recoil and camera tilt.</summary>
+    public GunFeel Kick => _kick ??= GunFeel.Tool with { Recoil = _rules.Lightning.Kick, CameraKick = _rules.Lightning.CameraKick };
+    GunFeel _kick;
 
     /// <summary>The held tool's barrel tip in the world, when the hands show it (set by <see cref="Hands"/>); null otherwise.</summary>
     public Func<Vector3?> HeldMuzzle;
@@ -70,7 +79,7 @@ public sealed class SurvivalTool
     /// <summary>The same hit, with where it landed and which way it was going.</summary>
     public event Action<Creature, Vector3, Vector3> CreatureStruck;
 
-    /// <summary>How far a shot carries, m: what lives round here turns to look.</summary>
+    /// <summary>How far a blast carries, m: what lives round here turns to look.</summary>
     const float ShotHeard = 45f;
 
     /// <summary>Items gathered since the start, by id (tests and stats).</summary>
@@ -84,7 +93,15 @@ public sealed class SurvivalTool
 
     /// <summary>Ore broken off tell rocks so far (a few a pulse), apart from what the cells gave.</summary>
     public int TellOre { get; private set; }
+    /// <summary>Blasts of lightning (each one kicks).</summary>
     public int Shots { get; private set; }
+    /// <summary>People zapped and stunned, blocks taken whole, foreign blocks blasted, blocks repaired and restored (tests).</summary>
+    public int Zapped { get; private set; }
+    public int Stunned { get; private set; }
+    public int TakenWhole { get; private set; }
+    public int Extracted { get; private set; }
+    public int Repaired { get; private set; }
+    public int Restored { get; private set; }
 
     public bool HasTarget { get; private set; }
     public Int3 Target { get; private set; }
@@ -93,6 +110,9 @@ public sealed class SurvivalTool
 
     /// <summary>The crosshair is on a structure's block nearer than any ground (the tool can't dig it).</summary>
     public bool OnBlock { get; private set; }
+
+    /// <summary>The crosshair is on a structure's block or deco piece the build tool's take-down has outlined (its verdict is the label).</summary>
+    public bool OnStructure { get; private set; }
 
     /// <summary>The crosshair is on a place's block, a piece of its dressing or a registered wreck, nearer than the ground: the tool works that.</summary>
     public bool OnPlace => _placeHit != null || _wreck != null;
@@ -116,8 +136,9 @@ public sealed class SurvivalTool
     public event Action Salvaged;
 
     float _cooldown;
+    double _thunderAt = -10;
 
-    public SurvivalTool(SurfaceZone zone, Survivor survivor, Suit suit, PlayerInventory pack)
+    public SleeperTool(SurfaceZone zone, Survivor survivor, Suit suit, PlayerInventory pack)
     {
         _zone = zone;
         _survivor = survivor;
@@ -127,24 +148,18 @@ public sealed class SurvivalTool
         _yields = zone.Data.Rules.Materials;
     }
 
+    SliceRules.LightningRules Bolt => _rules.Lightning;
+
     /// <summary>One tick with the trigger held or not.</summary>
     public void Tick(float dt, bool trigger)
     {
         _cooldown -= dt;
         Aim();
-        if (trigger && !_suit.Dead && Mode == ToolMode.Gather && !OnBlock && (OnPlace || OnTell || HasTarget))
-            ShowBeam(OnPlace || OnTell ? _placePoint : new Vector3(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f));
-        if (!trigger || _cooldown > 0f || _suit.Dead) return;
-        if (Mode == ToolMode.Shoot) Shoot();
-        else if (StrikeCreature()) { }
-        else if (!OnBlock && OnPlace) WorkPlace();
-        else if (!OnBlock && _tell != null) WorkTell();
-        else if (!OnBlock && !CutPlant()) Dig();
-        else if (OnBlock)
-        {
-            _cooldown = 0.4f;
-            Said?.Invoke("SURVIVAL TOOL · NO BLOCKS", Tones.Caution);
-        }
+        OnStructure = Mode == ToolMode.Gather && Builder != null && Builder.AimTakeDown();
+        if (OnStructure) TargetLabel = Builder.Verdict;
+        if (!trigger || _suit.Dead) return;
+        if (Mode == ToolMode.Repair) Mend();
+        else if (_cooldown <= 0f) Blast();
     }
 
     // ---- Aim -----------------------------------------------------------------------------------
@@ -194,7 +209,7 @@ public sealed class SurvivalTool
     public ItemDef OreOf(DepositKind kind) => SliceItems.OreFor(_zone.Data.Items, kind.ToString());
 
     /// <summary>The hand tool in hand (the item id), which sets how fast and how wide it gathers; Game sets it each tick.</summary>
-    public string ItemId = "survival-tool";
+    public string ItemId = "sleeper-tool";
     SliceRules.ToolTier Tier => _rules.TierOf(ItemId);
 
     /// <summary>Damage one pulse does at the centre: the gather rate of the tool, over one interval.</summary>
@@ -309,28 +324,6 @@ public sealed class SurvivalTool
         foreach (Int3 c in _cellHurt.Where(kv => _clock - kv.Value.At > 30.0).Select(kv => kv.Key).ToList()) _cellHurt.Remove(c);
     }
 
-    /// <summary>A living creature in arm's reach in front of what the tool is on takes the blow instead (its body is solid to the tool too).</summary>
-    bool StrikeCreature()
-    {
-        if (Seizer?.Invoke() is { Dead: false })
-        {
-            _cooldown = 0.4f;
-            _suit.Worked();
-            return IntoSeizer(_rules.ShotDamage * Tier.Shot * 0.5f);
-        }
-        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
-        Creature c = _zone.Wildlife.Raycast(eye, dir, _rules.CutReach, out float distance, out Vector3 point);
-        if (c == null || c.Dead) return false;
-        if (OnPlace && _placePoint.DistanceTo(eye) < distance) return false;
-        _cooldown = 0.4f;
-        _suit.Worked();
-        _zone.Wildlife.Damage(c, _rules.ShotDamage * Tier.Shot * 0.5f * _zone.Wildlife.HitScale(c, point));
-        CreatureHit?.Invoke(c);
-        CreatureStruck?.Invoke(c, point, dir);
-        Sfx?.Play(Sfx.Sound.Dig, point, 1.2f, -6f);
-        return true;
-    }
-
     /// <summary>The deposit whose tell rock stands at a point (its outcrop or scree, within the ore body's radius), if it still has rock to break.</summary>
     Deposit? TellAt(Vector3 point)
     {
@@ -411,8 +404,9 @@ public sealed class SurvivalTool
     /// tree's collider goes in the same frame and the cut is kept through streaming and saves. A tree
     /// falls over, leaving a stump.
     /// </summary>
-    public bool CutPlant()
+    public bool CutPlant(out Vector3 struck)
     {
+        struck = default;
         if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting sighting))
             return false;
         Vector3 plant = sighting.Root;
@@ -439,6 +433,7 @@ public sealed class SurvivalTool
         }
         Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, species == null ? 2.2f * size + 1f : species.Height * scale * 0.5f) : 0.6f * size);
         Color leaf = TreeFx.LeafOf(kind, species);
+        struck = boulder ? plant + Vector3.Up * 0.4f : plant.Lerp(crown, 0.5f);
         if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, _zone.Planet.Grit(plant), 0.7f);
         else Trees.Leaves(crown, leaf, tree ? 14 : 8, tree ? 1.2f : 0.4f);
         Sfx?.Play(Sfx.Sound.Dig, plant, tree ? 0.8f : 1.4f, -9f);
@@ -461,12 +456,12 @@ public sealed class SurvivalTool
         return true;
     }
 
-    /// <summary>The blue working beam from the barrel tip to where the tool is digging, cutting or taking down (call each frame it works).</summary>
+    /// <summary>The plating gun's beam from the barrel tip to the block it plates (call each frame it works).</summary>
     public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle, to);
 
-    // ---- Shoot ---------------------------------------------------------------------------------
+    // ---- Attack/gather: the blast ----------------------------------------------------------------
 
-    /// <summary>Where the bolt leaves the tool: low and to the right of the eye, out along the look (the first-person tool's muzzle).</summary>
+    /// <summary>Where the blast leaves the tool: the held tool's barrel tip, else low and to the right of the eye, out along the look.</summary>
     public Vector3 Muzzle()
     {
         if (HeldMuzzle?.Invoke() is Vector3 tip) return tip;
@@ -477,120 +472,239 @@ public sealed class SurvivalTool
         return eye + dir * 0.55f + right * 0.17f - viewUp * 0.15f;
     }
 
-    /// <summary>How far past a voxel cube a shot looks for the drawn ground: ample for a shot along a slope, short of reaching through an unloaded hill to what stands behind it.</summary>
-    const float GrazePast = 24f;
-
-    /// <summary>The Husk holding the survivor's head, if one is (set by the game): every shot and blow goes into it.</summary>
+    /// <summary>The Husk holding the survivor's head, if one is (set by the game): every blast goes into it.</summary>
     public Func<Creature> Seizer;
-    /// <summary>A shot or a blow went into the Husk holding you: that breaks its hold.</summary>
+    /// <summary>A blast went into the Husk holding you: that breaks its hold.</summary>
     public event Action<Creature> SeizerHit;
 
     /// <summary>
-    /// A shot or a blow with a Husk's face against yours can't miss: it goes straight into it, at
-    /// the head, no ray needed. Damage enough and it lets go (the game's hold sees to that).
+    /// One blast of lightning at whatever the shot pipeline's hit test meets first along the look, within
+    /// the blast's range: each kind of thing has its rule (see the class). It always flashes, crackles,
+    /// thunders and kicks.
     /// </summary>
-    bool IntoSeizer(float damage)
+    void Blast()
     {
-        if (Seizer?.Invoke() is not { Dead: false } husk) return false;
-        Vector3 eye = _survivor.WorldEye();
-        Vector3 face = _zone.Wildlife.WorldOf(husk) + Vector3.Up * husk.Species.Figure.Height * 0.88f;
-        Vector3 dir = (face - eye).LengthSquared() > 1e-4f ? (face - eye).Normalized() : _survivor.WorldLook();
-        _zone.Wildlife.Damage(husk, damage * 1.5f);
-        SeizerHit?.Invoke(husk);
-        CreatureHit?.Invoke(husk);
-        CreatureStruck?.Invoke(husk, face, dir);
-        if (Fx != null) Fx.Fire(Muzzle(), face, default, () => Fx.Impact(face, -dir, ImpactKind.Creature, null), Feel, HeldMuzzle);
-        Sfx?.Play(Sfx.Sound.Ping, face, 0.8f, -8f);
-        return true;
+        Shots++;
+        _cooldown = _rules.ShotInterval;
+        _suit.Worked();
+        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
+        float damage = _rules.ShotDamage * Tier.Shot;
+        if (Seizer?.Invoke() is { Dead: false } husk)
+        {
+            // A Husk's face against yours can't be missed: straight into it, at the head. Enough and it lets go.
+            Vector3 face = _zone.Wildlife.WorldOf(husk) + Vector3.Up * husk.Species.Figure.Height * 0.88f;
+            _zone.Wildlife.Damage(husk, damage * 1.5f);
+            SeizerHit?.Invoke(husk);
+            CreatureHit?.Invoke(husk);
+            CreatureStruck?.Invoke(husk, face, (face - eye).Normalized());
+            Strike(face, Vector3.One * 0.2f, 3, attack: true);
+            return;
+        }
+        ShotHit hit = default;
+        bool met = Arms != null && Arms.Sweep(eye.ToNumerics(), (eye + dir * Bolt.Range).ToNumerics(), Slice.Arms.ArmsHost.PlayerThing, 0, 0f, out hit);
+        Vector3 at = met ? hit.Point.ToGodot() : eye + dir * Bolt.Range;
+        switch (met ? hit.Kind : HitKind.Ground)
+        {
+            case HitKind.Person:
+                Zap((Town.Person)hit.Thing, at, dir);
+                return;
+            case HitKind.Creature when ((Creature)hit.Thing).Species is { Figure: not null, Husk: false }:
+                Zap((Creature)hit.Thing, at, dir); // one of the wild's people: a raider, a wanderer
+                return;
+            case HitKind.Creature:
+                var c = (Creature)hit.Thing;
+                _zone.Wildlife.Damage(c, damage * _zone.Wildlife.HitScale(c, at));
+                CreatureHit?.Invoke(c);
+                CreatureStruck?.Invoke(c, at, dir);
+                Fx?.Impact(at, -dir, ImpactKind.Creature);
+                Strike(at, Vector3.One * 0.3f, 3, attack: true);
+                return;
+            case HitKind.Field:
+                var f = (Slice.Vessels.FieldHit)hit.Thing;
+                Slice.Vessels.ForceFields.Hit(f.Vessel, f.Field, damage);
+                Strike(at, new Vector3(0.6f, 0.6f, 0.05f), 3, attack: true);
+                return;
+            case HitKind.Block:
+                Blocks((Slice.Vessels.Vessel)hit.Thing, new SInt3(hit.CellX, hit.CellY, hit.CellZ), at, hit.Normal.ToGodot());
+                return;
+            case HitKind.Ground when hit.Thing is WormMass mass:
+                Arms.HurtMass(mass, damage);
+                MassHit?.Invoke(mass);
+                Strike(at, Vector3.One * 0.4f, 3, attack: true);
+                return;
+        }
+        // Ground, a plant, a place or nothing: gathered as before (each pulse at the gathering rate), the bolt to what is worked.
+        if (!OnBlock && OnPlace)
+        {
+            if (_placeHit is PoiPlaces.Hit ph) Places.Shot(ph, damage); // a hazard goes up, a faction's core is shot out
+            WorkPlace();
+            Strike(_placePoint, Vector3.One * 0.35f, 2);
+        }
+        else if (!OnBlock && _tell != null) { WorkTell(); Strike(_placePoint, Vector3.One * 0.4f, 3); }
+        else if (!OnBlock && CutPlant(out Vector3 plant)) Strike(plant, Vector3.One * 0.3f, 2);
+        else if (!OnBlock && HasTarget && Dig() is { } edit)
+        {
+            // The flash of lightning arcing over the ground being worked.
+            Vector3 cell = new(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f);
+            Strike(cell, Vector3.One * (0.45f + 0.25f * Tier.Radius), edit.Removed.Count > 0 ? 4 : 2);
+        }
+        else
+        {
+            // Into the air, or ground beyond the tool's reach: lightning and nothing else. In a town that's noticed.
+            if (met) Fx?.Impact(at, hit.Normal.ToGodot(), ImpactKind.Ground);
+            Strike(at, Vector3.One * 0.25f, met ? 2 : 0, attack: true);
+            (Places?.TownAt(eye) ?? Places?.TownAt(at))?.Provoked();
+        }
     }
 
-    void Shoot()
+    /// <summary>
+    /// A person in front: the arc jumps to them, chips a little damage and stuns them in their flinch for a
+    /// moment (a hit like any other to them: they cry out, remember it, and their people take it badly).
+    /// </summary>
+    void Zap(Town.Person p, Vector3 at, Vector3 dir)
     {
-        _cooldown = _rules.ShotInterval;
-        Shots++;
-        if (IntoSeizer(_rules.ShotDamage * Tier.Shot)) return;
-        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
-        float reach = _rules.ShotRange;
-        ImpactKind kind = ImpactKind.Nothing;
-        Vector3 normal = -dir;
-        Node3D onto = null;
+        Town t = p.Town;
+        Zapped++;
+        t.Hit(p, at, dir, 0.7f, BodyEnd.Fall);
+        t.Struck(p, Bolt.PersonDamage, GalHack.Arms.DamageClass.Energy, byPlayer: true);
+        if (t.Stun(p, Bolt.StunSeconds, Bolt.RestunSeconds)) Stunned++;
+        Arms?.Confirm(p.Dead);
+        Arms?.Sounds?.Play(CombatSound.Flesh, at, 1.1f, -4f);
+        Fx?.Impact(at, -dir, ImpactKind.Creature);
+        Strike(at, new Vector3(0.22f, 0.45f, 0.22f), 4, attack: true);
+    }
 
-        // The nearest of: the voxel ground, any solid thing in the world you are in (the vessel's
-        // own walls from inside, other hulls, trunks, devices), and a creature.
-        if (_zone.Planet.Terrain.Store.Raycast(eye.ToNumerics(), dir.ToNumerics(), reach, out _, out Int3 entered, out float ground))
+    /// <summary>The same for one of the wild's people: chipped, stunned in their flinch, and they react as hit.</summary>
+    void Zap(Creature c, Vector3 at, Vector3 dir)
+    {
+        Zapped++;
+        _zone.Wildlife.Damage(c, Bolt.PersonDamage);
+        c.HitHeavy = 0.7f;
+        if (c.Stun(Bolt.StunSeconds, Bolt.RestunSeconds)) Stunned++;
+        CreatureHit?.Invoke(c);
+        CreatureStruck?.Invoke(c, at, dir);
+        Fx?.Impact(at, -dir, ImpactKind.Creature);
+        Strike(at, new Vector3(0.22f, 0.45f, 0.22f), 4, attack: true);
+    }
+
+    /// <summary>A sleeper's structure, or one with no core: its blocks are ours to take back whole.</summary>
+    public static bool Ours(Slice.Vessels.Vessel v) => v.Structure.Core == null || v.Structure.Owner == GalHack.Structures.Building.DefaultOwner;
+
+    /// <summary>
+    /// A structure's block: ours (a sleeper's core, or none), it comes away whole into the bag at once;
+    /// on anyone else's core it takes damage, arcs crawling over it, and gives up a share of its bill
+    /// as its hit points go.
+    /// </summary>
+    void Blocks(Slice.Vessels.Vessel v, SInt3 cell, Vector3 at, Vector3 normal)
+    {
+        GalHack.Structures.Structure s = v.Structure;
+        if (!s.TryGetBlock(cell, out SInt3 anchor, out GalHack.Structures.Block b)) return;
+        float size = s.Grid.CellSize;
+        Vector3 centre = v.ToWorld(PhysicsSandbox.Bridges.StructureBridge.BlockCenter(s, anchor, b));
+        if (Ours(v))
         {
-            reach = ground;
-            kind = ImpactKind.Ground;
-            var entry = new Vector3(entered.X, entered.Y, entered.Z); // the face the ray entered through
-            normal = entry.LengthSquared() > 0.5f ? entry.Normalized() : -dir;
+            Strike(centre, Vector3.One * size * 0.5f, 3);
+            if (Builder != null && OnStructure && Builder.TargetVessel == v)
+            {
+                int before = Builder.TakenDown;
+                Builder.TakeDownAimed();
+                if (Builder.TakenDown > before) TakenWhole++;
+            }
+            return;
         }
-        uint mask = Layers.World | Layers.Hull | Layers.Props | Layers.Flora;
-        // The voxel cast counts whole cubes, and a cube's corner stands proud of the smooth ground that is
-        // drawn: a block behind it (a bunker wall at an angle to the grid) is what the bolt meets, and down
-        // along a slope the drawn ground lies many metres further on, however steep the shot. So the world's
-        // own ray runs on past the cube and has the say; only with no collision there does the cube stand.
-        float past = kind == ImpactKind.Ground ? GrazePast : 0f;
-        if (WorldRay.Cast(_zone, _survivor, reach + past, mask, out LookHit hit))
+        float amount = Bolt.BlockDamage * Tier.Shot, max = s.StatsOf(b).MaxHp;
+        float dealt = MathF.Min(b.Hp, GalHack.Structures.Damage.Effective(s.StatsOf(b), GalHack.Structures.DamageType.Energy, amount));
+        v.Hits.Shot(cell, at.ToNumerics(), normal.ToNumerics(), amount, GalHack.Structures.DamageType.Energy);
+        Extracted++;
+        var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        if (max > 0f && dealt > 0f)
+            foreach (var (id, n) in GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, s, b))
+                Earn(id, n * Bolt.ExtractShare * dealt / max, got);
+        Announce(got, quietStone: false);
+        Fx?.Impact(at, normal, ImpactKind.Block, v.Node);
+        Strike(centre, Vector3.One * size * 0.5f, 5, attack: true);
+    }
+
+    /// <summary>
+    /// The lightning for one pulse: a bolt from the barrel tip to the point, arcs crawling over a box
+    /// of this half-size about it, the flash, the crackle and the thunder. An attack is heard far
+    /// (wildlife turns to look); gathering is quieter.
+    /// </summary>
+    void Strike(Vector3 to, Vector3 half, int arcs, bool attack = false)
+    {
+        Color blue = ShotFx.LightningBlue;
+        Fx?.Lightning(Muzzle, to, blue, Bolt.FlashEnergy, Bolt.FlashRange, Bolt.FlashSeconds);
+        if (arcs > 0) Fx?.ArcOver(to, half, blue, arcs, Bolt.FlashSeconds * 1.6f);
+        float pitch = 0.9f + 0.2f * (float)Random.Shared.NextDouble();
+        Arms?.Sounds?.Play(CombatSound.Crackle, to, pitch, attack ? 0f : -6f);
+        double now = Time.GetTicksMsec() / 1000.0;
+        if (now - _thunderAt >= Bolt.ThunderGap)
         {
-            reach = hit.Distance;
-            normal = hit.Normal;
-            kind = hit.OnBlock ? ImpactKind.Block : ImpactKind.Ground;
-            onto = hit.Vessel?.Node;
+            _thunderAt = now;
+            Arms?.Sounds?.Play(CombatSound.Thunder, Muzzle(), pitch, attack ? 0f : -8f, loud: attack);
         }
-        // A force field that holds stops the bolt short of what is behind it.
-        Slice.Vessels.FieldHit onField = Slice.Vessels.ForceFields.Along(_zone, eye, dir, reach, out float fieldAt, out Vector3 fieldFace);
-        if (onField != null) (reach, normal, kind, onto) = (fieldAt, fieldFace, ImpactKind.Nothing, null);
-        PoiPlaces.Hit? onPlace = null;
-        if (Places != null && kind != ImpactKind.Nothing && WorldRay.Cast(_zone, _survivor, reach + 0.01f, Layers.World, out LookHit wall)
-            && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph, wall.Shape)) onPlace = ph;
-        _zone.Wildlife.Noise(eye, ShotHeard);
-        Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
-        bool struck = c != null && !c.Dead;
-        // A den's worm mass in the way takes the shot (enough of them and it's dead).
-        if (_zone.Wildlife.RaycastMass(eye, dir, struck ? distance : reach, out float massAt, out WildSim massSim) is { } mass)
+        if (attack) _zone.Wildlife.Noise(_survivor.WorldEye(), ShotHeard);
+    }
+
+    // ---- Repair: the green cone ------------------------------------------------------------------
+
+    /// <summary>
+    /// Repair held: the green cone shows and, a pulse at a time, mends the damaged block the look is on
+    /// (a share of its health back for that share of its bill), or restores a destroyed block in the
+    /// cone, paid for from the bag, else the core's storage. It harms nothing.
+    /// </summary>
+    void Mend()
+    {
+        SliceRules.RepairRules r = _rules.Repair;
+        Fx?.RepairCone(Muzzle, _survivor.WorldLook, r.Range, r.Angle);
+        if (_cooldown > 0f) return;
+        _cooldown = r.Interval;
+        Arms?.Sounds?.Play(CombatSound.Mend, Muzzle(), 0.95f + 0.1f * (float)Random.Shared.NextDouble(), -10f);
+        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
+        if (WorldRay.Cast(_zone, _survivor, r.Range, Layers.Hull, out LookHit look) && look.OnBlock
+            && GalHack.Structures.Building.IsDamaged(look.Vessel.Structure, look.Cell))
         {
-            WormMasses.Damage(massSim, mass, _rules.ShotDamage * Tier.Shot);
-            struck = false;
-            c = null;
-            kind = ImpactKind.Creature;
-            reach = massAt;
-            onto = null;
-            onPlace = null;
-            MassHit?.Invoke(mass);
+            Slice.Vessels.Vessel v = look.Vessel;
+            Bill bill = v.Hits.RepairBill(look.Cell, r.Share);
+            SharedStorage from = _pack.Storage.Has(bill) ? _pack.Storage : v.Storage;
+            if (v.Hits.Repair(look.Cell, r.Share, from) == GalHack.Structures.RepairStatus.Repaired)
+            {
+                Repaired++;
+                if (from == _pack.Storage) _pack.Grid.Reconcile();
+                TargetLabel = $"REPAIR · {_zone.Data.Items.Describe(bill, 2)}";
+            }
+            else Said?.Invoke($"REPAIR · {_zone.Data.Items.Describe(bill, 2)} NEEDED", Tones.Caution);
+            return;
         }
-        // Someone of a town in the way: hit, and the town takes it badly. Shooting inside a town at all does.
-        float personAt = 0f;
-        Town.Person person = Places == null ? null : Places.PersonAlong(eye, dir, struck ? distance : reach, out personAt);
-        if (person != null)
+        // A destroyed block in the cone, nearest the look first.
+        float cos = MathF.Cos(Mathf.DegToRad(r.Angle));
+        string why = null;
+        foreach (var (v, cell, b) in FallenInCone(eye, dir, r.Range, cos))
         {
-            struck = false;
-            c = null;
-            kind = ImpactKind.Creature;
-            reach = personAt;
-            person.Town.Shoot(person, _rules.ShotDamage * Tier.Shot);
-            onPlace = null;
+            if (v.Structure.Has(cell)) { v.Hits.Fallen.Remove(cell); continue; }
+            why = Builder?.Restore(v, cell, b);
+            if (why != null) continue;
+            v.Hits.Fallen.Remove(cell);
+            Restored++;
+            return;
         }
-        else (Places?.TownAt(eye) ?? Places?.TownAt(eye + dir * MathF.Min(reach, 30f)))?.Provoked();
-        if (onPlace is PoiPlaces.Hit target && !struck) Places.Shot(target, _rules.ShotDamage * Tier.Shot); // a cracked panel gives way: the room behind it says so
-        Vector3 end = struck ? point : eye + dir * reach;
-        if (struck)
-        {
-            kind = ImpactKind.Creature;
-            onto = null;
-            _zone.Wildlife.Damage(c, _rules.ShotDamage * Tier.Shot * _zone.Wildlife.HitScale(c, point));
-            CreatureHit?.Invoke(c);
-            CreatureStruck?.Invoke(c, point, dir);
-        }
-        else if (kind == ImpactKind.Block && hit.OnBlock)
-            hit.Vessel.Hits.Shot(hit.Cell, hit.Point.ToNumerics(), hit.Normal.ToNumerics(), _rules.ShotDamage * Tier.Shot, GalHack.Structures.DamageType.Energy);
-        else if (kind == ImpactKind.Nothing && onField != null) Slice.Vessels.ForceFields.Hit(onField.Vessel, onField.Field, _rules.ShotDamage * Tier.Shot);
-        Vector3 muzzle = Muzzle();
-        Vector3 at = end, face = normal;
-        Node3D on = onto;
-        ImpactKind landed = kind;
-        if (Fx != null) Fx.Fire(muzzle, end, default, () => Fx.Impact(at, face, landed, on), Feel, HeldMuzzle);
-        Sfx?.Play(Sfx.Sound.Ping, muzzle, struck ? 0.8f : 1.2f, -8f);
-        if (kind != ImpactKind.Nothing) Sfx?.Play(Sfx.Sound.Clank, end, 1.6f, -14f);
+        if (why != null) Said?.Invoke(why, Tones.Caution);
+    }
+
+    /// <summary>Destroyed blocks of structures about, inside the cone, nearest the look's line first.</summary>
+    List<(Slice.Vessels.Vessel, SInt3, GalHack.Structures.Block)> FallenInCone(Vector3 eye, Vector3 dir, float range, float cos)
+    {
+        var found = new List<(float, Slice.Vessels.Vessel, SInt3, GalHack.Structures.Block)>();
+        foreach (Slice.Vessels.Vessel v in _zone.Vessels)
+            foreach (var (cell, b) in v.Hits.Fallen)
+            {
+                Vector3 to = v.ToWorld(PhysicsSandbox.Bridges.StructureBridge.BlockCenter(v.Structure, cell, b)) - eye;
+                float d = to.Length();
+                if (d > range + 0.5f || d < 1e-3f || to.Dot(dir) / d < cos) continue;
+                found.Add((1f - to.Dot(dir) / d, v, cell, b));
+            }
+        found.Sort((x, y) => x.Item1.CompareTo(y.Item1));
+        return found.Select(f => (f.Item2, f.Item3, f.Item4)).ToList();
     }
 }
 

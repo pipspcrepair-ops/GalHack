@@ -124,12 +124,12 @@ public partial class BuildTest : Node
         GD.Print("  (systems test: items are handed over and the sleeper teleported where a playthrough would spend minutes)");
         CompassAtStart();
         CompassFadeSweep();
-        Check(Pack.Hand == HandKind.Empty && _game.ToolHint != null && Items.Item("survival-tool").Recipe.Inputs.Count == 0, "empty-handed, and the survival tool's recipe is free");
+        Check(Pack.Hand == HandKind.Empty && _game.ToolHint != null && Items.Item("sleeper-tool").Recipe.Inputs.Count == 0, "empty-handed, and the Sleeper tool's recipe is free");
         Check(_game.Controls.Primary == false && Pack.Storage.IsEmpty, "nothing carried at the start");
         foreach (int x in _play.MakeTool()) yield return x;
         Check(Pack.Hand == HandKind.Tool && _game.ToolHint == null, "made in the suit fabricator and put in hand: the hint goes");
         // Lost: the free recipe stays.
-        Pack.Remove("survival-tool", 1);
+        Pack.Remove("sleeper-tool", 1);
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(Pack.Hand == HandKind.Empty, "a lost tool leaves your hands empty");
         foreach (int x in _play.MakeTool()) yield return x;
@@ -593,7 +593,7 @@ public partial class BuildTest : Node
         _base.Storage.Remove(rounds, _base.Storage.Count(rounds));
         _base.Storage.Add(rounds, 5);
         other.Add(rounds, 5);
-        Pack.SetRemote(3, _base.Storage, _base.Name, "survival-tool");
+        Pack.SetRemote(3, _base.Storage, _base.Name, "sleeper-tool");
         Pack.Bar = BarSource.Remote;
         Pack.Selected = 3;
         int got = Pack.TakeAmmo(rounds, 6, new[] { other });
@@ -767,7 +767,7 @@ public partial class BuildTest : Node
         _game.Builder.Remove(_base, coreCell);
         Check(_base.Structure.Has(coreCell) && _game.Zone.Vessels.Count == vessels && Pack[PlayerInventory.Core] == coreItems,
             $"deconstruct refuses a core ({_base.Structure.TypeOf(coreBlock).Name}): it can only be destroyed or hijacked");
-        foreach (int x in _play.Tool(ToolMode.Deconstruct)) yield return x;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
         N.Vector3 Face(Int3 c) => StructureBridge.CellCenter(_base.Structure, c) + new N.Vector3(_base.Structure.Grid.CellSize * 0.5f, 0, 0); // its +x face
         foreach (int x in StandByBase(6, 4)) yield return x;
 

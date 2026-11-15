@@ -914,7 +914,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     public int MassHits;
 
     /// <summary>A worm mass takes harm, in whichever place's sim it lies: it catches and burns until it's gone.</summary>
-    void HurtMass(WormMass m, float amount)
+    public void HurtMass(WormMass m, float amount)
     {
         foreach (DeepSite s in Zone.Wildlife.Sites)
             if (s.Sim.Masses.Contains(m)) { WormMasses.Damage(s.Sim, m, amount); MassHits++; return; }

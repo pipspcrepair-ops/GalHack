@@ -40,7 +40,7 @@ public static class ItemModels
 
     static ItemModels()
     {
-        // The hand tools are one model in three liveries (by rarity); the survival tool is the plainest.
+        // The hand tools are one model in three liveries (by rarity); the Sleeper tool is the plainest.
         Register(i => Array.IndexOf(PlayerInventory.ToolItems, i.Id) >= 0, HeldTool.Build, ModelSource.Held);
         Register("scanner", HeldScanner.Build, ModelSource.Held);
         Register(i => i.Category == ItemCategory.Weapon, Slice.Arms.GunModel.Held, ModelSource.Held);
