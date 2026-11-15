@@ -35,9 +35,6 @@ public partial class ForceFields : Node3D
     /// <summary>A force field's colour (shields, later, are purple).</summary>
     public static readonly Color Blue = new(0.3f, 0.66f, 1f);
 
-    /// <summary>A placed field's sheet stops this far, m, inside its cells' outer edges: at its emitters' glowing strips.</summary>
-    public const float Inset = 0.25f;
-
     sealed class Look
     {
         public MeshInstance3D Mesh;
@@ -138,11 +135,35 @@ public partial class ForceFields : Node3D
         Look l = LookFor(_fields, f, v);
         l.Mesh.Visible = f.Holding;
         if (!f.Holding) return;
-        l.Mesh.Transform = Frame(s.Grid.CellSize, f.Min, f.Max, f.Axis, Inset, out Vector2 size);
+        l.Mesh.Transform = Frame(s.Grid.CellSize, f.Min, f.Max, f.Axis, out Vector2 size);
         ((QuadMesh)l.Mesh.Mesh).Size = size;
         l.Material.SetShaderParameter("size", size);
         l.Material.SetShaderParameter("strength", f.Strength / tier.Strength);
         l.Material.SetShaderParameter("flash", f.Flash);
+        if (l.Mesh.GetChildCount() == 0) Strips(l.Mesh, size, s.Grid.CellSize, Emitter(s.Catalogue));
+    }
+
+    static StandardMaterial3D _strip;
+
+    /// <summary>
+    /// The emitters' light: in each corner one continuous strip along the whole inner side of its L
+    /// (both arms, the faces toward the field), on the sheet so it is lit only while the field holds.
+    /// </summary>
+    static void Strips(MeshInstance3D sheet, Vector2 size, float cell, BlockType emitter)
+    {
+        _strip ??= new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = Blue };
+        // The arms' inner faces stand this far in from the field's outer edge; they run one cell from it.
+        float arm = (System.Linq.Enumerable.Max(emitter.Parts, p => MathF.Min(p.Max.X, p.Max.Y)) + 0.5f) * cell;
+        float t = 0.01f * cell, depth = 0.04f * cell, run = cell - arm;
+        foreach (float su in new[] { -1f, 1f })
+        foreach (float sv in new[] { -1f, 1f })
+        {
+            // The L's inner corner; one strip along u on the arm's inner face, one along v, overlapping at the corner.
+            var inner = new Vector3(su * (size.X * 0.5f - arm), sv * (size.Y * 0.5f - arm), 0f);
+            foreach (var (box, at) in new[] { (new Vector3(run, t, depth), new Vector3(su * run, sv * t, 0f)), (new Vector3(t, run, depth), new Vector3(su * t, sv * run, 0f)) })
+                sheet.AddChild(new MeshInstance3D { Name = "Emitter light", Mesh = new BoxMesh { Size = box }, MaterialOverride = _strip,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Position = inner - at * 0.5f });
+        }
     }
 
     /// <summary>How many of a field's corners hold an emitter. One put back by hand is turned to face its corner.</summary>
@@ -173,12 +194,7 @@ public partial class ForceFields : Node3D
         if (!s.TryGet(anchor, out Block b) || !s.TypeOf(b).IsDoor) return false;
         Look l = LookFor(_doors, (v, anchor), v);
         l.Shown = MathF.Min(1f, l.Shown + dt * 2.5f);
-        Mat3 m = Orientations.Matrix(b.Rot);
-        Int3 n = s.TypeOf(b).Size;
-        float cell = s.Grid.CellSize;
-        var size = new Vector2(0.88f * n.X, 0.96f * n.Y) * cell; // the leaf's own span (BlockDoors)
-        l.Mesh.Transform = new Transform3D(new Basis(m.X.ToVector3().ToGodot(), m.Y.ToVector3().ToGodot(), m.Z.ToVector3().ToGodot()),
-            StructureBridge.BlockCenter(s, anchor, b).ToGodot() - m.Y.ToVector3().ToGodot() * 0.02f * cell);
+        l.Mesh.Transform = DoorSheet(s, anchor, b, out Vector2 size);
         ((QuadMesh)l.Mesh.Mesh).Size = size;
         l.Material.SetShaderParameter("size", size);
         l.Material.SetShaderParameter("strength", l.Shown);
@@ -270,15 +286,28 @@ public partial class ForceFields : Node3D
 
     /// <summary>
     /// A sheet across cells <paramref name="min"/> to <paramref name="max"/> (inclusive, structure
-    /// frame), through their middle along <paramref name="axis"/>, its edges <paramref name="inset"/>
-    /// m inside the cells' outer faces: the quad's frame and size.
+    /// frame), through their middle along <paramref name="axis"/>, its edges on the cells' outer
+    /// faces, flush with its emitters' outer edges: the quad's frame and size.
     /// </summary>
-    public static Transform3D Frame(float cell, Int3 min, Int3 max, int axis, float inset, out Vector2 size)
+    public static Transform3D Frame(float cell, Int3 min, Int3 max, int axis, out Vector2 size)
     {
         int u = (axis + 1) % 3, v = (axis + 2) % 3;
-        size = new Vector2((max[u] - min[u] + 1) * cell - 2f * inset, (max[v] - min[v] + 1) * cell - 2f * inset);
+        size = new Vector2((max[u] - min[u] + 1) * cell, (max[v] - min[v] + 1) * cell);
         Vector3 Unit(int a) => Geometry.Set(N.Vector3.Zero, a, 1f).ToGodot();
         return new Transform3D(new Basis(Unit(u), Unit(v), Unit(axis)), ((min.ToVector3() + max.ToVector3()) * 0.5f * cell).ToGodot());
+    }
+
+    /// <summary>An open door's sheet: exactly the shut leaf's span, so it meets the door's frame and sill on every side.</summary>
+    public static Transform3D DoorSheet(Structure s, Int3 anchor, in Block b, out Vector2 size)
+    {
+        BlockType t = s.TypeOf(b);
+        Part leaf = System.Linq.Enumerable.First(t.Parts, p => p.ClosedOnly && p.Style == PartStyle.Body);
+        N.Vector3 n = t.Size.ToVector3(), lo = leaf.Min * n, hi = leaf.Max * n, mid = (lo + hi) * 0.5f;
+        float cell = s.Grid.CellSize;
+        size = new Vector2(hi.X - lo.X, hi.Y - lo.Y) * cell;
+        Mat3 m = Orientations.Matrix(b.Rot);
+        return new Transform3D(new Basis(m.X.ToVector3().ToGodot(), m.Y.ToVector3().ToGodot(), m.Z.ToVector3().ToGodot()),
+            (StructureBridge.BlockCenter(s, anchor, b) + m.Apply(new N.Vector3(mid.X, mid.Y, 0f)) * cell).ToGodot());
     }
 
     static Shader _shader;

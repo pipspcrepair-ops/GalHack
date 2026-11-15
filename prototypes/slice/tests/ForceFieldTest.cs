@@ -91,6 +91,7 @@ public partial class ForceFieldTest : Node
         Controls c = _game.Controls;
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(v.Powered && !rig.Sealed(), $"the room, powered by its generator, leaks through its 4 x 3 opening ({v.Rooms.Sealed.Count()} sealed rooms)");
+        Flush(s, rules);
 
         // ---- Placing by dragging --------------------------------------------------------------
         const string T1 = "force-field-t1";
@@ -155,7 +156,7 @@ public partial class ForceFieldTest : Node
         pack.Add("iron-plate", 10);
         BlockType iron = s.Catalogue.Type("iron-plated");
         for (int i = 0; i < builder.Platings.Count && builder.Plating != iron; i++) { c.Wheel = 1; yield return 0; }
-        Vector3 hub = rig.World(1.67f, 0.67f, -0.27f); // corner 0's hub, from out in front
+        Vector3 hub = rig.World(1.56f, 0.56f, -0.09f); // corner 0's hub, from out in front
         foreach (int x in _drive.LookAt(hub, 8)) yield return x;
         string said = builder.Verdict;
         int plates = pack["iron-plate"];
@@ -262,7 +263,7 @@ public partial class ForceFieldTest : Node
         _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
         foreach (int x in _drive.Wait(10)) yield return x;
         int components = pack[T1], ironBack = pack["iron-plate"];
-        foreach (int x in _drive.LookAt(rig.World(1.67f, 0.67f, 0.27f), 8)) yield return x;
+        foreach (int x in _drive.LookAt(rig.World(1.56f, 0.56f, 0.09f), 8)) yield return x;
         said = builder.Verdict;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
@@ -274,6 +275,88 @@ public partial class ForceFieldTest : Node
     {
         Vector3 at = rig.World(4f, 0f, -6f);
         _game.Survivor.PlaceOutside((_game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * 0.1f).ToNumerics());
+    }
+
+    /// <summary>
+    /// Sealed to the eye: a placed field's sheet ends exactly on its emitters' outer edges (any size,
+    /// any facing) and lies inside their depth; an open door's sheet meets its frame's posts, lintel
+    /// and sill (every door, every turn). Within a millimetre.
+    /// </summary>
+    void Flush(Structure s, FieldRules rules)
+    {
+        const float Mm = 1e-3f;
+        float cell = s.Grid.CellSize;
+        BlockType emitter = ForceFields.Emitter(s.Catalogue);
+        N.Vector3 V(Vector3 g) => g.ToNumerics();
+        // A sheet's four corners, structure frame, metres, as a box (flat along its normal).
+        (N.Vector3 Lo, N.Vector3 Hi) Sheet(Transform3D t, Vector2 size)
+        {
+            var pts = new[] { -1f, 1f }.SelectMany(a => new[] { -1f, 1f }.Select(b => V(t.Origin + t.Basis.X * a * size.X * 0.5f + t.Basis.Y * b * size.Y * 0.5f))).ToList();
+            return (pts.Aggregate(N.Vector3.Min), pts.Aggregate(N.Vector3.Max));
+        }
+        // A one-cell part's box in the structure frame, metres.
+        (N.Vector3 Lo, N.Vector3 Hi) Box(Int3 anchor, in Block b, N.Vector3 min, N.Vector3 max)
+        {
+            BlockType t = s.TypeOf(b);
+            Mat3 m = Orientations.Matrix(b.Rot);
+            N.Vector3 c = s.CentreOf(anchor, b), n = t.Size.ToVector3();
+            N.Vector3 p = c + m.Apply(min * n), q = c + m.Apply(max * n);
+            return (N.Vector3.Min(p, q) * cell, N.Vector3.Max(p, q) * cell);
+        }
+        var worst = (gap: 0f, what: "");
+        void Gap(float g, string what) { if (MathF.Abs(g) > MathF.Abs(worst.gap)) worst = (g, what); }
+
+        int sizes = 0;
+        foreach (int axis in new[] { 2, 0, 1 })
+        foreach (var (w, h) in new[] { (rules.MinSide, rules.MinSide), (4, 3), (7, 2), (2, 9), (rules.MaxSide, rules.MaxSide) })
+        {
+            Int3 lo = new Int3(-3, 1, 2), hi = lo.With((axis + 1) % 3, lo[(axis + 1) % 3] + w - 1).With((axis + 2) % 3, lo[(axis + 2) % 3] + h - 1);
+            var f = new ForceField(lo, hi, axis, "force-field-t1");
+            Transform3D frame = ForceFields.Frame(cell, f.Min, f.Max, f.Axis, out Vector2 size);
+            var sheet = Sheet(frame, size);
+            N.Vector3 eLo = new(float.MaxValue), eHi = new(float.MinValue);
+            for (int i = 0; i < 4; i++)
+            {
+                Block b = Building.Make(s, emitter, null, f.CornerRot(i));
+                foreach (Part p in emitter.Parts)
+                {
+                    var (a, z) = Box(f.Corner(i), b, p.Min, p.Max);
+                    (eLo, eHi) = (N.Vector3.Min(eLo, a), N.Vector3.Max(eHi, z));
+                }
+            }
+            string at = $"{w} x {h} across {"xyz"[axis]}";
+            foreach (int k in new[] { f.U, f.V })
+            {
+                Gap(Geometry.Get(sheet.Lo, k) - Geometry.Get(eLo, k), $"{at}, {"xyz"[k]} low edge");
+                Gap(Geometry.Get(sheet.Hi, k) - Geometry.Get(eHi, k), $"{at}, {"xyz"[k]} high edge");
+            }
+            float plane = Geometry.Get(sheet.Lo, axis);
+            if (plane < Geometry.Get(eLo, axis) || plane > Geometry.Get(eHi, axis)) Gap(1f, $"{at}: the sheet is outside its emitters' depth");
+            sizes++;
+        }
+
+        int doors = 0;
+        foreach (BlockType t in s.Catalogue.Types.Where(t => t is { IsDoor: true } && t.Parts.Any(p => p.ClosedOnly && p.Style == PartStyle.Body)))
+        {
+            // The opening: inside the frame's posts and under its lintel, down to the sill (the cell's floor).
+            var frame = t.Parts.Where(p => p.Style == PartStyle.Dark && !p.ClosedOnly).ToList();
+            float left = frame.Where(p => p.Min.X <= -0.5f + 1e-4f && p.Max.Y >= 0.5f - 1e-4f && p.Min.Y <= -0.5f + 1e-4f).Max(p => p.Max.X);
+            float right = frame.Where(p => p.Max.X >= 0.5f - 1e-4f && p.Max.Y >= 0.5f - 1e-4f && p.Min.Y <= -0.5f + 1e-4f).Min(p => p.Min.X);
+            float top = frame.Where(p => p.Max.Y >= 0.5f - 1e-4f && p.Min.X > -0.5f + 1e-4f).Min(p => p.Min.Y);
+            for (int rot = 0; rot < 24; rot++)
+            {
+                Block b = Building.Make(s, t, null, rot);
+                var sheet = Sheet(ForceFields.DoorSheet(s, Int3.Zero, b, out Vector2 size), size);
+                var (oLo, oHi) = Box(Int3.Zero, b, new N.Vector3(left, -0.5f, 0f), new N.Vector3(right, top, 0f));
+                string at = $"{t.Id} turned {Orientations.Name(rot)}";
+                Gap(N.Vector3.Distance(sheet.Lo, oLo), $"{at}, low corner");
+                Gap(N.Vector3.Distance(sheet.Hi, oHi), $"{at}, high corner");
+            }
+            doors++;
+        }
+        Check(sizes == 15 && doors >= 5 && MathF.Abs(worst.gap) <= Mm,
+            $"flush: {sizes} field sizes and facings meet their emitters' outer edges, {doors} doors x 24 turns meet their frames, the worst {worst.gap * 1000f:F2} mm ({worst.what})");
+        Check(rules.MinSide >= 2, $"a field is at least {rules.MinSide} x {rules.MinSide} (no 1 x 1: its four emitters would share one cell)");
     }
 
     /// <summary>The tiers and the draw, from data: linear in tiles, 4 tiles cheap against a first generator.</summary>
