@@ -286,7 +286,7 @@ public partial class BlueprintTest : Node
         _game.Survivor.StandUp();
         foreach (int x in _drive.Wait(5)) yield return x;
         _game.Survivor.PlaceOutside((v.Body.Position + N.Vector3.UnitY * 30f).ToGodot().ToNumerics());
-        Playthrough.TakeAway(_game.Zone, v);
+        _game.Zone.Remove(v);
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 

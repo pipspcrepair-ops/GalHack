@@ -191,6 +191,10 @@ public partial class PowerTest
         string ShieldSlot() => _game.Visor.BarSlots(v).FirstOrDefault(x => x?.Icon == Slice.Ui.HudIcon.Shield)?.Value;
         Check(p.ShieldHp == shield - 160 && v.Structure.Get(at).Hp == before && ShieldSlot() == $"{100 * p.ShieldHp / p.ShieldMaxHp:F0}%",
             $"a 160 round on the hull is the shield's: {shield:F0} to {p.ShieldHp:F0}, the plate untouched; the bar's SHIELD slot reads {ShieldSlot()}");
+        ShieldShell shell = v.Node.GetChildren().OfType<ShieldShell>().FirstOrDefault();
+        Check(shell is { Visible: true, Rippling: true }, "the shield ripples where it was struck: its shell shows");
+        foreach (int x in _drive.Wait(60)) yield return x;
+        Check(shell is { Visible: false, Rippling: false }, "and fades out within a second, hidden till the next hit");
         v.SetSystem(StructureBar.Shields, false);
         foreach (int x in _drive.Wait(2)) yield return x;
         v.Hits.Shot(at, v.ToWorld(StructureBridge.CellCenter(v.Structure, at)).ToNumerics(), -N.Vector3.UnitX, 160f, DamageType.Kinetic);
@@ -210,6 +214,6 @@ public partial class PowerTest
         v.Storage.Add("biofuel", 5);
         foreach (int x in _drive.Wait(10)) yield return x;
         Check(v.Powered && v.Body.Core.On, "fuel back in its storage: power, and its gravity with it");
-        Playthrough.TakeAway(_game.Zone, v);
+        _game.Zone.Remove(v);
     }
 }

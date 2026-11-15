@@ -259,7 +259,7 @@ public partial class ClimateTest : Node
         foreach (int x in _drive.Wait(5)) yield return x;
         Check(!node.Running && Math.Abs(Air() - raw) < 0.5, "the base's power off, the node stops and the air is the world's again");
         (rules.LowC, rules.HighC) = (low, high);
-        Playthrough.TakeAway(Zone, base1);
+        Zone.Remove(base1);
         Zone.Devices.Remove(node);
         node.QueueFree();
     }

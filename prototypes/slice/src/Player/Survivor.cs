@@ -28,7 +28,24 @@ public sealed class Survivor
     public const float CrouchHeight = 1.1f, CrouchEyeHeight = 0.95f;
 
     /// <summary>The zone the sleeper is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
-    public SurfaceZone Zone { get; internal set; }
+    public SurfaceZone Zone
+    {
+        get => _zone;
+        internal set
+        {
+            if (_zone != null) _zone.Removing -= SetOutOf;
+            _zone = value;
+            if (_zone != null) _zone.Removing += SetOutOf;
+        }
+    }
+    SurfaceZone _zone;
+
+    /// <summary>A vessel about to be taken out of the world: seated in it or aboard, the sleeper gets up and is set out of it first, so their body stays theirs.</summary>
+    void SetOutOf(Vessel vessel)
+    {
+        if (Seated == vessel) StandUp();
+        if (Aboard == vessel) Leave();
+    }
     public readonly Body Body;
     public readonly CharacterBinding Binding;
     public readonly WalkController Legs = new();
