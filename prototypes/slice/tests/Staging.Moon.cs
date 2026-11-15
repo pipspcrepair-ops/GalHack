@@ -74,7 +74,7 @@ public sealed partial class Staging
             Snap(tag);
             var disc = Disc(moon.Centre - eye, MathF.Asin(moon.GlobeRadius / eye.DistanceTo(moon.Centre)));
             seen.Add((disc.Lit, disc.Bright));
-            GD.Print($"(moon light {tag}: {ground:F0} m off its ground, its far look at {o.Space.FadeOf(moon.Body):P0}, its globe {(moon.Globe.Visible ? "drawn" : "hidden")}: lit {disc.Lit:P1} of the disc, the lit part's brightness {disc.Bright:F3})");
+            GD.Print($"(moon light {tag}: {ground:F0} m off its ground, its far look at {o.Space.FadeOf(moon.Body):P0} (its air {o.Space.AirOf(moon.Body):P0}), its globe {(moon.Globe.Visible ? "drawn" : "hidden")}: lit {disc.Lit:P1} of the disc, the lit part's brightness {disc.Bright:F3})");
         }
         GD.Print($"(moon light at the hand-over: lit share {seen[0].Lit:P1} far, {seen[1].Lit:P1} up close; brightness {seen[1].Bright / Math.Max(seen[0].Bright, 1e-4f):P0} of the far look's)");
         _game.FixedCamera = null;

@@ -316,10 +316,11 @@ public partial class SpaceSky : Node3D
             Vector3 dir = W(s.Direction).Normalized(), light = W(s.ToItsLight).Normalized();
             node.GlobalPosition = eye + dir * d;
             node.Scale = Vector3.One * d * sine;
-            // Its air as its globe draws it, in its radii, as much as its far look shows; its shell where the far look stands.
+            // Its air as its globe draws it, in its radii, as much as its far look shows; its shell just short of the far look's
+            // air, so the far look's depth hides none of it and what stands in front of the body stands in front of its air too.
             if (air && s.Angular > AirFrom && Globe.Air(a.Material, -dir, 1f, a.Thickness, (float)(s.Distance / body.Radius) - 1f, fade * a.Share, light))
             {
-                a.Material.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), MathF.Max(d, behind));
+                a.Material.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), MathF.Max(d * (1f - sine * (1f + a.Thickness)) - 1f, MathF.Max(behind, 1f)));
                 a.Node.Visible = true;
             }
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_light"), light);
@@ -355,6 +356,9 @@ public partial class SpaceSky : Node3D
 
     /// <summary>Each world with air: its air's shell, how much of its air shows (its density's) and its height in its radii.</summary>
     readonly Dictionary<Orbiter, (MeshInstance3D Node, ShaderMaterial Material, float Share, float Thickness)> _air = new();
+
+    /// <summary>How much of a body's air its far look draws now, 0 to 1 (0: none, or no air).</summary>
+    public float AirOf(Orbiter body) => _air.TryGetValue(body, out var a) && a.Node.Visible && a.Node.IsVisibleInTree() ? a.Share * FadeOf(body) : 0f;
 
     /// <summary>Under this angular radius a world's air round it is under a pixel, and not drawn.</summary>
     const float AirFrom = 0.002f;
