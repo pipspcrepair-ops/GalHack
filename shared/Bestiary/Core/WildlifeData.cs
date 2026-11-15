@@ -440,15 +440,16 @@ public sealed class PatternDef
 
 /// <summary>
 /// A behaviour's signature attack. Every attacking creature opens with it, telegraphed: the
-/// wind-up is at least <see cref="Telegraph"/> seconds long and shows and sounds like the
-/// style (a pounce crouches, a charge lowers its head, a giant rears and roars).
+/// wind-up is <see cref="Telegraph"/> seconds for a small body, a little longer for a heavy one
+/// (<see cref="CombatRules.Tell"/>), and shows and sounds like the style (a pounce crouches, a
+/// charge lowers its head, a giant drops its head and roars).
 /// </summary>
 public sealed class AttackDef
 {
     public string Name { get; set; } = "";
     public AttackStyle Style { get; set; } = AttackStyle.Lunge;
-    /// <summary>Wind-up of the first, telegraphed attack in seconds.</summary>
-    public float Telegraph { get; set; } = 1.1f;
+    /// <summary>Wind-up of the first, telegraphed attack in seconds, for a small body.</summary>
+    public float Telegraph { get; set; } = 0.4f;
     /// <summary>How far past its reach the lunge carries, in metres; 0 uses the combat default.</summary>
     public float Reach { get; set; }
     /// <summary>How long the lunge itself takes; 0 uses the combat default.</summary>

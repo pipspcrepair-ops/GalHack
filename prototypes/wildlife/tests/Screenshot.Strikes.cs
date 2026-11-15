@@ -53,23 +53,24 @@ public partial class Screenshot
         Creature c = m.Sim.Spawn(s, Ground(at));
         // Facing the sleeper, or away for a swipe (they're behind it).
         c.Yaw = kind == "swipe" ? MathF.Atan2(-toward.X, -toward.Z) : MathF.Atan2(toward.X, toward.Z);
-        int startAt = _tick + 40, tellAt = -1, landedAt = -1, struckAt = -1;
-        m.Sim.Attacked += e => { if (e.Creature == c && landedAt < 0) landedAt = _tick; };
-        float span = MathF.Max(6f, off + b.Size);
+        int startAt = _tick + 40, tellAt = -1, landedAt = -1, struckAt = -1, asked = 0;
+        m.Sim.Attacked += e => { if (e.Creature == c && tellAt >= 0 && landedAt < 0) landedAt = _tick + 1; }; // (the sim steps before this node's tick)
+        float span = MathF.Max(2.2f, off + b.Size * 1.6f);
         _aim = () =>
         {
             Vector3 mid = (stand + c.Position) * 0.5f;
-            return (mid + side * (span * 1.25f) + Vector3.Up * (1.6f + b.Size * 0.25f), mid + Vector3.Up * MathF.Min(2.5f, 0.5f + b.Size * 0.15f));
+            return (mid + side * (span * 0.85f) + Vector3.Up * (1.6f + b.Size * 0.25f), mid + Vector3.Up * MathF.Min(2.5f, 0.5f + b.Size * 0.15f));
         };
         _each = () =>
         {
-            if (_tick == startAt)
+            if (_tick >= startAt && tellAt < 0 && Attacks.Start(m.Sim, c, p.Target))
             {
-                Attacks.Start(m.Sim, c, p.Target);
                 tellAt = _tick + (int)(c.WindupLength * 0.6f * 60f);
+                GD.Print($"strike: {c.Move} by a {b.Size:F1} m {s.CommonName}, wind-up {c.WindupLength:F2} s");
             }
-            if (c.Phase == AttackPhase.Lunge && struckAt < 0 && c.PhaseTime >= MathF.Min(0.12f, c.PhaseLength * 0.5f)) struckAt = _tick;
-            if (_tick == tellAt || _tick == struckAt || _tick == landedAt || landedAt >= 0 && _tick == landedAt + 15) StripFrame(_strip.Count == 3);
+            if (_tick == startAt + 120 && tellAt < 0) GD.Print($"strike: not started (shown {c.Shown}, phase {c.Phase}, state {c.State})");
+            if (tellAt >= 0 && landedAt < 0 && c.Phase == AttackPhase.Lunge && struckAt < 0) struckAt = _tick;
+            if (_tick == tellAt || _tick == struckAt || _tick == landedAt || landedAt >= 0 && _tick == landedAt + 15) StripFrame(++asked == 4);
         };
         _captureTick = startAt + 60 * 12; // a fallback single shot if the strike never comes
         return true;
@@ -81,6 +82,7 @@ public partial class Screenshot
         Image image = GetViewport().GetTexture().GetImage();
         image.Resize(image.GetWidth() / 2, image.GetHeight() / 2);
         _strip.Add(image);
+        GD.Print($"strike frame {_strip.Count} at tick {_tick}");
         if (!last || _stripBusy) return;
         _stripBusy = true;
         int w = _strip[0].GetWidth(), h = _strip[0].GetHeight();

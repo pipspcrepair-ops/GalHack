@@ -284,7 +284,7 @@ public static class Attacks
             case AttackStyle.Charge:
             case AttackStyle.Rear:
                 // The head drops to lead the blow: a giant brings it down on you, never up and back.
-                c.Brace = snap;
+                c.Brace = (c.Species.Attack.Style == AttackStyle.Rear ? 0.5f : 1f) * snap;
                 c.WantCrouch = 0.4f * snap;
                 c.Rear = 0f;
                 break;

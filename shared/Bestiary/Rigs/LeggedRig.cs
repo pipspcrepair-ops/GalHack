@@ -377,7 +377,7 @@ public sealed class LeggedRig : Rig
             target = Mathf.Lerp(target, -0.15f, c.Phase == AttackPhase.Windup ? 0f : Crouch) + 0.55f * Rearing - 0.9f * Dead - brace * Bracing;
             // A bite drives the head at the victim: the neck points at where the jaws are going, down and forward.
             float aimPitch = 0f;
-            bool biting = c.Phase == AttackPhase.Lunge && (c.Move is AttackMove.Bite or AttackMove.Charge) && !c.Dead;
+            bool biting = (c.Phase == AttackPhase.Lunge || c.Phase == AttackPhase.Recover && !c.StrikeLanded) && (c.Move is AttackMove.Bite or AttackMove.Charge) && !c.Dead; // a miss eases off its aim; a hit rebounds
             if (biting)
             {
                 Vector3 to = c.StrikeAt - baseW;
@@ -464,8 +464,8 @@ public sealed class LeggedRig : Rig
     /// <summary>Its neck's root above the ground, standing.</summary>
     float NeckBase(Creature c) => c.Position.Y + _hipRest + Species.Body.Height * 0.53f;
 
-    /// <summary>How far, as a share of its standing hip, it folds its legs so its head can reach down to this height in a bite (at most 60%).</summary>
-    float Dip(Creature c, float y) => Math.Clamp((NeckBase(c) - y - NeckReach * 0.8f) / MathF.Max(0.1f, _hipRest), 0f, 0.6f);
+    /// <summary>How far, as a share of its standing hip, it folds its legs so its head can reach down to this height in a bite (at most 75%: a tall body splays and drops like a giraffe drinking).</summary>
+    float Dip(Creature c, float y) => Math.Clamp((NeckBase(c) - y - NeckReach * 0.8f) / MathF.Max(0.1f, _hipRest), 0f, 0.75f);
 
     /// <summary>What it strikes with now: a stomping foot, its tail's tip, or its head (horns and jaws).</summary>
     public override Vector4 Striker(Creature c)
