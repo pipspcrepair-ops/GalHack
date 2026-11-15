@@ -111,6 +111,9 @@ public sealed class StructurePower
     public double DrawMW { get; private set; }
     public double OutputMW { get; private set; }
 
+    /// <summary>Last tick: the draw against what the generators can give (over 1, the capacitor drains; infinite with a draw and no generator).</summary>
+    public double Load => DrawMW <= 1e-12 ? 0 : GeneratorMW > 0 ? DrawMW / GeneratorMW : double.PositiveInfinity;
+
     /// <summary>Last tick: the share of the draw that was met (1 with nothing drawn and power to give, 0 with none).</summary>
     public double Supply { get; private set; }
 
