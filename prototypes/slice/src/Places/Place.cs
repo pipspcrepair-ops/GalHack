@@ -531,9 +531,6 @@ public partial class Place : Node3D
     /// <summary>Tests: a near cube drawn as one mesh, and a solid block in it (null: none).</summary>
     internal (Int3 Key, Int3 Cell)? MergedCubeWithBlock()
     {
-        // A floor: a block with the place's own air over it, so its going changes what is drawn; else any block open on top
-        // (a yard's place may have no floor of its own in a near cube).
-        foreach (bool own in new[] { true, false })
         foreach (Group g in _groups.Values)
         {
             if (g.Merged.Count == 0 || !g.Near || g.Way != 0) continue;
@@ -543,7 +540,8 @@ public partial class Place : Node3D
             for (int x = 0; x < GroupSize; x++)
             {
                 Int3 c = min + new Int3(x, y, z);
-                if (Inst.Blocks.Get(c).Type == BlockType.Cube && Inst.Blocks.Get(c + Int3.Up).IsAir && (!own || Inst.Layout.Occupied[c + Int3.Up])) return (g.Key, c);
+                // A floor: a block with the place's own air over it, so its going changes what is drawn.
+                if (Inst.Blocks.Get(c).Type == BlockType.Cube && Inst.Blocks.Get(c + Int3.Up).IsAir && Inst.Layout.Occupied[c + Int3.Up]) return (g.Key, c);
             }
         }
         return null;
