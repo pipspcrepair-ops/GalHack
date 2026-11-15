@@ -113,12 +113,12 @@ public sealed partial class Vessel
         if (changed) ApplyEdits();
     }
 
-    /// <summary>Switches its core's artificial gravity (it also needs power to work).</summary>
+    /// <summary>Switches its core's artificial gravity (it also needs power to work: an outage drops it).</summary>
     public void SetGravity(bool on)
     {
         Structure.GravityOn = on;
         if (Body.Core == null) return;
-        Body.Core.On = on;
+        Body.Core.On = on && Powered;
         Cabin.SetGravity(Body.Core);
     }
 

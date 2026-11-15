@@ -72,6 +72,9 @@ public partial class PowerTest : Node
         Model(data);
         Fuels(data);
         JumpFuels(data);
+        Sun(data);
+        Shield(data);
+        Drives(data);
         Start(data);
         if (OS.GetCmdlineUserArgs().Contains("--pure")) yield break;
 
@@ -84,6 +87,7 @@ public partial class PowerTest : Node
         GD.Print($"-- in the world: {_game.World} --");
         foreach (int x in Flight(data)) yield return x;
         foreach (int x in Hover(data)) yield return x;
+        foreach (int x in Armed(data)) yield return x;
     }
 
     // ---- The model alone ------------------------------------------------------------------------------

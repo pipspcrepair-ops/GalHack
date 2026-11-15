@@ -54,6 +54,8 @@ public static class DeviceDetail
             case "scanner": break; // its mast, dish and coil are its own parts
             case "field-emitter": break; // its L and glowing strips are its own parts
             case "spotlight": break; // its housing, rim and lens are its own parts
+            case "shield": break; // its drum and coil rings are its own parts
+            case "solar": break; // its frame and cells are its own parts
             case "ladder":
             case "stairs": break;
             default: Fallback(k); break;

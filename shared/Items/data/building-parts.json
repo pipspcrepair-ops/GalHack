@@ -1,5 +1,5 @@
 // Blocks manufacturing needs that building's catalogue doesn't have yet: the production machines,
-// the drives, two fixed weapons with their own ammo, the spotlight, the force field emitter and the scanners. Same format and units as
+// the drives, two fixed weapons with their own ammo, the spotlight, the force field emitter, the scanners, the shield generator and the solar panel. Same format and units as
 // prototypes/building/data/components.json. Whoever loads the building catalogue appends these to
 // its components, as the physics sandbox does with its vessel parts; nothing in
 // prototypes/building changes. Their bills are in blocks.json. The fabricator ladder is the
@@ -68,6 +68,28 @@
         {"cylinder": "z", "segments": 18, "box": [-0.2, -0.16, -0.01, 0.2, 0.22, 0.0], "style": "glow"},
         {"box": [-0.02, 0.02, -0.24, 0.02, 0.06, 0.0], "style": "dark"},
         {"box": [-0.07, -0.03, -0.32, 0.07, 0.11, -0.24], "style": "glow"}
+      ]
+    },
+    // The shield generator: a structure-wide shield (shared/Items/data/power.json "shield" has its hit points,
+    // recharge and fold crystal), purple like every shield. Empyrion's small shield generator in 1 m cells:
+    // 1,630 kg, 250 hit points, 3.6 kW at full recharge. A squat drum on a plinth, two lit coil rings round it.
+    {
+      "id": "shield-generator", "name": "Shield generator", "function": "shield", "hp": 250, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.2}, "mass": 1.63, "color": "3c096c", "glow": "b14aed", "attach": "all", "airtight": "all", "covers": ["-y"], "collide": "parts", "size": [1, 1, 2], "power": -0.0018,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.3, 0.5], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.4, -0.3, -0.45, 0.4, 0.5, 0.45], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.44, -0.34, -0.3, 0.44, 0.54, -0.22], "style": "glow"},
+        {"cylinder": "z", "segments": 16, "box": [-0.44, -0.34, 0.22, 0.44, 0.54, 0.3], "style": "glow"}
+      ]
+    },
+    // The solar panel: charges the capacitors by daylight before any fuel burns (power.json "solar"). Its power
+    // is what it gives in full sun: Empyrion's solar panel efficiency of 1.8 read as 1.8 kW a panel. A dark frame,
+    // the cells under glass on top.
+    {
+      "id": "solar-panel", "name": "Solar panel", "function": "solar", "hp": 60, "armor": 5, "resist": {"kinetic": 0.05, "explosive": 0.05, "energy": 0.1}, "mass": 0.09, "color": "1b263b", "glow": "4cc9f0", "attach": ["-y"], "airtight": "none", "covers": ["-y"], "collide": "parts", "power": 0.0009,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
+        {"box": [-0.46, -0.42, -0.46, 0.46, -0.39, 0.46], "style": "glass"}
       ]
     },
     {
