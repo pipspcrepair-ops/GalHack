@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Godot;
 using Planets.Gen;
@@ -53,22 +54,24 @@ public sealed class BodySurfaces
         Texture = new Texture2DArray();
         Texture.CreateFromImages(images);
 
-        var order = new List<Sighting>();
+        var seen = new List<Sighting>();
         foreach (Orbiter b in model.Bodies)
-            if (b.Spec != null && b != model.Home || b.Kind == OrbiterKind.GasGiant) order.Add(model.See(b, 0.0, from));
-        order.Sort((x, y) => y.Angular.CompareTo(x.Angular));
-        if (order.Count > Layers) order.RemoveRange(Layers, order.Count - Layers);
+            if (b.Spec != null && b != model.Home || b.Kind == OrbiterKind.GasGiant) seen.Add(model.See(b, 0.0, from));
+        seen.Sort((x, y) => y.Angular.CompareTo(x.Angular));
+        var order = seen.Take(Layers - 1).Select(x => x.Body).ToList();
+        // The world itself last: its moons' skies see it, and they share these.
+        if (model.Home.Spec != null) order.Add(model.Home);
         Wanted = order.Count;
         new Thread(() => Work(order)) { IsBackground = true, Name = "Body surfaces", Priority = ThreadPriority.BelowNormal }.Start();
     }
 
-    void Work(List<Sighting> order)
+    void Work(List<Orbiter> order)
     {
         for (int i = 0; i < order.Count; i++)
         {
             long started = Stopwatch.GetTimestamp();
-            Image image = Paint(order[i].Body);
-            _painted.Enqueue((order[i].Body, i, image, Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+            Image image = Paint(order[i]);
+            _painted.Enqueue((order[i], i, image, Stopwatch.GetElapsedTime(started).TotalMilliseconds));
         }
     }
 

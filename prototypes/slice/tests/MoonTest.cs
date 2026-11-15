@@ -188,14 +188,14 @@ public partial class MoonTest : Node
         bodies.AddRange(sky.Drawn.Select(d => d.Body).Where(b => b != m.FuelMoon && b.Kind != OrbiterKind.GasGiant));
         Orbiter dark = null;
         double full = -1, partial = -1;
+        double Covered(Orbiter b, double t) => m.EclipseAt(t, m.Position(b, t), b).Covered;
         foreach (Orbiter b in bodies)
         {
-            double Covered(double t) => m.EclipseAt(t, m.Position(b, t), b).Covered;
             double t = now;
-            while (t < now + 40.0 && Covered(t) > 0.01) t += 0.001; // out of any shadow it is in now, first
+            while (t < now + 40.0 && Covered(b, t) > 0.01) t += 0.001; // out of any shadow it is in now, first
             for (; t < now + 40.0 && full < 0; t += 0.001)
             {
-                double covered = Covered(t);
+                double covered = Covered(b, t);
                 if (covered > 0.4 && partial < 0) partial = t;
                 if (covered > 0.98) full = t;
             }
@@ -209,7 +209,11 @@ public partial class MoonTest : Node
             sky.Paused = false;
             return;
         }
-        (double Mid, double Least, double Most) Across(double t)
+        // Its deepest: the middle of the time it is all in shadow (its first moment is the umbra's very edge).
+        double over = full;
+        while (over < full + 1.0 && Covered(dark, over + 0.001) > 0.98) over += 0.001;
+        double deep = (full + over) / 2;
+        (double Mid, double Centre, double Least, double Most) Across(double t)
         {
             sky.Days = t;
             sky.Track();
@@ -227,12 +231,15 @@ public partial class MoonTest : Node
                     double h = Shadowed(east * x + north * y - d[i] * MathF.Sqrt(1f - x * x - y * y), l[i], c[i], s[i]);
                     (least, most) = (Math.Min(least, h), Math.Max(most, h));
                 }
-            return (Shadowed(-d[i], l[i], c[i], s[i]), least, most);
+            return (Shadowed(-d[i], l[i], c[i], s[i]), Shadowed(Vector3.Zero, l[i], c[i], s[i]), least, most);
         }
-        var inside = Across(full);
+        var inside = Across(deep);
         var edge = Across(partial);
-        Check(inside.Mid > 0.9 && edge.Least < 0.2 && edge.Most > 0.6,
-            $"{Charts.Tidy(dark.Name)} goes dark in a shadow {full - now:F2} days on, drawn point by point: {inside.Mid:P0} of the sun hidden at its middle; as the edge crosses it, {edge.Least:P0} to {edge.Most:P0} across the disc (umbra and penumbra)");
+        // The shader's sums at the body's centre are the system's own eclipse there; across the disc the shadow's edge shows as
+        // it crosses (how sharp, by the star's size from there against the body's: a far caster's penumbra can be wider than it).
+        double offDeep = Math.Abs(inside.Centre - Covered(dark, deep)), offEdge = Math.Abs(edge.Centre - Covered(dark, partial));
+        Check(inside.Mid > 0.9 && edge.Most - edge.Least > 0.3 && offDeep < 0.03 && offEdge < 0.03,
+            $"{Charts.Tidy(dark.Name)} goes dark in {Charts.Tidy(m.EclipseAt(deep, m.Position(dark, deep), dark).By?.Name ?? "nothing")}'s shadow {deep - now:F2} days on, drawn point by point: {inside.Mid:P0} of the sun hidden at its middle at the deepest; as the edge crosses it, {edge.Least:P0} to {edge.Most:P0} across the disc (umbra and penumbra); at its centre the sky's shadow and the system's agree within {Math.Max(offDeep, offEdge):P1}");
         sky.Days = now;
         sky.Paused = false;
         sky.Track();
@@ -548,7 +555,7 @@ public partial class MoonTest : Node
         foreach (int x in _pilot.Land(v, pad))
         {
             if (++t % 600 == 0 && v.Controller is { } c)
-                GD.Print($"  ({t / 60} s: {v.AboveGround:F1} m up, moving {v.Body.Velocity}, settling {c.Settling}, gear {c.Gear?.Attached}, ground {c.GroundDistance:F1} m under, {v.Body.Position.ToGodot().DistanceTo(pad):F0} m from the pad, asleep {v.Body.Asleep}, input {v.Flight.Input.Move} seated {v.Flight.Input.Seated} thrust {v.Flight.Input.AnyThrust}, tossed {v.Body.Tossed:F2}, in air {c.Zone.InAtmosphere} gravity {c.Zone.Gravity:F1}, held {string.Join(",", new[] { Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift }.Where(k => _game.Controls.IsHeld(k)))})");
+                GD.Print($"  ({t / 60} s: {v.AboveGround:F1} m up, moving {v.Body.Velocity}, settling {c.Settling}, gear {c.Gear?.Attached}, ground {c.GroundDistance:F1} m under, {v.Body.Position.ToGodot().DistanceTo(pad):F0} m from the pad, asleep {v.Body.Asleep}, input {v.Flight.Input.Move} seated {v.Flight.Input.Seated} thrust {v.Flight.Input.AnyThrust}, tossed {v.Body.Tossed:F2}, in air {c.Zone.InAtmosphere} gravity {c.Zone.Gravity:F1}, in the seat {_game.Survivor.Seated == v} as {v.Roles.Pilot}, the controls' up {_game.Controls.Axis(Key.Space, Key.Ctrl)}, held {string.Join(",", new[] { Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift }.Where(k => _game.Controls.IsHeld(k)))})");
             yield return x;
         }
         foreach (int x in _drive.Wait(30)) yield return x;

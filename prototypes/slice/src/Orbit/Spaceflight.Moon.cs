@@ -60,7 +60,7 @@ public partial class Spaceflight
         {
             var zone = new SurfaceZone
             {
-                Name = Charts.Tidy(moon.Name).Replace(" ", ""), Data = home.Data, Spec = moon.Spec, ShareFrom = home.Planet, Body = moon,
+                Name = Charts.Tidy(moon.Name).Replace(" ", ""), Data = home.Data, Spec = moon.Spec, ShareFrom = home.Planet, SkySurfaces = home.Sky.Surfaces, Body = moon,
                 MakeLater = moon != model.FuelMoon, ProcessMode = ProcessModeEnum.Disabled, Visible = false,
             };
             Game.AddChild(zone);

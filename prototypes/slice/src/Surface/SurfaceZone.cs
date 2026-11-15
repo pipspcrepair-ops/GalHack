@@ -38,6 +38,10 @@ public partial class SurfaceZone : Node3D
     /// come later. Null: the start world, which owns the system.
     /// </summary>
     public PlanetWorld ShareFrom;
+
+    /// <summary>Another body's: the far looks its sky shares, the start world's sky's (painted once for every sky of the system), or null.</summary>
+    public PlanetSurface.Skies.BodySurfaces SkySurfaces;
+
     public Orbiter Body;
 
     /// <summary>Another body's world is made once <see cref="Make"/> is called (as you come near it), not as it enters the scene.</summary>
@@ -206,6 +210,7 @@ public partial class SurfaceZone : Node3D
         {
             PlanetWorld w = PlanetWorld.Build(spec, null);
             w.ShareSystem(of, body);
+            PlanetSurface.Terrain.RockLook.Of(w); // its cliffs' look made here, not on the frame its ground is set up
             return w;
         });
     }
@@ -256,7 +261,7 @@ public partial class SurfaceZone : Node3D
         foreach (string part in Streamer.Setting(Planet, landing, _riverMaterial = WaterMaterial(sea: false))) yield return part;
         Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
         yield return "sea";
-        Sky.SetWorld(Planet);
+        Sky.SetWorld(Planet, SkySurfaces);
         yield return "sky";
         Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
