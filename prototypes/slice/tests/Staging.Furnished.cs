@@ -100,8 +100,14 @@ public sealed partial class Staging
         // The eye in the corner of the room the walk starts nearest, looking across it.
         var size = new Vector3(room.Room.Width, 0f, room.Room.Depth);
         Vector3 corner = new(room.Corner.X, floor, room.Corner.Z), middle = corner + size * 0.5f;
-        Vector3 eyeLocal = new[] { corner + new Vector3(0.4f, 0f, 0.4f), corner + new Vector3(size.X - 0.4f, 0f, 0.4f), corner + new Vector3(0.4f, 0f, size.Z - 0.4f), corner + new Vector3(size.X - 0.4f, 0f, size.Z - 0.4f) }
-            .OrderByDescending(c => MathF.Min(Near(person, c), (c - from).Length())).First() + Vector3.Up * 2.2f;
+        var corners = new[] { corner + new Vector3(0.4f, 0f, 0.4f), corner + new Vector3(size.X - 0.4f, 0f, 0.4f), corner + new Vector3(0.4f, 0f, size.Z - 0.4f), corner + new Vector3(size.X - 0.4f, 0f, size.Z - 0.4f) };
+        Vector3 eyeLocal = corners.OrderByDescending(c => MathF.Min(Near(person, c), (c - from).Length())).First() + Vector3.Up * 2.2f;
+        // --chimney=1: from the far corner, looking at the chimney breast.
+        if (_args.ContainsKey("chimney") && room.Room.Flues.Count > 0 && room.Room.DoorPoint(room.Room.Flues[0]).At is var breast)
+        {
+            middle = corner + new Vector3(breast.X, 0f, breast.Y);
+            eyeLocal = corners.OrderByDescending(c => (c - middle).Length()).First() + Vector3.Up * 2.2f;
+        }
         _game.Survivor.PlaceOutside(p.ToWorld(eyeLocal + Vector3.Down * 2.2f + ((middle - eyeLocal) with { Y = 0f }).Normalized() * -0.25f).ToNumerics());
         _game.Visor.Visible = false;
         _game.Torch.Visible = true;
