@@ -154,7 +154,8 @@ public partial class PopRoute : Node
             foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
         // "space" (only when asked for): a vessel's top speed in space, level at 800 m over the sea. --fly-speed=N,M (or --space-speed):
         // that route once at each speed.
-        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", 70f, 4000f, 60f, false), ("space", Game.GameData.Shared.Handling.Speeds.Bands.Max(b => b.TopSpeedSpace), 12000f, 800f, true) }
+        var flight = Game.GameData.Shared.Handling.Speeds.Flight;
+        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", flight.TopSpeedAir, 4000f, 60f, false), ("space", flight.TopSpeedSpace, 12000f, 800f, true) }
             .SelectMany(r => _args.TryGetValue($"{r.Item1}-speed", out string v) ? v.Split(',').Select(n => r with { Item2 = float.Parse(n, CultureInfo.InvariantCulture) }) : new[] { r });
         // Each from a settled start; then the first 20 s of each again, counting the plants that pop.
         foreach (bool pops in new[] { false, true })

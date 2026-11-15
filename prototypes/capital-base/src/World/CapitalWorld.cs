@@ -316,7 +316,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
     /// <summary>The wind rules: bases and parked or keyed hulls are never pushed; anything flying or simply landed is.</summary>
     int ILiftGround.Pending => Patch.Pending;
     float ILiftGround.ClimbSpeed => Rules.Liftoff.ClimbSpeed;
-    float ILiftGround.TopSpeed(ILiftHull hull) => hull.Flight.Stats?.TopSpeed ?? Handling.Band(HandlingModel.Mass(((Craft)hull).Spec)).TopSpeedAir;
+    float ILiftGround.TopSpeed(ILiftHull hull) => hull.Flight.Stats?.TopSpeed ?? Handling.Speeds.Flight.TopSpeedAir;
     void ILiftGround.Settle(ILiftHull hull) => UpdateWind((Craft)hull);
 
     public void UpdateWind(Craft c)

@@ -156,9 +156,9 @@ public static class HandlingModel
         }
         if (s.HoverEngines.Count > 0) ride /= s.HoverEngines.Count;
 
-        // Top speeds and the turn cap come from what the structure is: its mass band, or Hover Mode's speeds.
+        // The turn cap by mass band; top speeds by mode (Flight or Hover), never by size or mass.
         Tunables.BandData band = t.Band(mass);
-        Tunables.SpeedData speeds = s.HoverMode ? t.Speeds.Hover : band;
+        Tunables.SpeedData speeds = s.HoverMode ? t.Speeds.Hover : t.Speeds.Flight;
         return new HandlingStats
         {
             IsHover = s.HoverMode,
