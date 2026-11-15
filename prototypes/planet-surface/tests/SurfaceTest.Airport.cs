@@ -36,7 +36,10 @@ public partial class SurfaceTest
             for (int k = 0; k < 3; k++)
             {
                 // (The first an arid world, where the biggest of a type finds dry ground: on a temperate one it gives way to a smaller.)
-                var spec = PlanetSpec.Roll((ulong)rand.NextInt64(1, long.MaxValue), k == 0 ? Archetype.Arid : Archetype.Temperate, 0);
+                // (On a world someone lived on: nobody built one anywhere else.)
+                PlanetSpec spec;
+                do spec = PlanetSpec.Roll((ulong)rand.NextInt64(1, long.MaxValue), k == 0 ? Archetype.Arid : Archetype.Temperate, 0);
+                while (!PlanetWorld.ProfileFor(spec, PoiSiting.StartWorld).Inhabited);
                 PoiSiting.ForceType = types[k % types.Length];
                 // (The first world's airport with its second runway, so the junction is always looked at.)
                 if (k == 0) PlaceTypes.Always.Add("crosswind"); else PlaceTypes.Always.Remove("crosswind");
@@ -88,7 +91,7 @@ public partial class SurfaceTest
                         if (pz < 320 || pz > w.Map.HeightMeters - 320 || px < 320 || px > W - 320) break; // (a seam's ghost band is the seam's)
                         float h = graded.SurfaceHeight(px, pz), n = land.SurfaceHeight(px, pz);
                         float over = MathF.Abs(h - last) / 4f - MathF.Abs(n - lastNatural) / 4f;
-                        if (over > worstGrade) (worstGrade, worstAt) = (over, $"{px:F0},{pz:F0} {d:F0} m out");
+                        if (over > worstGrade) (worstGrade, worstAt) = (over, $"{px:F0},{pz:F0} {d:F0} m out, in {string.Join(", ", graded.StampsAt(px, pz).Select(k => graded.Stamps[k]).Where(s => s.Weight(px, pz) > 0).Select(s => s.Name))}");
                         (last, lastNatural) = (h, n);
                     }
                 }

@@ -367,6 +367,13 @@ public partial class Screenshot : Node
             shots.Add(Aim("landside", Out(terminal, 70, 1.7f, -1), At(terminal.Box, 6)));
             shots.Add(Aim("airside", Out(terminal, 90, 1.7f) + new Vector3(15, 0, 15), At(terminal.Box, 6)));
         }
+        // Its gate, with the world's road coming to it: from up the road and above, looking back in.
+        if (place.Anchor?.Gates.FirstOrDefault() is { } gate)
+        {
+            var g = new Vector3(gate.Cell.X + 0.5f, gate.Cell.Y, gate.Cell.Z + 0.5f);
+            var away = new Vector3(gate.OutX, 0, gate.OutZ).Normalized();
+            shots.Add(Aim("gate", g + away * 70 + new Vector3(away.Z, 0, -away.X) * 25 + Vector3.Up * 22, g + Vector3.Up * 2));
+        }
         if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "hangar") is { } hangar)
             shots.Add(Aim("hangar", Out(hangar, 35, 1.7f) + new Vector3(4, 0, 4), At(hangar.Box, 4)));
         if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "tower") is { } tower)
