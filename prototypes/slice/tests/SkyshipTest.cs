@@ -353,7 +353,7 @@ public partial class SkyshipTest : Node
         Check(ship.Phase == SkyPhase.Wrecked && v.IsWreck && _game.Zone.Vessels.Contains(v) && s.Count > 0 && !v.Storage.IsEmpty,
             $"destroyed, it is a wreck of {s.Count} blocks to salvage, its holds still full ({v.Storage.UsedSu:F0} SU)");
         for (int t = 0; t < 60 * 60 && !(_game.Zone.Held.Contains(v.Body) || v.Body.Velocity.Length() < 0.2f && v.AboveGround < 3f); t++) yield return 0;
-        Check(v.AboveGround > -2f && v.AboveGround < 4f, $"it came down and lies on the ground ({v.AboveGround:F1} m up)");
+        Check(v.Body.Velocity.Length() < 0.5f && v.AboveGround > -2f, $"it came down and came to rest, over the ground ({v.AboveGround:F1} m up, {v.Body.Velocity.Length():F2} m/s)");
 
         // What it cost.
         frames.Sort();

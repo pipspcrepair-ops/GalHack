@@ -28,6 +28,7 @@ public sealed partial class Staging
         Skyship ship = _game.Sky.Ship;
         if (ship == null) { GD.PrintErr($"skyship: none ({_game.Sky.Missing})"); yield break; }
         Vessel v = ship.Vessel;
+        ship.Stay(120f); // landed for the first shot
         var sky = _game.Zone.Sky;
         sky.TimeOfDay = HighSun(_game);
         sky.Paused = true;
@@ -44,6 +45,7 @@ public sealed partial class Staging
 
         // Overhead in daylight, then at night with its lights.
         Skyship.WaitScale = 0.05f;
+        ship.Stay(0f);
         foreach (var (name, time) in new[] { ("overhead", HighSun(_game)), ("night", HighSun(_game, highest: false)) })
         {
             sky.TimeOfDay = time;
@@ -56,7 +58,7 @@ public sealed partial class Staging
             N.Vector3 p = v.Body.Position, vel = MathX.Flat(v.Body.Velocity);
             Vector3 under = SkyGround((p + vel * 9f).ToGodot() + side * 25f, 1.7f);
             foreach (int x in SkyHold(under, () => v.Body.Position.ToGodot(), 60)) yield return x;
-            foreach (int x in Open(under, q => under = q)) yield return x;
+            foreach (int x in Open(under, v.Body.Position.ToGodot(), q => under = q)) yield return x;
             for (int i = 0; i < 60 * 20 && MathX.Flat(v.Body.Position - under.ToNumerics()).Length() > 90f; i++)
             {
                 _game.FixedCamera = SkyLook(under, v.Body.Position.ToGodot());
@@ -69,23 +71,32 @@ public sealed partial class Staging
         // At night from about 800 m off: its lamps carry as far points, as a town's do.
         Vector3 off = SkyGround(v.Body.Position.ToGodot() + side * 800f, 1.7f);
         foreach (int x in SkyHold(off, () => v.Body.Position.ToGodot(), 150)) yield return x;
-        foreach (int x in Open(off, q => off = q)) yield return x;
+        foreach (int x in Open(off, v.Body.Position.ToGodot(), q => off = q)) yield return x;
         _game.FixedCamera = SkyLook(off, v.Body.Position.ToGodot());
         GD.Print($"skyship: night-far {ship.Phase}, {off.DistanceTo(v.Body.Position.ToGodot()):F0} m off, {v.AboveGround:F0} m up, lights {(v.LightsOn ? "on" : "off")}");
         foreach (int x in Shot($"{dir}/skyship-night-far.png")) yield return x;
         _game.FixedCamera = null;
     }
 
-    /// <summary>The nearest point to this one with no tree, rock or crown of the terrain's scatter within 12 m, for a camera to stand on (the scatter worked out as the ship's landings do).</summary>
-    IEnumerable<int> Open(Vector3 p, Action<Vector3> set)
+    /// <summary>
+    /// The nearest point to this one with no tree, rock or crown of the terrain's scatter within 12 m (worked out as the
+    /// ship's landings do) and the ground below the line from it to <paramref name="look"/>, for a camera to stand on.
+    /// </summary>
+    IEnumerable<int> Open(Vector3 p, Vector3 look, Action<Vector3> set)
     {
-        for (float r = 0f; r < 80f; r += 6f)
+        for (float r = 0f; r < 240f; r += 8f)
             for (int k = 0; k < (r == 0f ? 1 : 12); k++)
             {
                 Vector3 q = SkyGround(p + new Vector3(MathF.Cos(k * 0.52f), 0f, MathF.Sin(k * 0.52f)) * r, 1.7f);
                 List<PlanetSurface.Terrain.FloraSolid> near;
                 while ((near = _game.Sky.ScatterNear(q.ToNumerics(), 12f)) == null) yield return 0;
-                if (near.Count == 0) { set(q); yield break; }
+                bool seen = true;
+                for (float s = 0.05f; s < 0.95f && seen; s += 0.05f)
+                {
+                    Vector3 on = q.Lerp(look, s);
+                    seen = _game.Zone.GroundAt(on.X, on.Z).Y < on.Y - 1f;
+                }
+                if (near.Count == 0 && seen) { set(q); yield break; }
             }
     }
 

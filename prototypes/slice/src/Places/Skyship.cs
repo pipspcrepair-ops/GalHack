@@ -69,6 +69,9 @@ public sealed class Skyship
     float Clearance => Role == CraftRole.Scout ? 65f : 80f;
     float Wait() => (Role == CraftRole.Scout ? 25f : 45f) * (1f + (float)_rng.NextDouble()) * WaitScale;
 
+    /// <summary>Landed, it stays at least this much longer (tests and shots).</summary>
+    public void Stay(float seconds) => _wait = MathF.Max(_wait, seconds);
+
     /// <summary>The frame moved by a whole planet: so does where it is bound.</summary>
     public void Shift(Vector3 by) => Spot += by.ToNumerics();
 
