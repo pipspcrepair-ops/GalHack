@@ -22,18 +22,15 @@ public readonly record struct Span(float Lo, float Hi)
     public override string ToString() => Hi >= float.MaxValue ? $"{Lo:F0}+" : Lo == Hi ? $"{Lo:F0}" : $"{Lo:F0}..{Hi:F0}";
 }
 
-/// <summary>One kind of thing a place type has: what it is, its sizes, and how it relates to the things before it.</summary>
+/// <summary>One kind of thing a place type has: what it is and its sizes (where it goes is its type's plan's rule).</summary>
 public sealed class TypePart
 {
     public string Id = "", Kind = "", What = "";
     public readonly Dictionary<string, Span> Size = new();
-    /// <summary>Relations by name: the part (or parts) each names, and its distance range where it has one.</summary>
-    public readonly List<(string Rel, string[] To, Span? Gap)> Rel = new();
     public Span Get(string key, float fallback) => Size.TryGetValue(key, out Span s) ? s : new Span(fallback, fallback);
-    public (string Rel, string[] To, Span? Gap)? Find(string rel) => Rel.FirstOrDefault(r => r.Rel == rel) is { Rel: not null } f ? f : null;
 }
 
-/// <summary>A kind of place as data (data/place-types.txt): its parts, their real sizes and their relations. Never a layout.</summary>
+/// <summary>A kind of place as data (data/place-types.txt): its plan, its parts and their real sizes. Never a layout.</summary>
 public sealed class PlaceType
 {
     public string Id = "", Name = "";
@@ -41,14 +38,12 @@ public sealed class PlaceType
     /// <summary>The starport classes it is built for (a spaceport's), none for any.</summary>
     public readonly List<Starport> Classes = new();
     public float Share = 0.05f;
-    /// <summary>A spaceport's plan (hub, rosettes, grid: PlaceTypes.Ports), none for one laid out by its parts' relations.</summary>
-    public string? Plan;
+    /// <summary>Its plan: the rules that lay its parts out (airport, hub, rosettes, grid: PlaceTypes.Airport, PlaceTypes.Ports).</summary>
+    public string Plan = "";
     /// <summary>The biggest craft it takes, m: what its pads, halls and doors are sized by.</summary>
     public float Craft = 30f;
     public readonly List<TypePart> Parts = new();
     public TypePart Part(string id) => Parts.First(p => p.Id == id);
-
-    static readonly HashSet<string> Relations = new() { "along", "between", "beside", "ends", "tee", "faces", "near", "far", "sees", "from", "round", "away", "gap" };
 
     public static List<PlaceType> Parse(string text, string file)
     {
@@ -76,31 +71,11 @@ public sealed class PlaceType
                 {
                     var p = new TypePart { Id = w[1], Kind = w[2] };
                     int i = 3;
-                    if (i < w.Length && !char.IsDigit(w[i][0]) && !Relations.Contains(w[i]) && !IsSize(w, i)) p.What = w[i++];
-                    while (i < w.Length)
+                    if (i < w.Length && !(i + 1 < w.Length && char.IsDigit(w[i + 1][0]))) p.What = w[i++];
+                    for (; i < w.Length; i += 2)
                     {
-                        string k = w[i++];
-                        switch (k)
-                        {
-                            case "along" or "beside":
-                            {
-                                var to = new List<string> { w[i++] };
-                                if (i + 1 < w.Length && w[i] == "away") { i++; to.Add(w[i++]); }
-                                Span? gap = null;
-                                if (i + 1 < w.Length && w[i] == "gap") { gap = Span.Parse(w[i + 1]); i += 2; }
-                                p.Rel.Add((k, to.ToArray(), gap));
-                                break;
-                            }
-                            case "gap": p.Rel.Add(("gap", Array.Empty<string>(), Span.Parse(w[i++]))); break;
-                            case "between": p.Rel.Add((k, new[] { w[i], w[i + 1] }, null)); i += 2; break;
-                            case "near" or "far": p.Rel.Add((k, new[] { w[i] }, Span.Parse(w[i + 1]))); i += 2; break;
-                            case "ends" or "tee" or "faces" or "sees" or "from": p.Rel.Add((k, new[] { w[i++] }, null)); break;
-                            case "round": p.Rel.Add((k, Array.Empty<string>(), Span.Parse(w[i++]))); break;
-                            default:
-                                if (i >= w.Length) throw Bad($"'{k}' wants a value");
-                                p.Size[k] = Span.Parse(w[i++]);
-                                break;
-                        }
+                        if (i + 1 >= w.Length) throw Bad($"'{w[i]}' wants a value");
+                        p.Size[w[i]] = Span.Parse(w[i + 1]);
                     }
                     t.Parts.Add(p);
                     break;
@@ -108,15 +83,9 @@ public sealed class PlaceType
                 default: throw Bad($"'{w[0]}' is not a type line");
             }
         }
-        foreach (PlaceType type in types)
-            foreach (TypePart p in type.Parts)
-                foreach (var r in p.Rel)
-                    foreach (string to in r.To)
-                        if (!type.Parts.TakeWhile(q => q != p).Any(q => q.Id == to)) throw new FormatException($"{file}: {type.Id}.{p.Id} {r.Rel} {to}: no such part before it");
+        if (types.FirstOrDefault(x => x.Plan == "") is { } planless) throw new FormatException($"{file}: {planless.Id} has no plan");
         return types;
     }
-
-    static bool IsSize(string[] w, int i) => i + 1 < w.Length && (char.IsDigit(w[i + 1][0]));
 }
 
 /// <summary>An axis-aligned box of a sketch, site metres (x along the main axis), with the way its front looks (a unit step, or 0, 0).</summary>
@@ -183,15 +152,12 @@ public sealed class Sketch
 }
 
 /// <summary>
-/// Rolls a sketch of a place type from its relations: the first part at the middle along x, each after it off the parts
-/// it names (along, beside, between, ends, round, from), tried again elsewhere when it would overlap anything, with fewer
-/// of a counted part where there isn't room. The world's size caps the long parts (the type's share of the world's area).
+/// Rolls a sketch of a place type by its plan's rules (PlaceTypes.Airport, PlaceTypes.Ports): every count, size, angle and
+/// spacing its own spawn's. The world's size caps the long parts (the type's share of the world's area).
 /// </summary>
 public static partial class PlaceTypes
 {
-    const float Clear = 6f;
-    const int Tries = 24;
-    /// <summary>Shots and tests: parts some spawns have that every spawn has (the crosswind runway, to show its T).</summary>
+    /// <summary>Shots and tests: parts some spawns have that every spawn has (the second runway, to show its junction).</summary>
     public static readonly HashSet<string> Always = new();
 
     /// <summary>A sketch of a type for a world, rolled at most <paramref name="most"/> of the way up its long parts' ranges (0: their low ends).</summary>
@@ -202,218 +168,11 @@ public static partial class PlaceTypes
         Sketch? best = null;
         for (float fit = most; fit >= 0f; fit -= 0.25f)
         {
-            Sketch s = type.Plan != null ? RollPlan(type, seed, fit) : Roll(type, seed, fit);
+            Sketch s = RollPlan(type, seed, fit);
             best = s;
             if (s.Footprint.W * s.Footprint.D <= type.Share * area) return s;
         }
         best!.TooBig = true;
         return best;
     }
-
-    /// <summary>One roll: <paramref name="fit"/> 1 rolls a long part's length over its whole range, 0 holds it to its low end.</summary>
-    static Sketch Roll(PlaceType type, ulong seed, float fit)
-    {
-        var rng = new Rng(Hash.Combine(seed, Hash.Of(type.Id)));
-        var s = new Sketch { Type = type, Seed = seed, Fitted = fit };
-        int side = rng.Chance(0.5f) ? 1 : -1;   // which side of the runway the landside lies
-        foreach (TypePart p in type.Parts)
-        {
-            var r = rng.Fork(p.Id);
-            // A part only some spawns have (chance), and a part off one this spawn hasn't got, are left out.
-            if (p.Size.TryGetValue("chance", out Span chance) && !Always.Contains(p.Id) && !r.Chance(chance.Lo) || p.Rel.Any(x => x.To.Any(t => !s.Of(t).Any()))) continue;
-            float RollLong(string k, float fb) { Span sp = p.Get(k, fb); return sp.Lo + (MathF.Min(sp.Hi, sp.Lo * 4f) - sp.Lo) * fit * r.Float(); }
-            var rolled = new Dictionary<string, float>();
-            foreach (var (k, sp) in p.Size) rolled[k] = k == "len" ? RollLong(k, 0) : sp.Roll(r);
-            float h = rolled.GetValueOrDefault("h");
-            SketchItem Item(SketchBox b, int fx = 0, int fz = 0) => new(p, b, h, fx, fz, rolled);
-
-            if (p.Find("round") is { } round)
-            {
-                // Round everything: the fence (and what becomes the footprint).
-                SketchBox all = s.Items.Select(i => i.Box).Aggregate((a, b) => a.Union(b)).Grow(round.Gap!.Value.Roll(r));
-                s.Items.Add(Item(all));
-                continue;
-            }
-            if (p.Find("from") is { } from)
-            {
-                // A road from it straight out, away from the runway, to the edge the fence will run on.
-                SketchBox a = s.Box(from.To[0]);
-                float w = rolled.GetValueOrDefault("w", 7f), edge = Edge(s, side) + side * 40f;
-                float x = a.Cx;
-                s.Items.Add(Item(side > 0 ? new SketchBox(x - w / 2, a.Z1, x + w / 2, edge) : new SketchBox(x - w / 2, edge, x + w / 2, a.Z0), 0, side));
-                continue;
-            }
-            if (s.Items.Count == 0 && p.Kind == "pads")
-            {
-                // A row of pads along the main axis, each in its blast apron, a blast clearance rolled between each two;
-                // fewer of them where the world is small.
-                Span cs = p.Get("count", 3f);
-                int count = Math.Max(1, (int)MathF.Round(cs.Lo + (cs.Hi - cs.Lo) * fit * r.Float()));
-                float sideM = rolled.GetValueOrDefault("side", 50f) + 2f * rolled.GetValueOrDefault("apron");
-                var gaps = Enumerable.Range(0, count - 1).Select(_ => p.Find("gap")?.Gap?.Roll(r) ?? 150f).ToList();
-                float x = -(count * sideM + gaps.Sum()) / 2;
-                for (int k = 0; k < count; k++)
-                {
-                    s.Items.Add(Item(new SketchBox(x, -sideM / 2, x + sideM, sideM / 2)));
-                    x += sideM + (k < gaps.Count ? gaps[k] : 0f);
-                }
-                continue;
-            }
-            if (s.Items.Count == 0)
-            {
-                // The first part: the main axis.
-                float len = rolled.GetValueOrDefault("len", 100f), w = rolled.GetValueOrDefault("w", 20f) + 2f * rolled.GetValueOrDefault("shoulder");
-                s.Items.Add(Item(new SketchBox(-len / 2, -w / 2, len / 2, w / 2)));
-                continue;
-            }
-            if (p.Find("along") is { } along)
-            {
-                SketchBox a = s.Box(along.To[0]);
-                float sep = along.Gap?.Roll(r) ?? 100f, w = rolled.GetValueOrDefault("w", 20f), len = a.W * r.Float(0.85f, 1f);
-                float cz = a.Cz + side * sep, x0 = a.Cx - len / 2 + r.Float(-1f, 1f) * (a.W - len) / 2;
-                s.Items.Add(Item(new SketchBox(x0, cz - w / 2, x0 + len, cz + w / 2)));
-                continue;
-            }
-            if (p.Find("between") is { } between)
-            {
-                SketchBox a = s.Box(between.To[0]), b = s.Box(between.To[1]);
-                float w = rolled.GetValueOrDefault("w", 20f), lo = MathF.Max(a.X0, b.X0) + w, hi = MathF.Min(a.X1, b.X1) - w;
-                int count = (int)MathF.Round(rolled.GetValueOrDefault("count", 2f));
-                // From the edge of one that faces the other, to the other's.
-                float z0 = b.Cz > a.Cz ? a.Z1 : b.Z1, z1 = b.Cz > a.Cz ? b.Z0 : a.Z0;
-                var row = s.Of(between.To[0]).ToList();
-                if (row.Count > 1)
-                    // From each of a row (each pad its own way out to the taxiway), off its middle.
-                    foreach (SketchItem one in row) s.Items.Add(Item(new SketchBox(one.Box.Cx - w / 2, b.Cz > a.Cz ? one.Box.Z1 : z0, one.Box.Cx + w / 2, b.Cz > a.Cz ? z1 : one.Box.Z0)));
-                else
-                    for (int k = 0; k < count; k++)
-                    {
-                        // Spread along the overlap, the ends always linked, the rest wherever this spawn puts them.
-                        float t = count == 1 ? 0.5f : k == 0 ? 0f : k == count - 1 ? 1f : (k + r.Float(-0.3f, 0.3f)) / (count - 1);
-                        float x = lo + (hi - lo) * t;
-                        s.Items.Add(Item(new SketchBox(x - w / 2, z0, x + w / 2, z1)));
-                    }
-                continue;
-            }
-            if (p.Find("tee") is { } tee)
-            {
-                // Square off the other strip's middle stretch on the far side from the landside, its end butting onto the
-                // other's laid width (shoulders crossed): a T. It runs away from the junction (its front says which way).
-                SketchItem bar = s.Of(tee.To[0]).First();
-                float len = rolled.GetValueOrDefault("len", 300f), w = rolled.GetValueOrDefault("w", 30f) + 2f * rolled.GetValueOrDefault("shoulder");
-                float x = bar.Box.X0 + bar.Box.W * r.Float(0.3f, 0.7f), z = bar.Box.Cz - side * bar.Rolled.GetValueOrDefault("w", bar.Box.D) / 2f;
-                s.Items.Add(Item(side > 0 ? new SketchBox(x - w / 2, z - len, x + w / 2, z) : new SketchBox(x - w / 2, z, x + w / 2, z + len), 0, -side));
-                continue;
-            }
-            if (p.Find("ends") is { } ends)
-            {
-                // In line off each end of it; off only the free end of a strip that tees off another.
-                SketchItem to = s.Of(ends.To[0]).First();
-                SketchBox a = to.Box;
-                bool alongX = a.W >= a.D;
-                float len = rolled.GetValueOrDefault("len", 420f), w = MathF.Min(a.Short, 30f);
-                foreach (int end in new[] { -1, 1 })
-                    if (to.Part.Find("tee") == null || end == (alongX ? to.FaceX : to.FaceZ))
-                        s.Items.Add(alongX
-                            ? Item(new SketchBox(end < 0 ? a.X0 - len : a.X1, a.Cz - w / 2, end < 0 ? a.X0 : a.X1 + len, a.Cz + w / 2), end, 0)
-                            : Item(new SketchBox(a.Cx - w / 2, end < 0 ? a.Z0 - len : a.Z1, a.Cx + w / 2, end < 0 ? a.Z0 : a.Z1 + len), 0, end));
-                continue;
-            }
-            if (p.Find("beside") is { } beside)
-            {
-                SketchBox a = s.Box(beside.To[0]);
-                // The side away from the second part named (the landside), or the landside itself.
-                int way = beside.To.Length > 1 ? (s.Box(beside.To[1]).Cz < a.Cz ? 1 : -1) : side;
-                float len = rolled.GetValueOrDefault("len", 10f), depth = rolled.GetValueOrDefault("depth", 10f);
-                int count = (int)MathF.Round(rolled.GetValueOrDefault("count", 1f));
-                if (p.Kind == "tanks")
-                {
-                    // A tank farm: its tanks in rows inside one bunded yard, a tank's width apart.
-                    float cell = rolled.GetValueOrDefault("r", 5f) * 2f * 2f;
-                    int cols = (int)MathF.Ceiling(MathF.Sqrt(count));
-                    (len, depth, count) = (cols * cell + 8f, MathF.Ceiling(count / (float)cols) * cell + 8f, 1);
-                }
-                Span gapSpan = beside.Gap ?? p.Find("gap")?.Gap ?? new Span(0f, 0f);
-                var faces = p.Find("faces");
-                int placed = 0;
-                // (A part kept far from another may stand on past the anchor's ends, as a fuel farm past the apron's.)
-                float past = p.Rel.Where(x => x.Rel == "far").Select(x => x.Gap!.Value.Lo).DefaultIfEmpty(0f).Max();
-                for (int k = 0; k < count; k++)
-                    for (int t = 0; t < Tries; t++)
-                    {
-                        float off = gapSpan.Roll(r) + (p.Kind == "surface" ? 0f : Clear + 1f);
-                        float z0 = way > 0 ? a.Z1 + off : a.Z0 - off - depth;
-                        float x0 = r.Float(a.X0 - past, MathF.Max(a.X0, a.X1 - len) + past);
-                        var box = new SketchBox(x0, z0, x0 + len, z0 + depth);
-                        if (!Fits(s, p, box, a)) continue;
-                        int fz = faces != null ? (s.Box(faces.Value.To[0]).Cz < box.Cz ? -1 : 1) : 0;
-                        s.Items.Add(Item(box, 0, fz));
-                        placed++;
-                        break;
-                    }
-                // No luck rolling: the first spot along it that fits, from a rolled end; fewer where there is no room, never none of a part the type has.
-                if (placed == 0)
-                {
-                    float off = gapSpan.Lo + (p.Kind == "surface" ? 0f : Clear + 1f), z0 = way > 0 ? a.Z1 + off : a.Z0 - off - depth;
-                    bool fromLow = r.Chance(0.5f);
-                    SketchBox? spot = null, clear = null;
-                    float farthest = -1f;
-                    for (float x = -past; x <= a.W - len + past && spot == null; x += MathF.Max(4f, len / 4))
-                    {
-                        float x0 = fromLow ? a.X0 + x : a.X1 - len - x;
-                        var box = new SketchBox(x0, z0, x0 + len, z0 + depth);
-                        if (Fits(s, p, box, a)) spot = box;
-                        // (Clear of everything but short of its far ranges: the one farthest from what it keeps away from.)
-                        else if (Fits(s, p, box, a, ranges: false) && Away(s, p, box) > farthest) (clear, farthest) = (box, Away(s, p, box));
-                    }
-                    s.Items.Add(Item(spot ?? clear ?? Fallback(s, a, way, len, depth)));
-                }
-                continue;
-            }
-            throw new InvalidOperationException($"{type.Id}.{p.Id}: no relation places it");
-        }
-        s.Footprint = s.Items.Select(i => i.Box).Aggregate((a, b) => a.Union(b));
-        // The way in: the access road runs on to the fence, and the gate is where it meets it.
-        int road = s.Items.FindLastIndex(i => i.Part.Kind == "road");
-        if (road >= 0)
-        {
-            SketchItem a = s.Items[road];
-            float edge = side > 0 ? s.Footprint.Z1 : s.Footprint.Z0;
-            s.Items[road] = a with { Box = side > 0 ? a.Box with { Z1 = edge } : a.Box with { Z0 = edge } };
-            (s.GateX, s.GateZ, s.OutX, s.OutZ) = (a.Box.Cx, edge, 0, side);
-        }
-        return s;
-    }
-
-    /// <summary>The landside edge of what stands so far, metres along z.</summary>
-    static float Edge(Sketch s, int side) => side > 0 ? s.Items.Max(i => i.Box.Z1) : s.Items.Min(i => i.Box.Z0);
-
-    /// <summary>Clear of everything placed (its anchor it may touch, if it is laid ground), and within its near and far ranges.</summary>
-    static bool Fits(Sketch s, TypePart p, SketchBox box, SketchBox anchor, bool ranges = true)
-    {
-        foreach (SketchItem i in s.Items)
-        {
-            bool ground = p.Kind == "surface" && i.Part.Kind == "surface";
-            if (box.Overlaps(i.Box, ground ? -0.01f : Clear)) return false;
-        }
-        foreach (var (rel, to, gap) in p.Rel)
-        {
-            if (!ranges || rel is not ("near" or "far")) continue;
-            float d = s.Items.Where(i => i.Part.Id == to[0]).Select(i => i.Box.Gap(box)).DefaultIfEmpty(float.MaxValue).Min();
-            if (!gap!.Value.Holds(d, 0f)) return false;
-        }
-        return true;
-    }
-
-    /// <summary>The least gap from a box to the parts its type keeps it far from, metres.</summary>
-    static float Away(Sketch s, TypePart p, SketchBox box) =>
-        p.Rel.Where(x => x.Rel == "far").SelectMany(x => s.Of(x.To[0])).Select(i => i.Box.Gap(box)).DefaultIfEmpty(0f).Min();
-
-    /// <summary>Past everything on that side: where a part goes when the anchor's side has no room for it.</summary>
-    static SketchBox Fallback(Sketch s, SketchBox a, int way, float len, float depth)
-    {
-        float z0 = way > 0 ? Edge(s, 1) + Clear : Edge(s, -1) - Clear - depth;
-        return new SketchBox(a.Cx - len / 2, z0, a.Cx + len / 2, z0 + depth);
-    }
 }
-

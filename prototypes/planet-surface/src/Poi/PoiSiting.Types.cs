@@ -54,9 +54,11 @@ public sealed class TypedPlace
                 "carpark" => cover is MadeCover.Tarmac or MadeCover.Concrete ? GroundPattern.Bays : GroundPattern.Plain,
                 _ => cover == MadeCover.Concrete ? GroundPattern.Slabs : GroundPattern.Plain,
             };
-            // The higher wins where they overlap: the runway's markings run on across the crosswind's end, the crosswind's
-            // laid width on across the runway's shoulders; a pad over the links and taxiways that run into it.
-            int layer = pad ? 4 : item.Part.Id switch { "runway" => 7, "crosswind" => 6, "taxiway" or "spoke" or "spine" or "lane" or "ring" => 3, "link" => 2, _ => 1 };
+            // The higher wins where they overlap: the main runway's markings run on unbroken through the junction, the second
+            // runway's laid width on across the main's shoulders; a widened end (its layer its runway's) between a runway and
+            // its shoulders; a pad over the links and taxiways that run into it.
+            int layer = item.Rolled.TryGetValue("layer", out float own) ? (int)own
+                : pad ? 4 : item.Part.Id switch { "runway" => 9, "crosswind" => 8, "taxiway" or "spoke" or "spine" or "lane" or "ring" => 3, "link" => 2, _ => 1 };
             GroundPatch Patch(Shape at, MadeCover c, GroundPattern pat, float w, int l) => new()
             {
                 X = X + at.X, Z = Z + at.Z, UX = at.UX, UZ = at.UZ, HalfU = at.HalfU, HalfV = at.HalfV, Round = MathF.Max(0.5f, at.Round),
