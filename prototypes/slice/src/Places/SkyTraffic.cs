@@ -64,6 +64,9 @@ public partial class SkyTraffic : Node
     int _tick;
     Vector3 _start;
 
+    /// <summary>What its ticks are timed by, ms: the wall clock, or (tests) the main thread's own time, which the OS's other work never adds to.</summary>
+    public static Func<double> Clock = () => System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
     /// <summary>What its last tick cost, ms: the pilot, and every tenth tick its upkeep (tests).</summary>
     public double LastTickMs { get; private set; }
 
@@ -100,7 +103,7 @@ public partial class SkyTraffic : Node
     public override void _PhysicsProcess(double delta)
     {
         if (Off || Zone?.Planet == null || !Zone.Arrived || Zone.IsOtherBody || Missing != null) return;
-        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        double start = Clock();
         int gcs = GC.CollectionCount(0);
         string what;
         if (Ship == null) { Spawn(); what = "spawn"; }
@@ -110,7 +113,7 @@ public partial class SkyTraffic : Node
             Ship.Tick((float)delta);
             if (++_tick % 10 == 0) { Upkeep(); what += " + upkeep"; }
         }
-        LastTickMs = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        LastTickMs = Clock() - start;
         if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, $"{what} to {Ship.Phase}{(GC.CollectionCount(0) != gcs ? ", a garbage collection in it" : "")}, searching {SearchWorstMs:F1} ms at most");
     }
 

@@ -88,6 +88,8 @@ public sealed partial class Staging
             for (int k = 0; k < (r == 0f ? 1 : 12); k++)
             {
                 Vector3 q = SkyGround(p + new Vector3(MathF.Cos(k * 0.52f), 0f, MathF.Sin(k * 0.52f)) * r, 1.7f);
+                var src = _game.Zone.Planet.Source;
+                if (q.Y - 1.7f < src.WaterLevel + 0.5f || src.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(q.X, _game.Zone.Planet.Width), Planets.Gen.Mathx.Wrap(q.Z, _game.Zone.Planet.Height), out _)) continue; // dry ground
                 List<PlanetSurface.Terrain.FloraSolid> near;
                 while ((near = _game.Sky.ScatterNear(q.ToNumerics(), 12f)) == null) yield return 0;
                 // Over the ground all the way, and no tree or rock within 8 m of the line for its first 200 m (where a crown would hide it).
