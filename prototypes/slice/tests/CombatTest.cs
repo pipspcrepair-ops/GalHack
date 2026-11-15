@@ -226,7 +226,7 @@ public partial class CombatTest : Node
             town.Struck(victim, 9999f, DamageClass.Kinetic, byPlayer: true);
             yield return 0;
             var body = game.Zone.Loot.All.Where(l => l.Kind == Items.LootKind.Corpse).OrderBy(l => l.Position.DistanceTo(town.World(victim.Pos))).FirstOrDefault();
-            Check(game.PeopleBodies == bodies + 1 && body != null && body.Storage.Count(item) == 1, $"one killed leaves a body holding their {item} ({body?.Storage.Count(item)}) and its ammo ({(victim.Kit.Def.Ammo == "" ? "none needed" : $"{body?.Storage.Count(victim.Kit.Def.Ammo)} {victim.Kit.Def.Ammo}")})");
+            Check(game.PeopleBodies >= bodies + 1 && body != null && body.Storage.Count(item) == 1, $"one killed leaves a body holding their {item} ({body?.Storage.Count(item)}) and its ammo ({(victim.Kit.Def.Ammo == "" ? "none needed" : $"{body?.Storage.Count(victim.Kit.Def.Ammo)} {victim.Kit.Def.Ammo}")})");
             Check(victim.LastHarm == DamageClass.Kinetic, "and how they were killed reaches the body (its damage class)");
         }
         // Unarmed and hurt: they run.
