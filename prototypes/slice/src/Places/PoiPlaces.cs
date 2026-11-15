@@ -230,9 +230,10 @@ public partial class PoiPlaces : Node3D
         PlaceFauna.Deep deep = Fauna;
         return Task.Run(() => GalHack.Testing.AllocMeter.Measure("place build", () =>
         {
+            GalHack.Testing.AllocMeter.Measure("  its instance", () => memory.Inst);
             Prepare(memory, decor, deep);
             BlockGrid g = memory.Inst.Blocks;
-            return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min));
+            return GalHack.Testing.AllocMeter.Measure("  its collision mesh", () => Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min)));
         }));
     }
 
@@ -252,17 +253,21 @@ public partial class PoiPlaces : Node3D
     static void Prepare(PlaceMemory memory, Decor decor, PlaceFauna.Deep deep)
     {
         if (memory.Prepared) return;
-        memory.Rooms = decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>();
+        memory.Rooms = GalHack.Testing.AllocMeter.Measure("  its rooms' plans", () => decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>());
         // Every look its rooms are dressed with, as far as a worker can take it: on the main thread a piece is only handed over.
         if (decor?.Meshes is { } meshes)
             foreach (PlaceRoom room in memory.Rooms.Values)
-            {
-                foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
-                room.Wires = Place.WiresOf(room, null);
-            }
-        if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
-        memory.Fauna?.Populate(memory, deep);
-        memory.Town = Town.For(memory, deep?.Planet);
+                GalHack.Testing.AllocMeter.Measure("  its dressing's meshes", () =>
+                {
+                    foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
+                    room.Wires = Place.WiresOf(room, null);
+                });
+        GalHack.Testing.AllocMeter.Measure("  its creatures", () =>
+        {
+            if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
+            memory.Fauna?.Populate(memory, deep);
+        });
+        memory.Town = GalHack.Testing.AllocMeter.Measure("  its town", () => Town.For(memory, deep?.Planet));
         memory.Prepared = true;
     }
 

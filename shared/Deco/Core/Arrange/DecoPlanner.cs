@@ -322,10 +322,18 @@ public sealed class DecoPlanner
     {
         int group = _groups;
         int first = _plan.Placements.Count;
-        // Never past a piece's cap in a room.
-        foreach (var g in members.GroupBy(m => m.Piece))
-            if (_count.GetValueOrDefault(g.Key.Id) + g.Count() > CapOf(g.Key, _room.Width * _room.Depth)) return false;
-        var added = new List<DecoPlacement>();
+        // Never past a piece's cap in a room. (Every list and test here without making anything: a room is arranged by
+        // trying thousands of placements, and a city's rooms were most of what its workers allocated.)
+        for (int a = 0; a < members.Count; a++)
+        {
+            DecoPiece piece = members[a].Piece;
+            int same = 0, firstOf = a;
+            for (int b = 0; b < members.Count; b++)
+                if (members[b].Piece == piece) { same++; if (b < firstOf) firstOf = b; }
+            if (firstOf == a && _count.GetValueOrDefault(piece.Id) + same > CapOf(piece, _room.Width * _room.Depth)) return false;
+        }
+        List<DecoPlacement> added = _added;
+        added.Clear();
         foreach (Member mem in members)
         {
             Vector2 at = new Vector2(x, z) + DecoGeo.Yaw(mem.At, yaw);
@@ -337,15 +345,27 @@ public sealed class DecoPlanner
             };
             added.Add(pl);
         }
-        foreach (DecoPlacement pl in added)
+        for (int k = 0; k < added.Count; k++)
         {
+            DecoPlacement pl = added[k];
             DecoRect r = DecoLayout.Footprint(_forge, pl);
             if (!DecoLayout.Inside(_room, r)) return false;
-            if (pl.Support < 0 && (loose ? _reserved.Skip(_room.Doors.Count).Take(_aprons - _room.Doors.Count) : _reserved).Any(res => res.Overlaps(r.Shrink(0.01f))) && DecoLayout.Blocks(_forge, pl)) return false;
-            // Nothing lies in a doorway either, not even a rug a person walks over.
-            if (pl.Support < 0 && _room.Doors.Any(d => _room.Apron(d, 0.9f, 0).Overlaps(r.Shrink(0.02f)))) return false;
-            if (_plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) return false;
-            if (added.Any(o => o != pl && added.IndexOf(o) < added.IndexOf(pl) && DecoLayout.Clash(_forge, o, pl))) return false;
+            if (pl.Support < 0)
+            {
+                DecoRect shrunk = r.Shrink(0.01f);
+                int from = loose ? _room.Doors.Count : 0, to = loose ? _aprons : _reserved.Count;
+                bool reserved = false;
+                for (int q = from; q < to && !reserved; q++) reserved = _reserved[q].Overlaps(shrunk);
+                if (reserved && DecoLayout.Blocks(_forge, pl)) return false;
+                // Nothing lies in a doorway either, not even a rug a person walks over.
+                DecoRect tight = r.Shrink(0.02f);
+                foreach (DecoDoor d in _room.Doors)
+                    if (_room.Apron(d, 0.9f, 0).Overlaps(tight)) return false;
+            }
+            foreach (DecoPlacement o in _plan.Placements)
+                if (DecoLayout.Clash(_forge, o, pl)) return false;
+            for (int q = 0; q < k; q++)
+                if (DecoLayout.Clash(_forge, added[q], pl)) return false;
             // The room's rules (DecoRules): nothing taller than a sill before a window, a fire only at a chimney breast and nothing else there, what the room
             // is arranged round on a solid wall, a narrow room lined along its one wall.
             if (DecoRules.BeforeWindow(_forge, _room, pl) || DecoRules.OffFlue(_forge, _room, pl) || DecoRules.BeforeBreast(_forge, _room, pl)) return false;
@@ -354,9 +374,15 @@ public sealed class DecoPlanner
             if (pl.Support < 0 && DecoLayout.Blocks(_forge, pl) && (behind || _lining is DecoWall only && DecoRules.Off(_room, r, only) > 0.15f)) return false;
         }
         // No more than half the floor stood on, and a clear walk to every piece's use side.
-        var all = _plan.Placements.Concat(added).ToList();
+        List<DecoPlacement> all = _all;
+        all.Clear();
+        all.AddRange(_plan.Placements);
+        all.AddRange(added);
         if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.Unreached(_forge, _room, all).Count > 0) return false;
-        var blocking = added.Where(p => DecoLayout.Blocks(_forge, p)).Select(p => DecoLayout.Footprint(_forge, p)).ToList();
+        List<DecoRect> blocking = _blocking;
+        blocking.Clear();
+        foreach (DecoPlacement p in added)
+            if (DecoLayout.Blocks(_forge, p)) blocking.Add(DecoLayout.Footprint(_forge, p));
         foreach (DecoRect r in blocking) { _raster.Add(r, 1); _walk.Add(r, 1); }
         if (!_raster.DoorsJoined(_room) || !Lines())
         {
@@ -368,6 +394,10 @@ public sealed class DecoPlanner
         _groups++;
         return true;
     }
+
+    // TryPlace's lists, kept between tries (never held past one).
+    readonly List<DecoPlacement> _added = new(), _all = new();
+    readonly List<DecoRect> _blocking = new();
 
     static float Norm(float yaw) => ((yaw % 360) + 360) % 360;
 
