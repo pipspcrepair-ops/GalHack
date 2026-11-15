@@ -32,6 +32,7 @@ public partial class BuildTest
         foreach (int x in MenuTextChecks()) yield return x;
         foreach (int x in EscapeRowChecks()) yield return x;
         HudBoxChecks();
+        foreach (int x in HudCornerChecks()) yield return x;
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
         foreach (int x in ScreenClearChecks()) yield return x;
@@ -135,8 +136,8 @@ public partial class BuildTest
             string problem = l.Problem(size) ?? HudLayout.Compute(size, 1f, true).Problem(size);
             var cells = Alerts.RowCells(l.Alerts, l.Scale, Alerts.MostHazards);
             bool apart = cells.Select((c, i) => cells.Skip(i + 1).All(d => !c.Sign.Intersects(d.Sign) && !c.Timer.Intersects(d.Timer))).All(x => x);
-            bool onLine = cells.All(c => MathF.Abs(c.Sign.Position.Y - l.Toolbar.Position.Y) < 0.5f && c.Sign.Position.X < l.Toolbar.Position.X);
-            Check(problem == null && cells.Count == Alerts.MostHazards && apart && onLine, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping; room for {cells.Count} of {Alerts.MostHazards} alerts on the toolbar's line at the far left, none on another{(problem == null ? "" : ": " + problem)}");
+            bool onLine = cells.All(c => c.Sign.End.Y < l.SleeperIcons.Position.Y && c.Sign.Position.X < l.Toolbar.Position.X && c.Sign.End.X <= l.Sleeper.End.X);
+            Check(problem == null && cells.Count == Alerts.MostHazards && apart && onLine, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping; room for {cells.Count} of {Alerts.MostHazards} alerts above the sleeper's gauges and icons at the far left, none on another{(problem == null ? "" : ": " + problem)}");
         }
     }
 
@@ -153,7 +154,7 @@ public partial class BuildTest
             float k = MathF.Min(size.X / design.X, size.Y / design.Y);
             Vector2 offset = (size - design * k) * 0.5f;
             Rect2 Px(Rect2 r) => new(offset + r.Position * k, r.Size * k);
-            Rect2 box = HudLayout.Compute(size, 1f).Alerts;
+            Rect2 box = HudLayout.Compute(size, 1f).MenuAlerts;
             string at = $"{size.X:0}x{size.Y:0}";
             foreach (var (text, rect, _) in panel.Gui.Texts)
                 if (Px(rect).Grow(-1f).Intersects(box)) problems.Add($"{at}: \"{text}\" is on the alerts' row");

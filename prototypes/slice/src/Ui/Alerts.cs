@@ -9,13 +9,13 @@ using Palette = DiegeticUi.Theme.Palette;
 namespace Slice.Ui;
 
 /// <summary>
-/// Hazards and attacks as symbols, never sentences, in a row along the toolbar's line from the far
-/// left of the view. A hazard is its sign from the game's own sign set with a timer above it (until it
+/// Hazards and attacks as symbols, never sentences, in a row at the left of the view, above the sleeper's
+/// gauges and their icons. A hazard is its sign from the game's own sign set with a timer above it (until it
 /// arrives, or once here until it ends) and an arrow for where it is or comes from. An attack flashes
 /// an animal's or a person's silhouette with an arrow to the attacker, and makes no sound of its own:
 /// the blow's own sounds and the damage vignette carry it. This layer sits over the Tab menu and the
-/// escape menu, so a warning is never hidden behind a menu, and the row stays where it is while one is
-/// open: no menu page uses that corner. A warning with no sign of its own in the sign set is not
+/// escape menu, so a warning is never hidden behind a menu; while one is open the row moves down into
+/// the corner no menu page uses (the visor's gauges are hidden then). A warning with no sign of its own in the sign set is not
 /// shown: there is no generic one.
 /// </summary>
 public partial class Alerts : CanvasLayer
@@ -150,7 +150,8 @@ public partial class Alerts : CanvasLayer
         // Attacks first, flashing, then the hazards, most urgent first.
         var shown = new List<Shown>(Attacks);
         shown.AddRange(_hazards);
-        var cells = RowCells(layout.Alerts, s, shown.Count);
+        bool menu = Game.Menu?.IsOpen == true || Game.Escape?.IsOpen == true; // a menu hides the visor: its own clear corner then
+        var cells = RowCells(menu ? layout.MenuAlerts : layout.Alerts, s, shown.Count);
         for (int i = 0; i < cells.Count; i++)
         {
             Shown a = shown[i];

@@ -138,6 +138,9 @@ public sealed partial class Vessel
     /// for its materials (every block refunds its bill).
     /// </summary>
     public bool IsRuin { get; set; }
+
+    /// <summary>One of the player's core structures: cored, the player's, not a wreck or the bunker.</summary>
+    public bool IsPlayers => !IsWreck && !IsRuin && Structure.Core != null && Structure.Owner == Building.DefaultOwner;
     /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). One switched to Base Mode in flight is anchored only once it has come to rest.</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;

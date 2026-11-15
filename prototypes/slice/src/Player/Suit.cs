@@ -51,8 +51,11 @@ public sealed class Suit : IDamageSink
     /// <summary>The place a spot (feet) is in at all, closed room or not.</summary>
     public Func<Vector3, object> InPlace;
 
-    /// <summary>Where the survivor is breathing, for the visor's temperature readout.</summary>
+    /// <summary>Where the survivor is breathing.</summary>
     public RoomKind Room { get; private set; }
+
+    /// <summary>In vacuum: no air at all round the suit (space, above the air's ceiling), outside any room holding its air and not under water.</summary>
+    public bool InVacuum { get; private set; }
 
     /// <summary>The air of the room the survivor is in (a vessel's or base's sealed room, a place's shut one), or null.</summary>
     public RoomAir Air { get; private set; }
@@ -182,6 +185,10 @@ public sealed class Suit : IDamageSink
     Structure _roomsOf;
     int _roomsVersion = -1;
     readonly Dictionary<Int3, Room> _roomAt = new();
+    bool _sealedAboard;
+
+    /// <summary>Whether a structure has active air: powered, with a sealed room aboard (known for the one the survivor sits in or stands aboard).</summary>
+    public bool HoldsAir(Vessel v) => v != null && v.Structure == _roomsOf && _sealedAboard && v.Powered;
 
     /// <summary>The room (sealed or leaking) the survivor's chest is in, of the structure they sit in or stand aboard, this tick.</summary>
     Room _roomHere;
@@ -198,8 +205,12 @@ public sealed class Suit : IDamageSink
             _roomsOf = s;
             _roomsVersion = s.Version;
             _roomAt.Clear();
+            _sealedAboard = false;
             foreach (Room room in Rooms.Detect(s).Rooms)
+            {
+                _sealedAboard |= room.Sealed;
                 foreach (Int3 cell in room.Cells) _roomAt[cell] = room;
+            }
         }
         if (_roomAt.Count == 0) return false;
         N.Vector3 chest = v.Body.ToLocal(survivor.Body.WorldPosition + survivor.Body.Up * 1f);
@@ -293,6 +304,7 @@ public sealed class Suit : IDamageSink
         Activity activity = new(PaceOf(survivor), Mining: _miningLeft > 0f, FallSpeed: survivor.ImpactSpeed);
         double before = Vitals.Health;
         TickReport report = Sim.Tick(dt, activity);
+        InVacuum = report.Exposure.OxygenPercent <= 0 && report.Exposure.Volume == null && _zone.Water?.Under(survivor.WorldEye(), out _) != true;
         if (Vitals.Health < before) Count(DamageKindFor(report.Harm), before - Vitals.Health);
         Outdoors(dt, survivor, report);
         foreach (Alert a in Enum.GetValues<Alert>())
