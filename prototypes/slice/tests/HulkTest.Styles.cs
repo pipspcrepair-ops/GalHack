@@ -20,7 +20,8 @@ public partial class HulkTest
     /// outline alone. Hulls of each style on fresh seeds (any role and size), each projected side on, from above and end on;
     /// each outline reduced to a handful of measures (proportions, how full and how ragged it is, how lopsided, how
     /// regularly ribbed, how sharp its bow, how big its engine bank, how high its crown and spine); then each hull, left
-    /// out of its own faction's average, must be nearest that average of all the factions'. --dir writes the outlines.
+    /// out of its own faction's average, must be nearest that average of all the factions' (each measure weighed by how well
+    /// it parts the factions against how much it wanders within one). --dir writes the outlines.
     /// </summary>
     IEnumerable<int> Styles()
     {
@@ -47,6 +48,16 @@ public partial class HulkTest
         float[] mean = Enumerable.Range(0, k).Select(j => samples.Average(x => x.Measure[j])).ToArray();
         float[] sd = Enumerable.Range(0, k).Select(j => MathF.Sqrt(samples.Average(x => (x.Measure[j] - mean[j]) * (x.Measure[j] - mean[j]))) + 1e-4f).ToArray();
         float[] Z(float[] m) => m.Select((x, j) => (x - mean[j]) / sd[j]).ToArray();
+        // Each measure weighed by how far apart it holds the factions against how much it wanders within one (a measure that
+        // only follows role and size counts for little).
+        var zs = samples.Select(x => Z(x.Measure)).ToList();
+        float[] weight = Enumerable.Range(0, k).Select(j =>
+        {
+            var byF = Styled.Select(f => zs.Where((z, i) => samples[i].Faction == f).Select(z => z[j]).ToList()).ToList();
+            float between = byF.Select(g => g.Average()).Select(m => m * m).Average();
+            float within = byF.Average(g => g.Select(x => (x - g.Average()) * (x - g.Average())).Average()) + 0.05f;
+            return between / within;
+        }).ToArray();
         int right = 0;
         var wrong = new List<string>();
         for (int i = 0; i < samples.Count; i++)
@@ -57,7 +68,7 @@ public partial class HulkTest
             foreach (string f in Styled)
             {
                 var others = samples.Where((x, j) => x.Faction == f && j != i).Select(x => Z(x.Measure)).ToList();
-                float d = Enumerable.Range(0, k).Sum(j => MathF.Pow(me[j] - others.Average(o => o[j]), 2));
+                float d = Enumerable.Range(0, k).Sum(j => weight[j] * MathF.Pow(me[j] - others.Average(o => o[j]), 2));
                 if (d < bestD) (bestD, best) = (d, f);
             }
             if (best == samples[i].Faction) right++;

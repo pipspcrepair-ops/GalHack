@@ -131,6 +131,8 @@ public sealed partial class HullVessel
     void Hall(Bay b)
     {
         string purpose = b.Kind switch { "engine" => "engine-room", "promenade" => "promenade", "ore-hold" => "ore-hold", "refinery" => "refinery", "hangar" => "hangar", _ => "hold" };
+        // (A stub of a hall at a piece's end, too short to have its door, stays solid.)
+        if (Math.Min(b.V1 - 2, Pc.V1 - 3) - Math.Max(b.V0 + 3, Pc.V0) < 3) return;
         int hall = NewSpace(purpose, 0, hall: true);
         for (int v = Math.Max(b.V0 + 3, Pc.V0); v <= Math.Min(b.V1 - 2, Pc.V1 - 1); v++)
         {

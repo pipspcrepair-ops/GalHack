@@ -522,15 +522,21 @@ public sealed partial class HullVessel
         {
             Int3 size = Footprint.WorldSize(cockpit, rot);
             // At the forward windows on the centre line, or as near it to port (away from the stair core's landing) as leaves the way clear.
-            var at = (from v in Enumerable.Range(front, Math.Max(1, s.V1 - front + 1)) from du in new[] { 0, -1, -2, -3, 1, 2, -4, -5, 3, 4, -6, 5 } select (U: (s.U0 + s.U1) / 2 - size.X / 2 + du, V: v))
+            int mid = (s.U0 + s.U1) / 2;
+            var at = (from v in Enumerable.Range(front, Math.Max(1, s.V1 - front + 1)) from u in Enumerable.Range(s.U0, s.U1 - s.U0 + 1).OrderBy(u => Math.Abs(u + size.X / 2 - mid)) select (U: u, V: v))
                 .FirstOrDefault(c => Fits(cockpit, At(c.U, s.Y, c.V), rot, Free), (U: int.MinValue, V: 0));
+            // (On a bridge too tight for that, anywhere but in a doorway itself.)
+            bool Clear(int x, int y, int vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && s.Floor.Contains((x, vv)) && !s.Taken.Contains((x, vv)) && !s.Doors.Any(d => d.Inside == (x, vv));
+            if (at.U == int.MinValue)
+                at = (from v in Enumerable.Range(s.V0, s.V1 - s.V0 + 1) from u in Enumerable.Range(s.U0, s.U1 - s.U0 + 1) select (U: u, V: v))
+                    .FirstOrDefault(c => Fits(cockpit, At(c.U, s.Y, c.V), rot, Clear), (U: int.MinValue, V: 0));
             if (at.U != int.MinValue) Device(cockpit, at.U, s.Y, at.V, rot, s);
         }
         // Command chairs either side of the helm about the bridge's own middle (an offset crown's is not the hull's), the
         // front row first and back row by row where the ways in or the windows leave no room.
         BlockType chair = Cat.Type("command-chair");
-        int mid = (s.U0 + s.U1) / 2, chairs = 0;
-        var columns = Enumerable.Range(s.U0, s.U1 - s.U0 + 1).Where(u => Math.Abs(u - mid) >= 3).OrderBy(u => Math.Abs(Math.Abs(u - mid) - 5)).ToList();
+        int centre = (s.U0 + s.U1) / 2, chairs = 0;
+        var columns = Enumerable.Range(s.U0, s.U1 - s.U0 + 1).Where(u => Math.Abs(u - centre) >= 3).OrderBy(u => Math.Abs(Math.Abs(u - centre) - 5)).ToList();
         for (int v = front; v <= s.V1 && chairs < 4; v++)
             foreach (int u in columns)
                 if (chairs < 4 && Fits(chair, At(u, s.Y, v), rot, Free))

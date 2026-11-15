@@ -369,7 +369,7 @@ sealed class Hulk
         HullStyle st = H.Style;
         H.Half = Math.Max(11, (int)MathF.Round(R.Between(h0, h1) * st.Beam));
         // (The style's share of the class's length, never past what Empyrion's longest derelicts reach with their engines.)
-        int target = Math.Min((int)MathF.Round(R.Between(l0, l1) * st.Length), 240);
+        int target = Math.Clamp((int)MathF.Round(R.Between(l0, l1) * st.Length), l0, 240);
         // Now and then a huge hull runs on toward the longest Empyrion's derelicts reach.
         if (S.Size == "huge" && R.Chance(0.15f)) target = R.Between(250, 270);
         // Each bay its own proportions about the hull's length; the crew's and the power bays hold a stair core and a full
