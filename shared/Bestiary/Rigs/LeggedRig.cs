@@ -184,15 +184,15 @@ public sealed class LeggedRig : Rig
         bool thrown = c.Move == AttackMove.Bite;
         _leaping = thrown && (c.Phase == AttackPhase.Lunge || (c.Phase == AttackPhase.Recover && c.PhaseTime < 0.25f));
         _gait += speed * dt / MathF.Max(0.15f, legLen * 0.9f);
-        // A big or tall body drops its forequarters into a bite, to bring its head down onto you.
-        float big = Math.Clamp(MathF.Max((L - 1.5f) / 4f, (_hipRest - 0.8f) / 1.6f), 0f, 1f), dip = thrown ? Lunging * big : 0f;
-        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing - 0.35f * dip);
+        // A tall body drops its forequarters into a bite, as far as it takes to bring its head down onto you.
+        float dip = thrown && c.Attacking ? Lunging * Dip(c, c.StrikeAt.Y) : 0f;
+        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing - dip);
         float bob = MathF.Sin(_gait * MathF.Tau * 2f) * 0.035f * legLen * MathF.Min(1f, speed / walk);
         float breathe = MathF.Sin(c.Age * 1.7f + c.Id) * 0.01f * H;
         float bodyY = groundMid + hip + H * 0.25f + bob + breathe;
         float deadY = groundMid + H * 0.5f;
         bodyY = Mathf.Lerp(bodyY, deadY, Dead);
-        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f - dip * 0.15f + Graze * 0.04f - Bracing * 0.1f;
+        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f - dip * 0.3f + Graze * 0.04f - Bracing * 0.1f;
         float roll = Math.Clamp(-YawRate * speed * 0.03f, -0.15f, 0.15f) + Dead * 1.35f + Twitch(c) * 0.08f;
         // A charge's wind-up rocks the body back and forth, like a bull pawing the ground.
         float paw = Bracing * MathF.Sin(c.Age * 9f) * 0.035f * L;
@@ -373,10 +373,11 @@ public sealed class LeggedRig : Rig
             }
             // A charge drops the head to lead with the horns; a long neck has further to drop.
             float brace = _neckRest > 0.5f ? 1.25f : 0.65f;
-            target = Mathf.Lerp(target, -0.15f, Crouch) + 0.55f * Rearing - 0.9f * Dead - brace * Bracing;
+            // (Coiled for a strike, the body sinks but the head holds back: it isn't thrown at anyone yet.)
+            target = Mathf.Lerp(target, -0.15f, c.Phase == AttackPhase.Windup ? 0f : Crouch) + 0.55f * Rearing - 0.9f * Dead - brace * Bracing;
             // A bite drives the head at the victim: the neck points at where the jaws are going, down and forward.
             float aimPitch = 0f;
-            bool biting = c.Attacking && c.Move == AttackMove.Bite && !c.Dead;
+            bool biting = c.Phase is AttackPhase.Lunge or AttackPhase.Recover && (c.Move is AttackMove.Bite or AttackMove.Charge) && !c.Dead;
             if (biting)
             {
                 Vector3 to = c.StrikeAt - baseW;
@@ -422,7 +423,7 @@ public sealed class LeggedRig : Rig
             float amp = speed > 0.3f ? 0.12f : 0.28f;
             float lag = Math.Clamp(-YawRate * 0.3f, -0.7f, 0.7f);
             // A swipe bends the tail round to a side and brings it down to the victim's height.
-            float swing = c.Dead ? 0f : c.Swipe, sweep = MathF.Min(1f, MathF.Abs(swing));
+            float swing = c.Dead ? 0f : c.Swipe, sweep = MathF.Min(1f, MathF.Abs(swing) * 3f);
             if (sweep > 0f)
             {
                 lag *= 1f - sweep;
@@ -453,11 +454,18 @@ public sealed class LeggedRig : Rig
     {
         Proportions b = Species.Body;
         if (_heads.Length == 0 || _neckLen <= b.Size * 0.12f) return base.Reach(c, y);
-        float big = Math.Clamp(MathF.Max((b.Size - 1.5f) / 4f, (_hipRest - 0.8f) / 1.6f), 0f, 1f);
-        float baseY = c.Position.Y + _hipRest * (1f - 0.35f * big) + b.Height * 0.53f;
-        float ahead = b.Size * (0.42f + 0.22f), len = _neckLen + b.HeadSize * 0.9f, dy = baseY - y;
+        float baseY = NeckBase(c) - _hipRest * Dip(c, y);
+        float ahead = b.Size * (0.42f + 0.22f), len = NeckReach, dy = baseY - y;
         return ahead + (dy < len ? MathF.Sqrt(len * len - dy * dy) : 0f);
     }
+
+    float NeckReach => _neckLen + Species.Body.HeadSize * 0.9f;
+
+    /// <summary>Its neck's root above the ground, standing.</summary>
+    float NeckBase(Creature c) => c.Position.Y + _hipRest + Species.Body.Height * 0.53f;
+
+    /// <summary>How far, as a share of its standing hip, it folds its legs so its head can reach down to this height in a bite (at most 60%).</summary>
+    float Dip(Creature c, float y) => Math.Clamp((NeckBase(c) - y - NeckReach * 0.8f) / MathF.Max(0.1f, _hipRest), 0f, 0.6f);
 
     /// <summary>What it strikes with now: a stomping foot, its tail's tip, or its head (horns and jaws).</summary>
     public override Vector4 Striker(Creature c)

@@ -131,7 +131,7 @@ public abstract class Rig
         Graze = Geo.Smooth(Graze, c.WantGraze, 2.5f, dt);
         Rearing = Geo.Smooth(Rearing, c.Rear, 10f, dt);
         Lunging = Geo.Smooth(Lunging, c.Lunge, 14f, dt);
-        Bracing = Geo.Smooth(Bracing, c.Brace, 6f, dt);
+        Bracing = Geo.Smooth(Bracing, c.Brace, c.Brace < Bracing ? 16f : 6f, dt); // a lowered head comes up into the blow at once
         Aiming = Geo.Smooth(Aiming, c.WantAim, 4f, dt);
         Dead = Mathf.MoveToward(Dead, c.Dead ? 1f : 0f, dt * 1.4f);
 

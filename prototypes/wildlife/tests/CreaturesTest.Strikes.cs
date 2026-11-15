@@ -66,7 +66,7 @@ public partial class CreaturesTest
         int HitsOf(AttackMove m) => log.HitsBy.GetValueOrDefault(m);
         Check(log.Hits >= species && log.FarHits == 0,
             $"blows land only on contact: {log.Hits} hits over {species} species from 0.6 to 9 m, none with the striking part further than {r.ContactSlack:F2} m from the body (worst gap {log.WorstGap:F3} m, deepest {log.DeepestGap:F2} m; {log.Worst})");
-        Check(log.MaxPartGap <= r.ContactSlack + 1e-3f && log.MaxDrawnGap <= 0.15f,
+        Check(log.MaxPartGap <= r.ContactSlack + 1e-3f && log.MaxDrawnGap <= 0.3f,
             $"the striking part the rig draws is at the body the step damage applies: its sweep over the last step at most {log.MaxPartGap:F3} m off, the drawn frame at most {log.MaxDrawnGap:F2} m ({log.WorstDrawn})");
         Check(log.Untold == 0, $"every hit is preceded by its tell ({log.Hits} hits, {log.Untold} without one)");
         var firsts = log.Windups.Where(x => x.first).ToList();

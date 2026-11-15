@@ -1755,7 +1755,7 @@ public partial class CreaturesTest : Node
             c.Yaw = 0f;
             sim.Attacked += e =>
             {
-                if (!e.Hit) return;
+                if (!e.Hit || e.First) return; // the telegraphed opener comes straight, to be dodged
                 hits++;
                 if (WildSim.Flat(c.Position - p.Position).Normalized().Dot(p.Forward) > -0.3f) front++;
             };
@@ -1773,7 +1773,7 @@ public partial class CreaturesTest : Node
             }
         }
         Check(worst < 0.25f, $"heads and bodies stop at the player's body: at worst {worst:F2} m into it, over {sized} sizes of hunter ({who})");
-        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
+        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites after the opener), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
     }
 
     /// <summary>A hit shows: it flinches, the small ones more; blood is the species' own and stays so.</summary>

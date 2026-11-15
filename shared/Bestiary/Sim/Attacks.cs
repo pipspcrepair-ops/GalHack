@@ -75,7 +75,7 @@ public static class Attacks
 
     /// <summary>
     /// Which way from its aim point a lunge ends: back the way it came, unless that is behind the
-    /// victim, when it swings round toward their front.
+    /// victim, when it swings round toward their front (not the opener, which comes straight).
     /// </summary>
     public static Vector3 Approach(Creature c, ITarget t, Vector3 from, Vector3 aim)
     {
@@ -85,7 +85,7 @@ public static class Attacks
         if (t is CreatureTarget || front.LengthSquared() < 1e-4f) return side;
         front = front.Normalized();
         float angle = MathF.Atan2(front.Cross(side).Y, front.Dot(side));
-        if (MathF.Abs(angle) <= Front) return side;
+        if (MathF.Abs(angle) <= Front || c.FirstAttack) return side; // the telegraphed opener comes straight, so stepping aside dodges it
         return side.Rotated(Vector3.Up, -MathF.Sign(angle) * MathF.Min(MathF.Abs(angle) - Front, Swing));
     }
 
@@ -221,13 +221,15 @@ public static class Attacks
                     Strikes.Quake(w, c, c.Position, false, false, w.Combat.Strikes.QuakeFootfall);
                 }
                 float gap = float.NaN;
-                if (c.Space != null)
+                if (c.Space != null || c.Species.Rig == RigKind.Swarm)
                 {
-                    if (c.PhaseTime >= c.PhaseLength) Land(w, c, t, InPlaceHit(w, c, t), gap);
+                    if (c.PhaseTime >= c.PhaseLength) Land(w, c, t, LandingHit(w, c, t), gap);
                 }
                 else if (Strikes.Touch(w, c, t, out gap)) Land(w, c, t, true, gap);
-                else if (c.Move is AttackMove.Bite or AttackMove.Charge && Strikes.Bumped(c, t)) Land(w, c, t, false, gap); // its body met them before its striking part did: nothing passes through anyone
-                else if (c.Move == AttackMove.Charge && c.PhaseTime < c.PhaseLength * 0.9f && c.LungeTo == c.Position && c.PhaseTime > 0.05f)
+                else if (c.Move is AttackMove.Bite or AttackMove.Charge && (c.LungeTo - c.LungeFrom).Dot(t.Position - c.Position) > 0f && Strikes.Bumped(c, t))
+                    c.LungeFrom = c.LungeTo = c.Position; // its body met them first: it stops there (nothing passes through anyone), and its head still comes on
+                if (c.Phase != AttackPhase.Lunge || c.Space != null || c.Species.Rig == RigKind.Swarm) break;
+                if (c.Move == AttackMove.Charge && c.PhaseTime < c.PhaseLength * 0.9f && c.LungeTo == c.Position && c.LungeFrom != c.LungeTo && c.PhaseTime > 0.05f)
                 {
                     // Ran into something solid: it stops hard and stands dazed.
                     Strikes.Quake(w, c, c.Position, false, false);
@@ -338,7 +340,10 @@ public static class Attacks
         c.StrikeSteps = c.Rig.Steps;
         // Where on the victim the striking part goes: the nearest of their body to it (a giant's head comes down to the chest, a small hunter's goes for the legs).
         Vector4 part = c.Rig.Striker(c);
-        c.StrikeAt = aim + Vector3.Up * Math.Clamp(part.Y - aim.Y, 0.3f, c.AttackTarget.Crouched ? 0.9f : 1.3f);
+        // ...at their skin, on the side it comes from, so it drives up to them and not through.
+        Vector3 back = WildSim.Flat(c.Position - aim);
+        c.StrikeAt = aim + Vector3.Up * Math.Clamp(part.Y - aim.Y, 0.5f, c.AttackTarget.Crouched ? 0.9f : 1.3f)
+                     + (back.LengthSquared() > 1e-4f && c.AttackTarget is not CreatureTarget ? back.Normalized() * BodyRadius : Vector3.Zero);
         switch (c.Move)
         {
             case AttackMove.Stomp:
@@ -365,8 +370,9 @@ public static class Attacks
             }
         }
         if (Mouthed(c)) c.Gape = 1f; // jaws wide for the bite
-        // It drives its jaws a little into the aim point, so they meet whoever stands there; contact stops it.
-        float stop = c.Rig.Reach(c, c.StrikeAt.Y) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius) - 0.5f;
+        // It drives its jaws into the aim point, so they meet whoever stands there; contact stops it (a body
+        // that strikes with whatever part is nearest can go deeper: that part meets them first).
+        float stop = c.Rig.Reach(c, c.StrikeAt.Y) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius) - (c.Species.Rig == RigKind.Legged ? 0.65f : 1f);
         Vector3 go = WildSim.Flat(aim + Approach(c, c.AttackTarget, c.Position, aim) * stop - c.Position);
         float d = go.Length();
         Vector3 along = d > 0.01f ? go / d : c.Forward;
@@ -375,21 +381,23 @@ public static class Attacks
         c.LungeTo = c.Position + along * travel;
         Vector3 at = WildSim.Flat(aim - c.LungeTo);
         Vector3 dir = at.LengthSquared() > 1e-4f ? at.Normalized() : c.Forward;
-        c.StrikePoint = c.LungeTo + dir * MathF.Min(stop, at.Length()); // someone already inside its reach is bitten where they stand
+        c.StrikePoint = c.LungeTo + dir * Math.Clamp(stop, 0f, at.Length()); // someone already inside its reach is bitten where they stand
         c.Yaw = MathF.Atan2(-dir.X, -dir.Z);
         c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / (c.Species.Flight == FlightKind.Hover ? MostLungeSpeed : MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f)));
     }
 
     /// <summary>
-    /// In a cave or a place the lunge is a flight through the open, judged where it ends: the
-    /// rigs there don't all pose on the place's floor yet, so its drawn parts can't be the judge.
+    /// Judged where the lunge ends, for what has no one striking part: a swarm stings wherever its
+    /// cloud comes down, and in a cave or a place the lunge is a flight through the open (the rigs
+    /// there don't all pose on the place's floor yet, so their drawn parts can't be the judge).
     /// </summary>
-    static bool InPlaceHit(WildSim w, Creature c, ITarget t)
+    static bool LandingHit(WildSim w, Creature c, ITarget t)
     {
         Vector3 end = c.StrikePoint;
-        float rise = end.Y - t.Position.Y;
+        float rise = end.Y - t.Position.Y, near = w.Combat.ContactRadius + c.Radius * 0.4f;
+        if (c.Space == null) return t.Attackable && WildSim.Flat(t.Position - end).Length() <= near && t.Position.Y - w.Terrain.Height(end.X, end.Z) < 2.2f;
         return t.Attackable
-               && WildSim.Flat(t.Position - end).Length() <= w.Combat.ContactRadius + c.Radius * 0.4f
+               && WildSim.Flat(t.Position - end).Length() <= near
                && rise > -0.8f && rise < 2.3f
                && SpaceMath.Clear(c.Space, end, t.Position + Vector3.Up * (BodyHeight * 0.5f)); // never through a wall, floor or ceiling
     }
