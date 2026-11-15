@@ -550,6 +550,10 @@ public partial class PopRoute : Node
         ["walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
         ["bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
         ["fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, MinSpecOff, MinSpecMoveOff, double.NaN),
+        // The city at 60 a second on the stand-in: frames off the most common 3.6, 4.2 and 9.7 % (16 Nov).
+        ["city walk"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, 15, MinSpecMoveOff, double.NaN),
+        ["city bike"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, 15, MinSpecMoveOff, double.NaN),
+        ["city fly"] = new(double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, 10, 15, MinSpecMoveOff, double.NaN),
     };
 
     int _gateFails;
