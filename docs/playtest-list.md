@@ -768,7 +768,8 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 - [ ] PoiTest PlainRuins fails two checks on the build before the ruins look as well as after, so they're older (15 Nov A/B on fresh worlds):
   - "every face is drawn": 32,665 faces missing before against 24,496 after, the first always a plain concrete wall's north face [batch2 254ecb84: not holes, just faces hidden behind round rims the check didn't know about; 0 missing];
-  - "dug into the ground": 36 before and after, all Warning, Hazard and Sign Posts [running: facepaint agent] [normal].
+  - "dug into the ground": 36 before and after, all Warning, Hazard and Sign Posts [batch2 d4e88e49: fixed, 0 dug in; a stray road stub under each post] [normal].
+- [ ] Town.PoseWeapon throws ObjectDisposedException (170 in one PopRoute run on a temperate world, Town.Combat.cs:469); may explain walk p99 19 ms and bike 37 ms there [running: facepaint agent] [high]
   A full PoiTest under the busy queue hits its 35-minute watchdog, with 11 failures (collision merging, architect layouts, a missing hull-plate loot id, food in old caches); untested before and after [normal]
 - [ ] FloraTest fails three plant-mesh checks on some fresh worlds (15 Nov, test build folder):
   - 18 of 14,939 mesh points outside their colliders;
