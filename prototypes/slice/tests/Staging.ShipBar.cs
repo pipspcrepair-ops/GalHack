@@ -62,10 +62,10 @@ public sealed partial class Staging
         foreach (int x in Play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "3-core.png"))) yield return x;
-        _game.Menu.Root.Core.Structure.ShowNumbers = true;
-        foreach (int x in _drive.Wait(5)) yield return x;
+        foreach (int x in _drive.ClickWidget("core:page:numbers")) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "4-core-numbers.png"))) yield return x;
-        _game.Menu.Root.Core.Structure.ShowNumbers = false;
+        foreach (int x in _drive.ClickWidget("core:page:settings")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
         // The turret close up, switched on (barrels run out, its light lit) and off (parked low, dark).
         Vector3 turret = v.ToWorld(v.Structure.PointOf(BarTest.Turret, v.Structure.Get(BarTest.Turret), N.Vector3.Zero) * v.Structure.Grid.CellSize);
