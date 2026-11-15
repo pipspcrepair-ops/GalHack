@@ -113,6 +113,10 @@ public static class Strikes
         return false;
     }
 
+    /// <summary>The middle line of a person's body: feet to head, inset by its radius.</summary>
+    public static (Vector3 from, Vector3 to) Axis(ITarget t) =>
+        (t.Position + Vector3.Up * Attacks.BodyRadius, t.Position + Vector3.Up * ((t.Crouched ? CrouchHeight : Attacks.BodyHeight) - Attacks.BodyRadius));
+
     /// <summary>How far a sphere of radius r moved from a to b passes from the victim's body (a person's capsule, or a creature's own hit spheres).</summary>
     public static float Gap(Vector3 a, Vector3 b, float r, ITarget t)
     {
@@ -127,16 +131,20 @@ public static class Strikes
             }
             return best;
         }
-        float tall = t.Crouched ? CrouchHeight : Attacks.BodyHeight;
-        return SegmentGap(a, b, t.Position + Vector3.Up * Attacks.BodyRadius, t.Position + Vector3.Up * (tall - Attacks.BodyRadius)) - r - Attacks.BodyRadius;
+        (Vector3 from, Vector3 to) = Axis(t);
+        return SegmentGap(a, b, from, to) - r - Attacks.BodyRadius;
     }
 
     /// <summary>The least distance between segments p0-p1 and q0-q1.</summary>
-    public static float SegmentGap(Vector3 p0, Vector3 p1, Vector3 q0, Vector3 q1)
+    public static float SegmentGap(Vector3 p0, Vector3 p1, Vector3 q0, Vector3 q1) => Closest(p0, p1, q0, q1, out _);
+
+    /// <summary>The least distance between segments p0-p1 and q0-q1, and the point on the first where it is.</summary>
+    public static float Closest(Vector3 p0, Vector3 p1, Vector3 q0, Vector3 q1, out Vector3 onP)
     {
         Vector3 d1 = p1 - p0, d2 = q1 - q0, r = p0 - q0;
         float a = d1.Dot(d1), e = d2.Dot(d2), f = d2.Dot(r);
         float s, u;
+        onP = p0;
         if (a < 1e-8f && e < 1e-8f) return r.Length();
         if (a < 1e-8f) { s = 0f; u = Math.Clamp(f / e, 0f, 1f); }
         else
@@ -152,7 +160,8 @@ public static class Strikes
                 else if (u > 1f) { u = 1f; s = Math.Clamp((bb - c) / a, 0f, 1f); }
             }
         }
-        return (p0 + d1 * s - (q0 + d2 * u)).Length();
+        onP = p0 + d1 * s;
+        return (onP - (q0 + d2 * u)).Length();
     }
 
     /// <summary>A landed blow's share of its damage, by the move.</summary>

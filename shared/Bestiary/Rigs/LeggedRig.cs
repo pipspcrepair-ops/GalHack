@@ -377,7 +377,7 @@ public sealed class LeggedRig : Rig
             target = Mathf.Lerp(target, -0.15f, c.Phase == AttackPhase.Windup ? 0f : Crouch) + 0.55f * Rearing - 0.9f * Dead - brace * Bracing;
             // A bite drives the head at the victim: the neck points at where the jaws are going, down and forward.
             float aimPitch = 0f;
-            bool biting = c.Phase is AttackPhase.Lunge or AttackPhase.Recover && (c.Move is AttackMove.Bite or AttackMove.Charge) && !c.Dead;
+            bool biting = c.Phase == AttackPhase.Lunge && (c.Move is AttackMove.Bite or AttackMove.Charge) && !c.Dead;
             if (biting)
             {
                 Vector3 to = c.StrikeAt - baseW;
@@ -475,15 +475,14 @@ public sealed class LeggedRig : Rig
         if (c.Move == AttackMove.Swipe && _tailPts.Length > 1)
         {
             // The whole tail sweeps: the part of it nearest the victim strikes, thicker toward the root, a club at the tip.
+            (Vector3 from, Vector3 to) = c.AttackTarget != null ? Strikes.Axis(c.AttackTarget) : (c.StrikeAt, c.StrikeAt);
             Vector3 best = _tailPts[^1];
             float bestD = float.MaxValue, along = 1f;
             for (int i = 0; i + 1 < _tailPts.Length; i++)
             {
-                Vector3 a = _tailPts[i], d = _tailPts[i + 1] - a;
-                float k = d.LengthSquared() > 1e-6f ? Math.Clamp((c.StrikeAt - a).Dot(d) / d.LengthSquared(), 0f, 1f) : 0f;
-                Vector3 q = a + d * k;
-                float dist = q.DistanceSquaredTo(c.StrikeAt);
-                if (dist < bestD) { bestD = dist; best = q; along = (i + k) / (_tailPts.Length - 1); }
+                float dist = Strikes.Closest(_tailPts[i], _tailPts[i + 1], from, to, out Vector3 q);
+                float seg = _tailPts[i].DistanceTo(_tailPts[i + 1]);
+                if (dist < bestD) { bestD = dist; best = q; along = (i + (seg > 1e-4f ? _tailPts[i].DistanceTo(q) / seg : 0f)) / (_tailPts.Length - 1); }
             }
             float radius = along > 0.85f ? _tailTipRadius : Mathf.Lerp(b.Width * 0.2f, b.Width * 0.06f, along);
             return new Vector4(best.X, best.Y, best.Z, radius);

@@ -1766,8 +1766,9 @@ public partial class CreaturesTest : Node
                 for (int i = 0; i < c.Rig.HitCount; i++)
                 {
                     Vector4 h = c.Rig.Hits[i];
-                    if (h.Y - h.W > Attacks.BodyHeight) continue;
-                    float into = h.W + Attacks.BodyRadius - WildSim.Flat(new Vector3(h.X, 0f, h.Z) - p.Position).Length();
+                    // Into their body as it is, a capsule: a head coming down from above meets the top of it.
+                    var at = new Vector3(h.X, h.Y, h.Z);
+                    float into = -Strikes.Gap(at, at, h.W, p);
                     if (into > worst) { worst = into; who = $"{size:F1} m {s.CommonName}, part {i} of {c.Rig.HitCount}, state {c.State} phase {c.Phase}"; }
                 }
             }

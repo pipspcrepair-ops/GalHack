@@ -49,7 +49,7 @@ public partial class CreaturesTest
         Species giant = Hunter(world.Species.First(s => s.Rig == RigKind.Legged && !s.Flies && !s.Mechanical), 7f);
         giant.Body.LegStyle = LegStyle.Upright;
         giant.Body.Legs = Math.Max(4, giant.Body.Legs / 2 * 2);
-        giant.Body.LegThickness = giant.Body.Width * 0.25f;
+        giant.Body.LegThickness = MathF.Max(giant.Body.Width * 0.25f, giant.Body.LegLength * 0.15f); // pillars
         giant.Body.TailLength = giant.Body.Size * 0.8f;
         giant.Parts["tail"] = "club";
         giant.Parts["horns"] = "pair";
@@ -57,7 +57,7 @@ public partial class CreaturesTest
         bool stomps = Strikes.CanStomp(giant, r.Strikes), charges = Strikes.CanCharge(giant, r.Strikes), swipes = Strikes.CanSwipe(giant, r.Strikes);
         StrikeCase(log, giant, new Vector3(0.3f, 0f, -(b.Size * 0.5f + b.LegLength * 0.4f)), dodge: false);
         StrikeCase(log, giant, new Vector3(0.3f, 0f, -(b.Size * 0.5f + b.LegLength * 0.4f)), dodge: true);
-        StrikeCase(log, giant, new Vector3(b.Size * 0.3f, 0f, b.Size * 0.5f + b.TailLength * 0.5f), dodge: false);
+        for (int i = 0; i < 3; i++) StrikeCase(log, giant, new Vector3(b.Size * (0.2f + 0.15f * i), 0f, b.Size * 0.5f + b.TailLength * 0.5f), dodge: false);
         StrikeCase(log, giant, new Vector3(b.Size * 0.3f, 0f, b.Size * 0.5f + b.TailLength * 0.5f), dodge: true);
         StrikeCase(log, giant, new Vector3(0f, 0f, -(b.Size * 0.5f + r.Strikes.ChargeFrom + 3f)), dodge: false);
         StrikeCase(log, giant, new Vector3(0f, 0f, -(b.Size * 0.5f + r.Strikes.ChargeFrom + 3f)), dodge: true);
@@ -78,7 +78,7 @@ public partial class CreaturesTest
         Check(log.Misses > 0 && log.Bites > 0 && log.OpenLunges == log.Bites && log.Snapped == log.Bites,
             $"jaws open wide in every lunge ({log.OpenLunges} of {log.Bites}) and snap shut at contact or the lunge's end ({log.Snapped} of {log.Bites})");
         Check(stomps && charges && swipes && HitsOf(AttackMove.Stomp) > 0 && HitsOf(AttackMove.Charge) > 0 && HitsOf(AttackMove.Swipe) > 0,
-            $"a pillar-legged, horned, club-tailed giant stomps ({HitsOf(AttackMove.Stomp)} of {Tries(AttackMove.Stomp)} landed), charges ({HitsOf(AttackMove.Charge)} of {Tries(AttackMove.Charge)}) and swipes its tail ({HitsOf(AttackMove.Swipe)} of {Tries(AttackMove.Swipe)}), by contact");
+            $"a pillar-legged, horned, club-tailed giant ({b.Size:F1} m, {b.Legs} legs {b.LegThickness:F2} thick for {b.LegLength:F2}: stomps {stomps}, charges {charges}, swipes {swipes}) stomps ({HitsOf(AttackMove.Stomp)} of {Tries(AttackMove.Stomp)} landed), charges ({HitsOf(AttackMove.Charge)} of {Tries(AttackMove.Charge)}) and swipes its tail ({HitsOf(AttackMove.Swipe)} of {Tries(AttackMove.Swipe)}), by contact");
         Check(log.Stomps > 0 && log.Quakes == log.Stomps, $"every stomp shakes the ground and thuds, hit or miss ({log.Quakes} quakes for {log.Stomps} stomps)");
     }
 

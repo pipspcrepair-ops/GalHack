@@ -241,7 +241,7 @@ public static class Attacks
                 break;
 
             case AttackPhase.Recover:
-                c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * 3f);
+                c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * (c.StrikeLanded ? 8f : 3f)); // a blow that met someone rebounds off them
                 c.Swipe = Mathf.MoveToward(c.Swipe, 0f, dt * 2f);
                 if (c.PhaseTime > 0.15f) c.Gape = Mathf.MoveToward(c.Gape, 0f, dt * 4f);
                 c.Desired = c.PhaseTime < 0.5f ? -c.Forward * c.Stats.WalkSpeed * 0.6f : Vector3.Zero;

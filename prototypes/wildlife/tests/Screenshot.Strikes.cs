@@ -30,7 +30,7 @@ public partial class Screenshot
         if (kind != "bite")
         {
             b.LegStyle = LegStyle.Upright;
-            b.LegThickness = b.Width * 0.25f;
+            b.LegThickness = MathF.Max(b.Width * 0.25f, b.LegLength * 0.15f); // pillars
         }
         if (kind == "swipe") { s.Parts["tail"] = "club"; b.TailLength = b.Size * 0.8f; }
         if (kind == "charge") s.Parts["horns"] = "pair";
