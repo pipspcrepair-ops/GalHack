@@ -20,9 +20,9 @@ public partial class PopRoute
         TerrainStreamer s = _game.Zone.Streamer;
         Viewport view = GetViewport();
         void Reach(float large) => s.FloraMaterial.SetShaderParameter("flora_reach", new Vector2(large, DetailReach.Small));
-        // Every drawing of large growth now standing (small growth is its own layer).
-        List<MultiMeshInstance3D> Trees() => s.FindChildren("L*", nameof(MultiMeshInstance3D), true, false).OfType<MultiMeshInstance3D>()
-            .Where(m => m.Name != $"L{TerrainStreamer.SmallLayer}").ToList();
+        // Every far chunk's drawing of large growth now standing (small growth is its own layer).
+        List<MultiMeshInstance3D> Trees() => s.FindChildren("*", nameof(MultiMeshInstance3D), true, false).OfType<MultiMeshInstance3D>()
+            .Where(m => m.GetParent().Name.ToString().StartsWith("Far ") && (float)m.GetInstanceShaderParameter("flora_layer") != TerrainStreamer.SmallLayer).ToList();
         List<MultiMeshInstance3D> held = null;
         var cast = new Dictionary<MultiMeshInstance3D, GeometryInstance3D.ShadowCastingSetting>();
         var states = new (string Name, Action On, Action Off)[]

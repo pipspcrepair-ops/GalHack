@@ -106,7 +106,7 @@ public partial class TerrainStreamer
             float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, eye.X, w), z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, eye.Z, h);
             foreach (Node n in f.Node.GetChildren())
             {
-                if (n is not MultiMeshInstance3D m || m.Name.ToString() is not ['L', var c]) continue;
+                if (n is not MultiMeshInstance3D m || m.Name.ToString() is not ['L', var c, ..]) continue;
                 FloraBatch b = f.Flora[m.GetMeta(BatchMeta).AsInt32()];
                 float d = (m.GlobalTransform * m.Multimesh.GetAabb().GetCenter()).DistanceTo(eye);
                 if (d >= m.VisibilityRangeBegin && (m.VisibilityRangeEnd <= 0f || d <= m.VisibilityRangeEnd)) continue;

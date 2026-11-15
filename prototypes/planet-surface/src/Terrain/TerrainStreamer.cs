@@ -895,45 +895,27 @@ public partial class TerrainStreamer : Node3D
         // Far chunks share the frame's upload budget with the voxels: one at most, and only if the
         // voxel uploads left time for it, so the two never stack into one long frame.
         // But a run of busy frames (walking with the voxels streaming) never starves them: every few frames one goes in anyway.
-        int applied = 0;
-        if (!_farDone.IsEmpty) _farWaited++;
-        while (_farDone.TryPeek(out _))
+        // Its node is put together over several frames, hidden (StepFarNode), and shown whole once it stands: one at a time.
+        if (_building == null && !_farDone.IsEmpty) _farWaited++;
+        while (_building == null && _farDone.TryPeek(out _))
         {
-            if (applied > 0 || Stopwatch.GetElapsedTime(_frameStart).TotalMilliseconds > UploadBudgetMs && _farWaited < FarPatience) break;
+            if (Stopwatch.GetElapsedTime(_frameStart).TotalMilliseconds > UploadBudgetMs && _farWaited < FarPatience) break;
             _farWaited = 0;
             _farDone.TryDequeue(out FarJob job);
             _farInFlight--;
-            applied++;
             if (!_far.TryGetValue((job.Fx, job.Fz), out FarChunk f)) continue;
-            f.InFlight = false;
             if (job.Error != null)
             {
+                f.InFlight = false;
                 GD.PushError($"far chunk {job.Fx},{job.Fz} failed: {job.Error}");
                 continue;
             }
             FarBuildMs[job.Lod] += job.Milliseconds;
             FarBuilds[job.Lod]++;
-            if (job.Version != f.Version) continue; // flora went stale: it is requested again
-            NotePops(f, job);
-            Node3D old = f.Node;
-            long nodeStart = Stopwatch.GetTimestamp();
-            f.Node = BuildFarNode(job);
-            f.Flora = job.Flora;
-            double nodeMs = Stopwatch.GetElapsedTime(nodeStart).TotalMilliseconds;
-            if (nodeMs > WorstFarNodeMs)
-            {
-                WorstFarNodeMs = nodeMs;
-                int flora = 0;
-                foreach (var (_, _, count) in job.Flora) flora += count;
-                WorstFarNode = $"lod {job.Lod}, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
-            }
-            f.Lod = job.Lod;
-            f.Solids = job.Solids;
-            if (job.Lod == 0) SolidsChanged(job.Fx, job.Fz);
-            AddChild(f.Node);
-            BeginSwap(job.Fx, job.Fz, old, f.Node);
-            FarApplied?.Invoke(job.Fx, job.Fz, job.Lod, f.Node);
+            if (job.Version != f.Version) { f.InFlight = false; continue; } // flora went stale: it is requested again
+            StartFarNode(job, f);
         }
+        if (_building != null) StepFarNode();
 
         // Drop far chunks out of range; place the rest at their copy nearest the focus.
         List<(int, int)> gone = null;
@@ -1051,9 +1033,21 @@ public partial class TerrainStreamer : Node3D
     public static double NearestCopy(double canonical, double size, double focus, double span) =>
         canonical + span * Math.Round((focus - canonical - size * 0.5) / span);
 
-    Node3D BuildFarNode(FarJob job)
+    /// <summary>The far chunk whose node is being put together (hidden, a few drawings a frame), its node, the next batch to draw and its longest frame, ms.</summary>
+    FarJob _building;
+    FarChunk _buildChunk;
+    Node3D _buildNode;
+    int _buildNext;
+    double _buildMs;
+
+    /// <summary>The most of a frame a far chunk's node takes putting itself together, ms (at least one drawing a frame).</summary>
+    const double FarNodeStepMs = 0.8;
+
+    /// <summary>A far chunk's node begins, hidden, with its water: its flora drawings follow a few a frame, so none of it lands in one frame.</summary>
+    void StartFarNode(FarJob job, FarChunk chunk)
     {
-        var node = new Node3D { Name = $"Far {job.Fx} {job.Fz} lod{job.Lod}", PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
+        long start = Stopwatch.GetTimestamp();
+        var node = new Node3D { Name = $"Far {job.Fx} {job.Fz} lod{job.Lod}", PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off, Visible = false };
         if (job.WaterVertices != null)
         {
             var water = new Godot.Collections.Array();
@@ -1064,8 +1058,19 @@ public partial class TerrainStreamer : Node3D
             waterMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, water);
             node.AddChild(new MeshInstance3D { Mesh = waterMesh, MaterialOverride = _waterMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         }
-        for (int k = 0; k < job.Flora.Count; k++)
+        AddChild(node);
+        (_building, _buildChunk, _buildNode, _buildNext) = (job, chunk, node, 0);
+        _buildMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+    }
+
+    /// <summary>Puts in the building node's next drawings within the frame's step, and shows it whole once it has them all.</summary>
+    void StepFarNode()
+    {
+        long start = Stopwatch.GetTimestamp();
+        FarJob job = _building;
+        while (_buildNext < job.Flora.Count && (Stopwatch.GetElapsedTime(start).TotalMilliseconds < FarNodeStepMs || _buildNext == 0))
         {
+            int k = _buildNext++;
             FloraBatch b = job.Flora[k];
             // A large plant with a far mesh is two drawings of the one buffer: its near mesh out to its near reach, its far one past it.
             Mesh far = b.Layer == LargeLayer ? FarMesh(b.Plant) : null;
@@ -1079,7 +1084,8 @@ public partial class TerrainStreamer : Node3D
                 multimesh.Buffer = b.Buffer;
                 var flora = new MultiMeshInstance3D
                 {
-                    Name = $"L{layer}",
+                    // Its layer, then its batch: names unique in the node (a repeated one would be renamed).
+                    Name = $"L{layer} {k}",
                     Multimesh = multimesh, MaterialOverride = _floraMaterial,
                     // A tree casts its shadow as far as the sun's shadows reach; small growth only in the finest chunks.
                     CastShadow = layer != SmallLayer || job.Lod == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
@@ -1089,10 +1095,40 @@ public partial class TerrainStreamer : Node3D
                 flora.SetMeta(BatchMeta, k);
                 SetRange(flora, layer);
                 flora.SetInstanceShaderParameter(PlanetSurface.Fx.Names.Of("flora_layer"), (float)layer);
-                node.AddChild(flora);
+                _buildNode.AddChild(flora);
             }
         }
-        return node;
+        _buildMs = Math.Max(_buildMs, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        if (_buildNext < job.Flora.Count) return;
+
+        Node3D node = _buildNode;
+        (_building, _buildNode) = (null, null);
+        FarChunk f = _buildChunk;
+        if (!_far.TryGetValue((job.Fx, job.Fz), out FarChunk now) || now != f || job.Version != f.Version)
+        {
+            // Gone out of range, or its flora went stale while it was put together (requested again).
+            node.QueueFree();
+            f.InFlight = false;
+            return;
+        }
+        f.InFlight = false;
+        if (_buildMs > WorstFarNodeMs)
+        {
+            WorstFarNodeMs = _buildMs;
+            int flora = 0;
+            foreach (var (_, _, count) in job.Flora) flora += count;
+            WorstFarNode = $"lod {job.Lod}, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0} (its longest frame)";
+        }
+        NotePops(f, job);
+        Node3D old = f.Node;
+        f.Node = node;
+        f.Flora = job.Flora;
+        f.Lod = job.Lod;
+        f.Solids = job.Solids;
+        if (job.Lod == 0) SolidsChanged(job.Fx, job.Fz);
+        node.Visible = true;
+        BeginSwap(job.Fx, job.Fz, old, node);
+        FarApplied?.Invoke(job.Fx, job.Fz, job.Lod, node);
     }
 
     /// <summary>A flora drawing's batch, its index in its far chunk's flora (two drawings share a batch).</summary>
@@ -1129,7 +1165,7 @@ public partial class TerrainStreamer : Node3D
         {
             if (f.Node == null) continue;
             foreach (Node child in f.Node.GetChildren())
-                if (child is MultiMeshInstance3D m && m.Name.ToString() is ['L', var c]) SetRange(m, c - '0');
+                if (child is MultiMeshInstance3D m && m.Name.ToString() is ['L', var c, ..]) SetRange(m, c - '0');
         }
     }
 
@@ -1265,6 +1301,8 @@ public partial class TerrainStreamer : Node3D
             c.Body?.QueueFree();
         }
         foreach (FarChunk f in _far.Values) f.Node?.QueueFree();
+        _buildNode?.QueueFree();
+        (_building, _buildNode) = (null, null);
         Clip?.Clear();
         ClearSwaps();
         if (World != null) ClearSolids();
