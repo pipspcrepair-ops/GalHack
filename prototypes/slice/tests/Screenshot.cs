@@ -164,6 +164,6 @@ public partial class Screenshot : Node
         Image image = GetViewport().GetTexture().GetImage();
         Error err = image.SavePng(_out);
         GD.Print(err == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {err}");
-        Quit(err == Error.Ok ? 0 : 1);
+        Quit(err == Error.Ok && _staging.Faults == 0 ? 0 : 1);
     }
 }
