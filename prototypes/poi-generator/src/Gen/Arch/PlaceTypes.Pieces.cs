@@ -150,13 +150,16 @@ public static partial class PlaceTypes
             (b.X0, b.Z0, b.X1, b.Z0 + 2, Dir.North), (b.X0, b.Z1 - 2, b.X1, b.Z1, Dir.South),
             (b.X0, b.Z0 + 2, b.X0 + 2, b.Z1 - 2, Dir.West), (b.X1 - 2, b.Z0 + 2, b.X1, b.Z1 - 2, Dir.East),
         };
+        // The gate where the access road comes in: on the side whose line passes nearest it, wherever the sketch put it.
+        static float LineOf((float X0, float Z0, float X1, float Z1, Dir Out) s) => s.Out switch { Dir.North => s.Z0, Dir.South => s.Z1, Dir.West => s.X0, _ => s.X1 };
+        var gateSide = sides.OrderBy(s => MathF.Abs((s.Out is Dir.North or Dir.South ? gz : gx) - LineOf(s))).First().Out;
         foreach (var (x0, z0, x1, z1, way) in sides)
         {
             bool alongX = way is Dir.North or Dir.South;
             float len = alongX ? x1 - x0 : z1 - z0;
             var at = new List<float>();
-            float line = way switch { Dir.North => z0, Dir.South => z1, Dir.West => x0, _ => x1 };
-            if (MathF.Abs((alongX ? gz : gx) - line) < 3f) at.Add((alongX ? gx : gz) - (alongX ? x0 : z0));
+            float line = LineOf((x0, z0, x1, z1, way));
+            if (way == gateSide) at.Add(Math.Clamp((alongX ? gx : gz) - (alongX ? x0 : z0), 8f, len - 8f));
             // (And wherever a strip of laid ground runs through its line: a taxiway, a road in, a siding.)
             foreach (Shape g in crossing)
             {
@@ -169,9 +172,14 @@ public static partial class PlaceTypes
             }
             if (len > 600f && r.Chance(0.7f)) at.Add(r.Float(0.2f, 0.8f) * len);
             int runs = (int)MathF.Ceiling(len / FenceRun);
+            // Where one run ends and the next begins, never at a gate (a gate stays whole in one run).
+            var cuts = Enumerable.Range(0, runs + 1).Select(k => MathF.Round(len * k / runs / 2f) * 2f).ToArray();
+            for (int k = 1; k < runs; k++)
+                if (at.FirstOrDefault(g => MathF.Abs(g - cuts[k]) < 8f, float.NaN) is var near && !float.IsNaN(near))
+                    cuts[k] = MathF.Round((near + (cuts[k] > near ? 8f : -8f)) / 2f) * 2f;
             for (int k = 0; k < runs; k++)
             {
-                float a0 = MathF.Round(len * k / runs / 2f) * 2f, a1 = MathF.Round(len * (k + 1) / runs / 2f) * 2f;
+                float a0 = cuts[k], a1 = cuts[k + 1];
                 SketchBox run = alongX ? new SketchBox(x0 + a0, z0, x0 + a1, z1) : new SketchBox(x0, z0 + a0, x1, z0 + a1);
                 // Gates as the run's own frame reads them (u runs along +x facing north, -x south, +z east, -z west).
                 bool reversed = way is Dir.South or Dir.West;
