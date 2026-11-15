@@ -71,6 +71,9 @@ public partial class SkyTraffic : Node
     public double WorstMs { get; private set; }
     public string WorstWhat { get; private set; } = "";
 
+    /// <summary>The longest a spot search took in one tick, ms (tests).</summary>
+    public double SearchWorstMs { get; private set; }
+
     List<GalHack.Structures.Int3> _lamps = new();
     int _firstLamp = -1;
 
@@ -108,7 +111,7 @@ public partial class SkyTraffic : Node
             if (++_tick % 10 == 0) { Upkeep(); what += " + upkeep"; }
         }
         LastTickMs = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, what + (GC.CollectionCount(0) != gcs ? ", a garbage collection in it" : ""));
+        if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, $"{what} to {Ship.Phase}{(GC.CollectionCount(0) != gcs ? ", a garbage collection in it" : "")}, searching {SearchWorstMs:F1} ms at most");
     }
 
     // ---- The ship ---------------------------------------------------------------------------------------------
@@ -259,6 +262,7 @@ public partial class SkyTraffic : Node
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         while (!q.Done && System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds < budgetMs)
             if (!q.Steps.MoveNext()) q.Done = true;
+        if (budgetMs < 1e3) SearchWorstMs = Math.Max(SearchWorstMs, System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds);
         return q.Done;
     }
 

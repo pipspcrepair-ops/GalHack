@@ -90,11 +90,18 @@ public sealed partial class Staging
                 Vector3 q = SkyGround(p + new Vector3(MathF.Cos(k * 0.52f), 0f, MathF.Sin(k * 0.52f)) * r, 1.7f);
                 List<PlanetSurface.Terrain.FloraSolid> near;
                 while ((near = _game.Sky.ScatterNear(q.ToNumerics(), 12f)) == null) yield return 0;
+                // Over the ground all the way, and no tree or rock within 8 m of the line for its first 200 m (where a crown would hide it).
                 bool seen = true;
                 for (float s = 0.05f; s < 0.95f && seen; s += 0.05f)
                 {
                     Vector3 on = q.Lerp(look, s);
                     seen = _game.Zone.GroundAt(on.X, on.Z).Y < on.Y - 1f;
+                }
+                for (float d = 10f; seen && d < MathF.Min(200f, q.DistanceTo(look)); d += 12f)
+                {
+                    List<PlanetSurface.Terrain.FloraSolid> line;
+                    while ((line = _game.Sky.ScatterNear((q + (look - q).Normalized() * d).ToNumerics(), 8f)) == null) yield return 0;
+                    seen = line.Count == 0;
                 }
                 if (near.Count == 0 && seen) { set(q); yield break; }
             }
