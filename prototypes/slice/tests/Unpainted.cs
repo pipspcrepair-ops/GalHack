@@ -21,7 +21,7 @@ public static class Unpainted
         public override string ToString() => $"{Kind}: {Path} [{Mesh}, {Material}] {Vertices} vertices at {Box.Position.Round()}+{Box.Size.Round()}, foot {Over:0.0} m over the ground";
     }
 
-    /// <summary>A mesh's foot this far over the ground, with nothing drawn under it, is floating, m.</summary>
+    /// <summary>A whole thing whose lowest foot is this far over the ground is floating, m.</summary>
     const float Clear = 3f;
 
     /// <summary>Every fault within <paramref name="range"/> of <paramref name="at"/> (horizontally) under <paramref name="root"/>; <paramref name="ground"/> gives the drawn ground's height.</summary>
@@ -30,6 +30,7 @@ public static class Unpainted
         var faults = new List<Fault>();
         var drawn = new List<(GeometryInstance3D Node, Aabb Box)>();
         Walk(root, at, range, drawn);
+        var feet = new Dictionary<string, (float Over, GeometryInstance3D Node, Aabb Box)>();
         foreach (var (g, box) in drawn)
         {
             string path = Short(g);
@@ -62,13 +63,17 @@ public static class Unpainted
                     if (n > 0) faults.Add(new Fault(sh.Code == DecoShaders.Surface ? "flat deco faces" : sh.Code == PlaceShaders.Surface ? "flat place faces" : "dark glow", path, mesh.GetClass(), what, where, over, n));
                 }
             }
-            // Floating: its foot well over the ground everywhere under it, and nothing else drawn there to stand on.
-            if (over > Clear && !Airborne(path) && !drawn.Any(o => o.Node != g && o.Box.Position.Y < lo.Y - 0.25f && o.Box.End.Y >= lo.Y - 0.5f
-                                                                  && o.Box.Position.X < hi.X && o.Box.End.X > lo.X && o.Box.Position.Z < hi.Z && o.Box.End.Z > lo.Z))
-                faults.Add(new Fault("floating", path, mesh.GetClass(), Describe(g.MaterialOverride ?? mesh.SurfaceGetMaterial(0)), box, over, 0));
+            if (!Airborne(path)) feet[Structure(path)] = feet.TryGetValue(Structure(path), out var low) && low.Over <= over ? low : (over, g, box);
         }
+        // Floating: a whole thing (a place, a city lot, a road tile's dressing, a stand-in) with no part of it near the ground.
+        // Its upper storeys, its furniture and its wires go by it: they stand on it.
+        foreach (var (key, (over, g, box)) in feet)
+            if (over > Clear) faults.Add(new Fault("floating", key, g.GetClass(), "", box, over, 0));
         return faults;
     }
+
+    /// <summary>The whole thing a drawn piece belongs to: its path's first three steps (Surface/Places/the place).</summary>
+    static string Structure(string path) => string.Join('/', path.Split('/').Take(3));
 
     /// <summary>Prints the faults, a line each, alike ones (same kind, same node path without its numbers) counted together.</summary>
     public static void Print(string title, List<Fault> faults)
@@ -94,8 +99,8 @@ public static class Unpainted
     static bool Airborne(string path) => Living(path) || path.Contains("Sky") || path.Contains("Weather") || path.Contains("Cloud") || path.Contains("Vessel")
                                          || path.Contains("Orbit") || path.Contains("Visor") || path.Contains("Rain");
 
-    /// <summary>People and creatures, drawn in their own style and moving about.</summary>
-    static bool Living(string path) => path.Contains("Sleeper") || path.Contains("Survivor") || path.Contains("Townsfolk") || path.Contains("Wildlife") || path.Contains("Bird") || path.Contains("Schools");
+    /// <summary>People and creatures and their lairs' marks (nests, caps, moss), drawn in their own style.</summary>
+    static bool Living(string path) => path.Contains("Sleeper") || path.Contains("Survivor") || path.Contains("Townsfolk") || path.Contains("Wildlife") || path.Contains("Bird") || path.Contains("Schools") || path.Contains("Lairs");
 
     static string Describe(Material m) => m switch
     {
