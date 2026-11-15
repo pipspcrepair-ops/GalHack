@@ -299,7 +299,12 @@ sealed class Hulk
         void Add(string kind, int len) { H.Bays.Add(new CapitalHull.Bay(kind, v, v + len)); v += len; }
         Add("bow", bow);
         Add("crew", crew);
-        foreach (string k in kinds) Add(k, Math.Clamp(left / n + R.Range(-4, 7), 14, 34));
+        // The role's bays share what is left of the length, each a little longer or shorter than its share.
+        for (int i = 0; i < n; i++)
+        {
+            int share = i == n - 1 ? left - (v - bow - crew) : left / n + R.Range(-4, 5);
+            Add(kinds[i], Math.Clamp(share, 14, 34));
+        }
         Add("power", power);
         Add("engine", engine);
         H.L = v;

@@ -127,15 +127,25 @@ public sealed partial class HullVessel
         }
     }
 
-    /// <summary>The spine carried through a hall's upper half on deck 1: a catwalk 3 m wide on its own deck, kerbs either side.</summary>
+    /// <summary>The walkways through a hall's upper half on deck 1: the spine as a catwalk 3 m wide, galleries along its sides.</summary>
     void Catwalk(Bay b, int corridor)
     {
         for (int v = Math.Max(b.V0 + 3, Pc.V0); v <= Math.Min(b.V1 - 2, Pc.V1 - 1); v++)
-            for (int u = -1; u <= 1; u++)
-                if (ZoneAt(1, u, v) is int z and >= 0 && Out.Spaces[z].Hall) SetZone(1, u, v, corridor);
+        {
+            if (ZoneAt(0, 0, v) is not (int h and >= 0) || !Out.Spaces[h].Hall) continue;
+            int r = Reach(0, v);
+            // The catwalk down the spine, and a gallery 2 m wide along each of the hall's sides.
+            for (int u = -r; u <= r; u++)
+                if ((Math.Abs(u) <= 1 || Math.Abs(u) >= r - 1) && ZoneAt(1, u, v) == h) SetZone(1, u, v, corridor);
+        }
     }
 
-    bool OnCatwalk(int u, int v) => ZoneAt(1, Math.Clamp(u, -1, 1), v) is int z and >= 0 && Out.Spaces[z].Corridor && ZoneAt(0, u, v) is int h and >= 0 && Out.Spaces[h].Hall;
+    /// <summary>What a hall's cell has on deck 1: open (0), a walkway's deck (1), or a walkway's kerb on its deck beside it (2).</summary>
+    int Walkway(int u, int v)
+    {
+        bool On(int x) => ZoneAt(1, x, v) is int z and >= 0 && Out.Spaces[z].Corridor;
+        return On(u) ? 1 : On(u - 1) || On(u + 1) ? 2 : 0;
+    }
 
     /// <summary>What a bay holds on a deck, port and starboard, and how many rooms a side.</summary>
     (string Port, string Stbd, int N) Program(string bay, int d)
@@ -241,7 +251,7 @@ public sealed partial class HullVessel
 
     /// <summary>
     /// The walls: every cell of a deck that is no space's is solid. A hall is open from its floor to the deck over its
-    /// upper half, but for the catwalk's deck down the spine and a kerb along each of its edges.
+    /// upper half, but for its walkways' deck (the catwalk down the spine, the galleries along its sides) and a kerb along their edges.
     /// </summary>
     void Walls()
     {
@@ -258,10 +268,10 @@ public sealed partial class HullVessel
                         for (int y = y0; y < y0 + 4; y++)
                             if (z == Fill || Interior(u, y, v)) Solid(u, y, v, Paint["wall"]);
                     if (z < 0 || !Out.Spaces[z].Hall) continue;
-                    bool walk = Math.Abs(u) <= 2 && OnCatwalk(u, v);
+                    int walk = Walkway(u, v);
                     for (int y = y0; y < y0 + Out.Spaces[z].Height; y++)
-                        if (!(walk && y == Plan.Pitch)) Clear(u, y, v);
-                    if (walk && Math.Abs(u) == 2) Put(u, Plan.Walk(1), v, Armour(Plating, half, Orientations.Identity, Paint["hazard"]));
+                        if (!(walk > 0 && y == Plan.Pitch)) Clear(u, y, v);
+                    if (walk == 2) Put(u, Plan.Walk(1), v, Armour(Plating, half, Orientations.Identity, Paint["hazard"]));
                 }
     }
 }

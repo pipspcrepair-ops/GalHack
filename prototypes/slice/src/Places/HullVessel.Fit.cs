@@ -167,8 +167,10 @@ public sealed partial class HullVessel
             if (ZoneAt(0, 0, beyond) is not (int z and >= 0) || !Out.Spaces[z].Corridor) continue;
             Device(big, -1, Plan.Walk(0), wall, Turn(Dir.PosY, Dir.PosZ));
             hall.Doors.Add(((-1, wall), (0, wall < hall.V0 ? hall.V0 : hall.V1), 3));
-            if (ZoneAt(1, 0, beyond) is int z1 and >= 0 && Out.Spaces[z1].Corridor)
-                for (int u = -1; u <= 1; u++)
+            // On deck 1 the catwalk and the galleries run on through the bulkhead into the cross passage.
+            int inside = wall < hall.V0 ? hall.V0 : hall.V1;
+            for (int u = -Reach(1, inside); u <= Reach(1, inside); u++)
+                if (ZoneAt(1, u, inside) is int a and >= 0 && Out.Spaces[a].Corridor && ZoneAt(1, u, beyond) is int z1 and >= 0 && Out.Spaces[z1].Corridor)
                     for (int y = Plan.Walk(1); y < Plan.Walk(1) + 3; y++) Clear(u, y, wall);
         }
     }
@@ -382,7 +384,8 @@ public sealed partial class HullVessel
         // The lift engines first, where the holds' cargo would stand: what is still to come (the cargo, the generators, the
         // containers) is allowed for in their sum.
         Lift();
-        foreach (Space s in Live.Where(s => s.Purpose is "hold" or "ore-hold")) Cargo(s);
+        foreach (Space s in Live.Where(s => s.Purpose is "hold" or "ore-hold")) Rows(s, 3, 6, cargo: true);
+        foreach (Space s in Live.Where(s => s.Purpose is "stores" or "armoury" or "magazine")) Rows(s, 1, 6, cargo: false);
         foreach (Space s in Live.Where(s => s.Purpose == "engine-room")) EngineRoom(s);
         foreach (Space s in Live.Where(s => s.Purpose == "bridge")) Bridge(s);
         foreach (Space s in Live.Where(s => s.Purpose == "workshop"))
@@ -415,34 +418,43 @@ public sealed partial class HullVessel
         Containers();
     }
 
-    /// <summary>A hold: cargo stacked in rows down both sides, two and three high, 2 m aisles between them and down the middle.</summary>
-    void Cargo(Space hold)
+    /// <summary>
+    /// What a room stores stood in rows along it, 2 m aisles between them, along the walls and at the doors: a hold's
+    /// cargo three wide, 6 m long and two or three high in a hall (one under a 4 m deck), a store's or an armoury's
+    /// shelving one wide. A row too narrow for the space left by the wall is made narrower, never left a wide gap.
+    /// </summary>
+    void Rows(Space s, int width, int length, bool cargo)
     {
         string[] colours = { "orange", "teal", "hazard", "blue", "red", "hull" };
-        int r = hold.Floor.Max(c => Math.Abs(c.U));
-        var doorways = new HashSet<(int, int)>(hold.Doors.SelectMany(d => Around(d.Inside, 2)));
+        var doorways = new HashSet<(int, int)>(s.Doors.SelectMany(d => Around(d.Inside, 2)));
         foreach (int side in new[] { -1, 1 })
-            for (int row = 2; row + 2 <= r - 2; row += 5)
+        {
+            var mine = s.Floor.Where(c => Math.Sign(c.U) == side || s.Hall && c.U == 0).ToList();
+            if (mine.Count == 0) continue;
+            int inner = s.Hall ? 2 : mine.Min(c => Math.Abs(c.U)) + 2, outer = mine.Max(c => Math.Abs(c.U)) - 2;
+            for (int row = inner; row <= outer; row += width + 2)
             {
-                int u0 = side > 0 ? row : -row - 2;
-                for (int v = hold.V0 + 2; v + 5 <= hold.V1 - 2; v += 8)
+                int w = Math.Min(width, outer - row + 1), u0 = side > 0 ? row : -row - w + 1;
+                for (int v = s.V0 + 2; v + length - 1 <= s.V1 - 2; v += length + 2)
                 {
                     bool clear = true;
-                    for (int dv = 0; dv < 6 && clear; dv++)
-                        for (int du = 0; du < 3 && clear; du++) clear = hold.Floor.Contains((u0 + du, v + dv)) && !hold.Taken.Contains((u0 + du, v + dv)) && !doorways.Contains((u0 + du, v + dv));
+                    for (int dv = 0; dv < length && clear; dv++)
+                        for (int du = 0; du < w && clear; du++)
+                            clear = s.Floor.Contains((u0 + du, v + dv)) && !s.Taken.Contains((u0 + du, v + dv)) && !doorways.Contains((u0 + du, v + dv));
                     if (!clear) continue;
-                    // Two or three containers high in a hall, one under a 4 m deck.
-                    int high = hold.Hall ? Rng.Next(2, 4) * 2 + (hold.Purpose == "ore-hold" ? -2 : 0) : 3;
-                    ushort paint = Paint[colours[Rng.Next(colours.Length)]];
-                    for (int dv = 0; dv < 6; dv++)
-                        for (int du = 0; du < 3; du++)
+                    int high = s.Hall ? Rng.Next(2, 4) * 2 + (s.Purpose == "ore-hold" ? -2 : 0) : 3;
+                    ushort paint = cargo ? Paint[colours[Rng.Next(colours.Length)]] : Paint["machine"];
+                    for (int dv = 0; dv < length; dv++)
+                        for (int du = 0; du < w; du++)
                         {
-                            hold.Taken.Add((u0 + du, v + dv));
-                            for (int y = hold.Y; y < hold.Y + high; y++) Solid(u0 + du, y, v + dv, (dv == 0 || dv == 5 || y == hold.Y + high - 1) ? Paint["trim"] : paint);
+                            s.Taken.Add((u0 + du, v + dv));
+                            for (int y = s.Y; y < s.Y + high; y++) Solid(u0 + du, y, v + dv, (dv == 0 || dv == length - 1 || y == s.Y + high - 1) ? Paint["trim"] : paint);
                         }
                 }
             }
+        }
     }
+
 
     /// <summary>The engine room: the warp drive on its centre line aft, gyros in a row down each side.</summary>
     void EngineRoom(Space s)
