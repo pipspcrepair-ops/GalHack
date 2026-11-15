@@ -511,8 +511,8 @@ public partial class WildlifeView : Node3D
             }
             // A threat sleeps past where it is drawn, unless something has it up; people are always about.
             else c.Dormant = ThreatsSleep && rank == Importance.Threat && d > far && !Stirred(c);
-            // Past the near ring nothing casts a line through the world's collision for it; the harmless never do.
-            c.NoRays = rank == Importance.Ambient || d > NearDistance;
+            // Past the near ring (unless it is in a fight) nothing casts a line through the world's collision for it; the harmless never do.
+            c.NoRays = rank == Importance.Ambient || d > NearDistance && !Stirred(c);
             bool fresh = false;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
@@ -527,7 +527,7 @@ public partial class WildlifeView : Node3D
             }
 
             c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
-            c.ThinkScale = d < MidDistance ? 1f : d < far ? 2f : 3f;
+            c.ThinkScale = d < MidDistance || Stirred(c) ? 1f : d < far ? 2f : 3f;
             bool visible = d < far;
             float shows = visible ? 1f : 0f, was = view.Shows;
             if (Fader != null)
