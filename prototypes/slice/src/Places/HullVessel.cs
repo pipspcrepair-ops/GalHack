@@ -23,7 +23,7 @@ namespace Slice.Places;
 /// It is built the way a player builds a capital ship (docs/place-patterns.md 1.4, 5.2; one-metre-grid.md 6): a
 /// shell of plated base blocks shaped to the plan's envelope with slopes and corners (the tapered, raked bow, the
 /// chamfered shoulders and bilges, the tower and nacelles), decks 5 m apart (a 1 m deck and 4 m clear), a spine
-/// corridor, side passages and cross passages on every deck, the holds, hangar and engine room as halls two decks
+/// corridor, side passages and cross passages on every deck, crawlways through the machinery decks, the holds, hangar and engine room as halls two decks
 /// tall, rooms off the corridors for what a crew needs (bridge, officers, quarters, galley, medbay, workshop, stores,
 /// reactor, generators, the core room), switchback stairs, doors that open by hand. Its devices are the player's
 /// real parts sized from the catalogue: thrusters in the nacelles, lift engines in the keel under the halls, a

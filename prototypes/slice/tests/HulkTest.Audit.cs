@@ -19,6 +19,8 @@ public sealed class WreckAudit
     /// <summary>The walkable cells under 4 m of headroom (structure cells).</summary>
     public readonly HashSet<Int3> LowCells = new();
     public readonly HashSet<Int3> FloorCells = new(), CorridorCells = new();
+    /// <summary>Floor a deck's worth (40 m² or more) that no door or stair gets into: a cell of each, and its size.</summary>
+    public readonly List<(Int3 At, int Cells)> Unreached = new();
 
     public float CorridorShare => Floor == 0 ? 0 : Corridor / (float)Floor;
     public float MachinesPer100 => Floor == 0 ? 0 : Machines * 100f / Floor;
@@ -36,19 +38,32 @@ public sealed class WreckAudit
         bool Empty(Int3 p) => !s.TryGet(p, out Block b) || s.TypeOf(b).Collide == Collide.None;
         bool Door(Int3 p) => s.TryGet(p, out Block b) && s.TypeOf(b).IsDoor;
         bool Solid(Int3 p) => s.TryGet(p, out Block b) && s.TypeOf(b).Collide != Collide.None;
-        // Inside the hull: a wall met every way across (a ledge on the outside under the flank's overhang is not a deck).
-        bool Enclosed(Int3 p)
+        // Inside the hull: walled both ways across one axis at least (a ledge on the outside under the flank's overhang is
+        // not a deck; a passage that runs out to a torn face or a hole in the shell still is).
+        bool Walled(Int3 p, Int3 d)
         {
-            foreach (Int3 d in new[] { Int3.UnitX, -Int3.UnitX, Int3.UnitZ, -Int3.UnitZ })
-            {
-                Int3 q = p + d;
-                while (q.X >= lo.X && q.X <= hi.X && q.Z >= lo.Z && q.Z <= hi.Z && !Solid(q)) q += d;
-                if (q.X < lo.X || q.X > hi.X || q.Z < lo.Z || q.Z > hi.Z) return false;
-            }
-            return true;
+            Int3 q = p + d;
+            while (q.X >= lo.X && q.X <= hi.X && q.Z >= lo.Z && q.Z <= hi.Z && !Solid(q)) q += d;
+            return q.X >= lo.X && q.X <= hi.X && q.Z >= lo.Z && q.Z <= hi.Z;
         }
-        // A doorway: walled either side, under its lintel (a door the years took, a landing's opening), lower than a deck by its nature.
-        bool Doorway(Int3 p) => Solid(p + Int3.UnitX) && Solid(p - Int3.UnitX) || Solid(p + Int3.UnitZ) && Solid(p - Int3.UnitZ);
+        bool Enclosed(Int3 p) => Walled(p, Int3.UnitX) && Walled(p, -Int3.UnitX) || Walled(p, Int3.UnitZ) && Walled(p, -Int3.UnitZ);
+        // A doorway: an opening up to 3 m wide through a wall, under its lintel, with more headroom either side of it than in
+        // it (a door the years took, a landing's opening, the catwalk's way through a bulkhead): lower than a deck by its nature.
+        int Head(Int3 p)
+        {
+            int h = 0;
+            while (h < 11 && Empty(p + Int3.UnitY * h)) h++;
+            return h;
+        }
+        int Span(Int3 p, Int3 d)
+        {
+            int n = 1;
+            for (Int3 q = p + d; n <= 3 && Empty(q); q += d) n++;
+            for (Int3 q = p - d; n <= 3 && Empty(q); q -= d) n++;
+            return n;
+        }
+        bool Opening(Int3 p, Int3 across, Int3 through) => Span(p, across) <= 3 && Head(p + through) > Head(p) && Head(p - through) > Head(p);
+        bool Doorway(Int3 p) => Opening(p, Int3.UnitX, Int3.UnitZ) || Opening(p, Int3.UnitZ, Int3.UnitX);
         var candidates = new Dictionary<Int3, int>();
         var doors = new HashSet<Int3>();
         foreach (var (p, b) in s.Blocks())
@@ -66,8 +81,7 @@ public sealed class WreckAudit
             if (!t.IsArmor || !s.ShapeOf(b).IsCube) continue;
             if (Door(up)) { doors.Add(up); continue; }
             if (!Empty(up)) continue;
-            int h = 0;
-            while (h < 11 && Empty(up + Int3.UnitY * h)) h++;
+            int h = Head(up);
             if (h >= 2 && h < 11 && Enclosed(up)) candidates[up] = h;
         }
         // Walkable floor is what joins up into a deck's worth and is got into, by a door or a stair: a cargo stack's top, a cranny
@@ -90,6 +104,7 @@ public sealed class WreckAudit
                 foreach (Int3 n in new[] { c + Int3.UnitX, c - Int3.UnitX, c + Int3.UnitZ, c - Int3.UnitZ })
                     if ((candidates.ContainsKey(n) || doors.Contains(n)) && seen.Add(n)) q.Enqueue(n);
             }
+            if (part.Count >= 40 && !way) a.Unreached.Add((part[0], part.Count));
             if (part.Count < 40 || !way) continue;
             foreach (Int3 c in part)
             {

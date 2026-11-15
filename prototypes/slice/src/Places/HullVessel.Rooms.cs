@@ -63,7 +63,8 @@ public sealed partial class HullVessel
         foreach (Bay b in H.Bays.Where(b => b.Kind is "crew" or "power"))
         {
             int s = b.V0 + 4, top = InTower(4, s) ? Levels - 1 : H.Decks - 1;
-            if (!InPiece(s - 2) || !InPiece(s + 6) || Enumerable.Range(0, top + 1).Any(d => Enumerable.Range(s - 2, 9).Any(v => ZoneAt(d, 8, v) == None))) continue;
+            // Its own cells inside every deck it serves (its walls may be the shell, where the shoulders slope in over it).
+            if (!InPiece(s - 2) || !InPiece(s + 6) || Enumerable.Range(0, top + 1).Any(d => Enumerable.Range(s - 1, 7).Any(v => Enumerable.Range(3, 5).Any(u => ZoneAt(d, u, v) == None)))) continue;
             _cores.Add((b, s, top));
             for (int d = 0; d <= top; d++)
             {
@@ -203,7 +204,11 @@ public sealed partial class HullVessel
             if (side > 0 && core.Bay != null) from = core.S + 7;
             if (c1 - from < 4) continue;
             string purpose = side < 0 ? port : stbd;
-            if (purpose == null) continue;
+            if (purpose == null)
+            {
+                Crawlway(d, side, from, c1);
+                continue;
+            }
             if (purpose == "reactor")
             {
                 // The reactor, and behind it the core room, reached only through it.
@@ -240,6 +245,22 @@ public sealed partial class HullVessel
 
     int _vault = -1;
 
+    /// <summary>
+    /// A crawlway through a machinery deck's side: a duct 1 m wide and 2 m high down the middle of the machinery, through
+    /// the bulkheads at its ends into the cross passages (place-patterns S1: 2 m only in crawlways, never on the main way).
+    /// Unlit: where the ship's nesters go (with the holds and the engine room).
+    /// </summary>
+    void Crawlway(int d, int side, int v0, int v1)
+    {
+        int r = Reach(d, (v0 + v1) / 2), u = side * ((3 + (r >= 10 ? r - 4 : r)) / 2);
+        bool Way(int v) => ZoneAt(d, u, v) is int z and >= 0 && Out.Spaces[z].Corridor;
+        var run = Enumerable.Range(v0 - 1, v1 - v0 + 3).ToList();
+        if (Math.Abs(u) < 3 || run.Any(v => ZoneAt(d, u, v) != Fill || InCore(u, v, 1)) || !Way(v0 - 2) && !Way(v1 + 2)) return;
+        int duct = NewSpace("crawlway", d, corridor: true);
+        Out.Spaces[duct].Height = 2;
+        foreach (int v in run) SetZone(d, u, v, duct);
+    }
+
     /// <summary>One room on a side of a deck over v0..v1: its cells from the spine's wall out to the flank passage's (or the shell).</summary>
     int? Band(string purpose, int d, int side, int v0, int v1, bool passages, int inner = 3, int limit = int.MaxValue)
     {
@@ -272,10 +293,10 @@ public sealed partial class HullVessel
                     int z = _zone[Z(d, u, v)];
                     if (z >= 0 && Out.Spaces[z].Hall && d == 1) continue;
                     int y0 = Plan.Walk(d);
-                    // No space's, or a deck's edge the shell pinches (the bilges, the bow, the nacelles): solid.
-                    if (z < 0)
-                        for (int y = y0; y < y0 + 4; y++)
-                            if (z == Fill || Interior(u, y, v)) Solid(u, y, v, Paint["wall"]);
+                    // No space's, or a deck's edge the shell pinches (the bilges, the bow, the nacelles): solid. Over a crawlway, its machinery.
+                    int open = z < 0 ? 0 : Out.Spaces[z].Hall ? 4 : Out.Spaces[z].Height;
+                    for (int y = y0 + open; y < y0 + 4; y++)
+                        if (z != None || Interior(u, y, v)) Solid(u, y, v, Paint["wall"]);
                     if (z < 0 || !Out.Spaces[z].Hall) continue;
                     int walk = Walkway(u, v);
                     for (int y = y0; y < y0 + Out.Spaces[z].Height; y++)

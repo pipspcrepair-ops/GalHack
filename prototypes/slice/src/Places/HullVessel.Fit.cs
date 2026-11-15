@@ -583,7 +583,7 @@ public sealed partial class HullVessel
         BlockType light = Cat.Type("light");
         foreach (Space s in Out.Spaces)
         {
-            if (s.Floor.Count == 0 || s.Purpose == "stair" && s.Floor.Count < 8) continue;
+            if (s.Floor.Count == 0 || s.Purpose == "stair" && s.Floor.Count < 8 || s.Purpose == "crawlway") continue;
             int step = s.Purpose switch { "crew-quarters" or "cabin" or "barracks" or "officers" or "galley" or "medbay" or "bridge" => 4, "corridor" => 6, _ => 5 };
             uint colour = s.Purpose switch
             {

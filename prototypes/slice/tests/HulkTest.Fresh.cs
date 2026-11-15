@@ -105,6 +105,9 @@ public partial class HulkTest
                     byPurpose[s.Purpose] = (k.Floor + on.Count, k.Corridor + on.Count(a.CorridorCells.Contains), k.Taken + s.Taken.Count);
                 }
             }
+            // Every deck's worth of floor got into as built, by a door or a stair.
+            foreach (HullVessel.Result r in intact)
+                foreach (var (at, cells) in WreckAudit.Of(r.Structure).Unreached) Bad(false, $"{name}{r.Piece.Name}: {cells} m² of floor no door or stair gets into, at {at}");
             // Every room lit as it was built (the years since broke some of the lamps).
             foreach (HullVessel.Result r in intact)
             {
@@ -126,14 +129,14 @@ public partial class HulkTest
             shapes.Add($"{plan.L}/{plan.Half}/{string.Join(",", plan.Bays.Select(b => b.V1 - b.V0))}");
         }
         foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
-        Check(bad == 0, $"{hulls} hulls on fresh seeds: each a ship's own plan of the player's blocks with bridge, quarters, galley, medbay, hold, engine room and reactor; thrusters, generators, gyros, a warp drive, turrets, cargo containers, chairs and a cockpit, no fuel tanks; coreless with a seat for a core; lift and power to fly once repaired; a tapered bow and sloped shoulders");
+        Check(bad == 0, $"{hulls} hulls on fresh seeds: each a ship's own plan of the player's blocks with bridge, quarters, galley, medbay, hold, engine room and reactor, every deck got into by a door or a stair; thrusters, generators, gyros, a warp drive, turrets, cargo containers, chairs and a cockpit, no fuel tanks; coreless with a seat for a core; lift and power to fly once repaired; a tapered bow and sloped shoulders");
         Check(shapes.Distinct().Count() == shapes.Count, $"each hull its own: {shapes.Distinct().Count()} different plans of {shapes.Count}");
         Check(rooms > 0 && dressed >= rooms * 0.9f && lit >= litRooms, $"rooms dressed and lit for their purpose: {dressed} of {rooms} dressed ({pieces} pieces), {lit} of {litRooms} lit as built");
         float share = corridor / Math.Max(1f, floor), per100 = machines * 100f / Math.Max(1f, floor);
         GD.Print($"      floor by purpose (corridor share): {string.Join(", ", byPurpose.OrderByDescending(kv => kv.Value.Floor).Select(kv => $"{kv.Key} {kv.Value.Floor} m² ({kv.Value.Corridor * 100 / Math.Max(1, kv.Value.Floor)}%, {kv.Value.Taken} taken)"))}");
         Check(share is >= 0.5f and <= 0.7f, $"corridors {share:P0} of {floor:F0} m² of floor (Empyrion's derelicts 59%)");
         Check(per100 is >= 2.2f and <= 3.3f, $"{per100:F2} machines and containers per 100 m² of floor (Empyrion's wrecks 2.7)");
-        Check(clear4 >= floor * 0.9f && lowLoose <= floor * 0.02f, $"4 m decks: {clear4 / Math.Max(1f, floor):P0} of the floor 4 m clear; under that only where crushed or on the stairs but {lowLoose:F0} m²");
+        Check(clear4 >= floor * 0.9f && lowLoose <= floor * 0.02f, $"4 m decks: {clear4 / Math.Max(1f, floor):P0} of the floor 4 m clear; under that only where crushed, on the stairs or in crawlways but {lowLoose:F0} m²");
         Check(slowest < 20000, $"the slowest hull built in {slowest:F0} ms on a worker");
     }
 
@@ -145,8 +148,8 @@ public partial class HulkTest
         return "nothing";
     }
 
-    /// <summary>Is a structure cell on a stair core's landings or flights (their headroom is the flight's)?</summary>
-    static bool Stair(HullVessel.Result r, Int3 c) => r.Spaces.Any(s => s.Purpose == "stair" && s.Floor.Contains((c.X, c.Z + r.Piece.V0)) && Math.Abs(c.Y - s.Y) <= 4);
+    /// <summary>Is a structure cell on a stair core's landings or flights (their headroom is the flight's), or in a crawlway (2 m by its nature)?</summary>
+    static bool Stair(HullVessel.Result r, Int3 c) => r.Spaces.Any(s => s.Floor.Contains((c.X, c.Z + r.Piece.V0)) && (s.Purpose == "stair" && Math.Abs(c.Y - s.Y) <= 4 || s.Purpose == "crawlway" && c.Y == s.Y));
 
     /// <summary>A start system's derelict capital ship, adrift in orbit: the same hull builder's, dressed, its door to board by.</summary>
     IEnumerable<int> Adrift()
