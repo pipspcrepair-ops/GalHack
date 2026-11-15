@@ -487,22 +487,23 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, PromptBox(_hud.Size, UiScale, label).Position.Y, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
     }
 
+    /// <summary>The hit ring's radius, and a kill's second thin ring's, in UI units (times the HUD scale: 8.4 and 10.8 px at 1080p).</summary>
+    public const float RingRadius = 7f, KillRadius = 9f;
+
+    /// <summary>The outermost ring's radius in pixels on a screen this size (tests).</summary>
+    public static float RingPixels(Vector2 screen, bool kill) => (kill ? KillRadius : RingRadius) * HudLayout.Compute(screen).Scale;
+
     /// <summary>
-    /// The confirmation round the reticle when the player's hit lands: a bright ring that snaps out
-    /// and fades, with four ticks; a kill rings twice in the danger colour, and the ticks cross it.
+    /// The confirmation when the player's hit lands: a small, tight ring hugging the reticle that
+    /// fades; a kill is the same ring in the danger colour with a second thin ring just outside it.
     /// </summary>
     void DrawHitRing(Vector2 c, float s)
     {
         if (!RingShowing) return;
         float life = (float)((_time - _hitAt) / (_hitKill ? KillSeconds : HitSeconds));
-        float a = 1f - life * life;
-        var tone = new Color(_hitKill ? C.Danger : C.Text, a);
-        float r = (14f + 8f * MathF.Sqrt(life)) * s, w = (_hitKill ? 3f : 2.5f) * s;
-        _hud.DrawArc(c, r, 0f, MathF.Tau, 40, tone, w, true);
-        if (_hitKill) _hud.DrawArc(c, r + 6f * s, 0f, MathF.Tau, 44, new Color(tone, a * 0.7f), 2f * s, true);
-        float inner = (_hitKill ? 6f : 8f) * s, outer = _hitKill ? r + 10f * s : 13f * s;
-        foreach (var d in new[] { new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) })
-            _hud.DrawLine(c + d.Normalized() * inner, c + d.Normalized() * outer, tone, w);
+        var tone = new Color(_hitKill ? C.Danger : C.Text, 1f - life * life);
+        _hud.DrawArc(c, RingRadius * s, 0f, MathF.Tau, 32, tone, 1.6f * s, true);
+        if (_hitKill) _hud.DrawArc(c, KillRadius * s, 0f, MathF.Tau, 32, tone, 1f * s, true);
     }
 
     /// <summary>Under the crosshair with a weapon in hand: reloading, out of ammo, or the charge stage reached.</summary>

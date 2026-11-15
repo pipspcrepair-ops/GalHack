@@ -44,7 +44,8 @@ public partial class ShotFeelTest : Node
 
     // Every rendered frame: hostile rounds in flight, and whether they were drawn.
     readonly Dictionary<int, Flight> _flights = new();
-    float _kickPeak;
+    /// <summary>The kick since the last round: how far the muzzle went back along the barrel, rose, and went sideways (the most of each, m).</summary>
+    float _kickPeak, _riseMost, _sideMost;
     bool _watchFrames;
 
     sealed class Flight
@@ -52,7 +53,7 @@ public partial class ShotFeelTest : Node
         public int Slot;
         public WeaponDef Def;
         public N.Vector3 From, Last;
-        public float At30 = -1f, Speed, Thinnest = 99f;
+        public float At30 = -1f, Speed, Thinnest = 99f, Far;
         public int Frames, Drawn, Headed;
         public bool Done;
     }
@@ -107,7 +108,16 @@ public partial class ShotFeelTest : Node
             if (far > 1f) f.Thinnest = MathF.Min(f.Thinnest, arms.Fx.WidthOf(f.Slot) / (far * arms.Fx.Pixel));
         }
         foreach (SimArms.Kit k in _kits)
-            if (k.Model != null && GodotObject.IsInstanceValid(k.Model.Root)) _kickPeak = MathF.Max(_kickPeak, k.Model.Root.RotationDegrees.X);
+            if (k.Model != null && GodotObject.IsInstanceValid(k.Model.Root) && k.Model.Root.GetParent() is Node3D hold && hold.IsInsideTree())
+            {
+                // Where the muzzle is against where it would be at rest, in the world: along the barrel, up, and to the side.
+                Vector3 moved = k.Model.Muzzle.GlobalPosition - hold.GlobalTransform * k.Model.Muzzle.Position;
+                Vector3 barrel = (hold.GlobalBasis * Vector3.Forward).Normalized();
+                Vector3 side = barrel.Cross(Vector3.Up).Normalized();
+                _kickPeak = MathF.Max(_kickPeak, -moved.Dot(barrel));
+                _riseMost = MathF.Max(_riseMost, moved.Dot(side.Cross(barrel)));
+                _sideMost = MathF.Max(_sideMost, MathF.Abs(moved.Dot(side)));
+            }
     }
 
     readonly List<SimArms.Kit> _kits = new();
@@ -141,6 +151,7 @@ public partial class ShotFeelTest : Node
         Rows(game.Zone.Data.Arms);
         foreach (int x in Open(game)) yield return x;
         foreach (int x in Shot(game, drive)) yield return x;
+        if (_shots != null) foreach (int x in Pictures(game, drive)) yield return x;
         foreach (int x in Hits(game, drive)) yield return x;
         foreach (int x in Arrow(game, drive)) yield return x;
         foreach (int x in Swings(game, drive)) yield return x;
@@ -166,6 +177,8 @@ public partial class ShotFeelTest : Node
             $"every gunshot is loud and carries: {string.Join(", ", guns.Select(d => d.Id))} at {GunSounds.ReportDbAt(guns[0], 30f):F1} dB at 30 m, {GunSounds.ReportDbAt(guns[0], 120f):F1} at 120 m, heard to {GunSounds.LoudReach:F0} m");
         var strung = carried.Where(GunVoice.Strung).ToList();
         Check(strung.Count == 2 && strung.All(d => !GunVoice.Gunshot(d) && d.Stick != null), $"a bow and a crossbow twang and stick rather than bang ({string.Join(", ", strung.Select(d => d.Id))})");
+        float ring = Slice.Ui.Visor.RingPixels(new Vector2(1920, 1080), false), kill = Slice.Ui.Visor.RingPixels(new Vector2(1920, 1080), true);
+        Check(ring <= 10f && kill <= 12f && kill > ring, $"the hit ring is a small ring hugging the reticle, a kill's the same with a thin second ring just outside ({ring:F1} px and {kill:F1} px across the radius at 1080p)");
         Check(WildlifePatch.RetchDb >= 0f, $"vomiting is somewhat loud ({WildlifePatch.RetchDb:+0;-0} dB)");
     }
 
@@ -204,6 +217,22 @@ public partial class ShotFeelTest : Node
 
     Vector3 Ground(Vector3 at) => _game.Zone.GroundAt(at.X, at.Z);
 
+    /// <summary>Ground so far from the sleeper with a clear line from the eye to a body standing there (the first of a turn of bearings from the one given; else that one).</summary>
+    Vector3 Clear(float far, float bearing)
+    {
+        Vector3 eye = _game.Survivor.WorldEye(), feet = _game.Survivor.WorldFeet;
+        for (int k = 0; k < 24; k++)
+        {
+            float a = bearing + k * MathF.Tau / 24f;
+            Vector3 at = Ground(feet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * far);
+            bool open = true;
+            foreach (float h in new[] { 0.6f, 1.4f })
+                open &= !_game.Arms.Sweep(eye.ToNumerics(), (at + Vector3.Up * h).ToNumerics(), null, 0, 1f, out _);
+            if (open) return at;
+        }
+        return Ground(feet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * far);
+    }
+
     /// <summary>A raider shoots at the sleeper, who looks at it.</summary>
     IEnumerable<int> Shot(Game.Game game, Driver drive)
     {
@@ -213,14 +242,14 @@ public partial class ShotFeelTest : Node
         ArmsHost arms = game.Arms;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         Vector3 feet = game.Survivor.WorldFeet;
-        Creature raider = sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Ground(feet + new Vector3(35f, 0f, 4f))));
+        Creature raider = sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Clear(35f, 0f)));
         sim.Damage(raider, 1f, patch.Player);
         Vector3 Head() => patch.WorldOf(raider) + Vector3.Up * 1.5f;
         int reports = arms.Sounds.Played[(int)VoiceKind.Report], flashes = game.Shots.Flashes, misses = arms.NearMisses, fired = 0;
         int onScreen = 0, flashShown = 0, loud = 0, kicked = 0, rounds = 0;
+        float back = 0f, rise = 0f, sideways = 0f;
         float nearest = 999f;
-        bool boltShot = false, flashShot = false, kickedThis = false;
-        int flashIn = -1;
+        bool kickedThis = false;
         _watchFrames = true;
         // (Only its own rounds: anyone else out here who fires is someone else.)
         int Fired() => arms.People.KitOf(raider)?.Clip.Fired ?? 0;
@@ -244,10 +273,8 @@ public partial class ShotFeelTest : Node
                 float step = N.Vector3.Distance(s.Pos, f.Last) / (float)GetPhysicsProcessDeltaTime();
                 f.Speed = MathF.Max(f.Speed, step);
                 f.Last = s.Pos;
-                if (f.At30 < 0f && N.Vector3.Distance(s.Pos, f.From) >= 30f) f.At30 = s.Age;
-                // (A bolt in flight, half way to you.)
-                float toEye = s.Pos.ToGodot().DistanceTo(game.Camera.GlobalPosition);
-                if (!boltShot && toEye > 6f && toEye < 15f && game.Camera.IsPositionInFrustum(s.Pos.ToGodot())) { Shoot("bolt-in-flight.png"); boltShot = true; }
+                f.Far = MathF.Max(f.Far, N.Vector3.Distance(s.Pos, f.From));
+                if (f.At30 < 0f && f.Far >= 30f) f.At30 = s.Age;
             }
             if (Fired() > rounds)
             {
@@ -257,19 +284,20 @@ public partial class ShotFeelTest : Node
                 if (game.Shots.FlashesShowing > 0) flashShown++;
                 if (arms.Sounds.LastLoud != null && arms.Sounds.LastLoud.GlobalPosition.DistanceTo(muzzle) < 0.5f) loud++;
                 nearest = MathF.Min(nearest, muzzle.DistanceTo(game.Survivor.WorldEye()));
-                if (!flashShot) flashIn = 1;
                 _kickPeak = 0f;
                 kickedThis = false;
             }
-            if (flashIn >= 0 && flashIn-- == 0 && !flashShot) { Shoot("muzzle-flash.png"); flashShot = true; }
-            if (rounds > 0 && _kickPeak > 3f && !kickedThis) { kicked++; kickedThis = true; }
+            if (rounds > 0 && _kickPeak > 0.02f && !kickedThis) { kicked++; kickedThis = true; }
+            back = MathF.Max(back, _kickPeak);
+            rise = MathF.Max(rise, _riseMost);
+            sideways = MathF.Max(sideways, _sideMost);
             yield return 0;
         }
         for (int i = 0; i < 60 * 3; i++) { game.Suit.Vitals.Health = max; drive.Face(Head()); yield return 0; }
         _watchFrames = false;
         Check(rounds >= 2, $"it fires at you ({rounds} rounds, from {nearest:F0} m)");
         if (rounds == 0) yield break;
-        var flown = _flights.Values.Where(f => f.Def.Id == "line-rifle").ToList();
+        var flown = _flights.Values.Where(f => f.Def.Id == "line-rifle" && f.Far >= 10f).ToList(); // (not one that met something at the muzzle)
         var timed = flown.Where(f => f.At30 > 0f).ToList();
         WeaponDef rifle = game.Zone.Data.Arms.Get("line-rifle");
         Check(flown.Count > 0 && flown.All(f => MathF.Abs(f.Speed - rifle.Speed) < rifle.Speed * 0.1f), $"its rounds fly at the row's {rifle.Speed:F0} m/s ({string.Join(", ", flown.Take(6).Select(f => $"{f.Speed:F0}"))})");
@@ -278,7 +306,8 @@ public partial class ShotFeelTest : Node
         Check(flown.Count > 0 && flown.All(f => f.Thinnest >= ArmsFx.MinPixels * 0.95f), $"never thinner than {ArmsFx.MinPixels} pixels however far ({flown.Min(f => f.Thinnest):F1} px at the thinnest)");
         Check(arms.Sounds.Played[(int)VoiceKind.Report] - reports >= rounds && loud >= rounds, $"every round is a loud report where it was fired ({loud} of {rounds} on the far-carrying players, {GunSounds.ReportDbAt(rifle, nearest):F1} dB at {nearest:F0} m)");
         Check(game.Shots.Flashes - flashes >= rounds && flashShown >= rounds && onScreen >= rounds, $"each flashes at its muzzle, on screen ({flashShown} flashes showing of {rounds}, {onScreen} on screen, sized {Slice.Player.ShotFx.SeenScale(nearest):F1}x for {nearest:F0} m)");
-        Check(kicked >= rounds - 1, $"and kicks the rifle in its hands ({kicked} of {rounds} kicks over 3 degrees)");
+        Check(kicked >= rounds - 1, $"and kicks the rifle in its hands ({kicked} of {rounds} kicks over 2 cm)");
+        Check(back > 0.03f && rise > 0f && rise < back * 2f && sideways < 0.005f, $"straight back along the barrel into the body, the muzzle rising a little, never sideways ({back * 100f:F1} cm back, {rise * 100f:F1} cm up, {sideways * 1000f:F1} mm sideways)");
         GD.Print($"  ({arms.NearMisses - misses} went past your head on their own, {arms.PlayerHits} hit you)");
 
         // One past your head: it cracks where it passes.
@@ -303,6 +332,50 @@ public partial class ShotFeelTest : Node
         Check(arms.PlayerHits > hits && game.Visor.HurtShowing && local.Z > 0f, $"hit from behind, off screen, the visor's edge marks where it came from ({(arms.PlayerHits > hits ? "hit" : "missed")}, edge {(game.Visor.HurtShowing ? "showing" : "not showing")}, from {(local.Z > 0f ? "behind" : "ahead")})");
     }
 
+    /// <summary>(--shots) A raider close by on open ground: its muzzle flash, and a bolt of its going past you, mid-flight.</summary>
+    IEnumerable<int> Pictures(Game.Game game, Driver drive)
+    {
+        WildlifePatch patch = game.Zone.Wildlife;
+        ArmsHost arms = game.Arms;
+        double max = game.Suit.Sim.Data.Vitals.Health.Max;
+        Creature raider = patch.Sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Clear(13f, 1f)));
+        patch.Sim.Damage(raider, 1f, patch.Player);
+        Vector3 Body() => patch.WorldOf(raider) + Vector3.Up * 1.2f;
+        int fired = 0, flashIn = -1;
+        for (int i = 0; i < 60 * 20 && flashIn != 0; i++)
+        {
+            game.Suit.Vitals.Health = max;
+            drive.Face(Body());
+            int now = arms.People.KitOf(raider)?.Clip.Fired ?? 0;
+            if (now > fired && flashIn < 0) flashIn = 2;
+            fired = now;
+            if (flashIn > 0) flashIn--;
+            yield return 0;
+        }
+        Shoot("muzzle-flash.png");
+        // Frozen where it stands, it fires one past your shoulder: the bolt half way.
+        patch.Frozen = true;
+        for (int i = 0; i < 40; i++) { game.Suit.Vitals.Health = max; drive.Face(Body()); yield return 0; }
+        SimArms.Kit kit = arms.People.KitOf(raider);
+        Vector3 muzzle = kit != null ? arms.People.Muzzle(raider, kit, patch.Origin) : Body();
+        Vector3 eye = game.Survivor.WorldEye();
+        Vector3 past = eye + (eye - muzzle).Cross(Vector3.Up).Normalized() * 2.5f;
+        WeaponDef rifle = game.Zone.Data.Arms.Get("line-rifle");
+        arms.FireFrom(rifle, muzzle, past - muzzle, 0f, raider, model: kit?.Model);
+        for (int i = 0; i < 60; i++)
+        {
+            game.Suit.Vitals.Health = max;
+            yield return 0;
+            Shot[] shots = arms.Pool.Shots;
+            bool mid = false;
+            for (int k = 0; k < shots.Length; k++)
+                if (shots[k].Live && shots[k].Def == rifle && shots[k].Owner == ArmsHost.Hostile && shots[k].Pos.ToGodot().DistanceTo(muzzle) > muzzle.DistanceTo(eye) * 0.45f) mid = true;
+            if (mid) { yield return 0; Shoot("bolt-in-flight.png"); break; }
+        }
+        patch.Sim.Kill(raider, null);
+        patch.Frozen = false;
+    }
+
     /// <summary>The sleeper's own hits: the reticle's ring, the thud at any distance, the cry of what's hit.</summary>
     IEnumerable<int> Hits(Game.Game game, Driver drive)
     {
@@ -316,10 +389,10 @@ public partial class ShotFeelTest : Node
         Species animal = patch.Fauna?.Species.FirstOrDefault(s => s.Figure == null && !s.Mechanical && s.Rig != RigKind.Swarm && s.Flight == FlightKind.None && s.Body.Size is > 0.5f and < 3f);
         var targets = new List<(string What, Creature C)>
         {
-            ("a person", sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Ground(feet + new Vector3(0f, 0f, -28f))))),
-            ("a machine", sim.Spawn(Robots.Roll(patch.Life.World, _rng.Next(1000), 1), patch.PatchLocal(Ground(feet + new Vector3(-30f, 0f, -30f))))),
+            ("a person", sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Clear(28f, 0f)))),
+            ("a machine", sim.Spawn(Robots.Roll(patch.Life.World, _rng.Next(1000), 1), patch.PatchLocal(Clear(40f, 2.1f)))),
         };
-        if (animal != null) targets.Add(("an animal", sim.Spawn(animal, patch.PatchLocal(Ground(feet + new Vector3(30f, 0f, -30f))))));
+        if (animal != null) targets.Add(("an animal", sim.Spawn(animal, patch.PatchLocal(Clear(40f, 4.2f)))));
         else GD.Print("  (no ground animal of the right size on this world)");
         bool frozen = patch.Frozen;
         patch.Frozen = true;
