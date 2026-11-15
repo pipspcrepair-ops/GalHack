@@ -133,8 +133,12 @@ public partial class PopRoute : Node
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         if (only == null || only.Contains("once"))
             foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
-        // "space" (only when asked for): a vessel's top speed in space, level at 800 m over the sea, between the air's ceiling and the crossing.
-        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", 70f, 4000f, 60f, false), ("space", 200f, 12000f, 800f, true) };
+        // "space" (only when asked for): a vessel's top speed in space (handling.json's fastest band, or --space-speed=N,M,... one route
+        // each), level at 800 m over the sea, between the air's ceiling and the crossing.
+        float[] spaceSpeeds = _args.TryGetValue("space-speed", out string ss) ? ss.Split(',').Select(v => float.Parse(v, CultureInfo.InvariantCulture)).ToArray()
+            : new[] { Game.GameData.Shared.Handling.Speeds.Bands.Max(b => b.TopSpeedSpace) };
+        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", 70f, 4000f, 60f, false) }
+            .Concat(spaceSpeeds.Select(v => ("space", v, 12000f, 800f, true)));
         // Each from a settled start; then the first 20 s of each again, counting the plants that pop.
         foreach (bool pops in new[] { false, true })
         foreach (var (name, speed, length, up, level) in routes)
@@ -414,7 +418,7 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE {name} far chunks built on workers, each: {builds}");
         GD.Print($"ROUTE {name} {speed:F0} m/s {length:F0} m: near ground complete to m {Q(complete.Select(c => (double)c).ToList(), true)}; " +
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
-                 $"queue {Q(pending.Select(c => (double)c).ToList())}; far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
+                 $"queue {Q(pending.Select(c => (double)c).ToList())} (median over the first third {P(pending.Take(pending.Count / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}, the last {P(pending.Skip(pending.Count * 2 / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}); far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
                  $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; flora or cover jumps over 5% within 120 m {nearJumps}; " +
                  $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; streaming: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last

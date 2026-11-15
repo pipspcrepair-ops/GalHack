@@ -144,7 +144,7 @@ public partial class HandlingTest : Node
         Check(airMax <= airTop + 1e-3f && airMax > airTop - 0.1f && spaceMax <= spaceTop + 1e-3f && spaceMax > spaceTop - 0.1f,
             $"full throttle and boost reach but never pass top speed ({airMax:F2} m/s in air, {spaceMax:F2} in space)");
         var (heavyMax, heavyTime) = SimulateTopSpeed(heavy, space, boost: true);
-        Check(spaceTop >= 200f && heavyMax > HandlingModel.Compute(heavy, space, _t).TopSpeed - 0.1f && heavyTime > lightTime,
+        Check(bandList.All(b => b.TopSpeedSpace == spaceTop) && heavyMax > HandlingModel.Compute(heavy, space, _t).TopSpeed - 0.1f && heavyTime > lightTime,
             $"in space the {f.Mass:F0} t fighter reaches {spaceMax:F0} m/s in {lightTime:F1} s, and at {h.Mass:F0} t it gets to {heavyMax:F0} m/s too, in {heavyTime:F1} s");
 
         float turning = 0f;
