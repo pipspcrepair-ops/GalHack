@@ -284,7 +284,7 @@ public partial class SkyshipTest : Node
         Check(ship.Bumps == 0, $"clear of structures and terrain: {ship.Bumps} knocks in flight");
 
         // Shot at, it runs.
-        for (int t = 0; t < 60 * 120 && ship.Phase is not (SkyPhase.Cruising or SkyPhase.Landed); t++) yield return 0;
+        for (int t = 0; t < 60 * 120 && ship.Phase != SkyPhase.Cruising; t++) yield return 0;
         SkyPhase was = ship.Phase;
         float before = MathX.Flat(v.Body.Position - _game.Survivor.WorldFeet.ToNumerics()).Length();
         var (cell, _) = s.Blocks().First(b => s.TypeOf(b.block).IsArmor);

@@ -146,6 +146,10 @@ public partial class SkyTraffic : Node
         if (far) _standIn.Build(v.Structure);
         _standIn.Visible = far;
         v.View.Visible = !far;
+        // Put down out of the trees' reach, it may sit where a tree stands once they stream in: what it came down on is flattened under it.
+        if (Ship.Phase == SkyPhase.Landed && v.Controller is { Frozen: true })
+            foreach (var (solid, offset) in Zone.Streamer.SolidsNear(v.Body.Position.ToGodot(), Radius(v.Structure)).ToList())
+                if (MathX.Flat((solid.Center + offset).ToNumerics() - v.Body.Position).Length() < Radius(v.Structure)) Zone.Fell(solid.Id, solid.Center + offset);
         if (Ship.Phase != SkyPhase.Landed) _settledOnCollision = false;
         else if (!_settledOnCollision && v.Controller is { Frozen: true } && Collides(v.Body.Position))
         {
