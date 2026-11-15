@@ -119,7 +119,7 @@ public sealed partial class Staging
             foreach (int x in Midnight(eye, mid, () => true, 240)) yield return x;
             float lift = 0f;
             foreach (int x in AB(eye, mid, far, "Light glow", new List<Vector3> { mid + Vector3.Up * 60f }, v => lift = v, box: 40)) yield return x;
-            NightCheck(lift < 0.015f, $"nothing glows over the farm's air (lift {lift:F3})");
+            NightCheck(lift < 0.005f, $"nothing glows over the farm's air (lift {lift:F3})");
         }
         foreach (int x in NightResult()) yield return x;
         if (_args.GetValueOrDefault("orbit", "1") == "0" || minspec) yield break;
@@ -148,6 +148,7 @@ public sealed partial class Staging
             _game.FixedCamera = new Transform3D(Basis.LookingAt((centre - eye).Normalized(), side), eye);
             yield return 0;
         }
+        GD.Print($"(night: the globe's lights map {(_game.Spaceflight.Orbit?.Paint?.Lights?.SavePng(Path.Combine(dir, "globe-lights.png")).ToString() ?? "none")})");
         foreach (int x in Shot(Path.Combine(dir, "orbit.png"))) yield return x;
         _game.Camera.Fov = fov;
     }
@@ -219,7 +220,7 @@ public sealed partial class Staging
         }
     }
 
-    /// <summary>The brightest a box of pixels round each point gets with a far-lights layer drawn over hidden (luminance, 0 to 1).</summary>
+    /// <summary>How much a far-lights layer lifts a box of pixels round each point, drawn against hidden (luminance, 0 to 1): the brightest pixel, or a wide box's mean.</summary>
     IEnumerable<int> AB(Vector3 eye, Vector3 look, FarLights far, string layer, List<Vector3> at, Action<float> lift, int box = 4)
     {
         var node = (Node3D)far.GetNode(layer);
@@ -231,8 +232,8 @@ public sealed partial class Staging
         for (int i = 0; i < 4; i++) { Look(eye, look); yield return 0; }
         Image off = _game.GetViewport().GetTexture().GetImage();
         node.Visible = true;
-        float most = 0f;
-        int shown = 0;
+        float most = 0f, sum = 0f;
+        int shown = 0, n = 0;
         int w = on.GetWidth(), h = on.GetHeight();
         float scale = w / cam.GetViewport().GetVisibleRect().Size.X;
         foreach (Vector3 p in at)
@@ -244,11 +245,15 @@ public sealed partial class Staging
             for (int x = (int)s.X - box; x <= (int)s.X + box; x++)
             {
                 if (x < 0 || y < 0 || x >= w || y >= h) continue;
-                most = MathF.Max(most, on.GetPixel(x, y).Luminance - off.GetPixel(x, y).Luminance);
+                float d = on.GetPixel(x, y).Luminance - off.GetPixel(x, y).Luminance;
+                most = MathF.Max(most, d);
+                sum += d;
+                n++;
             }
         }
         GD.Print($"(night A/B {layer}: {shown} of {at.Count} on screen, fog {_game.Zone.Sky.Environment.FogDensity:F5}, daylight {_game.Zone.Sky.Daylight:F2})");
-        lift(most);
+        // A point: the brightest pixel it lifts. A glow is smooth and wide: the mean over the box, so a swaying tree is not a glow.
+        lift(box >= 20 ? sum / Math.Max(n, 1) : most);
     }
 
     /// <summary>What the far lights cost over a town at night: the frame with them and without, GPU and main thread, 120 frames each.</summary>

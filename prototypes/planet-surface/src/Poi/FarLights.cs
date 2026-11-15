@@ -101,7 +101,8 @@ public partial class FarLights : Node3D
     MultiMesh _points, _domes, _beams;
     ShaderMaterial _pointMaterial, _domeMaterial, _beamMaterial;
     readonly List<float> _pointData = new();
-    bool _dirty;
+    /// <summary>Points added since the last frame, to put in.</summary>
+    readonly List<int> _fresh = new();
     double _clock;
     PlanetWorld _world;
 
@@ -189,10 +190,10 @@ public partial class FarLights : Node3D
             float phase = (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f;
             float x = site.Origin.X + spot.Cell.X + 0.5f, y = site.Origin.Y + spot.Cell.Y + 0.5f, z = site.Origin.Z + spot.Cell.Z + 0.5f;
             _pointData.AddRange(new[] { size, 0f, 0f, x, 0f, size, 0f, y, 0f, 0f, size, z, c.R, c.G, c.B, bright, mode, phase, lived ? 1f : 0f, outward ? 0f : 1f });
+            _fresh.Add(PointCount - 1);
             count++;
         }
         Of[site] = (first, count, lived);
-        _dirty |= count > 0;
     }
 
     /// <summary>The most lamps inside one place that show from far off.</summary>
@@ -203,12 +204,28 @@ public partial class FarLights : Node3D
         if (_points == null) return;
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         _clock += delta;
-        if (_dirty)
+        if (_fresh.Count > 0)
         {
-            // Whole buffer at once, at most once a frame: places come in one a frame at most.
-            _points.InstanceCount = PointCount;
-            _points.Buffer = _pointData.ToArray();
-            _dirty = false;
+            // Room for twice as many when it runs out (the whole buffer then, rarely); else only the new points, which upload
+            // as the few regions they fall in. A city's hundreds of places coming in never send the lot each time.
+            if (PointCount > _points.InstanceCount)
+            {
+                var room = new float[Math.Max(PointCount * 2, 256) * Stride];
+                _pointData.CopyTo(room);
+                _points.InstanceCount = room.Length / Stride;
+                _points.Buffer = room;
+            }
+            else
+                foreach (int i in _fresh)
+                {
+                    int o = i * Stride;
+                    var d = _pointData;
+                    _points.SetInstanceTransform(i, new Transform3D(new Basis(new Vector3(d[o], d[o + 4], d[o + 8]), new Vector3(d[o + 1], d[o + 5], d[o + 9]), new Vector3(d[o + 2], d[o + 6], d[o + 10])), new Vector3(d[o + 3], d[o + 7], d[o + 11])));
+                    _points.SetInstanceColor(i, new Color(d[o + 12], d[o + 13], d[o + 14], d[o + 15]));
+                    _points.SetInstanceCustomData(i, new Color(d[o + 16], d[o + 17], d[o + 18], d[o + 19]));
+                }
+            _points.VisibleInstanceCount = PointCount;
+            _fresh.Clear();
         }
         float night = 1f, fog = 0f, cover = 0f, cloudBase = 2000f;
         if (Sky != null)
@@ -236,6 +253,7 @@ public partial class FarLights : Node3D
         foreach (Node n in GetChildren()) n.QueueFree();
         _points = _domes = _beams = null;
         _pointData.Clear();
+        _fresh.Clear();
         Of.Clear();
         Glows = Array.Empty<Glow>();
         Beaming = Array.Empty<PoiSite>();
@@ -287,19 +305,19 @@ public partial class FarLights : Node3D
                 : mode > 0.5 && mode < 1.5 ? (sin(s * 23.0) * sin(s * 7.3) > 0.55 ? 0.15 : 0.9)
                 : mode > 2.5 ? 0.6 + 0.4 * sin(s * 0.9) : 1.0;
             // The old halo's 40 to 120 m fade near; full past the hand-off, where it is all that is left of the lamp.
-            float a = smoothstep(40.0, 120.0, d) * mix(0.55, 1.0, far) * mix(1.0, far * 0.6, inner);
+            float a = smoothstep(40.0, 120.0, d) * mix(0.55, 1.0, far) * mix(1.0, far * 0.8, inner);
             // Nobody lives there: its lamps go out with its real lights.
             a *= mix(1.0 - far, 1.0, INSTANCE_CUSTOM.z);
             // By day a near halo shows faintly, as it did; far off only after dark.
             a *= max(night, 0.4 * (1.0 - far));
-            a *= wave * haze(d) * COLOR.a * mix(1.0, clamp(world / (pixel * 2.2), 0.35, 1.0), far);
+            a *= wave * haze(d) * COLOR.a * mix(1.0, clamp(world / (pixel * 2.2), 0.6, 1.0), far);
             tint = COLOR.rgb;
             amount = a;
         }
         void fragment() {
             float r = length(UV * 2.0 - 1.0);
             float core = exp(-r * r * 9.0) + 0.25 * exp(-r * r * 2.5);
-            ALBEDO = tint * amount * core * 1.6;
+            ALBEDO = tint * amount * core * 2.4;
             ALPHA = 1.0;
         }
         """;

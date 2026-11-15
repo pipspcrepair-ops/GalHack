@@ -87,9 +87,9 @@ public sealed class GlobePaint
             foreach (PlanetSurface.Poi.PoiSite s in sites)
             {
                 float lamps = PlanetSurface.Poi.FarLights.Lamps(s);
-                if (lamps > 0f) Splat((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5, 40.0, 0.04f * MathF.Sqrt(lamps));
+                if (lamps > 0f) Splat((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5, 40.0, 0.08f * MathF.Sqrt(lamps));
             }
-            foreach (PlanetSurface.Poi.FarLights.Glow g in PlanetSurface.Poi.FarLights.Clusters(sites, width, height)) Splat(g.X, g.Z, g.Radius * 0.8, 0.35f * g.Strength);
+            foreach (PlanetSurface.Poi.FarLights.Glow g in PlanetSurface.Poi.FarLights.Clusters(sites, width, height)) Splat(g.X, g.Z, g.Radius * 0.8, 0.6f * g.Strength);
         }
         var bytes = new byte[w * h * 3];
         for (int i = 0; i < sum.Length; i++)
@@ -372,7 +372,7 @@ public partial class Globe : Node3D
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D lights_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
-        uniform float lights_gain = 1.6;
+        uniform float lights_gain = 3.0;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
         uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
         uniform float day_glow = 0.6;
