@@ -337,7 +337,8 @@ public partial class Screenshot : Node
     /// </summary>
     List<Shot> AirfieldShots(Main m, string which)
     {
-        var place = m.World.Pois.Select(p => p.Whole).First(t => t != null);
+        // (The type asked for, where the world has others of its own too.)
+        var place = m.World.Pois.Select(p => p.Whole).Where(t => t != null).OrderBy(t => t.Sketch.Type.Id == PlanetSurface.Poi.PoiSiting.ForceType ? 0 : 1).First();
         var pieces = PoiGenerator.Gen.PlaceTypes.Pieces(place.Sketch, place.Turn);
         var fb = PoiGenerator.Gen.PlaceTypes.Turn(place.Sketch.Footprint, place.Turn);
         float y = place.PadY;

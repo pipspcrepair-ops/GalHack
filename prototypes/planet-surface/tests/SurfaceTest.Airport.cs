@@ -119,7 +119,7 @@ public partial class SurfaceTest
                         else bad.Add($"{kind}: no way from its way in to its {goal}");
                     }
                     // A ship's hall: wider than its craft (a hub's freight hall a Small-class one) and 12 m high at least.
-                    if (kind == "hangar" && place.Sketch.Type.Plan != null && piece.Item.Part.Id != "airhangar")
+                    if (kind == "hangar" && place.Sketch.Type.Plan != "airport" && piece.Item.Part.Id != "airhangar")
                     {
                         float craft = place.Sketch.Type.Plan == "hub" ? 30f : place.Sketch.Type.Craft;
                         if (Math.Max(sx, sz) < craft || top < 12) bad.Add($"{place.Sketch.Type.Id} {piece.Item.Part.Id} {sx} x {sz} m, {top} m high, for {craft:F0} m craft");

@@ -124,9 +124,9 @@ public static partial class PlaceTypes
         }
 
         /// <summary>
-        /// The apron line along the landside from the main runway's end away from the second runway: as much of it as there
-        /// is room for before the second runway (the GA apron shortened, then the fire station left out); behind it the car
-        /// parks and the service road, off which the works sheds, the fuel farm and the access road.
+        /// The apron line along the landside from the main runway's end away from the second runway, ending before the second
+        /// runway (the GA apron shortened where it would not, then the whole line begun further out); behind it the car parks
+        /// and the service road, off which the works sheds, the fuel farm and the access road.
         /// </summary>
         void ApronLine(float len, float line, float taxi, int e, Rng r)
         {
@@ -156,7 +156,7 @@ public static partial class PlaceTypes
                     case "apron": terminal = MainApron(cx, line, taxi, sizes[b], br); break;
                     case "ga": GaApron(cx, line, taxi, sizes[b], br); break;
                     default:
-                        if (Building(Part(b)!, cx, _s * (line + 5f + sizes[b]["depth"] / 2f), 0, -_s, br, 2f, sizes[b]) != null && taxi < 0f) Stub(Part("link"), cx, line + 4f, 0f);
+                        if (Building(Part(b)!, cx, _s * (line + 5f + sizes[b]["depth"] / 2f), 0, -_s, br, 2f, sizes[b]) != null && taxi < 0f) Stub(Part("link"), cx, line, 0f);
                         break;
                 }
             }

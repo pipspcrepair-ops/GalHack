@@ -584,12 +584,14 @@ public static partial class PlaceTypes
             if (Part("terminal") is { } terminal && Building(terminal, tx + terminal.Get("depth", 40f).Hi / 2f, 0f, -1, 0, r.Fork("terminal")) is { } t)
             {
                 Road(t.Box.X1 + 1f, 0f, 1f, 0f);
-                if (Part("tower") is { } tower) Out(tower, t.Box.Cx, 0f, 0f, r.Chance(0.5f) ? 1f : -1f, t.Box.D / 2f + 20f, t.Box.D / 2f + 200f, r.Fork("tower"));
+                // (The tower by the road in, just past the terminal.)
+                if (Part("tower") is { } tower) Out(tower, t.Box.X1 + 6f + tower.Get("len", 12f).Hi / 2f, 0f, 0f, r.Chance(0.5f) ? 1f : -1f, 12f, 140f, r.Fork("tower"));
                 // (The offices either side of the road in, past the terminal.)
                 if (Part("office") is { } office)
                 {
                     int count = Count(office, r.Fork("offices"));
-                    for (int k = 0; k < count; k++) Out(office, t.Box.X1 + 30f + k / 2 * 50f, 0f, 0f, k % 2 == 0 ? 1f : -1f, 24f, 140f, r.Fork("office" + k));
+                    float each = office.Get("len", 40f).Hi + 12f;
+                    for (int k = 0; k < count; k++) Out(office, t.Box.X1 + 6f + each / 2f + (k + 1) / 2 * each, 0f, 0f, k % 2 == 0 ? -1f : 1f, 12f, 140f, r.Fork("office" + k));
                 }
             }
             else Road(east, 0f, 1f, 0f);

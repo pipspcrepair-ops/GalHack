@@ -360,7 +360,13 @@ public partial class PoiTest
                     if (x0 < p.Box.X0 - slack || x1 > p.Box.X1 + slack || z0 < p.Box.Z0 - slack || z1 > p.Box.Z1 + slack || what is "terminal" or "hangar" && (x1 - x0 < p.Box.W - 2 || z1 - z0 < p.Box.D - 2))
                         bad.Add($"{t.Id}.{what} ({p.Front}) built {x0}..{x1} x {z0}..{z1}, its box {p.Box.X0:F0}..{p.Box.X1:F0} x {p.Box.Z0:F0}..{p.Box.Z1:F0}");
                     float L = p.Front is Dir.North or Dir.South ? x1 - x0 : z1 - z0;
-                    bool hall = t.Plan != null && what == "hangar" && p.Item.Part.Id != "airhangar";
+                    bool hall = t.Plan != "airport" && what == "hangar" && p.Item.Part.Id != "airhangar";
+                    // A spaceport's main building dominating it at a real scale: the authority complex, the hub's tower, the terminal.
+                    if (p.Item.Part.Id == "terminal" && t.Plan != "airport")
+                    {
+                        var (wide, high) = t.Plan switch { "rosettes" => (150, 56), "hub" => (52, 44), _ => (150, 18) };
+                        if (Math.Max(x1 - x0, z1 - z0) < wide || top < high) bad.Add($"{t.Id}.{what}: {x1 - x0} x {z1 - z0} m, {top} m high (at least {wide} across and {high} high)");
+                    }
                     if (t.Id == "airport" || hall)
                     {
                         void Real(bool ok, string why) { if (!ok) bad.Add($"{t.Id}.{what}: {why}"); }

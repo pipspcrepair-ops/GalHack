@@ -103,7 +103,7 @@ type port_large
   plan grid
   craft 60
   share 0.05
-  part terminal building terminal len 90..120 depth 36..44 h 14..18 concourse 6
+  part terminal building terminal len 180..240 depth 50..64 h 20..26 concourse 10
   part spine    surface concrete w 20 count 3..5 len 420..560
   part lane     surface concrete w 30
   part pad      pads concrete    count 8..12 r 26 sink 4..6
@@ -111,12 +111,12 @@ type port_large
   part bigpad   pads concrete    count 3..5 r 54..62
   part hangar   building hangar  count 6..10 len 70..80 depth 60..70 h 30..36
   part plaza    surface flags    len 120..160 depth 50..70
-  part tower    building control_tower len 12..14 depth 12..14 h 30..38 cab 8..10
-  part office   building terminal count 2..3 len 30..44 depth 20..26 h 8..12
+  part tower    building control_tower len 12..14 depth 12..14 h 40..52 cab 8..10
+  part office   building terminal count 2..4 len 40..60 depth 30..40 h 14..20
   part fuel     tanks count 4..6 r 6..8 h 10..14
   part access   road tarmac w 10
   part fence    fence h 3..4 round 30..50
-  part town     building dome count 8..14 r 6..10 h 4..8
+  part town     building dome count 8..14 r 8..14 h 6..10
 
 type port_medium
   name Spaceport
@@ -125,23 +125,23 @@ type port_medium
   plan rosettes
   craft 60
   share 0.05
-  part terminal building authority r 22..28 wing 36..48 span 24..30 h 34..44
+  part terminal building authority r 44..54 wing 50..66 span 36..46 h 64..84
   part bigpad   pads concrete    count 3 r 46..56
   part pad      pads concrete    count 8..10 r 26 sink 4..6
   part link     surface concrete w 12
   part spoke    surface concrete w 20
   part naval    building hangar  len 70..80 depth 60..70 h 30..36
   part navalpad pads concrete    r 40..48
-  part barracks building terminal len 40..56 depth 18..24 h 8..12
+  part barracks building terminal len 48..64 depth 30..36 h 12..14
   part navalfence fence h 3..4
   part runway   surface tarmac   len 220..320 w 30 shoulder 5
   part airhangar building hangar count 1..2 len 40..48 depth 30..40 h 16..20
   part airtower building control_tower len 8..10 depth 8..10 h 18..24 cab 5..7
   part fuel     tanks count 3..4 r 5..7 h 8..12
-  part lease    building terminal count 2..4 len 20..30 depth 14..20 h 6..9
+  part lease    building terminal count 2..4 len 30..44 depth 30..34 h 12..14
   part access   road tarmac w 10
   part fence    fence h 3..4 round 25..40
-  part town     building dome count 8..14 r 6..10 h 4..8
+  part town     building dome count 8..14 r 8..14 h 6..10
 
 type port_small
   name Spaceport
@@ -150,13 +150,13 @@ type port_small
   plan hub
   craft 30
   share 0.03
-  part terminal building hub     r 20..26 h 30..38 cab 16..20
+  part terminal building hub     r 28..34 h 48..60 cab 18..24
   part ring     surface tarmac   w 12 r 40..48
   part spoke    surface concrete w 15 count 3..4 len 170..250
   part pad      pads concrete    count 8..12 r 26 sink 4..6
   part link     surface concrete w 12
   part bigpad   pads concrete    count 2 len 100..120 w 50..56
-  part freight  building hangar  len 50..70 depth 30..40 h 12..16
+  part freight  building hangar  len 70..90 depth 40..50 h 14..18
   part siding   rail             len 80..140
   part fuel     tanks count 2..3 r 4..6 h 8..12
   part access   road tarmac      w 8
