@@ -48,7 +48,7 @@ public partial class PopRoute
             foreach (Node n in _game.Places.FindChildren("*", "GeometryInstance3D", true, false))
             {
                 var g = (GeometryInstance3D)n;
-                string kind = InPerson(g) ? "people" : g.Name.ToString().StartsWith("Chunk") ? "blocks" : "dressing";
+                string kind = InPerson(g) ? "people" : g.Name.ToString() is var nm && (nm.StartsWith("Chunk") || nm.StartsWith("Cube")) ? "blocks" : "dressing";
                 kinds[kind].Add((g, g.CastShadow, g.Visible));
             }
         if (_game.Zone.Pois != null)

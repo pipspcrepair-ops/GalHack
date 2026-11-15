@@ -62,6 +62,7 @@ public partial class PopRoute : Node
         // (Set by reflection: the flag is only there from places built after load on.)
         // --force-city=1: a city planned on any lived-in world (the city routes' own runs, on fresh seeds).
         if (_args.ContainsKey("force-city")) PlanetSurface.Infra.CityPlan.Force = true;
+        if (_args.ContainsKey("no-merge")) Slice.Places.Place.MergeCubes = false; // --no-merge=1: places' cubes a mesh a chunk, as before
         if (_args.ContainsKey("places-at-load"))
             typeof(PlanetSurface.World.PlanetWorld).GetField("BuildPlacesAtLoad")?.SetValue(null, true);
         ProcessPhysicsPriority = 100;
