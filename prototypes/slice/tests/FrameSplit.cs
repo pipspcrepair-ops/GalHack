@@ -33,7 +33,8 @@ public sealed partial class FrameSplit
         public double DrawOther => Math.Max(0, Draw - Render);
     }
 
-    public const double HitchMs = 100;
+    /// <summary>A frame this long is written down whole (PopRoute --hitch=ms sets it).</summary>
+    public double HitchMs = 100;
     public readonly List<Frame> Frames = new();
     public readonly List<string> Hitches = new();
     /// <summary>What the frame was doing, for a hitch's note (the route sets it).</summary>

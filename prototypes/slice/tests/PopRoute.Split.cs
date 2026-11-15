@@ -26,6 +26,7 @@ public partial class PopRoute
     {
         if (!_args.ContainsKey("split")) return;
         _frameSplit ??= new FrameSplit(GetTree().Root, GetViewport().GetViewportRid());
+        if (_args.TryGetValue("hitch", out string hitch)) _frameSplit.HitchMs = double.Parse(hitch, CultureInfo.InvariantCulture);
         // --deeper=1: each place split into its children by class too (heavy: a marker a child).
         _systemSplit ??= new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => _args.ContainsKey("deeper") && n is Slice.Places.Place };
         _frameSplit.Systems = _systemSplit;
