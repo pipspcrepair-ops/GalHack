@@ -36,7 +36,7 @@
   "templates": {
     "table-group":   { "kind": "around",  "where": "island", "anchor": ["table"], "members": ["chair", "bench-seat", "stool"], "count": [2, 6], "top": ["tray"], "topChance": 0.7, "gap": 0.04 },
     "cafe-pair":     { "kind": "around",  "where": "island", "anchor": ["table-small"], "members": ["chair", "stool"], "count": [2, 3], "gap": 0.04 },
-    "lounge":        { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa"], "count": [2, 3], "gap": 0.25, "under": ["rug"] },
+    "lounge":        { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa"], "count": [2, 3], "gap": 0.25, "under": ["rug"], "max": 1 },
     "desk-bank":     { "kind": "line",    "where": "island", "anchor": ["desk"], "front": ["chair"], "top": ["monitor"], "topChance": 0.6, "count": [2, 3], "double": true },
     "range":         { "kind": "row",     "where": "island", "anchor": ["shelf", "books", "cabinet"], "count": [2, 3], "spacing": 0.0, "double": true },
     "basin-line":    { "kind": "line",    "where": "island", "anchor": ["basin"], "count": [2, 3], "double": true },
