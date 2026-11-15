@@ -153,7 +153,7 @@ public sealed partial class HumanRig : Rig
 
     public override void Reset(WildSim w, Creature c) => Update(w, c, 0f);
 
-    public override void Update(WildSim w, Creature c, float dt)
+    protected override void Animate(WildSim w, Creature c, float dt)
     {
         SmoothIntents(c, dt);
         _world = w;

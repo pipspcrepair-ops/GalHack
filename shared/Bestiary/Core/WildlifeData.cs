@@ -146,8 +146,8 @@ public sealed class WildlifeData
             if (b == Behaviour.Folk) continue; // people: their stance, not an animal's table
             if (!Fauna.Behaviours.TryGetValue(b.ToString(), out BehaviourDef def)) problems.Add($"no behaviour entry for {b}");
             else if (def.Attack == null || def.Attack.Name == "") problems.Add($"behaviour {b}: no signature attack");
-            // A telegraph shorter than this is not a warning anyone can react to.
-            else if (def.Attack.Telegraph < 0.6f) problems.Add($"behaviour {b}: telegraph {def.Attack.Telegraph} s is too short to react to");
+            // Every attack has a tell (the size rule keeps it between TellLeast and TellMost).
+            else if (def.Attack.Telegraph <= 0f) problems.Add($"behaviour {b}: no telegraph");
         }
         return problems;
     }
@@ -161,10 +161,26 @@ public sealed class WildlifeData
 /// </summary>
 public sealed class CombatRules
 {
-    /// <summary>Wind-up of a first attack when the behaviour gives none (behaviours set their own).</summary>
-    public float TelegraphWindup { get; set; } = 1.1f;
-    /// <summary>Wind-up of later attacks, once the creature has shown its hand.</summary>
-    public float NormalWindup { get; set; } = 0.45f;
+    /// <summary>Wind-up of a first attack for the smallest body, when the behaviour gives none (behaviours set their own).</summary>
+    public float TelegraphWindup { get; set; } = 0.4f;
+    /// <summary>A first wind-up grows this much, s, each time the body's length doubles past <see cref="TellFromSize"/> m...</summary>
+    public float TellPerDoubling { get; set; } = 0.08f;
+    public float TellFromSize { get; set; } = 0.5f;
+    /// <summary>...and is never shorter or longer than these: a tell is short and readable, never a slow lift.</summary>
+    public float TellLeast { get; set; } = 0.4f;
+    public float TellMost { get; set; } = 0.8f;
+    /// <summary>Wind-up of later attacks, once the creature has shown its hand, as a share of its first.</summary>
+    public float LaterShare { get; set; } = 0.75f;
+    /// <summary>How near, m, the striking part's surface must come to the victim's for a blow to land; any further is a miss.</summary>
+    public float ContactSlack { get; set; } = 0.04f;
+    /// <summary>A blow can still land this long after the lunge ends, s: the follow-through.</summary>
+    public float FollowThrough { get; set; } = 0.1f;
+    /// <summary>Which strikes a body has besides its bite, and how they go (<see cref="Strikes"/>).</summary>
+    public StrikeRules Strikes { get; set; } = new();
+
+    /// <summary>A first attack's wind-up: the attack's own for a small body, a little longer for a heavy one.</summary>
+    public float Tell(float telegraph, float size) =>
+        Math.Clamp((telegraph > 0f ? telegraph : TelegraphWindup) + TellPerDoubling * MathF.Log2(MathF.Max(1f, size / TellFromSize)), TellLeast, TellMost);
     /// <summary>Share of a wind-up after which the creature commits to its aim; moving after that dodges.</summary>
     public float CommitFraction { get; set; } = 0.65f;
     public float LungeSeconds { get; set; } = 0.25f;
@@ -176,6 +192,47 @@ public sealed class CombatRules
     public float TelegraphMemorySeconds { get; set; } = 20f;
     public float AttackCooldown { get; set; } = 1.4f;
     public float PlayerMaxHealth { get; set; } = 100f;
+}
+
+/// <summary>
+/// The strikes a body has beyond its bite, read from its parts, never set per species: a stomp
+/// for megafauna on pillar legs, a charge for horned megafauna, a tail swipe for a heavy tail.
+/// </summary>
+public sealed class StrikeRules
+{
+    /// <summary>Stomp: a Legged body at least this long on upright legs at least this thick for their length.</summary>
+    public float StompSize { get; set; } = 4f;
+    public float StompLegs { get; set; } = 0.1f;
+    /// <summary>How high the foot comes up in the tell, as a share of the leg; how long it takes coming down, s.</summary>
+    public float StompLift { get; set; } = 0.45f;
+    public float StompDown { get; set; } = 0.2f;
+    public float StompDamage { get; set; } = 1.3f;
+    /// <summary>Charge: a horned Legged body at least this long, from at least this far and at most that, m.</summary>
+    public float ChargeSize { get; set; } = 3.5f;
+    public float ChargeFrom { get; set; } = 7f;
+    public float ChargeRun { get; set; } = 18f;
+    /// <summary>Its speed, as a share of its run; how far past a miss it carries, in body lengths.</summary>
+    public float ChargeSpeed { get; set; } = 1.3f;
+    public float ChargeOvershoot { get; set; } = 0.8f;
+    public float ChargeDamage { get; set; } = 1.6f;
+    /// <summary>Running into something solid: it stops hard and stands dazed this long, s.</summary>
+    public float ChargeDazed { get; set; } = 1.6f;
+    /// <summary>Swipe: a tail tipped with one of these, or plain but at least this long for the body; on a body at least this long, m.</summary>
+    public string[] SwipeTips { get; set; } = { "club", "spiked", "quills" };
+    public float SwipeTail { get; set; } = 0.7f;
+    public float SwipeSize { get; set; } = 1.5f;
+    /// <summary>Only at someone this far round from its front, degrees; the sweep takes this long, s.</summary>
+    public float SwipeAngle { get; set; } = 70f;
+    public float SwipeTime { get; set; } = 0.35f;
+    public float SwipeDamage { get; set; } = 1f;
+    public float SwipeTipped { get; set; } = 1.4f;
+    /// <summary>A landed blow throws its victim at this many m/s per cube root of the striker's mass over a person's (80 kg), at most so many.</summary>
+    public float Push { get; set; } = 1.6f;
+    public float PushMost { get; set; } = 11f;
+    /// <summary>How hard the ground shakes under a stomp (and a charge's footfalls, by share), per cube root of tonnes, and how far it carries, m per tonne's cube root.</summary>
+    public float Quake { get; set; } = 0.35f;
+    public float QuakeReach { get; set; } = 14f;
+    public float QuakeFootfall { get; set; } = 0.35f;
 }
 
 public sealed class HarvestRules

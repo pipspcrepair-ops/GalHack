@@ -1162,7 +1162,7 @@ public partial class CreaturesTest : Node
             foreach (Creature c in sim.Creatures) if (c.Species.HuntsPrey && c.State == CState.Eat) fed.Add(c);
         }
         ate = fed.Count;
-        Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= 0.9f,
+        Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= _data.Combat.TellLeast - 1e-3f,
             $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 12 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
         Check(slipped >= 1 && cameBack >= 2,
             $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony comes back once the watcher has gone ({grazing} left as they went, {cameBack} came back)");

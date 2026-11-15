@@ -91,7 +91,7 @@ public static class Attacks
         if (c.Dead || c.Attacking || !c.Shown || target == null || !target.Attackable || c.Stats.Damage <= 0f) return false;
         CombatRules r = w.Combat;
         bool first = c.MustTelegraph(target, w.Time, r);
-        float windup = first ? c.Species.TelegraphWindup(r) : r.NormalWindup;
+        float windup = c.Species.Windup(r, first);
         if (c.Species.Flight == FlightKind.Glide) windup = MathF.Max(windup, Swoop.LeastTell(c.Species));
         if (c.Pack is { } pack)
         {

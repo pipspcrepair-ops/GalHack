@@ -203,8 +203,11 @@ public sealed class Species
         }
     }
 
-    /// <summary>Seconds of wind-up before this species' first, telegraphed attack on a player.</summary>
-    public float TelegraphWindup(CombatRules rules) => Stats.Telegraph > 0f ? Stats.Telegraph : rules.TelegraphWindup;
+    /// <summary>Seconds of wind-up before this species' first, telegraphed attack on a player: its attack's, longer the heavier it is.</summary>
+    public float TelegraphWindup(CombatRules rules) => rules.Tell(Stats.Telegraph, Body.Size);
+
+    /// <summary>The wind-up of an attack: the full tell first, a shorter one once it has shown its hand.</summary>
+    public float Windup(CombatRules rules, bool first) => TelegraphWindup(rules) * (first ? 1f : rules.LaterShare);
 
     /// <summary>Pack hunters, lone predators and ambushers: the ones built to kill.</summary>
     public bool IsHunter => Behaviour is Behaviour.Predator or Behaviour.PackHunter or Behaviour.Ambusher;

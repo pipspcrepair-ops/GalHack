@@ -19,7 +19,7 @@ public abstract class ZeroGRig : Rig
         Animate(c, 0.016f);
     }
 
-    public sealed override void Update(WildSim w, Creature c, float dt)
+    protected sealed override void Animate(WildSim w, Creature c, float dt)
     {
         if (dt <= 0f) return;
         SmoothIntents(c, dt);

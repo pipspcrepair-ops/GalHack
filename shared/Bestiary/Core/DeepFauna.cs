@@ -418,7 +418,6 @@ public sealed class DeepFauna
             DeepRole.Nester or DeepRole.DerelictNester => a.With(AttackStyle.Lunge, "Nest guard's bite"),
             _ => a,
         };
-        if (s.Attack.Telegraph < 0.9f) s.Attack.Telegraph = 0.9f;
         s.Stats.Telegraph = s.Attack.Telegraph;
     }
 

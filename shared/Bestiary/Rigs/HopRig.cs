@@ -57,7 +57,7 @@ public sealed class HopRig : Rig
         Update(w, c, 0.016f);
     }
 
-    public override void Update(WildSim w, Creature c, float dt)
+    protected override void Animate(WildSim w, Creature c, float dt)
     {
         if (dt <= 0f) return;
         SmoothIntents(c, dt);
