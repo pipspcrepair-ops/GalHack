@@ -317,11 +317,12 @@ sealed class Hulk
         // The tower: forward over the crew for a warship, a liner or a carrier, aft over the power for a hauler.
         bool aft = S.Role is "freighter" or "miner";
         CapitalHull.Bay bay = H.Bays.First(b => b.Kind == (aft ? "power" : "crew"));
-        // Wide enough for the stair core coming up through it beside the spine (u 3 to 7, walled).
+        // Wide enough for the stair core coming up through it beside the spine (u 3 to 7, walled), and from the bay's head,
+        // so the core's landing (4 m in) is clear of the crown's rounding over the tower's front.
         int tw = Math.Clamp((int)(H.Half * 0.6f), 9, Math.Max(9, H.Half - H.Shoulder));
         H.TU0 = -tw;
         H.TU1 = tw;
-        H.TV0 = bay.V0 + 1;
+        H.TV0 = bay.V0;
         H.TV1 = Math.Min(bay.V1 - 2, H.TV0 + Math.Clamp(H.Half + R.Range(-2, 3), 14, 22));
         // Nacelles off the stern, two or three by the beam.
         int n = H.Half >= 17 ? 3 : 2, span = (2 * H.Half + 1 - 6) / n, w = Math.Max(5, span - 2);

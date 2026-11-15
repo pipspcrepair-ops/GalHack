@@ -86,6 +86,8 @@ public sealed partial class HullVessel
                 for (int y = Plan.Walk(d); y < Plan.Walk(d) + 3; y++) Clear(2, y, row);
                 Space core = Out.Spaces.First(x => x.Purpose == "stair" && x.Deck == d && x.Floor.Contains((3, row)));
                 core.Doors.Add(((2, row), (3, row), 1));
+                // The room it opens into keeps the way clear (the tower's decks have no other).
+                Out.Spaces.FirstOrDefault(x => x.Deck == d && !x.Corridor && x.Floor.Contains((1, row)))?.Doors.Add(((2, row), (1, row), 1));
                 for (int v = s; v <= s + 4; v++) core.Taken.UnionWith(new[] { (3, v), (4, v), (6, v), (7, v) });
             }
         }
@@ -497,15 +499,23 @@ public sealed partial class HullVessel
     {
         int rot = Turn(Dir.PosY, Dir.NegZ);
         int front = s.V0 + 1;
+        var way = new HashSet<(int, int)>(s.Doors.SelectMany(d => Around(d.Inside, 2)));
+        bool Free(int x, int y, int vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && s.Floor.Contains((x, vv)) && !s.Taken.Contains((x, vv)) && !way.Contains((x, vv));
         if (Cat.TryGetType("cockpit-t1", out BlockType cockpit))
         {
             Int3 size = Footprint.WorldSize(cockpit, rot);
             int u = -size.X / 2;
-            if (Fits(cockpit, At(u, s.Y, front), rot, (x, y, vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && s.Floor.Contains((x, vv)))) Device(cockpit, u, s.Y, front, rot, s);
+            // At the forward windows, or as near them as the stair's landing leaves room.
+            for (int v = front; v < front + 4; v++)
+                if (Fits(cockpit, At(u, s.Y, v), rot, Free))
+                {
+                    Device(cockpit, u, s.Y, v, rot, s);
+                    break;
+                }
         }
         BlockType chair = Cat.Type("command-chair");
         foreach (int u in new[] { -7, -5, 4, 6 })
-            if (Fits(chair, At(u, s.Y, front), rot, (x, y, vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && s.Floor.Contains((x, vv)) && !s.Taken.Contains((x, vv)))) Device(chair, u, s.Y, front, rot, s);
+            if (Fits(chair, At(u, s.Y, front), rot, Free)) Device(chair, u, s.Y, front, rot, s);
     }
 
     /// <summary>Turrets on the roof and the tower's crown: a warship bristles, a hauler carries a few.</summary>

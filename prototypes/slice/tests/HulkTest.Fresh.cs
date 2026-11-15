@@ -105,9 +105,11 @@ public partial class HulkTest
                     byPurpose[s.Purpose] = (k.Floor + on.Count, k.Corridor + on.Count(a.CorridorCells.Contains), k.Taken + s.Taken.Count);
                 }
             }
-            // Every deck's worth of floor got into as built, by a door or a stair.
+            // Every space's floor got into as built, by a door or a stair (the voids left sealed inside solid machinery are no one's).
             foreach (HullVessel.Result r in intact)
-                foreach (var (at, cells) in WreckAudit.Of(r.Structure).Unreached) Bad(false, $"{name}{r.Piece.Name}: {cells} m² of floor no door or stair gets into, at {at}");
+                foreach (List<Int3> part in WreckAudit.Of(r.Structure).Unreached)
+                    if (r.Spaces.FirstOrDefault(s => part.Any(c => s.Y == c.Y && s.Floor.Contains((c.X, c.Z + r.Piece.V0)))) is HullVessel.Space lost)
+                        Bad(false, $"{name}{r.Piece.Name}: {part.Count} m² of floor no door or stair gets into, the {lost.Purpose} on deck {lost.Deck} at {part[0]}");
             // Every room lit as it was built (the years since broke some of the lamps).
             foreach (HullVessel.Result r in intact)
             {

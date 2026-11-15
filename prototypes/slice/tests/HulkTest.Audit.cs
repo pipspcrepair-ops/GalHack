@@ -19,12 +19,14 @@ public sealed class WreckAudit
     /// <summary>The walkable cells under 4 m of headroom (structure cells).</summary>
     public readonly HashSet<Int3> LowCells = new();
     public readonly HashSet<Int3> FloorCells = new(), CorridorCells = new();
-    /// <summary>Floor a deck's worth (40 m² or more) that no door or stair gets into: a cell of each, and its size.</summary>
-    public readonly List<(Int3 At, int Cells)> Unreached = new();
+    /// <summary>Floor a deck's worth (40 m² or more) that no door or stair gets into, each part's cells.</summary>
+    public readonly List<List<Int3>> Unreached = new();
 
     public float CorridorShare => Floor == 0 ? 0 : Corridor / (float)Floor;
     public float MachinesPer100 => Floor == 0 ? 0 : Machines * 100f / Floor;
     public float ShapedShare => Armour == 0 ? 0 : Shaped / (float)Armour;
+
+    static readonly Int3[] Around = { Int3.UnitX, -Int3.UnitX, Int3.UnitZ, -Int3.UnitZ };
 
     static readonly HashSet<string> Stores = new() { "container", "generator", "gyro", "warp-drive", "hyperdrive", "constructor", "deconstructor", "capacitor", "forecast", "fuel", "warp-tank" };
 
@@ -46,7 +48,7 @@ public sealed class WreckAudit
             while (q.X >= lo.X && q.X <= hi.X && q.Z >= lo.Z && q.Z <= hi.Z && !Solid(q)) q += d;
             return q.X >= lo.X && q.X <= hi.X && q.Z >= lo.Z && q.Z <= hi.Z;
         }
-        bool Enclosed(Int3 p) => Walled(p, Int3.UnitX) && Walled(p, -Int3.UnitX) || Walled(p, Int3.UnitZ) && Walled(p, -Int3.UnitZ);
+        bool Enclosed(Int3 p) => Walled(p, Around[0]) && Walled(p, Around[1]) || Walled(p, Around[2]) && Walled(p, Around[3]);
         // A doorway: an opening up to 3 m wide through a wall, under its lintel, with more headroom either side of it than in
         // it (a door the years took, a landing's opening, the catwalk's way through a bulkhead): lower than a deck by its nature.
         int Head(Int3 p)
@@ -100,11 +102,12 @@ public sealed class WreckAudit
             {
                 Int3 c = q.Dequeue();
                 if (candidates.ContainsKey(c)) part.Add(c);
-                way |= doors.Contains(c) || Stairs(c - Int3.UnitY) || Stairs(c + Int3.UnitX) || Stairs(c - Int3.UnitX) || Stairs(c + Int3.UnitZ) || Stairs(c - Int3.UnitZ);
-                foreach (Int3 n in new[] { c + Int3.UnitX, c - Int3.UnitX, c + Int3.UnitZ, c - Int3.UnitZ })
-                    if ((candidates.ContainsKey(n) || doors.Contains(n)) && seen.Add(n)) q.Enqueue(n);
+                // (On a stair, beside one, or stepping off a flight's top onto its landing.)
+                way |= doors.Contains(c) || Stairs(c - Int3.UnitY) || Around.Any(d => Stairs(c + d) || Stairs(c + d - Int3.UnitY));
+                foreach (Int3 d in Around)
+                    if ((candidates.ContainsKey(c + d) || doors.Contains(c + d)) && seen.Add(c + d)) q.Enqueue(c + d);
             }
-            if (part.Count >= 40 && !way) a.Unreached.Add((part[0], part.Count));
+            if (part.Count >= 40 && !way) a.Unreached.Add(part);
             if (part.Count < 40 || !way) continue;
             foreach (Int3 c in part)
             {

@@ -63,15 +63,31 @@ public sealed partial class HullVessel
         foreach (Bay b in H.Bays.Where(b => b.Kind is "crew" or "power"))
         {
             int s = b.V0 + 4, top = InTower(4, s) ? Levels - 1 : H.Decks - 1;
-            // Its own cells inside every deck it serves (its walls may be the shell, where the shoulders slope in over it).
-            if (!InPiece(s - 2) || !InPiece(s + 6) || Enumerable.Range(0, top + 1).Any(d => Enumerable.Range(s - 1, 7).Any(v => Enumerable.Range(3, 5).Any(u => ZoneAt(d, u, v) == None)))) continue;
+            // Its own cells wholly inside the hull on every deck it serves: under the shoulders' slope or the tower's crown its
+            // wall is the shaped skin itself, so a narrow hull keeps its stairs to the top.
+            bool Inside(int d, int u, int v)
+            {
+                if (!InPiece(v) || v >= H.L || d >= H.Decks && !InTower(u, v)) return false;
+                for (int y = Plan.Walk(d); y < Plan.Walk(d) + 4; y++)
+                    if (Mask(u, y, v) != 255) return false;
+                return true;
+            }
+            if (!InPiece(s - 2) || !InPiece(s + 6) || Enumerable.Range(0, top + 1).Any(d => Enumerable.Range(s - 1, 7).Any(v => Enumerable.Range(3, 5).Any(u => !Inside(d, u, v))))) continue;
             _cores.Add((b, s, top));
             for (int d = 0; d <= top; d++)
             {
                 int core = NewSpace("stair", d, corridor: true);
                 for (int v = s - 1; v <= s + 5; v++)
                     for (int u = 3; u <= 7; u++)
-                        if (u != 5 || v == s - 1 || v == s + 5) SetZone(d, u, v, core);
+                    {
+                        if (u == 5 && v > s - 1 && v < s + 5) continue;
+                        if (ZoneAt(d, u, v) == None)
+                        {
+                            _zone[Z(d, u, v)] = Fill;
+                            for (int y = Plan.Walk(d); y < Plan.Walk(d) + 4; y++) Clear(u, y, v);
+                        }
+                        SetZone(d, u, v, core);
+                    }
             }
         }
         for (int d = 0; d < H.Decks; d++)
@@ -151,12 +167,14 @@ public sealed partial class HullVessel
     /// <summary>What a bay holds on a deck, port and starboard, and how many rooms a side.</summary>
     /// <remarks>
     /// A deck given over to machinery (null) is solid but for its corridors: the deck over a hall (its cargo gear and
-    /// trunking), the decks over the engines, the power bay's middle decks. Corridors dominate a ship's plan (Empyrion's
-    /// derelicts 59% of the floor): most of a hull is the machinery and the ways round it.
+    /// trunking), the decks over the engines, the power bay's middle decks, and up every bay every second deck between the
+    /// lowest and the top (the services between the lived decks: trunking, life support, the ducts). Corridors dominate a
+    /// ship's plan (Empyrion's derelicts 59% of the floor): most of a hull is the machinery and the ways round it.
     /// </remarks>
     (string Port, string Stbd, int N) Program(string bay, int d)
     {
         bool top = d == H.Decks - 1;
+        if (d > 0 && d % 2 == 0 && !top) return (null, null, 0);
         return (bay, d) switch
         {
             ("hold" or "ore-hold" or "hangar" or "refinery" or "promenade", 2) or ("engine", >= 2) => (null, null, 0),
