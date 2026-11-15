@@ -19,11 +19,11 @@ using Palette = DiegeticUi.Theme.Palette;
 namespace Slice.Ui;
 
 /// <summary>
-/// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): vitals
-/// along the bottom of the glass that flash while they are only a warning and turn red once
-/// they cost health, a compass of headings with markers on the things themselves (the bunker, places, deposits, your vessels), the
-/// suit's assistant's lines, what the tool is aimed at, and a flight strip when seated. Calm
-/// vitals fade away after a few seconds. Drawn every frame onto the main canvas.
+/// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): the sleeper's gauges at the bottom
+/// left that flash while they are only a warning and turn red once they cost health (calm, they fade after a few
+/// seconds), the surroundings at the upper left, the toolbar at the bottom middle, a compass of headings with markers on
+/// the things themselves (the bunker, places, deposits, your vessels), the suit's assistant's lines, what the tool is
+/// aimed at, and seated, a flight strip and the structure's gauges at the bottom right. Drawn every frame onto the main canvas.
 /// </summary>
 public partial class Visor : CanvasLayer
 {
@@ -172,8 +172,14 @@ public partial class Visor : CanvasLayer
             Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", $"[R] RESPAWN", C.Danger);
             return;
         }
-        DrawVitals();
-        if (survivor.Seated is Vessel v) DrawFlight(v);
+        HudLayout layout = Layout;
+        DrawSleeper(layout);
+        DrawSurroundings(layout);
+        if (survivor.Seated is Vessel v)
+        {
+            DrawFlight(v);
+            DrawStructure(layout, v);
+        }
         else
         {
             DrawCrosshair();
@@ -207,48 +213,6 @@ public partial class Visor : CanvasLayer
         _hud.Block(new Rect2(0, band.Position.Y, 18 * s, band.Size.Y), colour);
         _hud.TextIn(UiTheme.Display, (int)(40 * s), new Rect2(0, band.Position.Y + 8 * s, size.X, 56 * s), title, colour, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, (int)(24 * s), new Rect2(0, band.Position.Y + 64 * s, size.X, 36 * s), detail, C.Text, HorizontalAlignment.Center);
-    }
-
-    // ---- Vitals along the bottom of the glass ----------------------------------------------------
-
-    void DrawVitals()
-    {
-        Suit suit = Game.Suit;
-        Vitals v = suit.Vitals;
-        VitalsRules r = suit.Sim.Data.Vitals;
-        Alert warn = suit.Last.Warnings, harm = suit.Last.Harm;
-        double air = suit.Sim.Here.Temperature;
-        var items = new (string label, string value, double share, Alert alert)[]
-        {
-            ("HEALTH", $"{v.Health:F0}", v.Health / r.Health.Max, Alert.Health),
-            ("FOOD", $"{suit.FoodShare * 100:F0}%", suit.FoodShare, Alert.Food),
-            ("O2", (warn & Alert.Breath) != 0 ? $"{v.Breath:F0}s" : $"{suit.OxygenShare * 100:F0}%", (warn & Alert.Breath) != 0 ? v.Breath / r.Oxygen.HoldBreathSeconds : suit.OxygenShare, Alert.Oxygen | Alert.Breath),
-            (suit.Room switch { RoomKind.Sealed or RoomKind.Bunker => "SEALED", RoomKind.Unpowered => "UNPOWERED", RoomKind.Closed => "INDOORS", _ => "TEMP" }, $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
-            ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
-            ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
-        };
-        HudLayout layout = Layout;
-        float s = layout.Scale;
-        Vector2 size = _hud.Size;
-        float w = HudLayout.VitalW * s, h = HudLayout.VitalH * s, gap = HudLayout.VitalGap * s;
-        for (int i = 0; i < items.Length; i++)
-        {
-            var (label, value, share, alert) = items[i];
-            bool warned = (warn & alert) != 0, harmed = (harm & alert) != 0 || (alert == Alert.Health && harm != Alert.None);
-            var at = layout.Vitals.Position + new Vector2(i * (w + gap), 0);
-            bool lit = harmed ? Mathf.PosMod((float)_time * 4.5f, 1f) < 0.55f : warned && Mathf.PosMod((float)_time * 2.2f, 1f) < 0.6f;
-            Color tone = harmed ? C.Danger : warned ? C.Warn : C.Good;
-            float a = warned || harmed ? 1f : _vitalsAlpha;
-            var box = new Rect2(at, new Vector2(w, h));
-            _hud.Block(box, new Color(lit ? tone : C.Glass, (lit ? 0.9f : 0.55f) * a));
-            _hud.Block(new Rect2(at, new Vector2(6 * s, h)), new Color(tone, a));
-            Color ink = new(lit ? C.Glass : warned || harmed ? tone : C.Text, a);
-            _hud.Text(UiTheme.Label, (int)(16 * s), at + new Vector2(14 * s, 4 * s), label, ink);
-            _hud.Text(UiTheme.Mono, (int)(20 * s), at + new Vector2(14 * s, 22 * s), value, ink);
-            _hud.Segments(new Rect2(at + new Vector2(80 * s, 30 * s), new Vector2(w - 90 * s, 12 * s)), Math.Clamp(share, 0, 1), 1, new Color(tone, a), count: 8, gap: 2 * s, alpha: a);
-        }
-        // No impact warning on foot (falling, flung, on the jetpack or the hover bike): the suit still takes a fall's damage by its
-        // own rules, but the flash belongs to piloting: see CockpitImpact.
     }
 
     /// <summary>How soon, seconds, a vessel coming down at an unsafe speed must be from the ground for the cockpit to warn of the impact.</summary>
@@ -601,7 +565,7 @@ public partial class Visor : CanvasLayer
             HandKind.Device when Game.Zone.Data.Rules.ForceFields.TierOf(Game.Pack.HandItem) != null => "[LMB] DRAG  [RMB] CANCEL   ",
             _ => "",
         };
-        string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} YOUR TOOLBAR   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
+        string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} BAG   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
         string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE · FREE BUILD" : "";
         return $"{keys}{bar}{Bound("torch")} TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   {Bound("terminal")} MENU   LVL {Game.Progress.Level}{creative}";
     }
@@ -651,7 +615,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? $"REMOTE {Bound("switch-bar")}" : $"YOURS {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? $"REMOTE {Bound("switch-bar")}" : $"BAG {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
