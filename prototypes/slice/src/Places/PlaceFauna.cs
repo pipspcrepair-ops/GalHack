@@ -127,7 +127,7 @@ public sealed class PlaceFauna
                 Max = new Vector3(inside.X1 + 1, inside.Y + inside.Height, inside.Z1 + 1),
                 Depth = Math.Max(0, -m.Storey),
                 Storey = m.Storey - entry,
-                Dark =(inst.State != PoiState.Active || m.Underground) && !lit,
+                Dark = (inst.State != PoiState.Active || m.Underground) && !lit,
                 Lit = lit,
                 Purpose = m.Purpose ?? "",
                 Loot = caches.Count,

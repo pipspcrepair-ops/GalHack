@@ -291,20 +291,23 @@ public partial class OccupantTest
                 FamilyDef f = families[_rng.Next(families.Count)];
                 OccupancyRoll occ = OccupancyLayer.Roll(roll.Occupancy, f, Seed());
                 PoiInstance inst = Place(f, PoiState.Abandoned, occ);
-                PoiPopulation pop = PlaceFauna.Plan(Memory(inst), deep).Population;
-                var plan = new PoiPlan();
-                PlaceFauna.HoldersOf(inst, life, plan);
+                PlaceFauna fauna = PlaceFauna.Plan(Memory(inst), deep);
+                PoiPopulation pop = fauna.Population;
+                PoiPlan plan = fauna.Rooms;
                 var spawns = pop.Silent ? new List<PoiSpawn>() : pop.Spawns;
                 bool Under(PoiSpawn s) => inst.Layout.Modules.FirstOrDefault(m => m.Index == s.Room) is { Storey: < 0 };
+                // Off the way in's storey the dark has its own; those who keep a place clear keep the storeys they are on.
+                bool FarIn(PoiSpawn s) => plan.Rooms.Find(r => r.Index == s.Room) is { Level: >= 1 };
+                bool Theirs(PoiSpawn s) => plan.Kept?.Contains(s.Room) ?? true;
                 int people = inst.Townsfolk?.People.Count ?? 0;
                 string why = plan.Holder switch
                 {
-                    PlaceHolder.Empty => spawns.Any(s => PoiFauna.Threat(s) && !Under(s) && !s.Species.Husk) || pop.Nests.Count > 0 ? "more than vermin above ground" : null,
+                    PlaceHolder.Empty => spawns.Any(s => PoiFauna.Threat(s) && !FarIn(s) && !s.Species.Husk) || pop.Nests.Count > 0 ? "more than vermin on the way in's storey" : null,
                     PlaceHolder.Nesters => spawns.Count(s => s.Role is DeepRole.Nester or DeepRole.DerelictNester) < 1 ? "no nesters" : null,
                     PlaceHolder.Beasts => spawns.Count(s => plan.Holders.Any(h => s.Species.Id.StartsWith(h.Id, StringComparison.Ordinal))) < 1 ? "none of its beasts" : null,
-                    PlaceHolder.Machines => spawns.Count(s => s.Species.Mechanical) < 1 ? "no machines" : spawns.Any(s => PoiFauna.Threat(s) && !s.Species.Mechanical) ? "wild hunters among the machines" : null,
+                    PlaceHolder.Machines => spawns.Count(s => s.Species.Mechanical) < 1 ? "no machines" : spawns.Any(s => PoiFauna.Threat(s) && !s.Species.Mechanical && Theirs(s)) ? "wild hunters among the machines" : null,
                     PlaceHolder.Husks => spawns.Count(s => s.Species.Husk) + pop.Masses.Count < 1 ? "no Husks" : null,
-                    PlaceHolder.People => people < 1 && inst.Townsfolk != null ? "no people" : spawns.Any(s => PoiFauna.Threat(s) && !Under(s) && !s.Species.Husk) ? "wild hunters among the people" : null,
+                    PlaceHolder.People => people < 1 && inst.Townsfolk != null ? "no people" : spawns.Any(s => PoiFauna.Threat(s) && !Under(s) && !s.Species.Husk && Theirs(s)) ? "wild hunters among the people" : null,
                     _ => null,
                 };
                 string code = occ.Main.ToString();
