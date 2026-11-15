@@ -83,6 +83,8 @@ public sealed class Creature
     // it may next bring its maggots up, who it is after; and how stirred its worms are (0..1).
     public ITarget Holding;
     public float HeldFor, VomitAt, MurmurAt, Stir;
+    /// <summary>When it last cried out at being struck (the game's clock, s).</summary>
+    public float CriedAt = -9f;
     public bool Seizing;
     public ITarget Quarry;
     /// <summary>The Husk holding this one face to face, if any: it can do nothing else.</summary>

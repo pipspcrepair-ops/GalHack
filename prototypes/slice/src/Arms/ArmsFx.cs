@@ -12,16 +12,21 @@ namespace Slice.Arms;
 /// What shots look like in flight: one pooled mesh per shot slot, set each frame from the shot
 /// itself (a streak for a round, a ball for a grenade, a finned rocket with a smoke trail, a puck
 /// with a blinking eye, a segmented worm, a hornet, a soft lick of flame), a few pooled lights for
-/// the bright ones, jagged arcs for lightning and a fireball for a blast. Every node is made up
-/// front, so flight allocates nothing. Procedural shapes only.
+/// the bright ones, jagged arcs for lightning and a fireball for a blast. A glowing round or bolt
+/// carries a hot head that blooms, and it and its streak never thin below a few pixels however far
+/// off it flies, so a shot is seen across a fight. An arrow stands where it struck, then fades.
+/// Every node is made up front, so flight allocates nothing. Procedural shapes only.
 /// </summary>
 public partial class ArmsFx : Node3D
 {
     public ShotPool Pool;
 
-    MeshInstance3D[] _slots;
+    MeshInstance3D[] _slots, _heads;
     MeshInstance3D[] _eyes;
-    readonly Dictionary<WeaponDef, Material> _tracers = new();
+    readonly Dictionary<WeaponDef, Material> _tracers = new(), _glows = new();
+    /// <summary>The camera's place and how wide one pixel is a metre away, for this frame.</summary>
+    Vector3 _eye;
+    float _pixel = 0.0015f;
     Mesh _streak, _ball, _rocket, _puck, _worm, _hornet, _flameQuad;
     Material _ballMat, _rocketMat, _puckMat, _wormMat, _hornetMat;
     ShaderMaterial _flameMat, _eyeMat;
@@ -36,6 +41,17 @@ public partial class ArmsFx : Node3D
 
     /// <summary>For tests and the frame budget: slots drawn last frame, arcs and blasts shown.</summary>
     public int Drawn { get; private set; }
+    /// <summary>Whether a pool slot's shot is on show now (its body, and its hot head if it has one).</summary>
+    public bool Showing(int slot) => _slots[slot].Visible;
+    public bool HeadShowing(int slot) => _heads[slot].Visible;
+    /// <summary>A slot's drawn width (m) and how faded it is (0 solid, 1 gone).</summary>
+    public float WidthOf(int slot) => _slots[slot].Basis.X.Length();
+    public float FadeOf(int slot) => _slots[slot].Transparency;
+
+    /// <summary>The fewest pixels wide a streak is drawn, and its head's glow.</summary>
+    public const float MinPixels = 2.5f, HeadPixels = 10f;
+    /// <summary>The last seconds a stuck arrow takes to fade.</summary>
+    const float FadeSeconds = 1.5f;
     public int Arcs { get; private set; }
     public int Fireballs { get; private set; }
 
@@ -70,23 +86,38 @@ public partial class ArmsFx : Node3D
         _hornetMat = new StandardMaterial3D { AlbedoColor = new Color("e0a422"), Roughness = 0.5f, EmissionEnabled = true, Emission = new Color(1f, 0.62f, 0.1f), EmissionEnergyMultiplier = 1.4f };
         _flameMat = new ShaderMaterial { Shader = new Shader { Code = FlameCode } };
         _eyeMat = new ShaderMaterial { Shader = new Shader { Code = EyeCode } };
+        ImageTexture bloom = Slice.Player.ShotFx.FlashTexture(false);
         foreach (WeaponDef w in weapons)
             foreach (WeaponDef m in w.Modes)
             {
                 Color c = GunModel.ColourOf(m.Tracer.Colour);
+                // A round's streak is hotter than its colour (over one: it blooms); an arrow is wood.
+                float hot = Glows(m.Tracer) ? 1.6f : 1f;
                 _tracers[m] = new StandardMaterial3D
                 {
-                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = c, EmissionEnabled = true, Emission = c, EmissionEnergyMultiplier = 4f,
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = new Color(c.R * hot, c.G * hot, c.B * hot), EmissionEnabled = true, Emission = c, EmissionEnergyMultiplier = 4f,
                 };
+                if (Glows(m.Tracer))
+                    _glows[m] = new StandardMaterial3D
+                    {
+                        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, BlendMode = BaseMaterial3D.BlendModeEnum.Add,
+                        BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled, BillboardKeepScale = true, AlbedoTexture = bloom,
+                        AlbedoColor = new Color(c.R * 2.2f, c.G * 2.2f, c.B * 2.2f),
+                    };
             }
 
+        var quad = new QuadMesh { Size = Vector2.One };
         _slots = new MeshInstance3D[pool.Shots.Length];
+        _heads = new MeshInstance3D[pool.Shots.Length];
         _eyes = new MeshInstance3D[pool.Shots.Length];
         for (int i = 0; i < _slots.Length; i++)
         {
             var m = new MeshInstance3D { Name = $"Shot{i}", Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
             AddChild(m);
             _slots[i] = m;
+            var h = new MeshInstance3D { Name = $"Head{i}", Mesh = quad, Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
+            AddChild(h);
+            _heads[i] = h;
         }
         for (int i = 0; i < _lights.Length; i++)
         {
@@ -121,6 +152,12 @@ public partial class ArmsFx : Node3D
     {
         if (Pool == null) return;
         float dt = (float)delta;
+        GunModel.Settle(dt);
+        if (GetViewport().GetCamera3D() is Camera3D cam)
+        {
+            _eye = cam.GlobalPosition;
+            _pixel = 2f * MathF.Tan(Mathf.DegToRad(cam.Fov) * 0.5f) / MathF.Max(1f, GetViewport().GetVisibleRect().Size.Y);
+        }
         int drawn = 0;
         Shot[] shots = Pool.Shots;
         for (int i = 0; i < shots.Length; i++)
@@ -130,6 +167,7 @@ public partial class ArmsFx : Node3D
             if (!s.Live)
             {
                 if (m.Visible) m.Visible = false;
+                if (_heads[i].Visible) _heads[i].Visible = false;
                 if (_eyes[i] != null && _eyes[i].Visible) _eyes[i].Visible = false;
                 continue;
             }
@@ -144,11 +182,24 @@ public partial class ArmsFx : Node3D
         TickFireballs(dt);
     }
 
+    /// <summary>Whether a shot carries a hot head: a round's tracer, a spark, anything lit.</summary>
+    static bool Glows(TracerSpec t) => t.Body is Body.Tracer or Body.Spark || t.Light;
+
     void Place(int i, ref Shot s, MeshInstance3D m)
     {
         TracerSpec t = s.Def.Tracer;
         Vector3 pos = s.Pos.ToGodot(), vel = s.Vel.ToGodot();
         float speed = vel.Length();
+        float far = pos.DistanceTo(_eye), fade = 0f;
+        MeshInstance3D head = _heads[i];
+        if (s.State == ShotState.Flying && _glows.TryGetValue(s.Def, out Material glow))
+        {
+            if (head.MaterialOverride != glow) head.MaterialOverride = glow;
+            head.Scale = Vector3.One * MathF.Max(t.Width * 10f, far * _pixel * HeadPixels);
+            head.GlobalPosition = pos;
+            if (!head.Visible) head.Visible = true;
+        }
+        else if (head.Visible) head.Visible = false;
         Vector3 dir = speed > 0.01f ? vel / speed : (s.State != ShotState.Flying ? -s.Normal.ToGodot() : Vector3.Forward);
         if (dir.LengthSquared() < 0.5f) dir = Vector3.Down;
         Basis look = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.98f ? Vector3.Right : Vector3.Up);
@@ -198,18 +249,32 @@ public partial class ArmsFx : Node3D
                 basis = Basis.FromScale(Vector3.One * size);
                 break;
             default:
-                // A streak: its head at the shot, its tail back along its path, never longer than it has flown.
+                // A streak: its head at the shot, its tail back along its path, never longer than it has
+                // flown, never thinner than a few pixels. Stuck (an arrow), it stands in what it hit
+                // along the way it flew, and fades out over its last moments.
                 mesh = _streak;
                 mat = _tracers.TryGetValue(s.Def, out Material tm) ? tm : _rocketMat;
-                float len = MathF.Min(t.Length, speed * s.Age + 0.05f);
-                if (speed < 0.01f) len = 0.05f;
-                float width = t.Body == Body.Slug ? t.Width * 1.4f : t.Width;
+                bool stuck = s.State == ShotState.Stuck;
+                if (stuck)
+                {
+                    dir = s.Heading.ToGodot();
+                    if (dir.LengthSquared() < 0.5f) dir = -s.Normal.ToGodot();
+                    if (dir.LengthSquared() < 0.5f) dir = Vector3.Down;
+                    look = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.98f ? Vector3.Right : Vector3.Up);
+                    float left = (s.Def.Stick?.Seconds ?? 0f) - (s.Age - s.StuckAt);
+                    fade = Mathf.Clamp(1f - left / FadeSeconds, 0f, 1f);
+                    pos += dir * 0.08f; // its tip sunk in
+                }
+                float len = stuck ? t.Length : MathF.Min(t.Length, speed * s.Age + 0.05f);
+                if (speed < 0.01f && !stuck) len = 0.05f;
+                float width = MathF.Max(t.Body == Body.Slug ? t.Width * 1.4f : t.Width, far * _pixel * MinPixels);
                 basis = look * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(width, len, width));
                 pos -= dir * len * 0.5f;
                 break;
         }
         if (m.Mesh != mesh) m.Mesh = mesh;
         if (m.MaterialOverride != mat) m.MaterialOverride = mat;
+        if (m.Transparency != fade) m.Transparency = fade;
         m.GlobalTransform = new Transform3D(basis, pos);
         if (!m.Visible) m.Visible = true;
     }

@@ -156,7 +156,7 @@ public sealed class SimArms
             Vector3 aim = k.Target.Position + origin + Vector3.Up * 1.15f;
             // A person's hands aren't a mount: a little less steady, and less again on the move.
             float unsteady = (k.Mounted ? 0.8f : 1.6f) + (c.Velocity.Length() > 0.8f ? 1.5f : 0f);
-            _host.FireFrom(k.Clip.Def, muzzle, aim - muzzle, unsteady, c);
+            _host.FireFrom(k.Clip.Def, muzzle, aim - muzzle, unsteady, c, model: k.Model);
             Shots++;
         }
         if ((_drawIn -= dt) > 0f) return;

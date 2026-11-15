@@ -131,7 +131,9 @@ public partial class ShotFx : Node3D
     /// <summary>
     /// A muzzle flash at the muzzle for a kind of fire (<see cref="GunFeel"/>): a flash that lasts a few
     /// frames with a short light, and smoke if the kind has it. A vessel gun passes a larger
-    /// <paramref name="scale"/> for its calibre. Nodes come from a fixed pool, so nothing is allocated.
+    /// <paramref name="scale"/> for its calibre, someone else's gun one for how far off it is
+    /// (<see cref="SeenScale"/>); a scaled-up flash holds a frame or two longer so it reads. Nodes
+    /// come from a fixed pool, so nothing is allocated.
     /// </summary>
     public void Muzzle(string feel, Vector3 at, Vector3 dir, Color colour = default, float scale = 1f, Func<Vector3?> follow = null)
     {
@@ -179,7 +181,7 @@ public partial class ShotFx : Node3D
         s.Light.LightEnergy = s.LightEnergy;
         s.Light.OmniRange = f.LightRange * MathF.Sqrt(scale);
         s.Light.Visible = true;
-        s.FramesLeft = s.TotalFrames = f.Frames;
+        s.FramesLeft = s.TotalFrames = scale > 1.2f ? Math.Max(f.Frames, SeenFrames) : f.Frames;
 
         s.SmokeLeft = 0f;
         if (f.Smoke > 0f)
@@ -195,6 +197,15 @@ public partial class ShotFx : Node3D
             s.SmokeLeft = f.SmokeLife + 0.1f;
         }
     }
+
+    /// <summary>How many frames at least a scaled-up flash shows.</summary>
+    public const int SeenFrames = 4;
+
+    /// <summary>
+    /// The scale for a flash on someone else's gun this far from the eye: it never shrinks below a
+    /// readable size on screen, so a shot fired at you from across a fight is seen.
+    /// </summary>
+    public static float SeenScale(float metres) => Mathf.Clamp(metres / 6f, 1.6f, 6f);
 
     void TickFlashes(float dt)
     {
@@ -217,7 +228,7 @@ public partial class ShotFx : Node3D
     }
 
     /// <summary>A four-point star with small diagonal spikes (or a soft round bloom), white-hot in the middle, drawn into a texture.</summary>
-    static ImageTexture FlashTexture(bool star)
+    public static ImageTexture FlashTexture(bool star)
     {
         const int n = 96;
         var image = Image.CreateEmpty(n, n, false, Image.Format.Rgba8);

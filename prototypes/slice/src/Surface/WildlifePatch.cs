@@ -219,7 +219,7 @@ public partial class WildlifePatch : Node3D
         sim.BreakBases = Zone.Data.Rules.Wildlife.BreakBases;
         sim.Battering += (c, b) => Audio.Batter(c, b.Point);
         sim.Broke += (c, b) => Audio.Batter(c, b.Point, landed: true);
-        sim.Spat += g => Audio.Play("retch", g.Position, Math.Clamp(0.9f / MathF.Cbrt(Heft.Mass(g.From.Species) / 70f), 0.55f, 1.3f), -3f);
+        sim.Spat += g => Audio.Play("retch", g.Position, Math.Clamp(0.9f / MathF.Cbrt(Heft.Mass(g.From.Species) / 70f), 0.55f, 1.3f), RetchDb);
         sim.Splashed += (g, hit) => Splashed?.Invoke(g, hit);
         sim.Telegraph += e =>
         {
@@ -639,6 +639,9 @@ public partial class WildlifePatch : Node3D
         }
         return 1f;
     }
+
+    /// <summary>How loud something vomiting is (a Husk's maggots, a spitter's bile), dB: somewhat loud, heard across a yard.</summary>
+    public const float RetchDb = 4f;
 
     /// <summary>The survivor hurts a creature, in whichever sim it lives (or someone else did: then it doesn't turn on the survivor).</summary>
     public void Damage(Creature c, float amount, bool byPlayer = true)
