@@ -519,7 +519,7 @@ public sealed partial class PeopleGenerator
             : cu.Has("role_cloth") && look.Accent.Length > 1 ? (look.Accent[0] + look.Accent[1]) * 0.5f : null;
         if (hue is not float h) return;
         var own = Rng.For(seed, "garb");
-        f.Cloth = Color.FromHsv(Wrap(h + own.Range(-0.012f, 0.012f)), own.Range(0.45f, 0.6f), own.Range(0.4f, 0.55f));
+        f.Cloth = Color.FromHsv(Wrap(h + own.Range(-0.01f, 0.01f)), own.Range(0.5f, 0.58f), own.Range(0.44f, 0.5f));
     }
 
     /// <summary>

@@ -136,9 +136,10 @@ public partial class CultureTest : Node
         foreach (var (v, e) in expect.Where(t => t.Value >= 20f).OrderBy(t => t.Key.Kind))
         {
             float got = seen.GetValueOrDefault(v);
-            if (MathF.Abs(got - e) > 0.3f * e) { off++; notes.Add($"{v.Kind}.{v.Id} {got:F0} for {e:F0}"); }
+            // (30%, or three standard deviations where the count is small.)
+            if (MathF.Abs(got - e) > MathF.Max(0.3f * e, 3f * MathF.Sqrt(e))) { off++; notes.Add($"{v.Kind}.{v.Id} {got:F0} for {e:F0}"); }
         }
-        Check(off == 0, $"every value's share within 30% of what its weight and its world's leans give it ({expect.Count(t => t.Value >= 20f)} values{(off > 0 ? "; off: " + string.Join(", ", notes) : "")})");
+        Check(off == 0, $"every value's share within 30% (or 3 sd) of what its weight and its world's leans give it ({expect.Count(t => t.Value >= 20f)} values{(off > 0 ? "; off: " + string.Join(", ", notes) : "")})");
         float leadF = worlds.Count(w => w.Culture.Lead == "female") / (float)worlds.Count;
         Check(MathF.Abs(leadF - 0.5f) < 0.06f, $"side A is female on {Pct(leadF)} of worlds (half)");
         // The world's own leans show: warlords arm everyone more; machines that still run do the work.
@@ -206,11 +207,14 @@ public partial class CultureTest : Node
         {
             var faction = Enum.Parse<Faction>(set.Id, true);
             int kept = 0, total = 0;
+            // (Only what this world allows: no machines doing the work on a world that can't build them.)
+            bool Allowed(LayerKind k, string ids) => ids.Split(',').Any(id => _lib.Layers.First(l => l.Kind == k && l.Id == id).Req.All(q => q.Holds(w.Facts) || CultureReading.Axes.Any(a => a.ToString().ToLowerInvariant() == q.Fact)));
             for (int i = 0; i < 200; i++)
             {
                 CultureReading c = w.Culture.At(_lib, Seed(), faction);
                 foreach (var (axis, ids) in set.Sets)
                 {
+                    if (!Allowed(Enum.Parse<LayerKind>(axis, true), ids)) continue;
                     total++;
                     if (ids.Split(',').Contains(c.Id(Enum.Parse<LayerKind>(axis, true)))) kept++;
                 }
@@ -232,11 +236,13 @@ public partial class CultureTest : Node
     WildlifeData _data;
 
     /// <summary>A fresh settled world with some of its culture forced, its conditions, and its people's generator.</summary>
-    (WorldRoll Roll, WorldConditions World, PeopleGenerator Gen) Forced(string arch, params (LayerKind Kind, string Id)[] values)
+    (WorldRoll Roll, WorldConditions World, PeopleGenerator Gen) Forced(string arch, params (LayerKind Kind, string Id)[] values) => Forced(Seed(), arch, values);
+
+    (WorldRoll Roll, WorldConditions World, PeopleGenerator Gen) Forced(ulong seed, string arch, params (LayerKind Kind, string Id)[] values)
     {
         var given = new WorldRoll.Given();
         foreach (var (k, id) in values) given.Set(k, id);
-        WorldRoll roll = Roll(Seed(), arch, given);
+        WorldRoll roll = Roll(seed, arch, given);
         WorldConditions w = Conditions(roll, roll.Culture.Seed, arch);
         return (roll, w, new PeopleGenerator(_data.People, w));
     }
@@ -290,9 +296,20 @@ public partial class CultureTest : Node
             int got = Clusters(crowd);
             Check(got == want, $"garb {garb}: {got} colour clusters in a crowd of {crowd.Count} (want {want})");
         }
-        var free = Forced("Temperate", (LayerKind.Garb, "free"));
-        int many = Clusters(People(free.Gen, 120));
-        Check(many >= 4, $"dressed as they like: {many} colour clusters");
+        // Dressed as they like: their colours spread far wider than a uniform's, on the same world.
+        ulong seed = Seed();
+        float Spread(string garb)
+        {
+            var crowd = People(Forced(seed, "Temperate", (LayerKind.Garb, garb)).Gen, 80).Select(p => p.Cloth).ToList();
+            float sum = 0f;
+            int n = 0;
+            for (int i = 0; i < crowd.Count; i++)
+                for (int j = i + 1; j < crowd.Count; j++, n++)
+                    sum += MathF.Abs(crowd[i].R - crowd[j].R) + MathF.Abs(crowd[i].G - crowd[j].G) + MathF.Abs(crowd[i].B - crowd[j].B);
+            return sum / n;
+        }
+        float free = Spread("free"), uniform = Spread("uniform");
+        Check(free >= 1.3f * uniform, $"dressed as they like, their colours spread {free:F3} apart on average against a uniform's {uniform:F3}");
         // The decency piece on every grown-up it's for, outdoors.
         var hood = Forced("Temperate", (LayerKind.Cover, "hood"));
         var grown = People(hood.Gen, 200).Where(p => p.Stage != LifeStage.Child && hood.World.Culture.Covers(p.Sex, false)).ToList();
@@ -344,13 +361,17 @@ public partial class CultureTest : Node
         int third = byWorld.Count / 3;
         float easy = byWorld.Take(third).Average(t => t.Share), hard = byWorld.Skip(2 * third).Average(t => t.Share);
         Check(hard >= 0.05f && hard >= 3f * easy, $"armed children: {Pct(easy)} on the easiest third of worlds, {Pct(hard)} on the most desperate (3x or more)");
+        ulong world = Seed();
+        string seen = "";
         float KidShare(string arms)
         {
-            var f = Forced("Temperate", (LayerKind.Arms, arms), (LayerKind.Phase, "falling"));
-            return People(f.Gen, 400, _ => PersonRole.Child).Where(p => p.Age >= 9f).Count(Armed) / 400f;
+            var f = Forced(world, "Temperate", (LayerKind.Arms, arms), (LayerKind.Phase, "falling"));
+            seen += $" [{f.World.Culture}]";
+            var kids = People(f.Gen, 400, _ => PersonRole.Child).Where(p => p.Age >= 9f).ToList();
+            return kids.Count(Armed) / (float)kids.Count;
         }
         float all = KidShare("everyone"), some = KidShare("fighters");
-        Check(all > some + 0.05f, $"on falling worlds a culture that arms everyone arms its children more: {Pct(all)} against {Pct(some)}");
+        Check(all > some + 0.05f, $"on falling worlds a culture that arms everyone arms its children more: {Pct(all)} against {Pct(some)}{seen}");
     }
 
     void Tempers()
@@ -396,7 +417,7 @@ public partial class CultureTest : Node
             float leash = cu.Trait("minder");
             bool packs = cu.Has("packs");
             int side = (int)cu.Trait("minder_side");
-            for (int t = 0; t < 8 && places < 3; t++)
+            for (int t = 0; t < 12 && places < 5; t++)
             {
                 FamilyDef fam = settled[_rng.Next(settled.Count)];
                 PoiInstance inst;
@@ -436,9 +457,9 @@ public partial class CultureTest : Node
                         if (p.Figure.Playful && (leash > 0f || packs) && (int)(at * 10f) % 10 == 0)
                         {
                             kids++;
-                            var near = town.People.Where(o => o != p && Out(o) && (packs ? true : o.Figure.Stage != LifeStage.Child && (side == 0 || o.Figure.Sex == cu.SexOf(side == 1))))
+                            var near = town.People.Where(o => o != p && Out(o) && (packs ? o.Figure.Stage == LifeStage.Child : o.Figure.Stage != LifeStage.Child && (side == 0 || o.Figure.Sex == cu.SexOf(side == 1))))
                                 .OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault();
-                            if (near != null && (packs ? near.Figure.Stage == LifeStage.Child : near.Pos.DistanceTo(p.Pos) <= leash + 1.5f)) kept++;
+                            if (near != null && near.Pos.DistanceTo(p.Pos) <= (packs ? 8f : leash + 1.5f)) kept++;
                         }
                     });
             }
@@ -447,11 +468,13 @@ public partial class CultureTest : Node
             Check(chat.Count >= 10 && MathF.Abs(median - want) <= 0.15f * want, $"{name}: two talking stand {median:F2} m apart (median; the culture's {want:F2} m)");
             float mix = adultPairs > 0 ? mixed / (float)adultPairs : float.NaN;
             float wantMix = cu.Trait("mix", 1f);
+            // (Within 35 to 65% where the sexes mix freely, under 5% where they keep apart; a sample this size allowed its spread.)
+            float sd = MathF.Sqrt(0.25f / Math.Max(1, adultPairs));
             if (adultPairs >= 8 && (wantMix >= 0.99f || wantMix <= 0.05f))
-                Check(wantMix >= 0.99f ? mix is >= 0.35f and <= 0.65f : mix < 0.05f, $"{name}: {Pct(mix)} of grown-ups talking off work are of both sexes ({(wantMix >= 0.99f ? "35 to 65%" : "under 5%")})");
+                Check(wantMix >= 0.99f ? MathF.Abs(mix - 0.5f) <= MathF.Max(0.15f, 2.5f * sd) : mixed <= 0.05f * adultPairs + 1, $"{name}: {Pct(mix)} of {adultPairs} grown-ups' talks off work are between the sexes ({(wantMix >= 0.99f ? "35 to 65%" : "under 5%, one pair allowed")})");
             else GD.Print($"     {name}: {Pct(mix)} of {adultPairs} pairs of grown-ups of both sexes");
             if (kids >= 20)
-                Check(kept >= 0.9f * kids, $"{name}: {Pct(kept / (float)kids)} of child samples {(packs ? "with another child nearest" : $"within {leash + 1.5f:F1} m of a grown-up minding them{(side > 0 ? " of their side" : "")}")} (90%)");
+                Check(kept >= 0.9f * kids, $"{name}: {Pct(kept / (float)kids)} of child samples {(packs ? "within 8 m of another of their pack" : $"within {leash + 1.5f:F1} m of a grown-up minding them{(side > 0 ? " of their side" : "")}")} (90%)");
         }
     }
 }

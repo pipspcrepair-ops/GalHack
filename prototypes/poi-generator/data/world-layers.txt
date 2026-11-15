@@ -1172,12 +1172,12 @@ fierce one_side | name one side runs hot | weight 3 | req sexes!=same | trait ho
 fierce young | name the young run hot | weight 2 | trait hot 0 hot_young 0.6
 fierce all | name everyone runs hot | weight 1 | trait hot 0.85 escalate 0.2
 fierce calm | name slow to anger | weight 1.5 | trait hot 0 escalate -0.2 calm 1
-young anyone | name with the nearest adult | weight 5 | blank yes | trait minder 10 play 0.5
+young anyone | name with the nearest adult | weight 5 | blank yes | trait minder 0 play 1
 young side_a | name with side A | weight 2 | req sexes!=same | trait minder 6 minder_side 1 play 0.4 sides 1
 young side_b | name with side B | weight 2 | req sexes!=same | trait minder 6 minder_side 2 play 0.4 sides 1
-young packs | name in packs of their own | weight 2 | trait minder 0 packs 1 play 0.7 kids 0.05
-young kept | name kept close | weight 1 | req space!=close | trait minder 3 play 0.3 kept 1 kids -0.05
-young working | name at work from ten | weight 1 | trait minder 4 play 0.15 work 1 kids 0.08
+young packs | name in packs of their own | weight 2 | trait minder 0 packs 1 play 0.7 young_kids 0.05
+young kept | name kept close | weight 1 | req space!=close | trait minder 3 play 0.3 kept 1 young_kids -0.05
+young working | name at work from ten | weight 1 | trait minder 4 play 0.15 work 1 young_kids 0.08
 caste flat | name nobody above anyone | weight 5 | trait wealth_lo 0.4 wealth_hi 0.6 castes 1
 caste ranked | name richer and poorer | weight 5 | blank yes | trait castes 1
 caste castes | name three castes | weight 1.5 | trait castes 3 same_caste 0.95 c_fight 0 c_trade 1 c_make 1 c_care 2 c_lead 2
@@ -1196,9 +1196,9 @@ cover shades | name the eyes covered | weight 1 | trait wear shades
 cover gloves | name gloved hands | weight 1 | trait wear gloves | off no glove mesh yet
 cover paint | name painted faces | weight 1 | trait wear face_paint | off no face paint yet
 labour own | name their own work | weight 8 | blank yes
-labour machines | name machines do the work | weight 2 | req post=M,H | trait share 0.6
-labour clones | name clone workers | weight 0.8 | req post=H | trait share 0.4 extreme 1
-labour bonded | name bonded workers under overseers | weight 1 | trait share 0.5
+labour machines | name machines do the work | weight 2 | req post=M,H | trait labour_share 0.6
+labour clones | name clone workers | weight 0.8 | req post=H | trait labour_share 0.4 extreme 1
+labour bonded | name bonded workers under overseers | weight 1 | trait labour_share 0.5
 labour rota | name everyone on shifts | weight 1.5 | trait rota 1
 rite none | name no rites | weight 4 | blank yes
 rite private | name faith at home | weight 4 | trait home 0.6

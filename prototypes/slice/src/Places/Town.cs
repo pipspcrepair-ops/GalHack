@@ -885,10 +885,18 @@ public sealed partial class Town
                     // Children run about: after another child, round a grown-up, off somewhere and back, in quick bursts with sudden stops.
                     // Their culture keeps them: in packs of their own, or within reach of a grown-up of the side that minds them.
                     float leash = Culture.Trait("minder"), play = Culture.Trait("play", 1f);
-                    bool packs = Culture.Has("packs");
+                    if (Culture.Has("packs") && PackLeader(p) is { } lead)
+                    {
+                        // A pack of their own: the rest after whichever of them leads it, the leader off about the town.
+                        GoTo(p, lead != p ? lead.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot);
+                        p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
+                        p.Wait = lead != p ? 0.3f + (float)_rng.NextDouble() * 0.8f : 2f + (float)_rng.NextDouble() * 4f;
+                        return;
+                    }
                     Person keeper = leash > 0f ? Minder(p) : null;
-                    Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && !o.Away && (packs ? o.Figure?.Stage == LifeStage.Child && o.Pos.DistanceSquaredTo(p.Pos) < 1600f
-                        : keeper != null ? o.Pos.DistanceSquaredTo(keeper.Pos) < leash * leash : o.Pos.DistanceSquaredTo(p.Pos) < 400f)).OrderBy(_ => _rng.Next()).FirstOrDefault();
+                    // (Where the one minding them is going, and where the others are going: a child heads for a spot, not a person.)
+                    Vector3 watch = keeper != null ? At(keeper.Spot) : Vector3.Zero;
+                    Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && !o.Away && (keeper != null ? At(o.Spot).DistanceSquaredTo(watch) < leash * leash : o.Pos.DistanceSquaredTo(p.Pos) < 400f)).OrderBy(_ => _rng.Next()).FirstOrDefault();
                     if (keeper != null && (_rng.NextDouble() > play || other == null || p.Pos.DistanceTo(keeper.Pos) > leash))
                     {
                         // Back to the one minding them; old enough, at their work beside them.
@@ -897,7 +905,7 @@ public sealed partial class Town
                         p.Wait = p.Working ? 8f + (float)_rng.NextDouble() * 8f : 1f + (float)_rng.NextDouble() * 2f;
                         return;
                     }
-                    int dash = other != null && (keeper != null || packs || _rng.NextDouble() < 0.6) ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
+                    int dash = other != null && (keeper != null || _rng.NextDouble() < 0.6) ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
                     GoTo(p, dash);
                     p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
                     p.Wait = 0.3f + (float)_rng.NextDouble() * 1.6f;
@@ -942,10 +950,17 @@ public sealed partial class Town
         d.Y = 0f;
         float gap = d.Length(), want = Culture.Trait("chat", 1.1f), share = p.Partner.Sitting ? 1f : 0.5f;
         if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) return;
-        Vector3 dir = gap > 0.05f ? d / gap : new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw));
-        Vector3 to = p.Pos - dir * Math.Clamp((want - gap) * share, -0.7f * dt, 0.7f * dt);
-        if (Open(to) && (_parts == null || _parts.Gap(to, BodyRadius(p), Height(p)) >= 0f)) p.Pos = to;
+        // (Two on the one point part along a line of their own, each its own way; a wall behind, they turn a little till there's room.)
+        Vector3 dir = gap > 0.05f ? d / gap : Vector3.Right * (p.GetHashCode() < p.Partner.GetHashCode() ? -1f : 1f);
+        float step = Math.Clamp((want - gap) * share, -0.7f * dt, 0.7f * dt);
+        foreach (float turn in Turns)
+        {
+            Vector3 to = p.Pos - dir.Rotated(Vector3.Up, turn) * step;
+            if (Open(to) && (_parts == null || _parts.Gap(to, BodyRadius(p), Height(p)) >= 0f)) { p.Pos = to; return; }
+        }
     }
+
+    static readonly float[] Turns = { 0f, 0.8f, -0.8f, 1.6f, -1.6f };
 
     /// <summary>A guard in a wary or hostile place: watches you. (Hostile, they fight with what they carry: Town.Combat.)</summary>
     void Guard(Person p, Vector3 player, Mood mood, float dt)
@@ -1152,6 +1167,14 @@ public sealed partial class Town
         int side = (int)Culture.Trait("minder_side");
         return People.Where(o => o != child && !o.Dead && !o.Indoors && !o.Away && o.Figure is { } f && f.Stage != LifeStage.Child && (side == 0 || f.Sex == Culture.SexOf(side == 1)))
             .OrderBy(o => o.Pos.DistanceSquaredTo(child.Pos)).FirstOrDefault();
+    }
+
+    /// <summary>The child leading a child's pack: the town's children out and about, five to a pack, the first of each leading.</summary>
+    Person PackLeader(Person child)
+    {
+        var kids = People.Where(o => !o.Dead && !o.Indoors && !o.Away && o.Figure?.Playful == true).ToList();
+        int i = kids.IndexOf(child);
+        return i < 0 ? null : kids[i - i % 5];
     }
 
     /// <summary>The region at a world point: the map's temperature (as degrees) and humidity there.</summary>

@@ -84,7 +84,7 @@ public sealed class Culture
     /// </summary>
     public float ArmedChance(PersonRole role, Sex sex, bool fighter, bool child)
     {
-        if (child) return Math.Clamp(Trait("kids") + 0.4f * Desperation * Trait("kids_k", 1f), 0f, 0.9f);
+        if (child) return Math.Clamp(Trait("kids") + Trait("young_kids") + 0.4f * Desperation * Trait("kids_k", 1f), 0f, 0.9f);
         if (fighter) return role == PersonRole.Lawman && Traits.ContainsKey("law") ? Trait("law") : Trait("fight", 1f);
         string side = A(sex) ? "armed_a" : "armed_b";
         return Traits.ContainsKey(side) ? Trait(side) : Trait("armed");

@@ -132,7 +132,7 @@ Roles are grouped as `fight` (guard, lawman, raider), `trade` (trader), `make` (
 
 **Children can be armed** (owner, 15 Nov: children aren't treated as sacred in every culture). Whether they are depends on two things together:
 - **the world's desperation**, a world fact from 0 to 1 rolled from facts the world already has (section 4.6): a falling world, famine and drought, hostile presences, Husks toward the core, raiders, bad air, a deep drop in tech;
-- **the culture's values**: `arms` (everyone and side_a arm more of their young, none fewer) and `young` (working and packs children carry more often, kept children less).
+- **the culture's values**: `arms` (everyone and side_a arm more of their young; none never does) and `young` (working and packs children carry more often, kept children less).
 
 A child's chance to carry a weapon is the culture's base plus 0.4 times desperation, scaled by `arms`: a desperate world arms its young often even under a mild culture, and a comfortable world rarely does unless its culture says so. A young person rolled into an adult job stays `Hardened` and, as a guard, is armed through `Fighter()` as before.
 
@@ -150,7 +150,7 @@ A child's chance to carry a weapon is the culture's base plus 0.4 times desperat
 
 | Value | Weight | Children are | Furthest from their minder | Share of time at play | Places |
 | --- | --- | --- | --- | --- | --- |
-| **anyone** | 5 | With the nearest adult (today, `Town.cs:893`) | 10 m | 50% | None |
+| **anyone** | 5 | Running about among anyone near (today, `Town.cs:893`) | No leash | All | None |
 | side_a / side_b | 2 / 2 | With an adult of that side | 6 m | 40% | None |
 | packs | 2 | In packs of 3 to 6 of their own, roaming the town | Town edge | 70% | A play yard, and a den at the edge |
 | kept | 1 | Indoors or in a walled yard; out by day only with a carer | 3 m | 30% | A crèche hall, and a children's dormitory |

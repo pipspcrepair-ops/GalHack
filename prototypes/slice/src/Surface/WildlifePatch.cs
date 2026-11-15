@@ -124,6 +124,7 @@ public partial class WildlifePatch : Node3D
         world.Mutagen = Math.Max(world.Mutagen, layers.Mutagen);
         // Its story: how it fell, its theme, who lives on it now, its eras and paint: what walks it beside its wild.
         Story(world, planet.Roll, planet.Profile, layers);
+        if (planet.Roll?.Culture is { } culture) GD.Print($"culture: {culture}");
         // How much lives here is the world's own: its type's livability and what its layers say of it (a dead,
         // barren or poisoned world quiet, a rich one alive); where on it, its land decides (Richness).
         Livable *= Mathf.Lerp(1f, layers.Density, rules.LayerWeight);

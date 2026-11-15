@@ -217,7 +217,7 @@ public sealed partial class Staging
             }
         _game.Visor.Visible = false;
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 1.1f - best, Vector3.Up), best);
-        GD.Print($"seeing {most} of {people.Count} people");
+        GD.Print($"seeing {most} of {people.Count} people; their culture: {p.Memory.Town.Culture}");
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
