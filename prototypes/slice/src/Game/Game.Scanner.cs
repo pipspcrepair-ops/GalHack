@@ -4,13 +4,14 @@ using Planets.Gen;
 using PoiGenerator.Gen;
 using Slice.Items;
 using Slice.Surface;
+using Slice.Vessels;
 
 namespace Slice.Game;
 
 /// <summary>
-/// The handheld scanner (free from the suit fabricator): a click pings what lies far off. The nearest deposit of
-/// each ore within <see cref="ScanRange"/> goes on the compass for ten seconds; every place within the scanner's
-/// scan range (the item's data) is marked for thirty, then the mark times out: a scan is a snapshot, not a standing
+/// Scanning, from the handheld scanner (free from the suit fabricator) or a structure's scanner block: a scan pings what lies far off. The nearest deposit of
+/// each ore within <see cref="ScanRange"/> goes on the compass for ten seconds (the handheld only); every place within
+/// the scanner's range (the item's data, or the structure's best scanner block) is marked for thirty, then the mark times out: a scan is a snapshot, not a standing
 /// map. A city, or an airfield of many parts, is one place. Nothing stays marked from a ping: a deposit or a place stays on the compass and the
 /// map only once you have been near it.
 /// </summary>
@@ -42,20 +43,44 @@ public partial class Game
     public float PlaceScanRange =>
         Pack.Hand == HandKind.Scanner && Zone?.Data?.Items.TryGet(Pack.HandItem, out var item) == true ? item.Scan : 0f;
 
-    /// <summary>A ping: every ore's nearest deposit and every place within reach go on the compass for a while.</summary>
+    /// <summary>The handheld's click: the scan from your feet at its range, and every ore's nearest deposit on the compass for a while.</summary>
     public bool Scan()
     {
-        if (ScanWait > 0 || InOrbit || Zone.Planet == null) return false;
-        _scanReady = Stats.Seconds + ScanCooldown;
-        _pings.Clear();
         Vector3 feet = Survivor.WorldFeet;
+        if (!Scan(feet, PlaceScanRange)) return false;
         foreach (var kind in DepositFinder.Kinds)
             if (DepositFinder.Nearest(Zone, kind, feet, ScanRange) is Vector3 at)
                 _pings.Add(new Ping(kind == Planets.Gen.DepositKind.Water ? "ice" : kind.ToString().ToLowerInvariant(), at, Stats.Seconds + PingSeconds));
-        _pings.AddRange(PlacesInScan(feet, PlaceScanRange, Stats.Seconds + MarkSeconds));
+        return true;
+    }
+
+    /// <summary>
+    /// The one scan, from the handheld or a structure's scanner: the last scan's marks go and every place within
+    /// <paramref name="range"/> of <paramref name="from"/> is marked for <see cref="MarkSeconds"/>. False while the
+    /// scanner cools down, in orbit, or off a planet.
+    /// </summary>
+    public bool Scan(Vector3 from, float range)
+    {
+        if (ScanWait > 0 || InOrbit || Zone?.Planet == null) return false;
+        _scanReady = Stats.Seconds + ScanCooldown;
+        _pings.Clear();
+        _pings.AddRange(PlacesInScan(from, range, Stats.Seconds + MarkSeconds));
         Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, Survivor.WorldEye(), 1.4f, -10f);
         return true;
     }
+
+    /// <summary>How far a structure's scan reaches, m: its best scanner block's range (data: slice.json scanners), 0 with none.</summary>
+    public float ScanRangeOf(Vessel v)
+    {
+        var ranges = Zone.Data.Rules.Scanners;
+        float best = 0f;
+        foreach (var (_, block) in v.Structure.Blocks())
+            if (v.Structure.TypeOf(block) is { IsScanner: true } t && ranges.TryGetValue(t.Id, out float r)) best = System.Math.Max(best, r);
+        return best;
+    }
+
+    /// <summary>A structure's scan, from where it is, at its scanners' range (false with none aboard).</summary>
+    public bool Scan(Vessel v) => ScanRangeOf(v) is > 0f and var r && Scan(v.Body.Position.ToGodot(), r);
 
     /// <summary>The places within <paramref name="range"/> of <paramref name="feet"/> across the ground, as marks lasting until <paramref name="until"/>: each site, a typed place's parts as one mark on its anchor, the city's buildings as one at its middle.</summary>
     public List<Ping> PlacesInScan(Vector3 feet, float range, double until)

@@ -54,6 +54,7 @@ public static class DeviceDetail
             case "weapon": Weapon(k, t); break;
             case "turret": Turret(k); break;
             case "forecast": break; // its mast and dish are its own parts
+            case "scanner": break; // its mast, dish and coil are its own parts
             case "field-emitter": break; // its L and glowing strips are its own parts
             case "ladder":
             case "stairs": break;

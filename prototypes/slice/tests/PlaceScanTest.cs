@@ -5,7 +5,11 @@ using GalHack.Items;
 using Godot;
 using Slice.Game;
 using Slice.Items;
+using GalHack.Physics.Engine;
+using GalHack.Structures;
 using Slice.Ui;
+using Slice.Vessels;
+using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Tests;
 
@@ -13,7 +17,8 @@ namespace Slice.Tests;
 /// The hand scanner's place marks, on a fresh world: a scan marks every place within the scanner's scan range (the
 /// item's data) and none beyond, each on the visor as an icon and a distance with no name, at the start and stood
 /// by a place that was out of range (now marked); the marks are still there at 29 s and gone by 30.3 s; a second
-/// scan brings them back.
+/// scan brings them back. A structure's scanner block: three tiers, ranges from data; a structure without one can't
+/// scan; one carrying a T1 marks the places within its range of the structure through the same scan.
 ///
 /// Run: test-q.ps1 -Project prototypes/slice -Scene res://tests/PlaceScanTest.tscn
 /// </summary>
@@ -102,6 +107,37 @@ public partial class PlaceScanTest : Node
         // A second scan brings them back.
         foreach (int x in ScanHere(drive, range, "a second scan")) yield return x;
         Check(PlaceMarks().Count == marked, $"a second scan: the same {marked} marks back ({PlaceMarks().Count})");
+
+        // A structure's scanner: each tier a block with its item, its range from data within the design's 2.5 to 10 km.
+        var tiers = new[] { "scanner-t1", "scanner-t2", "scanner-t3" };
+        var ranges = tiers.Select(t => _game.Zone.Data.Rules.Scanners.GetValueOrDefault(t)).ToList();
+        Check(tiers.All(t => _game.Zone.Data.Catalogue.Type(t) is { IsScanner: true } && _game.Zone.Data.Items.TryGet(t, out ItemDef i) && i.Recipe != null && i.Unlock != null)
+            && ranges[0] >= 2500f && ranges[2] <= 10000f && ranges[0] < ranges[1] && ranges[1] < ranges[2], $"three scanner blocks, each made and unlocked, reaching {string.Join(", ", ranges)} m");
+        foreach (int x in play.WaitFor(() => _game.ScanWait <= 0, 5)) yield return x;
+        Vector3 site = play.FlatSpot(_game.Survivor.WorldFeet, 30f, 0.6f, 0.4f, span: 8f);
+        Vessel plain = SpawnBase(site + Vector3.Right * 14f, null);
+        Check(_game.ScanRangeOf(plain) == 0f && !_game.Scan(plain), "a structure with no scanner: no range, no scan");
+        Vessel ship = SpawnBase(site, tiers[0]);
+        float shipRange = _game.ScanRangeOf(ship);
+        Check(shipRange == ranges[0], $"a structure carrying a {tiers[0]} reaches {shipRange} m");
+        Vector3 from = ship.Body.Position.ToGodot();
+        Check(_game.Scan(ship), "its scan goes off");
+        foreach (int x in drive.Wait(2)) yield return x;
+        var shipWant = Expected(from, shipRange).Select(e => e.Key).ToHashSet();
+        var shipGot = PlaceMarks().Select(p => p.Key).ToHashSet();
+        Check(shipWant.Count > 0 && shipGot.SetEquals(shipWant) && PlaceMarks().All(p => p.Until - _game.Stats.Seconds is > 29.0 and <= 30.0),
+            $"from the structure: {shipGot.Count} places marked for 30 s, every one of the {shipWant.Count} within {shipRange:F0} m and none of the {Expected(from, float.MaxValue).Count - shipWant.Count} beyond");
+    }
+
+    /// <summary>A landed base by <paramref name="at"/>, carrying the scanner block <paramref name="scanner"/> (none when null).</summary>
+    Vessel SpawnBase(Vector3 at, string scanner)
+    {
+        var cat = _game.Zone.Data.Catalogue;
+        Structure s = CoreCraft.Ship(cat, false, _ => true);
+        if (scanner != null) Building.Place(s, new Int3(2, 1, 2), Building.Make(s, cat.Type(scanner)));
+        Vessel v = Vessel.Spawn(_game.Zone, s, (at + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        v.Settle();
+        return v;
     }
 
     List<Game.Game.Ping> PlaceMarks() => _game.Pings.Where(p => p.Place != null).ToList();
