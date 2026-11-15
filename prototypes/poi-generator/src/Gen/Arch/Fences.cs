@@ -74,8 +74,9 @@ public static class Fences
             Block b = g.Get(foot);
             for (Int3 c = foot; Shapes.IsFence(g.Get(c)); c += Int3.Up) g.Set(c, Block.Air);
             if ((b.Variant & Shapes.FencePost) != 0 && (b.Variant & Shapes.FenceLeaf) == 0) return; // (a post that went leaves no panel)
+            // (A gate's leaf, off its track, lies where it stood.)
             Int3 inward = foot - b.Facing.Vec();
-            foreach (Int3 at in new[] { inward, foot + b.Facing.Vec() })
+            foreach (Int3 at in (b.Variant & Shapes.FenceLeaf) != 0 ? new[] { foot } : new[] { inward, foot + b.Facing.Vec() })
                 if (g.InBounds(at) && g.Get(at).IsAir && !inst.Protected[at])
                 {
                     g.Set(at, b with { Variant = (byte)((b.Variant & (Shapes.FenceBit | Shapes.FenceTimber)) | Shapes.FenceDown) });
@@ -88,12 +89,15 @@ public static class Fences
             if (!done.Add(foot) || (b.Variant & Shapes.FencePost) == 0) continue;
             // The bay on from this post along its line, to the next post.
             Int3 along = (b.Facing is Dir.North or Dir.South ? Dir.East : Dir.South).Vec();
+            bool leaf = (b.Variant & Shapes.FenceLeaf) != 0;
+            bool Standing(Block n) => Shapes.IsFence(n) && (n.Variant & Shapes.FenceDown) == 0 && (n.Variant & Shapes.FenceLeaf) == (b.Variant & Shapes.FenceLeaf);
             var bay = new List<Int3>();
-            for (Int3 c = foot + along; bay.Count < Spacing && Shapes.IsFence(g.Get(c)) && (g.Get(c).Variant & Shapes.FencePost) == 0; c += along) bay.Add(c);
-            if ((b.Variant & Shapes.FenceLeaf) != 0)
+            for (Int3 c = foot + along; Standing(g.Get(c)) && (leaf || bay.Count < Spacing && (g.Get(c).Variant & Shapes.FencePost) == 0); c += along) bay.Add(c);
+            if (leaf)
             {
-                // A gate's leaf stays slid open, or has come off its track and lies where it stood.
-                if (ruined && rng.Chance(share * 2f)) { Fell(foot); foreach (Int3 c in bay) Fell(c); }
+                // A gate's leaf (the whole of it, to its far post) stays slid open, or has come off its track and lies where it stood.
+                if (ruined && rng.Chance(share * 2f)) { Fell(foot); foreach (Int3 c in bay) { done.Add(c); Fell(c); } }
+                else done.UnionWith(bay);
                 continue;
             }
             float r = rng.Float();

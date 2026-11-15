@@ -440,23 +440,23 @@ public partial class PoiTest
                 {
                     Layout l = BuildPiece(t, p, seed, tech);
                     runs++;
+                    // The line: the run's front row (its outer edge) as built; its gate's leaf is the row inside it.
+                    bool alongX = p.Front is Dir.North or Dir.South;
+                    int line = l.Blocks.Blocks().Where(q => Shapes.IsFence(q.Block) && (q.Block.Variant & Shapes.FenceLeaf) == 0).GroupBy(q => alongX ? q.Cell.Z : q.Cell.X).OrderByDescending(r => r.Count()).Select(r => r.Key).FirstOrDefault();
                     foreach (PoiState state in new[] { PoiState.Active, PoiState.Abandoned, PoiState.Ruined })
                     {
                         PoiInstance inst = PoiFactory.Spawn(_lib, l, state, Hash.Combine(seed, (ulong)state, (ulong)runs));
                         var g = inst.Blocks;
                         string at = $"{t.Id} {state} fence ({p.Front})";
                         var cells = g.Blocks().Where(q => BlockInfo.Collides(q.Block.Type) && q.Cell.Y >= 0).ToList();
-                        // The line: the run's front row (its outer edge), and the row inside it.
-                        bool alongX = p.Front is Dir.North or Dir.South;
                         var fence = cells.Where(q => Shapes.IsFence(q.Block)).ToList();
-                        int line = fence.Where(q => (q.Block.Variant & (Shapes.FenceLeaf | Shapes.FenceDown)) == 0).GroupBy(q => alongX ? q.Cell.Z : q.Cell.X).OrderByDescending(r => r.Count()).Select(r => r.Key).FirstOrDefault();
                         foreach (var (c, b) in cells.Where(q => !Shapes.IsFence(q.Block)))
-                            bad.Add($"{at}: a {b.Type} ({b.Role}, {b.Material}, {b.Variant}) at {c}, not the fence");
+                            bad.Add($"{at}: a {b.Type} at {c}, not the fence");
                         foreach (var (c, b) in fence)
                         {
                             int off = Math.Abs((alongX ? c.Z : c.X) - line);
                             bool flat = (b.Variant & Shapes.FenceDown) != 0, leaf = (b.Variant & Shapes.FenceLeaf) != 0;
-                            if (flat ? off > 1 || c.Y != 0 : leaf ? off != 1 : off != 0) bad.Add($"{at}: a {(flat ? "fallen panel" : leaf ? "leaf" : "panel")} {off} m off the line at {c}");
+                            if (flat ? off > 1 || c.Y != 0 : leaf ? off != 1 : off != 0) bad.Add($"{at}: a {(flat ? "fallen panel" : leaf ? "leaf" : "panel")} {off} m off the line at {c} (facing {b.Facing}, line {line})");
                             if (flat) down++;
                             if ((b.Variant & Shapes.FenceSag) != 0) sagged++;
                             if ((b.Variant & Shapes.FenceLean) != 0) leaned++;
@@ -467,7 +467,7 @@ public partial class PoiTest
                         {
                             int h = 0;
                             while (Shapes.IsFence(g.Get(c + Int3.Up * h))) h++;
-                            if (h != Fences.Height) bad.Add($"{at}: a column {h} m high at {c}");
+                            if (h != Fences.Height) bad.Add($"{at}: a column {h} m high at {c} (over it {g.Get(c + Int3.Up * h).Type} {g.Get(c + Int3.Up * h).Variant})");
                         }
                         if (state != PoiState.Active) continue;
                         var row = feet.Where(q => (q.Block.Variant & Shapes.FenceLeaf) == 0).Select(q => (A: alongX ? q.Cell.X : q.Cell.Z, Post: (q.Block.Variant & Shapes.FencePost) != 0)).OrderBy(q => q.A).ToList();

@@ -75,7 +75,7 @@ public static partial class StateTransforms
             b.Color = b.Color.Lerp(DeadGlass, 0.78f);
         }
         ref Block core = ref g.At(inst.CoreCell);
-        core.Variant = 1; // dormant
+        if (core.Type == BlockType.Core) core.Variant = 1; // dormant (a place without one has no core cell: what stands at its origin stays as it is)
     }
 
     static void SetDoors(PoiInstance inst, Rng rng, byte usual, byte other)
@@ -498,7 +498,7 @@ public static partial class StateTransforms
         var rotten = new List<Int3>();
         foreach (var (p, b) in g.Blocks())
         {
-            if (b.Material != Material.Timber || b.Role is not (Role.Wall or Role.Roof) || p.Y < 0 || inst.Protected[p]) continue;
+            if (b.Material != Material.Timber || b.Role is not (Role.Wall or Role.Roof) || p.Y < 0 || inst.Protected[p] || Shapes.IsFence(b)) continue; // (a fence rots its own way: Fences.Decay)
             bool sheltered = false;
             for (int y = p.Y + 1; y <= Math.Min(g.Max.Y, p.Y + 8) && !sheltered; y++)
             {
