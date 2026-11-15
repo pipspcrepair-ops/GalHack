@@ -836,9 +836,11 @@ public partial class PlaceTest : Node
         // Among them for a while: a look, and nothing more.
         foreach (int x in drive.Wait(600)) yield return x;
         Check(town.GuardShots == 0 && town.GuardAims == 0 && game.Suit.HealthShare >= health && place.Memory.Mood == Mood.Wary, $"they watch and leave you be: {town.GuardShots} shots in 10 s among them, health {game.Suit.HealthShare * 100:F0}%, still {place.Memory.Mood}");
+        // (They keep the storeys they are on, and one either side; a large place's others are nobody's.)
         var pop = place.Memory.Fauna?.Population;
-        int hunters = pop == null || pop.Silent ? 0 : pop.Spawns.Count(s => s.Role != Wildlife.DeepRole.Subsister);
-        Check(hunters == 0, $"nothing that hunts lives where they do ({pop?.Note ?? "nothing"})");
+        HashSet<int> kept = place.Memory.Fauna?.Rooms.Kept;
+        int hunters = pop == null || pop.Silent ? 0 : pop.Spawns.Count(s => s.Role != Wildlife.DeepRole.Subsister && (kept?.Contains(s.Room) ?? true));
+        Check(hunters == 0, $"nothing that hunts lives where they do ({pop?.Note ?? "nothing"}; {kept?.Count.ToString() ?? "all"} of {place.Memory.Fauna?.Rooms.Rooms.Count} rooms theirs)");
         var sim = game.Zone.Wildlife.Sim;
         Check(sim != null && sim.Settlements.Any(q => q.Name == site.Name), "and wildlife knows their ground as it knows a town's");
         town.Provoked();
