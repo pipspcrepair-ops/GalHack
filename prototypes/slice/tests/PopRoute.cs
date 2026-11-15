@@ -14,7 +14,7 @@ namespace Slice.Tests;
 /// <summary>
 /// How far ahead the ground and the trees are in, on one world: walking, at a hover bike's speed and flying at a
 /// craft's top speed, each from the start toward the highest ground within 4 km (mountains, through what grows on the way).
-/// Run windowed: godot --path prototypes/slice res://tests/PopRoute.tscn [-- --seed=N --places-at-load=1]
+/// Run windowed: godot --path prototypes/slice res://tests/PopRoute.tscn [-- --seed=N --places-at-load=1 --screen=N]
 /// Per route: the near ground's complete radius (median, worst), the far rings' nearest chunk still short of its level,
 /// the streamer's queue, how long a column waited from coming into the ring to its first near chunk, how long a
 /// level-0 far chunk (the trees' near drawing) waited from being wanted to standing, and how far off trees appeared.
@@ -31,6 +31,7 @@ public partial class PopRoute : Node
     double _streaming;
     long _last;
     bool _failed;
+    FramePacing _pacing;
 
     public override void _Ready()
     {
@@ -47,6 +48,7 @@ public partial class PopRoute : Node
         }
         // As the owner plays: his settings file (--settings=path), vsync on, full screen at 1920 x 1080.
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
+        if (_args.TryGetValue("screen", out string screen)) DisplayServer.WindowSetCurrentScreen(int.Parse(screen)); // --screen=N: full screen on that one
         DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
         // (Set by reflection: the flag is only there from places built after load on.)
         if (_args.ContainsKey("places-at-load"))
@@ -55,6 +57,8 @@ public partial class PopRoute : Node
         _game = new Game.Game { Interactive = false, SkipIntro = true, SettingsPath = _args.GetValueOrDefault("settings"), World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);
+        _pacing = new FramePacing { Name = "Pacing", Camera = () => _game.Camera };
+        AddChild(_pacing);
         _run = Routes().GetEnumerator();
     }
 
@@ -97,7 +101,7 @@ public partial class PopRoute : Node
         var zone = _game.Zone;
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
         DirectionalLight3D sun = zone.Sky.Sun;
-        GD.Print($"ROUTE applied: window {DisplayServer.WindowGetSize()} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, fps cap {Engine.MaxFps}, render scale {GetViewport().Scaling3DScale}, fov {_game.Camera.Fov}, " +
+        GD.Print($"ROUTE applied: {FramePacing.Screens()}; window {DisplayServer.WindowGetSize()} {DisplayServer.WindowGetMode()}, vsync {DisplayServer.WindowGetVsyncMode()}, fps cap {Engine.MaxFps}, render scale {GetViewport().Scaling3DScale}, fov {_game.Camera.Fov}, " +
                  $"ground detail {zone.Streamer.VoxelRadius}, detail distance {DetailReach.Distance}, level-0 radius {TerrainStreamer.FarLod0Radius}, far radius {TerrainStreamer.FarRadius}, " +
                  $"sun shadows {sun.DirectionalShadowMaxDistance} m, splits {sun.DirectionalShadowSplit1 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit2 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit3 * sun.DirectionalShadowMaxDistance:F0}, normal bias {sun.ShadowNormalBias}, bias {sun.ShadowBias}, blend splits {sun.DirectionalShadowBlendSplits}, mode {sun.DirectionalShadowMode}");
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");
@@ -290,7 +294,11 @@ public partial class PopRoute : Node
         _frames.Clear();
         _gpu.Clear();
         _streaming = 0;
-        if (!pops) SplitStart();
+        if (!pops)
+        {
+            SplitStart();
+            _pacing.Start();
+        }
         double solids0 = s.SolidsTotalMs, physics = 0, physicsWorst = 0;
         // The workers' time on the far ground: far chunks (flora and water) and the GPU rings' tiles.
         double[] buildMs0 = (double[])s.FarBuildMs.Clone();
@@ -308,7 +316,7 @@ public partial class PopRoute : Node
         {
             along += speed / Engine.PhysicsTicksPerSecond;
             Vector3 p = Lift(start + way * along, up);
-            _game.Survivor.PlaceOutside(p.ToNumerics());
+            _game.Survivor.PlaceOutside(p.ToNumerics(), glide: true); // drawn moving between ticks, as a body the physics moves is
             _drive.Face(Lift(start + way * (along + 200f), up * 0.5f + 1.6f));
             yield return 0;
             double ph = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
@@ -403,6 +411,8 @@ public partial class PopRoute : Node
             yield break;
         }
         SplitReport(name, tick);
+        FramePacing.Result pace = _pacing.Stop();
+        GD.Print($"ROUTE {name} pacing: {pace}");
         int over = _frames.Count(t => t > 16.7);
         _frames.Sort();
         _gpu.Sort();

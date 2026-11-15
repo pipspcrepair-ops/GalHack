@@ -15,7 +15,7 @@ namespace Slice.Tests;
 /// controls with real physics: standing still, standing and turning, walking toward the start's town, on a
 /// hover bike and flying the starter vessel, each measured by <see cref="FramePacing"/>.
 /// Run windowed, full screen on a screen (borderless, its own resolution) with the owner's settings:
-///   godot --path prototypes/slice res://tests/Pacing.tscn -- --settings=owner-settings.cfg --screen=N [--seed=N] [--dump=dir] [--trees=0.5]
+///   godot --path prototypes/slice res://tests/Pacing.tscn -- --settings=owner-settings.cfg --screen=N [--seed=N] [--dump=dir] [--trees=0.5] [--quick=1]
 /// </summary>
 public partial class Pacing : Node
 {
@@ -93,7 +93,7 @@ public partial class Pacing : Node
             System.IO.Directory.CreateDirectory(dir);
             _pacing.Dump($"{dir}/{name}.csv");
         }
-        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m): {_pacing.Stop()}");
+        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work p90 {_game.Pacer.Work:F1} ms): {_pacing.Stop()}");
         _mouse = Vector2.Zero;
     }
 
@@ -122,12 +122,15 @@ public partial class Pacing : Node
         foreach (int x in _drive.UntilSettled(30)) yield return x;
         foreach (int x in Measure("walking", 900, null, _drive.WalkTo(town, 3f, 15f, sprint: false))) yield return x;
         _drive.ReleaseAll();
+        if (_args.ContainsKey("quick")) yield break; // --quick=1: standing, turning and walking only
 
         var play = new Playthrough(_game);
         Vector3 pad = play.FlatSpot(S.WorldFeet, 20f, span: 10f);
         S.PlaceOutside((pad + Vector3.Up * 0.5f).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;
-        var bike = _game.Bikes.Place(pad + new Vector3(2f, 0.6f, 0f), S.Yaw);
+        // Back over the open ground the walk came across, away from the town's walls.
+        Vector3 back = _game.Start - pad;
+        var bike = _game.Bikes.Place(pad + new Vector3(2f, 0.6f, 0f), MathF.Atan2(-back.X, -back.Z));
         foreach (int x in _drive.Wait(10)) yield return x;
         S.Mount(bike);
         S.Yaw = bike.Yaw;
@@ -136,7 +139,7 @@ public partial class Pacing : Node
         _drive.Controls.Hold(Key.W);
         foreach (int x in _drive.Wait(60)) yield return x;
         int k = 0;
-        foreach (int x in Measure("biking", 900, () => _mouse = new Vector2(++k % 240 < 120 ? 240f : -240f, 0f))) yield return x;
+        foreach (int x in Measure("biking", 900, () => _mouse = new Vector2(++k % 240 < 120 ? 60f : -60f, 0f))) yield return x;
         _drive.ReleaseAll();
         _mouse = Vector2.Zero;
         S.Dismount();

@@ -899,6 +899,7 @@ public partial class Game : Node3D
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         LoadAhead(delta);
+        Survivor.ViewLead = ViewLead();
         PoseFigure(delta);
         // Seen from outside, the whole figure; in first person only seated (its lap under the view), and never the head the eye is in.
         bool outside = ThirdPerson || FixedCamera != null;
