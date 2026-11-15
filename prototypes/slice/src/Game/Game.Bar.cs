@@ -25,9 +25,9 @@ public partial class Game
     }
 
     /// <summary>
-    /// The structure's scanner (its toolbar's scan slot): the places within its range are marked for a while. The one hook
-    /// for proto/scanner's place marks, which take the structure's position and range when it merges; until then it is
-    /// the scanner's ping from the seat.
+    /// The structure's scanner (its toolbar's scan slot): the places within its range of where it is are marked for a while.
+    /// The one hook for proto/scanner's scan from a point (its scanner block and its marks); until that merges, the
+    /// handheld scanner's ping from the seat.
     /// </summary>
-    public bool StructureScan(Vessel v, float range) => Scan();
+    public bool StructureScan(Godot.Vector3 from, float range) => Scan();
 }

@@ -17,11 +17,11 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The structure's toolbar in a command chair (design: Visor HUD layout), on a fresh random world, through the game's
-/// own keys and mouse. A landed vessel with two spotlights, two gatlings, a turret, a detector, a portable fabricator,
+/// own keys and mouse. A landed vessel with two spotlights, two gatlings, a turret, a portable fabricator,
 /// an interior light and its core (gravity, life support): seated, the bar lists exactly those functions, equipment at
 /// the left end and core systems at the right, and no doors, gear, force fields or shields. Each number switches the
 /// real thing: the spotlights (not the light inside), the turrets, gravity, life support (the sealed air) and the
-/// fabricators (a job waits where it stands and goes on). The detector's slot scans. The gatlings' slot picked, the
+/// fabricators (a job waits where it stands and goes on). No scanner or shields slot without their blocks. The gatlings' slot picked, the
 /// trigger fires them: core storage's belts are spent, the shots leave the muzzles along the guns' facing at 600 m/s,
 /// and they hit a wall ahead. Dragged on the Core tab, the arrangement is kept, survives a blueprint's save and load
 /// (with the switches), and a structure built from it shows the same bar. Standing up brings back BAG.
@@ -65,7 +65,7 @@ public partial class BarTest : Node
     }
 
     /// <summary>The bar's default order on the rig: equipment from the left, core systems from the right.</summary>
-    static readonly string[] Expected = { "spotlights", "guns.gatling", "turrets", "scanner", null, null, "fabricators", "life-support", "gravity" };
+    static readonly string[] Expected = { "spotlights", "guns.gatling", "turrets", null, null, null, "fabricators", "life-support", "gravity" };
 
     /// <summary>The rig's chair, the cells its guns, spotlights and fabricator stand on.</summary>
     public static readonly Int3 Chair = new(0, 1, -1), Fabricator = new(2, 1, 2), Light = new(-2, 1, 2);
@@ -73,8 +73,8 @@ public partial class BarTest : Node
 
     /// <summary>
     /// The test's vessel: a 7 x 7 iron floor, its core, generator and two containers at the back, a command chair facing
-    /// ahead (-z), two spotlights and two gatlings on the floor's front edge, a turret on its front corner, a detector on
-    /// a post, a portable fabricator and a light inside; landed near a site, heading north. With <paramref name="wall"/>,
+    /// ahead (-z), two spotlights and two gatlings on the floor's front edge, a turret on its front corner, a portable
+    /// fabricator and a light inside; landed near a site, heading north. With <paramref name="wall"/>,
     /// a target wall of iron plates on a base, that far ahead.
     /// </summary>
     public static Vessel Rig(Game.Game game, Vector3 site, float wall, out Vessel target)
@@ -92,8 +92,6 @@ public partial class BarTest : Node
         foreach (Int3 g in Guns) s.Set(g, Make("gatling"));
         foreach (Int3 p in Spots) s.Set(p, Make("spotlight"));
         s.Set(new Int3(3, 1, -3), Make("turret"));
-        s.Set(new Int3(-3, 1, -3), Make("iron-plated"));
-        s.Set(new Int3(-3, 1, -4), Make("detector"));
         s.Set(Fabricator, Make("portable-fabricator"));
         s.Set(Light + new Int3(0, 0, 1), Make("iron-plated"));
         s.Set(Light, Make("light"));
@@ -201,11 +199,8 @@ public partial class BarTest : Node
             Check((fab.Current?.Progress ?? 99) > held || fab.Orders.Count == 0 || fab.Orders[0].RunsDone > 0, $"on again: it goes on ({fab.Current?.Progress:F2})");
         }
 
-        // The detector's slot runs a scan.
-        double waitBefore = _game.ScanWait;
-        foreach (int x in Press("scanner")) yield return x;
-        foreach (int x in _drive.Wait(2)) yield return x;
-        Check(waitBefore <= 0 && _game.ScanWait > 0, $"the detector's number runs a scan (cooldown {_game.ScanWait:F1} s)");
+        // The scanner's slot comes with a scanner block (proto/scanner's): none here, so none on the bar.
+        Check(v.Bar.Functions.All(f => f.Kind.Id != "scanner"), "no scanner slot until the structure carries a scanner");
 
         // ---- Firing ---------------------------------------------------------------------------------------
         const string Belt = "belt-12mm";

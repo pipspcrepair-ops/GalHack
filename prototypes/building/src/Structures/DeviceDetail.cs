@@ -56,7 +56,6 @@ public static class DeviceDetail
             case "forecast": break; // its mast and dish are its own parts
             case "field-emitter": break; // its L and glowing strips are its own parts
             case "spotlight": break; // its housing, rim and lens are its own parts
-            case "detector": break; // its plate, mast and dish are its own parts
             case "ladder":
             case "stairs": break;
             default: Fallback(k); break;

@@ -147,7 +147,7 @@
       { "id": "spotlights", "label": "SPOT", "functions": ["spotlight"], "act": "toggle", "icon": "spotlight", "end": "left" },
       { "id": "guns", "functions": ["weapon"], "act": "select", "icon": "gun", "end": "left", "perType": true },
       { "id": "turrets", "label": "TURRET", "functions": ["turret"], "act": "toggle", "icon": "turret", "end": "left" },
-      { "id": "scanner", "label": "SCAN", "functions": ["detector"], "act": "run", "icon": "scanner", "end": "left", "range": 2500 },
+      { "id": "scanner", "label": "SCAN", "functions": ["scanner"], "act": "run", "icon": "scanner", "end": "left", "range": 2500 },
       { "id": "shields", "label": "SHIELD", "functions": ["shield"], "act": "toggle", "icon": "shield", "end": "right" },
       { "id": "fabricators", "label": "FAB", "functions": ["constructor", "factory", "deconstructor"], "act": "toggle", "icon": "fabricator", "end": "right" },
       { "id": "life-support", "label": "LIFE", "functions": ["core"], "act": "toggle", "icon": "atmosphere", "end": "right" },
