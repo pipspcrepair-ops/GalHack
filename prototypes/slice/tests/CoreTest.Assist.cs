@@ -48,8 +48,9 @@ public partial class CoreTest
             burnt = MathF.Max(burnt, v.Flight.State.ThrustLocal.Length());
             yield return 0;
         }
-        Check(v.Body.Velocity.Y < -3.5f && v.Body.Position.Y < y0 - 1f && burnt == 0f,
-            $"hands off, it falls: {v.Body.Velocity.Y:F1} m/s after half a second, {y0 - v.Body.Position.Y:F1} m down, no thrust fired (most {burnt:F3} m/s²)");
+        float g = _game.Zone.Physics.Zone.Strength;
+        Check(MathF.Abs(v.Body.Velocity.Y + g * 0.5f) < 0.1f * g && v.Body.Position.Y < y0 && burnt == 0f,
+            $"hands off, it falls: {v.Body.Velocity.Y:F1} m/s after half a second at {g:F1} m/s², {y0 - v.Body.Position.Y:F1} m down, no thrust fired (most {burnt:F3} m/s²)");
 
         foreach (int x in Hold(Key.Q, 8)) yield return x;
         N.Vector3 spin = v.Controller.LocalSpin;
