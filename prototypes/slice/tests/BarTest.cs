@@ -99,6 +99,7 @@ public partial class BarTest : Node
         s.Set(Light, Make("light"));
         s.DirtyChunks.Clear();
         Vessel v = Vessel.Spawn(game.Zone, s, (site + Vector3.Up * 2f).ToNumerics(), heading, landed: true);
+        v.Storage.Add("biofuel", 40); // its generator's fuel, in its containers
         target = null;
         if (wall <= 0f) return v;
         // From under the ground at its foot to 6 m over the site's, wherever the ground between falls away.
