@@ -29,6 +29,7 @@ public partial class EscapeMenuTest : Node
 {
     const int WatchdogMinutes = 16;
     const string SettingsFile = "user://escape-menu-test.cfg";
+    Viewport.Msaa _engineMsaa;
     IEnumerator<int> _run;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -112,7 +113,7 @@ public partial class EscapeMenuTest : Node
     IEnumerable<int> Scenario()
     {
         DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(SettingsFile));
-        Viewport.Msaa engineMsaa = GetViewport().Msaa3D; // what the engine runs before the game touches anything: the project's msaa_3d
+        _engineMsaa = GetViewport().Msaa3D; // what the engine runs before the game touches anything: the project's msaa_3d
         _game = new Game.Game { Interactive = false, SkipIntro = true, SettingsPath = SettingsFile };
         AddChild(_game);
         _drive = new Driver(_game);
@@ -428,8 +429,8 @@ public partial class EscapeMenuTest : Node
         var streamer = _game.Surface.Streamer;
         Check(_game.Camera.Fov == 75f && view.Scaling3DScale == 1f && Engine.MaxFps == 0 && sun.DirectionalShadowMaxDistance == 320f && streamer.VoxelRadius == 5 && !gamma.Visible,
             "the defaults are the game as it was: 75 degrees, full scale, no cap, the sun's shadows to 320 m, 80 m of ground, no gamma pass");
-        Check(engineMsaa == Viewport.Msaa.Msaa4X && _game.Settings.Aa == AntiAliasing.Msaa4x && view.Msaa3D == engineMsaa && view.ScreenSpaceAA == Viewport.ScreenSpaceAAEnum.Disabled,
-            $"no anti-aliasing key: MSAA 4x, as the engine ran before this was a setting (engine {engineMsaa}, view {view.Msaa3D})");
+        Check(_engineMsaa == Viewport.Msaa.Msaa4X && _game.Settings.Aa == AntiAliasing.Msaa4x && view.Msaa3D == _engineMsaa && view.ScreenSpaceAA == Viewport.ScreenSpaceAAEnum.Disabled,
+            $"no anti-aliasing key: MSAA 4x, as the engine ran before this was a setting (engine {_engineMsaa}, view {view.Msaa3D})");
 
         foreach (int x in Tap(Key.Escape)) yield return x;
         foreach (int x in Click("esc:options")) yield return x;
@@ -497,6 +498,11 @@ public partial class EscapeMenuTest : Node
               && read.Aa == AntiAliasing.Fxaa && MathF.Abs(read.Gamma - 1.3f) < 0.001f && !read.Vsync && read.Resolution == s.Resolution,
             "read back from the settings file: every graphics setting as it was left");
 
+        var old = new ConfigFile();
+        old.SetValue("graphics", "shadows", "low");
+        old.Save("user://escape-menu-old.cfg");
+        Check(GameSettings.Load("user://escape-menu-old.cfg").Aa == AntiAliasing.Msaa4x, "an existing settings file with no anti-aliasing key still loads, on MSAA 4x");
+        DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath("user://escape-menu-old.cfg"));
         foreach (int x in Tap(Key.Escape)) yield return x;
         foreach (int x in Click("esc:options")) yield return x;
         foreach (int x in Click("opt:graphics")) yield return x;
