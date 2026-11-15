@@ -47,6 +47,12 @@ public partial class Hulks : Node
         foreach (var (site, task) in _building.Where(kv => kv.Value.IsCompleted).ToList())
         {
             _building.Remove(site);
+            if (task.IsFaulted)
+            {
+                GD.PushError($"hulk at {site.Origin}: could not be built: {task.Exception?.InnerException}");
+                Down[site] = new List<Vessel>();
+                continue;
+            }
             SetDown(site, task.Result);
             return; // one a tick at most: each is tens of thousands of blocks
         }
@@ -118,6 +124,7 @@ public partial class Hulks : Node
         Vector3 origin = Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y, site.Origin.Z), Focus());
         ulong seed = site.Layout.Seed;
         var rng = new Random(unchecked((int)(seed ^ (seed >> 32))));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         foreach (HullVessel.Result r in pieces)
         {
             CapitalHull.HullPiece piece = r.Piece;
@@ -129,7 +136,7 @@ public partial class Hulks : Node
             list.Add(v);
             Set?.Invoke(site, v);
         }
-        GD.Print($"hulk: {site.Family.Name} '{site.Layout.Variant?.Name}' ({site.State}) set down as {list.Count} wreck(s), {list.Sum(v => v.Structure.Count)} blocks, {pieces.Sum(p => p.Decor.Count)} pieces of dressing");
+        GD.Print($"hulk: {site.Family.Name} '{site.Layout.Variant?.Name}' ({site.State}) set down as {list.Count} wreck(s), {list.Sum(v => v.Structure.Count)} blocks, {pieces.Sum(p => p.Decor.Count)} pieces of dressing, {clock.Elapsed.TotalMilliseconds:F0} ms on the main thread");
         return list;
     }
 

@@ -114,7 +114,8 @@ public partial class HulkTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        Force();
+        string variant = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--variant="))?[10..];
+        Force(variant != null ? int.Parse(variant) : null);
         _game = new Game.Game { Interactive = false, SkipIntro = true, Mode = GalHack.Items.GameMode.Creative, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);

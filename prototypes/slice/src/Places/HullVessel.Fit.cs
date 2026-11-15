@@ -16,6 +16,9 @@ namespace Slice.Places;
 /// <summary>Stairs, doors, the ways in, windows, the engines and every room's fittings and lights.</summary>
 public sealed partial class HullVessel
 {
+    /// <summary>The spaces this piece holds any of.</summary>
+    IEnumerable<Space> Live => Out.Spaces.Where(s => s.Floor.Count > 0);
+
     /// <summary>The catalogue's part for a function that fits a box (turned as given), the most capable first.</summary>
     BlockType Best(string function, Int3 room, int rot, Func<BlockType, float> score)
     {
@@ -115,7 +118,7 @@ public sealed partial class HullVessel
         if (_vault >= 0)
         {
             Space core = Out.Spaces[_vault];
-            Space reactor = Out.Spaces.FirstOrDefault(x => x.Purpose == "reactor" && x.Deck == core.Deck && Math.Sign(x.U0) == Math.Sign(core.U0));
+            Space reactor = Live.FirstOrDefault(x => x.Purpose == "reactor" && x.Deck == core.Deck && Math.Sign(x.U0) == Math.Sign(core.U0));
             int wall = core.V0 - 1;
             if (reactor != null)
                 foreach (int u in core.Floor.Where(c => c.V == core.V0).Select(c => c.U).OrderBy(u => Math.Abs(u - (core.U0 + core.U1) / 2.0)))
@@ -294,15 +297,16 @@ public sealed partial class HullVessel
         if (lift == null) return;
         Int3 size = Footprint.WorldSize(lift, rot);
         double Up() => S.Blocks().Where(b => S.TypeOf(b.block).IsThruster && Orientations.ToWorld(b.block.Rot, Dir.NegZ) == Dir.PosY).Sum(b => (double)S.TypeOf(b.block).Thrust);
-        double need = StructureStats.Compute(S).Mass * g * 1.5, up = Up();
-        foreach (Space hall in Out.Spaces.Where(s => s.Hall).OrderBy(s => s.Purpose == "engine-room" ? 0 : 1))
+        double need = StructureStats.Compute(S).Mass * 1.3 * g * 1.5, up = Up();
+        foreach (Space hall in Live.Where(s => s.Hall).OrderBy(s => s.Purpose == "engine-room" ? 0 : 1))
         {
             int r = hall.Floor.Max(c => Math.Abs(c.U));
             for (int v = hall.V0 + 1; v + size.Z - 1 <= hall.V1 - 1 && up < need; v += size.Z + 2)
                 foreach (int side in new[] { -1, 1 })
                 {
-                    int u = side > 0 ? r - size.X - 2 : -r + 3;
-                    if (up >= need || u < 3 && side > 0 || u + size.X > -2 && side < 0) continue;
+                    // In the line of the holds' second row of cargo, an aisle either side of it.
+                    int u = side > 0 ? 7 : -7 - size.X + 1;
+                    if (up >= need || r < 7 + size.X + 1) continue;
                     bool flat = true;
                     for (int dv = 0; dv < size.Z && flat; dv++)
                         for (int du = 0; du < size.X && flat; du++) flat = Mask(u + du, 0, v + dv) == 255 && hall.Floor.Contains((u + du, v + dv)) && !hall.Taken.Contains((u + du, v + dv));
@@ -316,9 +320,9 @@ public sealed partial class HullVessel
     /// <summary>Generators enough for everything that draws power: in the reactor first (its largest), then the generator rooms.</summary>
     void Power()
     {
-        double Draw() => S.Blocks().Where(b => !b.block.IsFiller).Sum(b => -Math.Min(0f, S.TypeOf(b.block).Power));
-        double Made() => S.Blocks().Where(b => !b.block.IsFiller).Sum(b => Math.Max(0f, S.TypeOf(b.block).Power));
-        foreach (Space room in Out.Spaces.Where(s => s.Purpose is "reactor" or "generator-room").OrderBy(s => s.Purpose == "reactor" ? 0 : 1).ToList())
+        var all = S.Blocks().Where(b => !b.block.IsFiller).Select(b => S.TypeOf(b.block).Power).ToList();
+        double draw = all.Sum(p => -Math.Min(0f, p)), made = all.Sum(p => Math.Max(0f, p));
+        foreach (Space room in Live.Where(s => s.Purpose is "reactor" or "generator-room").OrderBy(s => s.Purpose == "reactor" ? 0 : 1).ToList())
         {
             bool reactor = room.Purpose == "reactor";
             int rot = Turn(Dir.PosY, Dir.NegZ);
@@ -333,15 +337,15 @@ public sealed partial class HullVessel
                     for (int y = room.Y; y + size.Y <= room.Y + 4; y += size.Y)
                     {
                         int v = v0 + stack * size.Z;
-                        if (Fits(gen, At(u0, y, v), rot, (x, yy, vv) => !S.Has(new Int3(x, yy, vv - Pc.V0)) && room.Floor.Contains((x, vv)))) Device(gen, u0, y, v, rot, room, Paint["machine"]);
+                        if (Fits(gen, At(u0, y, v), rot, (x, yy, vv) => !S.Has(new Int3(x, yy, vv - Pc.V0)) && room.Floor.Contains((x, vv)))) { Device(gen, u0, y, v, rot, room, Paint["machine"]); made += gen.Power; }
                     }
                 continue;
             }
             foreach (var (u, v) in WallCells(room, 2))
             {
-                if (Made() >= Draw() * 1.2 + 4) break;
+                if (made >= draw * 1.2 + 4) break;
                 if (Fits(gen, At(u, room.Y, v), rot, (x, yy, vv) => !S.Has(new Int3(x, yy, vv - Pc.V0)) && room.Floor.Contains((x, vv)) && !room.Taken.Contains((x, vv))))
-                    Device(gen, u, room.Y, v, rot, room, Paint["machine"]);
+                { Device(gen, u, room.Y, v, rot, room, Paint["machine"]); made += gen.Power; }
             }
         }
     }
@@ -376,10 +380,13 @@ public sealed partial class HullVessel
     /// </summary>
     void Fittings()
     {
-        foreach (Space s in Out.Spaces.Where(s => s.Hall && s.Purpose is "hold" or "ore-hold")) Cargo(s);
-        foreach (Space s in Out.Spaces.Where(s => s.Purpose == "engine-room")) EngineRoom(s);
-        foreach (Space s in Out.Spaces.Where(s => s.Purpose == "bridge")) Bridge(s);
-        foreach (Space s in Out.Spaces.Where(s => s.Purpose == "workshop"))
+        // The lift engines first, where the holds' cargo would stand: what is still to come (the cargo, the generators, the
+        // containers) is allowed for in their sum.
+        Lift();
+        foreach (Space s in Live.Where(s => s.Hall && s.Purpose is "hold" or "ore-hold")) Cargo(s);
+        foreach (Space s in Live.Where(s => s.Purpose == "engine-room")) EngineRoom(s);
+        foreach (Space s in Live.Where(s => s.Purpose == "bridge")) Bridge(s);
+        foreach (Space s in Live.Where(s => s.Purpose == "workshop"))
             foreach (string id in new[] { "fabricator-t2", "decon" })
                 if (Cat.TryGetType(id, out BlockType t))
                     foreach (var (u, v) in WallCells(s, 3))
@@ -396,18 +403,17 @@ public sealed partial class HullVessel
             core.Taken.Add(mid);
         }
         Turrets();
-        Lift();
         Power();
         Containers();
     }
 
-    /// <summary>A hold: cargo stacked in rows down both sides, two and three high, 2 m aisles between, the middle kept clear; a cargo container at each row's head.</summary>
+    /// <summary>A hold: cargo stacked in rows down both sides, two and three high, 2 m aisles between them and down the middle.</summary>
     void Cargo(Space hold)
     {
         string[] colours = { "orange", "teal", "hazard", "blue", "red", "hull" };
         int r = hold.Floor.Max(c => Math.Abs(c.U));
         foreach (int side in new[] { -1, 1 })
-            for (int row = 4; row + 2 <= r - 2; row += 5)
+            for (int row = 2; row + 2 <= r - 2; row += 5)
             {
                 int u0 = side > 0 ? row : -row - 2;
                 for (int v = hold.V0 + 2; v + 5 <= hold.V1 - 2; v += 8)
@@ -488,9 +494,10 @@ public sealed partial class HullVessel
     void Containers()
     {
         float floor = Out.Spaces.Sum(s => s.Floor.Count - s.Taken.Count(t => s.Floor.Contains(t)));
-        int Count() => S.Blocks().Count(b => !b.block.IsFiller && IsMachine(S.TypeOf(b.block)));
+        int count = S.Blocks().Count(b => !b.block.IsFiller && IsMachine(S.TypeOf(b.block)));
+        int Count() => count;
         int target = (int)MathF.Round(floor * 0.027f);
-        var rooms = Out.Spaces.Where(s => !s.Corridor).OrderByDescending(s => Share(s.Purpose)).ToList();
+        var rooms = Live.Where(s => !s.Corridor).OrderByDescending(s => Share(s.Purpose)).ToList();
         BlockType box = Cat.Type("container-t1"), big = Best("container", new Int3(2, 1, 1), 0, t => t.Storage);
         for (int pass = 0; pass < 6 && Count() < target; pass++)
             foreach (Space s in rooms)
@@ -504,6 +511,7 @@ public sealed partial class HullVessel
                     if (!Fits(t, At(u, s.Y, v), 0, (x, y, vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && s.Floor.Contains((x, vv)) && !s.Taken.Contains((x, vv)))) continue;
                     Device(t, u, s.Y, v, 0, s, Paint["orange"]);
                     _containers.Add((u, v));
+                    count++;
                 }
             }
     }
@@ -550,8 +558,10 @@ public sealed partial class HullVessel
             int top = s.Y + s.Height - 1, placed = 0;
             var spots = s.Floor.Where(c => Mod(c.U, step) == step / 2 && Mod(c.V, step) == step / 2 && (!s.Corridor || Math.Abs(c.U) <= 1 || s.Purpose == "stair")).ToList();
             if (spots.Count == 0) spots = s.Floor.OrderBy(c => Math.Abs(c.U - (s.U0 + s.U1) / 2.0) + Math.Abs(c.V - (s.V0 + s.V1) / 2.0)).Take(1).ToList();
-            foreach (var (u, v) in spots)
+            // Its spots, or failing every one of those (a ceiling open over a stair, a machine under it), the nearest cell to its middle that takes one.
+            foreach (var (u, v) in spots.Concat(s.Floor.OrderBy(c => Math.Abs(c.U - (s.U0 + s.U1) / 2.0) + Math.Abs(c.V - (s.V0 + s.V1) / 2.0))))
             {
+                if (placed > 0 && !spots.Contains((u, v))) break;
                 if (Has(u, top, v) || !Has(u, top + 1, v)) continue;
                 Int3 at = D.Mount("light", At(u, top, v), Dir.PosY);
                 S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));

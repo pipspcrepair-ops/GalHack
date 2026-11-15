@@ -68,8 +68,8 @@ public partial class HulkTest
                 $"{name}: devices {Count("thruster")} thrusters, {Count("generator")} generators, {Count("gyro")} gyros, {Count("warp-drive")} warp drives, {Count("turret")} turrets, {Count("container")} containers, {Count("chair")} chairs");
             Bad(Count("fuel") == 0 && Count("warp-tank") == 0, $"{name}: fuel or warp tanks");
             Bad(intact.All(r => r.Structure.Core == null) && intact.Count(r => r.CoreSlot is Int3 c && !r.Structure.Has(c) && r.Structure.Has(c - Int3.UnitY)) == 1, $"{name}: a core, or no empty seat for one");
-            // Flight-worthy once repaired: lift for its weight at a heavy world's gravity, power for what draws it.
-            foreach (HullVessel.Result r in intact)
+            // Flight-worthy once repaired (the piece with the core's seat): lift for its weight at a heavy world's gravity, power for what draws it.
+            foreach (HullVessel.Result r in intact.Where(r => r.CoreSlot != null))
             {
                 var st = StructureStats.Compute(r.Structure);
                 Bad(st.Thrust[(int)GalHack.Structures.Dir.PosY] > st.Mass * StructureStats.G * 1.3 && st.PowerOut >= st.PowerUse, $"{name}{r.Piece.Name}: lift {st.Thrust[(int)GalHack.Structures.Dir.PosY] / 1000:F0} MN for {st.Mass * StructureStats.G * 1.3 / 1000:F0} MN, power {st.PowerOut:F0} of {st.PowerUse:F0} MW");

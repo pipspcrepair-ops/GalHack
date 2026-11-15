@@ -36,11 +36,27 @@ public sealed class ShapeFit
         }
         for (int mask = 0; mask < 256; mask++)
         {
+            // A cell the solid only touches (its corners in one face, an edge or a point) holds none of it.
+            if (Flat(mask)) continue;
             var best = fits.OrderBy(f => System.Numerics.BitOperations.PopCount((uint)(f.Mask ^ mask)))
                 .ThenBy(f => (mask & ~f.Mask) != 0 ? 1 : 0)
                 .ThenByDescending(f => System.Numerics.BitOperations.PopCount((uint)f.Mask)).First();
             _best[mask] = best.Shape == null ? null : (best.Shape, best.Rot);
         }
+    }
+
+    /// <summary>All the mask's corners lie on one face of the cell (or there are none): it has no volume.</summary>
+    static bool Flat(int mask)
+    {
+        for (int axis = 0; axis < 3; axis++)
+            foreach (int side in new[] { 0, 1 })
+            {
+                bool all = true;
+                for (int i = 0; i < 8 && all; i++)
+                    if ((mask & 1 << i) != 0 && (i >> axis & 1) != side) all = false;
+                if (all) return true;
+            }
+        return false;
     }
 
     /// <summary>Corner <paramref name="i"/> of a cell (bit 0 is +x, bit 1 +y, bit 2 +z), from its middle.</summary>

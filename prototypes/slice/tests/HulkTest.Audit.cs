@@ -33,8 +33,10 @@ public sealed class WreckAudit
         a.Length = hi.Z - lo.Z + 1;
         a.Beam = hi.X - lo.X + 1;
         a.Height = hi.Y - lo.Y + 1;
-        bool Solid(Int3 p) => s.TryGet(p, out Block b) && s.IsSolid(b);
         bool Empty(Int3 p) => !s.TryGet(p, out Block b) || s.TypeOf(b).Collide == Collide.None;
+        bool Door(Int3 p) => s.TryGet(p, out Block b) && s.TypeOf(b).IsDoor;
+        var candidates = new Dictionary<Int3, int>();
+        var doors = new HashSet<Int3>();
         foreach (var (p, b) in s.Blocks())
         {
             BlockType t = s.TypeOf(b);
@@ -43,18 +45,40 @@ public sealed class WreckAudit
                 a.Armour++;
                 if (!s.ShapeOf(b).IsCube) a.Shaped++;
             }
-            if (b.IsFiller) continue;
-            if (Stores.Contains(t.Function)) a.Machines++;
-            if (t.IsLight) a.Lights++;
-            // The floor over a full block.
+            if (!b.IsFiller && Stores.Contains(t.Function)) a.Machines++;
+            if (!b.IsFiller && t.IsLight) a.Lights++;
+            // The floor over a full block: open, or a doorway between two floors.
             Int3 up = p + Int3.UnitY;
-            if (!t.IsArmor || !s.ShapeOf(b).IsCube || !Empty(up)) continue;
+            if (!t.IsArmor || !s.ShapeOf(b).IsCube) continue;
+            if (Door(up)) { doors.Add(up); continue; }
+            if (!Empty(up)) continue;
             int h = 0;
             while (h < 11 && Empty(up + Int3.UnitY * h)) h++;
-            if (h < 2 || h >= 11) continue;
-            a.FloorCells.Add(up);
-            if (h >= 4) a.Clear4++;
-            else a.LowCells.Add(up);
+            if (h >= 2 && h < 11) candidates[up] = h;
+        }
+        // Walkable floor is what joins up into a deck's worth (through its doorways): a cargo stack's top or a cranny is not.
+        var seen = new HashSet<Int3>();
+        foreach (Int3 start in candidates.Keys)
+        {
+            if (seen.Contains(start)) continue;
+            var part = new List<Int3>();
+            var q = new Queue<Int3>();
+            q.Enqueue(start);
+            seen.Add(start);
+            while (q.Count > 0)
+            {
+                Int3 c = q.Dequeue();
+                if (candidates.ContainsKey(c)) part.Add(c);
+                foreach (Int3 n in new[] { c + Int3.UnitX, c - Int3.UnitX, c + Int3.UnitZ, c - Int3.UnitZ })
+                    if ((candidates.ContainsKey(n) || doors.Contains(n)) && seen.Add(n)) q.Enqueue(n);
+            }
+            if (part.Count < 40) continue;
+            foreach (Int3 c in part)
+            {
+                a.FloorCells.Add(c);
+                if (candidates[c] >= 4) a.Clear4++;
+                else a.LowCells.Add(c);
+            }
         }
         a.Floor = a.FloorCells.Count;
         a.Low = a.LowCells.Count;

@@ -119,7 +119,8 @@ public static class CapitalHull
         public readonly List<Way> Ways = new();
         /// <summary>The hull door from outside (starboard, deck 0), at this v.</summary>
         public int DoorV = -1;
-        public bool Round, Spiked, Pods;
+        /// <summary>A bulbous, rounded bow (the traders' and the liners') rather than a straight taper.</summary>
+        public bool Round;
         /// <summary>The livery, by paint name: hull, trim, wall, deck, orange, teal, dark, machine, hazard, black.</summary>
         public readonly Dictionary<string, Rgb> Paints = new();
         /// <summary>Where the crash struck hardest (v), and how far the crushing reaches from it: the top deck there is 2 m clear.</summary>
@@ -149,7 +150,9 @@ public static class CapitalHull
             float fore = MathF.Min(Top / 3f, Bz / 2f), rake = MathF.Min(Top * 0.5f, Bz * 0.6f);
             float bottom = -0.5f + MathF.Max(0f, fore - (v + 0.5f)) + MathF.Max(0f, au - (hw - 2f));
             float top = Top + 0.5f - MathF.Max(0f, rake - (v + 0.5f)) - MathF.Max(0f, au - (hw - Chamfer)) - MathF.Max(0f, (v + 0.5f) - (L - 2));
-            return y >= bottom && y <= top;
+            // The dorsal spine down the back, from the bow to the engines, sloped either side and at its ends.
+            float spine = MathF.Max(0f, 1.5f - MathF.Max(0f, au - 1f)) * Math.Clamp(MathF.Min(v - Bz, L - 6 - v) / 1.5f, 0f, 1f);
+            return y >= bottom && y <= top + spine;
         }
 
         public bool InTower(float u, float y, float v)
@@ -272,10 +275,8 @@ sealed class Hulk
         H.Paints["dark"] = new Rgb(0x2a, 0x2e, 0x34);
         H.Paints["hazard"] = f.Hazard;
         H.Paints["black"] = f.Black;
-        // The faction's hand on the shape: a bulbous bow and stacked pods for the traders, rams for raiders.
+        // The faction's hand on the shape: a bulbous bow for the traders and the liners.
         H.Round = H.Faction == Faction.Exchange || S.Role == "liner";
-        H.Pods = S.Role == "freighter" || H.Faction == Faction.Exchange;
-        H.Spiked = H.Faction == Faction.Reavers || S.Role == "miner";
     }
 
     // ---- the bays, stem to stern -----------------------------------------------------------------------
@@ -288,7 +289,8 @@ sealed class Hulk
         int target = R.Between(l0, l1);
         // Now and then a huge hull runs on toward the longest Empyrion's derelicts reach.
         if (S.Size == "huge" && R.Chance(0.15f)) target = R.Between(250, 270);
-        int bow = Math.Clamp(target / 6, 14, 34), engine = Math.Clamp(target / 8, 12, 24), power = Math.Clamp(target / 8, 14, 24), crew = Math.Clamp(target / 7, 14, 24);
+        // The crew's and the power bays hold a stair core and a full set of rooms beside it on every deck.
+        int bow = Math.Clamp(target / 6, 14, 34), engine = Math.Clamp(target / 8, 12, 24), power = Math.Clamp(target / 7, 22, 30), crew = Math.Clamp(target / 6, 22, 30);
         string[] middle = S.Role switch
         {
             "warship" => new[] { "armoury", "hangar", "barracks", "magazine" },
@@ -317,7 +319,8 @@ sealed class Hulk
         // The tower: forward over the crew for a warship, a liner or a carrier, aft over the power for a hauler.
         bool aft = S.Role is "freighter" or "miner";
         CapitalHull.Bay bay = H.Bays.First(b => b.Kind == (aft ? "power" : "crew"));
-        int tw = Math.Max(6, (int)(H.Half * 0.55f));
+        // Wide enough for the stair core coming up through it beside the spine (u 3 to 7, walled).
+        int tw = Math.Clamp((int)(H.Half * 0.6f), 9, H.Half - 3);
         H.TU0 = -tw;
         H.TU1 = tw;
         H.TV0 = bay.V0 + 1;

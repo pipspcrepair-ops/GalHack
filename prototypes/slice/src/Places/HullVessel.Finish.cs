@@ -69,7 +69,7 @@ public sealed partial class HullVessel
         }
         float devices = State switch { PoiState.Active => 0.1f, PoiState.Abandoned => 0.3f, PoiState.Infested => 0.4f, _ => 0.55f };
         float shell = State switch { PoiState.Active => 0.004f, PoiState.Abandoned => 0.012f, PoiState.Infested => 0.016f, _ => 0.04f };
-        foreach (var kind in S.Blocks().Where(b => !b.block.IsFiller && S.TypeOf(b.block) is var t && !t.IsArmor && t.Function is not ("stairs" or "core") && b.pos != Out.Door)
+        foreach (var kind in S.Blocks().Where(b => !b.block.IsFiller && S.TypeOf(b.block) is var t && !t.IsArmor && t.Function is not ("stairs" or "core" or "container") && b.pos != Out.Door)
                      .GroupBy(b => S.TypeOf(b.block).Function).ToList())
         {
             var all = kind.Select(b => b.pos).OrderBy(_ => Rng.Next()).ToList();

@@ -94,7 +94,7 @@ public sealed partial class HullVessel
                 }
                 if (hall && d == 0) Hall(b);
                 else if (hall) Catwalk(b, corridor);
-                else Rooms(b, d);
+                else Rooms(b, d, corridor);
             }
         }
         // The tower: the officers' deck, the bridge over it.
@@ -169,11 +169,16 @@ public sealed partial class HullVessel
         };
     }
 
-    /// <summary>A bay's rooms on a deck: each side's band between the spine and the flank passage, split along the bay.</summary>
-    void Rooms(Bay b, int d)
+    /// <summary>
+    /// A bay's rooms on a deck: each side's band between the spine and the flank passage, split along the bay into rooms
+    /// of up to about 12 m with a passage between each two (walled both sides), as a ship's transverse passages join its
+    /// spine to its flanks.
+    /// </summary>
+    void Rooms(Bay b, int d, int corridor)
     {
-        var (port, stbd, n) = Program(b.Kind, d);
+        var (port, stbd, n0) = Program(b.Kind, d);
         int c0 = Math.Max(b.V0 + (b.Kind == "bow" ? 0 : 3), Pc.V0), c1 = Math.Min(b.V1 - 2, Pc.V1 - 1);
+        bool passages = b.Kind != "bow";
         foreach (int side in new[] { -1, 1 })
         {
             int from = c0;
@@ -184,16 +189,22 @@ public sealed partial class HullVessel
             if (purpose == "reactor")
             {
                 // The reactor, and behind it the core room, reached only through it.
-                Band(purpose, d, side, from, c1 - 8);
-                if (Band("core-room", d, side, c1 - 6, c1) is int vault) _vault = vault;
+                Band(purpose, d, side, from, c1 - 8, passages);
+                if (Band("core-room", d, side, c1 - 6, c1, passages) is int vault) _vault = vault;
                 continue;
             }
-            int len = (c1 - from + 1 - (n - 1)) / n;
-            if (len < 5) { n = 1; len = c1 - from + 1; }
+            int total = c1 - from + 1, n = Math.Max(n0, (int)MathF.Round((total + 4) / 16f));
+            int len = (total - 4 * (n - 1)) / n;
+            if (len < 6) { n = 1; len = total; }
             for (int i = 0; i < n; i++)
             {
-                int a = from + i * (len + 1);
-                Band(purpose, d, side, a, i == n - 1 ? c1 : a + len - 1);
+                int a = from + i * (len + 4);
+                Band(purpose, d, side, a, i == n - 1 ? c1 : a + len - 1, passages);
+                if (i == n - 1) continue;
+                // The passage after it: two cells wide from the spine's wall out to the flank passage.
+                for (int v = a + len + 1; v <= a + len + 2; v++)
+                    for (int u = 2; u <= Reach(d, v); u++)
+                        if (ZoneAt(d, side * u, v) == Fill && !InCore(side * u, v, 1)) SetZone(d, side * u, v, corridor);
             }
         }
     }
@@ -201,12 +212,12 @@ public sealed partial class HullVessel
     int _vault = -1;
 
     /// <summary>One room on a side of a deck over v0..v1: its cells from the spine's wall out to the flank passage's (or the shell).</summary>
-    int? Band(string purpose, int d, int side, int v0, int v1)
+    int? Band(string purpose, int d, int side, int v0, int v1, bool passages)
     {
         var cells = new List<(int, int)>();
         for (int v = v0; v <= v1; v++)
         {
-            int r = Reach(d, v), outer = r >= 9 && purpose != "bow" ? r - 3 : r;
+            int r = Reach(d, v), outer = r >= 9 && passages ? r - 3 : r;
             for (int a = 3; a <= outer; a++)
                 if (ZoneAt(d, side * a, v) == Fill && !InCore(side * a, v, 1)) cells.Add((side * a, v));
         }
@@ -229,11 +240,13 @@ public sealed partial class HullVessel
             for (int u = _u0; u < _u0 + _nu; u++)
                 for (int d = 0; d < Levels; d++)
                 {
-                    int z = ZoneAt(d, u, v);
-                    if (z == None || z >= 0 && Out.Spaces[z].Hall && d == 1) continue;
+                    int z = _zone[Z(d, u, v)];
+                    if (z >= 0 && Out.Spaces[z].Hall && d == 1) continue;
                     int y0 = Plan.Walk(d);
-                    if (z == Fill)
-                        for (int y = y0; y < y0 + 4; y++) Solid(u, y, v, Paint["wall"]);
+                    // No space's, or a deck's edge the shell pinches (the bilges, the bow, the nacelles): solid.
+                    if (z < 0)
+                        for (int y = y0; y < y0 + 4; y++)
+                            if (z == Fill || Interior(u, y, v)) Solid(u, y, v, Paint["wall"]);
                     if (z < 0 || !Out.Spaces[z].Hall) continue;
                     bool walk = Math.Abs(u) <= 2 && OnCatwalk(u, v);
                     for (int y = y0; y < y0 + Out.Spaces[z].Height; y++)
