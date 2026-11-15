@@ -1423,6 +1423,10 @@ GalHack's interface **looks like part of the world** without being built into it
   - Operating time left on generator fuel, in minutes.
   - AU left in warp fuel.
   - Light years left in fold fuel.
+- **In a command chair, the toolbar along the bottom is the structure's** (owner, 15 Nov). It lists the functions the pilot can toggle or trigger in flight: lights on and off, firing the guns, and the like (doors, landing gear, force fields, shields, gravity).
+  - Its slots fill from the devices the structure has, and the pilot can arrange them. The arrangement is saved with the structure.
+  - The number keys toggle or select, and firing triggers the selected weapons.
+  - As in Empyrion, where a seated pilot's toolbar holds the ship's weapons and device groups.
 - **Above the structure's gauges: its icon row.** Power on or off, gravity on or off, active atmosphere, and passive thrusters (flight assist on: they hold the ship fixed) or active thrusters (assist off: they fire only when told).
 
 **Scanner markers** (owner, 15 Nov). Scanning marks the POIs within the scanner's range. Each marker lasts 30 seconds and then times out, so a scan is a snapshot, not a standing map.
