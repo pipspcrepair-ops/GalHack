@@ -453,6 +453,10 @@ public partial class EscapeMenuTest : Node
         foreach (int x in Click("opt:gamma", Along(1.3f, GameSettings.MinGamma, GameSettings.MaxGamma))) yield return x;
         foreach (int x in Click("opt:vsync-off")) yield return x;
         foreach (int x in Click("opt:window-borderless")) yield return x;
+        var subs = new List<SubViewport>();
+        void Find(Node n) { foreach (Node c in n.GetChildren()) { if (c is SubViewport sv) subs.Add(sv); Find(c); } }
+        Find(_game);
+        var subsBefore = subs.Select(v => (v.Msaa3D, v.ScreenSpaceAA)).ToList();
         var aaSeen = new List<string>();
         foreach (var (id, aa, msaa, ss) in new[] { ("opt:aa-off", AntiAliasing.Off, Viewport.Msaa.Disabled, Viewport.ScreenSpaceAAEnum.Disabled), ("opt:aa-msaa-2x", AntiAliasing.Msaa2x, Viewport.Msaa.Msaa2X, Viewport.ScreenSpaceAAEnum.Disabled),
                      ("opt:aa-smaa", AntiAliasing.Smaa, Viewport.Msaa.Disabled, Viewport.ScreenSpaceAAEnum.Smaa), ("opt:aa-fxaa", AntiAliasing.Fxaa, Viewport.Msaa.Disabled, Viewport.ScreenSpaceAAEnum.Fxaa) })
@@ -461,10 +465,7 @@ public partial class EscapeMenuTest : Node
             aaSeen.Add($"{aa}:{(_game.Settings.Aa == aa && view.Msaa3D == msaa && view.ScreenSpaceAA == ss ? "ok" : "WRONG")}");
         }
         Check(aaSeen.All(a => a.EndsWith("ok")), $"ANTI-ALIASING applies live to the main view: {string.Join(", ", aaSeen)}");
-        var subs = new List<SubViewport>();
-        void Find(Node n) { foreach (Node c in n.GetChildren()) { if (c is SubViewport sv) subs.Add(sv); Find(c); } }
-        Find(_game);
-        Check(subs.All(v => v.Msaa3D == Viewport.Msaa.Msaa4X && v.ScreenSpaceAA == Viewport.ScreenSpaceAAEnum.Disabled), $"the icon and preview viewports keep MSAA 4x ({subs.Count} sub-viewports found)");
+        Check(subs.Count > 0 && subs.Select(v => (v.Msaa3D, v.ScreenSpaceAA)).SequenceEqual(subsBefore), $"the icon and preview viewports are unchanged by the setting ({subs.Count} sub-viewports, {subs.Count(v => v.Msaa3D == Viewport.Msaa.Msaa4X)} on MSAA 4x)");
         Vector2I before = _game.Settings.Resolution;
         foreach (int x in Click("opt:res-down")) yield return x;
         bool resolutionLocked = _game.Settings.Resolution == before && _game.Settings.Window == WindowKind.Borderless;
