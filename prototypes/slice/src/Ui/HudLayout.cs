@@ -106,7 +106,6 @@ public readonly record struct HudLayout(float Scale, Rect2 Sleeper, Rect2 Sleepe
         var menuAlerts = new Rect2(Edge * s, size.Y - (MenuAlertsFoot + Cell + AlertTimerH) * s, AlertRow * s, (Cell + AlertTimerH) * s);
         float linesH = LinesShown * 26 * s;
         var jet = new Rect2(size.X - (Edge + JetW) * s, size.Y * 0.45f - JetH * s / 2f, JetW * s, JetH * s);
-        var lines = new Rect2(Edge * s, MathF.Min(alerts.Position.Y, shapes.Position.Y) - 8 * s - linesH, jet.Position.X - 12 * s - Edge * s, linesH);
         var surroundings = new Rect2(Edge * s, 14 * s, SurroundW * s, 2 * SurroundRowH * s);
         // The compass strip, its N/E/S/W letters (40 wide at a strip's end) and the heading under it.
         float compassW = CompassW + (compassLabels ? 220 : 40);
@@ -114,6 +113,12 @@ public readonly record struct HudLayout(float Scale, Rect2 Sleeper, Rect2 Sleepe
         // Seated: the flight line, its message under it, and the mode plate under that (beside it, it ran off a narrow window).
         var flight = new Rect2(cx - 360 * s, compass.End.Y + 14 * s, 720 * s, 68 * s);
         var mode = new Rect2(cx - 96 * s, flight.End.Y + 6 * s, 192 * s, 34 * s);
+        // The suit's lines above it all at the left, up to the jetpack's gauge; where a large UI scale lifts them as high as
+        // the seated flight line or mode plate, they stop short of those.
+        float linesY = MathF.Min(alerts.Position.Y, shapes.Position.Y) - 8 * s - linesH, linesEnd = jet.Position.X - 12 * s;
+        foreach (Rect2 seated in new[] { flight, mode })
+            if (linesY < seated.End.Y + 8 * s) linesEnd = MathF.Min(linesEnd, seated.Position.X - 12 * s);
+        var lines = new Rect2(Edge * s, linesY, linesEnd - Edge * s, linesH);
         // Notices: the top right, beside the compass; where the window is too narrow for that, under the compass's
         // right end, past the flight line (narrower and shorter if it must be), above the jetpack's gauge.
         float nw = NoticeW * s, nh = (Ui.Notices.MostShown * NoticeRowH + (Ui.Notices.MostShown - 1) * NoticeGap) * s, right = size.X - Edge * s;
