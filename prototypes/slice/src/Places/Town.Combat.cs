@@ -58,6 +58,9 @@ public sealed partial class Town
     public int Shots { get; private set; }
     public int Blows { get; private set; }
     public int Engagements { get; private set; }
+    /// <summary>Bursts not fired because the weapon never came onto its mark, and how far off the last held round was, with its raise and gesture (tests).</summary>
+    public int Dropped;
+    public string LastHeld = "";
     public int Flanks { get; private set; }
     public int FallBacks { get; private set; }
 
@@ -369,7 +372,8 @@ public sealed partial class Town
         if (off > HumanRig.OnMark)
         {
             // Still coming round: they wait; never on: they take aim again.
-            if ((p.AimHeld += dt) >= HumanRig.AimWait) { p.AimHeld = 0f; p.Pending = 0; p.Aim = -1f; }
+            LastHeld = $"{off:F1} deg off, raised {p.Raised:F2}, act {p.Act}, crouched {p.Crouched:F2}, threat {(p.Threat != null ? "a creature" : "none")}";
+            if ((p.AimHeld += dt) >= HumanRig.AimWait) { p.AimHeld = 0f; p.Pending = 0; p.Aim = -1f; Dropped++; }
             return;
         }
         p.AimHeld = 0f;

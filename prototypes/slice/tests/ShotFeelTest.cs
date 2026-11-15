@@ -288,7 +288,16 @@ public partial class ShotFeelTest : Node
         ArmsHost arms = game.Arms;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         Vector3 feet = game.Survivor.WorldFeet;
-        Creature raider = Stand(Raider(patch, "rifle"), 35f, 0f);
+        // Where it has a clear line to you from its own muzzle (a trunk or a rise between would send it closer first).
+        Creature raider = null;
+        for (int tries = 0; tries < 6; tries++)
+        {
+            raider = Stand(Raider(patch, "rifle"), 35f, tries * 1.05f);
+            bool clear = false;
+            for (int i = 0; i < 40 && !clear; i++) { game.Suit.Vitals.Health = max; yield return 0; clear = Arming.ShootReach(raider, patch.Player) > 0f; }
+            if (clear) break;
+            sim.Kill(raider, null);
+        }
         sim.Damage(raider, 1f, patch.Player);
         Vector3 Head() => patch.WorldOf(raider) + Vector3.Up * 1.5f;
         int reports = arms.Sounds.Played[(int)VoiceKind.Report], flashes = game.Shots.Flashes, misses = arms.NearMisses, fired = 0;

@@ -200,7 +200,7 @@ public partial class CombatTest : Node
             game.Suit.Vitals.Health = max;
             yield return 0;
         }
-        Check(shots.Count > 0, $"they fire on you: {shots.Count} rounds in 40 s ({town.Engagements} in the fight, {town.People.Count(q => q.Sees)} see you, {town.Shots} shots, {town.Blows} blows)");
+        Check(shots.Count > 0, $"they fire on you: {shots.Count} rounds in 40 s ({town.Engagements} in the fight, {town.People.Count(q => q.Sees)} see you, {town.Shots} shots, {town.Blows} blows), {town.Dropped} bursts held off: {town.LastHeld}");
         var blows = shots.Where(s => s.Def.Delivery == Delivery.Strike).ToList();
         shots = shots.Where(s => s.Def.Delivery != Delivery.Strike).ToList();
         if (blows.Count > 0) Check(blows.All(s => s.Def == s.Who.Kit.Def), $"hand weapons strike with their own row ({string.Join(", ", blows.Select(s => s.Def.Id).Distinct())})");
