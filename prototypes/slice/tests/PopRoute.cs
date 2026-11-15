@@ -128,22 +128,23 @@ public partial class PopRoute : Node
             yield break;
         }
         PopLog.On = true;
-        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, flicker, pinholes, trees.
+        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, space, flicker, pinholes, trees.
         string[] only = _args.TryGetValue("only", out string o) ? o.Split(',') : null;
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         if (only == null || only.Contains("once"))
             foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
-        var routes = new[] { ("walk", 6f, 300f, 0.3f), ("bike", 26f, 1500f, 1f), ("fly", 70f, 4000f, 60f) };
+        // "space" (only when asked for): a vessel's top speed in space, level at 800 m over the sea, between the air's ceiling and the crossing.
+        var routes = new[] { ("walk", 6f, 300f, 0.3f, false), ("bike", 26f, 1500f, 1f, false), ("fly", 70f, 4000f, 60f, false), ("space", 200f, 12000f, 800f, true) };
         // Each from a settled start; then the first 20 s of each again, counting the plants that pop.
         foreach (bool pops in new[] { false, true })
-        foreach (var (name, speed, length, up) in routes)
+        foreach (var (name, speed, length, up, level) in routes)
         {
-            if (only != null && !only.Contains(name)) continue;
+            if (only == null ? level : !only.Contains(name)) continue;
             _hold = Lift(start, up);
             for (int i = 0; i < 60; i++) yield return 0;
             foreach (int x in _drive.UntilSettled(40)) yield return x;
             for (int i = 0; i < 120; i++) yield return 0;
-            foreach (int x in Route(name, start, way, speed, pops ? speed * 20f : length, up, pops)) yield return x;
+            foreach (int x in Route(name, start, way, speed, pops ? speed * 20f : length, up, pops, level)) yield return x;
         }
         PopLog.On = false;
         if (only == null || only.Contains("flicker"))
@@ -254,7 +255,8 @@ public partial class PopRoute : Node
     Vector3 Lift(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };
 
     /// <param name="pops">the pops pass: plants popping in view sampled every tenth of a second, and nothing else measured (--shots=dir: ringed frames of them)</param>
-    IEnumerable<int> Route(string name, Vector3 start, Vector3 way, float speed, float length, float up, bool pops = false)
+    /// <param name="level">flown level at <paramref name="up"/> over the sea (no lower than 50 m over the ground), looking 2 km ahead, instead of following the ground</param>
+    IEnumerable<int> Route(string name, Vector3 start, Vector3 way, float speed, float length, float up, bool pops = false, bool level = false)
     {
         _hold = null; // placed along the way each tick
         TerrainStreamer s = _game.Zone.Streamer;
@@ -307,9 +309,10 @@ public partial class PopRoute : Node
         while (along < length)
         {
             along += speed / Engine.PhysicsTicksPerSecond;
-            Vector3 p = Lift(start + way * along, up);
+            Vector3 q = start + way * along;
+            Vector3 p = level ? q with { Y = MathF.Max(up, _game.Zone.GroundAt(q.X, q.Z).Y + 50f) } : Lift(q, up);
             _game.Survivor.PlaceOutside(p.ToNumerics());
-            _drive.Face(Lift(start + way * (along + 200f), up * 0.5f + 1.6f));
+            _drive.Face(level ? Lift(start + way * (along + 2000f), 0f) : Lift(start + way * (along + 200f), up * 0.5f + 1.6f));
             yield return 0;
             double ph = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
             physics += ph;
@@ -445,6 +448,7 @@ public partial class PopRoute : Node
         ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10), // (a walk sees too few trees and columns to judge them appearing)
         ["bike"] = new(88, 350, 220, 150, 60, 20, 10),
         ["fly"] = new(72, 350, 360, 250, 150, 25, 10),
+        ["space"] = new(72, 350, 360, 250, 150, 25, 10), // (the fly route's, at a vessel's top speed in space)
     };
 
     int _gateFails;

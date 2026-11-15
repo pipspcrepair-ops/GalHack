@@ -124,26 +124,28 @@ public partial class HandlingTest : Node
             "a lopsided build (every thruster on the left flank) has the same numbers and 3 s of full thrust adds zero spin");
 
         // Top speeds and turn caps by mass band; Hover Mode by its own speeds whatever its mass.
-        var bands = new (float tonnes, float airTop, float spaceTop, float turnCap)[]
+        var bandList = _t.Speeds.Bands;
+        bool banded = bandList.Select((b, i) => b.Below > 0f ? b.Below * 0.5f : bandList[i - 1].Below * 5f).Zip(bandList).All(x =>
         {
-            (5f, 70f, 130f, 90f), (50f, 70f, 130f, 60f), (500f, 60f, 100f, 30f), (5000f, 50f, 80f, 15f),
-        };
-        bool banded = bands.All(x =>
-        {
-            var heavy = new VesselLoadout { HullMass = x.tonnes };
+            var heavy = new VesselLoadout { HullMass = x.First };
             heavy.GyroList.Add(new GyroSpec("test", Vector3.Zero, 1e7f, 0f)); // gyros far past any cap
             HandlingStats a = HandlingModel.Compute(heavy, air, _t), sp = HandlingModel.Compute(heavy, space, _t);
-            return a.TopSpeed == x.airTop && sp.TopSpeed == x.spaceTop && a.TurnRate == x.turnCap && a.TurnCapped;
+            return a.TopSpeed == x.Second.TopSpeedAir && sp.TopSpeed == x.Second.TopSpeedSpace && a.TurnRate == x.Second.MaxTurn && a.TurnCapped;
         });
         var hoverHeavy = new VesselLoadout { HullMass = 500f, HoverMode = true };
         HandlingStats hh = HandlingModel.Compute(hoverHeavy, air, _t);
         var limp = new VesselLoadout { HullMass = 5000f };
-        Check(banded && hh.TopSpeed == 50f && HandlingModel.Compute(hoverHeavy, space, _t).TopSpeed == 50f
+        Check(banded && hh.TopSpeed == _t.Speeds.Hover.TopSpeedAir && HandlingModel.Compute(hoverHeavy, space, _t).TopSpeed == _t.Speeds.Hover.TopSpeedSpace
               && HandlingModel.Compute(limp, air, _t).TurnRate == _t.Turning.Floor,
-            "by mass band: under 20 t 70/130 m/s and 90°/s, to 100 t 70/130 and 60, to 1,000 t 60/100 and 30, over 50/80 and 15; Hover Mode 50/50; never below the turn floor");
-        float airMax = SimulateTopSpeed(fighter, air, boost: true), spaceMax = SimulateTopSpeed(fighter, space, boost: true);
-        Check(airMax <= 70f + 1e-3f && airMax > 69.9f && spaceMax <= 130f + 1e-3f && spaceMax > 129.9f,
+            $"by mass band: {string.Join(", ", bandList.Select(b => $"{(b.Below > 0f ? $"under {b.Below:F0} t" : "heavier")} {b.TopSpeedAir:F0}/{b.TopSpeedSpace:F0} m/s and {b.MaxTurn:F0}°/s"))}; Hover Mode {_t.Speeds.Hover.TopSpeedAir:F0}/{_t.Speeds.Hover.TopSpeedSpace:F0}; never below the turn floor");
+        float airTop = HandlingModel.Compute(fighter, air, _t).TopSpeed, spaceTop = HandlingModel.Compute(fighter, space, _t).TopSpeed;
+        var (airMax, _) = SimulateTopSpeed(fighter, air, boost: true);
+        var (spaceMax, lightTime) = SimulateTopSpeed(fighter, space, boost: true);
+        Check(airMax <= airTop + 1e-3f && airMax > airTop - 0.1f && spaceMax <= spaceTop + 1e-3f && spaceMax > spaceTop - 0.1f,
             $"full throttle and boost reach but never pass top speed ({airMax:F2} m/s in air, {spaceMax:F2} in space)");
+        var (heavyMax, heavyTime) = SimulateTopSpeed(heavy, space, boost: true);
+        Check(spaceTop >= 200f && heavyMax > HandlingModel.Compute(heavy, space, _t).TopSpeed - 0.1f && heavyTime > lightTime,
+            $"in space the {f.Mass:F0} t fighter reaches {spaceMax:F0} m/s in {lightTime:F1} s, and at {h.Mass:F0} t it gets to {heavyMax:F0} m/s too, in {heavyTime:F1} s");
 
         float turning = 0f;
         foreach (var where in new[] { air, space })
@@ -255,17 +257,19 @@ public partial class HandlingTest : Node
         return Mathf.RadToDeg(state.AngularVelocity.Y);
     }
 
-    float SimulateTopSpeed(IVesselStructure v, FlightConditions where, bool boost)
+    /// <summary>The fastest it gets from rest at full throttle in two minutes, and how long it takes to come within 1 % of its top speed, s.</summary>
+    (float Max, float Seconds) SimulateTopSpeed(IVesselStructure v, FlightConditions where, bool boost)
     {
         HandlingStats s = HandlingModel.Compute(v, where, _t);
         var state = FlightState.At(Basis.Identity);
-        float max = 0f;
-        for (int i = 0; i < 60 * 20; i++)
+        float max = 0f, seconds = float.PositiveInfinity;
+        for (int i = 0; i < 60 * 120; i++)
         {
             FlightModel.Step(ref state, PilotInput.Hands(Vector3.Forward, boost: boost), s, where, _t, Dt);
             max = Mathf.Max(max, state.Velocity.Length());
+            if (float.IsInfinity(seconds) && max >= s.TopSpeed * 0.99f) seconds = (i + 1) * Dt;
         }
-        return max;
+        return (max, seconds);
     }
 
     /// <summary>

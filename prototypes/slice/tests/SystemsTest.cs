@@ -65,13 +65,17 @@ public partial class SystemsTest : Node
     void Run()
     {
         var systems = new List<StarSystem>();
+        var daySeconds = new List<double>();
         for (int i = 0; i < Systems; i++)
         {
             WorldChoice world = WorldChoice.Fresh(WorldChoice.Types[i % WorldChoice.Types.Count].Key);
             PlanetSpec spec = world.Spec();
-            systems.Add(StarSystem.For(spec, SkySystem.For(spec), spec.WidthMeters));
+            SkySystem sky = SkySystem.For(spec);
+            systems.Add(StarSystem.For(spec, sky, spec.WidthMeters));
+            daySeconds.Add(sky.DayMinutes * 60.0);
         }
         GD.Print($"({systems.Count} fresh systems, {systems.Sum(s => Landable(s).Count())} worlds with ground)");
+        MoonSpeeds(systems, daySeconds);
         Gravity(systems);
         Vacuum(systems);
         SunsAndGiants(systems);
@@ -81,6 +85,45 @@ public partial class SystemsTest : Node
         Flyer(systems);
         Loot();
         NoMarkers(systems);
+    }
+
+    // ---- 0. Moons can be caught; planets keep their years -----------------------------------------
+
+    void MoonSpeeds(List<StarSystem> systems, List<double> daySeconds)
+    {
+        int moons = 0, fast = 0, unlocked = 0, years = 0, offYear = 0;
+        double fastest = 0, nearFrom = double.MaxValue, nearTo = 0, oldFrom = double.MaxValue, oldTo = 0, monthFrom = double.MaxValue, monthTo = 0;
+        for (int i = 0; i < systems.Count; i++)
+        {
+            StarSystem s = systems[i];
+            foreach (Orbiter b in s.Bodies)
+            {
+                if (b.Kind == OrbiterKind.Moon)
+                {
+                    moons++;
+                    double v = Math.Tau * b.Orbit / (b.Period * daySeconds[i]);
+                    fastest = Math.Max(fastest, v);
+                    if (v > StarSystem.MoonSpeedCap + 1e-6) fast++;
+                    if (b != s.Home && b.DayLength != b.Period) unlocked++;
+                }
+                else if (b.Parent == s.Star)
+                {
+                    years++;
+                    if (Math.Abs(b.Period / (StarSystem.TemperateYearDays * Math.Pow(b.Habitable, 1.5)) - 1) > 1e-9) offYear++;
+                }
+            }
+            Orbiter near = s.FuelMoon;
+            if (near.Parent != s.Home) continue;
+            // The near moon's month as it was before the cap (rockMonth), for the record.
+            double was = 3.8 * Math.Pow(near.Orbit / s.Home.Radius / 16.0, 1.5), speed = Math.Tau * near.Orbit / (near.Period * daySeconds[i]);
+            nearFrom = Math.Min(nearFrom, speed); nearTo = Math.Max(nearTo, speed);
+            oldFrom = Math.Min(oldFrom, Math.Tau * near.Orbit / (was * daySeconds[i])); oldTo = Math.Max(oldTo, Math.Tau * near.Orbit / (was * daySeconds[i]));
+            monthFrom = Math.Min(monthFrom, near.Period); monthTo = Math.Max(monthTo, near.Period);
+        }
+        Check(moons > systems.Count && fast == 0,
+            $"moons: all {moons} go round their parents at {StarSystem.MoonSpeedCap:F0} m/s at most, fastest {fastest:F1} m/s ({fast} over); the near moon {nearFrom:F0}-{nearTo:F0} m/s on a {monthFrom:F2}-{monthTo:F2} day month (uncapped {oldFrom:F0}-{oldTo:F0} m/s)");
+        Check(unlocked == 0, $"moons: every one keeps one face to its parent, its day its month ({unlocked} did not)");
+        Check(years > systems.Count && offYear == 0, $"moons: all {years} planets, giants and belts keep the year their distance gives ({offYear} did not)");
     }
 
     // ---- 1. Gravity comes from size ---------------------------------------------------------------
