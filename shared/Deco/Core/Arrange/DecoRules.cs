@@ -9,7 +9,7 @@ namespace GalHack.Deco;
 /// <summary>
 /// What a furnished room keeps to, from the owner's walk round the first rooms (15 Nov) and planning practice: nothing taller
 /// than a sill in front of a window; a fire only at a chimney breast, at the stack's foot, never by a window; what the room is
-/// arranged round on a solid wall; a clear walk a metre wide (0.9 m and more) from the doors to every piece's use side with its
+/// arranged round on a solid wall (under a sill at most); a clear walk a metre wide (0.9 m and more) from the doors to every piece's use side with its
 /// drawers and doors open; a room under 2.5 m across lined along one wall; furniture on no more than half the floor. The planner
 /// keeps every rule as it sets each piece down; the interiors check counts them.
 /// </summary>
@@ -115,9 +115,13 @@ public static class DecoRules
         return !room.Flues.Any(f => Span(room, r, f.Wall) is var s && s.Off <= 0.3f && s.Lo >= f.Offset - f.Width / 2 - 0.5f && s.Hi <= f.Offset + f.Width / 2 + 0.5f);
     }
 
-    /// <summary>Stands against a wall with a window or a doorway in its width: no solid wall to be arranged round.</summary>
-    public static bool OpeningBehind(DecoRoom room, DecoRect r) =>
-        Against(room, r, 0.3f) is DecoWall w && Span(room, r, w) is var s && room.Windows.Select(x => x.At).Concat(room.Doors).Any(o => o.Wall == w && Overlaps(s.Lo, s.Hi, o, 0f));
+    /// <summary>
+    /// Stands against a wall with a doorway in its width, or a window it rises above the sill of (<paramref name="top"/>: its
+    /// height; a bed's head or a sofa's back may sit under a sill where a small room has no solid wall for it).
+    /// </summary>
+    public static bool OpeningBehind(DecoRoom room, DecoRect r, float top = float.MaxValue) =>
+        Against(room, r, 0.3f) is DecoWall w && Span(room, r, w) is var s
+        && room.Windows.Where(x => top > x.Sill + 0.05f).Select(x => x.At).Concat(room.Doors).Any(o => o.Wall == w && Overlaps(s.Lo, s.Hi, o, 0f));
 
     /// <summary>The share of a room's open floor its standing furniture covers.</summary>
     public static float Share(DecoForge forge, DecoRoom room, IEnumerable<DecoPlacement> placements) =>

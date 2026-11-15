@@ -143,7 +143,7 @@ public partial class PoiTest
             Check(oneCeiling == 0, T($"no place one ceiling all through ({oneCeiling} of {places}){First("ceiling")}"));
             Check(window == 0, T($"nothing taller than a sill stands before a window ({window} pieces){First("window")}"));
             Check(offFlue == 0, T($"a fire only at a chimney breast, never by a window ({offFlue} of {fires} fires){First("flue")}"));
-            Check(focalWall == 0, T($"what a room is arranged round stands on a solid wall ({focalWall} with a window or door behind){First("focal wall")}"));
+            Check(focalWall == 0, T($"what a room is arranged round stands on a solid wall, under a sill at most ({focalWall} before a doorway or a window){First("focal wall")}"));
             Check(unreached == 0, T($"a clear walk a metre wide from the doors to every piece's use side, drawers out ({unreached} pieces cut off){First("reach")}"));
             Check(lining == 0, T($"a room under {DecoRules.Narrow} m across lined along one wall ({lining} with furniture off it){First("narrow")}"));
             Check(crowded == 0, T($"furniture on no more than half a room's floor ({crowded} rooms over){First("crowded")}"));
@@ -193,12 +193,11 @@ public partial class PoiTest
                 int x0 = d.Corner.X, z0 = d.Corner.Z, x1 = x0 + (int)d.Room.Width - 1, z1 = z0 + (int)d.Room.Depth - 1;
                 var doors = ways.Select(w => RoomDecor.Door(w.Cells, x0, x1, z0, z1)).OfType<DecoDoor>().ToList();
                 if (doors.Count >= 2) detour = Detour(d.Room, doors, used.Placements.Where(p => DecoLayout.Blocks(decor.Forge, p)).Select(p => DecoLayout.Footprint(decor.Forge, p)));
-                if (!wasFocal && inst.Layout.Extras.Homes.Count > 0) { DecoPlanner.Trace = new(); decor.Dress(d.Room, inst.Kit?.Id, disorder: false); System.Console.WriteLine($"DIAG {m.Purpose} {d.Room} windows {d.Room.Windows.Count} flues {d.Room.Flues.Count} kept {d.Room.Kept.Count}: {string.Join(", ", DecoPlanner.Trace.OrderByDescending(k => k.Value).Take(12).Select(k => $"{k.Key} {k.Value}"))}"); DecoPlanner.Trace = null; } // DIAG
                 var forge = decor.Forge;
                 windowed = used.Placements.Count(p => DecoRules.BeforeWindow(forge, d.Room, p));
                 fires = used.Placements.Count(p => p.Support < 0 && forge.Catalogue.Piece(p.Piece).Has("hearth"));
                 offFlue = used.Placements.Count(p => DecoRules.OffFlue(forge, d.Room, p));
-                focalWall = used.Placements.Any(p => p.Group == used.FocalGroup && used.FocalGroup >= 0 && p.Support < 0 && DecoLayout.Blocks(forge, p) && DecoRules.OpeningBehind(d.Room, DecoLayout.Footprint(forge, p)));
+                focalWall = used.Placements.Any(p => p.Group == used.FocalGroup && used.FocalGroup >= 0 && p.Support < 0 && DecoLayout.Blocks(forge, p) && DecoRules.OpeningBehind(d.Room, DecoLayout.Footprint(forge, p), DecoLayout.Heights(forge, p).Hi));
                 cut = DecoRules.Unreached(forge, d.Room, used.Placements).Count;
                 narrowOff = DecoRules.OffLining(forge, d.Room, used.Placements);
                 crowdedRoom = DecoRules.Share(forge, d.Room, used.Placements) > DecoRules.MostFloor;
