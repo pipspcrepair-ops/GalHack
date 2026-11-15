@@ -257,11 +257,14 @@ public sealed partial class WorldLife
             default:
             {
                 // Several of the world's people, each spawned one of them (as a world's Husks are): one look for a uniform, never one face.
+                // Where the culture keeps the sexes apart at work, a band is all of one: its job's side.
                 var hosts = new List<Species>();
+                Culture cu = World.Culture ?? Culture.Default;
+                Sex? one_sex = cu.Trait("crew", 1f) < 0.5f && Enum.TryParse(k.Roles.Length > 0 ? k.Roles[0] : "", out PersonRole first) ? cu.SexOf(cu.GroupA(Culture.GroupOf(first) is { Length: > 0 } g ? g : "fight")) : null;
                 for (int i = 0; i < 5; i++)
                 {
                     ulong one = Rng.Mix(seed, (ulong)i + 1);
-                    Species h = Person(id, k, one, Rng.For(one, "signature"), era, t);
+                    Species h = Person(id, k, one, Rng.For(one, "signature"), era, t, one_sex);
                     Finish(h, k, n, one, $"{Seed:x}-own-{id}-{i}");
                     hosts.Add(h);
                 }
@@ -282,7 +285,8 @@ public sealed partial class WorldLife
         // A machine keeps its era's name (a clockwork machine, a sleek one); the rest are what the world calls them.
         if (k.Body != "machine") s.CommonName = k.Name;
         if (Enum.TryParse(k.Behaviour, out Behaviour b)) s.Behaviour = b;
-        if (Enum.TryParse(k.Temper, out Temperament tm)) s.Temperament = tm;
+        // The kind's temper, unless their culture made one of its people hot-blooded.
+        if (Enum.TryParse(k.Temper, out Temperament tm) && !(s.Figure?.Occupancy == Occupancy.Friendly && s.Temperament is Temperament.Aggressive or Temperament.Bold)) s.Temperament = tm;
         if (Enum.TryParse(k.Activity, out Activity act)) s.Activity = act;
         Stats st = s.Stats;
         st.Hunts = k.Hunts;
@@ -300,12 +304,12 @@ public sealed partial class WorldLife
     }
 
     /// <summary>One of the world's people as the story left them: mutated, wrong-shaped, dressed and armed for it.</summary>
-    Species Person(string id, SignatureKind k, ulong seed, Rng rng, int era, SignatureTables t)
+    Species Person(string id, SignatureKind k, ulong seed, Rng rng, int era, SignatureTables t, Sex? sex = null)
     {
         PersonRole role = Enum.TryParse(k.Roles[rng.Int(0, k.Roles.Length - 1)], out PersonRole r) ? r : PersonRole.Worker;
         Occupancy occ = Enum.TryParse(k.Occupancy, out Occupancy o) ? o : Occupancy.Feral;
         float mutation = rng.Range(k.Mutation[0], MathF.Max(k.Mutation[0], k.Mutation[1]));
-        Species s = People.Person(seed, role, occ, mutation);
+        Species s = People.Person(seed, role, occ, mutation, sex: sex);
         Figure f = s.Figure;
         if (k.Strip.Length > 0) f.Wear.RemoveWhere(w => Array.IndexOf(k.Strip, HumanBody.Slot(w)) >= 0 || Array.IndexOf(k.Strip, w) >= 0);
         if (k.Strip.Length > 0 && Array.IndexOf(k.Strip, "prop") >= 0) f.Prop = "";

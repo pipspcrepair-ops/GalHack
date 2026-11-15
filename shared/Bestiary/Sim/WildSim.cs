@@ -460,7 +460,8 @@ public sealed class WildSim
         return list;
     }
 
-    public static float HerdSpread(Species s, int count) => Math.Max(3f, s.Stats.Radius * 2.2f * MathF.Sqrt(count));
+    /// <summary>How far a group spreads: people by their culture's band spacing too.</summary>
+    public static float HerdSpread(Species s, int count) => Math.Max(3f, s.Stats.Radius * 2.2f * MathF.Sqrt(count)) * (s.Figure?.SpacingK ?? 1f);
 
     /// <summary>How far from its centre a natural group of this species may spread when it spawns.</summary>
     public float GroupRadius(Species s, int count) => s.Behaviour is Behaviour.Herd or Behaviour.Folk ? HerdSpread(s, count)

@@ -196,7 +196,7 @@ public static partial class Brain
         {
             if (m == c || m.Dead) continue;
             Vector3 away = WildSim.Flat(c.Position - m.Position);
-            float d = away.Length(), keep = (c.Radius + m.Radius) * 1.3f;
+            float d = away.Length(), keep = (c.Radius + m.Radius) * 1.3f * (c.Species.Figure?.SpacingK ?? 1f);
             if (d < keep && d > 0.001f) separation += away / d * (keep - d) / keep;
         }
         Vector3 toCenter = WildSim.Flat(h.Center - c.Position);

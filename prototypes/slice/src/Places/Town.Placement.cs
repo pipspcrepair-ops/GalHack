@@ -120,13 +120,16 @@ public sealed partial class Town
     /// </summary>
     bool Gather(Person p)
     {
-        if (!Evening() || p.Job is PersonRole.Guard or PersonRole.Lawman || p.Role == "guard" || _rng.NextDouble() > 0.6) return false;
+        // (A people who keep apart don't gather at all; the rest round a ring as wide as they stand.)
+        float ring = Culture.Trait("ring", 2f);
+        if (!Evening() || ring <= 0f || p.Job is PersonRole.Guard or PersonRole.Lawman || p.Role == "guard" || _rng.NextDouble() > 0.6) return false;
         int? at = null;
         var fires = Memory.Inst.Markers.Where(m => m.Kind == "campfire").ToList();
         if (fires.Count > 0)
         {
             PInt3 fire = fires[0].Cell;
-            var near = Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag is not ("bed" or "home") && t.s.Cell.Manhattan(fire) <= 6).OrderBy(_ => _rng.Next()).FirstOrDefault();
+            int reach = Math.Max(2, (int)MathF.Round(3f * ring));
+            var near = Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag is not ("bed" or "home") && t.s.Cell.Manhattan(fire) <= reach).OrderBy(_ => _rng.Next()).FirstOrDefault();
             if (near.s != null) at = near.i;
         }
         if (at == null)
@@ -138,7 +141,7 @@ public sealed partial class Town
         GoTo(p, at.Value);
         p.Wait = 20f + (float)_rng.NextDouble() * 25f;
         // Someone else gathered here already: they talk.
-        p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == at && o.Partner == null);
+        p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == at && o.Partner == null && Mixes(p, o));
         if (p.Partner != null) { p.Partner.Partner = p; p.Partner.Wait = MathF.Max(p.Partner.Wait, p.Wait); }
         return true;
     }

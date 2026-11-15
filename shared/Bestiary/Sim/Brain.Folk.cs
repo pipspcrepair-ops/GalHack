@@ -15,6 +15,9 @@ public static partial class Brain
     const float WarnHold = 1.6f;
     static readonly float AimCone = MathF.Cos(Mathf.DegToRad(7f));
 
+    /// <summary>How their culture scales the distances they keep from a stranger (1 where it says nothing).</summary>
+    static float Stranger(Creature c) => c.Species.Figure?.StrangerK ?? 1f;
+
     /// <summary>
     /// One of a band of people (<see cref="Party"/>): the band decides, once a step, what it makes of
     /// whoever is about; each member takes that in its own time (the leader first, the rest from it)
@@ -220,7 +223,7 @@ public static partial class Brain
             default:
                 if (b.Mood == PartyMood.Easy) ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Seen);
                 // Close enough to greet: they do, and a warm leader comes over to meet you.
-                if (!b.Greeted && d < GreetIn)
+                if (!b.Greeted && d < GreetIn * Stranger(lead))
                 {
                     b.Greeted = true;
                     Event(w, b, lead, PartyEvent.Greet);
@@ -402,7 +405,7 @@ public static partial class Brain
             Hold(w, c, f?.Aimed ?? BodyAct.HandsUp, 1f);
             return;
         }
-        if (w.Time < b.BackUntil || d < Comfort)
+        if (w.Time < b.BackUntil || d < Comfort * Stranger(c))
         {
             Aside(c, t, to, d);
             return;
@@ -410,7 +413,7 @@ public static partial class Brain
         if (c == lead && w.Time < b.MeetUntil)
         {
             c.LookAt = t.Position + Vector3.Up * 1.5f;
-            if (d > MeetAt)
+            if (d > MeetAt * Stranger(c))
             {
                 c.SetState(CState.Follow);
                 Steer(w, c, t.Position, c.Stats.WalkSpeed);
@@ -452,7 +455,7 @@ public static partial class Brain
         c.FacePoint = t.Position;
         c.LookAt = t.Position + Vector3.Up * 1.5f;
         if (Weapons.Armed(c.Species.Figure?.Prop ?? "")) c.WantAim = warning ? 0.55f : 0.3f;
-        if (d < KeepOff && d > 0.01f)
+        if (d < KeepOff * Stranger(c) && d > 0.01f)
         {
             c.Backing = true;
             c.Path.Clear();

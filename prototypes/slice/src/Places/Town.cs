@@ -883,21 +883,34 @@ public sealed partial class Town
                 if (p.Figure?.Playful == true)
                 {
                     // Children run about: after another child, round a grown-up, off somewhere and back, in quick bursts with sudden stops.
-                    Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && o.Pos.DistanceSquaredTo(p.Pos) < 400f).OrderBy(_ => _rng.Next()).FirstOrDefault();
-                    int dash = other != null && _rng.NextDouble() < 0.6 ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
+                    // Their culture keeps them: in packs of their own, or within reach of a grown-up of the side that minds them.
+                    float leash = Culture.Trait("minder"), play = Culture.Trait("play", 1f);
+                    bool packs = Culture.Has("packs");
+                    Person keeper = leash > 0f ? Minder(p) : null;
+                    Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && !o.Away && (packs ? o.Figure?.Stage == LifeStage.Child && o.Pos.DistanceSquaredTo(p.Pos) < 1600f
+                        : keeper != null ? o.Pos.DistanceSquaredTo(keeper.Pos) < leash * leash : o.Pos.DistanceSquaredTo(p.Pos) < 400f)).OrderBy(_ => _rng.Next()).FirstOrDefault();
+                    if (keeper != null && (_rng.NextDouble() > play || other == null || p.Pos.DistanceTo(keeper.Pos) > leash))
+                    {
+                        // Back to the one minding them; old enough, at their work beside them.
+                        GoTo(p, keeper.Spot);
+                        p.Working = Culture.Has("work") && p.Figure.Age >= 10f && keeper.Working;
+                        p.Wait = p.Working ? 8f + (float)_rng.NextDouble() * 8f : 1f + (float)_rng.NextDouble() * 2f;
+                        return;
+                    }
+                    int dash = other != null && (keeper != null || packs || _rng.NextDouble() < 0.6) ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
                     GoTo(p, dash);
                     p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
                     p.Wait = 0.3f + (float)_rng.NextDouble() * 1.6f;
                     return;
                 }
                 // A child goes where a grown-up is.
-                Person minder = p.Figure?.Stage == LifeStage.Child ? People.Where(o => o != p && !o.Dead && !o.Indoors && o.Figure?.Stage != LifeStage.Child).OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault() : null;
+                Person minder = p.Figure?.Stage == LifeStage.Child ? Minder(p) : null;
                 if (minder != null) GoTo(p, minder.Spot);
                 else if (_rng.NextDouble() < 0.35 && Haunt(p, Seat) is int seat_) GoTo(p, seat_); // a sit down in one of the rooms
                 else if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
                 p.Wait = 4f + (float)_rng.NextDouble() * 9f;
                 // Someone else already at this spot: they stop and chat.
-                p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == p.Spot && o.Partner == null && o.Role is "wanderer" or "rusher");
+                p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == p.Spot && o.Partner == null && o.Role is "wanderer" or "rusher" && Mixes(p, o));
                 if (p.Partner != null) { p.Partner.Partner = p; p.Partner.Wait = p.Wait; }
                 return;
         }
@@ -914,7 +927,24 @@ public sealed partial class Town
         {
             Vector3 d = p.Partner.Pos - p.Pos;
             if (d.LengthSquared() > 0.01f) p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 4f));
+            ChatApart(p, d, dt);
         }
+    }
+
+    /// <summary>
+    /// Two talking stand at their culture's distance: close enough to touch on one world, two strides apart on
+    /// another. Whoever stands eases toward it (half each, or all of it against one sitting), never into a wall
+    /// or the furniture.
+    /// </summary>
+    void ChatApart(Person p, Vector3 d, float dt)
+    {
+        if (p.Sitting || p.Path != null && p.Step < p.Path.Count) return;
+        d.Y = 0f;
+        float gap = d.Length(), want = Culture.Trait("chat", 1.1f), share = p.Partner.Sitting ? 1f : 0.5f;
+        if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) return;
+        Vector3 dir = gap > 0.05f ? d / gap : new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw));
+        Vector3 to = p.Pos - dir * Math.Clamp((want - gap) * share, -0.7f * dt, 0.7f * dt);
+        if (Open(to) && (_parts == null || _parts.Gap(to, BodyRadius(p), Height(p)) >= 0f)) p.Pos = to;
     }
 
     /// <summary>A guard in a wary or hostile place: watches you. (Hostile, they fight with what they carry: Town.Combat.)</summary>
@@ -1056,7 +1086,9 @@ public sealed partial class Town
             if (life.People.Regions.Count == 0)
                 for (int i = 0; i < 32; i++) life.People.Regions.Add(RegionAt(map, (i * 0.618034 % 1.0) * map.WidthMeters, ((i * 0.381966 + 0.13) % 1.0) * map.HeightMeters));
         // How this group takes to outsiders: from its tech and its world, and then its own roll.
-        _temper = Temper.Roll(_tech, Math.Clamp(life.World.Mutagen + life.World.Radiation * 0.15f, 0f, 1f), Memory.Inst.SpawnSeed);
+        // Their ways: the world's culture as this town drifted from it (by the seed its houses use), or their faction's own.
+        Culture = CultureHere(life, tags.Contains("spaceport") || tags.Contains("trade") || tags.Contains("market"));
+        _temper = Temper.Roll(_tech, Math.Clamp(life.World.Mutagen + life.World.Radiation * 0.15f, 0f, 1f), Memory.Inst.SpawnSeed, escalate: Culture.Trait("escalate"));
         float hardened = life.People.HardenedChance(raiders, People.Count(q => q.Role != "wanderer"));
         for (int i = 0; i < People.Count; i++)
         {
@@ -1069,10 +1101,11 @@ public sealed partial class Town
             float mutation = life.World.Mutagen * twist * twist * 1.4f;
             // Now and then, where the world forces it, the one doing this job is a child.
             bool young = role is not (PersonRole.Child or PersonRole.Elder or PersonRole.Drunk) && roll.Chance(hardened);
-            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raider ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation, young: young, founders: founders);
+            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raider ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation, young: young, founders: founders, culture: Culture);
             p.Rig = new HumanRig(p.Looks);
             p.Job = role;
-            p.Nerve = roll.Float();
+            // The hot-blooded stand their ground first; the skittish give it first.
+            p.Nerve = Math.Clamp(roll.Float() + (raider ? 0f : p.Looks.Temperament switch { Temperament.Aggressive or Temperament.Bold => 0.3f, Temperament.Skittish => -0.3f, _ => 0f }), 0f, 1f);
             p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f };
         }
         // A place of copies: everyone in it is the same person.
@@ -1091,6 +1124,34 @@ public sealed partial class Town
         foreach (Person q in People) _carried.Add(new Carried());
         // Each to their place of work, a guard up on the lookout (Town.Placement).
         Stations();
+    }
+
+    /// <summary>The town's culture (docs/research/culture.md): who keeps with whom, how close they stand, where the children are. Today's ways until its people are rolled.</summary>
+    public Culture Culture { get; set; } = Culture.Default;
+
+    /// <summary>The world's culture drifted by this town's seed (the one its houses take their style from), or its faction's own set.</summary>
+    Culture CultureHere(WorldLife life, bool hub)
+    {
+        var planet = _places.Zone.Planet;
+        if (planet.Roll?.Culture is not { } world || Slice.Game.WorldChoice.Library is not { } lib) return life.World.Culture;
+        ulong at = (ulong)PlanetSurface.Infra.FlavourRuins.CultureAt(planet.Infra.RegionPlan, planet.Map, Memory.Site.Entrance.X + 0.5, Memory.Site.Entrance.Z + 0.5);
+        return Slice.Surface.WildlifePatch.CultureOf(world.At(lib, at, Memory.Inst.Family.Faction, hub));
+    }
+
+    /// <summary>Whether two of them stop and talk: the sexes and castes keep together as their culture says (children with anyone).</summary>
+    bool Mixes(Person a, Person b)
+    {
+        Figure fa = a.Figure, fb = b.Figure;
+        if (fa == null || fb == null || fa.Stage == LifeStage.Child || fb.Stage == LifeStage.Child) return true;
+        return _rng.NextDouble() < Culture.MixChance(fa.Sex, fb.Sex, fa.Caste, fb.Caste, a.Working || b.Working);
+    }
+
+    /// <summary>Who keeps an eye on a child, by their culture: the nearest grown-up, or of the side that minds them (null: none about).</summary>
+    Person Minder(Person child)
+    {
+        int side = (int)Culture.Trait("minder_side");
+        return People.Where(o => o != child && !o.Dead && !o.Indoors && !o.Away && o.Figure is { } f && f.Stage != LifeStage.Child && (side == 0 || f.Sex == Culture.SexOf(side == 1)))
+            .OrderBy(o => o.Pos.DistanceSquaredTo(child.Pos)).FirstOrDefault();
     }
 
     /// <summary>The region at a world point: the map's temperature (as degrees) and humidity there.</summary>
