@@ -51,6 +51,56 @@ public static partial class StateTransforms
         }
     }
 
+    /// <summary>
+    /// A stretch of an outer wall broken down in a V: the wall's top falls away along 45 degree cracks from a low point, and the roof
+    /// and ceiling go with it a little way in (never the ground floor's sills on a house of one storey: the break starts above them).
+    /// What falls joins <paramref name="fallen"/>, to lie at its foot.
+    /// </summary>
+    static void Notch(PoiInstance inst, PlainBox b, Rng rng, List<(Int3, Block)> fallen)
+    {
+        var g = inst.Blocks;
+        Int3 o = (rng.Chance(0.35f) ? b.Front : Dirs.Horizontal[rng.Range(0, 4)]).Vec();
+        bool alongX = o.X == 0;
+        int lo = alongX ? b.Min.X : b.Min.Z, hi = alongX ? b.Max.X : b.Max.Z, edge = o.X + o.Z > 0 ? (alongX ? b.Max.Z : b.Max.X) : (alongX ? b.Min.Z : b.Min.X);
+        if (hi - lo < 8) return;
+        int c = rng.Range(lo + 3, hi - 2), half = rng.Range(3, Math.Min(7, (hi - lo) / 2)), floor = b.Eave > 6 ? 5 : 2;
+        int low = rng.Range(floor, Math.Max(floor + 1, b.Eave - 1));
+        for (int a = c - half; a <= c + half; a++)
+        {
+            int cut = low + Math.Abs(a - c) + (int)(Hash.Cell(new Int3(a >> 1, 0, edge), 17) % 2);
+            for (int depth = 0; depth < 4; depth++)
+                for (int y = cut; y <= b.Max.Y + 2; y++)
+                {
+                    var p = alongX ? new Int3(a, y, edge - o.Z * depth) : new Int3(edge - o.X * depth, y, a);
+                    Block s = g.Get(p);
+                    if (s.IsAir || inst.Protected[p] || inst.Extras.Lasting.Contains(p) || s.Role is Role.Loot or Role.Core or Role.Terminal or Role.Debris) continue;
+                    if (depth >= 2 && s.Role is not (Role.Roof or Role.Floor)) continue;
+                    g.Set(p, Block.Air);
+                    fallen.Add((p, s));
+                }
+        }
+    }
+
+    /// <summary>Joists show where a roof or ceiling is gone: a timber beam across each second line of an opening, resting on the slab or wall at both ends.</summary>
+    static void Joists(PoiInstance inst, Rng rng)
+    {
+        var g = inst.Blocks;
+        var wood = new Rgb(0x4a, 0x3a, 0x2a);
+        foreach (var (p, b) in g.Blocks().ToList())
+        {
+            if (b.Role is not (Role.Roof or Role.Floor) || !BlockInfo.IsFullCube(b.Type) || p.Y < 3) continue;
+            foreach (Dir d in new[] { Dir.East, Dir.South })
+            {
+                Int3 v = d.Vec();
+                if ((d == Dir.East ? p.Z : p.X) % 2 != 0 || !g.Get(p + v).IsAir) continue;
+                int k = 1;
+                while (k <= 9 && g.Get(p + v * k).IsAir && g.Get(p + v * k + Int3.Up).IsAir && g.Get(p + v * k + Int3.Down * 2).IsAir) k++;
+                if (k < 3 || k > 9 || !BlockInfo.IsFullCube(g.Get(p + v * k).Type) || g.Get(p + v * k).Role is not (Role.Roof or Role.Floor or Role.Wall) || !rng.Chance(0.7f)) continue;
+                for (int j = 1; j < k; j++) g.Set(p + v * j, new Block(BlockType.Beam, Material.Timber, wood.Lerp(new Rgb(0x6a, 0x5a, 0x48), rng.Float()), Role.Roof, d));
+            }
+        }
+    }
+
     /// <summary>The y of the top of the wall run under an air cell (a gap beside a wall top counts as a drop to where the wall stops).</summary>
     static int FootOf(BlockGrid g, Int3 air)
     {
@@ -111,7 +161,7 @@ public static partial class StateTransforms
         BlockType[] left = tags.Contains("shop") ? new[] { BlockType.Table, BlockType.Crate, BlockType.Crate }
             : tags.Contains("house") ? new[] { BlockType.Bunk, BlockType.Table }
             : tags.Contains("wayside") ? new[] { BlockType.Tank, BlockType.Crate }
-            : tags.Contains("farmstead") || tags.Contains("shed") ? new[] { BlockType.Crate, BlockType.Barricade }
+            : tags.Contains("farmstead") || tags.Contains("shed") ? new[] { BlockType.Crate, BlockType.Crate }
             : Array.Empty<BlockType>();
         if (left.Length == 0) return;
         var way = new HashSet<Int3>(inst.Layout.Doorways.SelectMany(d => d.Cells).Concat(inst.Layout.ExitCells));
