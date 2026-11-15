@@ -402,7 +402,14 @@ public partial class Place
         /// <summary>How far the room's pieces have dissolved in (0..1), and which way they are going (+1 in, -1 out, 0 still).</summary>
         public float Blend;
         public int Way;
+        /// <summary>What it draws, gathered once it is dressed: its dissolve is set on these, not by a walk through every node every frame.</summary>
+        public List<GeometryInstance3D> Drawn;
+        /// <summary>Of <see cref="Drawn"/>, how many have their own materials back since the dissolve in ended (a share a frame).</summary>
+        public int Cleared;
     }
+
+    /// <summary>The most of a room's drawn pieces given their own materials back in a frame, once it has dissolved in.</summary>
+    const int ClearedAFrame = 40;
 
     readonly Dictionary<int, Dressed> _dressed = new();
 
@@ -417,19 +424,24 @@ public partial class Place
         if (_dressFading.Count == 0) return;
         foreach (Dressed d in _dressFading)
         {
-            d.Blend = Mathf.Clamp(d.Blend + d.Way * dt / DressBlendSeconds, 0f, 1f);
+            d.Drawn ??= d.Node.FindChildren("*", "GeometryInstance3D", true, false).Cast<GeometryInstance3D>().ToList();
             if (d.Way > 0 && d.Blend >= 1f)
             {
-                PlanetSurface.Fx.Fade.Clear(d.Node);
-                d.Way = 0;
+                // Dissolved in: its own materials back, a share a frame (all at once held a frame for 9 ms).
+                for (int k = 0; k < ClearedAFrame && d.Cleared < d.Drawn.Count; k++, d.Cleared++)
+                    if (IsInstanceValid(d.Drawn[d.Cleared])) PlanetSurface.Fx.Fade.ClearGeometry(d.Drawn[d.Cleared]);
+                if (d.Cleared >= d.Drawn.Count) { d.Way = 0; d.Drawn = null; d.Cleared = 0; }
+                continue;
             }
-            else if (d.Way < 0 && d.Blend <= 0f)
+            d.Blend = Mathf.Clamp(d.Blend + d.Way * dt / DressBlendSeconds, 0f, 1f);
+            if (d.Way < 0 && d.Blend <= 0f)
             {
-                PlanetSurface.Fx.Fade.Forget(d.Node);
+                foreach (GeometryInstance3D g in d.Drawn) if (IsInstanceValid(g)) PlanetSurface.Fx.Fade.ForgetGeometry(g);
                 d.Node.QueueFree();
                 d.Way = 0;
+                d.Drawn = null;
             }
-            else PlanetSurface.Fx.Fade.Set(d.Node, 0f, d.Blend);
+            else foreach (GeometryInstance3D g in d.Drawn) if (IsInstanceValid(g)) PlanetSurface.Fx.Fade.SetGeometry(g, 0f, d.Blend);
         }
         _dressFading.RemoveAll(d => d.Way == 0);
     }
