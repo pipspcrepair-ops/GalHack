@@ -43,6 +43,8 @@ public sealed class StructureBar
     List<BarSlot> _functions;
     readonly List<(Int3 At, BarSlot Slot)> _guns = new();
     readonly Dictionary<Int3, Gun> _loaded = new();
+    /// <summary>The lamp kinds with any of their lamps lit (a lamp switched changes the structure, so this follows).</summary>
+    readonly HashSet<string> _lit = new(StringComparer.Ordinal);
     int _version = -1;
 
     /// <summary>The gun slots picked for the trigger, by key (the pilot's, not saved).</summary>
@@ -88,8 +90,15 @@ public sealed class StructureBar
                 else _functions.Add(new BarSlot(k.Id, k, null));
             }
             _guns.Clear();
+            _lit.Clear();
             foreach (var (at, b) in s.Blocks())
-                if (_functions.FirstOrDefault(f => f.Act == BarAct.Select && f.Type == s.TypeOf(b)) is BarSlot gun) _guns.Add((at, gun));
+            {
+                BlockType t = s.TypeOf(b);
+                if (_functions.FirstOrDefault(f => f.Act == BarAct.Select && f.Type == t) is BarSlot gun) _guns.Add((at, gun));
+                if (t.IsLamp && !b.Off)
+                    foreach (BarKind k in Kinds)
+                        if (Lamps(k) && Brings(k, t)) _lit.Add(k.Id);
+            }
             foreach (Int3 gone in _loaded.Keys.Where(c => !_guns.Any(g => g.At == c)).ToList()) _loaded.Remove(gone);
             Picked.RemoveWhere(k => _functions.All(f => f.Key != k));
             return _functions;
@@ -122,14 +131,18 @@ public sealed class StructureBar
     }
 
     /// <summary>Is a slot on: a toggle switched on, a gun picked for the trigger? A run slot is never on.</summary>
-    public bool IsOn(BarSlot f) => f.Act switch
+    public bool IsOn(BarSlot f)
     {
-        BarAct.Select => Picked.Contains(f.Key),
-        BarAct.Run => false,
-        _ when f.Kind.Id == Gravity => _v.Structure.GravityOn,
-        _ when Lamps(f.Kind) => _v.Structure.Blocks().Any(x => _v.Structure.TypeOf(x.block) is var t && t.IsLamp && Brings(f.Kind, t) && !x.block.Off),
-        _ => _v.SystemOn(f.Kind.Id),
-    };
+        _ = Functions; // the lamps' state follows the structure
+        return f.Act switch
+        {
+            BarAct.Select => Picked.Contains(f.Key),
+            BarAct.Run => false,
+            _ when f.Kind.Id == Gravity => _v.Structure.GravityOn,
+            _ when Lamps(f.Kind) => _lit.Contains(f.Kind.Id),
+            _ => _v.SystemOn(f.Kind.Id),
+        };
+    }
 
     /// <summary>A kind that switches lamp blocks (spotlights): its state is their Off flags.</summary>
     static bool Lamps(BarKind k) => k.Functions.Contains("spotlight") || k.Functions.Contains("light");

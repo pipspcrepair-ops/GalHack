@@ -97,13 +97,6 @@ public sealed partial class Vessel
         }
     }
 
-    /// <summary>Are its exterior spotlights on? True while any is lit; setting it switches every one (the pilot's toolbar).</summary>
-    public bool SpotlightsOn
-    {
-        get => Structure.Blocks().Any(x => Structure.TypeOf(x.block).IsSpotlight && !x.block.Off);
-        set => SwitchLamps(t => t.IsSpotlight, value);
-    }
-
     /// <summary>Switches every lamp block of a kind on or off (its Off flag: its glow and its real light follow).</summary>
     public void SwitchLamps(Func<BlockType, bool> which, bool on)
     {
