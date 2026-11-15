@@ -71,7 +71,7 @@ public sealed class TechLayout
         if (lanes) LayLanes();
     }
 
-    /// <summary>A tier's family: its id without the "-t2" ("fuel-tank-t2" is a fuel tank).</summary>
+    /// <summary>A tier's family: its id without the "-t2" ("generator-t2" is a generator).</summary>
     static string Family(string id)
     {
         int t = id.LastIndexOf("-t", StringComparison.Ordinal);

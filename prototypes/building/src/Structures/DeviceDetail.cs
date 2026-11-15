@@ -38,7 +38,6 @@ public static class DeviceDetail
             case "factory": Fabricator(k, t, DeviceSymbol.Grid); break;
             case "deconstructor": Fabricator(k, t, DeviceSymbol.Down); break;
             case "generator": Generator(k); break;
-            case "fuel": FuelTank(k); break;
             case "container": Container(k); break;
             case "gyro": Gyro(k); break;
             case "thruster": Thruster(k, t); break;
@@ -48,8 +47,6 @@ public static class DeviceDetail
             case "light": Light(k); break;
             case "warp-drive":
             case "hyperdrive": Drive(k, t); break;
-            case "warp-tank":
-            case "fold-tank": CellTank(k); break;
             case "gear": Leg(k); break;
             case "weapon": Weapon(k, t); break;
             case "turret": Turret(k); break;
@@ -227,23 +224,6 @@ public static class DeviceDetail
             k.Tube(1, at, 0.075f, 0.075f, 0.5f, 0.64f, PartStyle.Dark, Armour(1), segments: 10);
             k.Tube(1, at, 0.055f, 0.055f, 0.64f, 0.645f, PartStyle.Dark, Coat(Soot, 0), segments: 10);
         }
-    }
-
-    /// <summary>A fuel tank: bands round the drum, a gauge on its front, a filler cap and a valve with its wheel on top.</summary>
-    static void FuelTank(Kit k)
-    {
-        foreach (float y in new[] { -0.28f, 0.28f })
-            k.Tube(1, Vector3.Zero, 0.472f, 0.472f, y - 0.025f, y + 0.025f, PartStyle.Dark, Armour(1), segments: 16);
-        var gauge = new Vector3(0f, 0.15f, -0.455f);
-        k.Tube(2, gauge, 0.09f, 0.09f, -0.49f, -0.45f, PartStyle.Dark, Armour(1), segments: 12);
-        k.Tube(2, gauge, 0.066f, 0.066f, -0.497f, -0.49f, PartStyle.Glow, Screen(DeviceSymbol.Drop), segments: 12);
-        var filler = new Vector3(0.2f, 0.5f, -0.14f);
-        k.Tube(1, filler, 0.085f, 0.085f, 0.5f, 0.55f, PartStyle.Dark, Bare, segments: 12);
-        k.Tube(1, filler, 0.06f, 0.06f, 0.55f, 0.575f, PartStyle.Accent, Coat(HazardYellow), segments: 12);
-        var valve = new Vector3(-0.2f, 0.5f, 0.12f);
-        k.Tube(1, valve, 0.028f, 0.028f, 0.5f, 0.62f, PartStyle.Dark, Bare, segments: 8);
-        k.Tube(1, valve, 0.095f, 0.095f, 0.6f, 0.62f, PartStyle.Accent, Coat(ValveRed), segments: 12);
-        k.Face(Dir.NegZ, -0.5f, -0.5f, 0.5f, -0.42f, 0.012f, PartStyle.Accent, Hazard);
     }
 
     /// <summary>A container: rails round its top and foot, two latches, a handle, and a stencilled grid.</summary>
@@ -430,21 +410,6 @@ public static class DeviceDetail
         k.Face(front, 0.3f, -0.3f, 0.34f, 0.3f, 0.03f, PartStyle.Dark, Bare);
         ScreenOn(k, Dir.PosX, 0.14f, 0.14f, 0.4f, 0.4f, DeviceSymbol.Crystal);
         k.Face(front, -0.5f, -0.5f, 0.5f, -0.42f, 0.012f, PartStyle.Accent, Hazard);
-    }
-
-    /// <summary>A warp cell or fold crystal tank: posts at its corners, a band round it, a gauge screen and a valve on top.</summary>
-    static void CellTank(Kit k)
-    {
-        foreach (int sx in new[] { -1, 1 })
-            foreach (int sz in new[] { -1, 1 })
-                k.Box(new Vector3(sx * 0.508f, -0.5f, sz * 0.508f), new Vector3(sx * 0.41f, 0.5f, sz * 0.41f), PartStyle.Dark, Armour(2));
-        Band(k, 1, 0.26f, 0.32f, 0.014f, Armour(1), PartStyle.Dark);
-        Band(k, 1, -0.32f, -0.26f, 0.014f, Armour(1), PartStyle.Dark);
-        ScreenOn(k, Dir.PosX, -0.14f, -0.12f, 0.14f, 0.16f, DeviceSymbol.Crystal);
-        var valve = new Vector3(0.2f, 0.5f, 0.2f);
-        k.Tube(1, valve, 0.028f, 0.028f, 0.5f, 0.6f, PartStyle.Dark, Bare, segments: 8);
-        k.Tube(1, valve, 0.085f, 0.085f, 0.58f, 0.6f, PartStyle.Accent, Coat(ValveRed), segments: 12);
-        k.Face(Dir.PosY, -0.32f, -0.32f, -0.12f, -0.12f, 0.02f, PartStyle.Accent, Hazard);
     }
 
     /// <summary>A landing leg: a broad foot pad and a hazard band under its housing.</summary>

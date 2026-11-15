@@ -9,7 +9,7 @@ namespace PoiGenerator;
 /// <summary>
 /// The capital hulks (src/Gen/Arch/CapitalHull.cs) on fresh seeds, every crash variant. The hull is the player's own
 /// large-grid blocks: length and beam in range, three decks and the tower's two, thrusters at the stern and lift
-/// enough under the keel for the hull's weight, the bridge's chairs behind glass, generators, fuel and containers,
+/// enough under the keel for the hull's weight, the bridge's chairs behind glass, generators and containers (fuel in them),
 /// no core but an empty seat for one, and what the crash and the years leave is worth the work. The place round
 /// it (the hollow it lies in, its ramps, its yard and wreckage) passes the layout checks, and each way of coming
 /// down is a pose of its own. (The vessel's own claiming and flying are the slice's HulkTest.)
@@ -51,14 +51,14 @@ public partial class PoiTest
                 int slots = plan.Pieces.Count(p => p.CoreSlot is Int3 s && !p.Intact.ContainsKey(s));
                 var left = plan.Pieces.Select(p => (p, gone: p.Damage(PoiState.Abandoned, seed))).ToList();
                 int Left(string id) => left.Sum(x => x.p.Intact.Count(kv => (kv.Value == id || kv.Value.StartsWith(id + " ")) && !x.gone.Contains(kv.Key)));
-                GD.Print($"      {v.Name}: {plan.Pieces.Count} piece(s), {all.Count} blocks, {length} m long, {beam} m beam, {decks} floor levels, {aft.Count} stern thrusters, {lift} lift ({lift * 1.2:F0} MN for {mass * 9.81 / 1000:F0} MN), {Count("generator")} generators ({power:F0} of {draw:F0} MW), {Count("fueltank")} fuel tanks, {Count("container")} containers, {Count("chair")} chairs, {Count("glass")} glass, {Count("door")} doors; abandoned keeps {Left("thruster")} thrusters, {Left("generator")} generators; pitch {string.Join("/", plan.Pieces.Select(p => PitchOf(p.Rotation).ToString("F1")))} deg, origin y {string.Join("/", plan.Pieces.Select(p => p.Origin.Y.ToString("F0")))}");
+                GD.Print($"      {v.Name}: {plan.Pieces.Count} piece(s), {all.Count} blocks, {length} m long, {beam} m beam, {decks} floor levels, {aft.Count} stern thrusters, {lift} lift ({lift * 1.2:F0} MN for {mass * 9.81 / 1000:F0} MN), {Count("generator")} generators ({power:F0} of {draw:F0} MW), {Count("container")} containers, {Count("chair")} chairs, {Count("glass")} glass, {Count("door")} doors; abandoned keeps {Left("thruster")} thrusters, {Left("generator")} generators; pitch {string.Join("/", plan.Pieces.Select(p => PitchOf(p.Rotation).ToString("F1")))} deg, origin y {string.Join("/", plan.Pieces.Select(p => p.Origin.Y.ToString("F0")))}");
                 Bad(length is >= 150 and <= 260, $"length {length} m outside 150 to 260");
                 Bad(beam is >= 36 and <= 64, $"beam {beam} m outside 36 to 64");
                 Bad(decks >= 3, $"only {decks} floor levels");
                 Bad(aft.Count >= 20 && aft.All(c => c.Z >= sternZ - 2), $"{aft.Count} stern thrusters, not all at the stern");
                 Bad(lift * 1200.0 >= mass * 9.81 * 1.2, $"lift {lift * 1.2:F0} MN under the weight {mass * 9.81 / 1000:F0} MN");
                 Bad(power >= draw, $"generators {power:F0} MW for {draw:F0} MW of thrusters");
-                Bad(Count("chair") >= 2 && Count("glass") >= 6 && Count("fueltank") >= 1 && Count("container") >= 10 && Count("door") >= 10, "a device kind missing");
+                Bad(Count("chair") >= 2 && Count("glass") >= 6 && Count("container") >= 10 && Count("door") >= 10, "a device kind missing");
                 Bad(!core && slots >= 1, $"core {core}, {slots} empty seats for one");
                 Bad(Left("thruster") >= Count("thruster") / 4 && Left("generator") >= 1 && Left("chair") >= 1, "too little survives to restore");
                 var walk = LayoutCheck.Check(layout);

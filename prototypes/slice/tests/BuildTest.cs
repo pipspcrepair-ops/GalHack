@@ -304,7 +304,7 @@ public partial class BuildTest : Node
                 StructureStats st = StructureStats.Compute(s);
                 var spec = new StructureVessel(s, GameData.Shared.Handling);
                 double thrust = st.Thrust.Sum();
-                seen.Add(string.Join("|", st.PowerOut, st.PowerUse, st.StorageCapacity, st.Fuel, st.Mass, thrust,
+                seen.Add(string.Join("|", st.PowerOut, st.PowerUse, st.StorageCapacity, st.Mass, thrust,
                     st.Containers, st.Generators, st.Lights, st.LifeSupport, BuildingBridge.MachinesOn(Items, s).Count(),
                     spec.Gyros.Sum(g => g.Torque), spec.HoverEngines.Count, spec.LandingGear.Count, s.Blocks().Count(x => s.TypeOf(x.block).IsCommandChair)));
                 if (type.IsThruster) axes.Add(Orientations.ToWorld(rot, Dir.NegZ));
@@ -880,6 +880,7 @@ public partial class BuildTest : Node
         _game.Progress.Creative = true;
         _base.Storage.Add(fab, 1);
         _base.Storage.Add(gen, 1);
+        _base.Storage.Add("biofuel", 10); // the generator's fuel, in core storage
         Pack.SetRemote(4, _base.Storage, _base.Name, fab);
         Pack.SetRemote(5, _base.Storage, _base.Name, gen);
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
@@ -888,7 +889,8 @@ public partial class BuildTest : Node
         foreach (int x in StandByBase(7, 1)) yield return x;
         foreach (int x in _play.PlaceBlock(5, _base, Int3.Zero, Dir.PosX, p => on &= p)) yield return x;
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
-        Check(on && _base.Machines.Count == 1 && _base.Powered, $"a constructor and a generator built on the base from its own storage (placed {on}, {_base.Machines.Count} machines, powered {_base.Powered}; in storage {_base.Storage.Count(fab)} {fab}, {_base.Storage.Count(gen)} {gen}, {_base.Storage.FreeSu:F0} SU free)");
+        foreach (int x in _drive.Wait(2)) yield return x; // a tick of its power: the generator takes up its fuel
+        Check(on && _base.Machines.Count == 1 && _base.Powered, $"a constructor and a generator built on the base from its own storage, its fuel in it (placed {on}, {_base.Machines.Count} machines, powered {_base.Powered}; in storage {_base.Storage.Count(fab)} {fab}, {_base.Storage.Count(gen)} {gen}, {_base.Storage.FreeSu:F0} SU free)");
         if (_base.Machines.Count == 0) yield break;
         _game.Progress.Creative = false;
         Constructor c = _base.Machines.Values.First();

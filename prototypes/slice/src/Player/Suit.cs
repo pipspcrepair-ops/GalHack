@@ -113,10 +113,10 @@ public sealed class Suit : IDamageSink
         return outside with { Temperature = t, Place = "Indoors" };
     }
 
-    /// <summary>The world's own air at a spot, whatever room the survivor is in (a burning climate node near it holding its band).</summary>
+    /// <summary>The world's own air at a spot, whatever room the survivor is in (a running climate node near it holding its band).</summary>
     public Exposure World(Pos p, double time) => Outside(p, time, out _);
 
-    /// <summary>The world's own air at a spot (a burning climate node near it holding its band); raw is the temperature before the node.</summary>
+    /// <summary>The world's own air at a spot (a running climate node near it holding its band); raw is the temperature before the node.</summary>
     Exposure Outside(Pos p, double time, out double raw)
     {
         raw = _climate.SealedRoomC;
@@ -148,7 +148,7 @@ public sealed class Suit : IDamageSink
         var rules = _zone.Data.Rules.ClimateNode;
         var here = new Godot.Vector3((float)p.X, (float)p.Y, (float)p.Z);
         foreach (Device d in _zone.Devices)
-            if (d.Burning && d.GlobalPosition.DistanceSquaredTo(here) <= rules.Radius * rules.Radius)
+            if (d.Running && d.GlobalPosition.DistanceSquaredTo(here) <= rules.Radius * rules.Radius)
             {
                 temperature = Math.Clamp(temperature, rules.LowC, rules.HighC);
                 break;

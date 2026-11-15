@@ -487,7 +487,7 @@ public partial class Spaceflight : Node
                 yield return new Holder(IdOf(l), "container", name, null, l.Name, l.Storage.Contents, 0);
             foreach (Device d in zone.Devices)
             {
-                Bill items = d.Storage.Contents;
+                Bill items = d.Storage?.Contents ?? new Bill();
                 if (d.Constructor != null) Add(items, d.Constructor.Tray);
                 yield return new Holder(IdOf(d), "device", name, null, d.Label, items, 0);
             }

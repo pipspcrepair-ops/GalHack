@@ -98,7 +98,7 @@ public static class CapitalHull
         /// <summary>
         /// What is gone, by how it came down and what the years did since: the crash's own tears, then a share of
         /// the devices wrecked (the more so the worse its state) and holes knocked in the shell. Never all of
-        /// anything that matters: a third of the thrusters, generators, chairs and fuel tanks come through, so it
+        /// anything that matters: a third of the thrusters, generators and chairs come through, so it
         /// is worth the work.
         /// </summary>
         public HashSet<Int3> Damage(PoiState state, ulong seed)
@@ -107,10 +107,10 @@ public static class CapitalHull
             var rng = new Rng(seed);
             float devices = state switch { PoiState.Active => 0.1f, PoiState.Abandoned => 0.3f, PoiState.Infested => 0.4f, _ => 0.55f };
             float shell = state switch { PoiState.Active => 0.005f, PoiState.Abandoned => 0.015f, PoiState.Infested => 0.02f, _ => 0.05f };
-            foreach (string kind in new[] { "thruster", "generator", "fueltank", "warptank", "warpdrive", "gyro", "chair", "cpuext3", "light", "door", "smallfab", "largefab" })
+            foreach (string kind in new[] { "thruster", "generator", "warpdrive", "gyro", "chair", "cpuext3", "light", "door", "smallfab", "largefab" })
             {
                 var all = Intact.Where(kv => kv.Value == kind || kv.Value.StartsWith(kind + " ")).Select(kv => kv.Key).Where(c => !gone.Contains(c)).ToList();
-                int keep = kind is "thruster" or "generator" or "chair" or "fueltank" ? Math.Max(1, all.Count / 3) : 0;
+                int keep = kind is "thruster" or "generator" or "chair" ? Math.Max(1, all.Count / 3) : 0;
                 foreach (Int3 c in all.OrderBy(_ => rng.Float()).Take(Math.Max(0, Math.Min(all.Count - keep, (int)MathF.Round(all.Count * devices))))) gone.Add(c);
             }
             // Holes in the shell, a few blocks round each.
@@ -1389,7 +1389,7 @@ sealed class Hulk
     /// plan read off the hull's 1 m drawing, eight cells a block. Shell, decks and bulkheads are steel in the livery's
     /// paint, the windows glass, slopes on the bow and shoulders, a door wherever a person goes through a wall, lights
     /// in the ceilings, and the devices where the rooms have them: thrusters on the nacelles and under the keel,
-    /// generators in the reactor and generator rooms, fuel tanks, containers in the holds, gyros by the drives,
+    /// generators in the reactor and generator rooms, containers in the fuel store and the holds, gyros by the drives,
     /// command chairs on the bridge, CPU extenders and an empty seat for the core in the core room. A mass of solid
     /// fill nobody can reach is left hollow, as a builder would.
     /// </summary>
@@ -1454,7 +1454,7 @@ sealed class Hulk
                 (BlockType.Machine, "core-room") => "cpuext3",
                 (BlockType.Machine or BlockType.Tank, "reactor" or "generator-room") => "steel paint=machine",
                 (BlockType.Machine, "engine-room") => Mod(b.X + b.Z, 4) == 0 ? "gyro" : Mod(b.X + b.Z, 4) == 1 ? "warpdrive" : "steel paint=machine",
-                (BlockType.Tank, "fuel-tanks" or "engine-room" or "hangar") => (b.X & 1) == 0 ? "fueltank" : "warptank",
+                (BlockType.Tank, "fuel-tanks" or "engine-room" or "hangar") => "container", // no fuel tanks: fuel sits in core storage
                 // A container where each stack stands on the hold's floor; the rest of the stack is its painted steel.
                 (BlockType.Cube, "hold") when b.Y == Walk(0) / 2 && Mod(b.Z, 3) == 0 => "container",
                 (BlockType.Cube, "hold") => $"steel paint={paintOf(p.Color)}",
@@ -1523,8 +1523,8 @@ sealed class Hulk
             .Where(b => Bays.Any(bay => IsHall(bay.Kind) && 2 * b.Z >= bay.V0 + 4 && 2 * b.Z < bay.V1 - 2) && Math.Abs(2 * b.X) < Half - 4)
             .OrderBy(b => (b.X + b.Z) & 1).ThenBy(b => Math.Abs(b.X)).ThenBy(b => b.Z).ToList();
         int at = 0;
-        // One warp drive and its two cell tanks, a few gyros: the rest of the engine room's machinery is plain.
-        foreach (var (kind, keep) in new[] { ("warpdrive", 1), ("warptank", 2), ("gyro", 6) })
+        // One warp drive, a few gyros: the rest of the engine room's machinery is plain.
+        foreach (var (kind, keep) in new[] { ("warpdrive", 1), ("gyro", 6) })
             foreach (Int3 b in map.Where(kv => kv.Value == kind).Select(kv => kv.Key).OrderBy(b => b.Z).ThenBy(b => b.X).Skip(keep).ToList()) map[b] = "steel paint=machine";
         while (Count("thruster rot=+z+y") * kn < 1.3 * Mass() * g && at < keel.Count) map[keel[at++]] = "thruster rot=+z+y";
         // Power for them all: more generators in the power rooms' free floor.

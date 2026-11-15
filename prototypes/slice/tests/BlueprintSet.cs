@@ -77,7 +77,7 @@ public static partial class BlueprintSet
         d.Chamfer(P(2, 0, 3), P(2, 0, 3), "base-block", chev, Dir.PosX, Dir.PosZ).Chamfer(P(-2, 0, 3), P(-2, 0, 3), "base-block", chev, Dir.NegX, Dir.PosZ);
         d.Put("generator-t1", P(-1, 0, 2));
         d.Put("gyro-t1", P(0, 0, 2));
-        d.Put("fuel-tank-t1", P(1, 0, 2));
+        d.Put("container-t1", P(1, 0, 2));
         d.Face(P(-2, 0, 3), P(2, 0, 3), Dir.PosZ, hazard);
         d.Thruster("thruster-t1", P(-1, 0, 4), Dir.NegZ);
         d.Thruster("thruster-t1", P(1, 0, 4), Dir.NegZ);
@@ -147,7 +147,7 @@ two mains, a retro, a side jet each way, a lift jet, a down jet and three pads."
         d.Door("door-1x2x1", P(6, 1, 0), Dir.PosX);
         // Along the north wall: power, fuel, the fabricator and the lockers; lights on the ceilings, two under the clerestory.
         d.Put("generator-t1", P(-4, 1, -4));
-        d.Put("fuel-tank-t1", P(-3, 1, -4));
+        d.Put("container-t1", P(-3, 1, -4));
         d.Put("fabricator-t1", P(-2, 1, -4));
         for (int x = 2; x <= 5; x++) d.Put("container-t1", P(x, 1, -4));
         foreach (int x in new[] { -3, 4 })
@@ -195,7 +195,7 @@ its rim hazard-marked and ramped down to the ground.");
         d.Put("command-chair", P(1, 1, -1));
         d.Put("container-t1", P(-1, 1, 2));
         d.Put("generator-t1", P(0, 1, 2));
-        d.Put("fuel-tank-t1", P(1, 1, 2));
+        d.Put("container-t1", P(1, 1, 2));
         d.Mount("light", P(0, 3, 0), Dir.PosY);
         return d.Text(@"Escape pod: a crash-landed capsule kept as a shelter. An iron shell 3 x 4 m inside and
 3 m tall, a door at the front up one step, a command chair facing it, a locker, a generator and its

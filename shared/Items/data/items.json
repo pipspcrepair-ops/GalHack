@@ -10,7 +10,7 @@
 //   mass      kg per unit
 //   volume    storage units (SU, a litre) per unit: a small cargo block holds 125 SU, a large 8,000
 //   deposit   raw only: the deposit kind the planet generator places today, if any
-//   fuel      fuel units per item (section 13 of the design)
+//   fuel      generator fuel only: fuel units per item (section 13 of the design; power.json says what a unit holds)
 //   rounds    ammo only: rounds in one box, belt or rack. Storage, the constructor and the restock
 //             threshold all count boxes, so the three always agree.
 //   restock   ammo only: the default auto-restock threshold, in boxes
@@ -55,8 +55,9 @@
       "mass": 4.5, "volume": 1, "where": "Scattered; richer on volcanic worlds", "uses": "Logic modules, trade value" },
     { "id": "gravium-ore", "name": "Gravium ore", "short": "GRAVIUM", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Gravium",
       "mass": 6.0, "volume": 1, "where": "High-gravity worlds", "uses": "Hardened and combat steel" },
-    { "id": "warp-fuel-ore", "name": "Warp fuel ore", "short": "WARPORE", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "WarpFuel",
-      "mass": 2.4, "volume": 1, "where": "Airless worlds only", "uses": "Warp drive fuel: warp cells" },
+    // Warp fuel, gathered (as Empyrion's pentaxid is): mined, then refined into warp cells. Never made from common materials.
+    { "id": "pentaxite", "name": "Pentaxite", "short": "PENTAX", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "WarpFuel",
+      "mass": 2.4, "volume": 1, "where": "Moons, icy bodies and asteroid fields; always on the start's fuel moon", "uses": "Warp cells", "was": ["warp-fuel-ore"] },
 
     // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
     { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",
@@ -98,8 +99,8 @@
     { "id": "neodymium-bar", "name": "Neodymium bar", "short": "ND BAR", "category": "refined", "rarity": "uncommon", "mass": 3.0, "volume": 0.5 },
     { "id": "gold-bar", "name": "Gold bar", "category": "refined", "rarity": "uncommon", "mass": 4.0, "volume": 0.3 },
     { "id": "gravium-ingot", "name": "Gravium ingot", "short": "GRAV IN", "category": "refined", "rarity": "uncommon", "mass": 7.0, "volume": 0.5 },
-    { "id": "fold-crystal", "name": "Fold crystal", "short": "FOLD XL", "category": "refined", "rarity": "rare", "mass": 0.8, "volume": 0.5, "fuel": 1,
-      "uses": "Hyperdrive fuel · ~1 per light year · fold crystal tank · shields" },
+    { "id": "fold-crystal", "name": "Fold crystal", "short": "FOLD XL", "category": "refined", "rarity": "rare", "mass": 0.8, "volume": 0.5,
+      "uses": "Hyperdrive fuel · ~1 per light year · shields" },
     { "id": "emberite", "name": "Refined emberite", "short": "EMBERIT", "category": "refined", "rarity": "rare", "mass": 2.0, "volume": 0.5 },
     { "id": "starsilver-bar", "name": "Starsilver bar", "short": "STARBAR", "category": "refined", "rarity": "rare", "mass": 3.2, "volume": 0.4 },
     { "id": "voidglass", "name": "Voidglass pane", "short": "VOIDPAN", "category": "refined", "rarity": "exotic", "mass": 1.0, "volume": 0.5 },
@@ -142,14 +143,16 @@
     // ---- Consumables ------------------------------------------------------------------------
     { "id": "o2-bottle", "name": "O2 bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2, "uses": "+75 suit oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "medkit", "name": "Medkit", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "unlock": { "level": 2, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
-    { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10, "unlock": { "level": 2, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
-    // Warp drive fuel, about 1 per AU from a warp cell tank. The name is data: the owner may rename it.
-    { "id": "warp-cell", "name": "Warp cell", "short": "WARPCEL", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 0.5, "stack": 100,
-      "uses": "Warp drive fuel · ~1 per AU · warp cell tank", "unlock": { "level": 9, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
-    { "id": "energy-cell", "name": "Energy cell", "short": "CELL", "category": "consumable", "rarity": "common", "mass": 0.8, "volume": 0.5, "fuel": 15, "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
-    { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30, "unlock": { "level": 3, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
-    { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150, "unlock": { "level": 8, "cost": 2, "parent": "fuel-pack", "tab": "misc" } },
-    { "id": "fusion-cell", "name": "Fusion cell", "short": "FUSCELL", "category": "consumable", "rarity": "rare", "mass": 6.0, "volume": 2, "fuel": 300, "unlock": { "level": 14, "cost": 4, "parent": "large-fuel-pack", "tab": "misc" } },
+    // Generator fuel, Empyrion's ladder (ItemsConfig: bio fuel 10, small energy cell 15, energy cell 30, large 150, fusion
+    // 300). Generators burn it from core storage; the fuel made early is the least efficient, in units per item and per SU.
+    { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10, "uses": "Generator fuel · 10", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "energy-cell", "name": "Energy cell", "short": "CELL", "category": "consumable", "rarity": "common", "mass": 0.8, "volume": 0.75, "fuel": 15, "uses": "Generator fuel · 15", "unlock": { "level": 1, "cost": 0, "parent": "biofuel", "tab": "misc" } },
+    // Warp drive fuel, about 1 per AU, from core storage: refined from gathered pentaxite.
+    { "id": "warp-cell", "name": "Warp cell", "short": "WARPCEL", "category": "consumable", "rarity": "uncommon", "mass": 1.0, "volume": 0.5, "stack": 100,
+      "uses": "Warp drive fuel · ~1 per AU", "unlock": { "level": 9, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30, "uses": "Generator fuel · 30", "unlock": { "level": 3, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
+    { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150, "uses": "Generator fuel · 150", "unlock": { "level": 8, "cost": 2, "parent": "fuel-pack", "tab": "misc" } },
+    { "id": "fusion-cell", "name": "Fusion cell", "short": "FUSCELL", "category": "consumable", "rarity": "rare", "mass": 6.0, "volume": 2, "fuel": 300, "uses": "Generator fuel · 300", "unlock": { "level": 14, "cost": 4, "parent": "large-fuel-pack", "tab": "misc" } },
     { "id": "paint-cartridge", "name": "Paint cartridge", "short": "PAINT", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.3, "unlock": { "level": 1, "cost": 0, "tab": "tools" } },
 
     // ---- Ammo: counted in boxes, belts and racks ------------------------------------------
@@ -163,6 +166,6 @@
     // ---- Tools ------------------------------------------------------------------------------
     { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20, "unlock": { "level": 1, "cost": 0, "tab": "misc" } },
     { "id": "climate-node", "name": "Climate node", "short": "CLIMATE", "category": "tool", "rarity": "common", "mass": 12.0, "volume": 12,
-      "uses": "Set down · biomass or fuel · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
+      "uses": "Set down by a core · its power · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
   ]
 }
