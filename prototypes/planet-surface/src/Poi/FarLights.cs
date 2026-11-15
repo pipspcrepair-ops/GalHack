@@ -355,7 +355,7 @@ public partial class FarLights : Node3D
         float lit(vec3 p) {
             vec3 o = (p - centre) / radius;
             float h = max(o.y, 0.0);
-            float air = pow(max(1.0 - dot(o, o), 0.0), 1.5) * exp(-h * 2.0);
+            float air = pow(max(1.0 - dot(o, o), 0.0), 2.5) * exp(-h * 2.0); // fading to nothing well before the rim: no edge
             float deck = cloud.y * exp(-pow((p.y - cloud.x) / (radius * 0.15), 2.0));
             return air * (1.0 + 4.0 * deck);
         }
@@ -380,7 +380,7 @@ public partial class FarLights : Node3D
             for (int i = 0; i < 6; i++) sum += lit(eye + ray * mix(t0, t1, (float(i) + n) / 6.0));
             float along = (t1 - t0) / radius * sum / 6.0;
             float d = length(centre - eye);
-            vec3 glow = COLOR.rgb * along * strength * 0.06 * night * haze(max(d - radius, 0.0));
+            vec3 glow = COLOR.rgb * along * strength * 0.09 * night * haze(max(d - radius, 0.0));
             float level = max(glow.r, max(glow.g, glow.b));
             ALBEDO = max(glow + (n - 0.5) * (1.5 / 255.0) * smoothstep(0.0, 3.0 / 255.0, level), vec3(0.0));
             ALPHA = 1.0;
