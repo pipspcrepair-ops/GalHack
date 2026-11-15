@@ -115,9 +115,9 @@ public partial class SkyshipTest : Node
                 int seed = rng.Next();
                 float g = 5f + (float)rng.NextDouble() * 10f;
                 var clock = Stopwatch.StartNew();
-                Structure s = SmallCraft.Roll(cat, role, CraftStyle.Freeholder, seed, g);
+                Structure s = SmallCraft.Roll(cat, role, CraftStyle.Freeholder, seed, g, out string short_);
                 ms = Math.Max(ms, clock.ElapsedMilliseconds);
-                if (s == null) { problems.Add($"seed {seed} g {g:F1}: no roll met its needs"); continue; }
+                if (s == null) { problems.Add($"seed {seed} g {g:F1}: no roll met its needs: {short_}"); continue; }
                 made++;
                 sizes.Add(s.BlockCount);
                 // The player's blueprint validation: it saves and loads back whole, every block joined to the core.

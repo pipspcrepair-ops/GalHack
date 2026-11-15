@@ -175,6 +175,7 @@ public sealed partial class Staging
             "decorooms" => DecoRooms(),
             "dress" => DressView(),
             "hulk" => HulkView(),
+            "skyship" => SkyshipView(),
             "visor" => VisorView(),
             "feet" => FeetView(),
             "zfight" => ZFightView(),

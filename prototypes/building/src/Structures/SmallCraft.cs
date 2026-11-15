@@ -46,15 +46,22 @@ public static class SmallCraft
     const string Plate = "iron-plated", Patch = "base-block";
 
     /// <summary>A craft for this role and style, sized for this gravity; null if no roll met the needs (the caller tries another seed).</summary>
-    public static Structure Roll(Catalogue cat, CraftRole role, CraftStyle style, int seed, float gravity, CraftNeeds needs = null)
+    public static Structure Roll(Catalogue cat, CraftRole role, CraftStyle style, int seed, float gravity, CraftNeeds needs = null) =>
+        Roll(cat, role, style, seed, gravity, out _, needs);
+
+    /// <param name="why">What the last roll fell short in, when none met the needs.</param>
+    public static Structure Roll(Catalogue cat, CraftRole role, CraftStyle style, int seed, float gravity, out string why, CraftNeeds needs = null)
     {
         needs ??= CraftNeeds.Default;
+        why = null;
         for (int attempt = 0; attempt < 6; attempt++)
         {
             var rng = new Random(unchecked(seed + attempt * 7919));
             Structure plan = Lay(cat, role, style, rng, gravity, needs);
             Structure built = Assemble(plan, style.Owner);
-            if (Shortfall(built, gravity, needs) == null) return built;
+            why = Shortfall(built, gravity, needs);
+            if (why == null) return built;
+            if (built.BlockCount < plan.BlockCount) why += $" ({plan.BlockCount - built.BlockCount} of {plan.BlockCount} blocks would not go on)";
         }
         return null;
     }
@@ -162,8 +169,9 @@ public static class SmallCraft
         Device(l, "generator-t1");
         Device(l, "gyro-t1");
         Device(l, "fuel-tank-t1");
+        // A trader's hold fills its inside but for a few cells kept for what sizing adds; then it is sized with its hold aboard.
+        if (trader) while (l.Inside.Count > 4 && Device(l, "container-t1")) { }
         Size(l, gravity, needs, trader);
-        if (trader) while (l.Inside.Count > 0 && Device(l, "container-t1")) { }
         Lights(l, rng);
         return d.S;
     }
@@ -200,7 +208,7 @@ public static class SmallCraft
         Designer d = l.D;
         int h = l.Rng.Next(3, 6), z = zb - 1;
         d.Fill(P(0, top + 1, z), P(0, top + h, z), Plate, body, "cylinder");
-        d.Fill(P(-1, top + h, z), P(1, top + h, z), Plate, coat());
+        d.Fill(P(-1, top + h + 1, z), P(1, top + h + 1, z), Plate, coat());
         ushort boom = coat();
         bool pod = lopsided && l.Rng.NextDouble() < 0.4;
         foreach (int side in new[] { 1, -1 })
@@ -362,8 +370,8 @@ public static class SmallCraft
             return cells.OrderBy(order);
         }
         var warm = LightSettings.Steady(0xffddaa);
-        Light(Box(-1, 1, lo.Y - 1, lo.Y - 1, lo.Z, hi.Z, c => c.Z + MathF.Abs(c.X)), Dir.PosY, warm);
-        Light(Box(-1, 1, lo.Y - 1, lo.Y - 1, lo.Z, hi.Z, c => -c.Z + MathF.Abs(c.X)), Dir.PosY, warm);
+        Light(Box(-2, 2, lo.Y - 1, -2, lo.Z, hi.Z, c => c.Z + MathF.Abs(c.X) - c.Y * 8), Dir.PosY, warm);
+        Light(Box(-2, 2, lo.Y - 1, -2, lo.Z, hi.Z, c => -c.Z + MathF.Abs(c.X) - c.Y * 8), Dir.PosY, warm);
         Light(Box(lo.X - 1, hi.X, lo.Y, hi.Y, lo.Z, hi.Z, c => c.X * 4 + c.Z * 0.5f - c.Y), Dir.PosX, LightSettings.Steady(0xff3322));
         Light(Box(lo.X, hi.X + 1, lo.Y, hi.Y, lo.Z, hi.Z, c => -c.X * 4 + c.Z * 0.5f - c.Y), Dir.NegX, LightSettings.Steady(0x44ff88));
         Light(Box(lo.X, hi.X, lo.Y, hi.Y, lo.Z, hi.Z + 1, c => -c.Z * 4 + MathF.Abs(c.X) - c.Y), Dir.NegZ, LightSettings.Steady(0xffffff));
