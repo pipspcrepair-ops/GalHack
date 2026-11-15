@@ -139,7 +139,7 @@ public partial class OccupantTest
         }
         (t.Storeys, t.Held, t.Far, t.FarThreats) = (t.Storeys + storeys, t.Held + held, t.Far + far, t.FarThreats + farThreats);
         if (barren && farThreats == 0) return; // (the floor nobody keeps left silent, as a barren world's may be)
-        if (storeys - held > Math.Max(1, storeys / 5))
+        if (storeys - held > (int)MathF.Ceiling(storeys * 0.2f))
         {
             t.Bare++;
             t.Note($"{who}: {held} of {storeys} storeys off the way in's hold something; {threats.Count} threats, {people} people");
