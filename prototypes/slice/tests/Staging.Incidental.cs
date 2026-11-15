@@ -82,10 +82,8 @@ public sealed partial class Staging
                 yield return 0;
                 if (i > 200 && _game.Zone.Streamer.Settled && !_game.Zone.Pois.MidPending) break;
             }
-            // A plain grey stand-in block (a place not built yet) standing off the ground in view is a fault of the places layer, not of the ruin.
-            foreach (Node n in _game.Zone.Pois.GetChildren())
-                if (n is MeshInstance3D { Visible: true } m && m.Name.ToString().StartsWith("Stand-in") && m.GlobalPosition.DistanceTo(eye) < 150f && m.Mesh is BoxMesh box)
-                    GD.Print($"(stand-in in view: {m.Name}, {m.GlobalPosition.DistanceTo(eye):0} m off, base {m.GlobalPosition.Y - box.Size.Y * 0.5f - world.GroundHeight(Planets.Gen.Mathx.WrapX(m.GlobalPosition.X, world.Width), Planets.Gen.Mathx.Wrap(m.GlobalPosition.Z, world.Height)):0.0} m over the ground, {box.Size.X:0} x {box.Size.Y:0} x {box.Size.Z:0})");
+            // Anything round it drawn without paint, or standing off the ground with nothing under it (a stand-in block, a flat face, a stray piece).
+            Unpainted.Print($"{what} {shot} {name}, eye {eye.Round()}", Unpainted.Near(_game, eye, (float)Num("audit", 300), (x, z) => _game.Zone.GroundAt(x, z).Y));
             Snap($"{what}{(spots.Count > 1 ? shot.ToString() : "")}-{name}");
             lamp?.QueueFree();
         }
