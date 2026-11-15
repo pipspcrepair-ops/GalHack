@@ -73,7 +73,7 @@ public sealed class VesselDamage : ILocatedDamageSink
     float Shielded(N.Vector3 point, float amount)
     {
         float left = (float)_v.Power.Absorb(amount);
-        if (left < amount) ShieldShell.On(_v).Struck(S, _v.Body.ToLocal(point));
+        if (left < amount) ShieldShell.On(_v).Struck(_v, _v.Body.ToLocal(point));
         return left;
     }
 
