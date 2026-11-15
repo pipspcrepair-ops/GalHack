@@ -946,6 +946,8 @@ public sealed partial class Town
         FaceSpot(p, dt);
         string moves = p.Looks?.Figure.Routine?.Moves ?? "wander";
         p.Sitting = tag == "sit" && moves is "wander" or "sit" or "roam" && p.Role is not ("guard" or "vendor");
+        // A child out of reach of the one minding them doesn't wait out a game: back at once (looked at twice a second).
+        if (p.Figure?.Playful == true && Culture.Trait("minder") is > 0f and var leash && (int)(_clock * 2f) != (int)((_clock - dt) * 2f) && Minder(p) is { } keeper && p.Pos.DistanceTo(keeper.Pos) > leash) p.Wait = 0f;
         if (p.Partner != null && !p.Partner.Dead)
         {
             Vector3 d = p.Partner.Pos - p.Pos;
@@ -969,49 +971,64 @@ public sealed partial class Town
         d.Y = 0f;
         float gap = d.Length(), want = Culture.Trait("chat", 1.1f), r = BodyRadius(p), h = Height(p);
         if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) { p.ChatAt = null; return; }
-        // (A stand must be clear of the furniture; a step toward it, from a spot at a counter or a bench, clear or at least further out than they are.)
+        // (A step toward a stand, from a spot at a counter or a bench: clear of the furniture, or at least further out than they are.)
         float here = _parts == null ? 0f : MathF.Min(0f, _parts.Gap(p.Pos, r, h) + 0.005f);
-        // (And always a floor under them at the height they stand: never off a ledge or a landing.)
-        bool Floor(Vector3 at) => Open(at) && Ground(at) is float g && MathF.Abs(g - p.Pos.Y) < 0.1f;
-        bool Clear(Vector3 at) => Floor(at) && (_parts == null || _parts.Gap(at, r, h) >= 0f);
-        bool Step(Vector3 at) => Floor(at) && (_parts == null || _parts.Gap(at, r, h) >= here);
-        // (A stand found is kept till they're on it: the looking is done once, not every tick; finding none, they look again in a while.)
+        bool Step(Vector3 at) => Open(at) && Ground(at) is float g && MathF.Abs(g - p.Pos.Y) < 0.1f && (_parts == null || _parts.Gap(at, r, h) >= here);
+        // (A stand found is kept till they're on it: the looking is done once, not every tick.)
         if (p.ChatAt is not { } stand || p.ChatWith != q)
         {
             if (_clock < p.ChatRetry) return;
-            Vector3? found = null;
             Vector3 away = gap > 0.05f ? -d / gap : Vector3.Right * (p.GetHashCode() < q.GetHashCode() ? -1f : 1f);
-            for (int k = 0; k < 3 && found == null; k++)
+            if (StandBy(q.Pos, away, want, r, h, p.Pos) is not { } found)
             {
-                float reach = k == 0 ? want : MathF.Max(gap, (1f - 0.25f * k) * want);
-                foreach (float turn in Turns)
-                {
-                    Vector3 at = q.Pos + away.Rotated(Vector3.Up, turn) * reach;
-                    at.Y = p.Pos.Y;
-                    if (Clear(at) && Step((at + p.Pos) * 0.5f) && Step(p.Pos.MoveToward(at, 0.1f))) { found = at; break; }
-                }
-            }
-            if (found == null)
-            {
-                // No stand clear round them: a step straight back, where there is one, else a look again in a while.
-                Vector3 back = p.Pos + away * Math.Clamp(want - gap, -0.7f * dt, 0.7f * dt);
-                if (Step(back)) { p.Pos = back; ChatSet++; }
-                else { p.ChatRetry = _clock + 1f; ChatStuck++; }
+                // No room here at their distance: the two go to a spot nearby that has it, or part if there's none. Never closer.
+                if (Roomy(q, want, r, h) is int spot) { GoTo(p, spot); GoTo(q, spot); p.ChatRetry = q.ChatRetry = _clock + 1f; ChatMoved++; }
+                else { p.Partner = q.Partner = null; ChatStuck++; }
                 return;
             }
-            stand = found.Value;
+            stand = found;
             p.ChatAt = stand;
             p.ChatWith = q;
         }
         Vector3 to = p.Pos.MoveToward(stand, 0.7f * dt);
-        if (!Step(to)) { p.ChatAt = null; p.ChatRetry = _clock + 0.5f; ChatStuck++; return; }
+        if (!Step(to)) { p.ChatAt = null; p.ChatRetry = _clock + 0.5f; return; }
         p.Pos = to;
         ChatSet++;
         if (p.Pos.DistanceSquaredTo(stand) < 1e-4f) p.ChatAt = null;
     }
 
-    /// <summary>Steps taken toward a chatting distance, steps that found no way, and steps held off by a push or by you (tests).</summary>
-    public int ChatSet, ChatStuck, ChatHeld;
+    /// <summary>A body's room at a point: its walking grid, a floor at that height under it, and clear of the furniture.</summary>
+    bool Room(Vector3 at, float y, float r, float h) => Open(at) && Ground(at) is float g && MathF.Abs(g - y) < 0.1f && (_parts == null || _parts.Gap(at, r, h) >= 0f);
+
+    /// <summary>
+    /// A stand a distance from someone (the way given where there's room, else round them till there is), clear and over
+    /// floor, with the way to it from where one stands now open (null: none).
+    /// </summary>
+    Vector3? StandBy(Vector3 by, Vector3 away, float dist, float r, float h, Vector3 from)
+    {
+        foreach (float turn in Turns)
+        {
+            Vector3 at = by + away.Rotated(Vector3.Up, turn) * dist;
+            at.Y = by.Y;
+            if (Room(at, by.Y, r, h) && Open((at + from) * 0.5f)) return at;
+        }
+        return null;
+    }
+
+    /// <summary>The nearest standing spot round someone where two can stand that far apart (null: none within a dozen metres).</summary>
+    int? Roomy(Person by, float dist, float r, float h)
+    {
+        PInt3 from = by.Spot >= 0 && by.Spot < Spots.Count ? Spots[by.Spot].Cell : Cell(by.Pos);
+        foreach (var (s, i) in Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag is not ("bed" or "home" or "sit") && t.s.Cell.Manhattan(from) <= 12).OrderBy(t => t.s.Cell.Manhattan(from)).Take(12))
+        {
+            Vector3 at = At(i);
+            if (Room(at, at.Y, r, h) && StandBy(at, Vector3.Right, dist, r, h, at) != null) return i;
+        }
+        return null;
+    }
+
+    /// <summary>Steps taken toward a chatting distance, pairs gone elsewhere for room, pairs parted for want of it, and steps held off by a push or by you (tests).</summary>
+    public int ChatSet, ChatMoved, ChatStuck, ChatHeld;
 
     static readonly float[] Turns = { 0f, 0.8f, -0.8f, 1.6f, -1.6f, 2.4f, -2.4f, MathF.PI };
 

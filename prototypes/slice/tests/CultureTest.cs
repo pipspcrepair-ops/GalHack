@@ -298,6 +298,20 @@ public partial class CultureTest : Node
             int got = Clusters(crowd);
             Check(got == want, $"garb {garb}: {got} colour clusters in a crowd of {crowd.Count} (want {want})");
         }
+        // Each sex's colour, each caste's and each job's kind apart in value and in hue: a split reads at a glance.
+        static float Hue(IEnumerable<Color> cs) => (MathF.Atan2(cs.Average(c => MathF.Sin(c.H * MathF.Tau)), cs.Average(c => MathF.Cos(c.H * MathF.Tau))) / MathF.Tau + 1f) % 1f;
+        static float Turn(float a, float b) => MathF.Abs(((a - b) % 1f + 1.5f) % 1f - 0.5f);
+        void Apart(string garb, (LayerKind, string)[] with, Func<Figure, int> group, float value, float hue)
+        {
+            var f = Forced("Temperate", with);
+            var groups = People(f.Gen, 300).Where(p => p.Stage == LifeStage.Adult).GroupBy(group).Where(g => g.Count() >= 8).Select(g => (Key: g.Key, V: g.Average(p => p.Cloth.V), H: Hue(g.Select(p => p.Cloth)))).OrderBy(g => g.V).ToList();
+            float dv = groups.Count < 2 ? 0f : groups.Zip(groups.Skip(1), (x, y) => y.V - x.V).Min();
+            float dh = groups.Count < 2 ? 0f : groups.SelectMany(x => groups.Where(y => y.Key != x.Key).Select(y => Turn(x.H, y.H))).Min();
+            Check(groups.Count >= 2 && dv >= value && dh >= hue, $"garb {garb}: {groups.Count} groups, their colours at least {dv:F2} apart in value ({value:F2}) and {dh:F2} round the wheel ({hue:F2})");
+        }
+        Apart("by_sex", new[] { (LayerKind.Garb, "by_sex"), (LayerKind.Sexes, "split") }, p => p.Sex == Sex.Female ? 0 : 1, 0.25f, 0.3f);
+        Apart("by_caste", new[] { (LayerKind.Garb, "by_caste"), (LayerKind.Caste, "castes"), (LayerKind.Sexes, "same") }, p => p.Caste, 0.15f, 0.25f);
+        Apart("by_role", new[] { (LayerKind.Garb, "by_role"), (LayerKind.Sexes, "same") }, p => Culture.GroupOf(p.Role) is "fight" ? 0 : Culture.GroupOf(p.Role) is "trade" or "care" ? 1 : 2, 0.15f, 0f);
         // Dressed as they like: their colours spread far wider than a uniform's, on the same world.
         ulong seed = Seed();
         float Spread(string garb)
@@ -446,7 +460,9 @@ public partial class CultureTest : Node
             Culture cu = f.World.Culture;
             var chat = new List<float>();
             var pairs = new HashSet<(Town.Person, Town.Person)>();
-            int mixed = 0, adultPairs = 0, kids = 0, kept = 0, places = 0, chatSet = 0, chatStuck = 0, chatHeld = 0;
+            int mixed = 0, adultPairs = 0, kids = 0, kept = 0, places = 0, chatSet = 0, chatStuck = 0, chatHeld = 0, chatMoved = 0;
+            float overlap = 0f;
+            string overlapAt = "";
             float leash = cu.Trait("minder");
             bool packs = cu.Has("packs");
             int side = (int)cu.Trait("minder_side");
@@ -466,7 +482,9 @@ public partial class CultureTest : Node
                 bool farm = fam.Tags.Contains("farm");
                 bool Walking(Town.Person p) => p.Path != null && p.Step < p.Path.Count;
                 bool Out(Town.Person p) => !p.Dead && !p.Indoors && !p.Away && p.Figure != null;
-                town.Rehearse(240f, 0.1f, _ => false,
+                // (At play's own pace, a thirtieth of a second, so bodies part as they do in play.)
+                var together = new Dictionary<(Town.Person, Town.Person), float>();
+                town.Rehearse(120f, 1f / 30f, _ => false,
                     (p, i) =>
                     {
                         PersonRole job = PeopleGenerator.RoleFor(p.Role, farm, roles);
@@ -474,6 +492,7 @@ public partial class CultureTest : Node
                     },
                     (p, at) =>
                     {
+                        if (at < 20f) town.WorstOverlap = 0f;
                         if (at < 20f || !Out(p)) return;
                         if (p.Partner is { } q && Out(q))
                         {
@@ -483,13 +502,17 @@ public partial class CultureTest : Node
                                 adultPairs++;
                                 if (p.Figure.Sex != q.Figure.Sex) mixed++;
                             }
-                            // Settled talking, sampled once a second (two still partnered from across the place aren't talking together).
+                            // Settled talking: two standing together for 4 s, sampled once a second (two still partnered from across the place aren't talking together).
                             float apart = new Vector2(p.Pos.X - q.Pos.X, p.Pos.Z - q.Pos.Z).Length();
-                            if (key.Item1 == p && !Walking(p) && !Walking(q) && !p.Sitting && !q.Sitting && apart <= cu.Trait("chat", 1.1f) + 2f && (int)(at * 10f) % 10 == 0)
-                                chat.Add(apart);
+                            bool still = !Walking(p) && !Walking(q) && !p.Sitting && !q.Sitting && apart <= cu.Trait("chat", 1.1f) + 2f;
+                            if (key.Item1 == p)
+                            {
+                                if (!still) together.Remove(key);
+                                else if (!together.TryAdd(key, at) && at - together[key] >= 4f && (int)(at * 30f) % 30 == 0) chat.Add(apart);
+                            }
                         }
                         // (Children out while somebody who could mind them, or another child, is out too; a minder on the move leads them, so a minder standing.)
-                        if (p.Figure.Playful && (leash > 0f || packs) && (int)(at * 10f) % 10 == 0)
+                        if (p.Figure.Playful && (leash > 0f || packs) && (int)(at * 30f) % 30 == 0)
                         {
                             var near = town.People.Where(o => o != p && Out(o) && (packs ? o.Figure.Playful : o.Figure.Stage != LifeStage.Child && (side == 0 || o.Figure.Sex == cu.SexOf(side == 1))))
                                 .OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault();
@@ -503,14 +526,18 @@ public partial class CultureTest : Node
                 chatSet += town.ChatSet;
                 chatStuck += town.ChatStuck;
                 chatHeld += town.ChatHeld;
+                chatMoved += town.ChatMoved;
+                if (town.WorstOverlap > overlap) { overlap = town.WorstOverlap; overlapAt = $"{fam.Id}: {town.WorstNote}"; }
             }
             GD.Print($"     {name}: {places} towns, {chat.Count} chat samples, {adultPairs} pairs of grown-ups, {kids} child samples");
             if (Cost(life, cu) is var (plain, ours) && plain > 0f)
                 Check(ours <= MathF.Max(1.2f * plain, plain + 0.3f), $"{name}: a town's day costs {ours:F3} ms a tick under this culture against {plain:F3} ms under today's ways (within 20% or 0.3 ms)");
             float want = cu.Trait("chat", 1.1f), median = chat.Count > 0 ? chat.OrderBy(d => d).ElementAt(chat.Count / 2) : float.NaN;
             var sorted = chat.OrderBy(d => d).ToList();
-            if (sorted.Count > 4) GD.Print($"     {name}: chat quartiles {sorted[sorted.Count / 4]:F2} / {median:F2} / {sorted[3 * sorted.Count / 4]:F2} m, {Pct(sorted.Count(d => d < 0.3f) / (float)sorted.Count)} under 0.3 m; stands taken {chatSet}, stuck {chatStuck}, held off {chatHeld}");
-            Check(chat.Count >= 10 && MathF.Abs(median - want) <= 0.15f * want, $"{name}: two talking stand {median:F2} m apart (median; the culture's {want:F2} m)");
+            if (sorted.Count > 4) GD.Print($"     {name}: chat quartiles {sorted[sorted.Count / 4]:F2} / {median:F2} / {sorted[3 * sorted.Count / 4]:F2} m; steps {chatSet}, pairs gone elsewhere for room {chatMoved}, parted {chatStuck}, held off {chatHeld}");
+            float closer = chat.Count(d => d < 0.85f * want) / (float)Math.Max(1, chat.Count);
+            Check(chat.Count >= 10 && MathF.Abs(median - want) <= 0.15f * want && closer <= 0.05f, $"{name}: two talking stand {median:F2} m apart (median; the culture's {want:F2} m), {Pct(closer)} of the time closer than 85% of it (5% at most)");
+            Check(overlap <= 0.02f, $"{name}: no two bodies in each other anywhere in town (worst {overlap * 100f:F1} cm{(overlap > 0.02f ? $": {overlapAt}" : "")})");
             float mix = adultPairs > 0 ? mixed / (float)adultPairs : float.NaN;
             float wantMix = cu.Trait("mix", 1f);
             // (Within 35 to 65% where the sexes mix freely, under 5% where they keep apart; a sample this size allowed its spread.)

@@ -269,8 +269,11 @@ public sealed partial class Town
                 if (p.Away) { if ((p.AwayFor -= dt) <= 0f) p.Away = false; continue; }
                 Day(p, dark, dt);
                 if (p.Asleep) p.Pos = p.Pos.MoveToward(_lie[p.Home] ?? p.Pos, dt);
-                probe(p, t);
             }
+            // Bodies apart, as every tick of play (nobody walks through anybody), then what the caller looks at.
+            KeepApart(_you, dt);
+            foreach (Person p in People)
+                if (!p.Dead && !p.Gone && !p.Away) probe(p, t);
         }
     }
 

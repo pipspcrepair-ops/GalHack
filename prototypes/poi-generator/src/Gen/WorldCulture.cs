@@ -25,6 +25,8 @@ public sealed class CultureReading
     public static readonly string[] Groups = { "fight", "trade", "make", "care", "lead" };
 
     public readonly Dictionary<LayerKind, WorldLayer> Values = new();
+    /// <summary>The axes a test or a new game set by hand: a town keeps them as given, without drifting.</summary>
+    public readonly HashSet<LayerKind> Given = new();
     /// <summary>The sex that is side A ("female" or "male").</summary>
     public string Lead = "female";
     /// <summary>Each role group's side, and "hot" (the side that runs hot): true for side A.</summary>
@@ -72,6 +74,7 @@ public sealed class CultureReading
         var c = new CultureReading { Lead = Lead, CoverFor = CoverFor, Desperation = Desperation, Seed = seed, Facts = Facts };
         foreach (var (k, v) in Values) c.Values[k] = v;
         foreach (var (k, v) in SideA) c.SideA[k] = v;
+        c.Given.UnionWith(Given);
         return c;
     }
 
@@ -102,7 +105,7 @@ public sealed class CultureReading
         foreach (LayerKind k in Axes)
         {
             Rng r = rng.Fork("drift." + k);
-            if (!c.Values.TryGetValue(k, out WorldLayer? now) || !r.Chance(drift)) continue;
+            if (!c.Values.TryGetValue(k, out WorldLayer? now) || c.Given.Contains(k) || !r.Chance(drift)) continue;
             var table = lib.Layers.Where(l => l.Kind == k && !l.Off).ToList();
             int i = table.IndexOf(now), step = r.Chance(0.5f) ? 1 : -1;
             if (i < 0) continue;
@@ -206,7 +209,7 @@ public sealed partial class WorldRoll
             foreach (LayerKind k in CultureReading.Axes)
             {
                 WorldLayer? v = null;
-                if (_given.First(k) is { } id) v = Table(k).FirstOrDefault(l => l.Id == id);
+                if (_given.First(k) is { } id && Table(k).FirstOrDefault(l => l.Id == id) is { } set) { v = set; c.Given.Add(k); }
                 if (v == null && wild.Contains(k)) v = Pick(k, k.ToString(), Extreme);
                 if (v == null && offAxes.Contains(k)) v = Pick(k, k.ToString(), l => !l.Blank && !Extreme(l));
                 if (v == null && Table(k).FirstOrDefault(l => l.Blank) is { } blank && Rules(blank).Hard) v = blank;

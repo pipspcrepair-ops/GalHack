@@ -374,11 +374,20 @@ public sealed partial class PeopleGenerator
         f.Padding = occupancy == Occupancy.Feral ? 1f : dress.Padding;
         f.Cloth = dress.Colours.Length > 0 ? Hex(rng.Pick(dress.Colours)) : new Color(0.42f, 0.4f, 0.36f);
         f.Cloth = f.Cloth.Darkened(rng.Range(0f, 0.2f));
-        Garb(f, look, cu, seed);
+        var garb = GarbOf(f, look, cu);
         f.Trim = look.Trim.Length > 0 ? Hex(rng.Pick(look.Trim)) : f.Cloth.Darkened(0.35f);
         // Against the ground they stand on: darker figures on bright sand and snow, lighter on dark ground.
         f.Cloth = Apart(f.Cloth, _w.Backdrop);
         f.Trim = Apart(f.Trim, _w.Backdrop);
+        if (garb is var (gh, gs, level))
+        {
+            // A culture's colour, its values already chosen against the ground (on bright ground all of them darker),
+            // and on the coat, the poncho and the shawl too, which are cut from the trim.
+            var own = Rng.For(seed, "garb");
+            float v = _w.Backdrop.V > 0.5f ? 0.12f + 0.43f * level : 0.15f + 0.7f * level;
+            f.Cloth = Color.FromHsv(Wrap(gh + own.Range(-0.01f, 0.01f)), gs, Math.Clamp(v + own.Range(-0.02f, 0.02f), 0f, 1f));
+            f.Trim = f.Cloth.Darkened(0.2f);
+        }
         // One saturated mark by their job, never the hue of the ground.
         f.Accent = AccentOf(look, rng, _w.Backdrop);
         f.Leather = new Color(0.27f, 0.19f, 0.13f).Lightened(rng.Range(0f, 0.15f));
@@ -505,21 +514,20 @@ public sealed partial class PeopleGenerator
     }
 
     /// <summary>
-    /// The colour their culture dresses them in over the weather's: one for everyone, one for each sex, for each
-    /// caste or for each job (its mark's hue, in full cloth). A free culture leaves the climate's colours; the
-    /// ground still moves its value (Apart), and in a suit it is the suit's colour.
+    /// The colour their culture dresses them in over the weather's, as hue, saturation and a level from dark (0) to
+    /// pale (1), set apart so a split reads at a glance: one for everyone; each sex its own, one pale and one dark of
+    /// opposite hues; each caste a step from pale to dark a third of the way round the wheel; each job its mark's hue at
+    /// the level its kind of work keeps. Null: dressed as they like (the climate's colours). In a suit, the suit's colour.
     /// </summary>
-    static void Garb(Figure f, RoleLook look, Culture cu, ulong seed)
+    static (float H, float S, float Level)? GarbOf(Figure f, RoleLook look, Culture cu)
     {
-        var town = Rng.For(cu.Seed, "garb");
-        float a = town.Float(), b = Wrap(a + town.Range(0.33f, 0.67f));
-        float? hue = cu.Has("one_cloth") ? a
-            : cu.Has("sex_cloth") ? (cu.A(f.Sex) ? a : b)
-            : cu.Has("caste_cloth") ? Wrap(a + f.Caste * 0.37f)
-            : cu.Has("role_cloth") && look.Accent.Length > 1 ? (look.Accent[0] + look.Accent[1]) * 0.5f : null;
-        if (hue is not float h) return;
-        var own = Rng.For(seed, "garb");
-        f.Cloth = Color.FromHsv(Wrap(h + own.Range(-0.01f, 0.01f)), own.Range(0.5f, 0.58f), own.Range(0.44f, 0.5f));
+        float a = Rng.For(cu.Seed, "garb").Float();
+        if (cu.Has("one_cloth")) return (a, 0.5f, 0.5f);
+        if (cu.Has("sex_cloth")) return cu.A(f.Sex) ? (a, 0.25f, 1f) : (Wrap(a + 0.5f), 0.65f, 0f);
+        if (cu.Has("caste_cloth")) return (Wrap(a + f.Caste / 3f), 0.25f + 0.2f * f.Caste, 1f - 0.5f * f.Caste);
+        if (cu.Has("role_cloth") && look.Accent.Length > 1)
+            return ((look.Accent[0] + look.Accent[1]) * 0.5f, 0.55f, Culture.GroupOf(f.Role) switch { "fight" => 0f, "trade" => 0.8f, "care" => 1f, "lead" => 0.6f, _ => 0.4f });
+        return null;
     }
 
     /// <summary>
