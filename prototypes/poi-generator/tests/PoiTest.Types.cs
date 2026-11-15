@@ -436,7 +436,20 @@ public partial class PoiTest
                 ulong seed = FreshSeed(rand);
                 Sketch s = PlaceTypes.Plan(t, seed, 32000, 16000);
                 TechLevel tech = WorldProfile.Parse(t.Techs[rand.Next(t.Techs.Count)]);
-                foreach (TypePiece p in PlaceTypes.Pieces(s, rand.Next(4)).Where(p => p.Plan.Parts[0].Arg("what") == "fence"))
+                int turn = rand.Next(4);
+                var fenceRuns = PlaceTypes.Pieces(s, turn).Where(p => p.Plan.Parts[0].Arg("what") == "fence").ToList();
+                // The gate the access road comes to is in the fence (a gap in one run, beside the sketch's gate).
+                var (gx, gz) = PlaceTypes.Turn(s.GateX, s.GateZ, turn);
+                var gaps = fenceRuns.SelectMany(p => p.Plan.Parts[0].Arg("gates").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).Select(u => p.Front switch
+                {
+                    Dir.North => (X: p.Box.X0 + u, Z: p.Box.Z0), Dir.South => (X: p.Box.X1 - u, Z: p.Box.Z1),
+                    Dir.East => (X: p.Box.X1, Z: p.Box.Z0 + u), _ => (X: p.Box.X0, Z: p.Box.Z1 - u),
+                })).ToList();
+                // (A port's gate may stand out past its fence, its road coming in through the gap straight across from it.)
+                float past = fenceRuns.Count == 0 ? 0f : fenceRuns.Min(p => p.Front switch { Dir.North => MathF.Abs(gz - p.Box.Z0), Dir.South => MathF.Abs(gz - p.Box.Z1), Dir.East => MathF.Abs(gx - p.Box.X1), _ => MathF.Abs(gx - p.Box.X0) });
+                if (fenceRuns.Count > 0 && !gaps.Any(q => MathF.Sqrt((q.X - gx) * (q.X - gx) + (q.Z - gz) * (q.Z - gz)) < past + 16f))
+                    bad.Add($"{t.Id}: no gate in its fence by its gate at {gx:F0},{gz:F0} (gaps at {string.Join(" ", gaps.Select(q => $"{q.X:F0},{q.Z:F0}"))})");
+                foreach (TypePiece p in fenceRuns)
                 {
                     Layout l = BuildPiece(t, p, seed, tech);
                     runs++;

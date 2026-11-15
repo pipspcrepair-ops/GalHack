@@ -372,8 +372,10 @@ public partial class Screenshot : Node
         {
             var g = new Vector3(gate.Cell.X + 0.5f, gate.Cell.Y, gate.Cell.Z + 0.5f);
             var away = new Vector3(gate.OutX, 0, gate.OutZ).Normalized();
+            foreach (var f in pieces.Where(f => f.Plan.Parts[0].Arg("what") == "fence"))
+                GD.Print($"fence run {f.Front} at {place.X + f.Box.X0:F0}..{place.X + f.Box.X1:F0} x {place.Z + f.Box.Z0:F0}..{place.Z + f.Box.Z1:F0}: gates {f.Plan.Parts[0].Arg("gates")}; the place's gate at {gate.Cell.X},{gate.Cell.Z} out {gate.OutX},{gate.OutZ}");
             shots.Add(Aim("gate", g + away * 70 + new Vector3(away.Z, 0, -away.X) * 25 + Vector3.Up * 22, g + Vector3.Up * 2));
-            shots.Add(Aim("gatenear", g + away * 18 + new Vector3(away.Z, 0, -away.X) * 10 + Vector3.Up * 2.5f, g + new Vector3(away.Z, 0, -away.X) * 4 + Vector3.Up * 1.2f));
+            shots.Add(Aim("gatenear", g + away * 20 + new Vector3(away.Z, 0, -away.X) * 4 + Vector3.Up * 3f, g + Vector3.Up * 1.2f));
         }
         if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "hangar") is { } hangar)
             shots.Add(Aim("hangar", Out(hangar, 35, 1.7f) + new Vector3(4, 0, 4), At(hangar.Box, 4)));
