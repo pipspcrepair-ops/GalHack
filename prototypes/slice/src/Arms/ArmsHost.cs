@@ -96,9 +96,9 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Pool.Step(dt, this);
         Passing(dt);
         Effects.Tick(dt, this);
-        People?.Tick(dt);
         LastStepMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
         LastStepBytes = GC.GetAllocatedBytesForCurrentThread() - bytes;
+        People?.Tick(dt); // (not the shots' own step: a body first seen gets its kit and model made)
     }
 
     // ---- The gun in hand -------------------------------------------------------------------------

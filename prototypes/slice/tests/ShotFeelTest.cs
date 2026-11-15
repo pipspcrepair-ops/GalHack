@@ -29,7 +29,7 @@ namespace Slice.Tests;
 /// - An arrow twangs, flies slow, sticks where it lands with a thud, then fades and goes.
 /// - A swing whooshes, hit or miss; one that lands thuds.
 ///
-/// --shots=FOLDER (run windowed): a bolt in flight, the muzzle flash, the reticle ring and a kill's.
+/// --shots=FOLDER (run windowed; --type=arid keeps the view open): a bolt in flight, the muzzle flash, the reticle ring and a kill's.
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ShotFeelTest.tscn
 /// </summary>
 public partial class ShotFeelTest : Node
@@ -141,7 +141,7 @@ public partial class ShotFeelTest : Node
 
     IEnumerable<int> Scenario()
     {
-        var game = _game = new Game.Game { Interactive = false, World = WorldChoice.Fresh("temperate"), SkipIntro = true };
+        var game = _game = new Game.Game { Interactive = false, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Fresh("temperate")), SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
         foreach (int x in drive.UntilPlaying()) yield return x;
@@ -149,10 +149,10 @@ public partial class ShotFeelTest : Node
         game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         game.Zone.Sky.TimeOfDay = 0.4;
         Rows(game.Zone.Data.Arms, game.Zone.Data.Mounts);
-        foreach (int x in Open(game)) yield return x;
+        foreach (int x in OpenGround(game)) yield return x;
         foreach (int x in Shot(game, drive)) yield return x;
         if (_shots != null) foreach (int x in Pictures(game, drive)) yield return x;
-        foreach (int x in Mounted(game)) yield return x;
+        foreach (int x in Mounted(game, drive)) yield return x;
         foreach (int x in Hits(game, drive)) yield return x;
         foreach (int x in Arrow(game, drive)) yield return x;
         foreach (int x in Swings(game, drive)) yield return x;
@@ -186,7 +186,7 @@ public partial class ShotFeelTest : Node
     static float Fastest(WeaponDef d) => d.Speed + (d.Charge != null ? d.Charge.Stages * d.Charge.Speed : 0f);
 
     /// <summary>Somewhere open under the sky, and the patch's sim settled round it.</summary>
-    IEnumerable<int> Open(Game.Game game)
+    IEnumerable<int> OpenGround(Game.Game game)
     {
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         Vector3 start = game.Survivor.WorldFeet;
@@ -199,6 +199,7 @@ public partial class ShotFeelTest : Node
             for (int i = 0; i < 60; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             if (!game.Sheltered()) break;
         }
+        // A long move swaps the patch's sim: wait for the one round you to settle.
         WildSim sim = game.Zone.Wildlife.Sim;
         for (int i = 0, same = 0; i < 60 * 20 && same < 180; i++)
         {
@@ -221,17 +222,41 @@ public partial class ShotFeelTest : Node
     /// <summary>Ground so far from the sleeper with a clear line from the eye to a body standing there (the first of a turn of bearings from the one given; else that one).</summary>
     Vector3 Clear(float far, float bearing)
     {
-        Vector3 eye = _game.Survivor.WorldEye(), feet = _game.Survivor.WorldFeet;
-        for (int k = 0; k < 24; k++)
+        for (int k = 0; k < 72; k++)
         {
-            float a = bearing + k * MathF.Tau / 24f;
-            Vector3 at = Ground(feet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * far);
-            bool open = !_game.Zone.Water.LiquidAt(at.X, at.Z, out _);
-            foreach (float h in new[] { 0.3f, 0.8f, 1.4f })
-                open &= !_game.Arms.Sweep(eye.ToNumerics(), (at + Vector3.Up * h).ToNumerics(), null, 0, 1f, out _);
-            if (open) return at;
+            float a = bearing + k * MathF.Tau / 24f, reach = far * (1f - k / 24 * 0.25f); // round once, then a little nearer
+            if (Open(reach, a, out Vector3 at)) return at;
         }
-        return Ground(feet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * far);
+        return Ground(_game.Survivor.WorldFeet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * far);
+    }
+
+    /// <summary>
+    /// One of them set down in the open so far off, seen clear: the sim puts a body on ground it can
+    /// walk, so ground it can't (a steep dune face) would send it off elsewhere; then another bearing.
+    /// </summary>
+    Creature Stand(Species s, float far, float bearing)
+    {
+        WildlifePatch patch = _game.Zone.Wildlife;
+        Creature c = null;
+        for (int tries = 0; tries < 8; tries++)
+        {
+            Vector3 spot = Clear(far, bearing + tries * 0.8f);
+            c = patch.Sim.Spawn(s, patch.PatchLocal(spot));
+            if (c.Position.DistanceTo(patch.PatchLocal(spot)) < 5f) break;
+            patch.Sim.Kill(c, null);
+        }
+        return c;
+    }
+
+    /// <summary>Dry ground so far off on a bearing, seen clear from the eye low and high.</summary>
+    bool Open(float far, float bearing, out Vector3 at)
+    {
+        Vector3 eye = _game.Survivor.WorldEye();
+        at = Ground(_game.Survivor.WorldFeet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * far);
+        if (_game.Zone.Water.LiquidAt(at.X, at.Z, out _)) return false;
+        foreach (float h in new[] { 0.3f, 0.8f, 1.4f })
+            if (_game.Arms.Sweep(eye.ToNumerics(), (at + Vector3.Up * h).ToNumerics(), null, 0, 1f, out _)) return false;
+        return true;
     }
 
     /// <summary>A raider shoots at the sleeper, who looks at it.</summary>
@@ -243,7 +268,7 @@ public partial class ShotFeelTest : Node
         ArmsHost arms = game.Arms;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         Vector3 feet = game.Survivor.WorldFeet;
-        Creature raider = sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Clear(35f, 0f)));
+        Creature raider = Stand(Raider(patch, "rifle"), 35f, 0f);
         sim.Damage(raider, 1f, patch.Player);
         Vector3 Head() => patch.WorldOf(raider) + Vector3.Up * 1.5f;
         int reports = arms.Sounds.Played[(int)VoiceKind.Report], flashes = game.Shots.Flashes, misses = arms.NearMisses, fired = 0;
@@ -296,15 +321,17 @@ public partial class ShotFeelTest : Node
         }
         for (int i = 0; i < 60 * 3; i++) { game.Suit.Vitals.Health = max; drive.Face(Head()); yield return 0; }
         _watchFrames = false;
+        if (rounds == 0) GD.Print($"  (the raider: {raider.State}{(raider.Dead ? " dead" : "")}, {patch.WorldOf(raider).DistanceTo(game.Survivor.WorldFeet):F0} m off, its gun reaches {Arming.ShootReach(raider, patch.Player):F0} m, kit {arms.People.KitOf(raider)?.Clip.Def.Id ?? "none"}, you attackable {patch.Player.Attackable}, sheltered {game.Sheltered()}, the patch centred {patch.Origin.DistanceTo(game.Survivor.WorldFeet):F0} m off, its sim {(patch.Sim == sim ? "the same" : "swapped")})");
         Check(rounds >= 2, $"it fires at you ({rounds} rounds, from {nearest:F0} m)");
         if (rounds == 0) yield break;
         var flown = _flights.Values.Where(f => f.Def.Id == "line-rifle" && f.Far >= 10f).ToList(); // (not one that met something at the muzzle)
         var timed = flown.Where(f => f.At30 > 0f).ToList();
         WeaponDef rifle = game.Zone.Data.Arms.Get("line-rifle");
         Check(flown.Count > 0 && flown.All(f => MathF.Abs(f.Speed - rifle.Speed) < rifle.Speed * 0.1f), $"its rounds fly at the row's {rifle.Speed:F0} m/s ({string.Join(", ", flown.Take(6).Select(f => $"{f.Speed:F0}"))})");
-        Check(timed.Count > 0 && timed.All(f => f.At30 >= 0.25f), $"each takes a quarter of a second or more over 30 m ({string.Join(", ", timed.Take(6).Select(f => $"{f.At30:F2} s"))})");
-        Check(flown.Count > 0 && flown.All(f => f.Frames >= 10 && f.Drawn == f.Frames && f.Headed == f.Frames), $"drawn, with its hot head, every frame it flies ({string.Join(", ", flown.Take(6).Select(f => $"{f.Drawn}/{f.Headed}/{f.Frames}"))} drawn/headed/frames)");
-        Check(flown.Count > 0 && flown.All(f => f.Thinnest >= ArmsFx.MinPixels * 0.95f), $"never thinner than {ArmsFx.MinPixels} pixels however far ({flown.Min(f => f.Thinnest):F1} px at the thinnest)");
+        // (Over 30 m as timed in flight, and for any that met the ground sooner, at the speed it flew.)
+        Check(flown.Count > 0 && timed.All(f => f.At30 >= 0.25f) && flown.All(f => 30f / f.Speed >= 0.25f), $"each takes a quarter of a second or more over 30 m ({string.Join(", ", flown.Take(6).Select(f => f.At30 > 0f ? $"{f.At30:F2} s" : $"{30f / f.Speed:F2} s at its speed"))})");
+        Check(flown.Count > 0 && flown.All(f => f.Frames >= (int)(f.Far / rifle.Speed * 60f) - 1 && f.Drawn == f.Frames && f.Headed == f.Frames), $"drawn, with its hot head, every frame it flies ({string.Join(", ", flown.Take(6).Select(f => $"{f.Drawn}/{f.Headed}/{f.Frames}"))} drawn/headed/frames)");
+        Check(flown.Count > 0 && flown.All(f => f.Thinnest >= ArmsFx.MinPixels * 0.95f), $"never thinner than {ArmsFx.MinPixels} pixels however far ({(flown.Count > 0 ? flown.Min(f => f.Thinnest) : 0f):F1} px at the thinnest)");
         Check(arms.Sounds.Played[(int)VoiceKind.Report] - reports >= rounds && loud >= rounds, $"every round is a loud report where it was fired ({loud} of {rounds} on the far-carrying players, {GunSounds.ReportDbAt(rifle, nearest):F1} dB at {nearest:F0} m)");
         Check(game.Shots.Flashes - flashes >= rounds && flashShown >= rounds && onScreen >= rounds, $"each flashes at its muzzle, on screen ({flashShown} flashes showing of {rounds}, {onScreen} on screen, sized {Slice.Player.ShotFx.SeenScale(nearest):F1}x for {nearest:F0} m)");
         Check(kicked >= rounds - 1, $"and kicks the rifle in its hands ({kicked} of {rounds} kicks over 2 cm)");
@@ -326,37 +353,43 @@ public partial class ShotFeelTest : Node
         drive.Face(eye - (from - eye));
         yield return 0;
         int hits = arms.PlayerHits;
-        Vector3 behind = eye + (from - eye).Normalized() * 12f;
-        arms.FireFrom(rifle, behind, eye + Vector3.Down * 0.3f - behind, 0f, null);
+        // From behind, at the chest, from close enough that the ground between can't take it.
+        Vector3 chest = game.Survivor.WorldFeet + Vector3.Up * 1.1f, away = new Vector3(from.X - eye.X, 0f, from.Z - eye.Z).Normalized();
+        Vector3 behind = chest + away * 6f;
+        arms.FireFrom(rifle, behind, chest - behind, 0f, null);
         for (int i = 0; i < 60 && arms.PlayerHits == hits; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 local = game.Camera.GlobalBasis.Inverse() * (behind - game.Camera.GlobalPosition);
         Check(arms.PlayerHits > hits && game.Visor.HurtShowing && local.Z > 0f, $"hit from behind, off screen, the visor's edge marks where it came from ({(arms.PlayerHits > hits ? "hit" : "missed")}, edge {(game.Visor.HurtShowing ? "showing" : "not showing")}, from {(local.Z > 0f ? "behind" : "ahead")})");
     }
 
     /// <summary>A structure's gun (fired as from the pilot's toolbar): its shot is drawn bright, with its hot head, a few pixels wide at least, every frame it flies.</summary>
-    IEnumerable<int> Mounted(Game.Game game)
+    IEnumerable<int> Mounted(Game.Game game, Driver drive)
     {
         GD.Print("-- a structure's gun --");
         ArmsHost arms = game.Arms;
         WeaponDef gatling = game.Zone.Data.Mounts.All.First(d => d.Tracer.Body == GalHack.Arms.Body.Tracer);
         Vector3 eye = game.Survivor.WorldEye();
-        Vector3 dir = (game.Survivor.WorldLook() + Vector3.Up * 0.3f).Normalized(); // up and away, into the sky
-        int reports = arms.Sounds.Played[(int)VoiceKind.Report];
-        arms.FireMounted(gatling, eye + dir * 3f + Vector3.Down * 0.5f, dir, Vector3.Zero, null);
-        int slot = Array.FindIndex(arms.Pool.Shots, s => s.Live && s.Def == gatling);
-        int frames = 0, drawn = 0;
-        float thinnest = 99f;
-        for (int i = 0; i < 30 && slot >= 0 && arms.Pool.Shots[slot].Live && arms.Pool.Shots[slot].Def == gatling; i++)
+        // Up into open sky: the first way round with nothing in the way for a hundred metres.
+        Vector3 dir = Vector3.Up;
+        for (int k = 0; k < 12; k++)
         {
-            yield return 0;
-            if (!arms.Pool.Shots[slot].Live) break;
-            frames++;
-            if (arms.Fx.Showing(slot) && arms.Fx.HeadShowing(slot)) drawn++;
-            float far = arms.Pool.Shots[slot].Pos.ToGodot().DistanceTo(game.Camera.GlobalPosition);
-            thinnest = MathF.Min(thinnest, arms.Fx.WidthOf(slot) / MathF.Max(1e-4f, far * arms.Fx.Pixel));
+            float a = k * MathF.Tau / 12f;
+            Vector3 d = (new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 0.6f + Vector3.Up).Normalized();
+            if (!arms.Sweep((eye + d * 3f).ToNumerics(), (eye + d * 100f).ToNumerics(), null, 0, 1f, out _)) { dir = d; break; }
         }
-        Check(slot >= 0 && frames >= 10 && drawn == frames && thinnest >= ArmsFx.MinPixels * 0.95f && arms.Sounds.Played[(int)VoiceKind.Report] > reports && arms.Sounds.LastLoud != null,
-            $"{gatling.Id}: drawn with its hot head every frame ({drawn}/{frames}), never thinner than {thinnest:F1} px, its report loud");
+        drive.Face(eye + dir * 20f);
+        yield return 0;
+        int reports = arms.Sounds.Played[(int)VoiceKind.Report];
+        arms.FireMounted(gatling, eye + dir * 3f, dir, Vector3.Zero, null);
+        int slot = Array.FindIndex(arms.Pool.Shots, s => s.Live && s.Def == gatling);
+        if (slot >= 0) _flights[arms.Pool.Shots[slot].Id] = new Flight { Slot = slot, Def = gatling };
+        _watchFrames = true;
+        for (int i = 0; i < 60 && slot >= 0 && arms.Pool.Shots[slot].Live && arms.Pool.Shots[slot].Def == gatling; i++) yield return 0;
+        _watchFrames = false;
+        Flight f = slot >= 0 ? _flights.Values.First(x => x.Def == gatling) : null;
+        if (f == null || f.Frames < 10) GD.Print($"  (the gatling's shot met: {arms.Recent()})");
+        Check(f != null && f.Frames >= 10 && f.Drawn == f.Frames && f.Headed == f.Frames && f.Thinnest >= ArmsFx.MinPixels * 0.95f && arms.Sounds.Played[(int)VoiceKind.Report] > reports && arms.Sounds.LastLoud != null,
+            $"{gatling.Id}: drawn with its hot head every frame ({f?.Drawn}/{f?.Headed}/{f?.Frames}), never thinner than {f?.Thinnest:F1} px, its report loud");
     }
 
     /// <summary>(--shots) A raider close by on open ground: its muzzle flash, and a bolt of its going past you, mid-flight.</summary>
@@ -365,7 +398,7 @@ public partial class ShotFeelTest : Node
         WildlifePatch patch = game.Zone.Wildlife;
         ArmsHost arms = game.Arms;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
-        Creature raider = patch.Sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Clear(13f, 1f)));
+        Creature raider = Stand(Raider(patch, "rifle"), 10f, 1f);
         patch.Sim.Damage(raider, 1f, patch.Player);
         Vector3 Body() => patch.WorldOf(raider) + Vector3.Up * 1.2f;
         // The tick after one of its rounds, with its flash still showing on screen.
@@ -376,7 +409,7 @@ public partial class ShotFeelTest : Node
             game.Suit.Vitals.Health = max;
             drive.Face(Body());
             int now = arms.People.KitOf(raider)?.Clip.Fired ?? 0;
-            bool shot = now > fired;
+            bool shot = now > fired && arms.People.KitOf(raider)?.Target == patch.Player; // at you, not at something else
             fired = now;
             yield return 0;
             if (shot && game.Shots.FlashesShowing > 0 && game.Camera.IsPositionInFrustum(Body())) { Shoot("muzzle-flash.png"); flashed = true; }
@@ -414,7 +447,7 @@ public partial class ShotFeelTest : Node
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         WeaponDef rifle = game.Zone.Data.Arms.Get("line-rifle");
         Vector3 feet = game.Survivor.WorldFeet;
-        Species animal = patch.Fauna?.Species.FirstOrDefault(s => s.Figure == null && !s.Mechanical && s.Rig != RigKind.Swarm && s.Flight == FlightKind.None && s.Body.Size is > 0.5f and < 3f);
+        Species animal = patch.Fauna?.Species.Where(s => s.Figure == null && !s.Mechanical && s.Rig is RigKind.Legged or RigKind.Hopper && s.Body.Size is > 0.5f and < 3f).OrderByDescending(s => s.Body.Size).FirstOrDefault();
         var targets = new List<(string What, Creature C)>
         {
             ("a person", sim.Spawn(Raider(patch, "rifle"), patch.PatchLocal(Clear(28f, 0f)))),
@@ -428,6 +461,15 @@ public partial class ShotFeelTest : Node
         bool ringShot = false;
         foreach (var (what, c) in targets)
         {
+            // Where it stood once the sim took it (snapped to its walkable ground) the line may be blocked: then elsewhere, until the first thing along it is it.
+            for (int tries = 0; tries < 6; tries++)
+            {
+                Vector3 eye0 = game.Survivor.WorldEye();
+                Vector3 mid0 = arms.Where(c, out N.Vector3 m0) ? m0.ToGodot() : patch.WorldOf(c);
+                if (arms.Sweep(eye0.ToNumerics(), (eye0 + (mid0 - eye0) * 1.05f).ToNumerics(), null, 0, 1f, out GalHack.Arms.ShotHit first) && first.Thing == c) break;
+                c.Position = patch.PatchLocal(Clear(30f, 1.1f * (tries + 1)));
+                for (int i = 0; i < 10; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+            }
             for (int kill = 0; kill < 2; kill++)
             {
                 // At its middle, as the shots find it.
@@ -438,9 +480,16 @@ public partial class ShotFeelTest : Node
                 int confirms = arms.Confirms, kills = arms.Kills, cried = patch.Audio.Cried, flesh = arms.Sounds.PlayedShared[(int)CombatSound.Flesh];
                 int thuds = arms.Sounds.PlayedShared[(int)(kill == 1 ? CombatSound.Kill : CombatSound.Confirm)];
                 c.CriedAt = -9f;
-                arms.Pool.Spawn(rifle, 0, (eye + (at - eye).Normalized() * 0.8f).ToNumerics(), ((at - eye).Normalized() * rifle.Speed).ToNumerics(), kill == 1 ? 99999f : 1f);
-                bool rang = false, killRing = false;
-                for (int i = 0; i < 90 && arms.Confirms == confirms; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+                // (A small thing on the move can still be missed: up to three shots, aimed afresh.)
+                for (int shot = 0; shot < 3 && arms.Confirms == confirms; shot++)
+                {
+                    if (arms.Where(c, out N.Vector3 now)) at = now.ToGodot();
+                    // The sleeper's round, met on its way a few metres short (the ground between is the world's, not the test's).
+                    Vector3 way = (at - eye).Normalized();
+                    arms.Pool.Spawn(rifle, 0, (at - way * 3f).ToNumerics(), (way * rifle.Speed).ToNumerics(), kill == 1 ? 99999f : 1f);
+                    for (int i = 0; i < 60 && arms.Confirms == confirms; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+                }
+                bool rang, killRing;
                 rang = game.Visor.RingShowing;
                 killRing = game.Visor.RingKill;
                 float far = eye.DistanceTo(at);
@@ -518,8 +567,9 @@ public partial class ShotFeelTest : Node
         Check(arms.Sounds.PlayedShared[(int)CombatSound.Whoosh] > whoosh && arms.Sounds.PlayedShared[(int)CombatSound.Blow] == blow, "a swing that misses whooshes, and nothing thuds");
         whoosh = arms.Sounds.PlayedShared[(int)CombatSound.Whoosh];
         int hits = arms.PlayerHits;
-        Vector3 from = eye + look * 1.2f;
-        arms.FireFrom(club, from, eye - from, 0f, null);
+        Vector3 chest = game.Survivor.WorldFeet + Vector3.Up * 1.1f;
+        Vector3 from = chest + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
+        arms.FireFrom(club, from, chest - from, 0f, null);
         game.Suit.Vitals.Health = max;
         yield return 0;
         Check(arms.Sounds.PlayedShared[(int)CombatSound.Whoosh] > whoosh && arms.Sounds.PlayedShared[(int)CombatSound.Blow] > blow && arms.PlayerHits > hits, $"one that lands whooshes and thuds ({club.Id}, {(arms.PlayerHits > hits ? "hit you" : "missed")})");

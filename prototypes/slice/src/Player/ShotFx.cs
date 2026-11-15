@@ -150,10 +150,12 @@ public partial class ShotFx : Node3D
         }
         s.Age = ++_fired;
         s.Follow = follow;
-        // Held fire doesn't strobe: a shot hard on the last one's heels is dimmer.
+        // Held fire in your own hands doesn't strobe: a shot hard on the last one's heels is dimmer.
+        // Someone else's (scaled up to be seen) flashes full every time: each round is seen leaving.
         double now = Time.GetTicksMsec() / 1000.0;
-        float dim = now - _lastFlash < GunFeel.RepeatWindow ? GunFeel.RepeatDim : 1f;
-        _lastFlash = now;
+        bool own = scale <= 1.2f;
+        float dim = own && now - _lastFlash < GunFeel.RepeatWindow ? GunFeel.RepeatDim : 1f;
+        if (own) _lastFlash = now;
         Color col = colour != default && f.Style is FlashStyle.Bloom ? colour : f.Colour;
         float size = f.Size * scale * GunFeel.FlashScale;
         s.Root.Visible = true;
@@ -205,7 +207,7 @@ public partial class ShotFx : Node3D
     /// The scale for a flash on someone else's gun this far from the eye: it never shrinks below a
     /// readable size on screen, so a shot fired at you from across a fight is seen.
     /// </summary>
-    public static float SeenScale(float metres) => Mathf.Clamp(metres / 6f, 1.6f, 6f);
+    public static float SeenScale(float metres) => Mathf.Clamp(metres / 5f, 2.5f, 6f);
 
     void TickFlashes(float dt)
     {
