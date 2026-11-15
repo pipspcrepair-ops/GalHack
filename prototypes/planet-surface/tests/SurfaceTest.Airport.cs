@@ -35,7 +35,8 @@ public partial class SurfaceTest
             PoiSiting.ForceFamily = family;
             for (int k = 0; k < 3; k++)
             {
-                var spec = PlanetSpec.Roll((ulong)rand.NextInt64(1, long.MaxValue), Archetype.Temperate, 0);
+                // (The first an arid world, where the biggest of a type finds dry ground: on a temperate one it gives way to a smaller.)
+                var spec = PlanetSpec.Roll((ulong)rand.NextInt64(1, long.MaxValue), k == 0 ? Archetype.Arid : Archetype.Temperate, 0);
                 PoiSiting.ForceType = types[k % types.Length];
                 // (The first world's airport with its second runway, so the junction is always looked at.)
                 if (k == 0) PlaceTypes.Always.Add("crosswind"); else PlaceTypes.Always.Remove("crosswind");
@@ -48,7 +49,7 @@ public partial class SurfaceTest
                 sited++;
                 notes.Add($"{spec} ({w.Map.WidthMeters / 1000:F0} x {w.Map.HeightMeters / 1000:F0} km): {place.Why}; {PoiSiting.LastTyped} typed places on the world sited in {PoiSiting.LastTypedMs:F0} ms (the last: {PoiSiting.LastTypedRejects}); {place.Parts.Count} parts, {place.Parts.Count(p => p.Pending)} not laid out at load");
                 if (w.Infra.Routes.Any(r => r.From == place.Anchor || r.To == place.Anchor)) roads++;
-                else notes.Add($"{spec}: no road to the gate");
+                else notes.Add($"{spec}: no road to the gate ({w.Infra.Routes.Count} routes on the world, {w.Infra.Places.Count} places served, {w.Infra.Unrouted} links unrouted)");
                 // Level across it; eased out past its edge, never steeper than a bank you could drive up.
                 SketchBox fb = PlaceTypes.Turn(place.Sketch.Footprint, place.Turn);
                 PlanetTerrainSource g = w.Source;
