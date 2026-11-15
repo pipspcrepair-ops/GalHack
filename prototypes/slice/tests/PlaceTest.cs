@@ -1296,6 +1296,7 @@ public partial class PlaceTest : Node
     /// </summary>
     IEnumerable<int> Systems(WorldChoice world)
     {
+        Place.MergeCubes = true; // the merged cubes' split is checked below
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
@@ -1332,6 +1333,25 @@ public partial class PlaceTest : Node
         }
         places.Eye = null;
         Check(p.NearGroups > 0 && p.NearGroups < p.Groups || p.Groups <= 8, $"the cubes near the eye are drawn in full ({p.NearGroups} of {p.Groups}), the rest stay merged");
+        // A cube drawn as one mesh (Place.MergeCubes, on for this check) splits back to a mesh a chunk when a block of it goes:
+        // the block is gone from the drawing and the rest of the cube is drawn as it was.
+        for (int i = 0; i < 90; i++) // the near cubes' dissolve over the merged drawing (0.45 s)
+        {
+            Vector3 eye = centre + Vector3.Back * 12f;
+            places.Eye = () => eye;
+            yield return 0;
+        }
+        places.Eye = null;
+        if (Place.MergeCubes && p.MergedCubeWithBlock() is var (key, cell))
+        {
+            var (_, _, before) = p.CubeDrawing(key);
+            p.Inst.Blocks.Set(cell, Block.Air);
+            p.Remesh(new[] { cell });
+            var (merged, chunks, after) = p.CubeDrawing(key);
+            Check(!merged && chunks > 0 && after > 0 && after != before && Math.Abs(after - before) < 64,
+                $"a merged cube splits back to a mesh a chunk when a block of it goes ({chunks} chunk meshes; {before} triangles before, {after} after)");
+        }
+        else Check(!Place.MergeCubes, $"a near cube of {site.Name} is drawn as one mesh with a block in it to break ({p.MergedGroups} merged of {p.NearGroups} near)");
         GD.Print($"  doors {p.Doors.Count} ({p.Doors.Count(d => d.Jammed)} jammed), deco rooms {p.DecoRooms}, caches {p.Memory.Caches.Count}, creatures {p.Memory.Fauna?.Sim?.Creatures.Count}");
         game.QueueFree();
         yield return 0;

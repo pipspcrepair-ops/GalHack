@@ -63,6 +63,7 @@ public partial class PopRoute : Node
         // --force-city=1: a city planned on any lived-in world (the city routes' own runs, on fresh seeds).
         if (_args.ContainsKey("force-city")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.ContainsKey("merge")) Slice.Places.Place.MergeCubes = true; // --merge=1: places' cubes drawn a mesh a cube
+        if (_args.TryGetValue("deco-shadows", out string ds) && ds == "0") GalHack.Deco.Engine.DecoShadows.On = false; // --deco-shadows=0: every piece casts
         if (_args.ContainsKey("places-at-load"))
             typeof(PlanetSurface.World.PlanetWorld).GetField("BuildPlacesAtLoad")?.SetValue(null, true);
         ProcessPhysicsPriority = 100;

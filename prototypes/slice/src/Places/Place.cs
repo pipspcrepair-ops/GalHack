@@ -459,6 +459,41 @@ public partial class Place : Node3D
         PlanetSurface.Fx.Fade.Forget(this);
     }
 
+    /// <summary>Tests: a near cube drawn as one mesh, and a solid block in it (null: none).</summary>
+    internal (Int3 Key, Int3 Cell)? MergedCubeWithBlock()
+    {
+        foreach (Group g in _groups.Values)
+        {
+            if (g.Merged == null || !g.Near || g.Way != 0) continue;
+            Int3 min = g.Key * GroupSize;
+            for (int y = 0; y < GroupSize; y++)
+            for (int z = 0; z < GroupSize; z++)
+            for (int x = 0; x < GroupSize; x++)
+            {
+                Int3 c = min + new Int3(x, y, z);
+                if (Inst.Blocks.Get(c).Type == BlockType.Cube) return (g.Key, c);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Tests: how a cube is drawn now: as one mesh, and how many chunk meshes, and the triangles in all of them.</summary>
+    internal (bool Merged, int Chunks, long Triangles) CubeDrawing(Int3 key)
+    {
+        Group g = GroupAt(key);
+        long tris = 0;
+        int chunks = 0;
+        foreach (MeshInstance3D m in MeshesOf(g))
+        {
+            if (m != g.Merged) chunks++;
+            if (m.Mesh is ArrayMesh am) for (int s = 0; s < am.GetSurfaceCount(); s++) tris += am.SurfaceGetArrayIndexLen(s) / 3;
+        }
+        return (g.Merged != null, chunks, tris);
+    }
+
+    /// <summary>Cubes drawn as one mesh now (tests).</summary>
+    internal int MergedGroups => _groups.Values.Count(g => g.Merged != null);
+
     /// <summary>Cubes drawn in full now (tests).</summary>
     public int NearGroups => _groups.Values.Count(g => g.Near);
     public int Groups => _groups.Count;
