@@ -240,10 +240,11 @@ public partial class MoonTest : Node
         }
         var inside = Across(deep);
         var edge = Across(partial);
-        // The shader's sums at the body's centre are the system's own eclipse there; across the disc the shadow's edge shows as
-        // it crosses (how sharp, by the star's size from there against the body's: a far caster's penumbra can be wider than it).
+        // The shader's sums at the body's centre are the system's own eclipse there, and across the disc the shadow differs
+        // point by point as its edge crosses; how sharp the edge is goes by the caster: a far one's penumbra (the star's size
+        // from the body, times the caster's distance) is wider than the body, a near one's narrower.
         double offDeep = Math.Abs(inside.Centre - Covered(dark, deep)), offEdge = Math.Abs(edge.Centre - Covered(dark, partial));
-        Check(inside.Mid > 0.9 && edge.Most - edge.Least > 0.3 && offDeep < 0.03 && offEdge < 0.03,
+        Check(inside.Mid > 0.9 && edge.Most - edge.Least > 0.1 && edge.Least < edge.Centre && edge.Centre < edge.Most && offDeep < 0.03 && offEdge < 0.03,
             $"{Charts.Tidy(dark.Name)} goes dark in {Charts.Tidy(m.EclipseAt(deep, m.Position(dark, deep), dark).By?.Name ?? "nothing")}'s shadow {deep - now:F2} days on, drawn point by point: {inside.Mid:P0} of the sun hidden at its middle at the deepest; as the edge crosses it, {edge.Least:P0} to {edge.Most:P0} across the disc (umbra and penumbra); at its centre the sky's shadow and the system's agree within {Math.Max(offDeep, offEdge):P1}");
         sky.Days = now;
         sky.Paused = false;
