@@ -193,6 +193,7 @@ public partial class PoiTest
                 int x0 = d.Corner.X, z0 = d.Corner.Z, x1 = x0 + (int)d.Room.Width - 1, z1 = z0 + (int)d.Room.Depth - 1;
                 var doors = ways.Select(w => RoomDecor.Door(w.Cells, x0, x1, z0, z1)).OfType<DecoDoor>().ToList();
                 if (doors.Count >= 2) detour = Detour(d.Room, doors, used.Placements.Where(p => DecoLayout.Blocks(decor.Forge, p)).Select(p => DecoLayout.Footprint(decor.Forge, p)));
+                if (!wasFocal && inst.Layout.Extras.Homes.Count > 0) { DecoPlanner.Trace = new(); decor.Dress(d.Room, inst.Kit?.Id, disorder: false); System.Console.WriteLine($"DIAG {m.Purpose} {d.Room} windows {d.Room.Windows.Count} flues {d.Room.Flues.Count} kept {d.Room.Kept.Count}: {string.Join(", ", DecoPlanner.Trace.OrderByDescending(k => k.Value).Take(12).Select(k => $"{k.Key} {k.Value}"))}"); DecoPlanner.Trace = null; } // DIAG
                 var forge = decor.Forge;
                 windowed = used.Placements.Count(p => DecoRules.BeforeWindow(forge, d.Room, p));
                 fires = used.Placements.Count(p => p.Support < 0 && forge.Catalogue.Piece(p.Piece).Has("hearth"));

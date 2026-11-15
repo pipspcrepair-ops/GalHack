@@ -40,6 +40,8 @@ public sealed class DecoPlanner
     }
 
     public const float Cell = 0.25f;
+    public static Dictionary<string, int> Trace; static string Stage = ""; // DIAG
+    static bool No(string why) { if (Trace != null && Stage != "") Trace[Stage + why] = Trace.GetValueOrDefault(Stage + why) + 1; return false; } // DIAG
 
     /// <summary>The walk line's walker, raster cells across (0.75 m), and how much longer furniture may make a line (raster steps: a metre).</summary>
     const int Walker = 3, Slack = 4;
@@ -108,6 +110,7 @@ public sealed class DecoPlanner
         // off the walls and the floor; the rest of what the room is arranged round (a bathroom's basin and WC beside its bath) still
         // come, and so does more of what repeats (a ward's beds, a mess hall's tables, an office's desks).
         string first = corridor || focus == null ? null : Focal(mix.Wall.Concat(mix.Island).ToList(), focus);
+        Stage = ""; // DIAG
         corridor |= _lining != null && first == null;
         if (first != null)
         {
@@ -321,7 +324,7 @@ public sealed class DecoPlanner
         int first = _plan.Placements.Count;
         // Never past a piece's cap in a room.
         foreach (var g in members.GroupBy(m => m.Piece))
-            if (_count.GetValueOrDefault(g.Key.Id) + g.Count() > CapOf(g.Key, _room.Width * _room.Depth)) return false;
+            if (_count.GetValueOrDefault(g.Key.Id) + g.Count() > CapOf(g.Key, _room.Width * _room.Depth)) return No("cap");
         var added = new List<DecoPlacement>();
         foreach (Member mem in members)
         {
@@ -337,26 +340,26 @@ public sealed class DecoPlanner
         foreach (DecoPlacement pl in added)
         {
             DecoRect r = DecoLayout.Footprint(_forge, pl);
-            if (!DecoLayout.Inside(_room, r)) return false;
-            if (pl.Support < 0 && (loose ? _reserved.Skip(_room.Doors.Count).Take(_aprons - _room.Doors.Count) : _reserved).Any(res => res.Overlaps(r.Shrink(0.01f))) && DecoLayout.Blocks(_forge, pl)) return false;
+            if (!DecoLayout.Inside(_room, r)) return No("inside");
+            if (pl.Support < 0 && (loose ? _reserved.Skip(_room.Doors.Count).Take(_aprons - _room.Doors.Count) : _reserved).Any(res => res.Overlaps(r.Shrink(0.01f))) && DecoLayout.Blocks(_forge, pl)) return No(loose ? "kept/blocked" : "reserved");
             // Nothing lies in a doorway either, not even a rug a person walks over.
-            if (pl.Support < 0 && _room.Doors.Any(d => _room.Apron(d, 0.9f, 0).Overlaps(r.Shrink(0.02f)))) return false;
-            if (_plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) return false;
+            if (pl.Support < 0 && _room.Doors.Any(d => _room.Apron(d, 0.9f, 0).Overlaps(r.Shrink(0.02f)))) return No("doorway");
+            if (_plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) return No("clash");
             if (added.Any(o => o != pl && added.IndexOf(o) < added.IndexOf(pl) && DecoLayout.Clash(_forge, o, pl))) return false;
             // The room's rules (DecoRules): nothing taller than a sill before a window, a fire only at a chimney breast, what the room
             // is arranged round on a solid wall, a narrow room lined along its one wall.
-            if (DecoRules.BeforeWindow(_forge, _room, pl) || DecoRules.OffFlue(_forge, _room, pl)) return false;
-            if (pl.Support < 0 && DecoLayout.Blocks(_forge, pl) && (focal && DecoRules.OpeningBehind(_room, r) || _lining is DecoWall only && DecoRules.Off(_room, r, only) > 0.15f)) return false;
+            if (DecoRules.BeforeWindow(_forge, _room, pl) || DecoRules.OffFlue(_forge, _room, pl)) return No("window/flue");
+            if (pl.Support < 0 && DecoLayout.Blocks(_forge, pl) && (focal && DecoRules.OpeningBehind(_room, r) || _lining is DecoWall only && DecoRules.Off(_room, r, only) > 0.15f)) return No(focal && DecoRules.OpeningBehind(_room, r) ? "opening behind" : "lining");
         }
         // No more than half the floor stood on, and a clear walk to every piece's use side.
         var all = _plan.Placements.Concat(added).ToList();
-        if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.Unreached(_forge, _room, all).Count > 0) return false;
+        if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.Unreached(_forge, _room, all).Count > 0) return No(DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor ? "half floor" : "use side");
         var blocking = added.Where(p => DecoLayout.Blocks(_forge, p)).Select(p => DecoLayout.Footprint(_forge, p)).ToList();
         foreach (DecoRect r in blocking) { _raster.Add(r, 1); _walk.Add(r, 1); }
         if (!_raster.DoorsJoined(_room) || !Lines())
         {
             foreach (DecoRect r in blocking) { _raster.Add(r, -1); _walk.Add(r, -1); }
-            return false;
+            return No(_raster.DoorsJoined(_room) ? "lines" : "joined");
         }
         _plan.Placements.AddRange(added);
         foreach (DecoPlacement pl in added) _count[pl.Piece] = _count.GetValueOrDefault(pl.Piece) + 1;
@@ -411,7 +414,7 @@ public sealed class DecoPlanner
     string Focal(List<(string Template, float Weight)> mix, string[] focus)
     {
         foreach (bool alone in new[] { false, true })
-        foreach (var (id, _) in mix.OrderByDescending(t => t.Weight))
+        foreach (var (id, _) in mix.OrderByDescending(t => t.Weight).Select(t => { Stage = (alone ? "alone " : "whole ") + t.Template + " "; return t; })) // DIAG
         {
             DecoTemplate t = _arr.Templates[id];
             // (Seat rows are laid by Rows, facing their own focus.)
