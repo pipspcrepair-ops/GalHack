@@ -85,9 +85,9 @@ public partial class PowerTest : Node
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = true;
         GD.Print($"-- in the world: {_game.World} --");
-        foreach (int x in Armed(data)) yield return x;
         foreach (int x in Flight(data)) yield return x;
-        foreach (int x in Hover(data)) yield return x; // last: taking the rover away takes the sleeper's body with it
+        foreach (int x in Hover(data)) yield return x;
+        foreach (int x in Armed(data)) yield return x;
     }
 
     // ---- The model alone ------------------------------------------------------------------------------
@@ -351,9 +351,14 @@ public partial class PowerTest : Node
         for (int t = 0; t < 300 && v.Body.Velocity.Y < -0.5f && !v.Controller.Frozen; t++) yield return 0;
         Check(v.Powered && (v.Body.Velocity.Y > -0.5f || v.Controller.Frozen), $"fuel in its storage again, its power comes back and the assist stops the fall ({v.Body.Velocity.Y:F1} m/s)");
         _game.Survivor.StandUp();
+        _game.Zone.Remove(v); // taken away the moment the sleeper stands up (destroyed, or claimed)
         foreach (int x in _drive.Wait(5)) yield return x;
-        Playthrough.TakeAway(_game.Zone, v);
+        Check(SetOut(), "the Skiff taken away just as the sleeper stands up: they are set out of it, their body their own");
     }
+
+    /// <summary>The sleeper's body is whole and in the world, in no vessel's cabin, and the world goes on ticking.</summary>
+    bool SetOut() => GodotObject.IsInstanceValid(_game.Survivor.Node) && _game.Survivor.Node.GetParent() == _game.Zone
+        && _game.Survivor.Seated == null && _game.Survivor.Aboard == null;
 
     IEnumerable<int> Hover(GameData data)
     {
@@ -375,8 +380,8 @@ public partial class PowerTest : Node
         v.Power.ChargeMJ = 0; // STAGING: run dry
         foreach (int x in _drive.Wait(120)) yield return x;
         Check(!v.Powered && v.AboveGround < riding - 0.3f, $"run dry, the plates let it down onto the ground ({riding:F1} to {v.AboveGround:F1} m)");
-        _game.Survivor.StandUp();
+        _game.Zone.Remove(v); // taken away with the sleeper still seated in it
         foreach (int x in _drive.Wait(5)) yield return x;
-        Playthrough.TakeAway(_game.Zone, v);
+        Check(SetOut(), "the rover taken away with the sleeper in its chair: they get up and are set out first, their body their own");
     }
 }

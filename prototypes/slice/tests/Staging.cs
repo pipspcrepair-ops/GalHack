@@ -96,6 +96,7 @@ public sealed partial class Staging
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
             "shipbar" => ShipBarView(),
+            "shield" => ShieldView(),
             "decogallery" => DecoGalleryView(),
             "faces" => FacesView(),
             "cores" => CoresView(),

@@ -422,14 +422,7 @@ public partial class WindTest : Node
     }
 
     /// <summary>Takes a test's vessel out of the world, as a vessel whose last block is gone goes.</summary>
-    void Remove(Vessel v)
-    {
-        Bridge.Untrack(v.Body);
-        Zone.Physics.Unregister(v.Body);
-        Zone.Physics.StuckFields.Remove(v.Field);
-        Zone.Untrack(v);
-        v.Node.QueueFree();
-    }
+    void Remove(Vessel v) => Zone.Remove(v);
 
     // ---- People -------------------------------------------------------------------------
 
