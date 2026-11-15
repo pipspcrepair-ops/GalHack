@@ -79,6 +79,8 @@ public static class CapitalHull
         public System.Numerics.Vector3 Origin;
         public System.Numerics.Quaternion Rotation = System.Numerics.Quaternion.Identity;
         public string Header = "";
+        /// <summary>Its rooms as what lives in them sees them (indices into this list link them).</summary>
+        public readonly List<HullRoom> Rooms = new();
 
         /// <summary>The blueprint text (galhack.blueprint) of what stands: the intact plan less the blocks given.</summary>
         public string Text(string name, ISet<Int3> without)
@@ -125,6 +127,12 @@ public static class CapitalHull
             if (Door is Int3 door) gone.Remove(door);
             return gone;
         }
+    }
+
+    /// <summary>A room of a hull piece: what it was for, its kind, its deck, its open box on its walking deck (metres in the piece's frame), and the rooms its doors open onto.</summary>
+    public sealed record HullRoom(string Purpose, ModuleKind Kind, int Deck, System.Numerics.Vector3 Min, System.Numerics.Vector3 Max)
+    {
+        public readonly List<int> Links = new();
     }
 
     public sealed class HullPlan
@@ -1580,6 +1588,25 @@ sealed class Hulk
             }
             // Where it lies: the structure's origin (the middle of its first block) and its turn, in the place's frame.
             var origin = new System.Numerics.Vector3(1f, 1f, 2 * oz + 1f);
+            // Its rooms, each its open box on its walking deck in the piece's frame (a canvas cell c spans c to c + 1 m of the
+            // hull, the origin above), and its doors' rooms on the other side.
+            var mineRooms = new Dictionary<int, int>();
+            for (int i = 0; i < Rooms.Count; i++)
+            {
+                Room r = Rooms[i];
+                var walk = r.Cells.Where(c => c.Y == r.WalkY && PieceOf(c.Z) == p).ToList();
+                if (walk.Count < 4) continue;
+                mineRooms[i] = piece.Rooms.Count;
+                piece.Rooms.Add(new CapitalHull.HullRoom(r.Purpose, r.Kind, r.Deck,
+                    new System.Numerics.Vector3(walk.Min(c => c.X), r.WalkY, walk.Min(c => c.Z)) - origin,
+                    new System.Numerics.Vector3(walk.Max(c => c.X) + 1, r.Cells.Max(c => c.Y) + 1, walk.Max(c => c.Z) + 1) - origin));
+            }
+            foreach (DoorRec d in Doors)
+                if (mineRooms.TryGetValue(d.A, out int a) && mineRooms.TryGetValue(d.B, out int b) && a != b && !piece.Rooms[a].Links.Contains(b))
+                {
+                    piece.Rooms[a].Links.Add(b);
+                    piece.Rooms[b].Links.Add(a);
+                }
             System.Numerics.Vector3 plot = ToPlot(p, origin);
             var turn = System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, -q * MathF.PI / 2f);
             piece.Origin = Turn(plot, q);
