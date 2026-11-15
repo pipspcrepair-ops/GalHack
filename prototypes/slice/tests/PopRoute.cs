@@ -55,9 +55,9 @@ public partial class PopRoute : Node
             _args.TryAdd("settings", "res://tests/minspec.cfg");
         }
         // As the owner plays: his settings file (--settings=path), vsync on, full screen at 1920 x 1080.
-        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
         if (_args.TryGetValue("screen", out string screen)) DisplayServer.WindowSetCurrentScreen(int.Parse(screen)); // --screen=N: full screen on that one
         DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled); // after the move: set before it, a 60 Hz screen ran unsynced
         // (Set by reflection: the flag is only there from places built after load on.)
         if (_args.ContainsKey("places-at-load"))
             typeof(PlanetSurface.World.PlanetWorld).GetField("BuildPlacesAtLoad")?.SetValue(null, true);
@@ -461,19 +461,23 @@ public partial class PopRoute : Node
     /// back (550338, the owner's settings, a shared machine): frames over 16.7 ms a minute walking 179 to 76, biking 268 to 113-218,
     /// flying 623 to 472-585, at once 94 to 40-60; p99 walking 19.9 to 16.6, biking 22.6 to 17.8-24.5; shadow casters redrawn
     /// biking 141 to 62, flying 88 to 112, at once 427 to 119 (the rings no longer jitter with the frame rate).
+    /// Pacing (proto/stutter; seed 550338, the owner's settings on his 240 Hz screen, quiet machine): frames up for another number of
+    /// refreshes than most, unpaced 34 to 50 % (frames landing on one refresh, then two); paced at 120 a second walking 16, biking 21,
+    /// flying 51 (70 m/s low over the ground is at the edge of 120: its work's slowest fifth 7.3 ms of 7.8). Camera steps over 25 %
+    /// off their pace by the engine's clock 1.8, 6.1 and 8.2 % (carried along the route drawn between ticks, CharacterBinding.Glide).
     /// </summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10, OwnerOff, MoveOffLimit), // (a walk sees too few trees and columns to judge them appearing)
-        ["bike"] = new(88, 350, 220, 150, 60, 20, 10, OwnerOff, MoveOffLimit),
-        ["fly"] = new(72, 350, 360, 250, 150, 25, 10, OwnerOff, MoveOffLimit),
+        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10, 25, MoveOffLimit), // (a walk sees too few trees and columns to judge them appearing)
+        ["bike"] = new(88, 350, 220, 150, 60, 20, 10, 30, MoveOffLimit),
+        ["fly"] = new(72, 350, 360, 250, 150, 25, 10, 55, MoveOffLimit),
     };
 
     /// <summary>
     /// The minimum spec's stand-in (--minspec=1, on the 60 Hz screen): its pacing only. At 60 Hz every frame is near 16.7 ms, so
     /// the frame-time limits mean nothing there; the streaming limits are the owner's machine's (see the report for the stand-in's).
     /// </summary>
-    const double OwnerOff = 30, MinSpecOff = 20, MoveOffLimit = 10;
+    const double MinSpecOff = 10, MoveOffLimit = 10;
 
     static readonly Dictionary<string, Limit> MinSpecLimits = new()
     {
