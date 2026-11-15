@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -55,6 +56,56 @@ public partial class PopRoute
             foreach (Node n in _game.Zone.Pois.FindChildren("*", "GeometryInstance3D", true, false))
                 kinds["far places"].Add(((GeometryInstance3D)n, ((GeometryInstance3D)n).CastShadow, ((GeometryInstance3D)n).Visible));
         return kinds;
+    }
+
+    /// <summary>
+    /// --only=skyday: the sky's own cost (the whole picture against a plain background) at the start and in the city, at fixed
+    /// times of day (--days=0.27,0.4,0.55 by default), the sun held still.
+    /// </summary>
+    IEnumerable<int> SkyByDay(Vector3 start, Vector3 way)
+    {
+        var zone = _game.Zone;
+        Godot.Environment env = zone.Sky.Environment;
+        Rid vp = GetViewport().GetViewportRid();
+        var days = (_args.GetValueOrDefault("days") ?? "0.27,0.4,0.55").Split(',').Select(d => double.Parse(d, CultureInfo.InvariantCulture)).ToList();
+        var views = new List<(string Name, Vector3 At, float Up, float Pitch)> { ("standing", start, 1.7f, -4f) };
+        if (Biggest(_game) is var (mid, _, _)) views.Add(("in the city", mid - way * 60f, 1.7f, -2f));
+        float scale = zone.Sky.TimeScale;
+        foreach (var (view, at, up, pitch) in views)
+        {
+            Vector3 eye = Lift(at, up);
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(way, Vector3.Up).Rotated(way.Cross(Vector3.Up).Normalized(), Mathf.DegToRad(pitch)), eye);
+            int idleFor = 0;
+            for (int i = 0; i < 3600 && (i < 300 || !zone.Streamer.Settled || idleFor < 180); i++)
+            {
+                idleFor = _game.Places == null || _game.Places.Idle ? idleFor + 1 : 0;
+                _game.Survivor.PlaceOutside((eye - way * 6f + Vector3.Down * 1.6f).ToNumerics());
+                yield return 0;
+            }
+            foreach (double day in days)
+            {
+                zone.Sky.TimeScale = 0f;
+                zone.Sky.TimeOfDay = day;
+                var cost = new double[2];
+                for (int c = 0; c < 2; c++)
+                {
+                    env.BackgroundMode = c == 1 ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
+                    var gpu = new List<double>();
+                    for (int i = 0; i < 120; i++)
+                    {
+                        _game.Survivor.PlaceOutside((eye - way * 6f + Vector3.Down * 1.6f).ToNumerics());
+                        yield return 0;
+                        if (i >= 30) gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
+                    }
+                    gpu.Sort();
+                    cost[c] = gpu[gpu.Count / 2];
+                }
+                env.BackgroundMode = Godot.Environment.BGMode.Sky;
+                GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE sky {view} at {day:F2}: all gpu {cost[0]:F2} ms, the sky's own {cost[0] - cost[1]:F2} ms (sun {MathF.Asin(zone.Sky.Sun.GlobalTransform.Basis.Z.Y) * 180f / MathF.PI:F0} degrees up)"));
+            }
+            _game.FixedCamera = null;
+        }
+        zone.Sky.TimeScale = scale;
     }
 
     IEnumerable<int> GpuCost(Vector3 start, Vector3 way)
