@@ -50,7 +50,7 @@ public sealed class Skyship
     readonly SkyTraffic _traffic;
     readonly Random _rng;
     float _wait, _altitude, _altitudeIn, _circled, _fleeFor;
-    int _struck, _bumps, _leg;
+    int _struck, _bumps, _leg, _retries;
     float _heading;
 
     public Skyship(SkyTraffic traffic, Vessel vessel, CraftRole role, PoiSite home, int seed)
@@ -129,18 +129,39 @@ public sealed class Skyship
 
     // ---- Legs ---------------------------------------------------------------------------------------------
 
+    /// <summary>The look for a spot to put down, worked a little each tick until it is done.</summary>
+    SkyTraffic.SpotSearch _search;
+
+    /// <summary>Off to the next place: a scout's look round it starts at once; a landing waits for its spot to be found.</summary>
     void Depart()
     {
-        bool lands = Role == CraftRole.Trader || _leg % 3 == 2;
-        PoiSite next = _traffic.NextStop(this, lands);
-        if (next == null) { _wait = 10f; return; }
-        Bound = next;
-        N.Vector3? spot = lands ? _traffic.SpotNear(next, Vessel) : _traffic.CentreOf(next, Vessel.Body.Position);
-        if (spot == null) { _wait = 10f; return; }
-        Spot = spot.Value;
+        if (_search == null)
+        {
+            bool lands = Role == CraftRole.Trader || _leg % 3 == 2;
+            PoiSite next = _traffic.NextStop(this, lands);
+            if (next == null) { _wait = 10f; return; }
+            if (!lands)
+            {
+                Begin(next, _traffic.CentreOf(next, Vessel.Body.Position), lands: false);
+                return;
+            }
+            _search = _traffic.FindSpot(next, Vessel);
+        }
+        if (!_traffic.Advance(_search)) return;
+        SkyTraffic.SpotSearch q = _search;
+        _search = null;
+        if (q.Spot == null) { _wait = 10f; return; }
+        Begin(q.Site, q.Spot.Value, lands: true);
+    }
+
+    void Begin(PoiSite to, N.Vector3 spot, bool lands)
+    {
+        Bound = to;
+        Spot = spot;
         _leg++;
         Departures++;
-        Phase = SkyPhase.Rising;
+        if (Phase is SkyPhase.Landed) Phase = SkyPhase.Rising;
+        else Phase = SkyPhase.Cruising;
         _altitudeIn = 0f;
         _circled = lands ? -1f : 0f;
     }
@@ -186,14 +207,23 @@ public sealed class Skyship
         float floor = MathF.Max(Spot.Y + 30f, _traffic.HighestAhead(p, dir, d) + 25f);
         Steer(dir * speed + N.Vector3.UnitY * Vertical(floor, p.Y), _heading);
         float flat = MathX.Flat(Vessel.Body.Velocity).Length();
+        if (_search != null)
+        {
+            // Holding over it while another spot is found.
+            if (!_traffic.Advance(_search)) return;
+            if (_search.Spot is N.Vector3 again) Spot = again;
+            _search = null;
+            return;
+        }
         if (d < 6f && flat < 2.5f)
         {
             // The spot is checked again now it can be seen: a tree or a hull there, and another is found.
-            if (!_traffic.Clear(Spot, Vessel))
+            if (!_traffic.Clear(Spot, Vessel) && _retries++ < 3)
             {
-                N.Vector3? again = _traffic.SpotNear(Bound, Vessel);
-                if (again != null) { Spot = again.Value; return; }
+                _search = _traffic.FindSpot(Bound, Vessel);
+                return;
             }
+            _retries = 0;
             Phase = SkyPhase.Descending;
         }
     }
@@ -245,6 +275,7 @@ public sealed class Skyship
     void Flee()
     {
         Phase = SkyPhase.Fleeing;
+        _search = null;
         Fled++;
         _fleeFor = 25f;
     }
@@ -257,11 +288,17 @@ public sealed class Skyship
         float top = Vessel.Stats?.TopSpeed ?? 50f;
         Hold(dir, top, 500f, Clearance + 120f, dt, boost: true);
         if ((_fleeFor -= dt) > 0f) return;
-        _circled = -1f;
-        Bound = _traffic.NextStop(this, lands: true, awayFromThreat: true) ?? Bound;
-        N.Vector3? spot = Bound != null ? _traffic.SpotNear(Bound, Vessel) : null;
-        if (spot != null) Spot = spot.Value;
-        Phase = SkyPhase.Cruising;
+        // On to a place away from the sleeper, still running while its spot is found; with none, a look round it instead.
+        if (_search == null)
+        {
+            PoiSite next = _traffic.NextStop(this, lands: true, awayFromThreat: true);
+            if (next == null) { _fleeFor = 5f; return; }
+            _search = _traffic.FindSpot(next, Vessel);
+        }
+        if (!_traffic.Advance(_search)) return;
+        SkyTraffic.SpotSearch q = _search;
+        _search = null;
+        Begin(q.Site, q.Spot ?? _traffic.CentreOf(q.Site, p), lands: q.Spot != null);
     }
 
     // ---- Flying ------------------------------------------------------------------------------------------------

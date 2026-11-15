@@ -66,17 +66,24 @@ public partial class SkyTraffic : Node
     /// <summary>What its last tick cost, ms: the pilot, and every tenth tick its upkeep (tests).</summary>
     public double LastTickMs { get; private set; }
 
+    /// <summary>Its worst tick since it spawned, ms, and what it was doing then (tests).</summary>
+    public double WorstMs { get; private set; }
+    public string WorstWhat { get; private set; } = "";
+
     public override void _PhysicsProcess(double delta)
     {
         if (Zone?.Planet == null || !Zone.Arrived || Zone.IsOtherBody || Missing != null) return;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (Ship == null) Spawn();
+        string what;
+        if (Ship == null) { Spawn(); what = "spawn"; }
         else
         {
+            what = Ship.Phase.ToString();
             Ship.Tick((float)delta);
-            if (++_tick % 10 == 0) Upkeep();
+            if (++_tick % 10 == 0) { Upkeep(); what += " + upkeep"; }
         }
         LastTickMs = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, what);
     }
 
     // ---- The ship ---------------------------------------------------------------------------------------------
@@ -95,7 +102,13 @@ public partial class SkyTraffic : Node
         // Its home: the nearest inhabited place to the start that isn't on top of it.
         PoiSite home = _settled.OrderBy(p => Distance(p, _start) < 400f ? float.MaxValue : Distance(p, _start)).FirstOrDefault()
                        ?? _looks.OrderBy(p => Distance(p, _start)).FirstOrDefault();
-        N.Vector3? at = home != null ? SpotNear(home, s, null) : null;
+        N.Vector3? at = null;
+        if (home != null)
+        {
+            SpotSearch q = Search(home, s, null);
+            while (!Advance(q, 1e6)) { }
+            at = q.Spot;
+        }
         if (at == null) { Missing = home == null ? "no places on the world" : "no clear ground by its home"; return; }
         Vessel v = Vessel.Spawn(Zone, s, at.Value + N.Vector3.UnitY * 3f, (float)(_rng.NextDouble() * Math.Tau), landed: true);
         v.Settle();
@@ -185,33 +198,73 @@ public partial class SkyTraffic : Node
         return ranked.Count == 0 ? null : ranked[_rng.Next(ranked.Count)].s;
     }
 
-    /// <summary>A clear spot to put down by a place: flat, dry, off every place's and road's ground, away from other hulls and trees.</summary>
-    public N.Vector3? SpotNear(PoiSite site, Vessel ship) => SpotNear(site, ship.Structure, ship);
+    /// <summary>A search for a clear spot to put down by a place, worked a little each tick (<see cref="Advance"/>) so no frame pays for all of it.</summary>
+    public sealed class SpotSearch
+    {
+        public PoiSite Site;
+        public bool Done;
+        public N.Vector3? Spot;
+        internal IEnumerator<bool> Steps;
+    }
 
-    N.Vector3? SpotNear(PoiSite site, Structure s, Vessel self)
+    /// <summary>Starts looking for a spot by a place: flat, dry, off every place's and road's ground, away from other hulls and trees.</summary>
+    public SpotSearch FindSpot(PoiSite site, Vessel ship) => Search(site, ship.Structure, ship);
+
+    SpotSearch Search(PoiSite site, Structure s, Vessel self)
+    {
+        var q = new SpotSearch { Site = site };
+        q.Steps = Candidates(q, site, s, self).GetEnumerator();
+        return q;
+    }
+
+    /// <summary>Works a search on for up to this long, ms; true once it is done (found, or nowhere fits).</summary>
+    public bool Advance(SpotSearch q, double budgetMs = 1.5)
+    {
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (!q.Done && System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds < budgetMs)
+            if (!q.Steps.MoveNext()) q.Done = true;
+        return q.Done;
+    }
+
+    IEnumerable<bool> Candidates(SpotSearch q, PoiSite site, Structure s, Vessel self)
     {
         N.Vector3 c = CentreOf(site, self?.Body.Position ?? _start.ToNumerics());
         float r = Radius(s), half = MathF.Max(site.Stamp.MaxX - site.Stamp.MinX, site.Stamp.MaxZ - site.Stamp.MinZ) * 0.5f;
-        var near = Zone.Planet.Source.Stamps.Where(st => MathX.Flat(Frame(st, c) - c).Length() < half + 320f).ToList();
         float turn = (float)(_rng.NextDouble() * Math.Tau);
         for (float ring = half + r + 10f; ring < half + 260f; ring += 14f)
             for (int k = 0; k < 16; k++)
             {
                 float a = turn + k * MathF.Tau / 16f;
                 var p = new N.Vector3(c.X + MathF.Cos(a) * ring, 0f, c.Z + MathF.Sin(a) * ring);
-                if (Fits(p, r, near, self) is float y) return p with { Y = y };
+                if (Fits(p, r, self) is float y)
+                {
+                    q.Spot = p with { Y = y };
+                    yield break;
+                }
+                yield return false;
             }
-        return null;
     }
 
     /// <summary>Whether a spot it means to put down on is still clear (now its trees and hulls may have streamed in).</summary>
-    public bool Clear(N.Vector3 spot, Vessel self) => Fits(spot, Radius(self.Structure), new List<TerrainStamp>(), self) != null;
+    public bool Clear(N.Vector3 spot, Vessel self) => Fits(spot, Radius(self.Structure), self) != null;
 
-    float? Fits(N.Vector3 p, float r, List<TerrainStamp> stamps, Vessel self)
+    /// <summary>The ground's height at a spot if a hull this wide can put down there: the cheap tests first, the trees last.</summary>
+    float? Fits(N.Vector3 p, float r, Vessel self)
     {
         var planet = Zone.Planet;
         double cx = Mathx.WrapX(p.X, planet.Width), cz = Mathx.Wrap(p.Z, planet.Height);
         if (planet.Map.IsSea(cx, cz) || planet.Source.WaterSurfaceAt(cx, cz, out _)) return null;
+        // Off every stamp (a place's pad, its cuttings, a road) by its reach and a margin, looked up in the ground's own buckets.
+        float m = r + 4f;
+        foreach (var (ox, oz) in new[] { (0f, 0f), (-m, -m), (m, -m), (-m, m), (m, m) })
+            foreach (int i in planet.Source.StampsAt(cx + ox, cz + oz))
+            {
+                TerrainStamp st = planet.Source.Stamps[i];
+                double dx = Mathx.WrapDelta(cx - st.MinX, planet.Width), dz = Mathx.WrapDelta(cz - st.MinZ, planet.Height);
+                if (dx > -m && dx < st.MaxX - st.MinX + m && dz > -m && dz < st.MaxZ - st.MinZ + m) return null;
+            }
+        foreach (Vessel v in Zone.Vessels)
+            if (v != self && !v.IsWreck && MathX.Flat(v.Body.Position - p).Length() < r + 25f) return null;
         float h0 = Zone.GroundAt(p.X, p.Z).Y;
         if (!float.IsFinite(h0) || h0 < planet.Source.WaterLevel + 1f) return null;
         for (int k = 0; k < 8; k++)
@@ -220,20 +273,9 @@ public partial class SkyTraffic : Node
             foreach (float d in new[] { r, r * 0.5f })
                 if (MathF.Abs(Zone.GroundAt(p.X + MathF.Cos(b) * d, p.Z + MathF.Sin(b) * d).Y - h0) > 0.9f) return null;
         }
-        foreach (TerrainStamp st in stamps)
-        {
-            N.Vector3 o = Frame(st, p);
-            float m = r + 4f;
-            if (p.X > o.X - m && p.X < o.X + (st.MaxX - st.MinX) + m && p.Z > o.Z - m && p.Z < o.Z + (st.MaxZ - st.MinZ) + m) return null;
-        }
-        foreach (Vessel v in Zone.Vessels)
-            if (v != self && !v.IsWreck && MathX.Flat(v.Body.Position - p).Length() < r + 25f) return null;
         if (Zone.Streamer.SolidsNear(p.ToGodot() with { Y = h0 }, r + 3f).Any()) return null;
         return h0;
     }
-
-    /// <summary>A stamp's low corner in the frame, nearest a point.</summary>
-    N.Vector3 Frame(TerrainStamp st, N.Vector3 near) => Zone.Planet.NearestCopy(new Vector3(st.MinX, 0f, st.MinZ), near.ToGodot()).ToNumerics();
 
     /// <summary>Its reach round its middle on the ground, m.</summary>
     static float Radius(Structure s)

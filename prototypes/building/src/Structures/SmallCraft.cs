@@ -171,6 +171,7 @@ public static class SmallCraft
         Device(l, "fuel-tank-t1");
         // A trader's hold fills its inside but for a few cells kept for what sizing adds; then it is sized with its hold aboard.
         if (trader) while (l.Inside.Count > 4 && Device(l, "container-t1")) { }
+        else Device(l, "container-t1"); // a scout's locker
         Size(l, gravity, needs, trader);
         Lights(l, rng);
         return d.S;
@@ -229,7 +230,6 @@ public static class SmallCraft
             l.D.Put(type, c);
             return true;
         }
-        if (type == "container-t1") return false;
         // The roof: the highest free cell over the body with a plate under it, its column clear above.
         var (lo, hi) = l.S.Bounds();
         foreach (int z in Enumerable.Range(lo.Z, hi.Z - lo.Z + 1).OrderBy(z => z))

@@ -314,6 +314,9 @@ public partial class TerrainStreamer
             var offset = new Vector3(
                 (float)(NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, p.X, w) - f.Fx * FarBuilder.Size), 0f,
                 (float)(NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, p.Z, h) - f.Fz * FarBuilder.Size));
+            // A chunk wholly out of reach is passed over without reading its solids (their centres lie inside it).
+            float x0 = f.Fx * FarBuilder.Size + offset.X, z0 = f.Fz * FarBuilder.Size + offset.Z;
+            if (p.X + radius < x0 || p.X - radius > x0 + FarBuilder.Size || p.Z + radius < z0 || p.Z - radius > z0 + FarBuilder.Size) continue;
             foreach (FloraSolid s in f.Solids)
             {
                 Vector3 c = s.Center + offset;

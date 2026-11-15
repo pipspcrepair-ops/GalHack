@@ -307,6 +307,6 @@ public partial class SkyshipTest : Node
         double median = frames.Count > 0 ? frames[frames.Count / 2] : 0, p95 = frames.Count > 0 ? frames[(int)(frames.Count * 0.95)] : 0;
         GD.Print($"  frames {frames.Count}: median {median:F2} ms, 95th {p95:F2} ms; the sky's own tick {skyMs / Math.Max(1, skyTicks):F3} ms mean, {skyWorst:F2} ms worst{(_args.ContainsKey("minspec") ? " (min-spec: 4 cores)" : "")}");
         Check(median <= 16.7, $"frame time within budget: median {median:F2} ms");
-        Check(skyMs / Math.Max(1, skyTicks) < 0.3 && skyWorst < 8.0, $"the ship costs little: {skyMs / Math.Max(1, skyTicks):F3} ms a tick, {skyWorst:F2} ms at worst");
+        Check(skyMs / Math.Max(1, skyTicks) < 0.3 && skyWorst < 8.0, $"the ship costs little: {skyMs / Math.Max(1, skyTicks):F3} ms a tick, {skyWorst:F2} ms at worst ({sky.WorstWhat})");
     }
 }
