@@ -299,7 +299,7 @@ public partial class PowerTest : Node
         Check(sat && v.Controller.Frozen && v.Controller.ConsoleMessage == "NO POWER", $"seated, Space does nothing: the console says {v.Controller.ConsoleMessage ?? "nothing"}");
 
         int cells = v.Storage.Add("energy-cell", 30);
-        foreach (int x in _drive.Wait(10)) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x; // past the view's quarter-second look at its power
         Check(cells == 30 && v.Powered && v.View.Powered && v.Power.ChargeMJ > 0, $"30 energy cells in its storage: its generator charges the capacitor ({v.Power.ChargeMJ:F1} MJ) and its lights come on");
         foreach (int x in _drive.Wait(60 * 12)) yield return x; // the capacitor full
         double ground = Height(v), climbing = 0, hovering = 0;
