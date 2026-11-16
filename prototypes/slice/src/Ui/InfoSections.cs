@@ -111,7 +111,7 @@ public sealed class StatsSection : IMenuSection
     }
 }
 
-/// <summary>MAP: what is around you, north up, 600 m each way: your structures, devices, the pod, your backpack, bodies and drops, the nearest deposits and the creatures near you.</summary>
+/// <summary>MAP: what is around you, north up, 600 m each way: your structures, devices, the pod, your bag, bodies and bags, the nearest deposits and the creatures near you.</summary>
 public sealed class MapSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
@@ -204,7 +204,7 @@ public sealed class MapSection : IMenuSection
         }
         var legend = new Rect2(map.End.X + 30, area.Position.Y, 320, area.Size.Y);
         g.Caption($"MAP · {Range:0} M", legend.Position, legend.Size.X);
-        var lines = new (string Label, Color Colour)[] { ("YOU · BUNKER", C.Accent), ("YOUR MARKS [RMB]", C.Danger), ("BASES", C.Good), ("VESSELS", C.Text), ("DEVICES · PLACES · DROPS", C.Accent2), ("DEPOSITS", C.Holo), ("BACKPACK", C.Danger), ("CREATURES", C.Warn) };
+        var lines = new (string Label, Color Colour)[] { ("YOU · BUNKER", C.Accent), ("YOUR MARKS [RMB]", C.Danger), ("BASES", C.Good), ("VESSELS", C.Text), ("DEVICES · PLACES · BAGS", C.Accent2), ("DEPOSITS", C.Holo), ("YOUR BAG", C.Danger), ("CREATURES", C.Warn) };
         for (int i = 0; i < lines.Length; i++)
         {
             Vector2 at = legend.Position + new Vector2(0, 40 + i * 26);

@@ -78,8 +78,9 @@ public partial class Game
             BodyIn = sim;
         }
         // Nobody goes on fighting a body.
-        Brain.TargetDied(patch.Sim, patch.Player, patch.PatchLocal(feet));
-        foreach (DeepSite site in patch.Sites) Brain.TargetDied(site.Sim, site.Player, site.Local(feet));
+        Vector3 things = DeathBag?.Position ?? feet; // (what there is to go through)
+        Brain.TargetDied(patch.Sim, patch.Player, patch.PatchLocal(things));
+        foreach (DeepSite site in patch.Sites) Brain.TargetDied(site.Sim, site.Player, site.Local(things));
         foreach (Town t in _towns) t.StandDown();
     }
 

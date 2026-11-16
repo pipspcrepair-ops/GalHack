@@ -45,7 +45,7 @@ public partial class Game
     /// <summary>
     /// E: feed at a replicator within reach; otherwise what is under the crosshair, in the world
     /// you are in: a container block (a locker, a cargo box: the structure's shared storage), a
-    /// body or a backpack on the ground, or a device. Nothing else answers E.
+    /// body or a bag on the ground, or a device. Nothing else answers E.
     /// </summary>
     void Use()
     {

@@ -398,7 +398,7 @@ public partial class Visor : CanvasLayer
     /// <summary>
     /// What is marked in the world: your bunker and the place in view from its way out (both known from the
     /// first moment, at any distance); then only what you have found by going near it (places,
-    /// deposits: the nearest few of each), your own map marks, vessels, bases and backpack, and the
+    /// deposits: the nearest few of each), your own map marks, vessels, bases and your bag, and the
     /// scanner's pings for as long as they last. Each marks the thing itself: a place and a deposit at
     /// the ground there, a little above it.
     /// </summary>

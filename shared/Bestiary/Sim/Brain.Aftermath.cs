@@ -14,6 +14,8 @@ public static partial class Brain
 {
     /// <summary>How near the body a band must be to send someone over, m; how long they crouch over it and how long they stand looking round after, s; how long the walk may take.</summary>
     const float RummageNear = 45f, RummageCrouch = 5.5f, RummageLook = 3f, RummageWalk = 40f;
+    /// <summary>How close to the bag they get down over it, m (its hands in it).</summary>
+    const float RummageAt = 0.7f;
     /// <summary>How long a gun has to be on them before they offer, s; the offer's length (toss, a point at it, a point at the way out); how often anyone offers at most (once a day).</summary>
     const float OfferAfter = 0.7f, OfferSeconds = 3.4f, OfferEvery = 1200f;
 
@@ -97,7 +99,7 @@ public static partial class Brain
     {
         if (c.RummageFor <= 0f) return false;
         float d = WildSim.Flat(c.Rummage - c.Position).Length();
-        if (c.RummageFor >= RummageCrouch + RummageLook && d > 0.9f)
+        if (c.RummageFor >= RummageCrouch + RummageLook && d > RummageAt)
         {
             // On the way: a walk, eyes on it.
             if (c.State != CState.Follow) c.SetState(CState.Follow);
