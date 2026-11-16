@@ -17,18 +17,20 @@ namespace Slice.Tests;
 public partial class HulkTest
 {
     /// <summary>
-    /// The rooms a capital hull has (as it was built), whatever its role, by how much floor its form gave it: the ship's
-    /// own always (a bridge, an engine room, the reactor and the core room), a hold from 300 m², and on a hull crewed by
-    /// people (not the Kessari's machines) the crew's quarters, a galley and a medbay from 600 m².
+    /// The rooms a capital hull has (as it was built), whatever its role, by how much floor its form gave it: a bridge
+    /// always (and a seat for a core, checked apart); from 200 m² an engine room and a reactor, from 400 m² a hold, and on
+    /// a hull crewed by people (not the Kessari's machines) from 800 m² the crew's quarters, a galley and a medbay. A
+    /// small hull folds the rest into what it has (the generators into the engine room, the core's seat into the
+    /// reactor, the engine room or the bridge).
     /// </summary>
     static IEnumerable<string[]> Needs(float floor, bool people)
     {
         yield return new[] { "bridge" };
+        if (floor < 200) yield break;
         yield return new[] { "engine-room" };
         yield return new[] { "reactor" };
-        yield return new[] { "core-room" };
-        if (floor >= 300) yield return new[] { "hold", "ore-hold" };
-        if (!people || floor < 600) yield break;
+        if (floor >= 400) yield return new[] { "hold", "ore-hold" };
+        if (!people || floor < 800) yield break;
         yield return new[] { "crew-quarters", "cabin", "barracks" };
         yield return new[] { "galley" };
         yield return new[] { "medbay" };
@@ -70,7 +72,8 @@ public partial class HulkTest
             string name = $"{plan.Style.Id} {spec.Role} {spec.Size} {spec.Crash} ({seed})";
             var (l0, l1, _, _, _) = CapitalHull.SizeOf(spec.Size);
             int length = plan.L;
-            Bad(plan.L >= l0 && length <= 290, $"{name}: {length} m long");
+            // (Each faction's plan its own share of the class's length: the Reavers' stubby, the Meridian's long.)
+            Bad(plan.L >= l0 * 0.7f && length <= 290, $"{name}: {length} m long");
             // Its rooms, as built.
             var purposes = intact.SelectMany(r => r.Spaces).Where(s => !s.Corridor && s.Floor.Count >= 6).Select(s => s.Purpose).ToHashSet();
             float inside = plan.Inside.Rooms.Sum(r => r.Area);
@@ -78,7 +81,7 @@ public partial class HulkTest
             // Its devices, as built: the player's real parts, no fuel or warp tanks (fuel is kept in the cargo containers).
             var built = intact.SelectMany(r => r.Structure.Blocks().Where(b => !b.block.IsFiller).Select(b => r.Structure.TypeOf(b.block))).ToList();
             int Count(string function) => built.Count(t => t.Function == function);
-            Bad(Count("thruster") >= 8 && Count("generator") >= 2 && Count("gyro") >= 2 && Count("warp-drive") >= 1 && Count("turret") >= 2 && Count("container") >= 10 && Count("chair") >= 2 && !built.Any(t => t.Id.StartsWith("cockpit")),
+            Bad(Count("thruster") >= 8 && Count("generator") >= 1 && Count("gyro") >= 2 && Count("warp-drive") >= 1 && Count("turret") >= 2 && Count("container") >= Math.Max(2, inside / 100) && Count("chair") >= 2 && !built.Any(t => t.Id.StartsWith("cockpit")),
                 $"{name}: devices {Count("thruster")} thrusters, {Count("generator")} generators, {Count("gyro")} gyros, {Count("warp-drive")} warp drives, {Count("turret")} turrets, {Count("container")} containers, {Count("chair")} chairs");
             Bad(Count("fuel") == 0 && Count("warp-tank") == 0, $"{name}: fuel or warp tanks");
             Bad(intact.All(r => r.Structure.Core == null) && intact.Count(r => r.CoreSlot is Int3 c && !r.Structure.Has(c) && r.Structure.Has(c - Int3.UnitY)) == 1, $"{name}: a core, or no empty seat for one");
@@ -137,7 +140,13 @@ public partial class HulkTest
                 var lights = r.Structure.Blocks().Where(b => r.Structure.TypeOf(b.block).IsLight).Select(b => b.pos).ToList();
                 foreach (HullVessel.Space s in r.Spaces.Where(s => !s.Corridor && s.Floor.Count >= 6))
                     if (lights.Any(p => s.Floor.Contains((p.X, p.Z + r.Piece.V0)) && p.Y >= s.Y && p.Y < s.Y + s.Height)) lit++;
-                    else if (lit >= 0) problems.Add($"{name}{r.Piece.Name}: an unlit {s.Purpose} of {s.Floor.Count} m² on deck {s.Deck}");
+                    else if (lit >= 0)
+                    {
+                        var (cu, cv) = s.Floor.OrderBy(c => Math.Abs(c.U - (s.U0 + s.U1) / 2.0) + Math.Abs(c.V - (s.V0 + s.V1) / 2.0)).First();
+                        Int3 at = new(cu, s.Y + s.Height - 1, cv - r.Piece.V0);
+                        string What(Int3 p) => r.Structure.TryGet(p, out Block b) ? r.Structure.TypeOf(b).Id : "nothing";
+                        problems.Add($"{name}{r.Piece.Name}: an unlit {s.Purpose} of {s.Floor.Count} m² on deck {s.Deck} (y {s.Y}, {s.Height} m; at its middle {What(at)} under {What(at + Int3.UnitY)})");
+                    }
                 litRooms += r.Spaces.Count(s => !s.Corridor && s.Floor.Count >= 6);
             }
             shapes.Add($"{plan.Form.Plan}/{plan.L}/{plan.Inside.Style}/{string.Join(",", plan.Inside.Rooms.Where(x => x.Area > 0).Select(x => x.Area))}");

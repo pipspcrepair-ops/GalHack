@@ -112,7 +112,8 @@ public sealed partial class HullVessel
         int rot = Turn(push.Axis() == 1 ? Dir.PosZ : Dir.PosY, push);
         Int3 size = Footprint.WorldSize(t, rot), e = push.Opposite().Vec();
         int axis = push.Axis(), depth = axis == 0 ? size.X : axis == 1 ? size.Y : size.Z;
-        bool Air(Int3 q) => !S.Has(q) && Mask(q.X, q.Y, q.Z + Pc.V0) == 0;
+        // (Outside: nothing built there, and no more than the form's skin passing through it.)
+        bool Air(Int3 q) => !S.Has(q) && Mask(q.X, q.Y, q.Z + Pc.V0) != 255;
         // What a cell holds that a thruster may take: plating, or the form's own void, or the floor of a hall.
         Space Room(Int3 q)
         {
@@ -129,7 +130,6 @@ public sealed partial class HullVessel
         var faces = S.Blocks().Where(b => !b.block.IsFiller && S.TypeOf(b.block) == Plating && Air(b.pos + e)).Select(b => b.pos).OrderBy(p => p.Z).ThenBy(p => Math.Abs(p.X)).ToList();
         var used = new HashSet<Int3>();
         int placed = 0;
-        var why = new int[6];
         foreach (Int3 f in faces)
         {
             if (placed >= most) break;
@@ -143,10 +143,8 @@ public sealed partial class HullVessel
                     {
                         Int3 q = corner + new Int3(a, b, c);
                         int k = Int3.Dot(x - q, e);
-                        int bad = !InPiece(q.Z + Pc.V0) ? 0 : used.Contains(q) ? 1 : !(outside ? Air(q) : Takes(q)) ? 2 : !(k != 0 || Air(q + e)) ? 3
-                                : !(!outside || k != depth - 1 || S.TryGet(q - e, out Block back) && S.TypeOf(back) == Plating) ? 4 : -1;
-                        ok = bad < 0;
-                        if (!ok) why[bad]++;
+                        ok = InPiece(q.Z + Pc.V0) && !used.Contains(q) && (outside ? Air(q) : Takes(q)) && (k != 0 || Air(q + e))
+                             && (!outside || k != depth - 1 || S.TryGet(q - e, out Block back) && S.TypeOf(back) == Plating);
                         cells.Add(q);
                     }
             if (!ok) continue;
@@ -158,7 +156,6 @@ public sealed partial class HullVessel
             D.Thruster(t.Id, corner, push);
             placed++;
         }
-        if (placed < most) Out.Thrust += $"[{push} {t.Id} {(outside ? "out" : "in")}: {faces.Count} faces, {placed} of {most}; piece {why[0]} used {why[1]} cell {why[2]} exhaust {why[3]} back {why[4]}] ";
         return placed;
     }
 
@@ -326,9 +323,23 @@ public sealed partial class HullVessel
     /// <summary>A room's cells a part may stand in: free, its own, not taken.</summary>
     Func<int, int, int, bool> Free(Space s) => (x, y, vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && s.Floor.Contains((x, vv)) && !s.Taken.Contains((x, vv));
 
-    /// <summary>Gyros wherever this piece has none yet (its engine room is in another): two by the core room's, the reactor's or any room's walls.</summary>
+    /// <summary>
+    /// Gyros wherever this piece has none yet (its engine room is in another): two by the core room's, the reactor's or any
+    /// room's walls; and the piece with the seat for a core its warp drive, if its engine room had no room for one.
+    /// </summary>
     void Gyros()
     {
+        if (_vault >= 0 && !S.Blocks().Any(b => S.TypeOf(b.block).Function == "warp-drive") && Cat.TryGetType("warp-drive", out BlockType warp))
+        {
+            bool placed = false;
+            foreach (Space s in Live.Where(s => !s.Corridor).OrderBy(s => s.Purpose switch { "engine-room" => 0, "reactor" => 1, "core-room" => 2, _ => 3 }))
+                foreach (var (u, v) in s.Floor)
+                    if (!placed && !s.Doors.Any(d => Math.Abs(d.Inside.U - u) + Math.Abs(d.Inside.V - v) < 2) && Fits(warp, At(u, s.Y, v), 0, Free(s)))
+                    {
+                        Device(warp, u, s.Y, v, 0, s, Paint["machine"]);
+                        placed = true;
+                    }
+        }
         if (S.Blocks().Any(b => S.TypeOf(b.block).Function == "gyro") || Best("gyro", new Int3(2, 2, 2), 0, t => t.Torque) is not { } gyro) return;
         int n = 0;
         foreach (Space s in Live.Where(s => !s.Corridor).OrderBy(s => s.Purpose switch { "core-room" => 0, "reactor" => 1, _ => 2 }))
@@ -556,12 +567,13 @@ public sealed partial class HullVessel
             // A room whose ceiling takes none (open over a flight, a machine under every cell of it): a lamp high on a wall.
             if (placed == 0)
                 foreach (var (u, v) in s.Floor.Where(c => !Has(c.U, top, c.V)))
-                    if (Four.FirstOrDefault(o => Has(u + o.U, top, v + o.V), (0, 0)) is var (du, dv) && (du, dv) != (0, 0))
-                    {
-                        Int3 at = D.Mount("light", At(u, top, v), DirOf(du, dv));
-                        S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));
-                        break;
-                    }
+                {
+                    var wall = Four.FirstOrDefault(o => Has(u + o.U, top, v + o.V));
+                    if (wall == default) continue;
+                    Int3 at = D.Mount("light", At(u, top, v), DirOf(wall.U, wall.V));
+                    S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));
+                    break;
+                }
         }
     }
 }

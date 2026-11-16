@@ -17,14 +17,14 @@ public partial class HulkTest
 
     /// <summary>
     /// Silhouette first (DESIGN, "Ships and structures by faction"; docs/ship-forms.md gate 3): every faction's hull is told
-    /// from every other's by its outline alone. Hulls of each style on fresh seeds (any role and size), built with the
-    /// livery off, each projected side on, from above and end on; each outline reduced to a handful of measures
-    /// (proportions, how full and how ragged it is, how lopsided, how regularly ribbed, how sharp its bow, how many
-    /// drives, what stands out past its body); then each hull is judged with nothing of it in the judging: the measures'
-    /// scales, their weights (how well each parts the factions against how much it wanders within one) and the factions'
-    /// averages all worked out without it, and it must be nearest its own faction (the nearer of that faction's average and its
-    /// nearest hull: a faction of several body plans is several clusters). All 30 of 30, run after run.
-    /// --dir writes the outlines.
+    /// from every other's by its outline alone. Thirty hulls, five of each faction, on fresh seeds (any role and size),
+    /// built with the livery off and projected side on, from above and end on; each outline reduced to its measures
+    /// (proportions; how full, ragged and holed each view; how lopsided, how symmetric end on and about its axis; how
+    /// steady its sides, how regularly ribbed, how sharp its bow, its ends against its middle; its drives, what stands
+    /// past its body, its waists, crown and spikes). Each is judged by what knows nothing of it: a reference of 120 more
+    /// forms of each faction on their own fresh seeds, which alone sets the measures' scales and teaches a model (softmax
+    /// regression) what each faction's outlines are; every one of the thirty must come out its own faction's. All 30 of
+    /// 30, run after run. --dir writes the thirty's outlines.
     /// </summary>
     IEnumerable<int> Styles()
     {
@@ -32,56 +32,146 @@ public partial class HulkTest
         PoiLibrary lib = WorldChoice.Library;
         Catalogue cat = Cat;
         SiteDef site = lib.Sites.Values.First(s => s.Parts.Count > 0 && s.Parts[0].Arg("what") == "capital");
+        Kit kit = lib.Kits[site.Style];
+        TechLevel tech = WorldProfile.Parse(site.Parts[0].Arg("tech", "mid"));
         string[] roles = { "freighter", "warship", "liner", "miner", "carrier" }, sizes = { "medium", "large", "huge" };
+        CapitalHull.Spec Roll(string faction) => new(roles[Random.Shared.Next(roles.Length)], sizes[Random.Shared.Next(sizes.Length)], "long", faction);
+        // The reference, on workers: forms only, their outlines the cells their shells take.
+        const int teach = 120;
+        var reference = System.Threading.Tasks.Task.Run(() =>
+        {
+            var jobs = Styled.SelectMany(f => Enumerable.Range(0, teach).Select(_ => (Faction: f, Spec: Roll(f), Seed: (ulong)Random.Shared.NextInt64()))).ToList();
+            var rows = new (string Faction, float[] Measure)[jobs.Count];
+            System.Threading.Tasks.Parallel.For(0, jobs.Count, n =>
+            {
+                CapitalHull.HullPlan plan = CapitalHull.Plan(kit, tech, jobs[n].Spec, jobs[n].Seed);
+                var (side, top, front) = Outlines(plan.Form);
+                rows[n] = (jobs[n].Faction, Measure(side, top, front, plan));
+            });
+            return rows.ToList();
+        });
+        // The thirty under test, built of blocks as the game builds them.
         const int each = 5;
-        var samples = new List<(string Faction, float[] Measure, bool[,] Side, bool[,] Top)>();
+        var samples = new List<(string Faction, float[] Measure, bool[,] Side, bool[,] Top, string Plan)>();
         foreach (string faction in Styled)
             for (int i = 0; i < each; i++)
             {
                 ulong seed = (ulong)Random.Shared.NextInt64();
-                var spec = new CapitalHull.Spec(roles[Random.Shared.Next(roles.Length)], sizes[Random.Shared.Next(sizes.Length)], "long", faction);
-                CapitalHull.HullPlan plan = CapitalHull.Plan(lib.Kits[site.Style], WorldProfile.Parse(site.Parts[0].Arg("tech", "mid")), spec, seed);
+                CapitalHull.HullPlan plan = CapitalHull.Plan(kit, tech, Roll(faction), seed);
                 Structure s = HullVessel.Build(plan, plan.Pieces[0], cat, PoiState.Abandoned, seed, intact: true, plain: true).Structure;
                 var (side, top, front) = Outlines(s);
-                samples.Add((faction, Measure(side, top, front, plan), side, top));
+                samples.Add((faction, Measure(side, top, front, plan), side, top, plan.Form.Plan));
                 yield return 0;
             }
-        // Each hull judged by the rest alone: their spread puts every measure on one scale, their factions' spreads weigh
-        // the measures (a measure that only follows role and size counts for little), their factions' averages are the targets.
-        int k = samples[0].Measure.Length, right = 0;
+        while (!reference.IsCompleted) yield return 0;
+        var model = new Softmax(reference.Result, Styled);
+        int right = 0;
         var wrong = new List<string>();
-        for (int i = 0; i < samples.Count; i++)
+        foreach (var x in samples)
         {
-            var rest = samples.Where((_, j) => j != i).ToList();
-            float[] mean = Enumerable.Range(0, k).Select(j => rest.Average(x => x.Measure[j])).ToArray();
-            float[] sd = Enumerable.Range(0, k).Select(j => MathF.Sqrt(rest.Average(x => (x.Measure[j] - mean[j]) * (x.Measure[j] - mean[j]))) + 1e-4f).ToArray();
-            float[] Z(float[] m) => m.Select((x, j) => (x - mean[j]) / sd[j]).ToArray();
-            var zs = rest.Select(x => (x.Faction, Z: Z(x.Measure))).ToList();
-            float[] weight = Enumerable.Range(0, k).Select(j =>
-            {
-                var byF = Styled.Select(f => zs.Where(z => z.Faction == f).Select(z => z.Z[j]).ToList()).ToList();
-                float between = byF.Select(g => g.Average()).Select(m => m * m).Average();
-                float within = byF.Average(g => g.Select(x => (x - g.Average()) * (x - g.Average())).Average()) + 0.05f;
-                return between / within;
-            }).ToArray();
-            float[] me = Z(samples[i].Measure);
-            string best = null;
-            float bestD = float.MaxValue;
-            // Each faction by the nearer of its average and its nearest hull (a faction of several body plans is several clusters).
-            float Dist(Func<int, float> other) => Enumerable.Range(0, k).Sum(j => weight[j] * MathF.Pow(me[j] - other(j), 2));
-            foreach (string f in Styled)
-            {
-                var theirs = zs.Where(z => z.Faction == f).Select(z => z.Z).ToList();
-                float d = MathF.Min(Dist(j => theirs.Average(o => o[j])), theirs.Min(o => Dist(j => o[j])));
-                if (d < bestD) (bestD, best) = (d, f);
-            }
-            if (best == samples[i].Faction) right++;
-            else wrong.Add($"{samples[i].Faction} read as {best}");
+            string best = model.Judge(x.Measure);
+            if (best == x.Faction) right++;
+            else wrong.Add($"a {x.Faction} {x.Plan} read as {best}");
         }
-        foreach (string f in Styled)
-            GD.Print($"      {f}: {string.Join(" ", Enumerable.Range(0, k).Select(j => samples.Where(x => x.Faction == f).Average(x => x.Measure[j]).ToString("F2")))}");
+        GD.Print($"      the reference: {reference.Result.Count} forms, {model.Fits:P0} of them read as their own faction by the model they taught");
         if (_args.TryGetValue("dir", out string dir)) SaveOutlines(samples.Select(x => (x.Faction, x.Side, x.Top)).ToList(), $"{dir}/silhouettes.png");
-        Check(right == samples.Count, $"each faction told by its outline alone, livery off, each hull judged without it: {right} of {samples.Count} hulls nearest their own faction's outline{(wrong.Count > 0 ? " (" + string.Join(", ", wrong) + ")" : "")}");
+        Check(right == samples.Count, $"each faction told by its outline alone, livery off, each hull judged by a reference that never saw it: {right} of {samples.Count} hulls read as their own faction{(wrong.Count > 0 ? " (" + string.Join(", ", wrong) + ")" : "")}");
+    }
+
+    /// <summary>
+    /// Softmax regression over the measures (sklearn's multinomial logistic regression with C = 1): the reference's
+    /// spread sets each measure's scale, then batch gradient descent fits a weight per faction and measure.
+    /// </summary>
+    sealed class Softmax
+    {
+        readonly string[] _classes;
+        readonly float[] _mean, _sd;
+        readonly double[,] _w;
+        /// <summary>The share of the reference the model reads right (how well it learnt them).</summary>
+        public readonly float Fits;
+
+        public Softmax(List<(string Faction, float[] Measure)> rows, string[] classes)
+        {
+            _classes = classes;
+            int k = rows[0].Measure.Length, n = rows.Count, c = classes.Length;
+            _mean = Enumerable.Range(0, k).Select(j => rows.Average(r => r.Measure[j])).ToArray();
+            _sd = Enumerable.Range(0, k).Select(j => MathF.Sqrt(rows.Average(r => (r.Measure[j] - _mean[j]) * (r.Measure[j] - _mean[j]))) + 1e-6f).ToArray();
+            var x = rows.Select(r => Scale(r.Measure)).ToArray();
+            var y = rows.Select(r => Array.IndexOf(classes, r.Faction)).ToArray();
+            _w = new double[c, k + 1];
+            var grad = new double[c, k + 1];
+            var p = new double[c];
+            for (int step = 0; step < 4000; step++)
+            {
+                Array.Clear(grad);
+                for (int i = 0; i < n; i++)
+                {
+                    Probabilities(x[i], p);
+                    for (int a = 0; a < c; a++)
+                    {
+                        double e = p[a] - (y[i] == a ? 1 : 0);
+                        for (int j = 0; j < k; j++) grad[a, j] += e * x[i][j];
+                        grad[a, k] += e;
+                    }
+                }
+                // (The L2 term on the weights, not the biases: 1/C, C = 1.)
+                for (int a = 0; a < c; a++)
+                    for (int j = 0; j <= k; j++) _w[a, j] -= 0.5 / n * (grad[a, j] + (j < k ? _w[a, j] : 0));
+            }
+            Fits = rows.Count(r => Judge(r.Measure) == r.Faction) / (float)n;
+        }
+
+        double[] Scale(float[] m) => m.Select((v, j) => (double)((v - _mean[j]) / _sd[j])).ToArray();
+
+        void Probabilities(double[] x, double[] p)
+        {
+            int c = _classes.Length, k = x.Length;
+            double top = double.MinValue;
+            for (int a = 0; a < c; a++)
+            {
+                double z = _w[a, k];
+                for (int j = 0; j < k; j++) z += _w[a, j] * x[j];
+                p[a] = z;
+                top = Math.Max(top, z);
+            }
+            double sum = 0;
+            for (int a = 0; a < c; a++) sum += p[a] = Math.Exp(p[a] - top);
+            for (int a = 0; a < c; a++) p[a] /= sum;
+        }
+
+        public string Judge(float[] m)
+        {
+            var p = new double[_classes.Length];
+            Probabilities(Scale(m), p);
+            return _classes[Array.IndexOf(p, p.Max())];
+        }
+    }
+
+    /// <summary>A form's outlines: every cell its shell takes (any corner inside it), side on, from above and end on.</summary>
+    static (bool[,] Side, bool[,] Top, bool[,] Front) Outlines(ShipForm form)
+    {
+        byte[] mask = ShipDecks.Masks(form, out _, out int nu, out int ny, out int nv);
+        var side = new bool[nv, ny];
+        var top = new bool[nv, nu];
+        var front = new bool[nu, ny];
+        for (int v = 0; v < nv; v++)
+            for (int y = 0; y < ny; y++)
+                for (int u = 0; u < nu; u++)
+                    if (mask[u + nu * (y + ny * v)] != 0) side[v, y] = top[v, u] = front[u, y] = true;
+        return (Trim(side), Trim(top), Trim(front));
+    }
+
+    /// <summary>An outline cut to the box of what it holds (as a structure's own bounds are).</summary>
+    static bool[,] Trim(bool[,] g)
+    {
+        int w = g.GetLength(0), h = g.GetLength(1), x0 = w, x1 = -1, y0 = h, y1 = -1;
+        for (int i = 0; i < w; i++)
+            for (int j = 0; j < h; j++)
+                if (g[i, j]) (x0, x1, y0, y1) = (Math.Min(x0, i), Math.Max(x1, i), Math.Min(y0, j), Math.Max(y1, j));
+        var t = new bool[x1 - x0 + 1, y1 - y0 + 1];
+        for (int i = x0; i <= x1; i++)
+            for (int j = y0; j <= y1; j++) t[i - x0, j - y0] = g[i, j];
+        return t;
     }
 
     readonly Dictionary<string, string> _args = OS.GetCmdlineUserArgs().Where(a => a.StartsWith("--") && a.Contains('=')).ToDictionary(a => a[2..a.IndexOf('=')], a => a[(a.IndexOf('=') + 1)..]);
@@ -103,7 +193,7 @@ public partial class HulkTest
         return (side, top, front);
     }
 
-    /// <summary>An outline's measures: proportions; how full and how ragged each view; how lopsided from above; how regularly its beam repeats down its length; its bow's sharpness; how many drives; the crown's and the spine's height.</summary>
+    /// <summary>An outline's measures: proportions; how full, how ragged, how holed and how straight-edged each view; how lopsided from above, how symmetric end on (mirrored and turned about its axis), how much stands past its body; how steady its sides run, how regularly its beam repeats down its length; its bow's sharpness, its ends against its middle; how many drives and how unlike in size; what stands out past its body; its bumps and waists, how its crown rises and falls; its spikes.</summary>
     static float[] Measure(bool[,] side, bool[,] top, bool[,] front, CapitalHull.HullPlan plan)
     {
         int nv = side.GetLength(0), ny = side.GetLength(1), nu = top.GetLength(1);
@@ -183,16 +273,62 @@ public partial class HulkTest
         float radius = MathF.Sqrt(cells.Count / MathF.PI), past = cells.Count(c => (c.X - cx) * (c.X - cx) + (c.Y - cy) * (c.Y - cy) > radius * radius * 1.4f) / (float)cells.Count;
         // Side on: how its crown rises and falls down its length; from above, its ends against its middle (a hammer or a dumbbell).
         float topMean = (float)tops.Average(), topSd = MathF.Sqrt((float)tops.Average(t => (t - topMean) * (t - topMean))) / ny;
+        // Holes: empty cells a view's outline closes round (a truss's bays, a lattice), against its area; how much of its
+        // length its beam and its height hold the same from one metre to the next (a slab's straight sides, not a curve's).
+        static float Holes(bool[,] g)
+        {
+            int w = g.GetLength(0), h = g.GetLength(1), holes = 0, area = 0;
+            var lo = new int[w];
+            var hi = new int[w];
+            for (int i = 0; i < w; i++)
+            {
+                lo[i] = -1;
+                for (int j = 0; j < h; j++)
+                    if (g[i, j]) { if (lo[i] < 0) lo[i] = j; hi[i] = j; area++; }
+            }
+            for (int j = 0; j < h; j++)
+            {
+                int first = -1, last = -1;
+                for (int i = 0; i < w; i++)
+                    if (g[i, j]) { if (first < 0) first = i; last = i; }
+                for (int i = first + 1; i < last; i++)
+                    if (!g[i, j] && lo[i] >= 0 && j > lo[i] && j < hi[i]) holes++;
+            }
+            return holes / (float)Math.Max(1, area);
+        }
+        // How much of a view's edge runs straight (a slab's flat faces, not a can's or a shell's curve or a truss's bars).
+        static float Straight(bool[,] g)
+        {
+            int w = g.GetLength(0), h = g.GetLength(1), edge = 0, straight = 0;
+            bool F(int i, int j) => i >= 0 && j >= 0 && i < w && j < h && g[i, j];
+            for (int i = 0; i < w; i++)
+                for (int j = 0; j < h; j++)
+                {
+                    if (!g[i, j]) continue;
+                    foreach (var (di, dj) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                    {
+                        if (F(i + di, j + dj)) continue;
+                        edge++;
+                        // Straight: the cells either side along the edge are filled with the same side open.
+                        int ai = dj, aj = di;
+                        if (F(i + ai, j + aj) && F(i - ai, j - aj) && !F(i + ai + di, j + aj + dj) && !F(i - ai + di, j - aj + dj)) straight++;
+                    }
+                }
+            return straight / (float)Math.Max(1, edge);
+        }
+        // How unlike its drives' bells are in size (a salvaged cluster, against a bank of one make).
+        static float Spread(List<float> r) => r.Count < 2 ? 0f : MathF.Sqrt(r.Average(x => (x - r.Average()) * (x - r.Average()))) / r.Average();
+        float steady = Enumerable.Range(1, nv - 1).Count(v => beam[v] == beam[v - 1] && height[v] == height[v - 1]) / (float)(nv - 1);
         int e = Math.Max(1, nv / 6);
         float ends = (beam.Take(e).Average() + beam.Skip(nv - e).Average()) / 2f, middle = beam.Skip(nv / 4).Take(nv / 2).Average();
         return new[]
         {
-            MathF.Log(nv / (float)nu), MathF.Log(nv / (float)ny),
+            MathF.Log(nv / (float)nu), MathF.Log(nv / (float)ny), MathF.Log(nu / (float)ny), Holes(side), Holes(top), steady, Straight(top), Straight(side), Straight(front),
             Fill(top), Ragged(top), Fill(side), Ragged(side), cells.Count / (float)(fu * fy),
             mismatch / (float)Math.Max(1, area), mirror, Turned(MathF.PI / 2), MathF.Max(Turned(MathF.PI / 3), Turned(MathF.PI / 4)), past,
             rep,
             beam.Take(Math.Max(1, nv / 12)).Average() / maxBeam, ends / MathF.Max(1f, middle),
-            plan.Form.Drives.Count / 8f,
+            plan.Form.Drives.Count / 8f, Spread(plan.Form.Drives.Select(x => x.Radius).ToList()), Ragged(front),
             beyond / (float)Math.Max(1, area), over / (float)Math.Max(1, sideArea),
             bumps * 10f / nv, waist, topSd,
             thin / (float)Math.Max(1, stand),

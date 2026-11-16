@@ -123,8 +123,8 @@ public sealed class ShipDecks
         _style = 1 + R.PickWeighted(_weights);
         _regular = f is Faction.Meridian or Faction.Kessari;
         _cw = f == Faction.Meridian && R.Chance(0.35f) ? 4 : 3;
-        _xw = R.Chance(0.5f) ? 2 : 3;
-        _every = R.Between(8, 15);
+        _xw = R.Chance(0.3f) ? 2 : 3;
+        _every = R.Between(5, 9);
         _deep = R.Between(9, 13);
         (_g0, _g1) = f switch
         {
@@ -171,26 +171,37 @@ public sealed class ShipDecks
     /// <summary>Inside the shell: the cell and every one round it wholly the form's.</summary>
     public bool Interior(int u, int y, int v) => Index(u, y, v) is int i && i >= 0 && _inner[i];
 
-    void Corners()
+    /// <summary>
+    /// Every cell's corner mask over a form's box (u from -ExtentU - 1, y and v from 0; index u - u0 + nu * (y + ny * v)):
+    /// which of its corners lie inside the form. Also what its outline is drawn from (any corner inside: the shell's cells).
+    /// </summary>
+    public static byte[] Masks(ShipForm form, out int u0, out int nu, out int ny, out int nv)
     {
-        int cu = NU + 1, cy = NY + 1;
-        var corner = new bool[cu * cy * (NV + 1)];
-        for (int k = 0; k <= NV; k++)
+        (u0, nu, ny, nv) = (-form.ExtentU - 1, 2 * form.ExtentU + 3, form.Height + 1, form.Length);
+        int cu = nu + 1, cy = ny + 1, x0 = u0;
+        var corner = new bool[cu * cy * (nv + 1)];
+        for (int k = 0; k <= nv; k++)
             for (int j = 0; j < cy; j++)
                 for (int i = 0; i < cu; i++)
-                    corner[i + cu * (j + cy * k)] = F.Solid(new NV3(U0 + i - 0.5f, j - 0.5f, k - 0.5f));
-        var full = new bool[_mask.Length];
-        for (int k = 0; k < NV; k++)
-            for (int j = 0; j < NY; j++)
-                for (int i = 0; i < NU; i++)
+                    corner[i + cu * (j + cy * k)] = form.Solid(new NV3(x0 + i - 0.5f, j - 0.5f, k - 0.5f));
+        var mask = new byte[nu * ny * nv];
+        for (int k = 0; k < nv; k++)
+            for (int j = 0; j < ny; j++)
+                for (int i = 0; i < nu; i++)
                 {
                     int m = 0;
                     for (int c = 0; c < 8; c++)
                         if (corner[i + (c & 1) + cu * (j + (c >> 1 & 1) + cy * (k + (c >> 2 & 1)))]) m |= 1 << c;
-                    int at = i + NU * (j + NY * k);
-                    _mask[at] = (byte)m;
-                    full[at] = m == 255;
+                    mask[i + nu * (j + ny * k)] = (byte)m;
                 }
+        return mask;
+    }
+
+    void Corners()
+    {
+        Array.Copy(Masks(F, out _, out _, out _, out _), _mask, _mask.Length);
+        var full = new bool[_mask.Length];
+        for (int i = 0; i < full.Length; i++) full[i] = _mask[i] == 255;
         // Wholly inside with every neighbour: the full cells eroded by one along each axis in turn.
         bool[] Erode(bool[] a, int step, Func<int, bool> edge)
         {
@@ -397,7 +408,7 @@ public sealed class ShipDecks
         }
         int style = R.Chance(_reroll) ? 1 + R.PickWeighted(_weights) : _style;
         if (W <= 10) style = Single;
-        else if (style == Twin && W < 17) style = Spine;
+        else if (style == Twin && W < 15) style = Spine;
         float f = style == Offset ? R.Float(0.2f, 0.34f) : style == Twin ? R.Float(0.22f, 0.3f) : 0.5f;
         bool flip = R.Chance(0.5f);
         int len = a1 - a0 + 1;
@@ -428,7 +439,9 @@ public sealed class ShipDecks
         // Cross passages through the whole width (and a twin's joined at its ends into a ring).
         var xs = new List<int>();
         if (style == Twin) { xs.Add(aS); xs.Add(aE - _xw + 1); }
-        for (int a = aS + R.Between(_every / 2, _every); a + _xw - 1 <= aE - 4; a += _regular ? _every : R.Between(_every - 4, _every + 4)) xs.Add(a);
+        // (A narrow area's single row of rooms is cut by them half as often.)
+        int every = style == Single ? _every * 2 : _every;
+        for (int a = aS + R.Between(every / 2, every); a + _xw - 1 <= aE - 4; a += _regular ? every : R.Between(every - 3, every + 3)) xs.Add(a);
         foreach (int a in xs)
             for (int r = a; r < a + _xw; r++)
                 if (rows.TryGetValue(r, out var runs))
