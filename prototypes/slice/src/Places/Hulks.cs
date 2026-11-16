@@ -84,7 +84,7 @@ public partial class Hulks : Node
             PoiState state = site.State;
             ulong seed = site.Layout.Seed;
             Deco(); // (its dresser made here, on the main thread)
-            _building[site] = System.Threading.Tasks.Task.Run(() => HullSpace.Of(plan, state, seed).Pieces);
+            _building[site] = System.Threading.Tasks.Task.Run(() => GalHack.Testing.AllocMeter.Measure("hulks", () => HullSpace.Of(plan, state, seed).Pieces));
         }
     }
 

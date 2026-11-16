@@ -185,13 +185,13 @@ public partial class SkyLight : Node
             if (Stands(v)) snap.Structures.Add((StructureSky.Stops(v.Structure), v.Node.GlobalTransform, v.Structure.Grid.CellSize));
         SkyField spare = _spare;
         _spare = null;
-        _job = Task.Run(() =>
+        _job = Task.Run(() => GalHack.Testing.AllocMeter.Measure("sky light", () =>
         {
             long t = System.Diagnostics.Stopwatch.GetTimestamp();
             Fill(spare, snap);
             spare.Flood();
             return (spare, (System.Diagnostics.Stopwatch.GetTimestamp() - t) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
-        });
+        }));
     }
 
     static void Fill(SkyField f, Snapshot s)
@@ -354,7 +354,7 @@ public partial class SkyLight : Node
         PlanetSurface.World.PlanetWorld w = Zone.Planet;
         _groundX = eye.X;
         _groundZ = eye.Z;
-        _groundJob = Task.Run(() =>
+        _groundJob = Task.Run(() => GalHack.Testing.AllocMeter.Measure("sky light ground", () =>
         {
             var heights = new float[GroundTexels * GroundTexels];
             for (int z = 0; z < GroundTexels; z++)
@@ -370,7 +370,7 @@ public partial class SkyLight : Node
                 heights[z * GroundTexels + x] = low;
             }
             return (heights, x0, z0);
-        });
+        }));
     }
 
     void ShowGround(float[] heights, float x0, float z0)

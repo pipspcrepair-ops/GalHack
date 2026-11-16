@@ -99,17 +99,16 @@ public readonly record struct DecoRect(Vector2 Centre, Vector2 U, Vector2 V)
     }
 
     /// <summary>Separating-axis test for two oriented rectangles.</summary>
-    public bool Overlaps(DecoRect o)
+    public bool Overlaps(DecoRect o) => !Apart(o, U) && !Apart(o, V) && !Apart(o, o.U) && !Apart(o, o.V);
+
+    /// <summary>True if the axis separates the two (no array of axes: this runs for every pair a planner tries).</summary>
+    bool Apart(DecoRect o, Vector2 axis)
     {
-        foreach (Vector2 axis in new[] { U, V, o.U, o.V })
-        {
-            if (axis.LengthSquared() < 1e-12f) continue;
-            Vector2 n = Vector2.Normalize(axis);
-            float ca = Vector2.Dot(Centre, n), ra = MathF.Abs(Vector2.Dot(U, n)) + MathF.Abs(Vector2.Dot(V, n));
-            float cb = Vector2.Dot(o.Centre, n), rb = MathF.Abs(Vector2.Dot(o.U, n)) + MathF.Abs(Vector2.Dot(o.V, n));
-            if (MathF.Abs(ca - cb) >= ra + rb) return false;
-        }
-        return true;
+        if (axis.LengthSquared() < 1e-12f) return false;
+        Vector2 n = Vector2.Normalize(axis);
+        float ca = Vector2.Dot(Centre, n), ra = MathF.Abs(Vector2.Dot(U, n)) + MathF.Abs(Vector2.Dot(V, n));
+        float cb = Vector2.Dot(o.Centre, n), rb = MathF.Abs(Vector2.Dot(o.U, n)) + MathF.Abs(Vector2.Dot(o.V, n));
+        return MathF.Abs(ca - cb) >= ra + rb;
     }
 
     public bool Contains(Vector2 p)

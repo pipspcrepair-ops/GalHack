@@ -594,6 +594,8 @@ public sealed class Bunker
         bunker.Ruin.IsRuin = true;
         WalkableWays(zone, site, out _, bunker.Ways);
         bunker.Furnish(zone);
+        // Its fittings cast the sun's shadow only as far as the decorations' rule (it lies underground: 150 casters in every split).
+        GalHack.Deco.Engine.DecoShadows.TrackAll(bunker.Ruin.Node);
         return bunker;
     }
 

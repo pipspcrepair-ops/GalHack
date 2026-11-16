@@ -45,30 +45,65 @@ public static class DecoRules
     /// </summary>
     public static List<DecoPlacement> Unreached(DecoForge forge, DecoRoom room, IEnumerable<DecoPlacement> placements)
     {
-        var standing = Standing(forge, placements).ToList();
-        var r = new DecoRaster(room.Width, room.Depth, DecoPlanner.Cell);
+        var into = new List<DecoPlacement>();
+        Unreached(forge, room, placements as IReadOnlyList<DecoPlacement> ?? placements.ToList(), into);
+        return into;
+    }
+
+    /// <summary>True if any piece's use side is out of reach (the planner asks this of every placement it tries: nothing is made).</summary>
+    public static bool AnyUnreached(DecoForge forge, DecoRoom room, IReadOnlyList<DecoPlacement> placements) => Unreached(forge, room, placements, null);
+
+    [ThreadStatic] static List<DecoPlacement> _standing;
+    [ThreadStatic] static List<int> _starts;
+    [ThreadStatic] static bool[] _touched;
+
+    /// <summary>The unreached pieces into the list, or (with none) only whether there is one.</summary>
+    static bool Unreached(DecoForge forge, DecoRoom room, IReadOnlyList<DecoPlacement> placements, List<DecoPlacement> into)
+    {
+        var standing = _standing ??= new List<DecoPlacement>();
+        standing.Clear();
+        for (int i = 0; i < placements.Count; i++)
+            if (placements[i].Support < 0 && DecoLayout.Blocks(forge, placements[i])) standing.Add(placements[i]);
+        var r = DecoRaster.Scratch(room.Width, room.Depth, DecoPlanner.Cell);
         foreach (DecoRect b in room.Blocked) r.Add(b, 1);
-        foreach (DecoPlacement pl in standing.Where(pl => !Seat(forge.Catalogue.Piece(pl.Piece)))) r.Add(Open(forge, pl), 1);
+        foreach (DecoPlacement pl in standing)
+            if (!Seat(forge.Catalogue.Piece(pl.Piece))) r.Add(Open(forge, pl), 1);
         bool[] fit = r.Fits(Walker);
-        bool[] reach = r.Reach(room.Doors.Count > 0 ? room.Doors.SelectMany(d => r.DoorStarts(room, d, Walker)) : Enumerable.Range(0, fit.Length), Walker, fit);
-        var touched = new bool[fit.Length];
+        var starts = _starts ??= new List<int>();
+        starts.Clear();
+        if (room.Doors.Count > 0) foreach (DecoDoor d in room.Doors) r.DoorStarts(room, d, Walker, starts);
+        else for (int c = 0; c < fit.Length; c++) starts.Add(c);
+        bool[] reach = r.Reach(starts, Walker, fit);
+        if (_touched == null || _touched.Length != fit.Length) _touched = new bool[fit.Length];
+        else Array.Clear(_touched);
+        bool[] touched = _touched;
         for (int c = 0; c < reach.Length; c++)
             if (reach[c])
                 for (int dj = 0; dj < Walker; dj++)
                     for (int di = 0; di < Walker; di++) touched[(c / r.Nx + dj) * r.Nx + c % r.Nx + di] = true;
-        bool Used(DecoPlacement pl)
+        bool any = false;
+        foreach (DecoPlacement pl in standing)
         {
-            // The strip just in front of it (its front faces local -z), out past its open drawers.
-            DecoRect o = Open(forge, pl);
-            Vector2 front = -Vector2.Normalize(o.V);
-            var strip = new DecoRect(o.Centre + front * (o.V.Length() + UseDepth / 2), o.U, front * (UseDepth / 2));
-            var (lo, hi) = strip.Bounds();
-            for (int j = Math.Max(0, (int)(lo.Y / r.Cell)); j <= Math.Min(r.Nz - 1, (int)(hi.Y / r.Cell)); j++)
-                for (int i = Math.Max(0, (int)(lo.X / r.Cell)); i <= Math.Min(r.Nx - 1, (int)(hi.X / r.Cell)); i++)
-                    if (touched[j * r.Nx + i] && strip.Contains(new Vector2((i + 0.5f) * r.Cell, (j + 0.5f) * r.Cell))) return true;
-            return false;
+            DecoPiece p = forge.Catalogue.Piece(pl.Piece);
+            if (Seat(p) || Idle(p) || Used(forge, r, touched, pl)) continue;
+            any = true;
+            if (into == null) break;
+            into.Add(pl);
         }
-        return standing.Where(pl => forge.Catalogue.Piece(pl.Piece) is var p && !Seat(p) && !Idle(p) && !Used(pl)).ToList();
+        return any;
+    }
+
+    /// <summary>Someone reaches the strip just in front of it (its front faces local -z), out past its open drawers.</summary>
+    static bool Used(DecoForge forge, DecoRaster r, bool[] touched, DecoPlacement pl)
+    {
+        DecoRect o = Open(forge, pl);
+        Vector2 front = -Vector2.Normalize(o.V);
+        var strip = new DecoRect(o.Centre + front * (o.V.Length() + UseDepth / 2), o.U, front * (UseDepth / 2));
+        var (lo, hi) = strip.Bounds();
+        for (int j = Math.Max(0, (int)(lo.Y / r.Cell)); j <= Math.Min(r.Nz - 1, (int)(hi.Y / r.Cell)); j++)
+            for (int i = Math.Max(0, (int)(lo.X / r.Cell)); i <= Math.Min(r.Nx - 1, (int)(hi.X / r.Cell)); i++)
+                if (touched[j * r.Nx + i] && strip.Contains(new Vector2((i + 0.5f) * r.Cell, (j + 0.5f) * r.Cell))) return true;
+        return false;
     }
 
     /// <summary>A footprint's along-wall span and its distance from a wall (offsets as a door's: x along north and south, z along west and east).</summary>
@@ -132,8 +167,20 @@ public static class DecoRules
         && room.Windows.Where(x => top > x.Sill + 0.05f).Select(x => x.At).Concat(room.Doors).Any(o => o.Wall == w && Overlaps(s.Lo, s.Hi, o, 0f));
 
     /// <summary>The share of a room's open floor its standing furniture covers.</summary>
-    public static float Share(DecoForge forge, DecoRoom room, IEnumerable<DecoPlacement> placements) =>
-        Standing(forge, placements).Sum(pl => DecoLayout.Footprint(forge, pl) is var r ? 4 * r.U.Length() * r.V.Length() : 0) / MathF.Max(1f, room.Width * room.Depth - room.Blocked.Count);
+    public static float Share(DecoForge forge, DecoRoom room, IEnumerable<DecoPlacement> placements)
+    {
+        // Summed in a double as Enumerable.Sum does, and with no enumerator over a list (the planner asks this of every try).
+        double sum = 0;
+        if (placements is IReadOnlyList<DecoPlacement> list)
+        {
+            for (int i = 0; i < list.Count; i++)
+                if (list[i].Support < 0 && DecoLayout.Blocks(forge, list[i])) sum += Area(forge, list[i]);
+        }
+        else foreach (DecoPlacement pl in Standing(forge, placements)) sum += Area(forge, pl);
+        return (float)sum / MathF.Max(1f, room.Width * room.Depth - room.Blocked.Count);
+    }
+
+    static float Area(DecoForge forge, DecoPlacement pl) => DecoLayout.Footprint(forge, pl) is var r ? 4 * r.U.Length() * r.V.Length() : 0;
 
     /// <summary>The long wall a narrow room is lined along: the one with fewer doorways in it (null: the room is wide enough).</summary>
     public static DecoWall? Lining(DecoRoom room)
