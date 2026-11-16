@@ -215,6 +215,8 @@ public partial class CombatTest : Node
         // Each one's weapon is the item for what they carry, held as the player's own model.
         foreach (Town.Person p in armed) if (p.Kit == null) { town.Provoked(); break; }
         yield return 0;
+        // (A weapon is hung in the hand a frame after its body is made: a moment for the last body's.)
+        for (int i = 0; i < 120 && armed.Any(p => p.View != null && p.Figure.Prop != "bow" && p.Model == null); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         bool items = armed.All(p => p.Kit != null && p.Kit.Def.Item == Weapons.ItemOf(p.Figure.Prop));
         Check(items, $"each carries the item for their weapon ({string.Join(", ", armed.Take(4).Select(p => $"{p.Figure.Prop}: {p.Kit?.Def.Id}"))})");
         var drawn = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
