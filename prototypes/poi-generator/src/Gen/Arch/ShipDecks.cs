@@ -430,9 +430,11 @@ public sealed class ShipDecks
                 bool Fits(int lo) => lo >= run.Lo && lo + k - 1 <= run.Hi;
                 // (Over a hall it runs straight on, a catwalk.)
                 bool Over(int lo) => Enumerable.Range(lo, k).All(b => Upper(d, Zone(d, Cell(a, b).U, Cell(a, b).V)));
-                int at = prev is int pc && Fits(pc) && Over(pc) ? pc
-                       : prev is int p0 && Math.Abs(p0 - target) <= 1 && Fits(p0) ? p0
-                       : prev is int p1 && Fits(p1 + Math.Sign(target - p1)) ? p1 + Math.Sign(target - p1) : target;
+                // Straight on while it can (within 2 m of its mark, or over a hall), else a dogleg across to the mark: never a staircase.
+                int at = prev is int pc && Fits(pc) && (Over(pc) || Math.Abs(pc - target) <= 2) ? pc : target;
+                if (prev is int pp && pp != at)
+                    for (int b = Math.Min(pp, at); b < Math.Max(pp, at) + k; b++)
+                        if (b >= run.Lo && b <= run.Hi) C.Add(Cell(a, b));
                 for (int b = at; b < at + k; b++) C.Add(Cell(a, b));
                 prev = at;
             }
