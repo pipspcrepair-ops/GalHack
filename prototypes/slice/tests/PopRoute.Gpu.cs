@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -57,6 +58,56 @@ public partial class PopRoute
         return kinds;
     }
 
+    /// <summary>
+    /// --only=skyday: the sky's own cost (the whole picture against a plain background) at the start and in the city, at fixed
+    /// times of day (--days=0.27,0.4,0.55 by default), the sun held still.
+    /// </summary>
+    IEnumerable<int> SkyByDay(Vector3 start, Vector3 way)
+    {
+        var zone = _game.Zone;
+        Godot.Environment env = zone.Sky.Environment;
+        Rid vp = GetViewport().GetViewportRid();
+        var days = (_args.GetValueOrDefault("days") ?? "0.27,0.4,0.55").Split(',').Select(d => double.Parse(d, CultureInfo.InvariantCulture)).ToList();
+        var views = new List<(string Name, Vector3 At, float Up, float Pitch)> { ("standing", start, 1.7f, -4f) };
+        if (Biggest(_game) is var (mid, _, _)) views.Add(("in the city", mid - way * 60f, 1.7f, -2f));
+        float scale = zone.Sky.TimeScale;
+        foreach (var (view, at, up, pitch) in views)
+        {
+            Vector3 eye = Lift(at, up);
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(way, Vector3.Up).Rotated(way.Cross(Vector3.Up).Normalized(), Mathf.DegToRad(pitch)), eye);
+            int idleFor = 0;
+            for (int i = 0; i < 3600 && (i < 300 || !zone.Streamer.Settled || idleFor < 180); i++)
+            {
+                idleFor = _game.Places == null || _game.Places.Idle ? idleFor + 1 : 0;
+                _game.Survivor.PlaceOutside((eye - way * 6f + Vector3.Down * 1.6f).ToNumerics());
+                yield return 0;
+            }
+            foreach (double day in days)
+            {
+                zone.Sky.TimeScale = 0f;
+                zone.Sky.TimeOfDay = day;
+                var cost = new double[2];
+                for (int c = 0; c < 2; c++)
+                {
+                    env.BackgroundMode = c == 1 ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
+                    var gpu = new List<double>();
+                    for (int i = 0; i < 120; i++)
+                    {
+                        _game.Survivor.PlaceOutside((eye - way * 6f + Vector3.Down * 1.6f).ToNumerics());
+                        yield return 0;
+                        if (i >= 30) gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
+                    }
+                    gpu.Sort();
+                    cost[c] = gpu[gpu.Count / 2];
+                }
+                env.BackgroundMode = Godot.Environment.BGMode.Sky;
+                GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE sky {view} at {day:F2}: all gpu {cost[0]:F2} ms, the sky's own {cost[0] - cost[1]:F2} ms (sun {MathF.Asin(zone.Sky.Sun.GlobalTransform.Basis.Z.Y) * 180f / MathF.PI:F0} degrees up)"));
+            }
+            _game.FixedCamera = null;
+        }
+        zone.Sky.TimeScale = scale;
+    }
+
     IEnumerable<int> GpuCost(Vector3 start, Vector3 way)
     {
         var zone = _game.Zone;
@@ -70,7 +121,7 @@ public partial class PopRoute
             views.Add(("low over the city", mid - way * (radius + 150f), 40f, -10f));
         }
         var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-msaa" })
-            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).ToList();
+            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).Concat(new[] { "-sky glow", "-cumulus", "-clouds" }).Append("all again").ToList();
         foreach (var (view, at, up, pitch) in views)
         {
             Vector3 eye = Lift(at, up);
@@ -87,6 +138,10 @@ public partial class PopRoute
             var parts = Kinds();
             Viewport.Msaa msaa = GetViewport().Msaa3D;
             bool glow = env.GlowEnabled;
+            var sky = env.Sky?.SkyMaterial as ShaderMaterial;
+            int glows = sky?.GetShaderParameter("glow_count").AsInt32() ?? 0, cumuli = sky?.GetShaderParameter("cumulus_count").AsInt32() ?? 0;
+            float cover = sky?.GetShaderParameter("cloud_cover").AsSingle() ?? 0f;
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: time of day {zone.Sky.TimeOfDay:F2}, sky glows {glows}, cumulus {cumuli}, cloud cover {cover:F2}"));
             var cost = new Dictionary<string, double>();
             var renderCpu = new Dictionary<string, double>();
             var drawCalls = new Dictionary<string, double>();
@@ -97,6 +152,13 @@ public partial class PopRoute
                 env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                 env.GlowEnabled = c != "-glow" && glow;
                 GetViewport().Msaa3D = c == "-msaa" ? Viewport.Msaa.Disabled : msaa;
+                // The sky's own parts: the lit places' glow on the cloud, the heaped cumulus, all cloud (each set back after).
+                if (sky != null)
+                {
+                    sky.SetShaderParameter("glow_count", c == "-sky glow" ? 0 : glows);
+                    sky.SetShaderParameter("cumulus_count", c == "-cumulus" ? 0 : cumuli);
+                    sky.SetShaderParameter("cloud_cover", c == "-clouds" ? 0f : cover);
+                }
                 foreach (var (kind, list) in parts)
                     foreach (var (g, cast, shown) in list)
                     {
@@ -134,6 +196,8 @@ public partial class PopRoute
             double all = cost["all"];
             double allCpu = renderCpu["all"], allDraws = drawCalls["all"];
             string costs = string.Join(", ", cases.Skip(1).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
+            // The whole picture measured again last: what it moved meanwhile (a place still coming in) is the measure's own error.
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: drift over the cases gpu {cost["all again"] - all:F2} ms, render cpu {renderCpu["all again"] - allCpu:F2} ms, draw calls {drawCalls["all again"] - allDraws:F0}"));
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); without each (what it costs, gpu/render cpu ms/draw calls): {costs}"));
             _game.FixedCamera = null;
         }

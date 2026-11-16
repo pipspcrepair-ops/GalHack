@@ -95,11 +95,17 @@ public static class DecoGodot
 
     public static ArrayMesh ToMesh(Surface[] surfaces, DecoMaterials materials)
     {
-        materials ??= DecoMaterials.Shared;
         var mesh = new ArrayMesh();
-        for (int s = 0; s < surfaces.Length; s++)
+        for (int s = 0; s < surfaces.Length; s++) AddSurface(mesh, surfaces, s, materials);
+        return mesh;
+    }
+
+    /// <summary>One of the surfaces onto a mesh (none: nothing), with its material.</summary>
+    public static void AddSurface(ArrayMesh mesh, Surface[] surfaces, int s, DecoMaterials materials)
+    {
+        materials ??= DecoMaterials.Shared;
         {
-            if (surfaces[s] is not { } sf) continue;
+            if (surfaces[s] is not { } sf) return;
             var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = sf.Vertices;
@@ -110,7 +116,6 @@ public static class DecoGodot
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, materials.BySurface[s]);
         }
-        return mesh;
     }
 
     /// <summary>The piece's collision boxes as shapes with their transforms (in the piece's frame).</summary>
@@ -161,6 +166,31 @@ public sealed class DecoMeshCache
     /// <summary>A look's mesh data: as prepared, or from the forge.</summary>
     public DecoMeshData Data(DecoLook look) => _ready.TryGetValue(look, out var ready) ? ready.Data : Forge.Mesh(look);
 
+    /// <summary>Partly handed over: a look's mesh and the next of its surfaces to go on it (<see cref="Warm"/>).</summary>
+    readonly Dictionary<DecoLook, (ArrayMesh Mesh, int Next)> _warming = new();
+
+    /// <summary>
+    /// A look's mesh handed to the engine a surface a call (main thread), so a big piece's first use is several short steps, not
+    /// one long one: true once it is whole and <see cref="Mesh"/> is immediate.
+    /// </summary>
+    public bool Warm(DecoLook look)
+    {
+        if (_meshes.ContainsKey(look)) return true;
+        DecoGodot.Surface[] arrays = _ready.TryGetValue(look, out var ready) && ready.Arrays != null ? ready.Arrays : null;
+        if (arrays == null) { Mesh(look); return true; } // not prepared ahead: made whole, as before
+        var (mesh, next) = _warming.TryGetValue(look, out var w) ? w : (new ArrayMesh(), 0);
+        DecoGodot.AddSurface(mesh, arrays, next, Materials);
+        if (++next < arrays.Length)
+        {
+            _warming[look] = (mesh, next);
+            return false;
+        }
+        _warming.Remove(look);
+        _ready[look] = (ready.Data, null);
+        _meshes[look] = mesh;
+        return true;
+    }
+
     public ArrayMesh Mesh(DecoLook look)
     {
         if (_meshes.TryGetValue(look, out ArrayMesh m)) return m;
@@ -179,6 +209,7 @@ public sealed class DecoMeshCache
     public void Clear()
     {
         _meshes.Clear();
+        _warming.Clear();
         _shapes.Clear();
         _ready.Clear();
     }

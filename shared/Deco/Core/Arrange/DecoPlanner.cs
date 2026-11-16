@@ -67,9 +67,15 @@ public sealed class DecoPlanner
     bool Full(DecoPiece p) => _count.GetValueOrDefault(p.Id) >= CapOf(p, _room.Width * _room.Depth);
 
     /// <summary>Forgets a template's chosen pieces, so its next use picks afresh (a room isn't the same thing over and over).</summary>
+    readonly List<string> _repicked = new();
+
     void Repick(DecoTemplate t)
     {
-        foreach (string k in _chosen.Keys.Where(k => k.StartsWith(t.Id + ":", StringComparison.Ordinal)).ToList()) _chosen.Remove(k);
+        var gone = _repicked;
+        gone.Clear();
+        foreach (string k in _chosen.Keys)
+            if (k.Length > t.Id.Length && k[t.Id.Length] == ':' && k.StartsWith(t.Id, StringComparison.Ordinal)) gone.Add(k);
+        foreach (string k in gone) _chosen.Remove(k);
     }
 
     public DecoPlan Plan(DecoRoom room, DecoSetPlan mix = null)
@@ -139,13 +145,26 @@ public sealed class DecoPlanner
         if (_chosen.TryGetValue(key, out DecoPiece p) && (extra == null || extra(p)) && !Full(p)) return p;
         // A support (a mine's timber set) only ever spans a way, set by Supports: never a wall piece, a fill or a row.
         bool span = key == SupportKey;
-        var own = _cat.OfSet(_room.Set).Where(x => roles.Any(x.Has) && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
-        var borrowed = _cat.InSet(_room.Set).Where(x => x.Set != _room.Set && roles.Any(x.Has) && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
-        // Pieces that play the first-named role come first.
-        var all = own.Concat(borrowed).ToList();
+        // Its own set's pieces, then those it borrows (each list made once and kept: a room tries thousands of picks).
+        List<DecoPiece> all = _pickAll;
+        List<float> weights = _pickWeights;
+        all.Clear();
+        weights.Clear();
+        bool Fits(DecoPiece x)
+        {
+            bool role = false;
+            foreach (string r in roles) role |= x.Has(r);
+            return role && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x);
+        }
+        // (By index: a foreach over the catalogue's lists made an enumerator each time.)
+        IReadOnlyList<DecoPiece> own = _cat.OfSet(_room.Set), lent = _cat.InSet(_room.Set);
+        for (int i = 0; i < own.Count; i++)
+            if (Fits(own[i])) all.Add(own[i]);
+        for (int i = 0; i < lent.Count; i++)
+            if (lent[i].Set != _room.Set && Fits(lent[i])) all.Add(lent[i]);
         if (all.Count == 0) return null;
         // The room's own era first by far: a high world's room takes its high pieces where it has them, older ones only to fill in.
-        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x)).ToList();
+        foreach (DecoPiece x in all) weights.Add((x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x));
         p = all[Math.Max(0, _rng.PickWeighted(weights))];
         _chosen[key] = p;
         return p;
@@ -322,10 +341,18 @@ public sealed class DecoPlanner
     {
         int group = _groups;
         int first = _plan.Placements.Count;
-        // Never past a piece's cap in a room.
-        foreach (var g in members.GroupBy(m => m.Piece))
-            if (_count.GetValueOrDefault(g.Key.Id) + g.Count() > CapOf(g.Key, _room.Width * _room.Depth)) return false;
-        var added = new List<DecoPlacement>();
+        // Never past a piece's cap in a room. (Every list and test here without making anything: a room is arranged by
+        // trying thousands of placements, and a city's rooms were most of what its workers allocated.)
+        for (int a = 0; a < members.Count; a++)
+        {
+            DecoPiece piece = members[a].Piece;
+            int same = 0, firstOf = a;
+            for (int b = 0; b < members.Count; b++)
+                if (members[b].Piece == piece) { same++; if (b < firstOf) firstOf = b; }
+            if (firstOf == a && _count.GetValueOrDefault(piece.Id) + same > CapOf(piece, _room.Width * _room.Depth)) return false;
+        }
+        List<DecoPlacement> added = _added;
+        added.Clear();
         foreach (Member mem in members)
         {
             Vector2 at = new Vector2(x, z) + DecoGeo.Yaw(mem.At, yaw);
@@ -337,15 +364,27 @@ public sealed class DecoPlanner
             };
             added.Add(pl);
         }
-        foreach (DecoPlacement pl in added)
+        for (int k = 0; k < added.Count; k++)
         {
+            DecoPlacement pl = added[k];
             DecoRect r = DecoLayout.Footprint(_forge, pl);
             if (!DecoLayout.Inside(_room, r)) return false;
-            if (pl.Support < 0 && (loose ? _reserved.Skip(_room.Doors.Count).Take(_aprons - _room.Doors.Count) : _reserved).Any(res => res.Overlaps(r.Shrink(0.01f))) && DecoLayout.Blocks(_forge, pl)) return false;
-            // Nothing lies in a doorway either, not even a rug a person walks over.
-            if (pl.Support < 0 && _room.Doors.Any(d => _room.Apron(d, 0.9f, 0).Overlaps(r.Shrink(0.02f)))) return false;
-            if (_plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) return false;
-            if (added.Any(o => o != pl && added.IndexOf(o) < added.IndexOf(pl) && DecoLayout.Clash(_forge, o, pl))) return false;
+            if (pl.Support < 0)
+            {
+                DecoRect shrunk = r.Shrink(0.01f);
+                int from = loose ? _room.Doors.Count : 0, to = loose ? _aprons : _reserved.Count;
+                bool reserved = false;
+                for (int q = from; q < to && !reserved; q++) reserved = _reserved[q].Overlaps(shrunk);
+                if (reserved && DecoLayout.Blocks(_forge, pl)) return false;
+                // Nothing lies in a doorway either, not even a rug a person walks over.
+                DecoRect tight = r.Shrink(0.02f);
+                foreach (DecoDoor d in _room.Doors)
+                    if (_room.Apron(d, 0.9f, 0).Overlaps(tight)) return false;
+            }
+            foreach (DecoPlacement o in _plan.Placements)
+                if (DecoLayout.Clash(_forge, o, pl)) return false;
+            for (int q = 0; q < k; q++)
+                if (DecoLayout.Clash(_forge, added[q], pl)) return false;
             // The room's rules (DecoRules): nothing taller than a sill before a window, a fire only at a chimney breast and nothing else there, what the room
             // is arranged round on a solid wall, a narrow room lined along its one wall.
             if (DecoRules.BeforeWindow(_forge, _room, pl) || DecoRules.OffFlue(_forge, _room, pl) || DecoRules.BeforeBreast(_forge, _room, pl)) return false;
@@ -354,9 +393,15 @@ public sealed class DecoPlanner
             if (pl.Support < 0 && DecoLayout.Blocks(_forge, pl) && (behind || _lining is DecoWall only && DecoRules.Off(_room, r, only) > 0.15f)) return false;
         }
         // No more than half the floor stood on, and a clear walk to every piece's use side.
-        var all = _plan.Placements.Concat(added).ToList();
-        if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.Unreached(_forge, _room, all).Count > 0) return false;
-        var blocking = added.Where(p => DecoLayout.Blocks(_forge, p)).Select(p => DecoLayout.Footprint(_forge, p)).ToList();
+        List<DecoPlacement> all = _all;
+        all.Clear();
+        all.AddRange(_plan.Placements);
+        all.AddRange(added);
+        if (DecoRules.Share(_forge, _room, all) > DecoRules.MostFloor || DecoRules.AnyUnreached(_forge, _room, all)) return false;
+        List<DecoRect> blocking = _blocking;
+        blocking.Clear();
+        foreach (DecoPlacement p in added)
+            if (DecoLayout.Blocks(_forge, p)) blocking.Add(DecoLayout.Footprint(_forge, p));
         foreach (DecoRect r in blocking) { _raster.Add(r, 1); _walk.Add(r, 1); }
         if (!_raster.DoorsJoined(_room) || !Lines())
         {
@@ -368,6 +413,14 @@ public sealed class DecoPlanner
         _groups++;
         return true;
     }
+
+    // Pick's candidates and weights, TryPlace's lists, and Routes' distances and queue, kept between tries (never held past one).
+    readonly List<DecoPiece> _pickAll = new();
+    readonly List<float> _pickWeights = new();
+    int[] _dist;
+    Queue<int> _routeQueue;
+    readonly List<DecoPlacement> _added = new(), _all = new();
+    readonly List<DecoRect> _blocking = new();
 
     static float Norm(float yaw) => ((yaw % 360) + 360) % 360;
 
@@ -402,7 +455,16 @@ public sealed class DecoPlanner
     HashSet<string> FocusOf(DecoTemplate t, string[] focus)
     {
         var roles = t.Anchor.Concat(t.Ends).Concat(t.Middle).Concat(t.Members).ToHashSet();
-        return _cat.InSet(_room.Set).Where(p => p.Roles.Any(roles.Contains)).SelectMany(p => p.Roles).Where(focus.Contains).ToHashSet();
+        var found = new HashSet<string>();
+        foreach (DecoPiece p in _cat.InSet(_room.Set))
+        {
+            bool plays = false;
+            foreach (string r in p.Roles) plays |= roles.Contains(r);
+            if (!plays) continue;
+            foreach (string r in p.Roles)
+                if (Array.IndexOf(focus, r) >= 0) found.Add(r);
+        }
+        return found;
     }
 
     /// <summary>
@@ -783,18 +845,25 @@ public sealed class DecoPlanner
         if (n < 2) return null;
         bool[] fit = _walk.Fits(Walker);
         var routes = new int[n, n];
+        var dist = _dist is { } kept && kept.Length == fit.Length ? kept : _dist = new int[fit.Length];
+        var q = _routeQueue ??= new Queue<int>();
         for (int a = 0; a < n; a++)
         {
-            var dist = new int[fit.Length];
             Array.Fill(dist, -1);
-            var q = new Queue<int>();
+            q.Clear();
             foreach (int s in _walk.DoorStarts(_room, _room.Doors[a], Walker))
                 if (s >= 0 && s < fit.Length && fit[s] && dist[s] < 0) { dist[s] = 0; q.Enqueue(s); }
             while (q.Count > 0)
             {
                 int c = q.Dequeue(), i = c % _walk.Nx, j = c / _walk.Nx;
-                foreach (int nb in new[] { i + 1 < _walk.Nx ? c + 1 : -1, i > 0 ? c - 1 : -1, j + 1 < _walk.Nz ? c + _walk.Nx : -1, j > 0 ? c - _walk.Nx : -1 })
-                    if (nb >= 0 && fit[nb] && dist[nb] < 0) { dist[nb] = dist[c] + 1; q.Enqueue(nb); }
+                if (i + 1 < _walk.Nx) Step(c + 1);
+                if (i > 0) Step(c - 1);
+                if (j + 1 < _walk.Nz) Step(c + _walk.Nx);
+                if (j > 0) Step(c - _walk.Nx);
+                void Step(int nb)
+                {
+                    if (fit[nb] && dist[nb] < 0) { dist[nb] = dist[c] + 1; q.Enqueue(nb); }
+                }
             }
             for (int b = 0; b < n; b++)
                 routes[a, b] = _walk.DoorStarts(_room, _room.Doors[b], Walker).Where(s => s >= 0 && s < fit.Length && dist[s] >= 0).Select(s => dist[s]).DefaultIfEmpty(-1).Min();

@@ -104,7 +104,7 @@ public partial class PoiLayer
         var members = tile.Members.Select(p => p.Site).ToList();
         {
             var anchor = tile.First.Origin;
-            tile.Mesh = Task.Run(() =>
+            tile.Mesh = Task.Run(() => GalHack.Testing.AllocMeter.Measure("far place tiles", () =>
             {
                 // Each building's far mesh moved by its offset from the tile's first, the short way round the seams.
                 var all = new ChunkMesh();
@@ -117,7 +117,7 @@ public partial class PoiLayer
                     for (int k = 0; k < one.Surfaces.Length; k++) all.Surfaces[k].Append(one.Surfaces[k], 1f, new V3(ox, oy, oz));
                 }
                 return all;
-            });
+            }));
         }
     }
 
@@ -223,7 +223,7 @@ public partial class PoiLayer
         // A place's far mesh as soon as it has been built (PoiBuilds builds them nearest first); a city tile's once all of it has.
         foreach (Place p in _places)
             if (p.Node == null && p.LowMesh == null && !_tileOf.ContainsKey(p) && p.Site.Built is { } made)
-                p.LowMesh = Task.Run(() => Mesher.Coarse(made.Blocks, made.Layout.Occupied));
+                p.LowMesh = Task.Run(() => GalHack.Testing.AllocMeter.Measure("far places low", () => Mesher.Coarse(made.Blocks, made.Layout.Occupied)));
         foreach (Tile t in _tiles)
             if (t.Node == null && t.Mesh == null && t.Members.All(p => p.Site.Built != null)) StartTile(t);
         foreach (Place p in _places)
@@ -337,7 +337,7 @@ public partial class PoiLayer
         _midJobs.Add(p);
         BlockGrid g = p.Site.Instance.Blocks;
         CellMask occupied = p.Site.Instance.Layout.Occupied;
-        p.MidMeshes = Task.Run(() => Mesher.Build(g, occupied, MidOptions(g)));
+        p.MidMeshes = Task.Run(() => GalHack.Testing.AllocMeter.Measure("far places mid", () => Mesher.Build(g, occupied, MidOptions(g))));
         p.MidOccluders = Occlude ? p.MidMeshes.ContinueWith(t => t.Result.ConvertAll(c => OccluderOf(c, g)), TaskContinuationOptions.OnlyOnRanToCompletion) : null;
     }
 
