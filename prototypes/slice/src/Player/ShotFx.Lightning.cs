@@ -21,23 +21,35 @@ public partial class ShotFx
         public ImmediateMesh Mesh;
         public Func<Vector3> From;
         public Vector3 To;
+        public ShaderMaterial Material;
         public Color Colour;
-        public float Age, Life, Rough, Width;
+        public float Age, Rise, Hold, Fade, Rough, Width;
         public int Forks;
         public bool Rejagged;
+        public float Life => Rise + Hold + Fade;
         public bool Busy => Age < Life;
     }
 
     sealed class Glow
     {
         public OmniLight3D Light;
-        public float Energy, Age, Life;
+        public float Energy, Age, Rise, Fade;
     }
+
+    /// <summary>How bright something that rises, holds and fades is at an age, 0 to 1: up in <paramref name="rise"/>, full for <paramref name="hold"/>, down smoothly over <paramref name="fade"/>.</summary>
+    public static float Envelope(float age, float rise, float hold, float fade)
+    {
+        if (age < rise) return age / rise;
+        float t = (age - rise - hold) / MathF.Max(fade, 1e-4f);
+        return t <= 0f ? 1f : t >= 1f ? 0f : (1f - t) * (1f - t) * (1f + 2f * t); // smoothstep down: no edge to the fade
+    }
+
+    /// <summary>A bolt's base brightness (its material's energy at full).</summary>
+    const float SparkEnergy = 3f;
 
     readonly List<Spark> _sparks = new();
     readonly List<Glow> _glows = new();
     readonly Random _rng = new();
-    ShaderMaterial _sparkMaterial;
 
     /// <summary>For tests and pictures: bolts thrown (main and arcs), lightning flashes, and whether the repair cone shows.</summary>
     public int LightningBolts { get; private set; }
@@ -53,13 +65,14 @@ public partial class ShotFx
     void EnsureSparks()
     {
         if (_sparks.Count > 0) return;
-        _sparkMaterial = BoltDraw.Material(Colors.White, 3f, 0.5f);
         for (int i = 0; i < SparkPool; i++)
         {
+            // Each its own material, so each fades on its own; a strong glow, so the light reads blue round a white-hot core.
+            ShaderMaterial m = BoltDraw.Material(Colors.White, SparkEnergy, 0.9f);
             var mesh = new ImmediateMesh();
-            var node = new MeshInstance3D { Name = $"Spark{i}", Mesh = mesh, MaterialOverride = _sparkMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false, TopLevel = true };
+            var node = new MeshInstance3D { Name = $"Spark{i}", Mesh = mesh, MaterialOverride = m, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false, TopLevel = true };
             AddChild(node);
-            _sparks.Add(new Spark { Node = node, Mesh = mesh });
+            _sparks.Add(new Spark { Node = node, Mesh = mesh, Material = m });
         }
         for (int i = 0; i < LightPool; i++)
         {
@@ -71,50 +84,52 @@ public partial class ShotFx
 
     /// <summary>
     /// A blast of lightning from the barrel tip (asked afresh as the hand moves) to a point: a jagged bolt
-    /// with forks, flickering into a new shape halfway through its short life, a flash of light at the
-    /// muzzle, and a light near where it strikes that lights the surroundings for <paramref name="seconds"/>.
+    /// with forks that comes up, holds (flickering into a new shape once) and fades smoothly, a flash of
+    /// light at the muzzle, and a light near where it strikes that comes up and fades with it (timing from the data).
     /// </summary>
-    public void Lightning(Func<Vector3> from, Vector3 to, Color colour, float energy, float range, float seconds)
+    public void Lightning(Func<Vector3> from, Vector3 to, Color colour, Slice.Game.SliceRules.LightningRules look)
     {
         EnsureSparks();
         LightningBolts++;
         Vector3 start = from(), aim = to - start;
-        Throw(from, to, colour, seconds, 0.2f, 1f, forks: 2);
+        Throw(from, to, colour, look, 1f, 0.2f, 1f, forks: 2);
         Muzzle(GunFeel.Tool.Id, start, aim.LengthSquared() < 1e-6f ? Vector3.Forward : aim.Normalized(), colour, 1f, () => from());
-        LightUp(start.Lerp(to, 0.7f), colour, energy, range, seconds);
+        LightUp(start.Lerp(to, 0.7f), colour, look);
     }
 
     /// <summary>Short arcs crawling over what a bolt touched: between points on a box of this half-size (a block) or a body round its middle.</summary>
-    public void ArcOver(Vector3 centre, Vector3 half, Color colour, int arcs, float seconds)
+    public void ArcOver(Vector3 centre, Vector3 half, Color colour, int arcs, Slice.Game.SliceRules.LightningRules look)
     {
         EnsureSparks();
         for (int i = 0; i < arcs; i++)
         {
             Vector3 a = centre + OnBox(half), b = centre + OnBox(half);
             LightningArcs++;
-            Throw(() => a, b, colour, seconds * (0.7f + 0.6f * (float)_rng.NextDouble()), 0.25f, 0.6f, forks: 0);
+            Throw(() => a, b, colour, look, 0.8f + 0.5f * (float)_rng.NextDouble(), 0.25f, 0.6f, forks: 0);
         }
     }
 
-    /// <summary>A light that lights the surroundings for a moment (the bolt's flash).</summary>
-    public void LightUp(Vector3 at, Color colour, float energy, float range, float seconds)
+    /// <summary>A light that lights the surroundings for a moment (the bolt's flash): it comes up quickly and fades.</summary>
+    public void LightUp(Vector3 at, Color colour, Slice.Game.SliceRules.LightningRules look)
     {
         EnsureSparks();
         LightningFlashes++;
         Glow g = _glows[0];
         foreach (Glow c in _glows)
-            if (c.Age >= c.Life) { g = c; break; }
+            if (c.Age >= c.Rise + c.Fade) { g = c; break; }
+        float energy = look.FlashEnergy, range = look.FlashRange;
         g.Energy = energy;
         g.Age = 0f;
-        g.Life = seconds;
+        g.Rise = look.FlashRise;
+        g.Fade = look.FlashFade;
         g.Light.LightColor = colour.Lerp(Colors.White, 0.35f);
-        g.Light.LightEnergy = energy;
+        g.Light.LightEnergy = 0f;
         g.Light.OmniRange = range;
         g.Light.GlobalPosition = at;
         g.Light.Visible = true;
     }
 
-    void Throw(Func<Vector3> from, Vector3 to, Color colour, float life, float rough, float width, int forks)
+    void Throw(Func<Vector3> from, Vector3 to, Color colour, Slice.Game.SliceRules.LightningRules look, float stretch, float rough, float width, int forks)
     {
         Spark s = _sparks[0];
         foreach (Spark c in _sparks)
@@ -126,7 +141,10 @@ public partial class ShotFx
         s.To = to;
         s.Colour = colour;
         s.Age = 0f;
-        s.Life = life;
+        s.Rise = look.BoltRise;
+        s.Hold = look.BoltHold * stretch;
+        s.Fade = look.BoltFade * stretch;
+        s.Material.SetShaderParameter(PlanetSurface.Fx.Names.Of("energy"), 0f);
         s.Rough = rough;
         s.Width = width;
         s.Forks = forks;
@@ -194,18 +212,19 @@ public partial class ShotFx
                 s.Mesh.ClearSurfaces();
                 continue;
             }
-            if (!s.Rejagged && s.Age > s.Life * 0.5f)
+            if (!s.Rejagged && s.Age > s.Rise + s.Hold * 0.5f)
             {
-                s.Rejagged = true; // the flicker: a fresh shape halfway through
+                s.Rejagged = true; // the flicker: a fresh shape halfway through its hold
                 Draw(s);
             }
+            s.Material.SetShaderParameter(PlanetSurface.Fx.Names.Of("energy"), SparkEnergy * Envelope(s.Age, s.Rise, s.Hold, s.Fade));
         }
         foreach (Glow g in _glows)
         {
             if (!g.Light.Visible) continue;
             g.Age += dt;
-            if (g.Age >= g.Life) g.Light.Visible = false;
-            else g.Light.LightEnergy = g.Energy * (1f - g.Age / g.Life);
+            if (g.Age >= g.Rise + g.Fade) g.Light.Visible = false;
+            else g.Light.LightEnergy = g.Energy * Envelope(g.Age, g.Rise, 0f, g.Fade);
         }
         if (_cone != null && _cone.Visible)
         {

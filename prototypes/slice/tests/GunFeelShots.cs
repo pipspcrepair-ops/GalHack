@@ -105,7 +105,7 @@ public partial class GunFeelShots : Node
         Vector3 muzzle = _game.Tool.Muzzle();
         if (feel == GunFeel.Tool)
         {
-            _game.Shots.Lightning(_game.Tool.Muzzle, target, ShotFx.LightningBlue, 6f, 11f, 0.09f);
+            _game.Shots.Lightning(_game.Tool.Muzzle, target, ShotFx.LightningBlue, _game.Zone.Data.Rules.Tool.Lightning);
             yield return 0; // a tick on, the bolt is out and the flash still up
         }
         else _game.Shots.Muzzle(feel.Id, muzzle, _game.Survivor.WorldLook());

@@ -161,9 +161,21 @@ public sealed class SleeperTool
         OnStructure = Mode == ToolMode.Gather && Builder != null && Builder.AimTakeDown();
         if (OnStructure && !Ours(Builder.TargetVessel)) { OnStructure = false; Builder.Hide(); }
         if (OnStructure) TargetLabel = Builder.Verdict;
+        BlockHealth = HealthOn(Mode == ToolMode.Repair ? _rules.Repair.Range : Bolt.Range);
         if (!trigger || _suit.Dead) return;
         if (Mode == ToolMode.Repair) Mend();
         else if (_cooldown <= 0f) Blast();
+    }
+
+    /// <summary>The hit points and the most of the block the tool is on within its range (a structure's, a wreck's or a place's), or null: the visor shows them over the reticle.</summary>
+    public (float Hp, float Max)? BlockHealth { get; private set; }
+
+    (float, float)? HealthOn(float range)
+    {
+        if (!WorldRay.Cast(_zone, _survivor, range, Layers.World | Layers.Hull, out LookHit look)) return null;
+        if (look.Vessel is Slice.Vessels.Vessel v)
+            return v.Structure.TryGetBlock(look.Cell, out _, out GalHack.Structures.Block b) ? (b.Hp, v.Structure.StatsOf(b).MaxHp) : null;
+        return Places != null && Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h, look.Shape) ? Places.Health(h) : null;
     }
 
     // ---- Aim -----------------------------------------------------------------------------------
@@ -650,8 +662,8 @@ public sealed class SleeperTool
     void Strike(Vector3 to, Vector3 half, int arcs, bool attack = false)
     {
         Color blue = ShotFx.LightningBlue;
-        Fx?.Lightning(Muzzle, to, blue, Bolt.FlashEnergy, Bolt.FlashRange, Bolt.FlashSeconds);
-        if (arcs > 0) Fx?.ArcOver(to, half, blue, arcs, Bolt.FlashSeconds * 1.6f);
+        Fx?.Lightning(Muzzle, to, blue, Bolt);
+        if (arcs > 0) Fx?.ArcOver(to, half, blue, arcs, Bolt);
         float pitch = 0.9f + 0.2f * (float)Random.Shared.NextDouble();
         Arms?.Sounds?.Play(CombatSound.Crackle, to, pitch, attack ? 0f : -6f);
         double now = Time.GetTicksMsec() / 1000.0;

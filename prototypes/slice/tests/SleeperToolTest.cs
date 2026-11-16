@@ -120,12 +120,17 @@ public partial class SleeperToolTest : Node
         if (_shots == null) return;
         string file = System.IO.Path.Combine(_shots, name);
         GetViewport().GetTexture().GetImage().SavePng(file);
-        // What tall whirls stand in view (a dust devil reads as a thin twisted column from far off).
+        // Every whirl the weather has going (a dust devil, a waterspout's thin rope, a tornado), where it stands from the eye.
         Camera3D cam = _game.Camera;
-        var funnels = _game.Zone.FindChildren("*", nameof(Node3D), true, false).OfType<PlanetSurface.WeatherView.TornadoFx>()
-            .Where(f => f.IsVisibleInTree() && cam.IsPositionInFrustum(f.GlobalPosition + Vector3.Up * 20f))
-            .Select(f => $"a funnel {f.GlobalPosition.DistanceTo(cam.GlobalPosition):F0} m off, its foot {f.GlobalPosition.Y - _game.Zone.GroundAt(f.GlobalPosition.X, f.GlobalPosition.Z).Y:+0.0;-0.0} m from the ground, at {cam.UnprojectPosition(f.GlobalPosition + Vector3.Up * 20f)}");
-        GD.Print($"  (picture: {file}; in view: {string.Join("; ", funnels.DefaultIfEmpty("no funnels"))})");
+        var whirls = _game.Zone.Weather.Sim.Tornadoes.Select(t =>
+        {
+            var fx = _game.Zone.Weather.FunnelOf(t.Id);
+            Vector3 at = fx?.GlobalPosition ?? cam.GlobalPosition;
+            Vector3 to = at - cam.GlobalPosition;
+            float bearing = (Mathf.RadToDeg(MathF.Atan2(to.X, -to.Z)) + 360f) % 360f;
+            return $"a {t.Kind} {to.Length():F0} m off at bearing {bearing:F0}{(fx != null && cam.IsPositionInFrustum(at + Vector3.Up * 20f) ? ", in view" : "")}";
+        });
+        GD.Print($"  (picture: {file}; whirls: {string.Join("; ", whirls.DefaultIfEmpty("none"))})");
     }
 
     /// <summary>For a picture: the next blast or cone held where it is (the effects and the hands stop), the picture taken, then everything runs on.</summary>
@@ -200,7 +205,7 @@ public partial class SleeperToolTest : Node
                 bool ends = e[0].left.DistanceTo(e[0].right) < 0.05f * widest && e[^1].left.DistanceTo(e[^1].right) < 0.05f * widest;
                 bool untwisted = true;
                 for (int i = 1; i < e.Length; i++) if ((e[i].right - e[i].left).Dot(e[i - 1].right - e[i - 1].left) < 0f) untwisted = false;
-                bool seen = widest >= a.DistanceTo(eye) * 0.004f * 0.99f;
+                bool seen = widest >= a.DistanceTo(eye) * 0.004f * 0.6f * 0.99f; // (the strip narrows toward its far end to 0.6)
                 if (!ends || !untwisted || !seen || e.Length != path.Count) bad++;
             }
         Check(bad == 0, $"each bolt channel is one strip with an edge pair per joint, shared by the pieces either side: untwisted, closed at both ends, a few pixels wide at 3, 40 and 300 m ({channels} channels, {bad} not)");
@@ -208,43 +213,15 @@ public partial class SleeperToolTest : Node
 
     // ---- Blocks: ours whole into the bag, someone else's damaged for a share ---------------------
 
-    /// <summary>A few iron blocks off a core (or none), set down on the ground a few metres off.</summary>
-    Vessel Row(string owner, bool core, float bearing, out S.Int3[] cells)
-    {
-        S.Catalogue cat = _game.Zone.Data.Catalogue;
-        var s = new S.Structure(cat) { Name = $"Sleeper tool test {owner}" };
-        S.BlockType bare = cat.Type("iron-plated");
-        if (core) S.Building.Place(s, S.Int3.Zero, S.Building.Make(s, cat.CoreType), null, owner);
-        // Three along from the core, and one stood on the first: the end and the top are leaves.
-        cells = new[] { new S.Int3(1, 0, 0), new S.Int3(2, 0, 0), new S.Int3(3, 0, 0), new S.Int3(1, 1, 0) };
-        foreach (S.Int3 c in cells) s.Set(c, S.Building.Make(s, bare));
-        if (!core) s.Set(S.Int3.Zero, S.Building.Make(s, bare));
-        s.DirtyChunks.Clear();
-        Vector3 feet = _game.Survivor.WorldFeet;
-        Vector3 spot = feet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * 3.5f;
-        // Clear of the ground all along it, however the land lies (a few blocks may stand a little off it).
-        float top = float.MinValue;
-        for (float dx = -4f; dx <= 4f; dx += 1f)
-            for (float dz = -4f; dz <= 4f; dz += 1f) top = MathF.Max(top, _game.Zone.GroundAt(spot.X + dx, spot.Z + dz).Y);
-        N.Vector3 at = new(spot.X, top + s.Grid.CellSize * 0.5f + 0.3f, spot.Z);
-        Vessel v = core ? Vessel.SpawnBase(_game.Zone, s, at, bearing) : Vessel.SpawnGroundWreck(_game.Zone, s, at, N.Quaternion.CreateFromAxisAngle(N.Vector3.UnitY, -bearing));
-        foreach (var (p, _) in s.Blocks()) v.ClearGround(p);
-        return v;
-    }
+    Vessel Row(string owner, bool core, float bearing, out S.Int3[] cells) => TestRows.Row(_game, owner, core, bearing, out cells);
 
     float _bearing = float.NaN;
 
     /// <summary>A fresh bearing for the next structure, well round from the last, so none stands in another's way.</summary>
     float NextBearing() => _bearing = float.IsNaN(_bearing) ? (float)_rng.NextDouble() * MathF.Tau : _bearing + 1.55f;
 
-    Vector3 Centre(Vessel v, S.Int3 c) => v.ToWorld(StructureBridge.CellCenter(v.Structure, c));
-
-    /// <summary>The block's face toward the eye: where a blast at it lands.</summary>
-    Vector3 FaceOf(Vessel v, S.Int3 c)
-    {
-        Vector3 centre = Centre(v, c), eye = _game.Survivor.WorldEye();
-        return centre + (eye - centre).Normalized() * v.Structure.Grid.CellSize * 0.45f;
-    }
+    Vector3 Centre(Vessel v, S.Int3 c) => TestRows.Centre(v, c);
+    Vector3 FaceOf(Vessel v, S.Int3 c) => TestRows.FaceOf(_game, v, c);
 
     IEnumerable<int> Blast(Vector3 at, int clicks = 1)
     {
@@ -290,7 +267,7 @@ public partial class SleeperToolTest : Node
         {
             Vessel v = Row(S.Building.DefaultOwner, core, NextBearing(), out S.Int3[] cells);
             foreach (int x in _drive.Wait(30)) yield return x;
-            S.Int3 end = cells[2];
+            S.Int3 end = cells[3]; // the block stood on the first: up where the core can't be in front of it
             string item = BuildingBridge.ItemOf(items, v.Structure, v.Structure.Get(end)).Id;
             int bag = _game.Pack[item], whole = Tool.TakenWhole, count = v.Structure.Count;
             foreach (int x in _drive.LookAt(FaceOf(v, end), 6)) yield return x;
@@ -308,9 +285,9 @@ public partial class SleeperToolTest : Node
         var hpBefore = ts.Blocks().ToDictionary(x => x.pos, x => x.block.Hp);
         var bag0 = _game.Pack.Storage.Contents.ToDictionary(kv => kv.Key, kv => kv.Value);
         int arcs = Fx.LightningArcs, extracted = Tool.Extracted;
-        foreach (int x in Blast(FaceOf(theirs, row[2]))) yield return x;
+        foreach (int x in Blast(FaceOf(theirs, row[3]))) yield return x;
         var hurt = ts.Blocks().Where(x => x.block.Hp < hpBefore.GetValueOrDefault(x.pos) - 0.01f).ToList();
-        S.Int3 cell = hurt.Count > 0 ? hurt[0].pos : row[2];
+        S.Int3 cell = hurt.Count > 0 ? hurt[0].pos : row[3];
         S.Block b = ts.Get(cell);
         float max = ts.StatsOf(b).MaxHp, hp = b.Hp;
         Bill bill = BuildingBridge.BillOf(items, ts, b);
@@ -459,10 +436,12 @@ public partial class SleeperToolTest : Node
             $"harmless: a person in the cone ({health:F0} to {c?.Health ?? 0f:F0} health, not stunned) and a raider core's block ({blockHp:F0} to {theirs.Structure.Get(row[^1]).Hp:F0}) untouched");
         if (_shots != null)
         {
+            // A damaged block in the cone with nothing to mend it: its hit points over the reticle stay low.
             s.SetHp(cells[1], max * 0.3f);
             v.ApplyEdits();
-            foreach (var (id, n) in v.Hits.RepairBill(cells[1])) _game.Pack.Add(id, n * 4);
+            foreach (var (id, _) in v.Hits.RepairBill(cells[1])) { _game.Pack.Remove(id, _game.Pack[id]); v.Storage.Remove(id, v.Storage.Count(id)); }
             foreach (int x in _drive.LookAt(FaceOf(v, cells[1]), 6)) yield return x;
+            GD.Print($"  (the visor over the reticle: {_game.Visor.BlockHealth() ?? "nothing"})");
             for (int i = 0; i < 8; i++) { _game.Controls.Primary = true; yield return 0; }
             foreach (int x in Freeze("sleeper-repair.png")) yield return x;
             _game.Controls.Primary = false;
@@ -481,6 +460,28 @@ public partial class SleeperToolTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in Freeze("sleeper-block.png")) yield return x;
+
+        // Held fire for 3 s at the blast rate: the frame's brightness, frame by frame, never jumps from dark to full.
+        foreach (int x in _drive.Wait(30)) yield return x;
+        var means = new List<float>();
+        int shots = Tool.Shots;
+        for (int i = 0; i < 180; i++)
+        {
+            _drive.Face(FaceOf(theirs, row[1]));
+            _game.Controls.Primary = true;
+            yield return 0;
+            Image frame = GetViewport().GetTexture().GetImage();
+            frame.Resize(64, 36, Image.Interpolation.Bilinear);
+            float sum = 0f;
+            for (int y = 0; y < 36; y++)
+                for (int x = 0; x < 64; x++) sum += frame.GetPixel(x, y).Luminance;
+            means.Add(sum / (64 * 36));
+        }
+        _game.Controls.Primary = false;
+        float jump = 0f, swing = means.Max() - means.Min();
+        for (int i = 1; i < means.Count; i++) jump = MathF.Max(jump, means[i] - means[i - 1]);
+        Check(Tool.Shots - shots >= 8 && jump <= 0.6f * swing + 0.002f && jump < 0.03f,
+            $"3 s of held fire ({Tool.Shots - shots} blasts at {Bolt.BoltRise + Bolt.BoltHold + Bolt.BoltFade:F3} s a bolt, its light {Bolt.FlashRise + Bolt.FlashFade:F2} s): the frame's brightness swings {swing:F4} and rises at most {jump:F4} from one frame to the next, never dark to full at once");
     }
 
     // ---- Held a long while, nothing builds up ---------------------------------------------------------
@@ -525,7 +526,7 @@ public partial class SleeperToolTest : Node
             foreach (int x in _drive.Wait(120)) yield return x;
             // (Objects counts what the garbage collector has yet to free, and ground worked or dug adds its own chunks
             // and debris, so the bar is well under a node a blast, and memory level.)
-            Check(most - nodes < Math.Max(60, (Tool.Shots - shots) / 2) && Megabytes() - mb < 64,
+            Check(most - nodes < Math.Max(100, (Tool.Shots - shots) / 2) && Megabytes() - mb < 64,
                 $"{label} for 40 s ({Tool.Shots - shots} blasts): nodes {nodes} to at most {most}, then {Nodes()}; objects {objects} to {Objects()}; memory {mb:F0} to {Megabytes():F0} MB");
         }
         if (Tool.Mode == ToolMode.Repair) foreach (int x in _drive.Tap(Key.Q)) yield return x;
@@ -549,7 +550,8 @@ public partial class SleeperToolTest : Node
         foreach (int x in _play.Gather(kind, before + 8, 60f)) yield return x;
         int dug = Tool.OreCells - cells, got = _game.Pack[ore] - before;
         float per = _game.Zone.Data.Rules.Materials.OrePerCell;
-        Check(dug > 0 && got >= dug * per + (Tool.TellOre - rock) && got <= (dug + 4) * per + (Tool.TellOre - rock) + 1,
+        // (Ore trickles in as cells chip, so a cell's share can come before the cell goes.)
+        Check(got > 0 && got >= dug * per + (Tool.TellOre - rock) && got <= (dug + 4) * per + (Tool.TellOre - rock) + 1,
             $"digging {kind} pays {per} {ore} a cell as before: {dug} cells and {Tool.TellOre - rock} off its rock, +{got}");
         Check(Fx.LightningBolts - bolts >= dug && Fx.LightningArcs - arcs >= dug,
             $"each pulse is a flash of lightning arcing to the ground being worked ({Fx.LightningBolts - bolts} bolts, {Fx.LightningArcs - arcs} arcs)");

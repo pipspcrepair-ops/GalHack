@@ -152,6 +152,16 @@ public partial class PoiPlaces
         return per.ToDictionary(kv => kv.Key, kv => kv.Value * share);
     }
 
+    /// <summary>A place's block's hit points and its most (worn by the tool and shots), or null for dressing, a door or air.</summary>
+    public (float Hp, float Max)? Health(Hit h)
+    {
+        if (h.Piece != null || h.Door != null) return null;
+        Block b = h.Place.Inst.Blocks.Get(h.Cell);
+        if (b.IsAir) return null;
+        float max = BlockInfo.HitPoints(b);
+        return (MathF.Max(0f, max - h.Place.Memory.BlockDamage.GetValueOrDefault(h.Cell)), max);
+    }
+
     /// <summary>
     /// One dig pulse of the Sleeper tool on a place: a hidden room's wall breaks (60 points, one
     /// pulse), a piece of the room's dressing or a block comes away once its hit points are worked

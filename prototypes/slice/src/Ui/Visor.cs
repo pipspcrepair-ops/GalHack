@@ -491,7 +491,13 @@ public partial class Visor : CanvasLayer
         };
         if (!string.IsNullOrEmpty(label))
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, PromptBox(_hud.Size, UiScale, label).Position.Y, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+        if (BlockHealth() is string hp)
+            _hud.TextIn(UiTheme.Label, (int)(16 * s), new Rect2(0, c.Y - 34 * s, _hud.Size.X, 20 * s), hp, C.Text, HorizontalAlignment.Center);
     }
+
+    /// <summary>The block the Sleeper tool is on: its hit points over its most, shown just above the reticle; null when it's on none.</summary>
+    public string BlockHealth() =>
+        Game.Pack.Hand == HandKind.Tool && !Game.Builder.Projecting && Game.Tool.BlockHealth is (float hp, float max) ? $"{MathF.Ceiling(hp):F0} / {max:F0}" : null;
 
     /// <summary>The hit ring's radius, and a kill's second thin ring's, in UI units (times the HUD scale: 8.4 and 10.8 px at 1080p).</summary>
     public const float RingRadius = 7f, KillRadius = 9f;

@@ -145,6 +145,7 @@ public partial class BuildTest : Node
             // -- --only=hud: the visor's layout and corners alone.
             HudBoxChecks();
             foreach (int x in HudCornerChecks()) yield return x;
+            foreach (int x in HudBlockHealth()) yield return x;
             yield break;
         }
         if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--only=blueprints") >= 0)

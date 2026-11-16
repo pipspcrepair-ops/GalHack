@@ -271,7 +271,12 @@ public sealed class SliceRules
         public float CameraKick { get; set; } = 0.5f;
         public float FlashEnergy { get; set; } = 6f;
         public float FlashRange { get; set; } = 11f;
-        public float FlashSeconds { get; set; } = 0.09f;
+        /// <summary>The bolt comes up, holds and fades smoothly (an arc over a block a little longer); its light comes up and fades. Seconds.</summary>
+        public float BoltRise { get; set; } = 0.025f;
+        public float BoltHold { get; set; } = 0.07f;
+        public float BoltFade { get; set; } = 0.09f;
+        public float FlashRise { get; set; } = 0.03f;
+        public float FlashFade { get; set; } = 0.24f;
         public float ThunderGap { get; set; } = 0.28f;
     }
 

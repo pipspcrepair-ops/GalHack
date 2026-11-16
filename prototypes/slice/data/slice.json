@@ -89,12 +89,18 @@
       "blockDamage": 30,
       "extractShare": 0.3,
       // The tool's kick (the hand's recoil and the camera's tilt, degrees) and the flash that lights
-      // the surroundings (energy, range m, seconds).
+      // the surroundings (energy, range m).
       "kick": 1.1,
       "cameraKick": 0.5,
       "flashEnergy": 6,
       "flashRange": 11,
-      "flashSeconds": 0.09,
+      // Seconds. A bolt comes up, holds and fades smoothly (owner: linger a little, easy on the eyes;
+      // it was 0.09 s on, then gone); its light comes up and fades longer, so held fire doesn't strobe.
+      "boltRise": 0.025,
+      "boltHold": 0.07,
+      "boltFade": 0.09,
+      "flashRise": 0.03,
+      "flashFade": 0.24,
       // Thunder with every blast, no closer together than this, s.
       "thunderGap": 0.28
     },
