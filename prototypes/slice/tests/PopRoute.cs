@@ -176,6 +176,19 @@ public partial class PopRoute : Node
                 ("city bike", mid + side * radius * 0.8f - across * MathF.Max(300f, radius * 1.25f), 26f, MathF.Max(600f, radius * 2.5f), 1f),
                 ("city fly", mid - across * (radius + 400f), 70f, radius * 2f + 800f, 40f),
             };
+            // --city-shots=dir: the city from 600 m to 2 km out, low over it and flying high (what the far layer draws its buildings as).
+            if (_args.TryGetValue("city-shots", out string shotDir))
+                foreach (var (tag, up) in new[] { ("low", 40f), ("high", 400f) })
+                {
+                    Vector3 eye = Lift(mid - across * (radius + 700f), up);
+                    _hold = eye;
+                    _game.FixedCamera = new Transform3D(Basis.Identity, eye).LookingAt(mid with { Y = _game.Zone.GroundAt(mid.X, mid.Z).Y + 20f }, Vector3.Up);
+                    for (int i = 0; i < 600; i++) yield return 0;
+                    foreach (int x in _drive.UntilSettled(40)) yield return x;
+                    Frame(1920).SavePng($"{shotDir}/city-{tag}.png");
+                    GD.Print($"ROUTE city shot {tag}: {shotDir}/city-{tag}.png, {up:F0} m up, {radius + 700f:F0} m from the middle");
+                }
+            _game.FixedCamera = null;
             PopLog.On = true;
             foreach (var (name, from, speed, length, up) in cityRoutes)
             {
