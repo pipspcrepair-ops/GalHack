@@ -345,13 +345,28 @@ public sealed partial class ShipForm
     readonly string Role;
     /// <summary>Its length, prow to the drives' mouths (m).</summary>
     readonly float L;
+    /// <summary>
+    /// Its scale against the 120 m class the plans' measures are set at: every measure in metres is taken at it, never under
+    /// the grid's metre, so the same plans make a faction's fighters and gunships as well as its capital ships.
+    /// </summary>
+    readonly float K;
 
-    ShipForm(Rng r, string role, float length)
+    ShipForm(Rng r, string role, float length, float scale)
     {
         R = r;
         Role = role;
         L = length;
+        K = scale;
     }
+
+    /// <summary>A measure of a metres (or between a and b) at the ship's scale, never under a metre.</summary>
+    float M(float a, float b = float.NaN) => MathF.Max(1f, (float.IsNaN(b) ? a : R.Float(a, b)) * K);
+
+    /// <summary>A whole number of metres between a and b at the ship's scale, never under <paramref name="least"/> (struts sit on cells).</summary>
+    int Mi(int a, int b, int least = 1) => Math.Max(least, (int)MathF.Round(R.Between(a, b) * K));
+
+    /// <summary>A drive's housing ahead of its throat: never shorter than the largest thruster that fits it.</summary>
+    float Housing(float r) => MathF.Max(MathF.Min(7f, M(7f)), r * 1.4f);
 
     T Add<T>(T p, string paint, bool hab = false) where T : Prim
     {
@@ -445,7 +460,7 @@ public sealed partial class ShipForm
     /// </summary>
     void Bell(NV3 throat, float r, float len, bool housing = true)
     {
-        if (housing) Can("machine", 2, throat - new NV3(0, 0, MathF.Max(7f, r * 1.4f) / 2 - 1f), r + 1f, MathF.Max(7f, r * 1.4f));
+        if (housing) Can("machine", 2, throat - new NV3(0, 0, Housing(r) / 2 - 1f), r + 1f, Housing(r));
         Add(new Loft { S0 = throat.Z, S1 = throat.Z + len, A0 = throat.X, B0 = throat.Y, A1 = throat.X, B1 = throat.Y, HA0 = r, HB0 = r, HA1 = r * 1.4f, HB1 = r * 1.4f, Round = true, Wall = 1.3f, Plug = 1.5f }, "dark");
         Drives.Add((throat + new NV3(0, 0, 1f), r - 1.3f));
     }
@@ -480,7 +495,10 @@ public sealed partial class ShipForm
     void Radiators(NV3 root, NV3 outward, int panels, float span, float chord)
     {
         NV3 stack = MathF.Abs(outward.Y) > 0.5f ? NV3.UnitX : NV3.UnitY;
+        float reach = MathF.Round((panels - 1) / 2f * 3f) + 1f;
         Pipe(root, root + outward * (span + 2f));
+        foreach (float at in new[] { 2f, MathF.Round(span / 2f) + 2f, span + 2f })
+            Pipe(root + outward * at - stack * reach, root + outward * at + stack * reach);
         for (int i = 0; i < panels; i++)
         {
             NV3 c = root + outward * (2f + span / 2f) + stack * MathF.Round((i - (panels - 1) / 2f) * 3f);
@@ -488,11 +506,13 @@ public sealed partial class ShipForm
         }
     }
 
-    /// <summary>A mast standing out of the form along an axis, a dish on its tip facing the way it is told.</summary>
-    void Mast(NV3 root, NV3 up, float len, NV3? dish = null)
+    /// <summary>A mast standing out of the form's surface along an axis from a point inside it, a dish on its tip facing the way it is told.</summary>
+    void Mast(NV3 inside, NV3 up, float len, NV3? dish = null)
     {
+        if (Surface(inside, up) is not { } foot) return;
+        NV3 root = new(MathF.Round(foot.X), MathF.Round(foot.Y), MathF.Round(foot.Z));
         Pipe(root, root + up * len);
-        if (dish is { } n) Add(new Dish { C = root + up * (len + 1f), N = NV3.Normalize(n), R = R.Between(3, 6), Depth = 2f }, "machine");
+        if (dish is { } n) Add(new Dish { C = root + up * (len + 1f), N = NV3.Normalize(n), R = M(3f, 6f), Depth = M(2f) }, "machine");
     }
 
     /// <summary>Machinery on a face of a box (0 +u, 1 -u, 2 +y, 3 -y): small housings half sunk into it.</summary>
@@ -500,7 +520,7 @@ public sealed partial class ShipForm
     {
         for (int i = 0; i < n; i++)
         {
-            var h = new NV3(R.Between(1, 3) + 0.5f, R.Between(1, 2) + 0.5f, R.Between(1, 4) + 0.5f);
+            var h = new NV3(M(1.5f, 3.5f), M(1.5f, 2.5f), M(1.5f, 4.5f));
             float u = R.Float(lo.X + 1, hi.X - 1), y = R.Float(lo.Y + 1, hi.Y - 1), v = R.Float(lo.Z + 2, hi.Z - 2);
             NV3 c = face switch
             {

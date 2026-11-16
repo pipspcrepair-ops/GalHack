@@ -65,6 +65,8 @@ public sealed partial class HullVessel
         public readonly List<Dressing> Decor = new();
         /// <summary>The hull door from outside (its anchor), the empty seat for a core.</summary>
         public Int3? Door, CoreSlot;
+        /// <summary>Blocks left out because nothing joined them to the rest (a wound cut them off).</summary>
+        public int Dropped;
         /// <summary>Where the crash crushed the top deck or tore the decks (structure cells at their walking levels).</summary>
         public readonly HashSet<Int3> Crushed = new();
         public Piece Piece;
@@ -130,6 +132,7 @@ public sealed partial class HullVessel
         b.Engines();
         b.Turrets();
         b.Hollow();
+        b.Join();
         b.S.Name = plan.Role switch { "warship" => "Warship", "liner" => "Liner", "miner" => "Mining Ship", "carrier" => "Carrier", _ => "Freighter" } + piece.Name;
         b.S.Owner = null;
         b.S.DirtyChunks.Clear();

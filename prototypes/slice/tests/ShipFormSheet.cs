@@ -9,6 +9,8 @@ using Godot;
 using PoiGenerator.Gen;
 using Slice.Game;
 using Slice.Places;
+using Dir = GalHack.Structures.Dir;
+using Dirs = GalHack.Structures.Dirs;
 using Int3 = GalHack.Structures.Int3;
 using Structure = GalHack.Structures.Structure;
 
@@ -34,7 +36,7 @@ public partial class ShipFormSheet : Node
         ("Freeholders", "freeholders"), ("Meridian", "meridian"), ("Exchange", "exchange"), ("Reavers", "reavers"), ("Kessari", "kessari"), ("Vharn", "vharn"), ("Husk", null),
     };
 
-    sealed record Built(string Label, Structure Grey, Structure Colour, double Ms);
+    sealed record Built(string Label, Structure Grey, Structure Colour, double Ms, int Dropped, int Loose);
 
     readonly Dictionary<string, string> _args = OS.GetCmdlineUserArgs().Where(a => a.StartsWith("--") && a.Contains('=')).ToDictionary(a => a[2..a.IndexOf('=')], a => a[(a.IndexOf('=') + 1)..]);
     readonly List<Task<Built>> _cells = new();
@@ -72,10 +74,11 @@ public partial class ShipFormSheet : Node
                         var clock = Stopwatch.StartNew();
                         CapitalHull.HullPlan plan = CapitalHull.Plan(kit, tech, new CapitalHull.Spec(role, size, "long", who, husk), seed);
                         PoiState state = husk ? PoiState.Infested : PoiState.Abandoned;
-                        Structure colour = HullVessel.Build(plan, plan.Pieces[0], cat, state, seed, intact: true).Structure;
+                        HullVessel.Result built = HullVessel.Build(plan, plan.Pieces[0], cat, state, seed, intact: true);
+                        Structure colour = built.Structure;
                         double ms = clock.Elapsed.TotalMilliseconds;
                         Structure grey = HullVessel.Build(plan, plan.Pieces[0], cat, state, seed, intact: true, plain: true).Structure;
-                        return new Built($"{name}{(husk ? " (" + who + ")" : "")}  {role}  {plan.L} m", grey, colour, ms);
+                        return new Built($"{name}{(husk ? " (" + who + ")" : "")}  {role}  {plan.L} m", grey, colour, ms, built.Dropped, Loose(colour));
                     }
                     finally { gate.Release(); }
                 }));
@@ -140,9 +143,34 @@ public partial class ShipFormSheet : Node
         _camera.LookAtFromPosition(centre + new Vector3(0.8f, 0.42f, -0.55f).Normalized() * 1200f, centre, Vector3.Up);
     }
 
+    /// <summary>Blocks not joined face to face to the hull's largest piece: what floats.</summary>
+    static int Loose(Structure s)
+    {
+        var left = s.Blocks().Select(b => b.pos).ToHashSet();
+        int total = left.Count, largest = 0;
+        var stack = new Stack<Int3>();
+        while (left.Count > 0)
+        {
+            Int3 start = left.First();
+            left.Remove(start);
+            stack.Push(start);
+            int n = 0;
+            while (stack.Count > 0)
+            {
+                Int3 c = stack.Pop();
+                n++;
+                foreach (Dir d in Dirs.All)
+                    if (left.Remove(c + d.Vec())) stack.Push(c + d.Vec());
+            }
+            largest = Math.Max(largest, n);
+        }
+        return total - largest;
+    }
+
     IEnumerable<int> Run()
     {
         var times = new List<double>();
+        int loose = 0;
         for (int i = 0; i < _cells.Count; i++)
         {
             while (!_cells[i].IsCompleted) yield return 0;
@@ -153,7 +181,8 @@ public partial class ShipFormSheet : Node
             }
             Built b = _cells[i].Result;
             times.Add(b.Ms);
-            GD.Print($"  {b.Label}: {b.Colour.Count} blocks, built in {b.Ms / 1000:F1} s");
+            GD.Print($"  {b.Label}: {b.Colour.Count} blocks, built in {b.Ms / 1000:F1} s, {b.Dropped} left out, {b.Loose} floating");
+            loose += b.Loose;
             _label.Text = b.Label;
             var at = new Vector2I(i % Cols * W, i / Cols * Hgt);
             foreach (bool grey in new[] { true, false })
@@ -170,7 +199,7 @@ public partial class ShipFormSheet : Node
         System.IO.Directory.CreateDirectory(dir);
         _grey?.SavePng($"{dir}/ship-forms-grey.png");
         _colour?.SavePng($"{dir}/ship-forms-colour.png");
-        GD.Print($"sheets: {dir}/ship-forms-grey.png, {dir}/ship-forms-colour.png; {times.Count} hulls, build {times.DefaultIfEmpty(0).Average() / 1000:F1} s mean, {times.DefaultIfEmpty(0).Max() / 1000:F1} s slowest");
+        GD.Print($"sheets: {dir}/ship-forms-grey.png, {dir}/ship-forms-colour.png; {times.Count} hulls, build {times.DefaultIfEmpty(0).Average() / 1000:F1} s mean, {times.DefaultIfEmpty(0).Max() / 1000:F1} s slowest; {loose} blocks floating in all");
         Wildlife.Shutdown.Quit(this, times.Count == _cells.Count ? 0 : 1);
     }
 }

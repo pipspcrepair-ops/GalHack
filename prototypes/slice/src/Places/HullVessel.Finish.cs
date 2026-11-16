@@ -163,6 +163,90 @@ public sealed partial class HullVessel
         foreach (Int3 p in shut) S.Clear(p);
     }
 
+    /// <summary>
+    /// Nothing floats: a piece that meets the rest only along an edge or at a corner (the steps of a slanting bar or
+    /// blade) is joined to it face to face by plating in the cells between, as a builder would; whatever still stands
+    /// apart is left out (<see cref="Result.Dropped"/>).
+    /// </summary>
+    void Join()
+    {
+        for (int pass = 0; pass < 6; pass++)
+        {
+            List<HashSet<Int3>> pieces = Pieces();
+            if (pieces.Count <= 1) return;
+            HashSet<Int3> main = pieces.MaxBy(p => p.Count);
+            bool joined = false;
+            foreach (HashSet<Int3> piece in pieces)
+                if (piece != main && piece.Any(c => Bridge(c, main))) joined = true;
+            if (!joined) break;
+        }
+        List<HashSet<Int3>> rest = Pieces();
+        HashSet<Int3> whole = rest.MaxBy(p => p.Count);
+        foreach (HashSet<Int3> piece in rest.Where(p => p != whole))
+        {
+            Out.Dropped += piece.Count;
+            foreach (Int3 c in piece) S.Clear(c);
+        }
+    }
+
+    /// <summary>The structure's pieces, each the cells joined face to face.</summary>
+    List<HashSet<Int3>> Pieces()
+    {
+        var left = S.Blocks().Select(b => b.pos).ToHashSet();
+        var pieces = new List<HashSet<Int3>>();
+        var stack = new Stack<Int3>();
+        while (left.Count > 0)
+        {
+            Int3 start = left.First();
+            left.Remove(start);
+            var piece = new HashSet<Int3> { start };
+            stack.Push(start);
+            while (stack.Count > 0)
+            {
+                Int3 c = stack.Pop();
+                foreach (Dir d in Dirs.All)
+                    if (left.Remove(c + d.Vec()))
+                    {
+                        piece.Add(c + d.Vec());
+                        stack.Push(c + d.Vec());
+                    }
+            }
+            pieces.Add(piece);
+        }
+        return pieces;
+    }
+
+    /// <summary>Joins a cell to a piece it meets along an edge or at a corner: plating, in the cell's paint, in the free cells stepping across to it.</summary>
+    bool Bridge(Int3 c, HashSet<Int3> main)
+    {
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (Math.Abs(dx) + Math.Abs(dy) + Math.Abs(dz) < 2 || !main.Contains(c + new Int3(dx, dy, dz))) continue;
+                    // Step across one axis at a time; the last step lands face to face with the piece.
+                    var steps = new List<Int3>();
+                    Int3 at = c;
+                    foreach (Int3 step in new[] { new Int3(dx, 0, 0), new Int3(0, dy, 0), new Int3(0, 0, dz) })
+                    {
+                        if (step == new Int3(0, 0, 0)) continue;
+                        at += step;
+                        if (main.Contains(at)) break;
+                        steps.Add(at);
+                    }
+                    if (steps.Any(s => S.Has(s))) continue;
+                    FacePaint paint = S.TryGet(c, out Block was) && S.TypeOf(was).IsArmor ? was.Paint : FacePaint.All(Paint["hull"]);
+                    foreach (Int3 s in steps)
+                    {
+                        Block b = GalHack.Structures.Building.Make(S, Plating, Cat.Cube, Orientations.Identity);
+                        b.Paint = paint;
+                        S.Set(s, b);
+                    }
+                    return true;
+                }
+        return false;
+    }
+
     // ---- dressing -------------------------------------------------------------------------------------
 
     /// <summary>
