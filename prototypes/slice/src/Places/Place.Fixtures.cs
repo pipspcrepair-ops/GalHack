@@ -162,6 +162,20 @@ public partial class Place
     }
 
 
+    /// <summary>A door shot out of its doorway: its cells are air (an open doorway, as the years leave one), its leaves, and the way bodies know it by, gone.</summary>
+    public void TakeDoor(Door d)
+    {
+        var cells = d.Cells.Where(c => Inst.Blocks.Get(c).Type == BlockType.Door).ToList();
+        foreach (Int3 c in cells) Inst.Blocks.Set(c, Block.Air);
+        Remesh(cells);
+        Memory.Modified = true;
+        Memory.DoorWays?.RemoveAll(w => w.Index == d.Index);
+        foreach (AnimatableBody3D leaf in d.Leaves) _doorOf.Remove(leaf.GetInstanceId());
+        _doors.Remove(d);
+        foreach (Group g in _groups.Values) g.Doors.Remove(d);
+        d.Root.QueueFree();
+    }
+
     void PlaceLeaves(Door d)
     {
         for (int side = 0; side < 2; side++)

@@ -35,7 +35,7 @@ public sealed class VesselDamage : ILocatedDamageSink
 
     readonly record struct Pending(float Raw, float Hp, N.Vector3 Point, N.Vector3 Into, Int3 Cell, DamageType Type, float Radius, HitKind Kind);
 
-    enum HitKind { Crash, Shot, Blast }
+    enum HitKind { Crash, Shot, Wear, Blast }
 
     readonly Vessel _v;
     readonly List<Pending> _queue = new();
@@ -80,11 +80,11 @@ public sealed class VesselDamage : ILocatedDamageSink
         return left;
     }
 
-    /// <summary>A bolt or a bite on one block: its shield takes it first, then armour and resistance apply. World point, and the face's normal.</summary>
-    public void Shot(Int3 cell, N.Vector3 point, N.Vector3 normal, float amount, DamageType type)
+    /// <summary>A bolt or a bite on one block: its shield takes it first, then armour and resistance apply (unless <paramref name="wear"/>: the points come off whole). World point, and the face's normal.</summary>
+    public void Shot(Int3 cell, N.Vector3 point, N.Vector3 normal, float amount, DamageType type, bool wear = false)
     {
         if ((amount = Shielded(point, amount)) <= 0f) return;
-        _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, -MathX.Unrotate(_v.Body.Rotation, normal), cell, type, 0f, HitKind.Shot));
+        _queue.Add(new Pending(0f, amount, _v.Body.ToLocal(point) / Cell, -MathX.Unrotate(_v.Body.Rotation, normal), cell, type, 0f, wear ? HitKind.Wear : HitKind.Shot));
     }
 
     /// <summary>An explosion at a world point, radius in metres: its shield takes it first, then it falls off with distance, as <see cref="Damage.Blast"/> does.</summary>
@@ -149,8 +149,8 @@ public sealed class VesselDamage : ILocatedDamageSink
                 case HitKind.Crash:
                     Damage.Crash(S, p.Point, p.Into, p.Raw * perRaw, report);
                     break;
-                case HitKind.Shot:
-                    Damage.Hit(S, p.Cell, p.Type, p.Hp, report, p.Point, -p.Into);
+                case HitKind.Shot or HitKind.Wear:
+                    Damage.Hit(S, p.Cell, p.Type, p.Hp, report, p.Point, -p.Into, p.Kind == HitKind.Wear);
                     harm += report.Dealt - before;
                     break;
                 default:

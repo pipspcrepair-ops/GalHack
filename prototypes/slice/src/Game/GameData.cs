@@ -275,7 +275,7 @@ public sealed class SliceRules
         public float PersonDamage { get; set; } = 4f;
         public float StunSeconds { get; set; } = 1.1f;
         public float RestunSeconds { get; set; } = 1.5f;
-        public float BlockDamage { get; set; } = 30f;
+        public float BlockPerSecond { get; set; } = 5f;
         public float ExtractShare { get; set; } = 0.3f;
         /// <summary>The tool's shake in the hand with each bolt (the view stays still): how long, how far (m), how fast (Hz), and a gathering pulse's as a share of a blast's.</summary>
         public float ShakeSeconds { get; set; } = 0.12f;

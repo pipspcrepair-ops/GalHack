@@ -84,9 +84,9 @@
       "personDamage": 4,
       "stunSeconds": 1.1,
       "restunSeconds": 1.5,
-      // A block on a core that isn't a sleeper's: damage per blast, and the share of its bill that
+      // A block on a core that isn't a sleeper's: hit points a second held on it (taken whole, armour or none; a blast is this times shotInterval and the tier's shot), and the share of its bill that
       // comes away as its hit points do (a block blasted to nothing gives this share of its bill).
-      "blockDamage": 30,
+      "blockPerSecond": 5,
       "extractShare": 0.3,
       // The tool shakes in the hand with each bolt (owner: a shake, not a kick; the view stays still):
       // seconds, metres, Hz, and a gathering pulse's (every digInterval) as a share of a blast's.

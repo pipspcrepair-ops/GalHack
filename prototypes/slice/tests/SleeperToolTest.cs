@@ -11,6 +11,7 @@ using PhysicsSandbox.Bridges;
 using Planets.Gen;
 using Slice.Game;
 using Slice.Items;
+using Slice.Places;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Vessels;
@@ -107,6 +108,7 @@ public partial class SleeperToolTest : Node
         foreach (int x in _drive.Wait(90)) yield return x;
         foreach (int x in Modes()) yield return x;
         foreach (int x in Blocks()) yield return x;
+        foreach (int x in Wear()) yield return x;
         foreach (int x in Person()) yield return x;
         foreach (int x in Repair()) yield return x;
         foreach (int x in Bodies()) yield return x;
@@ -313,12 +315,55 @@ public partial class SleeperToolTest : Node
         int whole0 = bag0.GetValueOrDefault(blockItem);
         Check(!SleeperTool.Ours(theirs) && hurt.Count == 1 && Tool.Extracted == extracted + 1 && Fx.LightningArcs >= arcs + 3,
             $"a raider core's block takes damage instead ({max:F0} to {hp:F0} hit points), the lightning arcing over it ({Fx.LightningArcs - arcs} arcs)");
-        for (int i = 0; i < 40 && ts.Has(cell); i++) foreach (int x in Blast(FaceOf(theirs, cell))) yield return x;
+        foreach (int x in _drive.LookAt(FaceOf(theirs, cell), 6)) yield return x;
+        foreach (int x in _drive.HoldPrimary(FaceOf(theirs, cell), 3000, () => !ts.Has(cell))) yield return x;
         var got = bill.ToDictionary(kv => kv.Key, kv => _game.Pack[kv.Key] - before[kv.Key]);
         double share = Bolt.ExtractShare;
         bool fair = bill.All(kv => got[kv.Key] <= Math.Ceiling(kv.Value * share + 1e-6) && got[kv.Key] >= Math.Floor(kv.Value * share * 0.75 - 1e-6));
         Check(!ts.Has(cell) && got.Values.Sum() > 0 && fair && _game.Pack[blockItem] == whole0,
             $"blasted to nothing it gave up about {share:P0} of its bill ({string.Join(", ", bill.Select(kv => $"{got[kv.Key]} of {kv.Value} {kv.Key}"))}), never the block itself");
+    }
+
+
+    /// <summary>Holding fire on someone else's pieces: 5 hit points a second whatever the armour, a deco piece and a door worn too, and coming away.</summary>
+    IEnumerable<int> Wear()
+    {
+        GD.Print("-- wear: about 5 a second off blocks, deco pieces and doors on someone else's structure --");
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        Vessel a = Row("raiders", true, NextBearing(), out S.Int3[] row);
+        foreach (int x in _drive.Wait(30)) yield return x;
+        S.Structure s = a.Structure;
+        float Total() => s.Blocks().Sum(x => x.block.Hp);
+        float was = Total();
+        foreach (int x in _drive.LookAt(FaceOf(a, row[3]), 6)) yield return x;
+        foreach (int x in _drive.HoldPrimary(FaceOf(a, row[3]), 120)) yield return x;
+        float took = was - Total();
+        Check(took >= 8f && took <= 12f, $"held on someone else's block for 2 s it loses {took:F1} hit points (8 to 12), armoured or not");
+
+        // A wall piece on the face the look is on.
+        S.Int3 under = row[2];
+        Vector3 top = FaceOf(a, under);
+        foreach (int x in _drive.LookAt(top, 6)) yield return x;
+        foreach (int x in _drive.Wait(5)) yield return x;
+        var panel = Decor.Shared.Catalogue.Piece("junction-box");
+        var plan = _game.Builder.PlanDeco(a, panel, _game.Builder.TargetCell, _game.Builder.PlaceCell, 0);
+        DecoPlaced placed = plan.Why == null ? a.AddDeco(panel.Id, _game.Builder.PlaceCell, 0, plan.Cells, plan.Local) : null;
+        foreach (int x in _drive.HoldPrimary(top, 2400, () => placed == null || !a.Decos.Contains(placed))) yield return x;
+        Check(placed != null && placed.Worn > 0f && !a.Decos.Contains(placed) && SleeperTool.Ours(a) == false,
+            $"a deco piece on someone else's structure is worn ({placed?.Worn ?? 0f:F0} hit points) and comes away ({plan.Why}; placed {placed != null}, pieces {a.Decos.Count}, cells {plan.Cells?.Count}, aimed {_game.Builder.AimedDeco() != null} on {_game.Builder.TargetCell}/{_game.Builder.PlaceCell}; block {a.Structure.Get(under).Hp:F0}; {Aimed(a)})");
+
+        // A door.
+        Vessel d = Row("raiders", true, NextBearing(), out S.Int3[] cells);
+        S.Catalogue cat = _game.Zone.Data.Catalogue;
+        S.Int3 at = new(2, 1, 0);
+        var err = S.Building.Place(d.Structure, at, S.Building.Make(d.Structure, cat.Type("door-1x2x1")), null, "raiders");
+        d.ApplyEdits();
+        foreach (int x in _drive.Wait(30)) yield return x;
+        bool placedDoor = d.Structure.Has(at);
+        foreach (int x in _drive.LookAt(FaceOf(d, at), 6)) yield return x;
+        foreach (int x in _drive.HoldPrimary(FaceOf(d, at), 2400, () => !d.Structure.Has(at) || d.Structure.Get(at).Hp <= 0f)) yield return x;
+        Check(placedDoor && !d.Structure.Has(at), $"a door on someone else's structure is shot out of it ({err}; {Aimed(d)})");
+        foreach (int x in MoveOn()) yield return x; // (clear of the rows, for what follows)
     }
 
     // ---- People: a chip and a stun -----------------------------------------------------------------

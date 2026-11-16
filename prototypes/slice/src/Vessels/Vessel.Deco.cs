@@ -22,6 +22,8 @@ public sealed class DecoPlaced
     public int Yaw;
     public List<Int3> Cells = new();
     public DecoNode Node;
+    /// <summary>Hit points worn off it by the Sleeper tool's blasts (someone else's structure).</summary>
+    public float Worn;
 }
 
 public sealed partial class Vessel
