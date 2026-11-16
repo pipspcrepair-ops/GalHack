@@ -567,7 +567,7 @@ public sealed partial class ShipForm
                 Bar("trim", b, c, 1.4f, 0.4f);
             }
         // Blades sweeping back unevenly: port against starboard, a dorsal or a ventral one now and then.
-        int port = R.Between(1, 3), star = (port + R.Between(1, 2)) % 4;
+        int port = R.Between(1, 3), star = port == 1 ? R.Between(2, 3) : port == 3 ? R.Between(1, 2) : R.Chance(0.5f) ? 1 : 3;
         var roots = new List<float>();
         for (int i = 0; i < port; i++) roots.Add(MathF.PI + R.Float(-0.3f, 0.3f));
         for (int i = 0; i < star; i++) roots.Add(R.Float(-0.3f, 0.3f));
