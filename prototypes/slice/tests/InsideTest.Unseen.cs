@@ -107,7 +107,7 @@ public partial class InsideTest
         {
             foreach (DeepSite d in patch.Sites)
             {
-                if (d == fauna?.Site) continue;
+                if (d.GetParent() is Place) continue; // a place's own (this one's, or one walked before)
                 foreach (Creature c in d.Sim.Creatures)
                 {
                     Vector3 at = d.World(Interpenetration.Middle(c));
