@@ -37,24 +37,27 @@ public sealed partial class Staging
         Vector3 feet = _game.Survivor.WorldFeet, fwd = Openest(feet), side = fwd.Cross(Vector3.Up).Normalized();
         Clear(patch, feet, fwd, 60f);
 
-        // Raiders on an armed band of the world's own, 30 m ahead: they meet, and it's a fight.
+        // Raiders on an armed band of the world's own, 40 m ahead (nearer each other than you: it's them they go for): they meet, and it's a fight.
+        // STAGING: both sides carry what their era shoots with, so the fight shows as shots.
         var raiders = Enumerable.Range(0, 4).Select(i => patch.Life.People.Person(Wildlife.Rng.Mix(patch.Life.World.Seed, 911 + (ulong)i), PersonRole.Raider, Occupancy.Raider)).ToList();
-        foreach (Species r in raiders) r.Figure.Prop = Weapons.ForEra(patch.Life.World.Now, patch.Life.World.Now, Wildlife.Rng.For(r.Seed, "staged"));
         raiders[0].Hosts = raiders;
         Species other = BandKind(patch.Life, armed: true);
-        List<Creature> a = Band(patch, raiders[0], feet + fwd * 34f + side * 16f, Stance.Hostile, feet + fwd * 34f - side * 6f);
-        List<Creature> b = Band(patch, other, feet + fwd * 30f - side * 16f, Stance.Wary, feet + fwd * 30f + side * 6f);
-        foreach (int x in _drive.LookAt(feet + fwd * 32f + Vector3.Up * 1.2f, 20)) yield return x;
-        // Taken on a shot, once both sides are at it.
+        foreach (Species r in raiders.Concat(other.Hosts ?? new List<Species> { other })) r.Figure.Prop = Shooting(patch.Life.World.Now, r.Seed);
+        List<Creature> a = Band(patch, raiders[0], feet + fwd * 44f + side * 14f, Stance.Hostile, feet + fwd * 44f - side * 6f);
+        List<Creature> b = Band(patch, other, feet + fwd * 40f - side * 14f, Stance.Wary, feet + fwd * 40f + side * 6f);
+        foreach (Creature m in b) m.Nerve = MathF.Max(m.Nerve, 0.8f); // (they stand and shoot back rather than run: the frame is the fight)
+        foreach (int x in _drive.LookAt(feet + fwd * 42f + Vector3.Up * 1.2f, 20)) yield return x;
+        // Taken on a shot, once both sides are at it: the raiders in their fight, the others shooting back.
         int seen = 0, before = _game.Arms.OthersFired;
         for (int i = 0; i < 60 * 40; i++)
         {
             _game.Suit.Vitals.Health = max;
-            bool both = a[0].Herd.Party.Mood == PartyMood.Fighting && b[0].Herd.Party.Mood == PartyMood.Fighting, shot = _game.Arms.OthersFired > before;
+            bool both = a[0].Herd.Party.Mood == PartyMood.Fighting && b.Any(m => m.Alive && (m.Attacking || m.WantAim > 0.6f)), shot = _game.Arms.OthersFired > before;
             before = _game.Arms.OthersFired;
-            if (both && shot && ++seen >= 6) break;
+            if (both && shot && ++seen >= 3) break;
             yield return 0;
         }
+        foreach (int x in _drive.LookAt(Mid(patch, a).Lerp(Mid(patch, b), 0.5f) + Vector3.Up * 1.2f, 6)) yield return x;
         GD.Print($"(the clash: raiders {a[0].Herd.Party.Mood}, {other.CommonName} {b[0].Herd.Party.Mood}; {_game.Arms.People.Shots} shots by the wild's people; {Line(patch, a, feet)} | {Line(patch, b, feet)})");
         foreach (int x in Shot(_args.GetValueOrDefault("bands", "clash-bands.png"))) yield return x;
 
@@ -63,12 +66,13 @@ public sealed partial class Staging
         Species beast = patch.Life.Fauna.Species.FirstOrDefault(s => CrossReactions.Danger(s) && !s.Flies && s.Rig != RigKind.Swarm && s.Body.Size is > 0.6f and < 3f)
             ?? patch.Life.Fauna.Species.FirstOrDefault(CrossReactions.Danger);
         if (beast == null) { GD.Print("(no predator on this world: no berth to show)"); yield break; }
-        Vector3 lair = Ground(feet + fwd * 24f + side * 4f);
+        Vector3 lair = Ground(feet + fwd * 24f);
         Creature it = patch.Sim.Spawn(beast, patch.PatchLocal(lair));
         it.ThinkEvery = 1e9f; // STAGING: it stays where it was put
         Species walkers = BandKind(patch.Life, armed: true);
-        List<Creature> c = Band(patch, walkers, feet + fwd * 22f - side * 40f, Stance.Welcoming, feet + fwd * 22f + side * 50f);
-        foreach (Creature m in c) m.Nerve = 0.3f; // (wary of it: they give it room)
+        // Bound across behind it: the way bends away from you, round it.
+        List<Creature> c = Band(patch, walkers, feet + fwd * 28f - side * 45f, Stance.Welcoming, feet + fwd * 28f + side * 50f);
+        foreach (Creature m in c) m.Nerve = 0.05f; // (none with the nerve to go for it: they give it room)
         Creature lead = Brain.Leader(c[0].Herd);
         float berth = CrossReactions.Berth(lead.Nerve, c.Any(m => Weapons.Armed(m.Species.Figure.Prop)));
         foreach (int x in _drive.LookAt(lair + Vector3.Up * 1f, 20)) yield return x;
@@ -105,9 +109,9 @@ public sealed partial class Staging
         Town town = _game.Places.PlaceOf(site)?.Memory.Town;
         foreach (int x in Settled(patch)) yield return x;
         if (town?.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
-        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Ranged(q.Figure.Prop);
+        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Armed(q.Figure.Prop);
         for (int i = 0; i < 900 && town != null && !town.People.Any(Out); i++) { _game.Suit.Vitals.Health = max; yield return 0; }
-        Town.Person guard = town?.People.Where(Out).OrderBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
+        Town.Person guard = town?.People.Where(Out).OrderByDescending(q => Weapons.Ranged(q.Figure.Prop)).ThenBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
         if (guard == null) { GD.Print($"(no armed guard out at {site.Name}: no town edge to show)"); yield break; }
         Vector3 post = patch.FromPatch(guard.Position), middle = town.World(new Vector3(town.Data.AreaCenter.X, 0f, town.Data.AreaCenter.Z));
         Vector3 away = new Vector3(post.X - middle.X, 0f, post.Z - middle.Z);
@@ -169,18 +173,33 @@ public sealed partial class Staging
         GD.Print($"(STAGING: the creatures near cleared, {felled} plants ahead felled)");
     }
 
+    /// <summary>What someone of an era shoots with: its weapon table's first ranged pick (a bow or crossbow low, a gun mid and high).</summary>
+    static string Shooting(int era, ulong seed)
+    {
+        var rng = Wildlife.Rng.For(seed, "staged");
+        for (int i = 0; i < 20; i++) if (Weapons.ForEra(era, era, rng) is var p && Weapons.Ranged(p)) return p;
+        return era <= 0 ? "bow" : "rifle";
+    }
+
+    /// <summary>
+    /// STAGING and tests: a band of a kind put down round a point (sim frame), its natural group, or by hand where the
+    /// ground wouldn't take one (a clearance no band is put down in): the sim stands each on the ground.
+    /// </summary>
+    public static List<Creature> PutBand(WildSim sim, Species s, Vector3 at, int count)
+    {
+        List<Creature> band = sim.SpawnGroup(s, at, count);
+        if (band.Count > 0) return band;
+        var herd = new Herd { Home = at, Goal = at, Center = at, Spread = 3f, Party = Party.Roll(s, Wildlife.Rng.Mix(s.Seed, (ulong)sim.Herds.Count)) };
+        sim.Herds.Add(herd);
+        for (int i = 0; i < count; i++) band.Add(sim.Spawn(s, at + new Vector3(i * 1.6f - 2.4f, 0f, (i % 2) * 1.2f), herd));
+        return band;
+    }
+
     /// <summary>STAGING: a band of a kind put down at a point, its stance set, bound for another.</summary>
     List<Creature> Band(WildlifePatch patch, Species s, Vector3 at, Stance stance, Vector3 bound)
     {
         at = Ground(at);
-        List<Creature> band = patch.Sim.SpawnGroup(s, patch.PatchLocal(at), 4);
-        if (band.Count == 0)
-        {
-            var herd = new Herd { Home = patch.PatchLocal(at), Goal = patch.PatchLocal(at), Center = patch.PatchLocal(at), Spread = 3f, Party = Party.Roll(s, Wildlife.Rng.Mix(s.Seed, 78)) };
-            patch.Sim.Herds.Add(herd);
-            for (int i = 0; i < 4; i++) band.Add(patch.Sim.Spawn(s, patch.PatchLocal(Ground(at + new Vector3(i * 1.6f - 2.4f, 0f, (i % 2) * 1.2f))), herd));
-            GD.Print("(STAGING: the band set down by hand)");
-        }
+        List<Creature> band = PutBand(patch.Sim, s, patch.PatchLocal(at), 4);
         Herd h = band[0].Herd;
         h.Party.Temper.Stance = stance;
         h.Home = h.Goal = patch.PatchLocal(Ground(bound));

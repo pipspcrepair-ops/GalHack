@@ -18,7 +18,7 @@ public static partial class Brain
     /// <summary>How far a band sees others in the open by day (half by night), m; how often it looks round, s; below this share of health a body runs on its own; within this the brave stand against what the band runs from, m.</summary>
     const float SeeFar = 60f, ScanEvery = 0.5f, HurtRun = 0.3f, StandIn = 25f;
     /// <summary>How far round a danger a band's way steps at a time, radians.</summary>
-    const float RoundStep = 0.8f;
+    const float RoundStep = 0.5f;
     static readonly float AimCone = MathF.Cos(Mathf.DegToRad(7f));
 
     /// <summary>
@@ -70,8 +70,9 @@ public static partial class Brain
         if (reacted && b.Mood == PartyMood.Fighting && b.Foe != null) { Fight(w, c, b, b.Foe); return; }
         if (reacted && b.Mood is PartyMood.Watching or PartyMood.Warning && b.Outsider != null)
         {
-            // Other people they only keep an eye on as they go, till it comes to a warning.
-            if (b.Leaning == Leaning.Friendly || b.Mood == PartyMood.Watching && b.Outsider is CreatureTarget) Easy(w, c, h, b, lead);
+            // Another band they keep an eye on as they go, warned off or giving way on the way they've bent (two warning each other never stand off for ever); only one too close they stand and back off from.
+            bool going = b.Outsider is CreatureTarget && (b.Mood == PartyMood.Watching || WildSim.Flat(b.Outsider.Position - c.Position).Length() > KeepOff);
+            if (b.Leaning == Leaning.Friendly || going) Easy(w, c, h, b, lead);
             else Watch(w, c, b, lead);
             return;
         }
@@ -338,6 +339,7 @@ public static partial class Brain
         {
             if (b.Bending) h.Goal = bound;
             b.Bending = false;
+            b.BendSide = 0f;
             return;
         }
         float ring = berth + 4f;
@@ -345,11 +347,12 @@ public static partial class Brain
         if (to.Length() < berth) at = (to.LengthSquared() > 0.01f ? to.Normalized() : off / MathF.Max(d, 0.1f)) * ring;
         else
         {
-            // A step round from where they are, toward where they're going, whichever way round is shorter.
+            // A step round from where they are toward where they're going, the way round chosen once (the shorter, from the
+            // side they're on) and kept, so a band walking straight at it never dithers between the two.
             Vector3 radial = d > 0.1f ? off / d : Vector3.Right, toward = to.Normalized();
             float step = MathF.Min(RoundStep, MathF.Acos(Math.Clamp(radial.Dot(toward), -1f, 1f)));
-            Vector3 left = radial.Rotated(Vector3.Up, step), right = radial.Rotated(Vector3.Up, -step);
-            at = (left.Dot(toward) >= right.Dot(toward) ? left : right) * ring;
+            if (b.BendSide == 0f) b.BendSide = radial.Rotated(Vector3.Up, step).Dot(toward) >= radial.Rotated(Vector3.Up, -step).Dot(toward) ? 1f : -1f;
+            at = radial.Rotated(Vector3.Up, step * b.BendSide) * ring;
         }
         b.Bound = bound;
         b.Bending = true;
@@ -368,7 +371,8 @@ public static partial class Brain
     /// to them: not by one of their own); a gun held on them up close (a friendly band, held a moment or
     /// come close); the danger they last saw, as the leader answers it (<see cref="CrossReactions.Respond"/>):
     /// fought, run from, kept wide of, or watched. People who'd do them harm aren't fought on sight: the
-    /// warning comes first. Where it is, and who shot.
+    /// warning comes first; those only warning them off are given way to, never run from. Where it is,
+    /// and who shot.
     /// </summary>
     static Response Danger(WildSim w, Herd h, Party b, Creature lead, ITarget t, float d, out Vector3 from, out ITarget shooter)
     {
@@ -401,7 +405,12 @@ public static partial class Brain
         if (b.Threat is not CreatureTarget { Attackable: true, Creature: var o } || lead.Species.Figure == null) return Response.None;
         from = o.Position;
         Response r = CrossReactions.Respond(o.Species, lead.Species, b.Temper, lead.Nerve, WildSim.Flat(o.Position - h.Center).Length());
-        if (r == Response.Fight && CrossReactions.People(o.Species)) return Response.Watch;
+        if (CrossReactions.People(o.Species))
+        {
+            if (r == Response.Fight) return Response.Watch;
+            // Only warning them off: they give way, they don't run.
+            if (r == Response.Flee && o.Herd?.Party is { } them && them.Toward(b) != Leaning.Hostile) return Response.Avoid;
+        }
         return r == Response.Barricade ? Response.Flee : r;
     }
 

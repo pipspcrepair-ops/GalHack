@@ -140,8 +140,8 @@ public partial class CombatTest : Node
         }
         if (town?.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
         for (int i = 0; i < 600 && town != null && !town.People.Any(Out); i++) { game.Suit.Vitals.Health = max; yield return 0; }
-        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Ranged(q.Figure.Prop);
-        Town.Person guard = town?.People.Where(Out).OrderBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
+        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Armed(q.Figure.Prop);
+        Town.Person guard = town?.People.Where(Out).OrderByDescending(q => Weapons.Ranged(q.Figure.Prop)).ThenBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
         Check(guard != null, $"the town stands with an armed guard out ({town?.People.Count(q => q.Role == "guard")} guards, {town?.People.Count} people)");
         if (guard == null) { game.QueueFree(); yield break; }
         Vector3 post = patch.FromPatch(guard.Position), middle = town.World(new Vector3(town.Data.AreaCenter.X, 0f, town.Data.AreaCenter.Z));
@@ -149,7 +149,7 @@ public partial class CombatTest : Node
         away = away.LengthSquared() > 1f ? away.Normalized() : outward;
         Species raider = patch.Life.People.Person((ulong)_rng.NextInt64(), PersonRole.Raider, Occupancy.Raider);
         raider.Figure.Prop = "rifle";
-        List<Creature> band = patch.Sim.SpawnGroup(raider, patch.PatchLocal(Ground(post + away * 30f)), 3);
+        List<Creature> band = Staging.PutBand(patch.Sim, raider, patch.PatchLocal(Ground(post + away * 30f)), 3);
         Check(band.Count > 0, $"a band of raiders put down 30 m out from the guard ({band.Count})");
         if (band.Count == 0) { game.QueueFree(); yield break; }
         band[0].Herd.Party.Temper.Stance = Stance.Hostile;

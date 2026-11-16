@@ -14,9 +14,10 @@ public enum PartyEvent { None, Seen, Greet, Warn, Fight, Flee, Calm }
 /// together round a leader and take to an outsider as people do, by the stance their makeup and
 /// their world rolled (<see cref="Temper"/>), moved by your standing with their people and by what
 /// you do. Friendly, they carry on and keep a comfortable distance; wary, they stop and watch, back
-/// off, and warn you before anything else; hostile, they fight as one. Nobody runs from less than a
-/// real threat. The leader reacts first, and the rest take it from them. Plain state: the brain
-/// (<see cref="Brain"/>) runs it.
+/// off, and warn you before anything else; hostile, they fight. Another band they take by what each
+/// is (<see cref="CrossReactions.Regard"/>), and a danger they've seen they keep wide of. Nobody runs
+/// from less than a real threat. The leader reacts first, and the rest take it from them, each by
+/// their own nerve. Plain state: the brain (<see cref="Brain"/>) runs it.
 /// </summary>
 public sealed class Party
 {
@@ -63,9 +64,10 @@ public sealed class Party
     /// </summary>
     public ITarget Threat, Stranger;
     public float ScanAt;
-    /// <summary>Their way bent round a danger: to where (the herd's goal for now), and where they were going before it.</summary>
+    /// <summary>Their way bent round a danger: to where (the herd's goal for now), where they were going before it, and which way round (1 or -1; 0 not chosen).</summary>
     public bool Bending;
     public Vector3 BentTo, Bound;
+    public float BendSide;
     /// <summary>Tests: members who took in an event after their leader had, and before.</summary> who took in an event after their leader had, and before.</summary>
     public int AfterLeader, BeforeLeader;
 

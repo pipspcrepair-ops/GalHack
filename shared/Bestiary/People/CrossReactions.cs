@@ -59,8 +59,8 @@ public static class CrossReactions
         return grit > StandGrit;
     }
 
-    /// <summary>How wide a berth someone gives a danger they've seen, m: the timid widest, a weapon in hand far less.</summary>
-    public static float Berth(float nerve, bool armed) => MathF.Max(RunIn, BerthFar * (1.25f - Math.Clamp(nerve, 0f, 1f)) * (armed ? 0.55f : 1f));
+    /// <summary>How wide a berth someone gives a danger they've seen, m: the timid widest, a weapon in hand far less, and never so close they'd have to run from it.</summary>
+    public static float Berth(float nerve, bool armed) => MathF.Max(RunIn + 4f, BerthFar * (1.25f - Math.Clamp(nerve, 0f, 1f)) * (armed ? 0.55f : 1f));
 
     /// <summary>
     /// How one person answers a creature <paramref name="distance"/> metres off. Husks: the armed

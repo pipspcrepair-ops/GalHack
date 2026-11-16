@@ -232,16 +232,17 @@ public partial class PlacePerf : Node
         Begin();
         while (_times.Count < frames) yield return 0;
         End(stage);
-        // --reactions=ab: the same frame again with nobody looking round for others (Sightings off), then on again: what people's reactions to each other cost.
+        // --reactions=ab: the same frame again with nobody looking round for others (Sightings off), then on, twice over (so the
+        // machine's own drift shows against the difference): what people's reactions to each other cost.
         if (_args.GetValueOrDefault("reactions") == "ab" && !stage.StartsWith("far") && stage != "start")
         {
-            foreach (bool on in new[] { false, true })
+            for (int k = 0; k < 4; k++)
             {
-                Wildlife.Sightings.On = on;
+                Wildlife.Sightings.On = k % 2 == 1;
                 foreach (int x in _drive.Wait(30)) yield return x;
                 Begin();
                 while (_times.Count < frames) yield return 0;
-                End($"{stage} reactions {(on ? "on" : "off")}");
+                End($"{stage} reactions {(k % 2 == 1 ? "on" : "off")} {k / 2 + 1}");
             }
         }
         // --ab: the same frame again with places' surfaces left as plain colour, then back: their cost, on one world.

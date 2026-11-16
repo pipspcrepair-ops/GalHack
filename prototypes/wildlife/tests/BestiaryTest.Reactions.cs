@@ -124,6 +124,36 @@ public partial class BestiaryTest
             }
             Check(passes >= 6 && fought == 0, $"bands that mean each other no harm cross paths and pass: {fought} of {passes} fought or ran");
 
+            // A wary band and another crossing its way: it warns them off, and they give way; nobody fights or runs.
+            int meets = 0, warned = 0, broke = 0;
+            notes.Clear();
+            for (int tries = 0; tries < 200 && meets < 8 && peaceful.Count >= 2; tries++)
+            {
+                var (_, sa) = peaceful[_fresh.Int(0, peaceful.Count - 1)];
+                var (_, sb) = peaceful[_fresh.Int(0, peaceful.Count - 1)];
+                if (sa == sb) continue;
+                sim = Open(6);
+                List<Creature> a = sim.SpawnGroup(sa, new Vector3(-35f, 0f, -2f), _fresh.Int(2, 5)), b = sim.SpawnGroup(sb, new Vector3(35f, 0f, 2f), _fresh.Int(2, 5));
+                if (a.Count == 0 || b.Count == 0) continue;
+                a[0].Herd.Party.Temper.Stance = _fresh.Pick(new[] { Stance.Wary, Stance.Guarded, Stance.Superstitious });
+                b[0].Herd.Party.Temper.Stance = _fresh.Pick(new[] { Stance.Welcoming, Stance.Indifferent, Stance.Wary });
+                meets++;
+                Head(a, new Vector3(35f, 0f, -2f));
+                Head(b, new Vector3(-35f, 0f, 2f));
+                bool bad = false;
+                string why = "";
+                for (float t = 0f; t < 50f; t += BandDt)
+                {
+                    sim.Step(BandDt);
+                    bad |= a[0].Herd.Party.Mood is PartyMood.Fighting or PartyMood.Fleeing || b[0].Herd.Party.Mood is PartyMood.Fighting or PartyMood.Fleeing;
+                    if (bad && why == "") why = $"{a[0].Herd.Party.Temper.Stance} band {a[0].Herd.Party.Mood} (foe {a[0].Herd.Party.Foe?.Name}), {b[0].Herd.Party.Temper.Stance} band {b[0].Herd.Party.Mood} (foe {b[0].Herd.Party.Foe?.Name}), {WildSim.Flat(a[0].Herd.Center - b[0].Herd.Center).Length():F0} m apart, warnings {a[0].Herd.Party.Warnings}/{b[0].Herd.Party.Warnings}";
+                }
+                if (a[0].Herd.Party.Warnings > 0) warned++;
+                if (bad || shots.Values.Sum() > 0) { broke++; if (notes.Count < 4) notes.Add(why); }
+            }
+            foreach (string n in notes) GD.Print($"    ({n})");
+            Check(meets >= 6 && warned >= meets * 0.8f && broke == 0, $"a wary band warns off a band crossing its way and they give way: {warned} of {meets} warned, {broke} fought or ran");
+
             // A predator in the way: the band's way bends round it, as wide as the leader's nerve and their arms make it.
             var berths = new List<(float Berth, float Least)>();
             int bent = 0, through = 0;
@@ -142,15 +172,19 @@ public partial class BestiaryTest
                 float berth = CrossReactions.Berth(lead.Nerve, g.Any(m => Weapons.Armed(m.Species.Figure?.Prop ?? "")));
                 Creature beastAt = Still(beast, Vector3.Zero);
                 Head(g, new Vector3(50f, 0f, side));
-                float least = float.MaxValue;
+                float least = float.MaxValue, centre = float.MaxValue;
+                string ran = "";
                 for (float t = 0f; t < 200f && h.Center.X < 38f; t += BandDt)
                 {
                     sim.Step(BandDt);
                     foreach (Creature m in g) if (m.Alive) least = MathF.Min(least, WildSim.Flat(m.Position - beastAt.Position).Length());
+                    centre = MathF.Min(centre, WildSim.Flat(h.Center - beastAt.Position).Length());
+                    if (ran == "" && h.Party.Mood is PartyMood.Fleeing or PartyMood.Fighting) ran = $" {h.Party.Mood} at {sim.Time:F0} s, {WildSim.Flat(h.Center - beastAt.Position).Length():F0} m off, threat {(h.Party.Threat == beastAt.AsTarget ? "it" : h.Party.Threat?.Name)}, lead nerve {Brain.Leader(h).Nerve:F2} {Brain.Leader(h).Species.Figure.Prop}";
                 }
-                if (h.Center.X < 38f) { through++; if (stuck.Count < 8) stuck.Add($"berth {berth:F0} at x {h.Center.X:F0} {h.Party.Mood}"); continue; } // (never got past: it ran, or stood off)
+                if (h.Center.X < 38f) { through++; if (stuck.Count < 8) stuck.Add($"berth {berth:F0} at x {h.Center.X:F0} {h.Party.Mood}, nearest {centre:F0}{ran}"); continue; } // (never got past: it ran, or stood off)
                 berths.Add((berth, least));
                 if (least >= berth * 0.6f) bent++;
+                else if (stuck.Count < 8) stuck.Add($"past, berth {berth:F0}, nearest one {least:F0}, nearest middle {centre:F0}{ran}");
             }
             float Corr(List<(float X, float Y)> v)
             {
