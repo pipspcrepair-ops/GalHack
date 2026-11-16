@@ -330,6 +330,7 @@ public partial class SleeperToolTest : Node
     {
         GD.Print("-- wear: about 5 a second off blocks, deco pieces and doors on someone else's structure --");
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        foreach (int x in MoveOn()) yield return x; // (clear of the earlier rows, none in the line of fire)
         Vessel a = Row("raiders", true, NextBearing(), out S.Int3[] row);
         foreach (int x in _drive.Wait(30)) yield return x;
         S.Structure s = a.Structure;
