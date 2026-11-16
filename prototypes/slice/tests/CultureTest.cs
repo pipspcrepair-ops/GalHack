@@ -518,7 +518,7 @@ public partial class CultureTest : Node
                             }
                             // Settled talking: two standing together for 4 s, sampled once a second (two still partnered from across the place aren't talking together).
                             float apart = new Vector2(p.Pos.X - q.Pos.X, p.Pos.Z - q.Pos.Z).Length();
-                            bool still = !Walking(p) && !Walking(q) && !p.Sitting && !q.Sitting && !p.Working && !q.Working && p.Asked < 0 && q.Asked < 0 && apart <= cu.Trait("chat", 1.1f) + 2f;
+                            bool still = !Walking(p) && !Walking(q) && !p.Sitting && !q.Sitting && !p.Working && !q.Working && p.Asked < 0 && q.Asked < 0 && apart <= 1.5f * cu.Trait("chat", 1.1f);
                             if (key.Item1 == p)
                             {
                                 if (!still) together.Remove(key);

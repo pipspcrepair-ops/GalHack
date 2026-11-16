@@ -661,7 +661,10 @@ public sealed partial class Town
             {
                 int asked = p.Asked;
                 p.Asked = -1;
+                // (The same errand: a stand they were to take there stays theirs.)
+                Vector3? stand = p.ChatAt;
                 GoTo(p, asked);
+                p.ChatAt = stand;
                 if (p.Path is { Count: > 0 }) return false;
             }
             p.Now = 0f;
@@ -720,6 +723,8 @@ public sealed partial class Town
 
     void GoTo(Person p, int spot)
     {
+        // (Off somewhere new: a stand taken to talk or to keep by someone is left behind.)
+        p.ChatAt = null;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - At(spot)).Length() < 1.5f) return;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)
         {
@@ -824,8 +829,9 @@ public sealed partial class Town
                 if (who != null && _rng.NextDouble() < 0.6)
                 {
                     // Beside them at their culture's distance where there's room, else a spot of their own near them: never on top of them.
-                    p.ChatAt = TalkAt(who.Spot, who);
-                    GoTo(p, p.ChatAt != null ? who.Spot : Free(who.Spot, p));
+                    Vector3? beside = TalkAt(who.Spot, who);
+                    GoTo(p, beside != null ? who.Spot : Free(who.Spot, p));
+                    p.ChatAt = beside;
                     p.Partner = who;
                     p.Working = true;
                     p.Wait = 6f + (float)_rng.NextDouble() * 6f;
@@ -898,7 +904,8 @@ public sealed partial class Town
                         // A pack of their own: the rest after whichever of them leads it, the leader off about the town.
                         // (Round the leader rather than on top of it: half of them to the spots beside the leader's.)
                         var round = Data.Links.Where(l => l.A == lead.Spot || l.B == lead.Spot).Select(l => l.A == lead.Spot ? l.B : l.A).Where(s => At(s).DistanceSquaredTo(At(lead.Spot)) < 36f).ToList();
-                        GoTo(p, Free(lead == p ? (linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot) : round.Count > 0 && (p.GetHashCode() & 1) == 1 ? round[p.GetHashCode() / 2 % round.Count] : lead.Spot, p));
+                        if (lead == p) GoTo(p, Free(linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot, p));
+                        else Beside(p, lead.Spot);
                         p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
                         p.Wait = lead != p ? 0.3f + (float)_rng.NextDouble() * 0.8f : 2f + (float)_rng.NextDouble() * 4f;
                         return;
@@ -917,7 +924,7 @@ public sealed partial class Town
                     if (keeper != null && (_rng.NextDouble() > play || other == null || p.Pos.DistanceTo(keeper.Pos) > leash))
                     {
                         // Back to the one minding them; old enough, at their work beside them.
-                        GoTo(p, Free(keeper.Spot, p));
+                        Beside(p, keeper.Spot);
                         p.Working = Culture.Has("work") && p.Figure.Age >= 10f && keeper.Working;
                         p.Speed = 2.4f + (float)_rng.NextDouble() * 0.8f;
                         p.Wait = p.Working ? 8f + (float)_rng.NextDouble() * 8f : 0.6f + (float)_rng.NextDouble() * 1f;
@@ -949,8 +956,8 @@ public sealed partial class Town
         {
             Vector3 d = p.Partner.Pos - p.Pos;
             if (d.LengthSquared() > 0.01f) p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 4f));
-            ChatApart(p, dt);
         }
+        ChatApart(p, dt);
     }
 
     /// <summary>
@@ -984,15 +991,29 @@ public sealed partial class Town
         p.ChatAt = stand;
     }
 
-    /// <summary>Where one coming to a spot stands to talk with someone there: the spot's stand nearest the culture's distance from them, never closer than 85% of it (null: no room here to talk at it).</summary>
+    /// <summary>To a spot, to stand beside whoever has it (a child by the one minding them, a pack round its leader): a clear stand an arm's length off it that nobody stands on, else a free spot near.</summary>
+    void Beside(Person p, int spot)
+    {
+        foreach (Vector3 s in Stands(spot, 0.9f).Skip(1))
+            if (!People.Any(o => o != p && !o.Dead && !o.Indoors && !o.Away && (o.ChatAt ?? o.Pos).DistanceSquaredTo(s) < 0.5f))
+            {
+                GoTo(p, spot);
+                p.ChatAt = s;
+                return;
+            }
+        GoTo(p, Free(spot, p));
+    }
+
+    /// <summary>Where one coming to a spot stands to talk with someone there: the spot's stand nearest the culture's distance from them (from where they're headed, if on their way), never closer than 85% of it (null: no room here to talk at it).</summary>
     Vector3? TalkAt(int spot, Person with)
     {
         float dist = Culture.Trait("chat", 1.1f);
+        Vector3 there = with.Path != null && with.Step < with.Path.Count ? At(spot) : with.Pos;
         Vector3? best = null;
         float off = float.MaxValue;
         foreach (Vector3 s in Stands(spot, dist))
         {
-            float d = new Vector2(s.X - with.Pos.X, s.Z - with.Pos.Z).Length();
+            float d = new Vector2(s.X - there.X, s.Z - there.Z).Length();
             if (d < 0.85f * dist || MathF.Abs(d - dist) >= off) continue;
             (best, off) = (s, MathF.Abs(d - dist));
         }
