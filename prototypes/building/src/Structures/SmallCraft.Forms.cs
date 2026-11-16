@@ -157,8 +157,8 @@ public static partial class SmallCraft
     static void Marks(Lay_ l, Int3 lo, Int3 hi)
     {
         int y = (lo.Y + hi.Y + 1) / 2;
-        l.Number.Add((P(hi.X, y, Math.Min(hi.Z - 1, lo.Z + 3)), P(0, 0, -1), Dir.PosX));
-        l.Number.Add((P(lo.X, y, Math.Max(lo.Z + 1, Math.Min(hi.Z - 1, lo.Z + 3) - 2)), P(0, 0, 1), Dir.NegX));
+        l.Number.Add((P(hi.X, y, hi.Z), P(0, 0, -1), Dir.PosX));
+        l.Number.Add((P(lo.X, y, lo.Z), P(0, 0, 1), Dir.NegX));
         l.Band.Add((P(lo.X, lo.Y + 1 > hi.Y - 1 ? y : lo.Y + 1, lo.Z), P(lo.X, lo.Y + 1 > hi.Y - 1 ? y : lo.Y + 1, hi.Z), Dir.NegX));
         l.Band.Add((P(hi.X, lo.Y + 1 > hi.Y - 1 ? y : lo.Y + 1, lo.Z), P(hi.X, lo.Y + 1 > hi.Y - 1 ? y : lo.Y + 1, hi.Z), Dir.PosX));
     }
@@ -188,7 +188,7 @@ public static partial class SmallCraft
         int modules = R(l, 2, 4), placed = 0;
         for (int tries = 0; tries < 40 && placed < modules; tries++)
         {
-            int kind = l.Rng.Next(3), mlen = R(l, 3, 6), w = R(l, 2, 3), h = R(l, 2, 3);
+            int kind = placed == 0 ? 0 : l.Rng.Next(3), mlen = R(l, 3, 6), w = R(l, 2, 3), h = R(l, 2, 3); // the first a rack: a trader's hold
             if (kind > 0) (w, h) = (3, 3); // a can or a tank is round: 3 across
             int z0 = R(l, zs, Math.Max(zs, zt - 4 - mlen)), z1 = Math.Min(z0 + mlen - 1, zt - 4);
             if (z1 - z0 < 2) continue;

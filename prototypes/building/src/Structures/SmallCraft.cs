@@ -212,13 +212,21 @@ public static partial class SmallCraft
             if (!d.S.TypeOf(b).IsArmor || d.S.ShapeOf(b) != d.S.Catalogue.Cube || rng.NextDouble() >= style.Patches) continue;
             d.Fill(p, p, rng.Next(3) == 0 ? Patch : Plate, l.Coat(3 + rng.Next(l.Coats.Length - 3)));
         }
+        // Along each run, on the first stretch of plain plates long enough for it.
         uint mark = style.Marks[rng.Next(style.Marks.Length)];
         string digits = number.ToString();
-        for (int i = 0; i < digits.Length; i++)
-        {
-            ushort glyph = d.Paint($"n{i}", Paint.Solid(l.Coats[0]).WithStencil(digits[i], mark) with { Grime = (byte)l.Grime() });
-            foreach (var (start, step, face) in l.Number) d.Face(start + step * i, start + step * i, face, glyph);
-        }
+        bool Plain(Int3 c) => d.S.TryGet(c, out Block b) && !b.IsFiller && d.S.TypeOf(b).IsArmor && d.S.ShapeOf(b) == d.S.Catalogue.Cube;
+        foreach (var (start, step, face) in l.Number)
+            for (int from = 0; from < 12; from++)
+            {
+                if (!Enumerable.Range(from, digits.Length).All(i => Plain(start + step * i))) continue;
+                for (int i = 0; i < digits.Length; i++)
+                {
+                    ushort glyph = d.Paint($"n{i}", Paint.Solid(l.Coats[0]).WithStencil(digits[i], mark) with { Grime = (byte)l.Grime() });
+                    d.Face(start + step * (from + i), start + step * (from + i), face, glyph);
+                }
+                break;
+            }
     }
 
     /// <summary>Cargo pods of containers strapped along the flanks (one side only, sometimes), and maybe one on the roof; each pod's ends are plates in its own coat.</summary>
