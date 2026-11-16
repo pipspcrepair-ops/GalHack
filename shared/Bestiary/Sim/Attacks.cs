@@ -215,9 +215,10 @@ public static class Attacks
                 c.Lunge = c.Move is AttackMove.Bite or AttackMove.Charge ? 1f : 0f;
                 c.Desired = Vector3.Zero;
                 c.LookAt = c.StrikeAt;
-                // A stomp turns onto them as the foot comes down; a bite's lunge set its yaw on them from where it lands
-                // (round to their front), a charge holds the line it set off on, a swipe sweeps.
-                if (c.Space == null && c.Move == AttackMove.Stomp) FaceStrike(w, c, c.StrikeAt, dt);
+                // A stomp turns onto where they stood as the foot comes down, and so does a fist or a blade as it swings; an
+                // animal's bite set its yaw on them from where it lands (round to their front), a charge holds the line it set
+                // off on, a swipe sweeps.
+                if (c.Space == null && (c.Move == AttackMove.Stomp || c.Move == AttackMove.Bite && c.Species.Figure != null)) FaceStrike(w, c, c.AimPoint, dt);
                 float k = Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f);
                 if (c.Move == AttackMove.Swipe) Sweep(c, Mathf.Lerp(-0.3f, 1.25f, k * k * (3f - 2f * k)));
                 if (c.Move == AttackMove.Charge && c.Rig.Steps != c.StrikeSteps)

@@ -77,12 +77,12 @@ public partial class WoodsTest : Node
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z);
 
-        // The thickest wood within a few hundred metres: the most trunks within 20 m of a dry spot.
+        // The thickest wood within a kilometre and a half: the most trees within 20 m of a dry spot.
         Vector3 start = game.Survivor.WorldFeet, wood = start;
         int most = -1;
-        for (int k = 0; k < 40; k++)
+        for (int k = 0; k < 120; k++)
         {
-            float a = k * 2.39996f, d = 30f + k * 9f;
+            float a = k * 2.39996f, d = 30f + k * 12f;
             Vector3 at = start + new Vector3(MathF.Cos(a) * d, 0f, MathF.Sin(a) * d);
             List<PlanetSurface.Terrain.FloraSolid> near;
             while ((near = game.Zone.Scatter.Near(at.ToNumerics(), 20f)) == null) yield return 0;
@@ -92,18 +92,25 @@ public partial class WoodsTest : Node
         Check(most >= 8, $"a wood to watch: {most} trees within 20 m of a spot {wood.DistanceTo(start):F0} m from the start");
         game.Survivor.PlaceOutside((Ground(wood) + Vector3.Up * 0.3f).ToNumerics());
         WildlifePatch patch = game.Zone.Wildlife;
-        patch.FinishFollowing();
-        for (int i = 0; i < 600 && (patch.Sim == null || !before && patch.Wooded == 0); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        // The patch baked again round them, with its woods (and the frame where it is now, should it have wrapped).
+        for (int i = 0; i < 1200; i++)
+        {
+            game.Suit.Vitals.Health = max;
+            yield return 0;
+            patch.FinishFollowing();
+            if (patch.Sim != null && (before || patch.Wooded) && WildSim.Flat(patch.Origin - game.Survivor.WorldFeet).Length() < patch.Sim.Terrain.HalfSize * 0.5f) break;
+        }
+        wood = game.Survivor.WorldFeet;
         WildSim sim = patch.Sim;
         if (sim == null) { Check(false, "the patch has a sim"); yield break; }
         patch.Frozen = false;
-        GD.Print($"  (footprints of trunks and rocks in the creatures' grid: {patch.Wooded}{(before ? ", woods kept out (--before)" : $", read in in {patch.WoodMs:F1} ms")})");
+        GD.Print($"  (footprints of trunks and rocks in the creatures' grid: {patch.Trunks}{(before ? ", woods kept out (--before)" : "")}; the patch {WildSim.Flat(patch.Origin - wood).Length():F0} m off the sleeper)");
 
         // The ground's own trunks and rocks round the wood, where they stand in the zone: what is watched against.
         List<PlanetSurface.Terrain.FloraSolid> solids;
         while ((solids = game.Zone.Scatter.Near(wood.ToNumerics(), 90f)) == null) yield return 0;
         var trunks = new List<(long Id, Vector3 At, float R)>();
-        game.Zone.Scatter.Footprints(solids, wood, trunks);
+        ScatterSolids.Footprints(game.Zone.Planet, solids, wood, trunks);
         // How far a body this wide standing here would be into the nearest of them, m.
         float Into(Vector3 at, float r) => trunks.Max(t => r + t.R - WildSim.Flat(at - t.At).Length());
 
@@ -159,6 +166,7 @@ public partial class WoodsTest : Node
         int overlaps = 0, people = 0, animals = 0, frames = 60 * 180;
         float deepest = 0f;
         var walked = new Dictionary<Creature, float>();
+        float bandOff = 0f; // the band's distance from the sleeper, summed over its frames
         var last = watched.ToDictionary(c => c, c => patch.WorldOf(c));
         int passedTrunks = 0;
         string shot = Args.FirstOrDefault(a => a.StartsWith("--shot="))?.Substring(7);
@@ -172,6 +180,7 @@ public partial class WoodsTest : Node
                 if (c.Removed || c.Dead || c.Species.Flies) continue;
                 Vector3 at = patch.WorldOf(c);
                 walked[c] = walked.GetValueOrDefault(c) + WildSim.Flat(at - last[c]).Length();
+                if (band.Contains(c)) bandOff += WildSim.Flat(at - game.Survivor.WorldFeet).Length();
                 last[c] = at;
                 float into = Into(at, Locomotion.Footprint(c.Species));
                 if (into > -1.5f) passedTrunks++;
@@ -197,7 +206,7 @@ public partial class WoodsTest : Node
         }
         foreach (string line in log) GD.Print($"  ({line})");
         float peopleWalked = band.Sum(c => walked.GetValueOrDefault(c)), animalsWalked = watched.Except(band).Sum(c => walked.GetValueOrDefault(c));
-        string what = $"over 3 minutes in a wood of {trunks.Select(t => t.Id).Distinct().Count()} trees and rocks ({trunks.Count} footprint circles): {overlaps} body-frames into one ({people} by people, {animals} by animals, deepest {deepest:F2} m); the band walked {peopleWalked:F0} m, the animals {animalsWalked:F0} m, {passedTrunks / 60} body-seconds within 1.5 m of one";
+        string what = $"over 3 minutes in a wood of {trunks.Select(t => t.Id).Distinct().Count()} trees and rocks ({trunks.Count} footprint circles): {overlaps} body-frames into one ({people} by people, {animals} by animals, deepest {deepest:F2} m); the band walked {peopleWalked:F0} m (on average {bandOff / (frames * band.Count):F0} m from the sleeper), the animals {animalsWalked:F0} m, {passedTrunks / 60} body-seconds within 1.5 m of one";
         if (before) GD.Print($"  (BEFORE, woods kept out of the grid: {what})");
         else
         {
