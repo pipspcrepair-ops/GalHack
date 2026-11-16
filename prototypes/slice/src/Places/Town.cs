@@ -1008,7 +1008,8 @@ public sealed partial class Town
     Vector3? TalkAt(int spot, Person with)
     {
         float dist = Culture.Trait("chat", 1.1f);
-        Vector3 there = with.Path != null && with.Step < with.Path.Count ? At(spot) : with.Pos;
+        // (Where they'll stand: where they are if they're at the spot already, else the spot, which they're on their way to.)
+        Vector3 there = with.Pos.DistanceSquaredTo(At(spot)) < 1.44f && with.Asked < 0 && (with.Path == null || with.Step >= with.Path.Count) ? with.Pos : At(spot);
         Vector3? best = null;
         float off = float.MaxValue;
         foreach (Vector3 s in Stands(spot, dist))
