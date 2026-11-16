@@ -1534,6 +1534,7 @@ GalHack is built in Godot 4 with C#, by a team of AI agents directed by a human 
 
 - Minimum spec: 4-core CPU, 8 GB RAM, GTX 1050-class or Iris Xe-class GPU.
 - A steady 60 fps at 1080p on low settings in normal play, never below 30 fps in the biggest fights.
+- **A flat 60 fps on every screen** (owner, 16 Nov: "It's fine if the game runs at a flat 60hz regardless of screen, if that helps"). Frames are paced evenly at 60 on any refresh rate, every 4 refreshes on a 240 Hz screen, so the target everywhere is an even 16.7 ms frame. On refresh rates that 60 doesn't divide, pacing uses the nearest even divisor.
 - A minimum-spec test machine runs the performance suite on every build; a frame-time regression blocks the merge.
 
 **Keeping it fast**
