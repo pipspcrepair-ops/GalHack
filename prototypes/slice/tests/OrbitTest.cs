@@ -504,8 +504,8 @@ public partial class OrbitTest : Node
     int _salvagedTo, _lootedFrom;
     string _said;
 
-    /// <summary>Four metres over the Skiff's seat, along its own up: clear of its windscreen and hull.</summary>
-    static Vector3 OverCockpit(Vessel v) => v.ToWorld(v.Seat.Value) + MathX.Rotate(v.Body.Rotation, N.Vector3.UnitY).ToGodot() * 4f;
+    /// <summary>Eight metres over the Skiff's seat, along its own up: clear of its windscreen and hull, and of its pull (touched, its gravity stands you on it).</summary>
+    static Vector3 OverCockpit(Vessel v) => v.ToWorld(v.Seat.Value) + MathX.Rotate(v.Body.Rotation, N.Vector3.UnitY).ToGodot() * 8f;
 
     IEnumerable<int> BackToTheSkiff()
     {
@@ -581,7 +581,7 @@ public partial class OrbitTest : Node
         {
             float agl = v.AboveGround, vy = v.Body.Velocity.Y;
             float wanted = agl > 260f ? -60f : agl > 70f ? -20f : agl > 25f ? -8f : agl > 6f ? -3f : -1.2f;
-            bool onGear = v.Controller.Gear is { Contact: true } && MathF.Abs(vy) < 0.4f; // hands off, and it settles (let go off its feet, the assist holds it there)
+            bool onGear = (v.Controller.Gear is { Contact: true } || v.Body.OnFloor) && MathF.Abs(vy) < 0.4f; // touching down, hands off, and it settles (let go in the air, the assist hovers it there)
             // Sinking too fast, hands off: the assist brakes at least at its floor, where Space would climb only at thrust less weight.
             _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
             _pilot.Creep(v, pad, agl > 3f);
