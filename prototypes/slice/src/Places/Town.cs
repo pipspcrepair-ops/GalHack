@@ -291,6 +291,9 @@ public sealed partial class Town
     /// <summary>What a tick of everyone in the town cost last time, ms.</summary>
     public float LastTickMs { get; private set; }
 
+    /// <summary>The last frame's posing, ms (measurements).</summary>
+    public float LastPoseMs { get; private set; }
+
     public Vector3 World(Vector3 local) => _place != null ? _place.ToWorld(local) : local;
 
     // ---- Standing and sitting ---------------------------------------------------------------------
@@ -433,6 +436,13 @@ public sealed partial class Town
             long from = System.Diagnostics.Stopwatch.GetTimestamp();
             Town.Tick((float)delta);
             Town.LastTickMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+        }
+
+        public override void _Process(double delta)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp();
+            Town.PoseFrame();
+            Town.LastPoseMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
         }
     }
 
@@ -1296,7 +1306,8 @@ public sealed partial class Town
     /// <summary>Builds what they're drawn with: a few at a time, so a town coming into view never costs a whole frame.</summary>
     void MakeBody(Person p)
     {
-        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}" };
+        // Posed in the frame, not the tick (PoseFrame): drawn as posed, never eased between ticks.
+        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}", PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off };
         _view.AddChild(p.View);
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
@@ -1308,10 +1319,67 @@ public sealed partial class Town
     int? _style;
     float _clock;
 
-    /// <summary>Their body where they are now, this far from you (dt: the time since they were last posed).</summary>
+    /// <summary>
+    /// Their body where they are now, this far from you (dt: the time since they were last posed): owed, and posed once a drawn
+    /// frame (<see cref="PoseFrame"/>) with all the time since. A slow frame's two or three ticks posed the same bodies over and
+    /// over, and only the last of them was ever drawn. Those due less often far off (<see cref="Due"/>) are owed less often.
+    /// </summary>
     void Pose(Person p, int who, float away, float dt)
     {
-        if (Shown(p, away, dt)) PoseBody(p, who, dt);
+        p.PoseOwed += dt;
+        p.PoseAway = away;
+        p.PoseWho = who;
+    }
+
+    public sealed partial class Person
+    {
+        /// <summary>Time since they were last posed, how far from you they were when it came due, and their index (-1: nothing owed).</summary>
+        internal float PoseOwed, PoseAway;
+        internal int PoseWho = -1;
+    }
+
+    /// <summary>
+    /// Once a drawn frame, before the draw: every body owed a pose, posed. One out of sight (outside the view, with room for its
+    /// size) and whose shadow can't reach into it waits, its time kept for when it comes back: what can't be seen isn't posed.
+    /// </summary>
+    void PoseFrame()
+    {
+        if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
+        Camera3D eye = _place.GetViewport()?.GetCamera3D();
+        Godot.Collections.Array<Plane> frustum = eye?.GetFrustum();
+        Vector3 toSun = _places.Zone.Sky?.ToSun ?? Vector3.Up;
+        // Where a body's shadow falls, from its top (the sun's way along the ground, as far as a low sun throws it).
+        Vector3 shadow = toSun.Y > 0.05f ? new Vector3(-toSun.X, 0f, -toSun.Z) / toSun.Y * 2f : Vector3.Zero;
+        if (shadow.LengthSquared() > 25f * 25f) shadow = shadow.Normalized() * 25f;
+        for (int i = 0; i < People.Count; i++)
+        {
+            Person p = People[i];
+            if (p.PoseWho < 0) continue;
+            // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed.)
+            bool needed = p.Engaged || p.Dead && !p.Laid;
+            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)) continue;
+            float dt = p.PoseOwed;
+            int who = p.PoseWho;
+            p.PoseOwed = 0f;
+            p.PoseWho = -1;
+            if (Shown(p, p.PoseAway, dt)) PoseBody(p, who, dt);
+        }
+    }
+
+    /// <summary>A body at these feet (world) in the view, or close to the eye, or its shadow in the view: 2 m round it either way.</summary>
+    static bool InSight(Camera3D eye, Godot.Collections.Array<Plane> frustum, Vector3 feet, Vector3 shadow)
+    {
+        Vector3 middle = feet + Vector3.Up * 0.9f;
+        if (middle.DistanceSquaredTo(eye.GlobalPosition) < 8f * 8f) return true;
+        return Inside(frustum, middle, 2f) || shadow != Vector3.Zero && Inside(frustum, feet + shadow * 0.5f, shadow.Length() * 0.5f + 2f);
+    }
+
+    /// <summary>A sphere touching the view (the planes face out of it).</summary>
+    static bool Inside(Godot.Collections.Array<Plane> frustum, Vector3 at, float radius)
+    {
+        foreach (Plane plane in frustum)
+            if (plane.DistanceTo(at) > radius) return false;
+        return true;
     }
 
     /// <summary>Whether their body shows at all (not indoors, not away on a run, not beyond the far range), faded in and out at its edges.</summary>
