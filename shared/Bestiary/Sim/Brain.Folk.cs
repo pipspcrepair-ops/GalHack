@@ -17,8 +17,8 @@ public static partial class Brain
     const float CoverRun = 4f;
     /// <summary>How far a band sees others in the open by day (half by night), m; how often it looks round, s; below this share of health a body runs on its own; within this the brave stand against what the band runs from, m.</summary>
     const float SeeFar = 60f, ScanEvery = 0.5f, HurtRun = 0.3f, StandIn = 25f;
-    /// <summary>How far round a danger a band's way steps at a time, radians.</summary>
-    const float RoundStep = 0.5f;
+    /// <summary>How far round a danger a band's way steps at a time, radians; how long one out of sight is remembered, s.</summary>
+    const float RoundStep = 0.5f, ThreatMemory = 6f;
     static readonly float AimCone = MathF.Cos(Mathf.DegToRad(7f));
 
     /// <summary>
@@ -298,6 +298,7 @@ public static partial class Brain
     static void Scan(WildSim w, Herd h, Party b, Creature lead)
     {
         b.ScanAt = w.Time + ScanEvery;
+        ITarget was = b.Threat;
         b.Threat = b.Stranger = null;
         float see = SeeFar * (w.Clock.IsNight ? 0.5f : 1f), near = see, nearest = see;
         Creature danger = null, other = null;
@@ -314,7 +315,9 @@ public static partial class Brain
             }
             if (d < near) { near = d; danger = o; }
         }
-        if (danger != null && Seen(w, lead, danger)) b.Threat = danger.AsTarget;
+        if (danger != null && Seen(w, lead, danger)) { b.Threat = danger.AsTarget; b.ThreatSeen = w.Time; }
+        // (Out of sight a moment, a danger isn't forgotten.)
+        else if (was is { Attackable: true } && w.Time - b.ThreatSeen < ThreatMemory && Flat(was, h) < see) b.Threat = was;
         if (other != null && Seen(w, lead, other)) b.Stranger = other.AsTarget;
     }
 

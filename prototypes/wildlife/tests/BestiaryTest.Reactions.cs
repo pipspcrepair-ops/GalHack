@@ -60,7 +60,7 @@ public partial class BestiaryTest
                 shots.Clear();
                 return w;
             }
-            void Head(List<Creature> g, Vector3 to) { Herd h = g[0].Herd; h.Home = h.Goal = to; h.GoalTimer = 999f; }
+            void Head(List<Creature> g, Vector3 to) { Herd h = g[0].Herd; h.Home = h.Goal = to; h.GoalTimer = 1e9f; } // (a herd's first update counts its time from long ago: a timer short of that runs out at once)
             Creature Still(Species s, Vector3 at)
             {
                 Creature c = sim.Spawn(s, at);
@@ -174,14 +174,16 @@ public partial class BestiaryTest
                 Head(g, new Vector3(50f, 0f, side));
                 float least = float.MaxValue, centre = float.MaxValue;
                 string ran = "";
+                var trace = new System.Text.StringBuilder();
                 for (float t = 0f; t < 200f && h.Center.X < 38f; t += BandDt)
                 {
                     sim.Step(BandDt);
                     foreach (Creature m in g) if (m.Alive) least = MathF.Min(least, WildSim.Flat(m.Position - beastAt.Position).Length());
                     centre = MathF.Min(centre, WildSim.Flat(h.Center - beastAt.Position).Length());
+                    if (sim.Frame % 90 == 0) trace.Append($" [{sim.Time:F0}s {h.Center.X:F0},{h.Center.Z:F0} goal {h.Goal.X:F0},{h.Goal.Z:F0} {(h.Party.Bending ? $"bent {h.Party.BendSide}" : "straight")} {(h.Party.Threat != null ? "sees" : "-")} near {sim.Sightings.Near(h.Center, 60f).Contains(beastAt)} los {Senses.LineClear(sim, Brain.Leader(h), beastAt.AsTarget, Brain.Leader(h).Position + Vector3.Up * 1.6f, beastAt.Position + Vector3.Up * 0.8f)} {h.Party.Mood}]");
                     if (ran == "" && h.Party.Mood is PartyMood.Fleeing or PartyMood.Fighting) ran = $" {h.Party.Mood} at {sim.Time:F0} s, {WildSim.Flat(h.Center - beastAt.Position).Length():F0} m off, threat {(h.Party.Threat == beastAt.AsTarget ? "it" : h.Party.Threat?.Name)}, lead nerve {Brain.Leader(h).Nerve:F2} {Brain.Leader(h).Species.Figure.Prop}";
                 }
-                if (h.Center.X < 38f) { through++; if (stuck.Count < 8) stuck.Add($"berth {berth:F0} at x {h.Center.X:F0} {h.Party.Mood}, nearest {centre:F0}{ran}"); continue; } // (never got past: it ran, or stood off)
+                if (h.Center.X < 38f) { through++; if (through == 1) GD.Print($"    (trace, berth {berth:F0}:{trace})"); if (stuck.Count < 8) stuck.Add($"berth {berth:F0} at x {h.Center.X:F0} {h.Party.Mood}, nearest {centre:F0}{ran}"); continue; } // (never got past: it ran, or stood off)
                 berths.Add((berth, least));
                 if (least >= berth * 0.6f) bent++;
                 else if (stuck.Count < 8) stuck.Add($"past, berth {berth:F0}, nearest one {least:F0}, nearest middle {centre:F0}{ran}");

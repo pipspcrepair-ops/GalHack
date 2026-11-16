@@ -346,6 +346,7 @@ public partial class CombatTest : Node
         }
         int shotsBefore = game.Arms.People.Shots, fired = game.Arms.OthersFired;
         var rifle = sim.Spawn(Raider("rifle"), patch.PatchLocal(Ground(feet + new Vector3(14f, 0f, 0f))));
+        rifle.Nerve = 1f; // (one with the nerve to fight you: hurt, a timid one runs)
         sim.Damage(rifle, 1f, patch.Player);
         var muzzles = new List<float>();
         for (int i = 0; i < 60 * 20 && game.Arms.People.Shots - shotsBefore < 3; i++)

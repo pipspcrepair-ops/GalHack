@@ -60,10 +60,10 @@ public sealed class Party
     /// <summary>
     /// What they made of the open round them at their last look (twice a second, <see cref="Sightings"/>): the nearest
     /// danger they can see (a predator, a Husk, a feral, people who'd do them harm) and the nearest people of another band;
-    /// when they look next.
+    /// when they look next, and when they last saw that danger.
     /// </summary>
     public ITarget Threat, Stranger;
-    public float ScanAt;
+    public float ScanAt, ThreatSeen = -999f;
     /// <summary>Their way bent round a danger: to where (the herd's goal for now), where they were going before it, and which way round (1 or -1; 0 not chosen).</summary>
     public bool Bending;
     public Vector3 BentTo, Bound;

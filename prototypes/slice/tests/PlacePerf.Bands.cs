@@ -50,7 +50,7 @@ public partial class PlacePerf
             Herd h = band[0].Herd;
             if (i % 3 == 0) h.Party.Temper.Stance = Stance.Hostile;
             h.Home = h.Goal = patch.PatchLocal(Ground(feet - dir * r));
-            h.GoalTimer = 120f;
+            h.GoalTimer = 1e9f; // (a new herd's first update counts its time from long ago: anything shorter runs out at once)
             parties.Add(h.Party);
         }
         Species beast = life.Fauna.Species.FirstOrDefault(s => CrossReactions.Danger(s) && !s.Flies);

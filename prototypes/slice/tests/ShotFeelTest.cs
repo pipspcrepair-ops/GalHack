@@ -246,6 +246,7 @@ public partial class ShotFeelTest : Node
             if (c.Position.DistanceTo(patch.PatchLocal(spot)) < 5f) break;
             patch.Sim.Kill(c, null);
         }
+        c.Nerve = 1f; // (one with the nerve to fight you: hurt, a timid one runs)
         return c;
     }
 

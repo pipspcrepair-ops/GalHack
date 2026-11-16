@@ -132,7 +132,7 @@ public sealed class NavGrid
         {
             if (!first && Blocked(x, z)) return false; // a creature may start inside a blocked cell
             first = false;
-            if (x == x1 && z == z1) return true;
+            if (x == x1 && z == z1 || MathF.Min(tx, tz) > 1f) return true; // (the line ends in this cell: a walk that rounding carried past its last cell would run on to the grid's edge)
             if (tx < tz) { tx += stepX; x += sx; }
             else { tz += stepZ; z += sz; }
         }

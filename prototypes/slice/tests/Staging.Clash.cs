@@ -63,7 +63,7 @@ public sealed partial class Staging
 
         // A band bound across ahead, past a predator it has seen: its way bends round it.
         Clear(patch, feet, fwd, 60f);
-        Species beast = patch.Life.Fauna.Species.FirstOrDefault(s => CrossReactions.Danger(s) && !s.Flies && s.Rig != RigKind.Swarm && s.Body.Size is > 0.6f and < 3f)
+        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Danger(s) && !s.Flies && s.Rig != RigKind.Swarm && s.Body.Size < 3f).OrderByDescending(s => s.Body.Size).FirstOrDefault()
             ?? patch.Life.Fauna.Species.FirstOrDefault(CrossReactions.Danger);
         if (beast == null) { GD.Print("(no predator on this world: no berth to show)"); yield break; }
         Vector3 lair = Ground(feet + fwd * 40f);
@@ -117,12 +117,14 @@ public sealed partial class Staging
         Vector3 away = new Vector3(post.X - middle.X, 0f, post.Z - middle.Z);
         away = away.LengthSquared() > 1f ? away.Normalized() : outward;
         Vector3 across = away.Cross(Vector3.Up).Normalized();
-        // Side-on to them both: the guard near, the raiders out beyond.
-        _game.Survivor.PlaceOutside((Ground(post + away * 10f + across * 14f) + Vector3.Up * 0.3f).ToNumerics());
+        // Raiders come up just outside the town's ground on the guard's side; you side-on to them both, the guard near, the raiders beyond.
+        float edge = MathF.Max((post - middle with { Y = post.Y }).Length() + 18f, town.Data.AreaRadius + 10f);
+        Vector3 beyond = middle + away * edge;
+        _game.Survivor.PlaceOutside((Ground(post.Lerp(beyond, 0.4f) + across * 14f) + Vector3.Up * 0.3f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
-        Clear(patch, post + away * 30f, away, 40f);
-        List<Creature> gang = Band(patch, raiders[0], post + away * 32f, Stance.Hostile, post + away * 20f);
-        foreach (int x in _drive.LookAt(post + away * 16f + Vector3.Up * 1.4f, 20)) yield return x;
+        Clear(patch, beyond, away, 30f);
+        List<Creature> gang = Band(patch, raiders[0], beyond + away * 4f, Stance.Hostile, beyond);
+        foreach (int x in _drive.LookAt(post.Lerp(beyond, 0.5f) + Vector3.Up * 1.4f, 20)) yield return x;
         // Taken on a shot from the town (a guard's, or anyone's of theirs with the nerve), its second.
         int shots = 0;
         bool fresh = false;
@@ -193,10 +195,13 @@ public sealed partial class Staging
     public static List<Creature> PutBand(WildSim sim, Species s, Vector3 at, int count)
     {
         List<Creature> band = sim.SpawnGroup(s, at, count);
-        if (band.Count > 0) return band;
-        var herd = new Herd { Home = at, Goal = at, Center = at, Spread = 3f, Party = Party.Roll(s, Wildlife.Rng.Mix(s.Seed, (ulong)sim.Herds.Count)) };
-        sim.Herds.Add(herd);
-        for (int i = 0; i < count; i++) band.Add(sim.Spawn(s, at + new Vector3(i * 1.6f - 2.4f, 0f, (i % 2) * 1.2f), herd));
+        Herd herd = band.Count > 0 ? band[0].Herd : null;
+        if (herd == null)
+        {
+            herd = new Herd { Home = at, Goal = at, Center = at, Spread = 3f, Party = Party.Roll(s, Wildlife.Rng.Mix(s.Seed, (ulong)sim.Herds.Count)) };
+            sim.Herds.Add(herd);
+        }
+        for (int i = band.Count; i < count; i++) band.Add(sim.Spawn(s, at + new Vector3(i * 1.6f - 2.4f, 0f, (i % 2) * 1.2f), herd));
         return band;
     }
 
@@ -208,7 +213,7 @@ public sealed partial class Staging
         Herd h = band[0].Herd;
         h.Party.Temper.Stance = stance;
         h.Home = h.Goal = patch.PatchLocal(Ground(bound));
-        h.GoalTimer = 120f;
+        h.GoalTimer = 1e9f; // (a new herd's first update counts its time from long ago: anything shorter runs out at once)
         GD.Print($"(STAGING: {band.Count} of {s.CommonName} put down {at.DistanceTo(_game.Survivor.WorldFeet):F0} m off, their stance set {stance}: {string.Join(", ", band.Select(m => m.Species.Figure.Prop is { Length: > 0 } p ? p : "unarmed"))})");
         return band;
     }
