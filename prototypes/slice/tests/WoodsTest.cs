@@ -69,27 +69,33 @@ public partial class WoodsTest : Node
     {
         bool before = Args.Contains("--before");
         WildlifePatch.NoWoods = before;
-        var game = new Game.Game { Interactive = false, World = WorldChoice.Fresh("temperate"), SkipIntro = true };
-        AddChild(game);
-        var drive = new Driver(game);
-        foreach (int x in drive.UntilPlaying()) yield return x;
-        game.Zone.Weather.Bridge.Calm = true;
-        double max = game.Suit.Sim.Data.Vitals.Health.Max;
+        // A fresh temperate world and the thickest wood within a kilometre and a half of its start: the most trees within
+        // 20 m of a dry spot. A world with no wood near its start is passed over for another.
+        Game.Game game = null;
         Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z);
-
-        // The thickest wood within a kilometre and a half: the most trees within 20 m of a dry spot.
-        Vector3 start = game.Survivor.WorldFeet, wood = start;
+        Vector3 start = default, wood = default;
         int most = -1;
-        for (int k = 0; k < 120; k++)
+        for (int world = 0; world < 3 && most < 8; world++)
         {
-            float a = k * 2.39996f, d = 30f + k * 12f;
-            Vector3 at = start + new Vector3(MathF.Cos(a) * d, 0f, MathF.Sin(a) * d);
-            List<PlanetSurface.Terrain.FloraSolid> near;
-            while ((near = game.Zone.Scatter.Near(at.ToNumerics(), 20f)) == null) yield return 0;
-            int count = near.Where(s => s.IsTrunk).Select(s => s.Id).Distinct().Count();
-            if (count > most && Ground(at).Y > 1f) { most = count; wood = at; }
+            if (game != null) { game.QueueFree(); yield return 0; }
+            game = new Game.Game { Interactive = false, World = WorldChoice.Fresh("temperate"), SkipIntro = true };
+            AddChild(game);
+            foreach (int x in new Driver(game).UntilPlaying()) yield return x;
+            start = wood = game.Survivor.WorldFeet;
+            most = -1;
+            for (int k = 0; k < 120; k++)
+            {
+                float a = k * 2.39996f, d = 30f + k * 12f;
+                Vector3 at = start + new Vector3(MathF.Cos(a) * d, 0f, MathF.Sin(a) * d);
+                List<PlanetSurface.Terrain.FloraSolid> near;
+                while ((near = game.Zone.Scatter.Near(at.ToNumerics(), 20f)) == null) yield return 0;
+                int count = near.Where(s => s.IsTrunk).Select(s => s.Id).Distinct().Count();
+                if (count > most && Ground(at).Y > 1f) { most = count; wood = at; }
+            }
         }
         Check(most >= 8, $"a wood to watch: {most} trees within 20 m of a spot {wood.DistanceTo(start):F0} m from the start");
+        game.Zone.Weather.Bridge.Calm = true;
+        double max = game.Suit.Sim.Data.Vitals.Health.Max;
         game.Survivor.PlaceOutside((Ground(wood) + Vector3.Up * 0.3f).ToNumerics());
         WildlifePatch patch = game.Zone.Wildlife;
         // The patch baked again round them, with its woods (and the frame where it is now, should it have wrapped).
