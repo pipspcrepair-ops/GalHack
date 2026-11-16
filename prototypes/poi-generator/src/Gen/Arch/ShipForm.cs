@@ -371,7 +371,7 @@ public sealed partial class ShipForm
     }
 
     /// <summary>A part and its copies turned about the thrust axis n ways round (n 1: the part alone).</summary>
-    void Ways(Prim p, int n)
+    void Around(Prim p, int n)
     {
         for (int k = 1; k < n; k++) Prims.Add(p.Turned(k * MathF.Tau / n));
     }

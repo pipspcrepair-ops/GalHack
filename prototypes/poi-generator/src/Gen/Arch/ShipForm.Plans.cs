@@ -487,8 +487,8 @@ public sealed partial class ShipForm
         {
             NV3 p = Vertex(i, a0), q = Vertex(i, a0 + MathF.Tau / n), o = Round(a0);
             // One sector of the ring (its side, its spoke, its module and light), turned n ways round.
-            Ways(Bar("machine", p, q, 1.0f), n);
-            Ways(Bar("machine", o * cr + new NV3(0, 0, p.Z), p, 0.9f), n);
+            Around(Bar("machine", p, q, 1.0f), n);
+            Around(Bar("machine", o * cr + new NV3(0, 0, p.Z), p, 0.9f), n);
             if (hoops) Add(new Hoop { C = new NV3(0, 0, p.Z), R = Radius(i), T = 1.1f }, "machine");
             if (!alternate || i % 2 == 0)
             {
@@ -499,13 +499,13 @@ public sealed partial class ShipForm
                     1 => Sphere("hull", p + o * (ms - 0.5f), new NV3(ms)),
                     _ => Bar("hull", p + o * (ms - 0.5f) - new NV3(0, 0, reach * 0.6f), p + o * (ms - 0.5f) + new NV3(0, 0, reach * 0.6f), ms * 0.75f),
                 };
-                Ways(m, n);
-                Ways(Sphere("glow", p + o * (2f * ms - 0.2f), new NV3(1f)), n);
+                Around(m, n);
+                Around(Sphere("glow", p + o * (2f * ms - 0.2f), new NV3(1f)), n);
             }
             if (i == bays) break;
             // Longeron and brace to the next ring, and the bay's machinery on the core.
-            Ways(Bar("machine", p, Vertex(i + 1, a0), 1.0f), n);
-            Ways(Bar("machine", p, Vertex(i + 1, a0 + MathF.Tau / n), 0.75f), n);
+            Around(Bar("machine", p, Vertex(i + 1, a0), 1.0f), n);
+            Around(Bar("machine", p, Vertex(i + 1, a0 + MathF.Tau / n), 0.75f), n);
             Can("machine", 2, new NV3(0, 0, p.Z + pitch / 2), mr, ml);
         }
         // The drives: a central bell and a ring of n about it, on a round thrust plate.
