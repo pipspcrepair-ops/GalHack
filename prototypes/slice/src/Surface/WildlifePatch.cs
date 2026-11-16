@@ -206,6 +206,7 @@ public partial class WildlifePatch : Node3D
         Vector3 oldOrigin = Origin;
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
+        _wooded = false; // its trees and rocks go into the new grid once their chunks are ready
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         // A band out here is of whoever holds the ground (the nearest living place's people): your standing with them moves its stance.
         sim.StandingAt = p => StandingAt?.Invoke(FromPatch(p)) ?? 0f;
@@ -524,6 +525,7 @@ public partial class WildlifePatch : Node3D
             return;
         }
         if (Sim == null) return;
+        Wood();
         // A new spawn distance: the patch is baked again round you at its new size, whatever you are on.
         float half = SpawnReach.PatchHalf(Zone.Data.Rules.Wildlife.PatchHalfSize);
         bool resized = half != Sim.Terrain.HalfSize;

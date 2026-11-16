@@ -387,7 +387,7 @@ public partial class SkyshipTest : Node
     {
         var (lo, hi) = v.Structure.Bounds();
         float reach = (hi - lo).ToVector3().Length() * v.Structure.Grid.CellSize * 0.5f + 2f;
-        var near = sky.ScatterNear(v.Body.Position, reach);
+        var near = sky.Zone.Scatter.Near(v.Body.Position, reach);
         if (near == null) return null;
         int n = 0;
         foreach (var s in near)
