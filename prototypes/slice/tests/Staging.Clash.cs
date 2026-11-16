@@ -66,12 +66,12 @@ public sealed partial class Staging
         Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Danger(s) && !s.Flies && s.Rig != RigKind.Swarm && s.Body.Size < 5f).OrderByDescending(s => s.Body.Size).FirstOrDefault()
             ?? patch.Life.Fauna.Species.FirstOrDefault(CrossReactions.Danger);
         if (beast == null) { GD.Print("(no predator on this world: no berth to show)"); yield break; }
-        Vector3 lair = Ground(feet + fwd * 24f);
+        Vector3 lair = Ground(feet + fwd * 30f);
         Creature it = patch.Sim.Spawn(beast, patch.PatchLocal(lair));
         it.ThinkEvery = 1e9f; // STAGING: it stays where it was put
         Species walkers = BandKind(patch.Life, armed: true);
         // Bound away from you past it, a little to one side of it: the way bends wide round it, out to the side, level with it.
-        List<Creature> c = Band(patch, walkers, feet + fwd * 5f + side * 3f, Stance.Welcoming, feet + fwd * 95f + side * 3f);
+        List<Creature> c = Band(patch, walkers, feet + fwd * 2f + side * 2f, Stance.Welcoming, feet + fwd * 95f + side * 2f);
         foreach (Creature m in c) m.Nerve = 0.1f; // (none with the nerve to go for it: they give it room)
         Creature lead = Brain.Leader(c[0].Herd);
         float berth = CrossReactions.Berth(lead.Nerve, c.Any(m => Weapons.Armed(m.Species.Figure.Prop)));
