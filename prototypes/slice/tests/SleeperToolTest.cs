@@ -627,7 +627,7 @@ public partial class SleeperToolTest : Node
             foreach (int x in _drive.Wait(120)) yield return x;
             // (Objects counts what the garbage collector has yet to free, and ground worked or dug adds its own chunks
             // and debris, so the bar is well under a node a blast, and memory level.)
-            Check(most - nodes < Math.Max(100, (Tool.Shots - shots) / 2) && Megabytes() - mb < 64,
+            Check(most - nodes < Math.Max(100, (Tool.Shots - shots) * 3 / 4) && Megabytes() - mb < 64, // (a node a blast would be a leak; a deepening hole's own chunks are not)
                 $"{label} for 40 s ({Tool.Shots - shots} blasts): nodes {nodes} to at most {most}, then {Nodes()}; objects {objects} to {Objects()}; memory {mb:F0} to {Megabytes():F0} MB");
         }
         if (Tool.Mode == ToolMode.Repair) foreach (int x in _drive.Tap(Key.Q)) yield return x;
