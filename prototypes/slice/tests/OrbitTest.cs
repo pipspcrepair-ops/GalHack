@@ -412,7 +412,7 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Wait(40)) yield return x;
         Check(_game.Survivor.Body.Frame == null && _game.Survivor.Binding.Floating, "off the deck and floating: mag boots off, nothing holds you");
         // Up out of the open cockpit first: straight for the door, the windscreen is in the way.
-        foreach (int x in _pilot.FloatTo(() => v.ToWorld(v.Seat.Value) + MathX.Rotate(v.Body.Rotation, N.Vector3.UnitY).ToGodot() * 4f, 1f, 15f)) yield return x;
+        foreach (int x in _pilot.FloatTo(() => OverCockpit(v), 1f, 15f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => Door + Outward * 2.4f + Lift, 0.7f, 40f)) yield return x;
         Check(_game.Survivor.WorldEye().DistanceTo(Door) < 4f, $"floated across on the suit's thrusters to its hull door ({_game.Survivor.WorldEye().DistanceTo(Door):F1} m off)");
         bool shut = !ship.Get(_door).Open;
@@ -504,12 +504,17 @@ public partial class OrbitTest : Node
     int _salvagedTo, _lootedFrom;
     string _said;
 
+    /// <summary>Four metres over the Skiff's seat, along its own up: clear of its windscreen and hull.</summary>
+    static Vector3 OverCockpit(Vessel v) => v.ToWorld(v.Seat.Value) + MathX.Rotate(v.Body.Rotation, N.Vector3.UnitY).ToGodot() * 4f;
+
     IEnumerable<int> BackToTheSkiff()
     {
         GD.Print("-- back to the Skiff --");
         Vessel v = _skiff;
         Vector3 Seat() => v.ToWorld(v.Seat.Value);
-        foreach (int x in _pilot.FloatTo(Seat, 2.3f, 40f)) yield return x;
+        // In over the open cockpit, as out: met on its side or nose, its gravity stands you on its hull.
+        foreach (int x in _pilot.FloatTo(() => OverCockpit(v), 1f, 40f)) yield return x;
+        foreach (int x in _pilot.FloatTo(Seat, 2.3f, 15f)) yield return x;
         foreach (int x in _drive.LookAt(Seat(), 6)) yield return x;
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(5)) yield return x;
@@ -547,7 +552,7 @@ public partial class OrbitTest : Node
         var probe = new FrameProbe(this);
         for (int i = 0; i < 60 * 90 && _game.Spaceflight.Crossings.Count == crossings; i++)
         {
-            _game.Controls.Hold(Key.Ctrl, -v.Body.Velocity.ToGodot().Dot(top) < 60f);
+            _game.Controls.Hold(Key.Ctrl, -N.Vector3.Dot(v.Body.Velocity, MathX.Rotate(v.Body.Rotation, N.Vector3.UnitY)) < 60f); // along its own legs: the zone may be laid out afresh on the way
             streamed |= _game.Spaceflight.StreamingAhead;
             yield return 0;
         }
