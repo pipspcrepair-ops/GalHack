@@ -245,9 +245,9 @@ public partial class AftermathTest : Node
 
         // 3. A hungry predator near the body eats it.
         // (A predator if the world has one that walks, else a scavenger: both eat what they find.)
-        Species hunter = patch.Life.Fauna.Species.Where(s => s.Behaviour is Behaviour.Predator or Behaviour.Scavenger && !s.Flies && s.Plan is BodyPlan.Walker or BodyPlan.Hopper && s.Figure == null && !s.IsDeep && s.Domestic == DomesticKind.None)
-            .OrderBy(s => s.Behaviour == Behaviour.Predator ? 0 : 1).ThenBy(s => MathF.Abs(s.Body.Size - 1.2f)).FirstOrDefault();
-        if (hunter == null) { GD.Print("  (no walking predator or scavenger on this world: nothing to eat the body)"); }
+        Species hunter = patch.Life.Fauna.Species.Where(s => s.Behaviour is Behaviour.Predator or Behaviour.Scavenger && s.Rig != RigKind.Swarm && s.Figure == null && !s.IsDeep && s.Domestic == DomesticKind.None)
+            .OrderBy(s => (s.Flies ? 2 : 0) + (s.Behaviour == Behaviour.Predator ? 0 : 1)).ThenBy(s => MathF.Abs(s.Body.Size - 1.2f)).FirstOrDefault();
+        if (hunter == null) { GD.Print("  (no predator or scavenger on this world: nothing to eat the body)"); }
         else
         {
             float meat = body.MeatLeft;
