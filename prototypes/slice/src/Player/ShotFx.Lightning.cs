@@ -163,7 +163,7 @@ public partial class ShotFx
         m.ClearSurfaces();
         if (len < 0.02f) return;
         Vector3 eye = GetViewport()?.GetCamera3D()?.GlobalPosition ?? a + Vector3.Up;
-        int depth = Math.Clamp((int)MathF.Ceiling(MathF.Log2(len / 0.12f)), 2, 7);
+        int depth = Math.Clamp((int)MathF.Ceiling(MathF.Log2(len / 0.3f)), 2, 6);
         m.SurfaceBegin(Mesh.PrimitiveType.Triangles);
         _path.Clear();
         _path.Add(a);
@@ -205,12 +205,12 @@ public partial class ShotFx
         Jag(mid, b, disp * 0.5f, depth - 1);
     }
 
-    /// <summary>The path as two ribbons: a wide soft glow and a thin white-hot core, each segment turned to the eye.</summary>
+    /// <summary>The path as two ribbons: a soft glow in the light's colour and a thin hot core, each segment turned to the eye.</summary>
     void Ribbons(ImmediateMesh m, Vector3 eye, Color colour, float width, float len)
     {
         float scale = Mathf.Clamp(len / 6f, 0.6f, 1.4f);
-        Ribbon(m, eye, new Color(colour.R, colour.G, colour.B, 0.32f), 0.11f * width * scale);
-        Ribbon(m, eye, new Color(colour.Lerp(Colors.White, 0.75f), 1f), 0.022f * width * scale);
+        Ribbon(m, eye, new Color(colour.R, colour.G, colour.B, 0.5f), 0.045f * width * scale);
+        Ribbon(m, eye, new Color(colour.Lerp(Colors.White, 0.45f), 1f), 0.012f * width * scale);
     }
 
     void Ribbon(ImmediateMesh m, Vector3 eye, Color colour, float half)
@@ -220,7 +220,8 @@ public partial class ShotFx
             Vector3 p0 = _path[i], p1 = _path[i + 1], seg = p1 - p0;
             Vector3 side = seg.Cross(eye - p0);
             if (side.LengthSquared() < 1e-10f) continue;
-            side = side.Normalized() * half;
+            // Thinner close to the eye, so the stretch leaving the barrel doesn't fill the view.
+            side = side.Normalized() * half * Mathf.Clamp(p0.DistanceTo(eye) / 1.5f, 0.3f, 1f);
             m.SurfaceSetColor(colour);
             m.SurfaceAddVertex(p0 - side);
             m.SurfaceAddVertex(p0 + side);

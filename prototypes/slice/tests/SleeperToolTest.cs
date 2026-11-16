@@ -39,7 +39,7 @@ namespace Slice.Tests;
 /// </summary>
 public partial class SleeperToolTest : Node
 {
-    const int WatchdogMinutes = 9;
+    const int WatchdogMinutes = 12;
     IEnumerator<int> _run;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -110,6 +110,7 @@ public partial class SleeperToolTest : Node
         foreach (int x in Repair()) yield return x;
         foreach (int x in Ore()) yield return x;
         foreach (int x in NoBuildUp()) yield return x;
+        if (_shots != null) foreach (int x in BlockPicture()) yield return x;
         _game.QueueFree();
         yield return 0;
     }
@@ -261,25 +262,22 @@ public partial class SleeperToolTest : Node
         // Someone else's core: damaged a share at a time, arcs over it, a share of its bill as it goes.
         Vessel theirs = Row("raiders", true, NextBearing(), out S.Int3[] row);
         foreach (int x in _drive.Wait(30)) yield return x;
-        // The block a blast at the row's end meets first (from where you stand it may be another).
-        foreach (int x in _drive.LookAt(FaceOf(theirs, row[2]), 6)) yield return x;
-        S.Int3 cell = Met(theirs) ?? row[2];
+        // The first blast at the row's end: whichever of its blocks it meets first (from where you stand that may be another) is the one followed.
         S.Structure ts = theirs.Structure;
+        var hpBefore = ts.Blocks().ToDictionary(x => x.pos, x => x.block.Hp);
+        var bag0 = _game.Pack.Storage.Contents.ToDictionary(kv => kv.Key, kv => kv.Value);
+        int arcs = Fx.LightningArcs, extracted = Tool.Extracted;
+        foreach (int x in Blast(FaceOf(theirs, row[2]))) yield return x;
+        var hurt = ts.Blocks().Where(x => x.block.Hp < hpBefore.GetValueOrDefault(x.pos) - 0.01f).ToList();
+        S.Int3 cell = hurt.Count > 0 ? hurt[0].pos : row[2];
         S.Block b = ts.Get(cell);
-        float max = ts.StatsOf(b).MaxHp;
-        string blockItem = BuildingBridge.ItemOf(items, ts, b).Id;
+        float max = ts.StatsOf(b).MaxHp, hp = b.Hp;
         Bill bill = BuildingBridge.BillOf(items, ts, b);
-        var before = bill.ToDictionary(kv => kv.Key, kv => _game.Pack[kv.Key]);
-        int whole0 = _game.Pack[blockItem], arcs = Fx.LightningArcs, extracted = Tool.Extracted;
-        foreach (int x in Blast(FaceOf(theirs, cell))) yield return x;
-        float hp = ts.Has(cell) ? ts.Get(cell).Hp : 0f;
-        Check(!SleeperTool.Ours(theirs) && ts.Has(cell) && hp < max && Tool.Extracted == extracted + 1 && Fx.LightningArcs >= arcs + 3,
+        string blockItem = BuildingBridge.ItemOf(items, ts, b).Id;
+        var before = bill.ToDictionary(kv => kv.Key, kv => bag0.GetValueOrDefault(kv.Key));
+        int whole0 = bag0.GetValueOrDefault(blockItem);
+        Check(!SleeperTool.Ours(theirs) && hurt.Count == 1 && Tool.Extracted == extracted + 1 && Fx.LightningArcs >= arcs + 3,
             $"a raider core's block takes damage instead ({max:F0} to {hp:F0} hit points), the lightning arcing over it ({Fx.LightningArcs - arcs} arcs)");
-        if (_shots != null)
-        {
-            foreach (int x in _drive.Click()) yield return x;
-            foreach (int x in Freeze("sleeper-block.png")) yield return x;
-        }
         for (int i = 0; i < 40 && ts.Has(cell); i++) foreach (int x in Blast(FaceOf(theirs, cell))) yield return x;
         var got = bill.ToDictionary(kv => kv.Key, kv => _game.Pack[kv.Key] - before[kv.Key]);
         double share = Bolt.ExtractShare;
@@ -431,6 +429,19 @@ public partial class SleeperToolTest : Node
         foreach (int x in _drive.Tap(Key.Q)) yield return x;
     }
 
+    /// <summary>The picture of a blast on a raider core's block, on fresh ground with nothing else about.</summary>
+    IEnumerable<int> BlockPicture()
+    {
+        foreach (int x in MoveOn()) yield return x;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        Vessel theirs = Row("raiders", true, NextBearing(), out S.Int3[] row);
+        foreach (int x in _drive.Wait(60)) yield return x;
+        foreach (int x in _drive.LookAt(FaceOf(theirs, row[1]), 8)) yield return x;
+        foreach (int x in _drive.Wait(30)) yield return x;
+        foreach (int x in _drive.Click()) yield return x;
+        foreach (int x in Freeze("sleeper-block.png")) yield return x;
+    }
+
     // ---- Held a long while, nothing builds up ---------------------------------------------------------
 
     static long Objects() => (long)Performance.GetMonitor(Performance.Monitor.ObjectCount);
@@ -457,8 +468,8 @@ public partial class SleeperToolTest : Node
             if (repair != (Tool.Mode == ToolMode.Repair)) foreach (int x in _drive.Tap(Key.Q)) yield return x;
             foreach (int x in _drive.LookAt(at, 6)) yield return x;
             int shots = Tool.Shots;
-            // Settle in for 10 s, then measure 40 s more of it.
-            foreach (int x in _drive.HoldPrimary(at, 600)) yield return x;
+            // Settle in for 32 s (scorch marks last 30), then measure 40 s more of it.
+            foreach (int x in _drive.HoldPrimary(at, 1920)) yield return x;
             long nodes = Nodes(), objects = Objects();
             double mb = Megabytes();
             long most = nodes;
@@ -485,8 +496,15 @@ public partial class SleeperToolTest : Node
         GD.Print("-- ore: the yield as it was, lightning to the ground --");
         DepositKind kind = DepositFinder.Kinds.First();
         string ore = Tool.OreOf(kind).Id;
+        // Set down by the nearest deposit (the walk there is PlayerTest's to prove): this is about the tool.
+        if (_play.NextDeposit(kind, 2000f) is Vector3 deposit)
+        {
+            Vector3 by = _game.Zone.GroundAt(deposit.X + 2f, deposit.Z + 2f);
+            _game.Survivor.PlaceOutside((by + Vector3.Up * 0.3f).ToNumerics());
+            foreach (int x in _drive.Wait(90)) yield return x;
+        }
         int before = _game.Pack[ore], cells = Tool.OreCells, rock = Tool.TellOre, bolts = Fx.LightningBolts, arcs = Fx.LightningArcs;
-        foreach (int x in _play.Gather(kind, before + 8, 500f)) yield return x;
+        foreach (int x in _play.Gather(kind, before + 8, 60f)) yield return x;
         int dug = Tool.OreCells - cells, got = _game.Pack[ore] - before;
         float per = _game.Zone.Data.Rules.Materials.OrePerCell;
         Check(dug > 0 && got >= dug * per + (Tool.TellOre - rock) && got <= (dug + 4) * per + (Tool.TellOre - rock) + 1,
