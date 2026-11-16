@@ -100,7 +100,7 @@ public sealed partial class Vessel
     /// <summary>Switches every block of a kind with a switch of its own (lamps, turrets) on or off: its Off flag, which its glow, its light, its parts and its draw follow.</summary>
     public void SwitchBlocks(Func<BlockType, bool> which, bool on)
     {
-        bool changed = false;
+        bool changed = false, others = Structure.DirtyChunks.Count > 0, lampsOnly = true;
         foreach (var (cell, block) in Structure.Blocks().ToList())
         {
             Block b = block;
@@ -109,8 +109,16 @@ public sealed partial class Vessel
             b.Flags ^= BlockFlags.Off;
             Structure.Set(cell, b);
             changed = true;
+            lampsOnly &= t.IsLight;
         }
-        if (changed) ApplyEdits();
+        if (!changed) return;
+        if (others || !lampsOnly) ApplyEdits();
+        else
+        {
+            // Only lamps switched: nothing collides or weighs differently, so only their chunks are redrawn, within the frame's budget.
+            View.Queue(Structure.DirtyChunks);
+            Structure.DirtyChunks.Clear();
+        }
     }
 
     /// <summary>Switches its core's artificial gravity (it also needs power to work: an outage drops it).</summary>

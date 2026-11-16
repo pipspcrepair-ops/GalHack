@@ -308,7 +308,7 @@ public partial class StartTest : Node
             yield return 0;
             Check(wreck.Empty && game.Places.SalvageSites.Count() == count - 1 && !Godot.GodotObject.IsInstanceValid(body), $"{world}: a wreck comes apart under the tool ({count} to salvage round the start) and is gone");
         }
-        game.Zone.Weather.Bridge.Calm = true;
+        if (game.Zone.Weather.Bridge != null) game.Zone.Weather.Bridge.Calm = true; // an airless start has no weather
         game.Zone.Wildlife.Frozen = true;
         var drive = new Driver(game);
         var play = new Playthrough(game);

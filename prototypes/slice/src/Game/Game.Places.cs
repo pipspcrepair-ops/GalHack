@@ -25,6 +25,9 @@ public partial class Game
 
     /// <summary>The crashed capital ships, set down as real vessels as the survivor nears them.</summary>
     public Hulks Hulks { get; private set; }
+
+    /// <summary>The start world's lone trader or scout in the sky.</summary>
+    public SkyTraffic Sky { get; private set; }
     public Caves Caves { get; private set; }
     /// <summary>What lives in the sewers and drains under the start town.</summary>
     public Underworld Underworld { get; private set; }
@@ -51,6 +54,8 @@ public partial class Game
         Zone.AddChild(new RuinLoot { Name = "Ruin loot", Zone = Zone, Focus = Focus });
         Hulks = new Hulks { Name = "Hulks", Zone = Zone, Focus = Focus, Places = Places };
         Zone.AddChild(Hulks);
+        Sky = new SkyTraffic { Name = "SkyTraffic", Zone = Zone, Focus = () => Survivor.WorldFeet, Eye = () => Camera.GlobalPosition };
+        Zone.AddChild(Sky);
         Caves = new Caves
         {
             Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Look = () => Survivor.WorldLook(), Deep = Places.Fauna,
