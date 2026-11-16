@@ -54,21 +54,29 @@ public static class Parts
 {
     // ---- Heads ------------------------------------------------------------------------
 
-    public static HeadShape Head(Piece p, string kind, float hs, Paint k, Rng rng)
+    /// <summary>
+    /// A head. What bites (a lower jaw and its teeth, a lower beak, pincers, a round mouth) goes
+    /// in <paramref name="jaw"/> when given, with how it opens and snaps shut, so the rig can work it.
+    /// </summary>
+    public static HeadShape Head(Piece p, string kind, float hs, Paint k, Rng rng, Piece jaw = null)
     {
+        Piece j = jaw ?? p;
         switch (kind)
         {
-            case "jaws": return Jaws(p, hs, k, rng);
-            case "skull": return Skull(p, hs, k);
-            case "beak": return Beak(p, hs, k);
-            case "mandibles": return Mandibles(p, hs, k);
-            case "hammer": return Hammer(p, hs, k);
-            case "maw": return Maw(p, hs, k);
-            case "lantern": return Lantern(p, hs, k);
-            case "dome": return Dome(p, hs, k);
-            default: return Snout(p, hs, k);
+            case "jaws": return Jaws(p, j, hs, k, rng);
+            case "skull": return Skull(p, j, hs, k);
+            case "beak": return Beak(p, j, hs, k);
+            case "mandibles": return Mandibles(p, j, hs, k);
+            case "hammer": return Hammer(p, j, hs, k);
+            case "maw": return Maw(p, j, hs, k);
+            case "lantern": return Lantern(p, j, hs, k);
+            case "dome": return Dome(p, j, hs, k);
+            default: return Snout(p, j, hs, k);
         }
     }
+
+    /// <summary>Where a lower jaw hinges under the cranium.</summary>
+    static Vector3 Hinge(float hs) => new(0f, -0.12f * hs, 0.02f * hs);
 
     /// <summary>A cranium-and-muzzle loft: the base of most heads. Returns the snout tip z.</summary>
     static float Cranium(Piece p, float hs, Paint k, float length, float width, float height, float muzzle, float pattern = 0.7f)
@@ -86,16 +94,16 @@ public static class Parts
     }
 
     /// <summary>A lower jaw hinged under the cranium, dropped open by <paramref name="drop"/> radians.</summary>
-    static void LowerJaw(Piece p, float hs, Paint k, float length, float width, float drop, float thickness = 1f)
+    static void LowerJaw(Piece p, float hs, Paint k, float length, float width, float drop, float thickness = 1f, float open = 0.5f)
     {
+        p.Mouth = MouthMove.Hinge(Hinge(hs), open, drop);
         var profile = LoftProfile.Smooth(0.05f * hs, -length * hs, new[]
         {
             (0f, 0.3f * width * hs, 0.12f * thickness * hs, 0f),
             (0.6f, 0.24f * width * hs, 0.09f * thickness * hs, 0f),
             (1f, 0.15f * width * hs, 0.07f * thickness * hs, 0.01f * hs),
         }, 10, 0.25f);
-        var hinge = new Vector3(0f, -0.12f * hs, 0.02f * hs);
-        p.Loft(profile, k.Belly.Lerp(k.Base, 0.4f), k.Belly, 0.3f, 0f, Mat.Skin, hinge, new Basis(Vector3.Right, -drop), 10);
+        p.Loft(profile, k.Belly.Lerp(k.Base, 0.4f), k.Belly, 0.3f, 0f, Mat.Skin, Hinge(hs), new Basis(Vector3.Right, -drop), 10);
     }
 
     /// <summary>Deep-set eyes under a heavy brow, one each side.</summary>
@@ -111,10 +119,10 @@ public static class Parts
         }
     }
 
-    static HeadShape Snout(Piece p, float hs, Paint k)
+    static HeadShape Snout(Piece p, Piece j, float hs, Paint k)
     {
         float tip = Cranium(p, hs, k, 1.2f, 0.9f, 0.85f, 0.85f);
-        LowerJaw(p, hs, k, 1.05f, 0.85f, 0.06f);
+        LowerJaw(j, hs, k, 1.05f, 0.85f, 0.06f, 1f, 0.45f);
         for (int s = -1; s <= 1; s += 2)
         {
             p.Add(Shape.Sphere, new Vector3(0.07f, 0.05f, 0.08f) * hs, new Vector3(s * 0.09f * hs, 0.06f * hs, tip + 0.06f * hs), k.Dark, 0f, 0f, null, 0, Mat.Eye);
@@ -126,11 +134,11 @@ public static class Parts
         return new HeadShape(-tip / hs, 0.4f, 0.9f);
     }
 
-    static HeadShape Jaws(Piece p, float hs, Paint k, Rng rng)
+    static HeadShape Jaws(Piece p, Piece j, float hs, Paint k, Rng rng)
     {
         float tip = Cranium(p, hs, k, 1.45f, 0.82f, 0.72f, 0.72f);
         const float drop = 0.3f;
-        LowerJaw(p, hs, k, 1.3f, 0.78f, drop, 1.1f);
+        LowerJaw(j, hs, k, 1.3f, 0.78f, drop, 1.1f, 0.6f);
         // The mouth: dark gums between the jaws, then rows of teeth on both.
         p.Add(Shape.Sphere, new Vector3(0.42f, 0.16f, 1.05f) * hs, new Vector3(0f, -0.16f, -0.62f) * hs, k.Mouth, 0f, 0f, Pitch(-drop * 50f));
         int teeth = 6;
@@ -143,8 +151,8 @@ public static class Parts
             {
                 var top = new Vector3(s * w, -0.08f * hs, z);
                 p.Taper(top, top + new Vector3(0f, -len, -0.02f * hs), 0.03f * hs, 0.003f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
-                Vector3 low = new Vector3(0f, -0.12f * hs, 0.02f * hs) + jaw * new Vector3(s * w * 0.92f, 0.08f * hs, z * 0.92f);
-                p.Taper(low, low + jaw * new Vector3(0f, len * 0.8f, -0.02f * hs), 0.026f * hs, 0.003f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
+                Vector3 low = Hinge(hs) + jaw * new Vector3(s * w * 0.92f, 0.08f * hs, z * 0.92f);
+                j.Taper(low, low + jaw * new Vector3(0f, len * 0.8f, -0.02f * hs), 0.026f * hs, 0.003f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
             }
         }
         // Forward-set eyes under a hard brow: a hunter's face.
@@ -152,10 +160,10 @@ public static class Parts
         return new HeadShape(-tip / hs, 0.34f, 0.82f);
     }
 
-    static HeadShape Skull(Piece p, float hs, Paint k)
+    static HeadShape Skull(Piece p, Piece j, float hs, Paint k)
     {
         float tip = Cranium(p, hs, k, 1.1f, 1.0f, 0.9f, 0.95f);
-        LowerJaw(p, hs, k, 1.12f, 1.0f, 0.04f, 1.4f);
+        LowerJaw(j, hs, k, 1.12f, 1.0f, 0.04f, 1.4f, 0.45f);
         // A bony shield over the crown and down the face.
         var plate = LoftProfile.Smooth(0.2f * hs, -0.95f * hs, new[]
         {
@@ -169,18 +177,19 @@ public static class Parts
         return new HeadShape(-tip / hs, 0.44f, 1f);
     }
 
-    static HeadShape Beak(Piece p, float hs, Paint k)
+    static HeadShape Beak(Piece p, Piece j, float hs, Paint k)
     {
         Cranium(p, hs, k, 0.75f, 0.82f, 0.85f, 0.95f);
         Color beak = k.Horn.Lerp(k.Bone, 0.35f);
         // Upper beak: a hooked blade. Lower beak: shorter, tucked inside it.
         p.Horn(beak, 0.24f * hs, Mat.Horn, new Vector3(0f, 0.02f, -0.55f) * hs, new Vector3(0f, 0.0f, -1.05f) * hs, new Vector3(0f, -0.1f, -1.38f) * hs, new Vector3(0f, -0.3f, -1.45f) * hs);
-        p.Horn(beak.Darkened(0.2f), 0.17f * hs, Mat.Horn, new Vector3(0f, -0.14f, -0.5f) * hs, new Vector3(0f, -0.18f, -0.95f) * hs, new Vector3(0f, -0.22f, -1.2f) * hs);
+        j.Mouth = MouthMove.Hinge(new Vector3(0f, -0.12f, -0.45f) * hs, 0.5f, 0.06f);
+        j.Horn(beak.Darkened(0.2f), 0.17f * hs, Mat.Horn, new Vector3(0f, -0.14f, -0.5f) * hs, new Vector3(0f, -0.18f, -0.95f) * hs, new Vector3(0f, -0.22f, -1.2f) * hs);
         Eyes(p, k, hs, 0.33f, 0.16f, -0.32f, 0.1f, 1.1f);
         return new HeadShape(1.45f, 0.42f, 0.82f);
     }
 
-    static HeadShape Mandibles(Piece p, float hs, Paint k)
+    static HeadShape Mandibles(Piece p, Piece j, float hs, Paint k)
     {
         // A smooth armoured capsule with two big compound eyes and a pair of curved pincers.
         var head = LoftProfile.Smooth(0.15f * hs, -0.85f * hs, new[]
@@ -191,14 +200,16 @@ public static class Parts
         for (int s = -1; s <= 1; s += 2)
         {
             p.Add(Shape.Sphere, new Vector3(0.16f, 0.2f, 0.24f) * hs, new Vector3(s * 0.38f, 0.12f, -0.46f) * hs, k.EyeGlow > 0f ? k.EyeColor : k.EyeColor.Darkened(0.4f), 0f, k.EyeGlow * 0.5f, null, 10, Mat.Eye);
-            p.Horn(k.Horn, 0.1f * hs, Mat.Horn, new Vector3(s * 0.22f, -0.12f, -0.72f) * hs, new Vector3(s * 0.4f, -0.16f, -1.02f) * hs,
+            j.Horn(k.Horn, 0.1f * hs, Mat.Horn, new Vector3(s * 0.22f, -0.12f, -0.72f) * hs, new Vector3(s * 0.4f, -0.16f, -1.02f) * hs,
                 new Vector3(s * 0.32f, -0.17f, -1.3f) * hs, new Vector3(s * 0.08f, -0.16f, -1.42f) * hs);
             p.Taper(new Vector3(s * 0.1f, -0.2f, -0.75f) * hs, new Vector3(s * 0.12f, -0.42f, -0.92f) * hs, 0.035f * hs, 0.015f * hs, k.Dark, 0f, 0f, Mat.Carapace);
         }
+        // The pincers spread wide and close on each other.
+        j.Mouth = MouthMove.Scale(new Vector3(0f, -0.15f, -0.72f) * hs, new Vector3(1.5f, 1f, 1f), new Vector3(0.5f, 1f, 1f));
         return new HeadShape(1.35f, 0.38f, 0.96f);
     }
 
-    static HeadShape Hammer(Piece p, float hs, Paint k)
+    static HeadShape Hammer(Piece p, Piece j, float hs, Paint k)
     {
         Cranium(p, hs, k, 0.7f, 0.7f, 0.7f, 0.9f);
         // The hammer: a flat armoured bar with the eyes out at its ends.
@@ -208,11 +219,12 @@ public static class Parts
         }, 12, 0.12f);
         p.Loft(bar, k.Base, k.Belly, 0.8f, 0f, Mat.Skin, new Vector3(0f, 0.03f, -0.62f) * hs, new Basis(Vector3.Up, MathF.PI * 0.5f), 12);
         for (int s = -1; s <= 1; s += 2) Eye(p, k, new Vector3(s * 1.04f, 0.05f, -0.62f) * hs, 0.13f * hs);
-        p.Add(Shape.Sphere, new Vector3(0.5f, 0.08f, 0.16f) * hs, new Vector3(0, -0.13f, -0.78f) * hs, k.Mouth);
+        j.Add(Shape.Sphere, new Vector3(0.5f, 0.08f, 0.16f) * hs, new Vector3(0, -0.13f, -0.78f) * hs, k.Mouth);
+        j.Mouth = MouthMove.Scale(new Vector3(0, -0.13f, -0.78f) * hs, new Vector3(1f, 3.5f, 1f), new Vector3(1f, 0.3f, 1f));
         return new HeadShape(0.85f, 0.34f, 2f);
     }
 
-    static HeadShape Maw(Piece p, float hs, Paint k)
+    static HeadShape Maw(Piece p, Piece j, float hs, Paint k)
     {
         // No eyes: a muscular tube ending in a round mouth ringed with teeth.
         var tube = LoftProfile.Smooth(0.15f * hs, -1.05f * hs, new[]
@@ -220,7 +232,9 @@ public static class Parts
             (0f, 0.36f * hs, 0.36f * hs, 0f), (0.6f, 0.4f * hs, 0.4f * hs, 0f), (0.9f, 0.48f * hs, 0.48f * hs, 0f), (1f, 0.44f * hs, 0.44f * hs, 0f),
         }, 12, 0.08f);
         p.Loft(tube, k.Base, k.Belly, 0.8f, 0f, Mat.Skin, null, null, 14);
-        p.Add(Shape.Sphere, new Vector3(0.8f, 0.8f, 0.12f) * hs, new Vector3(0f, 0f, -1.04f) * hs, k.Mouth);
+        // The ring of teeth dilates wide and clenches.
+        j.Add(Shape.Sphere, new Vector3(0.8f, 0.8f, 0.12f) * hs, new Vector3(0f, 0f, -1.04f) * hs, k.Mouth);
+        j.Mouth = MouthMove.Scale(new Vector3(0f, 0f, -1.04f) * hs, new Vector3(1.35f, 1.35f, 1f), new Vector3(0.55f, 0.55f, 1f));
         for (int ring = 0; ring < 2; ring++)
         {
             int n = ring == 0 ? 10 : 7;
@@ -229,25 +243,25 @@ public static class Parts
             {
                 float a = (i + ring * 0.5f) * MathF.Tau / n;
                 var at = new Vector3(MathF.Cos(a) * r, MathF.Sin(a) * r, -1.06f + ring * 0.04f) * hs;
-                p.Taper(at, at + new Vector3(-MathF.Cos(a) * 0.14f, -MathF.Sin(a) * 0.14f, -0.06f) * hs, 0.045f * hs, 0.004f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
+                j.Taper(at, at + new Vector3(-MathF.Cos(a) * 0.14f, -MathF.Sin(a) * 0.14f, -0.06f) * hs, 0.045f * hs, 0.004f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
             }
         }
         return new HeadShape(1.05f, 0.4f, 0.8f);
     }
 
-    static HeadShape Lantern(Piece p, float hs, Paint k)
+    static HeadShape Lantern(Piece p, Piece j, float hs, Paint k)
     {
         // An angler's head: a gaping lower jaw full of needles, and a lure hung out in front.
         Cranium(p, hs, k, 0.95f, 1.05f, 0.9f, 1.05f);
-        LowerJaw(p, hs, k, 1.0f, 1.1f, 0.38f, 1.3f);
+        LowerJaw(j, hs, k, 1.0f, 1.1f, 0.38f, 1.3f, 0.45f);
         p.Add(Shape.Sphere, new Vector3(0.62f, 0.22f, 0.75f) * hs, new Vector3(0f, -0.2f, -0.52f) * hs, k.Mouth, 0f, 0f, Pitch(-18f));
         var jaw = new Basis(Vector3.Right, -0.38f);
         for (int i = 0; i < 7; i++)
         {
             float x = (i - 3f) * 0.12f, z = -0.88f + MathF.Abs(x) * 0.6f;
             p.Taper(new Vector3(x, -0.06f, z) * hs, new Vector3(x * 1.1f, -0.3f, z - 0.02f) * hs, 0.025f * hs, 0.003f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
-            Vector3 low = new Vector3(0f, -0.12f * hs, 0.02f * hs) + jaw * new Vector3(x * 1.15f * hs, 0.1f * hs, z * 1.1f * hs);
-            p.Taper(low, low + jaw * new Vector3(0f, 0.17f * hs, -0.03f * hs), 0.022f * hs, 0.003f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
+            Vector3 low = Hinge(hs) + jaw * new Vector3(x * 1.15f * hs, 0.1f * hs, z * 1.1f * hs);
+            j.Taper(low, low + jaw * new Vector3(0f, 0.17f * hs, -0.03f * hs), 0.022f * hs, 0.003f * hs, k.Bone, 0f, 0f, Mat.Horn, 6);
         }
         Vector3 l0 = new Vector3(0, 0.32f, -0.3f) * hs, l1 = new Vector3(0, 0.85f, -0.6f) * hs, l2 = new Vector3(0, 0.7f, -1.25f) * hs;
         p.Taper(l0, l1, 0.05f * hs, 0.035f * hs, k.Base);
@@ -257,7 +271,7 @@ public static class Parts
         return new HeadShape(1.05f, 0.42f, 1.05f);
     }
 
-    static HeadShape Dome(Piece p, float hs, Paint k)
+    static HeadShape Dome(Piece p, Piece j, float hs, Paint k)
     {
         // Faceless: a smooth armoured dome with one dark slit where a face should be.
         var dome = LoftProfile.Smooth(0.2f * hs, -1.2f * hs, new[]
@@ -267,8 +281,9 @@ public static class Parts
         p.Loft(dome, k.Base.Lightened(0.06f), k.Belly, 0.3f, 0f, Mat.Carapace, null, null, 14);
         // A keel down the crown, and a dark mouth slit underneath where a face should be.
         p.Add(Shape.Sphere, new Vector3(0.08f, 0.2f, 1.1f) * hs, new Vector3(0, 0.42f, -0.35f) * hs, k.Base.Darkened(0.2f), 0.2f, 0f, Pitch(-6f), 10, Mat.Carapace);
-        p.Add(Shape.Sphere, new Vector3(0.4f, 0.05f, 0.6f) * hs, new Vector3(0, -0.2f, -0.82f) * hs,
+        j.Add(Shape.Sphere, new Vector3(0.4f, 0.05f, 0.6f) * hs, new Vector3(0, -0.2f, -0.82f) * hs,
             k.EyeGlow > 0 ? k.Glow : k.Mouth, 0f, k.EyeGlow * 0.6f, Pitch(-8f), 0, Mat.Eye);
+        j.Mouth = MouthMove.Scale(new Vector3(0, -0.2f, -0.82f) * hs, new Vector3(1f, 4f, 1f), new Vector3(1f, 0.3f, 1f));
         return new HeadShape(1.0f, 0.48f, 1f);
     }
 

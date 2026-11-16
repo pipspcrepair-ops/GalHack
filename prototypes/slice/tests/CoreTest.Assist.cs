@@ -105,6 +105,6 @@ public partial class CoreTest
         _game.Survivor.StandUp();
         foreach (int x in _drive.Wait(5)) yield return x;
         _game.Survivor.PlaceOutside((_site + Vector3.Up).ToNumerics());
-        Playthrough.TakeAway(_game.Zone, v);
+        _game.Zone.Remove(v);
     }
 }

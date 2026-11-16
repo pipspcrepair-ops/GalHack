@@ -30,6 +30,8 @@ public sealed partial class Staging
         _game = game;
         _drive = new Driver(game);
         _args = args;
+        // The start world's sky ship is rolled as the world arrives, before any view runs.
+        if (args.TryGetValue("role", out string r) && Enum.TryParse(r, true, out GalHack.Structures.CraftRole role)) Slice.Places.SkyTraffic.ForceRole = role;
     }
 
     public IEnumerable<int> Run(string view)
@@ -96,6 +98,7 @@ public sealed partial class Staging
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
             "shipbar" => ShipBarView(),
+            "shield" => ShieldView(),
             "decogallery" => DecoGalleryView(),
             "faces" => FacesView(),
             "cores" => CoresView(),
@@ -160,6 +163,7 @@ public sealed partial class Staging
             "approach" => ApproachView(),
             "popin" => PopInView(),
             "husk-grab" => HuskGrab(),
+            "stomp" => StompView(),
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),
             "husk-den" => HuskDen(),
@@ -178,6 +182,7 @@ public sealed partial class Staging
             "decorooms" => DecoRooms(),
             "dress" => DressView(),
             "hulk" => HulkView(),
+            "skyship" => SkyshipView(),
             "derelict-hull" => DerelictHullView(),
             "visor" => VisorView(),
             "feet" => FeetView(),

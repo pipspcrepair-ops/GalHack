@@ -39,6 +39,11 @@ public struct Gesture
     public float Sip, Stalk;
     /// <summary>Dead: the body goes limp and falls as a ragdoll (Down alone lays a dormant body down whole).</summary>
     public bool Dead;
+    /// <summary>
+    /// What a raised weapon is aimed at, in the rig's frame (null: along the look): the barrel points
+    /// at it, the head comes round behind the sights and the upper body turns to it.
+    /// </summary>
+    public Vector3? AimAt;
 }
 
 /// <summary>
@@ -153,7 +158,7 @@ public sealed partial class HumanRig : Rig
 
     public override void Reset(WildSim w, Creature c) => Update(w, c, 0f);
 
-    public override void Update(WildSim w, Creature c, float dt)
+    protected override void Animate(WildSim w, Creature c, float dt)
     {
         SmoothIntents(c, dt);
         _world = w;
@@ -177,7 +182,9 @@ public sealed partial class HumanRig : Rig
         // A blow, read off the attack's own phases: wound up, struck as it lands, then back.
         float strike = 0f;
         bool spew = false;
-        if (!c.Dead && c.Phase is AttackPhase.Windup or AttackPhase.Lunge or AttackPhase.Recover)
+        // A shot isn't a blow: its wind-up is the aim, the weapon raised and on the target, never swung.
+        bool shooting = !c.Dead && c.AttackTarget != null && Attacks.Shooting(c, c.AttackTarget);
+        if (!c.Dead && !shooting && c.Phase is AttackPhase.Windup or AttackPhase.Lunge or AttackPhase.Recover)
         {
             spew = c.Species.Husk && c.Species.Spit != SpitKind.None && Spitting.Wants(c) && !c.Seizing;
             float k = c.PhaseLength > 0f ? Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f) : 1f;
@@ -212,8 +219,10 @@ public sealed partial class HumanRig : Rig
             Down = Dead,
             Dead = c.Dead,
             Clock = c.Age,
-            Aim = Aiming,
-            Act = _act,
+            Aim = _raised = Mathf.MoveToward(_raised, shooting ? 1f : Aiming, dt * 4f), // (all the way up to shoot: a weapon part raised points part way)
+            // Aiming at what it's after (the middle of it, not its feet), else at what it looks at.
+            AimAt = Aiming > 0.05f || shooting ? (c.AttackTarget is { } at ? at.Position + Vector3.Up * 1.15f : c.LookAt) : null,
+            Act = shooting ? BodyAct.None : _act, // (a gesture never takes a hand off a weapon being fired)
             ActAmount = _actAmount,
             ActAt = c.LookAt ?? c.Position + c.Forward * 6f + Vector3.Up * 1.4f,
             Style = w?.GreetStyle ?? 0,
@@ -223,6 +232,8 @@ public sealed partial class HumanRig : Rig
     }
 
     BodyAct _act;
+    /// <summary>How far the weapon is raised: up to the creature's aim, and all the way while it shoots.</summary>
+    float _raised;
     float _actAmount;
 
     /// <summary>The spheres shots (and a search) meet, from the body as it is posed now, standing or lying: chest, head, each leg.</summary>
@@ -235,6 +246,13 @@ public sealed partial class HumanRig : Rig
         SetHit(3, (Pose[_legU[1]].Origin + _drawn[1]) * 0.5f, 0.2f);
         SetHit(4, Pose[_body].Origin + Pose[_body].Basis.Y * _f.Torso * 0.2f, 0.26f);
         SetBounds(chest, _f.Height * 0.65f);
+    }
+
+    /// <summary>A person strikes with the fist of their leading arm, or the blade or club swung in it.</summary>
+    public override Vector4 Striker(Creature c)
+    {
+        Vector3 fist = FistOf(1);
+        return new Vector4(fist.X, fist.Y, fist.Z, BlowOf(Species) == StrikeKind.Swat ? 0.22f : 0.08f);
     }
 
     /// <summary>The way the last hit went (world), for what a blast does with the body.</summary>
@@ -337,6 +355,14 @@ public sealed partial class HumanRig : Rig
         float busy = Math.Clamp(MathF.Max(MathF.Max(act, g.Reach), strikeOn), 0f, 1f);
         float aimW = kind == HoldKind.None ? 0f : Math.Clamp(g.Aim, 0f, 1f) * (1f - busy);
         squareOff -= aimW * kind switch { HoldKind.Bow => 1.45f, HoldKind.Spear => 0.3f, _ => 0f };
+        // Aimed at something: the upper body turns to it (as far as a waist turns; the rest is the body's to turn).
+        float aimYaw = 0f;
+        if (g.AimAt is Vector3 aimAt && WildSim.Flat(aimAt - g.Feet).LengthSquared() > 0.25f)
+        {
+            Vector3 to = WildSim.Flat(aimAt - g.Feet);
+            aimYaw = Math.Clamp(Geo.WrapAngle(MathF.Atan2(-to.X, -to.Z) - g.Yaw), -1.1f, 1.1f);
+            if (kind is HoldKind.LongGun or HoldKind.Pistol or HoldKind.Bow) squareOff += aimW * aimYaw;
+        }
         if (kind is HoldKind.LongGun or HoldKind.Spear or HoldKind.Pistol or HoldKind.Bow) twist *= 1f - 0.8f * aimW; // steady on the target, even walking
         if (kind == HoldKind.LongGun)
         {
@@ -441,13 +467,14 @@ public sealed partial class HumanRig : Rig
             headPitch = pitch * 0.15f + f.HeadDroop + 0.1f * MathF.Sin(g.Clock * 0.55f + _offset * 3f) + g.Retch * 0.5f - 0.35f * stalk;
             headPitch = Mathf.Lerp(headPitch, -0.2f, Math.Clamp(MathF.Max(g.Reach, _blow == StrikeKind.Seize ? blowWind + blowHit : 0f), 0f, 1f));
         }
-        float headYaw = g.Look + staggerSide + (g.Act == BodyAct.WaveOff ? act * 0.45f : 0f);
+        float headYaw = Mathf.Lerp(g.Look, aimYaw, g.AimAt != null ? aimW : 0f) + staggerSide + (g.Act == BodyAct.WaveOff ? act * 0.45f : 0f); // behind the sights when aimed
         Basis headBasis = turn * new Basis(Vector3.Up, headYaw) * new Basis(Vector3.Right, -headPitch) * new Basis(Vector3.Back, headRoll);
         if (_hitPart == Part.Head && snap > 0f && hitAxis.LengthSquared() > 1e-4f) headBasis = new Basis(hitAxis.Normalized(), snap * 0.65f * (0.6f + _hitHeavy)) * headBasis;
         Pose[_head] = new Transform3D(headBasis, neck);
 
         // Arms: each hand has a place to be, and the elbow follows it.
         Hold hold = Grips(g, kind, aimW, busy, turn, torso, hip, chest, neck, headBasis);
+        (WeaponLine, WeaponGrip) = (hold.Line, hold.Prop.Origin);
         if (kind != HoldKind.None) KeepFistsClear(ref hold, kind, torso);
         GripRight = hold.R;
         GripLeft = hold.L;
@@ -619,7 +646,24 @@ public sealed partial class HumanRig : Rig
         /// <summary>What each hand wraps, the weapon's axis at its grip (world), and the hand that goes with the hold (the owner's rows for it).</summary>
         public Vector3 RAxis, LAxis;
         public HandSpec RHand, LHand;
+        /// <summary>The way a gun's barrel or a drawn arrow points (zero for anything else).</summary>
+        public Vector3 Line;
     }
+
+    /// <summary>The way the weapon in hand points now (a barrel, a drawn arrow; zero for anything else), and where its grip is (tests: is it aimed at what it shoots).</summary>
+    public Vector3 WeaponLine { get; private set; }
+    public Vector3 WeaponGrip { get; private set; }
+
+    /// <summary>How far off a point (the rig's frame) the weapon in hand points, degrees: 0 when it holds nothing that points.</summary>
+    public float AimError(Vector3 at)
+    {
+        Vector3 to = at - WeaponGrip;
+        if (WeaponLine.LengthSquared() < 0.5f || to.LengthSquared() < 0.01f) return 0f;
+        return Mathf.RadToDeg(WeaponLine.AngleTo(to));
+    }
+
+    /// <summary>A shot waits for the weapon to come onto its mark, this close, degrees; one that isn't on it within <see cref="AimWait"/> s isn't fired.</summary>
+    public const float OnMark = 4f, AimWait = 0.6f;
 
     /// <summary>
     /// How a weapon is held, worked out from the body each frame so every build's hands land on
@@ -637,6 +681,9 @@ public sealed partial class HumanRig : Rig
         float u = HumanBody.ArmScale(f), T = f.Torso, d = f.ChestD * f.Padding;
         Vector3 fwd = turn * Vector3.Forward, right = turn * Vector3.Right, ahead = -torso.Z, up = torso.Y;
         Vector3 look = turn * new Basis(Vector3.Up, Math.Clamp(g.Look, -0.6f, 0.6f)) * Vector3.Forward;
+        // Aimed at something: the weapon's line is from the shoulders to it (up or down too), so the barrel points at it.
+        bool aimed = g.AimAt is Vector3 target && (target - chest).LengthSquared() > 1f;
+        if (aimed) look = (g.AimAt.Value - chest).Normalized();
         Vector3 shoulderR = chest + torso.X * f.ShoulderW * 0.94f, shoulderL = chest - torso.X * f.ShoulderW * 0.94f;
         float armR = f.UpperArmOf(1) + f.ForearmOf(1), armL = f.UpperArmOf(0) + f.ForearmOf(0);
         Vector3 grip, dir;
@@ -647,7 +694,7 @@ public sealed partial class HumanRig : Rig
                 Vector3 lowButt = hip + up * T * 0.74f + torso.X * f.ShoulderW * f.Padding * 0.45f + ahead * (d * 1.1f + 0.035f * u);
                 Vector3 lowDir = (fwd * 0.62f + Vector3.Down * (0.72f - 0.45f * g.Sit) - right * 0.32f).Normalized();
                 Vector3 aimButt = hip + up * T * 0.86f + torso.X * f.ShoulderW * f.Padding * 0.45f + ahead * (d * 1.05f + 0.05f * u);
-                Vector3 aimDir = (look - right * 0.04f).Normalized();
+                Vector3 aimDir = aimed ? (g.AimAt.Value - aimButt).Normalized() : (look - right * 0.04f).Normalized();
                 dir = lowDir.Lerp(aimDir, aim).Normalized();
                 grip = lowButt.Lerp(aimButt, aim) + dir * 0.3f * u;
                 // A short reach (thick clothes, short arms): the gun comes across and up toward the
@@ -666,6 +713,7 @@ public sealed partial class HumanRig : Rig
                 h.L = Along(shoulderL, armL + Reach * u, grip, dir, 0.24f * u, 0.32f * u);
                 h.LW = 1f - busy;
                 h.Prop = new Transform3D(Geo.AlongY(dir, right), grip);
+                h.Line = dir;
                 (h.RAxis, h.LAxis) = (h.Prop.Basis.Z, h.Prop.Basis.Y); // the grip is a handle standing up, the fore-end a rail along the barrel
                 // The right fist sits low on the grip, under the action; the left rides the fore-end, up where the wood is.
                 h.R -= h.Prop.Basis.Z * 0.1f * u;
@@ -692,6 +740,7 @@ public sealed partial class HumanRig : Rig
                 h.L = grip - right * 0.045f * u + Vector3.Down * 0.03f * u;
                 h.LW = Mathf.SmoothStep(0.5f, 1f, drawn);
                 h.Prop = new Transform3D(Geo.AlongY(dir, aim > 0.15f ? right : torso.X), grip);
+                h.Line = dir;
                 h.RAxis = h.LAxis = h.Prop.Basis.Z;
                 (h.R, h.L) = (h.R - h.Prop.Basis.Z * 0.04f * u, h.L - h.Prop.Basis.Z * 0.04f * u); // (low on the handle, under the slide)
                 for (int arm = 0; arm < 2; arm++)
@@ -732,6 +781,8 @@ public sealed partial class HumanRig : Rig
                 Vector3 fistAt = cheek + (cheek - skull).Normalized() * (HandMake.Extent(HandShape.Fist).hi.Z - HandMake.Fist.Z + 0.01f) * _handSize[1]; // (the string hand's fist, palm to the face: off the cheek by the depth of its curled fingers)
                 // The bow arm straight at the target; stood side-on, the cheek is behind it on the arrow's line.
                 Vector3 held = shoulderL + look * (armL * 0.945f + HandMake.Fist.Y * _handSize[0]); // (the bow's grip is a hand's length past the wrist)
+                // Aimed: sighted down the arrow, from the cheek through the bow hand to the target.
+                if (aimed) held = cheek + (g.AimAt.Value - cheek).Normalized() * held.DistanceTo(cheek);
                 Vector3 arrow = (held - cheek).Normalized();
                 Vector3 heldDir = (Vector3.Up - arrow * Vector3.Up.Dot(arrow)).Normalized() + right * 0.08f;
                 grip = hang.Lerp(held, aim);
@@ -742,6 +793,7 @@ public sealed partial class HumanRig : Rig
                 h.R = fistAt;
                 h.RW = aim;
                 h.Prop = new Transform3D(Geo.AlongY(dir, dir.Cross(facing)), grip);
+                h.Line = arrow.Lerp(hangDir, 1f - aim).Normalized(); // (the arrow's line, from the cheek through the bow hand)
                 h.RAxis = h.LAxis = h.Prop.Basis.Y; // (the string hand closes on the string, which runs along the limbs)
                 (h.RHand, h.LHand) = (HandTable.Mix("bow-hang", "bow-drawn", aim, 1), HandTable.Mix("bow-hang", "bow-drawn", aim, 0));
                 break;

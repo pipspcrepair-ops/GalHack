@@ -181,11 +181,8 @@ public partial class Spaceflight
     /// <summary>The last block of a wreck salvaged: nothing is left to float there.</summary>
     void TakeAway(Vessel v)
     {
-        v.Zone.Physics.Unregister(v.Body);
-        v.Zone.Physics.StuckFields.Remove(v.Field);
-        v.Zone.Untrack(v);
         Orbit?.Wrecks.Remove(v);
-        v.Node.QueueFree();
+        v.Zone.Remove(v);
     }
 
     // ---- Shooting ------------------------------------------------------------------------------

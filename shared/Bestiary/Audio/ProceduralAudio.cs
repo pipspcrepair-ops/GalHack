@@ -78,6 +78,7 @@ public partial class ProceduralAudio : Node3D
         // Something battering at a wall: a deep blow, and the crack of what's giving.
         _clips["batter"] = Make(0.9f, (t, n) => MathF.Exp(-t * 7f) * (MathF.Sin(MathF.Tau * (48f - 20f * t) * t) * 0.9f + n * 0.5f) + MathF.Exp(-MathF.Max(0f, t - 0.08f) * 25f) * (t > 0.08f ? 1f : 0f) * n * 0.4f, rng);
         MakeTells(rng);
+        MakeStrikes(rng);
 
         for (int i = 0; i < 12; i++)
         {

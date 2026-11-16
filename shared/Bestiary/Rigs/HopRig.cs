@@ -57,7 +57,7 @@ public sealed class HopRig : Rig
         Update(w, c, 0.016f);
     }
 
-    public override void Update(WildSim w, Creature c, float dt)
+    protected override void Animate(WildSim w, Creature c, float dt)
     {
         if (dt <= 0f) return;
         SmoothIntents(c, dt);
@@ -219,13 +219,14 @@ public sealed class HopRig : Rig
         if (s.Part("head") != "none")
         {
             var head = new Piece("head");
-            HeadShape info = Parts.Head(head, s.Part("head"), hs, k, rng);
+            var jaw = new Piece("jaw");
+            HeadShape info = Parts.Head(head, s.Part("head"), hs, k, rng, jaw);
             Parts.Horns(head, s.Part("horns"), hs, k, rng, info);
             if (s.Part("tendrils") is "chin" or "whiskers" or "back")
                 for (int i = 0; i < 4; i++)
                     head.Taper(new Vector3((i - 1.5f) * hs * 0.15f, -hs * 0.22f, -hs * 0.7f), new Vector3((i - 1.5f) * hs * 0.3f, -hs * 0.9f, -hs * 0.8f),
                         hs * 0.035f, hs * 0.01f, s.Corrupted ? k.Veins : k.Base.Lerp(k.Accent, 0.4f), 0f, s.Corrupted ? 0.8f : 0f);
-            layout.Add(head);
+            layout.AddHead(head, jaw);
         }
 
         // Spring legs: a heavy thigh, a long shin and a long foot, every joint the same radius

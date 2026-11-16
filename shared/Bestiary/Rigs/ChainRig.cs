@@ -90,7 +90,7 @@ public sealed class ChainRig : Rig
         Update(w, c, 0.016f);
     }
 
-    public override void Update(WildSim w, Creature c, float dt)
+    protected override void Animate(WildSim w, Creature c, float dt)
     {
         if (dt <= 0f) return;
         SmoothIntents(c, dt);
@@ -242,9 +242,10 @@ public sealed class ChainRig : Rig
         bool legged = b.Legs > 0;
 
         var head = new Piece("head");
-        HeadShape shape = Parts.Head(head, s.Part("head"), hs, k, rng);
+        var jaw = new Piece("jaw");
+        HeadShape shape = Parts.Head(head, s.Part("head"), hs, k, rng, jaw);
         Parts.Horns(head, s.Part("horns"), hs, k, rng, shape);
-        layout.Add(head);
+        layout.AddHead(head, jaw);
 
         for (int i = 0; i < n; i++)
         {

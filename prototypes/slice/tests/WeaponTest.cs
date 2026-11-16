@@ -195,14 +195,7 @@ public partial class WeaponTest : Node
     int MineOn(WeaponDef d, object thing) => Array.FindIndex(Arms.Pool.Shots, s => s.Live && s.Def.Base.Id == d.Id && s.State == ShotState.Armed && s.Anchor.Thing == thing);
 
     /// <summary>Takes a test structure out of the world.</summary>
-    void Remove(Vessel v)
-    {
-        if (!Zone.Vessels.Contains(v)) return;
-        Zone.Physics.Unregister(v.Body);
-        Zone.Physics.StuckFields.Remove(v.Field);
-        Zone.Untrack(v);
-        v.Node.QueueFree();
-    }
+    void Remove(Vessel v) => Zone.Remove(v);
 
     Vector3 WallMiddle(Vessel v) => v.ToWorld(StructureBridge.CellCenter(v.Structure, new Int3(2, 2, 0)));
 

@@ -343,6 +343,7 @@ public partial class Game : Node3D
         Target = new PlayerTarget(this);
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
+        Zone.Wildlife.Quaked += OnQuake;
         SetUpHusks();
         Zone.Wildlife.Telegraphed += e =>
         {
@@ -761,8 +762,17 @@ public partial class Game : Node3D
         Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
         Visor.Hurt(from);
         Hands?.Jolt(from, MathF.Min(1f, e.Damage / 20f));
+        Survivor.Knock(e.Push); // thrown by the blow, by the striker's mass
         Zone.Wildlife.Audio.PlayUi("hurt", -6f); // the blow landing, not an alert
         Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
+    }
+
+    /// <summary>The ground shakes under a stomp or a heavy charge: the view shakes, harder close in, and a stomp kicks up dust round the foot.</summary>
+    void OnQuake(QuakeEvent e)
+    {
+        float near = Survivor.WorldFeet.DistanceTo(e.Position);
+        if (near < e.Reach) Hands?.Shake(e.Strength * (1f - near / e.Reach));
+        if (e.Stomp) Zone.Dust?.Puff(e.Position, Zone.Planet.Grit(e.Position), 1.2f + 3f * e.Strength);
     }
 
     /// <summary>A weapon's hit on a creature: the same smack and blood as the tool's.</summary>

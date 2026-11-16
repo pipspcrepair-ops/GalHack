@@ -364,7 +364,7 @@ public partial class Game
             if (v.Stand != null && Survivor.Seated == v) v.Stand = null;
             v.HoldOnStand();
             v.TickMode();
-            v.TickPower(dt, Mode == GameMode.Creative || FreePower); // in real time: what its devices drew this tick, the climate nodes by it too
+            v.TickPower(dt, (Mode == GameMode.Creative || FreePower) && v.IsPlayers); // in real time (Creative's free power is the player's own: others burn theirs): what its devices drew this tick, the climate nodes by it too
             if (v.Machines.Count == 0) continue;
             foreach (Constructor c in v.Machines.Values) Snapshot(c);
             v.TickMachines(t);

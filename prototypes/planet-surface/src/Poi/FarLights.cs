@@ -207,6 +207,35 @@ public partial class FarLights : Node3D
         Of[site] = (first, count, lived);
     }
 
+    /// <summary>
+    /// Lamps on something that moves (a vessel's lights): <paramref name="count"/> points kept from now on, placed and lit
+    /// each frame by <see cref="SetLamp"/> and drawn as a lived-in place's are, so they carry at night however far off.
+    /// Returns the first one's index.
+    /// </summary>
+    public int AddLamps(int count)
+    {
+        int first = PointCount;
+        for (int i = 0; i < count; i++)
+        {
+            _pointData.AddRange(new float[Stride]);
+            _fresh.Add(first + i);
+        }
+        return first;
+    }
+
+    /// <summary>
+    /// One moving lamp, this frame: where it is (any copy of the world: it is wrapped here), its colour, how bright (0: out)
+    /// and whether it is a beacon's blink.
+    /// </summary>
+    public void SetLamp(int i, Vector3 at, Color color, float bright, bool beacon)
+    {
+        if (_world == null || (i + 1) * Stride > _pointData.Count) return;
+        float size = beacon ? 4f : 1.75f, x = (float)Planets.Gen.Mathx.WrapX(at.X, _world.Width), z = (float)Planets.Gen.Mathx.Wrap(at.Z, _world.Height);
+        float[] row = { size, 0f, 0f, x, 0f, size, 0f, at.Y, 0f, 0f, size, z, color.R, color.G, color.B, bright, beacon ? 2f : 0f, i * 0.37f, 1f, 0f };
+        for (int k = 0; k < Stride; k++) _pointData[i * Stride + k] = row[k];
+        _fresh.Add(i);
+    }
+
     /// <summary>The most lamps inside one place that show from far off.</summary>
     const int MostInner = 12;
 

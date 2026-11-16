@@ -137,6 +137,9 @@ public partial class ShotFeelTest : Node
         GD.Print($"  (shot: {file})");
     }
 
+    /// <summary>Seconds a shooter with a clear line may take to fire its first round: its wind-up and its aim.</summary>
+    const float FirstShot = 1.5f;
+
     static readonly string[] Carried = { "rifle", "shotgun", "pistol", "musket", "crossbow", "bow", "laser_rifle", "energy_pistol" };
 
     IEnumerable<int> Scenario()
@@ -151,6 +154,7 @@ public partial class ShotFeelTest : Node
         Rows(game.Zone.Data.Arms, game.Zone.Data.Mounts);
         foreach (int x in OpenGround(game)) yield return x;
         foreach (int x in Shot(game, drive)) yield return x;
+        foreach (string prop in new[] { "rifle", "pistol", "bow" }) foreach (int x in Aimed(game, drive, prop)) yield return x;
         if (_shots != null) foreach (int x in Pictures(game, drive)) yield return x;
         foreach (int x in Mounted(game, drive)) yield return x;
         foreach (int x in Hits(game, drive)) yield return x;
@@ -248,6 +252,22 @@ public partial class ShotFeelTest : Node
         return c;
     }
 
+    /// <summary>
+    /// A point so far from a mark, level with it, with nothing solid between (the first going round
+    /// from a heading, either way, no more than so far round; else the heading's own).
+    /// </summary>
+    Vector3 ClearFrom(Vector3 mark, Vector3 heading, float far, float most)
+    {
+        for (int k = 0; k <= 16; k++)
+        {
+            float a = (k + 1) / 2 * (k % 2 == 0 ? 1f : -1f) * MathF.Tau / 16f;
+            if (MathF.Abs(a) > most) break;
+            Vector3 p = mark + heading.Rotated(Vector3.Up, a) * far;
+            if (!_game.Arms.Sweep(p.ToNumerics(), mark.ToNumerics(), null, ArmsHost.Hostile, 1f, out GalHack.Arms.ShotHit h) || h.Kind == HitKind.Player) return p;
+        }
+        return mark + heading * far;
+    }
+
     /// <summary>Dry ground so far off on a bearing, seen clear from the eye low and high.</summary>
     bool Open(float far, float bearing, out Vector3 at)
     {
@@ -268,7 +288,16 @@ public partial class ShotFeelTest : Node
         ArmsHost arms = game.Arms;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         Vector3 feet = game.Survivor.WorldFeet;
-        Creature raider = Stand(Raider(patch, "rifle"), 35f, 0f);
+        // Where it has a clear line to you from its own muzzle (a trunk or a rise between would send it closer first).
+        Creature raider = null;
+        for (int tries = 0; tries < 6; tries++)
+        {
+            raider = Stand(Raider(patch, "rifle"), 35f, tries * 1.05f);
+            bool clear = false;
+            for (int i = 0; i < 40 && !clear; i++) { game.Suit.Vitals.Health = max; yield return 0; clear = Arming.ShootReach(raider, patch.Player) > 0f; }
+            if (clear) break;
+            sim.Kill(raider, null);
+        }
         sim.Damage(raider, 1f, patch.Player);
         Vector3 Head() => patch.WorldOf(raider) + Vector3.Up * 1.5f;
         int reports = arms.Sounds.Played[(int)VoiceKind.Report], flashes = game.Shots.Flashes, misses = arms.NearMisses, fired = 0;
@@ -343,8 +372,9 @@ public partial class ShotFeelTest : Node
         misses = arms.NearMisses;
         Vector3 eye = game.Survivor.WorldEye();
         Vector3 from = patch.WorldOf(raider) + Vector3.Up * 1.4f;
-        Vector3 side = (eye - from).Cross(Vector3.Up).Normalized();
-        arms.FireFrom(rifle, from, eye + side * 1.5f - from, 0f, raider);
+        Vector3 side = (eye - from).Cross(Vector3.Up).Normalized(), past = eye + side * 1.5f;
+        Vector3 start = ClearFrom(past, WildSim.Flat(from - eye).Normalized(), 12f, MathF.PI); // (the ground between is the world's, not the test's)
+        arms.FireFrom(rifle, start, past - start, 0f, raider);
         for (int i = 0; i < 60 && arms.NearMisses == misses; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Check(arms.NearMisses > misses && arms.Sounds.PlayedShared[(int)CombatSound.Crack] > cracks, $"a round past your head cracks as it goes by ({arms.NearMisses - misses} heard within {ArmsHost.PassRadius} m)");
 
@@ -355,7 +385,7 @@ public partial class ShotFeelTest : Node
         int hits = arms.PlayerHits;
         // From behind, at the chest, from close enough that the ground between can't take it.
         Vector3 chest = game.Survivor.WorldFeet + Vector3.Up * 1.1f, away = new Vector3(from.X - eye.X, 0f, from.Z - eye.Z).Normalized();
-        Vector3 behind = chest + away * 6f;
+        Vector3 behind = ClearFrom(chest, away, 6f, 1.1f);
         arms.FireFrom(rifle, behind, chest - behind, 0f, null);
         for (int i = 0; i < 60 && arms.PlayerHits == hits; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 local = game.Camera.GlobalBasis.Inverse() * (behind - game.Camera.GlobalPosition);
@@ -392,49 +422,99 @@ public partial class ShotFeelTest : Node
             $"{gatling.Id}: drawn with its hot head every frame ({f?.Drawn}/{f?.Headed}/{f?.Frames}), never thinner than {f?.Thinnest:F1} px, its report loud");
     }
 
-    /// <summary>(--shots) A raider close by on open ground: its muzzle flash, and a bolt of its going past you, mid-flight.</summary>
+    /// <summary>
+    /// Someone with a rifle, a pistol or a bow shooting at you: each round waits until the weapon is
+    /// on you, so the barrel (or the arrow) points at you as it goes, a few degrees at most; the
+    /// round leaves the muzzle along it; the body is turned to you.
+    /// </summary>
+    IEnumerable<int> Aimed(Game.Game game, Driver drive, string prop)
+    {
+        GD.Print($"-- a {prop} aimed at you --");
+        WildlifePatch patch = game.Zone.Wildlife;
+        ArmsHost arms = game.Arms;
+        double max = game.Suit.Sim.Data.Vitals.Health.Max;
+        Creature raider = Stand(Raider(patch, prop), 18f, 2f);
+        patch.Sim.Damage(raider, 1f, patch.Player);
+        var offs = new List<float>();
+        var barrels = new List<float>();
+        var facing = new List<float>();
+        int fired = 0;
+        float wanted = -1f, first = -1f; // (when it first had you in reach on a clear line, and when its first round went)
+        int dropped = arms.People.Dropped, inReach = 0;
+        var states = new List<string>();
+        for (int i = 0; i < 60 * 25 && offs.Count < 3 && !raider.Dead; i++)
+        {
+            game.Suit.Vitals.Health = max;
+            drive.Face(patch.WorldOf(raider) + Vector3.Up * 1.4f);
+            yield return 0;
+            SimArms.Kit kit = arms.People.KitOf(raider);
+            bool reach = Arming.ShootReach(raider, patch.Player) > 0f;
+            if (reach) inReach++;
+            if (wanted < 0f && reach) wanted = i / 60f;
+            string st = $"{raider.State}/{raider.Phase}";
+            if (first < 0f && (states.Count == 0 || states[^1] != st) && states.Count < 12) states.Add(st);
+            if (first < 0f && kit?.Clip.Fired > 0) first = i / 60f;
+            if (kit == null || kit.Clip.Fired <= fired || raider.Rig is not HumanRig hr) continue;
+            fired = kit.Clip.Fired;
+            if (kit.Target != patch.Player || hr.WeaponLine.LengthSquared() < 0.5f) continue;
+            offs.Add(kit.LastOff);
+            Vector3 mark = patch.PlayerWorld() + Vector3.Up * 1.15f;
+            if (kit.Model != null && GodotObject.IsInstanceValid(kit.Model.Muzzle) && kit.Model.Muzzle.IsInsideTree())
+            {
+                Vector3 muzzle = kit.Model.Muzzle.GlobalPosition, barrel = -kit.Model.Muzzle.GlobalBasis.Z.Normalized();
+                barrels.Add(Mathf.RadToDeg(barrel.AngleTo(mark - muzzle)));
+            }
+            Vector3 to = WildSim.Flat(patch.Player.Position - raider.Position);
+            facing.Add(Mathf.RadToDeg(WildSim.Flat(hr.Facing).AngleTo(to)));
+        }
+        if (offs.Count == 0)
+        {
+            SimArms.Kit k0 = arms.People.KitOf(raider);
+            GD.Print($"  (no round measured: {raider.State} {raider.Phase}{(raider.Dead ? " dead" : "")}, {WildSim.Flat(patch.Player.Position - raider.Position).Length():F0} m off, {(patch.WorldOf(raider).Y - patch.PlayerWorld().Y):F1} m above you, fired {k0?.Clip.Fired}, target {(k0?.Target == patch.Player ? "you" : k0?.Target == null ? "none" : "else")}, reach {Arming.ShootReach(raider, patch.Player):F0}, line {(raider.Rig is HumanRig r0 ? r0.WeaponLine.Length().ToString("F2") : "no rig")}, aim error {(raider.Rig is HumanRig r1 ? r1.AimError(patch.Player.Position + Vector3.Up * 1.15f).ToString("F1") : "-")}, bursts dropped {arms.People.Dropped} (last held {arms.People.LastHeldOff:F1} off))");
+        }
+        patch.Sim.Kill(raider, null);
+        string Degrees(List<float> a) => a.Count == 0 ? "none" : string.Join(", ", a.Select(v => $"{v:F1}"));
+        Check(first >= 0f && wanted >= 0f && first - wanted <= FirstShot, $"with you in reach on a clear line, it fires within about a second ({(first < 0f ? "never fired" : $"{first - wanted:F2} s")}; reach first at {wanted:F1} s, in reach {inReach / 60f:F1} s, {arms.People.Dropped - dropped} bursts held off ({arms.People.LastHeldOff:F1} deg), before its first: {string.Join(" > ", states)})");
+        Check(offs.Count >= 2 && offs.Max() <= HumanRig.OnMark + 0.5f, $"its {prop} is on you as each round goes: {Degrees(offs)} degrees off the line to you (at most {HumanRig.OnMark})");
+        if (prop != "bow") Check(barrels.Count >= 2 && barrels.Max() <= HumanRig.OnMark + 1.5f, $"the round leaves the muzzle along the barrel: {Degrees(barrels)} degrees between the barrel and muzzle-to-you");
+        GD.Print($"  (its chest turned {Degrees(facing)} degrees from you as it fired)");
+    }
+
+    /// <summary>(--shots) A raider close by on open ground, facing you, shooting at you: its muzzle flash, and one of its rounds coming at you, mid-flight.</summary>
     IEnumerable<int> Pictures(Game.Game game, Driver drive)
     {
         WildlifePatch patch = game.Zone.Wildlife;
         ArmsHost arms = game.Arms;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
-        Creature raider = Stand(Raider(patch, "rifle"), 10f, 1f);
+        Creature raider = Stand(Raider(patch, "rifle"), 12f, 1f);
         patch.Sim.Damage(raider, 1f, patch.Player);
         Vector3 Body() => patch.WorldOf(raider) + Vector3.Up * 1.2f;
-        // The tick after one of its rounds, with its flash still showing on screen.
-        int fired = 0;
-        bool flashed = false;
-        for (int i = 0; i < 60 * 20 && !flashed; i++)
+        bool OnYou() => raider.Rig is HumanRig hr && hr.AimError(patch.Player.Position + Vector3.Up * 1.15f) < HumanRig.OnMark && arms.People.KitOf(raider)?.Target == patch.Player;
+        // The tick after one of its rounds at you, its rifle on you, its flash still showing on screen; then one of its rounds half way to you.
+        int fired = 0, flying = -1;
+        bool flashed = false, bolt = false;
+        for (int i = 0; i < 60 * 30 && !(flashed && bolt); i++)
         {
             game.Suit.Vitals.Health = max;
             drive.Face(Body());
-            int now = arms.People.KitOf(raider)?.Clip.Fired ?? 0;
-            bool shot = now > fired && arms.People.KitOf(raider)?.Target == patch.Player; // at you, not at something else
+            SimArms.Kit kit = arms.People.KitOf(raider);
+            int now = kit?.Clip.Fired ?? 0;
+            bool shot = now > fired && OnYou();
             fired = now;
+            Vector3 muzzle = kit != null ? arms.People.Muzzle(raider, kit, patch.Origin) : Body();
             yield return 0;
-            if (shot && game.Shots.FlashesShowing > 0 && game.Camera.IsPositionInFrustum(Body())) { Shoot("muzzle-flash.png"); flashed = true; }
-        }
-        // Frozen where it stands, it fires one past your shoulder: the bolt half way.
-        patch.Frozen = true;
-        for (int i = 0; i < 40; i++) { game.Suit.Vitals.Health = max; drive.Face(Body()); yield return 0; }
-        SimArms.Kit kit = arms.People.KitOf(raider);
-        Vector3 muzzle = kit != null ? arms.People.Muzzle(raider, kit, patch.Origin) : Body();
-        Vector3 eye = game.Survivor.WorldEye();
-        Vector3 past = eye + (eye - muzzle).Cross(Vector3.Up).Normalized() * 2.5f;
-        WeaponDef rifle = game.Zone.Data.Arms.Get("line-rifle");
-        arms.FireFrom(rifle, muzzle, past - muzzle, 0f, raider, model: kit?.Model);
-        for (int i = 0; i < 60; i++)
-        {
-            game.Suit.Vitals.Health = max;
-            yield return 0;
+            if (shot && !flashed && game.Shots.FlashesShowing > 0 && game.Camera.IsPositionInFrustum(Body())) { Shoot("muzzle-flash.png"); flashed = true; continue; }
+            if (bolt) continue;
             Shot[] shots = arms.Pool.Shots;
-            bool mid = false;
+            Vector3 eye = game.Survivor.WorldEye();
             for (int k = 0; k < shots.Length; k++)
-                if (shots[k].Live && shots[k].Def == rifle && shots[k].Owner == ArmsHost.Hostile && shots[k].Pos.ToGodot().DistanceTo(muzzle) > muzzle.DistanceTo(eye) * 0.45f) mid = true;
-            if (mid) { yield return 0; Shoot("bolt-in-flight.png"); break; }
+            {
+                if (!shots[k].Live || shots[k].Owner != ArmsHost.Hostile || shots[k].LastHit != raider) continue;
+                float gone = shots[k].Pos.ToGodot().DistanceTo(muzzle) / MathF.Max(1f, muzzle.DistanceTo(eye));
+                if (gone is > 0.35f and < 0.7f && OnYou()) { Shoot("bolt-in-flight.png"); bolt = true; break; }
+            }
         }
         patch.Sim.Kill(raider, null);
-        patch.Frozen = false;
     }
 
     /// <summary>The sleeper's own hits: the reticle's ring, the thud at any distance, the cry of what's hit.</summary>
@@ -568,7 +648,7 @@ public partial class ShotFeelTest : Node
         whoosh = arms.Sounds.PlayedShared[(int)CombatSound.Whoosh];
         int hits = arms.PlayerHits;
         Vector3 chest = game.Survivor.WorldFeet + Vector3.Up * 1.1f;
-        Vector3 from = chest + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
+        Vector3 from = ClearFrom(chest, new Vector3(look.X, 0f, look.Z).Normalized(), 1.2f, MathF.PI);
         arms.FireFrom(club, from, chest - from, 0f, null);
         game.Suit.Vitals.Health = max;
         yield return 0;

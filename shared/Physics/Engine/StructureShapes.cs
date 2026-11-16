@@ -31,6 +31,23 @@ public sealed class StructureShapes
     /// </summary>
     public void Apply(IEnumerable<ChunkColliders> chunks, IEnumerable<ChunkKey> removed = null)
     {
+        // A still body (a base, a wreck, a cabin world) is out of its space while its shapes change: in it, Jolt rebuilt the body's
+        // whole compound for every shape added, so a crashed freighter's chunk of 300 shapes on a body of thousands took 60 to 100 ms
+        // a tick for a thousand ticks. Out of it, the compound is built once as it goes back. (A moving body keeps its space: it has
+        // a velocity and contacts to keep.)
+        Rid space = default;
+        bool still = _owner is StaticBody3D && _owner.IsInsideTree();
+        if (still)
+        {
+            space = PhysicsServer3D.BodyGetSpace(_owner.GetRid());
+            PhysicsServer3D.BodySetSpace(_owner.GetRid(), new Rid());
+        }
+        try { Swap(chunks, removed); }
+        finally { if (still) PhysicsServer3D.BodySetSpace(_owner.GetRid(), space); }
+    }
+
+    void Swap(IEnumerable<ChunkColliders> chunks, IEnumerable<ChunkKey> removed)
+    {
         LastRebuilt = 0;
         if (removed != null)
             foreach (ChunkKey key in removed)

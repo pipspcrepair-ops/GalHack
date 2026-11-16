@@ -109,6 +109,8 @@ public sealed class Piece
     public bool Shadow = true;
     /// <summary>Not a surface but a blur: drawn see-through, with its vertex alpha as its strength (<see cref="CreatureMaterials.Blur"/>).</summary>
     public bool Blur;
+    /// <summary>A moving jaw (a piece named "jaw"): how it opens and shuts on its head.</summary>
+    public MouthMove Mouth;
 
     public Piece(string name) => Name = name;
 
@@ -211,6 +213,25 @@ public sealed class Piece
     }
 }
 
+/// <summary>
+/// How a jaw moves on its head, in head space: it swings about the hinge <paramref name="At"/>
+/// (radians down to open, up to shut), or it scales about that point (pincers close in, a round
+/// mouth dilates). Gape 0 is the jaw as built, 1 wide open, -1 snapped shut.
+/// </summary>
+public readonly record struct MouthMove(Vector3 At, float Open, float Shut, Vector3 Wide, Vector3 Tight)
+{
+    public static MouthMove Hinge(Vector3 at, float open, float shut) => new(at, open, shut, Vector3.One, Vector3.One);
+    public static MouthMove Scale(Vector3 at, Vector3 wide, Vector3 tight) => new(at, 0f, 0f, wide, tight);
+
+    public Transform3D Pose(float gape)
+    {
+        float angle = gape >= 0f ? -Open * gape : Shut * -gape;
+        Vector3 scale = gape >= 0f ? Vector3.One.Lerp(Wide == default ? Vector3.One : Wide, gape) : Vector3.One.Lerp(Tight == default ? Vector3.One : Tight, -gape);
+        var b = new Basis(Vector3.Right, angle).Scaled(scale);
+        return new Transform3D(b, At - b * At);
+    }
+}
+
 /// <summary>Everything a species looks like, as pieces. Built once per species and shared.</summary>
 public sealed class RigLayout
 {
@@ -220,6 +241,14 @@ public sealed class RigLayout
     {
         Pieces.Add(piece);
         return Pieces.Count - 1;
+    }
+
+    /// <summary>A head, then its moving jaw if it has one (a rig works the jaw on the head before it).</summary>
+    public int AddHead(Piece head, Piece jaw)
+    {
+        int at = Add(head);
+        if (jaw.Prims.Count > 0) Add(jaw);
+        return at;
     }
 }
 

@@ -28,7 +28,24 @@ public sealed class Survivor
     public const float CrouchHeight = 1.1f, CrouchEyeHeight = 0.95f;
 
     /// <summary>The zone the sleeper is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
-    public SurfaceZone Zone { get; internal set; }
+    public SurfaceZone Zone
+    {
+        get => _zone;
+        internal set
+        {
+            if (_zone != null) _zone.Removing -= SetOutOf;
+            _zone = value;
+            if (_zone != null) _zone.Removing += SetOutOf;
+        }
+    }
+    SurfaceZone _zone;
+
+    /// <summary>A vessel about to be taken out of the world: seated in it or aboard, the sleeper gets up and is set out of it first, so their body stays theirs.</summary>
+    void SetOutOf(Vessel vessel)
+    {
+        if (Seated == vessel) StandUp();
+        if (Aboard == vessel) Leave();
+    }
     public readonly Body Body;
     public readonly CharacterBinding Binding;
     public readonly WalkController Legs = new();
@@ -396,6 +413,18 @@ public sealed class Survivor
         _wasOutside = Body.OnOuterHull;
         Binding.MagBoots = _wasOutside && Zone.Physics.Rules.Riding.MagBoots;
         Binding.Teleport();
+    }
+
+    /// <summary>
+    /// A blow throws the survivor (m/s, zone frame), on foot only: off their feet, so the legs don't
+    /// simply stand against it, and down again where it carries them.
+    /// </summary>
+    public void Knock(Vector3 push)
+    {
+        if (Seated != null || OnBike != null || push.LengthSquared() < 1e-4f) return;
+        float lift = Math.Clamp(push.Length() * 0.35f, 1.5f, 4f);
+        Body.Velocity += (push + Vector3.Up * MathF.Max(0f, lift - push.Y)).ToNumerics();
+        Body.OnFloor = false;
     }
 
     /// <summary>Puts the survivor in the zone's world, upright (respawns, tests, screenshots). <paramref name="glide"/>: drawn moving there from where they were, not jumping (a test carrying them along a route a tick at a time).</summary>

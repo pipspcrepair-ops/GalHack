@@ -503,6 +503,24 @@ public partial class SurfaceZone : Node3D
         _vesselOf.Remove(vessel.Body);
     }
 
+    /// <summary>A vessel about to be taken out of the world: whoever is in it is set out first (the sleeper listens).</summary>
+    public event System.Action<Vessel> Removing;
+
+    /// <summary>
+    /// Takes a vessel out of the world for good (its last block gone, salvaged, cleared away): anyone seated in it or
+    /// aboard is set out first, so freeing its node frees only its own. Its weather, physics and tracking go with it.
+    /// </summary>
+    public void Remove(Vessel vessel)
+    {
+        if (!Vessels.Contains(vessel)) return;
+        Removing?.Invoke(vessel);
+        Weather?.Bridge?.Untrack(vessel.Body);
+        Physics.Unregister(vessel.Body);
+        Physics.StuckFields.Remove(vessel.Field);
+        Untrack(vessel);
+        vessel.Node.QueueFree();
+    }
+
     public Vessel VesselOf(Body body)
     {
         if (body == null) return null;

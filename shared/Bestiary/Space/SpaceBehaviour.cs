@@ -315,7 +315,7 @@ public static class SpaceAttacks
         bool first = c.MustTelegraph(target, w.Time, r);
         c.Phase = AttackPhase.Windup;
         c.PhaseTime = 0f;
-        c.PhaseLength = c.WindupLength = first ? c.Species.TelegraphWindup(r) : r.NormalWindup;
+        c.PhaseLength = c.WindupLength = c.Species.Windup(r, first);
         c.FirstAttack = first;
         c.Committed = false;
         c.AttackTarget = target;

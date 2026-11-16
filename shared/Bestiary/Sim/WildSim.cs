@@ -16,6 +16,10 @@ public struct AttackEvent
     public bool Hit;
     public float Damage;
     public float Time;
+    /// <summary>What it struck with; how near its striking part came to the victim's body, m (negative: into it); how the blow throws them, m/s.</summary>
+    public AttackMove Move;
+    public float Gap;
+    public Vector3 Push;
 }
 
 /// <summary>
@@ -104,6 +108,8 @@ public sealed class WildSim
     public event Action<AttackEvent> Committed;
     /// <summary>A lunge has landed or missed.</summary>
     public event Action<AttackEvent> Attacked;
+    /// <summary>The ground shakes under something heavy: a stomp, a charge's footfalls.</summary>
+    public event Action<QuakeEvent> Quaked;
     public event Action<Creature, ITarget> Died;
     public event Action<Creature> Warned;
     /// <summary>A creature was added to the world, by any path.</summary>
@@ -619,7 +625,7 @@ public sealed class WildSim
 
             // Far creatures re-pose less often; the rig catches up with the summed time.
             c.RigPending += dt;
-            if (c.RigInterval <= 1 || (Frame + c.Id) % c.RigInterval == 0)
+            if (c.RigInterval <= 1 || c.Attacking || (Frame + c.Id) % c.RigInterval == 0) // a strike is judged on the pose, so it's posed every step
             {
                 c.Rig.Update(this, c, c.RigPending);
                 c.RigPending = 0f;
@@ -795,6 +801,7 @@ public sealed class WildSim
     internal void RaiseSlipped(Creature c, Crack crack, bool entering) => Slipped?.Invoke(c, crack, entering);
     internal void RaiseTelegraph(AttackEvent e) => Telegraph?.Invoke(e);
     internal void RaiseAttacked(AttackEvent e) => Attacked?.Invoke(e);
+    internal void RaiseQuake(QuakeEvent e) => Quaked?.Invoke(e);
     internal void RaiseCommitted(AttackEvent e) => Committed?.Invoke(e);
     internal void RaiseWarned(Creature c) => Warned?.Invoke(c);
 

@@ -49,7 +49,7 @@ public static class StructureArea
         v.Structure.Count > 0 && Distance(v, world) <= Margin(v, rules);
 
     /// <summary>Structures with a shared storage you could link to: built, cored, not wrecks or ruins.</summary>
-    public static bool Linkable(Vessel v) => !v.IsWreck && !v.IsRuin && v.Structure.Core != null;
+    public static bool Linkable(Vessel v) => !v.IsWreck && !v.IsRuin && v.Structure.Core != null && v.Structure.Owner == GalHack.Structures.Building.DefaultOwner;
 
     /// <summary>Every linkable structure whose area holds a point, nearest first.</summary>
     public static List<Vessel> Around(SurfaceZone zone, Vector3 world, SliceRules.AreaRules rules) =>
