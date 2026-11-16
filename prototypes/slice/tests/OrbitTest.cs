@@ -585,6 +585,7 @@ public partial class OrbitTest : Node
             // Sinking too fast, hands off: the assist brakes at least at its floor, where Space would climb only at thrust less weight.
             _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
             _pilot.Creep(v, pad, agl > 3f);
+            if (ticks % 600 == 0 && agl < 6f) GD.Print($"  TRACE landing t{ticks}: agl {agl:F2} vy {vy:F2} onGear {onGear} gear {(v.Controller.Gear == null ? "none" : $"deployed {v.Controller.Gear.Deployed} contact {v.Controller.Gear.Contact}")} floor {v.Body.OnFloor} ctrl {_game.Controls.IsHeld(Key.Ctrl)} settling {v.Controller.Settling} ground {v.Controller.GroundDistance:F2} seated {_game.Survivor.Seated == v} pilot {v.Roles.Pilot}");
             yield return 0;
         }
         _game.Controls.ReleaseAll();
@@ -613,10 +614,12 @@ public partial class OrbitTest : Node
         foreach (Holder h in _left.Where(h => h.Zone == ZoneLedger.Surface && h.Id != "sleeper"))
         {
             Holder back = now.FirstOrDefault(n => n.Id == h.Id);
-            if (back.Id == null || back.Blocks != h.Blocks || back.Zone != h.Zone || !back.Items.Equals(h.Items)) missing.Add(h.Name);
+            if (back.Id == null) missing.Add($"{h.Name} gone");
+            else if (back.Blocks != h.Blocks || back.Zone != h.Zone || !back.Items.Equals(h.Items))
+                missing.Add($"{h.Name}: blocks {h.Blocks} to {back.Blocks}, zone {h.Zone} to {back.Zone}, items {_game.Zone.Data.Items.Describe(h.Items, 4)} to {_game.Zone.Data.Items.Describe(back.Items, 4)}");
         }
         Check(missing.Count == 0, $"every structure, device and container left on the surface is as it was: {_left.Count(h => h.Zone == ZoneLedger.Surface)} holders ({string.Join(", ", missing)})");
-        Check(_game.Survivor.Seated == _skiff && _skiff.Structure.Count == _game.StarterPlan.Count && _skiff.Body.Damage == 0f, $"the Skiff came home whole and undamaged from the whole trip: {_skiff.Structure.Count} blocks, damage {_skiff.Body.Damage:F2}");
+        Check(_game.Survivor.Seated == _skiff && _skiff.Structure.Count == _game.StarterPlan.Count && _skiff.Body.Damage == 0f, $"the Skiff came home whole and undamaged from the whole trip: {_skiff.Structure.Count} blocks of {_game.StarterPlan.Count}, damage {_skiff.Body.Damage:F2}, seated in {_game.Survivor.Seated?.Name ?? "nothing"}");
         if (_wreck != null)
             Check(_wreck.Structure.Count == _salvagedTo + 1 && _wreck.Storage.IsEmpty && _wreck.Structure.Core != null,
                 $"orbit waits as it was left: the wreck salvaged ({_salvagedTo} blocks and the core), emptied ({_lootedFrom} items gone) and claimed");
