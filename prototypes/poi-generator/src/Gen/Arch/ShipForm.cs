@@ -257,6 +257,9 @@ public sealed partial class ShipForm
     /// <summary>Pipes and struts along an axis (0 u, 1 y, 2 v): a run of cylinder blocks from a cell.</summary>
     public readonly List<(Int3 From, int Axis, int Length, string Paint)> Pipes = new();
 
+    /// <summary>Which of its faction's body plans made it (spine, raft, pusher; hammerhead, monolith, twin; seedpod, tandem, wheel; welded, piggyback, ramsled; tube, vanes, wheels; wasp, beetle, centipede).</summary>
+    public string Plan { get; private set; } = "";
+
     /// <summary>Once settled: how far it reaches across (|u|), how high and how long it is (cells).</summary>
     public int ExtentU, Height, Length;
 
