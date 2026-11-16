@@ -44,6 +44,11 @@ public struct Gesture
     /// at it, the head comes round behind the sights and the upper body turns to it.
     /// </summary>
     public Vector3? AimAt;
+    /// <summary>
+    /// Far enough off that the hands' fine fitting can't show (30 m and more: a centimetre is under a pixel): the fists aren't
+    /// kept clear of the coat and a grip is settled in one pass, not two. The arms, the weapon and the body go where they always do.
+    /// </summary>
+    public bool Far;
 }
 
 /// <summary>
@@ -475,7 +480,7 @@ public sealed partial class HumanRig : Rig
         // Arms: each hand has a place to be, and the elbow follows it.
         Hold hold = Grips(g, kind, aimW, busy, turn, torso, hip, chest, neck, headBasis);
         (WeaponLine, WeaponGrip) = (hold.Line, hold.Prop.Origin);
-        if (kind != HoldKind.None) KeepFistsClear(ref hold, kind, torso);
+        if (kind != HoldKind.None && !g.Far) KeepFistsClear(ref hold, kind, torso);
         GripRight = hold.R;
         GripLeft = hold.L;
         GripRightOn = hold.RW;
@@ -594,7 +599,7 @@ public sealed partial class HumanRig : Rig
                 // The fist closes on the grip, not the wrist: the wrist goes back from it by the length of the hand (twice round, as the forearm moves with it;
                 // the hand keeps the frame it was placed by, the wrist bending to make up the rest).
                 Vector3 want = hand;
-                for (int pass = 0; pass < 2; pass++)
+                for (int pass = 0, passes = g.Far ? 1 : 2; pass < passes; pass++)
                 {
                     (Vector3 e0, Vector3 w0) = LeggedRig.SolveIK(shoulder, want, upperArm, forearm, pole);
                     gripFore = (w0 - e0).Normalized();
