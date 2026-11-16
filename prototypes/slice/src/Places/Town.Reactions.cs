@@ -81,7 +81,7 @@ public sealed partial class Town
             if (!c.Removed && !c.Dead && (c == harmer || WildSim.Flat(c.Position - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c)))) _round.Add(c);
         Sensed = _round.Count;
         Senses++;
-        if (_round.Count == 0) return;
+        // (Each is looked at even with nothing round: what they dealt with that went off, or is no longer in this sim, is let go.)
         foreach (Person p in People)
         {
             if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null) continue;

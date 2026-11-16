@@ -1397,10 +1397,10 @@ public sealed partial class Town
         return shows;
     }
 
-    /// <summary>What someone's raised weapon is aimed at, in the place's frame: a stray they're seeing off, else you once they're in a fight; null otherwise.</summary>
+    /// <summary>What someone's raised weapon is aimed at, in the place's frame: what they fight (a danger, else you: Town.Combat), else a stray they're seeing off; null otherwise.</summary>
     Vector3? AimedAt(Person p)
     {
-        if (p.Threat is { Dead: false, Removed: false } c) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * Arming.Chest(c));
+        if (p.Threat is { Dead: false, Removed: false } c && (p.Facing > 0f || !p.Engaged)) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * Arming.Chest(c));
         return p.Engaged ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) + Vector3.Up * 1.15f : null;
     }
 

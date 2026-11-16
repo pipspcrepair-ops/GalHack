@@ -100,8 +100,8 @@ public partial class CombatTest : Node
     /// <summary>
     /// Raiders at a town's edge (the owner, 16 Nov 2026, of people: "they should attack people as well"): a
     /// band of armed raiders put down outside a survivor town near one of its guards, the sleeper off to one
-    /// side and of no account to either. The guards fire on them with their own weapons (the aim and shots
-    /// they'd use on you), and none of it is at you.
+    /// side and of no account to either. The town fires on them, its guards and whoever else has the nerve,
+    /// with their own weapons (the aim and shots they'd use on you), and none of it is at you.
     /// </summary>
     IEnumerable<int> TownEdge()
     {
@@ -156,13 +156,14 @@ public partial class CombatTest : Node
         // (They stay about where they were put: a new herd's first update counts its time from long ago, so its timer is long.)
         band[0].Herd.Home = band[0].Herd.Goal = band[0].Position;
         band[0].Herd.GoalTimer = 1e9f;
-        int guardShots = 0, shotsAtYou = town.GuardShots, bandShots = game.Arms.People.Shots;
+        int fire = 0, guardShots = 0, atYou = 0, bandShots = game.Arms.People.Shots;
         Mood mood = town.Memory.Mood;
-        town.ShotFired += (who, _, _, _, _) => { if (who.Role == "guard") guardShots++; };
+        town.ShotFired += (who, _, _, _, _) => { fire++; if (who.Role == "guard") guardShots++; };
+        town.Aimed += _ => atYou++; // (every burst at you is aimed where you can see it first)
         for (int i = 0; i < 60 * 40 && guardShots < 3; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         GD.Print($"  (the raiders: {string.Join(", ", band.Select(c => $"{c.State} {(c.Dead ? "down" : $"{c.Health:F0}")} {(patch.FromPatch(c.Position) - post).Length():F0} m"))}; {game.Arms.People.Shots - bandShots} shots of theirs; the town fought {town.Fought}, {town.Shots} shots)");
-        Check(guardShots > 0, $"raiders near a town draw fire from its guards: {guardShots} rounds from them in {(guardShots > 0 ? "under " : "")}40 s");
-        Check(town.GuardShots == shotsAtYou && town.Memory.Mood == mood, $"none of it at you, and the town still {town.Memory.Mood} with you ({town.GuardShots - shotsAtYou} at you)");
+        Check(fire > 0, $"raiders near a town draw its fire: {fire} rounds, {guardShots} of them its guards', in {(guardShots >= 3 ? "under " : "")}40 s");
+        Check(atYou == 0 && town.Memory.Mood == mood, $"none of it at you, and the town still {town.Memory.Mood} with you ({atYou} aimed at you)");
         game.QueueFree();
         yield return 0;
     }
@@ -227,14 +228,14 @@ public partial class CombatTest : Node
         for (int i = 0; i < 1200 && game.Places.PlaceOf(site) != null; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         bool dropped = game.Places.PlaceOf(site) == null;
         game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
-        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        for (int i = 0; i < 3600 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; } // (a minute, as at first)
         place = game.Places.PlaceOf(site);
         for (int i = 0; i < 600 && armed.Any(p => !p.Dead && p.View == null && !p.Indoors && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         for (int i = 0; i < 120; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         AppDomain.CurrentDomain.FirstChanceException -= count;
         var again = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
         Check(dropped && place?.Memory.Town == town && thrown == 0 && again.All(p => p.Model != null && p.Holder?.GetParent() == p.View),
-            $"taken down and stood again: {(dropped ? "dropped" : "never dropped")}, {thrown} exceptions, guns in the new hands {again.Count(p => p.Holder?.GetParent() == p.View)} of {again.Count}");
+            $"taken down and stood again: {(dropped ? "dropped" : "never dropped")}, {(place?.Memory.Town == town ? "stood again" : "never stood again")}, {thrown} exceptions, guns in the new hands {again.Count(p => p.Holder?.GetParent() == p.View)} of {again.Count}");
         drawn = again;
         // (--shots=<folder>: a picture of each of a few of them, close, with what they hold.)
         string shots0 = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?.Substring(8);
