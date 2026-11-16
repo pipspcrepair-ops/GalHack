@@ -205,7 +205,7 @@ public static partial class Brain
                 ToFlight(w, h, b, lead, from);
             }
         }
-        else if (danger == Response.Fight) ToFight(w, h, b, lead, b.Threat);
+        else if (danger == Response.Fight && b.Mood != PartyMood.Fighting) ToFight(w, h, b, lead, b.Threat); // (a fight under way isn't dropped for it)
         else if (danger == Response.Flee) ToFlight(w, h, b, lead, from);
 
         switch (b.Mood)
@@ -333,16 +333,16 @@ public static partial class Brain
         Vector3 bound = b.Bending && h.Goal == b.BentTo ? b.Bound : h.Goal; // (the herd picks a new goal now and then)
         Vector3 off = WildSim.Flat(h.Center - danger), to = WildSim.Flat(bound - danger), way = to - off;
         float d = off.Length(), len = way.Length();
-        // The nearest the way comes to it.
+        // The nearest the way comes to it (once bent, a little wider before they go straight again).
         float along = len > 0.5f ? Math.Clamp(-off.Dot(way) / len, 0f, len) : 0f;
-        if ((off + (len > 0.5f ? way / len * along : Vector3.Zero)).Length() >= berth)
+        if ((off + (len > 0.5f ? way / len * along : Vector3.Zero)).Length() >= berth + (b.Bending ? 4f : 0f))
         {
             if (b.Bending) h.Goal = bound;
             b.Bending = false;
             b.BendSide = 0f;
             return;
         }
-        float ring = berth + 4f;
+        float ring = berth + 8f;
         Vector3 at;
         if (to.Length() < berth) at = (to.LengthSquared() > 0.01f ? to.Normalized() : off / MathF.Max(d, 0.1f)) * ring;
         else

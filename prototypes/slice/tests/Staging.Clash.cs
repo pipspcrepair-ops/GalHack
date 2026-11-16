@@ -37,16 +37,16 @@ public sealed partial class Staging
         Vector3 feet = _game.Survivor.WorldFeet, fwd = Openest(feet), side = fwd.Cross(Vector3.Up).Normalized();
         Clear(patch, feet, fwd, 60f);
 
-        // Raiders on an armed band of the world's own, 40 m ahead (nearer each other than you: it's them they go for): they meet, and it's a fight.
+        // Raiders on an armed band of the world's own, 20-odd m ahead (nearer each other than you: it's them they go for): they meet, and it's a fight.
         // STAGING: both sides carry what their era shoots with, so the fight shows as shots.
         var raiders = Enumerable.Range(0, 4).Select(i => patch.Life.People.Person(Wildlife.Rng.Mix(patch.Life.World.Seed, 911 + (ulong)i), PersonRole.Raider, Occupancy.Raider)).ToList();
         raiders[0].Hosts = raiders;
         Species other = BandKind(patch.Life, armed: true);
         foreach (Species r in raiders.Concat(other.Hosts ?? new List<Species> { other })) r.Figure.Prop = Shooting(patch.Life.World.Now, r.Seed);
-        List<Creature> a = Band(patch, raiders[0], feet + fwd * 44f + side * 14f, Stance.Hostile, feet + fwd * 44f - side * 6f);
-        List<Creature> b = Band(patch, other, feet + fwd * 40f - side * 14f, Stance.Wary, feet + fwd * 40f + side * 6f);
+        List<Creature> a = Band(patch, raiders[0], feet + fwd * 26f + side * 9f, Stance.Hostile, feet + fwd * 26f - side * 4f);
+        List<Creature> b = Band(patch, other, feet + fwd * 22f - side * 9f, Stance.Wary, feet + fwd * 22f + side * 4f);
         foreach (Creature m in b) m.Nerve = MathF.Max(m.Nerve, 0.8f); // (they stand and shoot back rather than run: the frame is the fight)
-        foreach (int x in _drive.LookAt(feet + fwd * 42f + Vector3.Up * 1.2f, 20)) yield return x;
+        foreach (int x in _drive.LookAt(feet + fwd * 24f + Vector3.Up * 1.2f, 20)) yield return x;
         // Taken on a shot, once both sides are at it: the raiders in their fight, the others shooting back.
         int seen = 0, before = _game.Arms.OthersFired;
         for (int i = 0; i < 60 * 40; i++)
@@ -62,17 +62,17 @@ public sealed partial class Staging
         foreach (int x in Shot(_args.GetValueOrDefault("bands", "clash-bands.png"))) yield return x;
 
         // A band bound across ahead, past a predator it has seen: its way bends round it.
-        Clear(patch, feet, fwd, 90f);
+        Clear(patch, feet, fwd, 60f);
         Species beast = patch.Life.Fauna.Species.FirstOrDefault(s => CrossReactions.Danger(s) && !s.Flies && s.Rig != RigKind.Swarm && s.Body.Size is > 0.6f and < 3f)
             ?? patch.Life.Fauna.Species.FirstOrDefault(CrossReactions.Danger);
         if (beast == null) { GD.Print("(no predator on this world: no berth to show)"); yield break; }
-        Vector3 lair = Ground(feet + fwd * 24f);
+        Vector3 lair = Ground(feet + fwd * 40f);
         Creature it = patch.Sim.Spawn(beast, patch.PatchLocal(lair));
         it.ThinkEvery = 1e9f; // STAGING: it stays where it was put
         Species walkers = BandKind(patch.Life, armed: true);
-        // Bound across behind it: the way bends away from you, round it.
-        List<Creature> c = Band(patch, walkers, feet + fwd * 28f - side * 45f, Stance.Welcoming, feet + fwd * 28f + side * 50f);
-        foreach (Creature m in c) m.Nerve = 0.05f; // (none with the nerve to go for it: they give it room)
+        // Bound across just this side of it: the way bends toward you, round it.
+        List<Creature> c = Band(patch, walkers, feet + fwd * 36f - side * 45f, Stance.Welcoming, feet + fwd * 36f + side * 50f);
+        foreach (Creature m in c) m.Nerve = 0.1f; // (none with the nerve to go for it: they give it room)
         Creature lead = Brain.Leader(c[0].Herd);
         float berth = CrossReactions.Berth(lead.Nerve, c.Any(m => Weapons.Armed(m.Species.Figure.Prop)));
         foreach (int x in _drive.LookAt(lair + Vector3.Up * 1f, 20)) yield return x;
@@ -123,17 +123,19 @@ public sealed partial class Staging
         Clear(patch, post + away * 30f, away, 40f);
         List<Creature> gang = Band(patch, raiders[0], post + away * 32f, Stance.Hostile, post + away * 20f);
         foreach (int x in _drive.LookAt(post + away * 16f + Vector3.Up * 1.4f, 20)) yield return x;
-        int guardShots = 0;
+        // Taken on a shot from the town (a guard's, or anyone's of theirs with the nerve), its second.
+        int shots = 0;
         bool fresh = false;
-        town.ShotFired += (who, _, _, _, _) => { if (who.Role == "guard") { guardShots++; fresh = true; } };
-        for (int i = 0; i < 60 * 40; i++)
+        var by = new List<string>();
+        town.ShotFired += (who, _, _, _, _) => { shots++; fresh = true; by.Add(who.Role); };
+        for (int i = 0; i < 60 * 60; i++)
         {
             _game.Suit.Vitals.Health = max;
-            if (guardShots >= 2 && fresh) break;
+            if (shots >= 2 && fresh) break;
             fresh = false;
             yield return 0;
         }
-        GD.Print($"(the town's edge at {site.Name}: {guardShots} rounds from its guards, the town fought {town.Fought} times; raiders {gang[0].Herd.Party.Mood}, {Line(patch, gang, _game.Survivor.WorldFeet)})");
+        GD.Print($"(the town's edge at {site.Name}: {shots} rounds from its people ({string.Join(", ", by.Distinct())}), the town fought {town.Fought} times; raiders {gang[0].Herd.Party.Mood}, {Line(patch, gang, _game.Survivor.WorldFeet)})");
         foreach (int x in Shot(_args.GetValueOrDefault("out", "clash-town.png"))) yield return x;
     }
 
@@ -148,7 +150,7 @@ public sealed partial class Staging
         }
     }
 
-    /// <summary>Facing the openest way from a point: the fewest plants ahead.</summary>
+    /// <summary>Facing the openest dry way from a point: no water in the first 60 m, and the fewest plants ahead.</summary>
     Vector3 Openest(Vector3 from)
     {
         Vector3 way = Vector3.Forward;
@@ -157,6 +159,9 @@ public sealed partial class Staging
         {
             var dir = new Vector3(MathF.Cos(k * MathF.Tau / 8f), 0f, MathF.Sin(k * MathF.Tau / 8f));
             int n = _game.Zone.Streamer.FloraNear(from + dir * 25f, 22f).Count();
+            for (float t = 5f; t <= 60f; t += 5f)
+                foreach (float s in new[] { -12f, 0f, 12f })
+                    if (_game.Zone.Water.LiquidAt(from.X + dir.X * t - dir.Z * s, from.Z + dir.Z * t + dir.X * s, out _)) n += 1000;
             if (n < fewest) { fewest = n; way = dir; }
         }
         return way;
