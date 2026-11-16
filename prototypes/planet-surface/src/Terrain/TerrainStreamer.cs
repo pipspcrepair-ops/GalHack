@@ -819,7 +819,7 @@ public partial class TerrainStreamer : Node3D
         lead = lead.Length() < FarLeadFrom * FarLeadSeconds ? Vector3.Zero : lead.LimitLength(FarLeadMost);
         double leadX = Mod(cx + lead.X, w), leadZ = Mod(cz + lead.Z, h);
         int ffx = (int)Math.Floor(leadX / FarBuilder.Size), ffz = (int)Math.Floor(leadZ / FarBuilder.Size);
-        if (_reachVersion != DetailReach.Version || _reachShadow != ShadowReach) ApplyReach();
+        if (_reachVersion != DetailReach.Version) ApplyReach();
         UpdateShade();
         Clip.Step(Eye());
 
@@ -1080,45 +1080,38 @@ public partial class TerrainStreamer : Node3D
     {
         long start = Stopwatch.GetTimestamp();
         FarJob job = _building;
+        // The least the eye can be from the chunk at its level, m: a level holds while the focus is within its ring (less a
+        // camera's offset from the focus). A setting that moves the reaches past it rebuilds the chunks (ApplyReach).
+        float nearest = (job.Lod == 0 ? 0 : job.Lod == 1 ? DetailReach.Lod0Radius : DetailReach.Lod1Radius) * FarBuilder.Size - EyeOffset;
         while (_buildNext < job.Flora.Count && (Stopwatch.GetElapsedTime(since).TotalMilliseconds < FarNodeStepMs || !_farStepped))
         {
             _farStepped = true;
             int k = _buildNext++;
             FloraBatch b = job.Flora[k];
-            // A large plant with a far mesh is three drawings of the one buffer: its near mesh out to its near reach, its far
-            // one past it, and the far one again casting its shadow (alone) as far as the sun's shadows reach.
+            // A large plant with a far mesh is two drawings of the one buffer: its near mesh out to its near reach and its far
+            // one past it. A chunk never nearer the eye than the near reach has the far drawing alone (most chunks).
             Mesh far = b.Layer == LargeLayer ? FarMesh(b.Plant) : null;
-            Draw(Of(PlantMesh(b.Plant, b.Variant) ?? _floraMeshes[b.Kind]), far == null ? b.Layer : NearLayer);
-            if (far != null)
+            if (far == null) Draw(PlantMesh(b.Plant, b.Variant) ?? _floraMeshes[b.Kind], b.Layer);
+            else
             {
-                MultiMesh shared = Of(far);
-                Draw(shared, FarLayer);
-                Draw(shared, ShadowLayer);
+                if (DetailReach.Near > nearest) Draw(PlantMesh(b.Plant, b.Variant), NearLayer);
+                Draw(far, FarLayer);
             }
 
-            MultiMesh Of(Mesh mesh)
+            void Draw(Mesh mesh, int layer)
             {
-                var multimesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = mesh };
+                // Its box from the worker's: the renderer would go through every instance for it.
+                var multimesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = mesh, CustomAabb = b.Bounds(mesh) };
                 multimesh.InstanceCount = b.Count;
                 multimesh.Buffer = b.Buffer;
-                return multimesh;
-            }
-
-            void Draw(MultiMesh multimesh, int layer)
-            {
                 var flora = new MultiMeshInstance3D
                 {
                     // Its layer, then its batch: names unique in the node (a repeated one would be renamed).
                     Name = $"L{layer} {k}",
                     Multimesh = multimesh, MaterialOverride = _floraMaterial,
-                    // A tree casts its shadow as far as the sun's shadows reach, by its own drawing or its far mesh's; small growth only in the finest chunks.
-                    CastShadow = layer switch
-                    {
-                        NearLayer or FarLayer => GeometryInstance3D.ShadowCastingSetting.Off,
-                        ShadowLayer => GeometryInstance3D.ShadowCastingSetting.ShadowsOnly,
-                        SmallLayer when job.Lod != 0 => GeometryInstance3D.ShadowCastingSetting.Off,
-                        _ => GeometryInstance3D.ShadowCastingSetting.On,
-                    },
+                    // A tree casts its shadow as far as the sun's shadows reach (its near and far drawings each their share); small growth only in the finest chunks.
+                    // (A shadows-only drawing of the far mesh, sharing its multimesh, cost the renderer some 4 ms a frame flying.)
+                    CastShadow = layer != SmallLayer || job.Lod == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
                     // The wind bends a crown up to a metre or so past the box its instances stand in: it is not culled at the screen's edge.
                     ExtraCullMargin = 1.5f,
                 };
@@ -1166,30 +1159,31 @@ public partial class TerrainStreamer : Node3D
     internal static readonly StringName BatchMeta = "batch";
 
     int _reachVersion = -1;
-    float _reachShadow = -1f;
 
     /// <summary>
     /// How far a flora batch is drawn: its layer's reach, and half its box's diagonal past it. The renderer measures from
     /// the eye to the box's centre, and each plant dissolves by its own distance from the eye (FloraShows), so a batch
     /// is never left out while any plant in it shows, from the ground or high over it. A far mesh's drawing starts as
-    /// soon as any of its plants begins its hand-over; its shadow drawing reaches as far as the sun's shadows, and a
-    /// little past them for a long shadow falling into them.
+    /// soon as any of its plants begins its hand-over.
     /// </summary>
-    void SetRange(MultiMeshInstance3D g, int layer)
+    static void SetRange(MultiMeshInstance3D g, int layer)
     {
         float half = g.Multimesh.GetAabb().Size.Length() * 0.5f;
-        g.VisibilityRangeEnd = (layer == ShadowLayer ? MathF.Min(DetailReach.Large, ShadowReach + ShadowSpill) : FloraLayerReach(layer)) + half;
+        g.VisibilityRangeEnd = FloraLayerReach(layer) + half;
         if (layer == FarLayer) g.VisibilityRangeBegin = MathF.Max(0f, DetailReach.Near * 0.9f - DetailReach.NearBand - half);
     }
 
-    /// <summary>How far past the sun's shadow reach trees still cast into it, m.</summary>
-    const float ShadowSpill = 60f;
+    /// <summary>How far the eye may stand from the focus the rings are laid round, m (a camera behind or above the sleeper or a vessel).</summary>
+    const float EyeOffset = 30f;
 
-    /// <summary>The detail distance or the sun's shadow reach changed (<see cref="DetailReach"/>): flora's reaches into its shader, and every batch drawn re-ranged. The rings lay themselves out again as they go.</summary>
+    /// <summary>
+    /// The detail distance changed (<see cref="DetailReach"/>): flora's reaches into its shader, every batch drawn re-ranged, and
+    /// every far chunk laid out again (whether a chunk has near drawings hangs on the reaches). The rings lay themselves out again as they go.
+    /// </summary>
     void ApplyReach()
     {
+        foreach (FarChunk f in _far.Values) { f.Lod = -1; f.Version++; }
         _reachVersion = DetailReach.Version;
-        _reachShadow = ShadowReach;
         if (Clip.Levels != ClipGround.LevelsFor(DetailReach.Distance)) SetClip();
         _floraMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("flora_reach"), new Vector2(DetailReach.Large, DetailReach.Small));
         _floraMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("flora_bands"), new Vector2(DetailReach.LargeBand, DetailReach.SmallBand));

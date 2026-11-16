@@ -47,12 +47,12 @@ public static class DetailReach
 
     /// <summary>
     /// How far a tree's own near mesh draws, m, and the band over which it dissolves into its species' far mesh (fewer
-    /// triangles; the far mesh casts every tree's shadow), one screen pattern split between the two, so the tree never shows more or less.
+    /// triangles), one screen pattern split between the two (the shadows' too), so the tree never shows more or less.
     /// </summary>
     public static float Near, NearBand;
 
-    /// <summary>Where trees hand their near meshes to their far ones, m: just past the sun's shadows at their default reach.</summary>
-    public const float NearTrees = 340f;
+    /// <summary>Where trees hand their near meshes to their far ones, m: inside the first ring of coarse far chunks, which then hold far meshes alone.</summary>
+    public const float NearTrees = 260f;
 
     /// <summary>How far along from the default to the horizon the distance is set, 0..1.</summary>
     public static float Along => (Distance - Default) / (Most - Default);

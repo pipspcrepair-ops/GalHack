@@ -24,6 +24,18 @@ public readonly record struct FloraBatch(Flora Kind, int Plant, int Variant, flo
     /// <summary>The flora_layer it is drawn as (<see cref="TerrainStreamer.LargeLayer"/> or <see cref="TerrainStreamer.SmallLayer"/>).</summary>
     public int Layer => FloraMeshes.IsLarge(Kind) ? TerrainStreamer.LargeLayer : TerrainStreamer.SmallLayer;
 
+    /// <summary>Its roots' box (chunk metres) and the largest scale among them: with a mesh's size, the box its drawing stands in, so the renderer never works it out.</summary>
+    public Aabb Roots { get; init; }
+    public float Scale { get; init; }
+
+    /// <summary>The box the batch's instances of a mesh stand in, at any turn or lean.</summary>
+    public Aabb Bounds(Mesh mesh)
+    {
+        Aabb m = mesh.GetAabb();
+        float r = m.Position.Abs().Max(m.End.Abs()).Length() * Scale;
+        return new Aabb(Roots.Position - new Vector3(r, r, r), Roots.Size + new Vector3(2f * r, 2f * r, 2f * r));
+    }
+
     public void Deconstruct(out Flora kind, out float[] buffer, out int count)
     {
         kind = Kind;
@@ -777,7 +789,18 @@ public static class FarBuilder
                 solids?.MakeAll(fallen, null, 0, id, new Vector3((float)x, rootY, (float)z), scale, angle, job.Solids);
             }
         }
-        foreach (var (key, list) in buffers) job.Flora.Add(new FloraBatch(key.Kind, key.Plant, key.Variant, list.ToArray(), list.Count / 16));
+        foreach (var (key, list) in buffers)
+        {
+            Vector3 lo = new(float.MaxValue, float.MaxValue, float.MaxValue), hi = -lo;
+            float most = 0f;
+            for (int o = 0; o < list.Count; o += 16)
+            {
+                var p = new Vector3(list[o + 3], list[o + 7], list[o + 11]);
+                (lo, hi) = (lo.Min(p), hi.Max(p));
+                most = MathF.Max(most, new Vector3(list[o], list[o + 4], list[o + 8]).Length());
+            }
+            job.Flora.Add(new FloraBatch(key.Kind, key.Plant, key.Variant, list.ToArray(), list.Count / 16) { Roots = new Aabb(lo, hi - lo), Scale = most });
+        }
 
         void Add(Flora kind, Plant plant, int variant, float lx, float y, float lz, Basis basis, Rgb tint, float glow)
         {
