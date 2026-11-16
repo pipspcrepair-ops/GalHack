@@ -142,7 +142,7 @@ public sealed class Driver
                 }
             }
             // Getting nowhere for a while (a pit, a bank too steep): dig a way out ahead with the
-            // survival tool, as a player in a hole would.
+            // Sleeper tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
             else noProgress += 1f / 60f;
             bool canDig = dig && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
@@ -174,7 +174,8 @@ public sealed class Driver
             Controls.Hold(Key.D, side > 0f && !sideLeft);
             side -= 1f / 60f;
             if (digging) Face(feet + new Vector3(to.X, 0f, to.Z).Normalized() * 1.6f + Vector3.Up * 0.7f);
-            Controls.Primary = digging;
+            // (Only at something to work: with nothing in reach the blast would go off into the air, loud, every pulse.)
+            Controls.Primary = digging && (Game.Tool.HasTarget || Game.Tool.OnPlace || Game.Tool.OnTell);
             // Over an edge: the jetpack brakes the fall, as a careful player would.
             bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -5f;
             // Down in a hole, the way on well above: up on the jetpack, as a player would.

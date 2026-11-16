@@ -24,14 +24,14 @@ public sealed partial class Staging
     /// <summary>
     /// --view=husk-grab: a Husk seizes the sleeper by the head, seen through their own eyes (the
     /// game's camera, its close-up and the struggle as they are in play); then one shot from the
-    /// survival tool, which goes into it and breaks the hold. Frames: grab.png, then shot.png.
+    /// Sleeper tool, which goes into it and breaks the hold. Frames: grab.png, then shot.png.
     /// </summary>
     IEnumerable<int> HuskGrab()
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         string dir = Folder("husk");
-        foreach (int x in Play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+        foreach (int x in Play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
         WildlifePatch patch = _game.Zone.Wildlife;
         patch.Frozen = false;
         Vector3 feet = _game.Survivor.WorldFeet;
@@ -221,7 +221,7 @@ public sealed partial class Staging
         GD.Print($"(held: {_game.InWorms}, hauled {startAt:F2} to {nowAt:F2} m in 2 s ({_game.WormHauled:F2} m all told), health {health * 100:F1}% to {_game.Suit.HealthShare * 100:F1}%)");
         if (!_game.InWorms || nowAt >= startAt - 0.3f || _game.Suit.HealthShare >= health) throw new InvalidOperationException("the mass did not hold, haul and sting the sleeper");
         foreach (int x in Shot(Path.Combine(dir, "held.png"))) yield return x;
-        foreach (int x in Play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+        foreach (int x in Play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
         _drive.Face(deep.World(m.Middle));
         yield return 0;
         _game.Controls.Primary = true;

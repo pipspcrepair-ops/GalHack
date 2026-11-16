@@ -10,7 +10,7 @@ public enum VoiceKind { Report, Mechanism, Reload, Impact, Stage, Hold }
 /// swing's whoosh, a round cracking past and a slower one whizzing by, and the player's own hit
 /// and kill confirmed.
 /// </summary>
-public enum CombatSound { Flesh, Blow, Whoosh, Crack, Whiz, Confirm, Kill }
+public enum CombatSound { Flesh, Blow, Whoosh, Crack, Whiz, Confirm, Kill, Crackle, Thunder, Mend }
 
 /// <summary>
 /// Every gun's sounds, synthesised from its parts at load: no files. What a gun is sets how it
@@ -221,6 +221,21 @@ public static class GunVoice
             // Your hit landed: a solid thud and a short tick on top.
             CombatSound.Confirm => Render(0.18f, (time, i) => MathF.Sin(MathF.Tau * (130f - 120f * time) * time) * MathF.Exp(-time * 24f)
                 + Click(time, 0f, 2400f, n) * 0.5f),
+            // Lightning's crackle: a dense spatter of sharp electric snaps over a buzzing hiss.
+            CombatSound.Crackle => Render(0.28f, (time, i) =>
+            {
+                float env = MathF.Exp(-time * 9f);
+                float snap = n.Next() < 0.035f * env ? 1f : 0f;
+                phase = MathF.Max(phase * 0.86f, snap);
+                return (n.High(i, 0.97f) * (0.35f + phase * 2.2f) + MathF.Sin(MathF.Tau * 118f * time) * MathF.Sign(MathF.Sin(MathF.Tau * 59f * time)) * 0.12f) * env;
+            }),
+            // A thunderclap close by: the crack, then a low roll that rumbles away.
+            CombatSound.Thunder => Render(1.1f, (time, i) => MathF.Exp(-time * 70f) * n.High(i, 0.9f) * 1.6f
+                + n.Low(i, 0.035f) * (MathF.Exp(-time * 3.2f) * (0.8f + 0.35f * MathF.Sin(MathF.Tau * 5.5f * time + 1f))) * MathF.Min(1f, time * 60f) * 1.3f
+                + MathF.Sin(MathF.Tau * (62f - 20f * time) * time) * MathF.Exp(-time * 5f) * 0.5f),
+            // The repair cone: a soft shimmer, two gentle tones rising over a breath of air.
+            CombatSound.Mend => Render(0.4f, (time, i) => MathF.Sin(MathF.PI * time / 0.4f)
+                * ((MathF.Sin(MathF.Tau * (520f + 140f * time) * time) + 0.6f * MathF.Sin(MathF.Tau * (780f + 210f * time) * time)) * 0.35f + n.Band(i, 2400f, 0.2f) * 0.08f)),
             // Your kill: a heavier thud and a two-tone ring.
             _ => Render(0.5f, (time, i) => MathF.Sin(MathF.Tau * (95f - 70f * time) * time) * MathF.Exp(-time * 14f)
                 + (MathF.Sin(MathF.Tau * 880f * time) + 0.7f * MathF.Sin(MathF.Tau * 1320f * time)) * 0.25f * MathF.Exp(-time * 7f) * MathF.Min(1f, time * 300f)),

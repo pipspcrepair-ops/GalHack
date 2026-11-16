@@ -9,9 +9,9 @@ namespace Slice.Player;
 /// <summary>
 /// The first-person hands: a gloved hand holding what is in it low on the right of the view. What it
 /// holds is the item's own model from <see cref="ItemModels"/> (the same one its inventory icon is
-/// rendered from): the survival tool or a drill, its emitter lit by mode (teal to gather, red to
-/// shoot, amber to build), the handheld scanner; a block, a core or a device in hand shows the
-/// plain tool, amber. It kicks back on each shot and sways a little as you walk. Shown when a
+/// rendered from): the Sleeper tool or a drill, its emitter lit by mode (blue to gather,
+/// green to repair), the handheld scanner; a block, a core or a device in hand shows the plain
+/// tool, amber; the plating gun's emitter is teal. It kicks back on each shot and sways a little as you walk. Shown when a
 /// held model, a block, a core or a device is in hand, hidden in a seat or in third person.
 /// Procedural boxes and cylinders, no assets.
 /// </summary>
@@ -23,7 +23,13 @@ public partial class Hands : Node3D
     readonly Dictionary<string, ItemModel> _models = new();
     ItemModel _shown;
     Color _tint;
-    int _shotsSeen;
+    bool _shakeHeard;
+    float _buzz, _buzzLeft, _buzzTime, _held;
+
+    /// <summary>Shakes from the Sleeper tool's bolts (tests: one a bolt), how strong the shake is now (0 to 1), and the strongest since <see cref="ResetPeaks"/>.</summary>
+    public int ToolShakes { get; private set; }
+    public float Buzz { get; private set; }
+    public float PeakBuzz { get; private set; }
     float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime;
 
     /// <summary>Where the barrel's tip is now, in the world, or null when the hands aren't showing: flashes and bolts begin here, riding the hand and its recoil.</summary>
@@ -49,7 +55,15 @@ public partial class Hands : Node3D
     /// <summary>The biggest kick and camera tilt since <see cref="ResetPeaks"/> (tests: a tick can fall between drawn frames).</summary>
     public float PeakKick { get; private set; }
     public float PeakTilt { get; private set; }
-    public void ResetPeaks() => PeakKick = PeakTilt = 0f;
+    public void ResetPeaks() => PeakKick = PeakTilt = PeakBuzz = 0f;
+
+    /// <summary>The Sleeper tool's shake with a bolt: a short tight vibration of the tool in the hand; the view doesn't move.</summary>
+    void ToolShake(float strength)
+    {
+        ToolShakes++;
+        _buzz = strength;
+        _buzzLeft = Game.Zone.Data.Rules.Tool.Lightning.ShakeSeconds;
+    }
 
     /// <summary>A light camera shake for a pilot whose vessel gun fired (strength 0..1); it dies away on its own.</summary>
     public void Shake(float strength)
@@ -87,7 +101,7 @@ public partial class Hands : Node3D
     /// <summary>The hardest blow felt so far (tests).</summary>
     public float PeakJolt { get; private set; }
 
-    /// <summary>The muzzle's offset in the camera's frame (matches <see cref="SurvivalTool.Muzzle"/>).</summary>
+    /// <summary>The muzzle's offset in the camera's frame (matches <see cref="SleeperTool.Muzzle"/>).</summary>
     public static readonly Vector3 MuzzleOffset = new(0.17f, -0.15f, -0.55f);
 
     public override void _Ready()
@@ -134,11 +148,20 @@ public partial class Hands : Node3D
         float dt = (float)delta;
         var g = Game;
         if (g?.Tool != null && g.Tool.HeldMuzzle == null) g.Tool.HeldMuzzle = () => BarrelTip;
-        if (g?.Tool != null && g.Tool.Shots != _shotsSeen)
+        if (g?.Tool != null && !_shakeHeard)
         {
-            _shotsSeen = g.Tool.Shots;
-            Recoil(GunFeel.Get(g.Tool.Feel));
+            _shakeHeard = true;
+            g.Tool.Shook += ToolShake; // on the tick its bolt is thrown
         }
+        var buzz = g?.Zone?.Data.Rules.Tool.Lightning;
+        _buzzLeft = MathF.Max(0f, _buzzLeft - dt);
+        _buzzTime += dt;
+        // Shaking all the while fire is held, settling quickly once let go (a bolt's jolt with it).
+        bool firing = buzz != null && g.Pack?.Hand == HandKind.Tool && g.Tool.Firing && g.Controls.Primary && !g.Menu.IsOpen;
+        if (!firing) _buzzLeft = MathF.Min(_buzzLeft, buzz?.SettleSeconds ?? 0f);
+        _held = buzz == null ? 0f : Mathf.MoveToward(_held, firing ? buzz.HeldShakeShare : 0f, dt * buzz.HeldShakeShare / buzz.SettleSeconds);
+        Buzz = buzz == null ? 0f : _held + (_buzzLeft <= 0f ? 0f : _buzz * _buzzLeft / buzz.ShakeSeconds);
+        PeakBuzz = MathF.Max(PeakBuzz, Buzz);
         _kick = Mathf.MoveToward(_kick, 0f, dt / 0.15f);
         _shake = Mathf.MoveToward(_shake, 0f, dt * 4f);
         _jolt = Mathf.MoveToward(_jolt, 0f, dt * 3.5f);
@@ -162,7 +185,8 @@ public partial class Hands : Node3D
         }
         _shown.Root.Visible = true;
         Color tint = hand == HandKind.Scanner ? (g.ScanWait > 0 ? new Color("ffb703") : new Color("2ec4b6"))
-            : hand != HandKind.Tool ? new Color("ffb703") : g.Tool.Mode == ToolMode.Shoot ? new Color("ef233c") : new Color("2ec4b6");
+            : hand == HandKind.Plater ? new Color("2ec4b6") : hand != HandKind.Tool ? new Color("ffb703")
+            : g.Tool.Mode == ToolMode.Repair ? ShotFx.RepairGreen : ShotFx.LightningBlue;
         if (tint != _tint)
         {
             _tint = tint;
@@ -177,6 +201,12 @@ public partial class Hands : Node3D
         float k = _kick * _kick * _strength;
         _rig.Position = new Vector3(0.05f + MathF.Sin(_bob) * 0.008f * sway, -0.03f + MathF.Abs(MathF.Cos(_bob)) * 0.01f * sway + k * 0.012f, k * 0.06f);
         _rig.RotationDegrees = new Vector3(k * 7f, 0f, 0f);
+        // The Sleeper tool's shake: a tight vibration on three axes at once, dying away.
+        if (Buzz > 0f && buzz != null)
+        {
+            float w = MathF.Tau * buzz.ShakeHz * _buzzTime, a = buzz.ShakeAmplitude * Buzz;
+            _rig.Position += new Vector3(MathF.Sin(w), MathF.Sin(w * 1.37f + 1f), 0.5f * MathF.Sin(w * 0.83f + 2f)) * a;
+        }
     }
 
     /// <summary>

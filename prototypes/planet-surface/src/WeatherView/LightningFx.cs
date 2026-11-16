@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Godot;
 using Weather.Model;
 using PlanetSurface.World;
+using PlanetSurface.Fx;
+using Channel = PlanetSurface.Fx.Bolts.Channel;
 
 namespace PlanetSurface.WeatherView;
 
@@ -11,9 +13,8 @@ namespace PlanetSurface.WeatherView;
 /// Elmo's fire) and the cloud above flickers; then a branching bolt, a flash that lights the
 /// cloud round it, and a few re-strokes. Near and far differ: a near strike has its bolt, a wide
 /// flash and a shadow-casting light; a far one is a glow inside its own cell, now and then a
-/// thin bolt, no light on the ground; between them it fades by distance. Bolts are camera-facing
-/// strips, one unbroken strip per channel (a quad per segment overlapped its neighbours' ends and
-/// drew rungs across the bolt), rebuilt only while visible.
+/// thin bolt, no light on the ground; between them it fades by distance. Bolts are drawn as every
+/// bolt is (<see cref="Bolts"/>), rebuilt only while visible.
 /// </summary>
 public partial class LightningFx : Node3D
 {
@@ -43,7 +44,8 @@ public partial class LightningFx : Node3D
     public float StrikeEnergy => _strikeLight.Visible ? _strikeLight.LightEnergy : 0f;
 
     const float BoltLife = 0.55f;
-    static readonly Color Core = new(1f, 1f, 1f, 1f);
+    /// <summary>A channel's glow, as a multiple of its core's old width: the strip is this much wider than the core it carries.</summary>
+    const float Halo = 5f;
 
     ShaderMaterial _boltMaterial;
     StandardMaterial3D _glowMaterial;
@@ -71,10 +73,7 @@ public partial class LightningFx : Node3D
     public override void _Ready()
     {
         ProcessPriority = -10; // compute the flash before WeatherFx lights the scene with it
-        _boltMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/glow.gdshader") };
-        _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color("e6dcff"));
-        _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("energy"), 6f);
-        _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("softness"), 0.5f);
+        _boltMaterial = Bolts.Material(new Color("e6dcff"), 6f);
         // The charge glow: a soft, over-bright sprite that blooms, readable from far away.
         _glowMaterial = new StandardMaterial3D
         {
@@ -156,7 +155,8 @@ public partial class LightningFx : Node3D
         {
             // Far off, a thin dim channel with no halo to bloom into a flash.
             _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("energy"), (2f + 7f * stroke) * (0.35f + 0.65f * near));
-            DrawRibbons(_boltMesh, _segments, camera, 0.4f + 0.6f * stroke, 0.35f + 0.65f * near, near);
+            _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow"), 0.35f * near);
+            Bolts.Draw(_boltMesh, _segments, camera, (0.35f + 0.65f * near) * Halo, 0.4f + 0.6f * stroke);
         }
     }
 
@@ -194,7 +194,7 @@ public partial class LightningFx : Node3D
             {
                 c.NextCrackle = Mathf.Lerp(0.2f, 0.05f, p);
                 BuildCrackles(h.Target, p);
-                DrawRibbons(c.Crackle, _crackles, camera, 0.3f + 0.7f * p, 1f, 1f);
+                Bolts.Draw(c.Crackle, _crackles, camera, Halo, 0.3f + 0.7f * p);
             }
             float flicker = p * p * (_rng.Randf() < 0.15f ? 0.35f : 0.05f);
             if (flicker > skyFlicker) { skyFlicker = flicker; flickerAt = h.Target; }
@@ -277,9 +277,6 @@ public partial class LightningFx : Node3D
         }
     }
 
-    /// <summary>One channel of a bolt: its jagged path, its width and how bright it is.</summary>
-    public sealed record Channel(List<Vector3> Points, float Width, float Alpha);
-
     /// <summary>A bolt from <paramref name="from"/> to <paramref name="to"/>, with its forks, for tests.</summary>
     public static List<Channel> TestBolt(Vector3 from, Vector3 to, ulong seed)
     {
@@ -289,60 +286,5 @@ public partial class LightningFx : Node3D
         fx.Jag(into, from, to, 7, 1.1f, 1f, 0);
         fx.Free();
         return into;
-    }
-
-    /// <summary>
-    /// A channel's strip: at each point of its path a left and a right edge, shared by the pieces
-    /// either side of it, so the strip runs unbroken; it narrows to a point at both ends, so nothing
-    /// lies across the channel anywhere.
-    /// </summary>
-    public static (Vector3 left, Vector3 right)[] Strip(Channel c, Vector3 camera, float width)
-    {
-        List<Vector3> p = c.Points;
-        var edges = new (Vector3, Vector3)[p.Count];
-        Vector3 last = Vector3.Zero;
-        for (int i = 0; i < p.Count; i++)
-        {
-            Vector3 along = p[Math.Min(i + 1, p.Count - 1)] - p[Math.Max(i - 1, 0)];
-            Vector3 side = along.Cross(camera - p[i]);
-            side = side.LengthSquared() > 1e-12f ? side.Normalized() : last;
-            if (i > 0 && side.Dot(last) < 0f) side = -side; // never twisted over between two points
-            last = side;
-            float f = i / (float)(p.Count - 1);
-            float taper = Mathf.Min(1f, Mathf.Min(f, 1f - f) * 12f) * Mathf.Lerp(1f, 0.6f, f);
-            float scale = Mathf.Max(1f, camera.DistanceTo(p[i]) * 0.004f); // stays a few pixels wide far away
-            Vector3 half = side * c.Width * width * scale * taper * 0.5f;
-            edges[i] = (p[i] - half, p[i] + half);
-        }
-        return edges;
-    }
-
-    /// <summary>Each channel as strips turned to face the camera: a hot core plus a soft halo (<paramref name="halo"/> 0 drops it).</summary>
-    static void DrawRibbons(ImmediateMesh mesh, List<Channel> channels, Vector3 camera, float brightness, float width, float halo)
-    {
-        mesh.ClearSurfaces();
-        if (channels.Count == 0) return;
-        mesh.SurfaceBegin(Mesh.PrimitiveType.Triangles);
-        foreach (Channel c in channels)
-        {
-            StripMesh(mesh, Strip(c, camera, width), new Color(1, 1, 1, c.Alpha * brightness));
-            if (halo > 0.01f) StripMesh(mesh, Strip(c, camera, width * 5f), new Color(0.7f, 0.6f, 1f, c.Alpha * brightness * 0.08f * halo));
-        }
-        mesh.SurfaceEnd();
-    }
-
-    static void StripMesh(ImmediateMesh mesh, (Vector3 left, Vector3 right)[] e, Color color)
-    {
-        void V(Vector3 p, float u)
-        {
-            mesh.SurfaceSetColor(color);
-            mesh.SurfaceSetUV(new Vector2(u, 0));
-            mesh.SurfaceAddVertex(p);
-        }
-        for (int i = 0; i < e.Length - 1; i++)
-        {
-            V(e[i].left, 0); V(e[i].right, 1); V(e[i + 1].right, 1);
-            V(e[i].left, 0); V(e[i + 1].right, 1); V(e[i + 1].left, 0);
-        }
     }
 }

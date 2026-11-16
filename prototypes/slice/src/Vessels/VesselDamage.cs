@@ -179,6 +179,9 @@ public sealed class VesselDamage : ILocatedDamageSink
     void Lost(DamageReport report)
     {
         BlocksLost += report.Destroyed.Count;
+        // Remembered where they stood, for a repair to restore (a core comes back only by hand).
+        foreach (var (p, b) in report.Destroyed)
+            if (!S.TypeOf(b).IsCore) Fallen[p] = b;
         if (_v.IsBase)
             foreach (var (p, _) in report.Destroyed) _v.Zone.Edits?.ReleaseStructure(new TerrainDigging.Terrain.VolumeKey(_v.Body.Id, p.X, p.Y, p.Z));
 
@@ -198,6 +201,9 @@ public sealed class VesselDamage : ILocatedDamageSink
 
     // ---- Repair -------------------------------------------------------------------------------
 
+    /// <summary>Blocks destroyed by harm (not taken down), by the anchor cell they stood on: a repair can restore them.</summary>
+    public readonly Dictionary<Int3, Block> Fallen = new();
+
     /// <summary>
     /// Gives a damaged block back a share of its health, paid for from the structure's shared
     /// storage: that share of the block's bill, rounded up. The look steps back as it heals.
@@ -215,6 +221,15 @@ public sealed class VesselDamage : ILocatedDamageSink
         _v.View.Queue(S.DirtyChunks);
         S.DirtyChunks.Clear();
         return RepairStatus.Repaired;
+    }
+
+    /// <summary>A block's hit points set (the Sleeper tool's repair, a little at a time, paid for as it goes): its look follows.</summary>
+    public void Heal(Int3 cell, float hp)
+    {
+        S.SetHp(cell, hp);
+        S.CargoSu = _v.Storage.UsedSu;
+        _v.View.Queue(S.DirtyChunks);
+        S.DirtyChunks.Clear();
     }
 
     /// <summary>What repairing this share of a block would cost.</summary>

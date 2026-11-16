@@ -160,14 +160,14 @@ public partial class AftermathTest : Node
         ITarget you = patch.Player;
         Vector3 feet = _game.Survivor.WorldFeet;
         // Things to lose, and what stays: the toolbar's stacks, slot for slot, and the tool.
-        // (The tool in the bag's slots, not on the toolbar; a stack of two bars on the toolbar, the rest in the bag.)
-        foreach (var (id, n) in new[] { ("iron-bar", 6), ("copper-wire", 5), ("trail-ration", 3), (PlayerInventory.SurvivalTool, 1) }) _game.Pack.Storage.Add(id, n);
+        // (The tool in the bag's slots, not on the toolbar, by its old id; a stack of two bars on the toolbar, the rest in the bag.)
+        foreach (var (id, n) in new[] { ("iron-bar", 6), ("copper-wire", 5), ("trail-ration", 3), ("survival-tool", 1) }) _game.Pack.Storage.Add(id, n);
         _game.Pack.Grid[3].Item = "iron-bar";
         _game.Pack.Grid[3].Count = 2;
         _game.Pack.Grid.Reconcile();
         Bill carried = Copy(_game.Pack.Storage.Contents), stays = new();
         for (int i = 0; i < _game.Pack.Grid.Toolbar; i++) if (_game.Pack.Grid[i].Item is { } item) stays.Add(item, _game.Pack.Grid[i].Count);
-        string tool = PlayerInventory.SurvivalTool;
+        string tool = PlayerInventory.SleeperTool;
         if (carried[tool] > stays[tool]) stays.Add(tool, carried[tool] - stays[tool]);
         Bill expect = new();
         foreach (var (id, n) in carried) if (n > stays[id]) expect.Add(id, n - stays[id]);
@@ -233,15 +233,16 @@ public partial class AftermathTest : Node
         Check(rummaged && sim.Rummages > 0, $"one of them goes to the body and its bag and rummages ({sim.Rummages} rummages, nearest {nearest:F1} m)");
         Check(same && bag.Storage.Contents.Equals(expect), $"and takes nothing: the bag is as it was ({Describe(bag.Storage.Contents)})");
 
-        // 2. One of them killed: their bag drops from them, their rifle and rounds in it.
+        // 2. They're killed: their goods stay on their bodies, their rifle and rounds with them (owner).
         Creature one = band.Members.First(m => m.Alive);
-        int bags = _game.PeopleBags;
-        foreach (Creature m in band.Members.Where(m => m.Alive).ToList()) sim.Damage(m, 9999f, null);
+        var killed = band.Members.Where(m => m.Alive).ToList();
+        foreach (Creature m in killed) sim.Damage(m, 9999f, null);
         for (int i = 0; i < 90; i++) yield return 0;
         Lootable theirs = _game.Zone.Loot.All.FirstOrDefault(l => l.Owner == one);
-        Check(_game.PeopleBags >= bags + 3 && theirs is { Kind: LootKind.Bag, Flying: null } && theirs.Storage.Count("line-rifle") == 1,
-            $"a person killed drops a bag of their goods ({Describe(theirs?.Storage.Contents)}), resting {(theirs?.Flying == null ? "on the ground" : "in the air")}");
-        Check(_game.Zone.Loot.All.All(l => l.Creature == null || !band.Members.Contains(l.Creature)), "and their bodies are no containers: the bag is what's searched");
+        int bodies = killed.Count(m => _game.Zone.Loot.All.Any(l => l.Kind == LootKind.Corpse && l.Creature == m));
+        Check(bodies == killed.Count && theirs is { Kind: LootKind.Corpse } && theirs.Storage.Count("line-rifle") == 1,
+            $"a person killed keeps their goods on the body, searched there ({bodies} of {killed.Count} bodies; {Describe(theirs?.Storage.Contents)})");
+        Check(!_game.Zone.Loot.All.Any(l => l.Kind == LootKind.Bag && l.Owner is Creature o && killed.Contains(o)), "and no bag drops beside them");
 
         // 3. A hungry predator near the body eats it.
         // (A predator if the world has one that walks, else a scavenger: both eat what they find.)
@@ -416,7 +417,8 @@ public partial class AftermathTest : Node
             var (gap, sink, overlap) = Fit(l);
             if (gap > 0.03f || sink > 0.03f || overlap) bad.Add($"{l.Name} at {l.Position}: gap {gap:F3}, sink {sink:F3}{(overlap ? ", overlaps" : "")}");
         }
-        Check(n >= 5 && bad.Count == 0, $"{n} bags, each on the ground: no gap, no overlap ({string.Join("; ", bad.Take(4))})");
+        // (The sleeper's bags and the tossed bundle: the dead keep their things on their bodies.)
+        Check(n >= 3 && bad.Count == 0, $"{n} bags, each on the ground: no gap, no overlap ({string.Join("; ", bad.Take(4))})");
         Check(_bags.All(l => !GodotObject.IsInstanceValid(l.Node) || l.Node.GetNode<StaticBody3D>("Body").CollisionLayer == GalHack.Physics.Layers.Props), "each has a body of its own shape on the props' layer: real collision");
     }
 

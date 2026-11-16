@@ -18,6 +18,50 @@ namespace Slice.Tests;
 /// </summary>
 public partial class BuildTest
 {
+    /// <summary>
+    /// The Sleeper tool on a block shows its hit points over its most just above the reticle (owner): the
+    /// right numbers, following a hit and a repair, in both modes, and gone off the block or out of range.
+    /// </summary>
+    IEnumerable<int> HudBlockHealth()
+    {
+        GD.Print("-- the block the tool is on: hit points over the reticle --");
+        Vector3 site = _play.FlatSpot(_game.Start, 30f, span: 10f);
+        _game.Survivor.PlaceOutside((_game.Zone.GroundAt(site.X, site.Z) + Vector3.Up * 0.3f).ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+        foreach (int x in _play.Tool(Slice.Player.ToolMode.Repair)) yield return x;
+        Vessel v = TestRows.Row(_game, GalHack.Structures.Building.DefaultOwner, true, (float)new Random().NextDouble() * MathF.Tau, out GalHack.Structures.Int3[] cells);
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Vector3 aim = TestRows.FaceOf(_game, v, cells[1]); // one aim throughout: whichever block it meets is the one shown
+        foreach (int x in _drive.LookAt(aim, 8)) yield return x;
+        GalHack.Structures.Int3 on = Slice.Game.WorldRay.Cast(_game.Zone, _game.Survivor, 6f, Layers.World | Layers.Hull, out Slice.Game.LookHit look) && look.Vessel == v ? look.Cell : cells[1];
+        var s = v.Structure;
+        float max = s.StatsOf(s.Get(on)).MaxHp;
+        string Shown() => _game.Visor.BlockHealth();
+        string whole = Shown();
+        s.SetHp(on, max * 0.4f);
+        v.ApplyEdits();
+        foreach (int x in _drive.Wait(2)) yield return x;
+        string hit = Shown();
+        foreach (var (id, n) in v.Hits.RepairBill(on)) Pack.Add(id, n);
+        foreach (int x in _drive.HoldPrimary(aim, 600, () => Shown() == whole)) yield return x;
+        string mended = Shown();
+        Check(whole == $"{max:F0} / {max:F0}" && hit == $"{MathF.Ceiling(max * 0.4f):F0} / {max:F0}" && mended == whole,
+            $"on a block the tool shows its hit points over its most above the reticle: {whole}, {hit} after a hit, {mended} repaired (counting up as it fills)");
+        foreach (int x in _play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
+        foreach (int x in _drive.LookAt(aim, 4)) yield return x;
+        string gather = Shown();
+        foreach (int x in _drive.LookAt(_game.Survivor.WorldEye() + Vector3.Up * 20f, 8)) yield return x;
+        string sky = Shown();
+        Vector3 back = _game.Survivor.WorldEye() - (TestRows.Centre(v, on) - _game.Survivor.WorldEye()).Normalized() * 8f;
+        _game.Survivor.PlaceOutside((_game.Zone.GroundAt(back.X, back.Z) + Vector3.Up * 0.3f).ToNumerics());
+        foreach (int x in _drive.Wait(30)) yield return x;
+        foreach (int x in _drive.LookAt(TestRows.FaceOf(_game, v, on), 8)) yield return x;
+        float far = _game.Survivor.WorldEye().DistanceTo(TestRows.Centre(v, on));
+        string beyond = Shown();
+        Check(gather == whole && sky == null && (far <= _game.Zone.Data.Rules.Tool.Lightning.Range || beyond == null),
+            $"in gather too ({gather}); off the block nothing ({sky ?? "none"}), nor out of range ({beyond ?? "none"} at {far:F1} m)");
+    }
+
     IEnumerable<int> HudCornerChecks()
     {
         GD.Print("-- the visor's corners --");

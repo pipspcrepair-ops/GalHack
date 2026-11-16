@@ -88,10 +88,10 @@ public partial class Staging
         // Rungs: every channel is one strip whose pieces share their edges, untwisted, narrowing to a point at both ends.
         int channels = 0, bad = 0;
         for (ulong seed = 1; seed <= 20; seed++)
-            foreach (LightningFx.Channel c in LightningFx.TestBolt(new Vector3(0f, 900f, 0f), new Vector3(40f, 0f, 30f), seed))
+            foreach (PlanetSurface.Fx.Bolts.Channel c in LightningFx.TestBolt(new Vector3(0f, 900f, 0f), new Vector3(40f, 0f, 30f), seed))
             {
                 channels++;
-                var e = LightningFx.Strip(c, eye, 1f);
+                var e = PlanetSurface.Fx.Bolts.Strip(c, eye, 1f);
                 float widest = e.Max(p => p.left.DistanceTo(p.right));
                 bool ends = e[0].left.DistanceTo(e[0].right) < 0.05f * widest && e[^1].left.DistanceTo(e[^1].right) < 0.05f * widest;
                 bool untwisted = true;

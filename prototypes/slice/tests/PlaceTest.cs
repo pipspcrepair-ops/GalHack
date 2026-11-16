@@ -294,7 +294,7 @@ public partial class PlaceTest : Node
         else GD.Print($"  ({inst.Caches.Count} caches, none below the way in here: no stairs to walk down to one)");
 
 
-        // A hidden room: the cracked panel's draft gives it away; the survival tool breaks it, and the stash behind is looted.
+        // A hidden room: the cracked panel's draft gives it away; the Sleeper tool breaks it, and the stash behind is looted.
         SecretRoom secret = inst.Extras.Secrets.FirstOrDefault();
         if (secret != null)
         {
@@ -319,7 +319,7 @@ public partial class PlaceTest : Node
             }
             foreach (int x in Watched(drive.HoldPrimary(wallMiddle, 90, () => place.Memory.Broken.Contains(secret)))) yield return x;
             Check(ok && label == "CRACKED PANEL" && place.Memory.Broken.Contains(secret) && secret.WallCells.All(c => inst.Blocks.Get(c).IsAir),
-                $"the hidden room's cracked panel ('{label}' by the crosshair, a draft through it) broken with the survival tool");
+                $"the hidden room's cracked panel ('{label}' by the crosshair, a draft through it) broken with the Sleeper tool");
             LootCache stash = inst.Caches.FirstOrDefault(c => c.Secret && c.Module == secret.Module);
             nav = place.Nav();
             if (stash != null && nav.AccessCell(stash.Cell) is PoiGenerator.Gen.Int3 at && nav.FindPath(walk.Here(place, nav), at, 400_000) == null)
@@ -339,7 +339,7 @@ public partial class PlaceTest : Node
             }
         }
 
-        // Salvage: the survival tool takes the place apart for materials: a piece of a room's dressing, then a block.
+        // Salvage: the Sleeper tool takes the place apart for materials: a piece of a room's dressing, then a block.
         {
             nav = place.Nav();
             PoiGenerator.Gen.Int3 from = walk.Here(place, nav);
@@ -369,7 +369,7 @@ public partial class PlaceTest : Node
                 double carried = Carried();
                 string label = "";
                 foreach (int x in Watched(drive.HoldPrimary(mid, 240, () => { label = game.Tool.TargetLabel.Length > 0 ? game.Tool.TargetLabel : label; return !piece.Node.Visible; }))) yield return x;
-                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total + Carried() > bag + carried, $"the survival tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag, {Carried() - carried:+0.##;-0.##;0} carried to the next piece");
+                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total + Carried() > bag + carried, $"the Sleeper tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag, {Carried() - carried:+0.##;-0.##;0} carried to the next piece");
             }
             // A block of the wall beside you: gone for good, the wall meshed again round the hole.
             Vector3 eye = game.Survivor.WorldEye(), look = game.Survivor.WorldLook() with { Y = 0f };
@@ -451,7 +451,7 @@ public partial class PlaceTest : Node
 
     /// <summary>
     /// What a player does when something in a place comes for them: stop, turn, and shoot it (the
-    /// survival tool's bolt) until it is down or gone; and a patch kit when health runs low.
+    /// Sleeper tool's bolt) until it is down or gone; and a patch kit when health runs low.
     /// </summary>
     IEnumerable<int> Defend(Game.Game game, Playthrough play, Driver drive)
     {
@@ -484,7 +484,7 @@ public partial class PlaceTest : Node
                 // It's coming: stand and shoot it.
                 game.Controls.ReleaseAll();
                 var clock = Stopwatch.StartNew();
-                foreach (int x in play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+                foreach (int x in play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
                 float hp = c.Health;
                 for (int tick = 0; tick < 300 && !c.Dead && !c.Removed && s.World(c.Position).DistanceTo(game.Survivor.WorldFeet) < 16f && !game.Suit.Dead; tick++)
                 {

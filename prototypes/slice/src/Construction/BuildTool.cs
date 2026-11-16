@@ -32,7 +32,7 @@ public enum NewThing { None, Base, Device }
 /// structure starts with its core. Any block goes on any structure. In Survival each placement uses one item from the
 /// source you chose: your own toolbar's stack, or, on the structure toolbar, the shared storage of
 /// the structure you are building on while you are in its area. An empty stack can't place.
-/// Taking a block down (the survival tool's deconstruct mode, or right click with a block in
+/// Taking a block down (the Sleeper tool's deconstruct mode, or right click with a block in
 /// hand) gives its item back, whole: to your bag (the structure's storage when you build from the
 /// structure toolbar), then the structure's storage, then a container on the ground. Creative is
 /// free and unlimited, with every block available, and follows the same core-first rule.
@@ -180,34 +180,41 @@ public sealed partial class BuildTool
     }
 
     /// <summary>
-    /// The survival tool's deconstruct mode: the crosshair on a block outlines it and says what
-    /// comes back; a click takes it down and gives its item back (Empyrion's multi-tool pick-up).
+    /// The Sleeper tool's aim at a structure (wrecks too): the crosshair on a block or a deco piece
+    /// outlines it and says what comes back (Empyrion's multi-tool pick-up). False when it is on
+    /// neither. <see cref="TakeDown"/> takes it.
     /// </summary>
-    public void TickDeconstruct(bool pressed)
+    public bool AimTakeDown()
     {
         _planGhost.Visible = false;
         _deviceGhost.Visible = false;
         _ghosts.HideGhosts();
-        Aim();
+        Aim(wrecks: true);
         if (DecoToDeconstruct(out string decoVerdict))
         {
             _ghosts.HideOutline();
             Verdict = decoVerdict;
-            if (pressed) RemoveDecoNear(TargetVessel);
-            return;
+            return true;
         }
         if (!HasTarget || TargetVessel == null || !TargetVessel.Structure.TryGet(TargetCell, out Block b))
         {
             _ghosts.HideOutline();
-            Verdict = "DECONSTRUCT · NO BLOCK";
-            return;
+            Verdict = "";
+            return false;
         }
         Structure s = TargetVessel.Structure;
-        _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1f, 0.55f, 0.2f, 0.9f));
+        _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(0.45f, 0.7f, 1f, 0.9f));
         ItemDef back = FieldOf(s, s.AnchorOf(TargetCell)) is ForceField whole ? Items.Item(whole.Tier) : BuildingBridge.ItemOf(Items, s, b);
         if (s.TypeOf(b).IsCore) Verdict = CoreStays;
-        else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name} · +{s.TypeOf(b).Units} {back?.Name ?? "nothing"}";
-        if (pressed) Remove(TargetVessel, TargetCell);
+        else Verdict = Creative ? $"{s.TypeOf(b).Name}" : $"{s.TypeOf(b).Name} · +{s.TypeOf(b).Units} {back?.Name ?? "nothing"}";
+        return true;
+    }
+
+    /// <summary>Takes down a block the Sleeper tool's blast met, whole into the bag (a field's emitter, the whole field), or the deco piece <see cref="AimTakeDown"/> is on there.</summary>
+    public void TakeDown(Vessel v, Int3 cell)
+    {
+        if (TargetVessel == v && DecoToDeconstruct(out _)) RemoveDecoNear(v);
+        else Remove(v, cell);
     }
 
     /// <summary>Starts the blueprint projector (from the BLUEPRINTS tab): the blueprint's ghost (the Skiff's if none is given) follows the crosshair until a click sets it down.</summary>
@@ -319,13 +326,13 @@ public sealed partial class BuildTool
     bool TakeHand(string itemId, int slotIndex) => FromStructure ? _pack.HandUsable && _pack.HandSource.Remove(itemId, 1) == 1 : _pack.Grid.TakeOne(slotIndex);
 
     /// <summary>What the crosshair is on, in the world you are in: a structure's block face, or open ground.</summary>
-    void Aim()
+    void Aim(bool wrecks = false)
     {
         HasTarget = false;
         TargetVessel = null;
         _onGround = false;
         if (!WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Hull, out LookHit hit)) return;
-        if (hit.Vessel is Vessel v && !v.IsWreck)
+        if (hit.Vessel is Vessel v && (wrecks || !v.IsWreck))
         {
             if (!v.Structure.Has(hit.Cell)) return;
             TargetCell = hit.Cell;
@@ -713,6 +720,27 @@ public sealed partial class BuildTool
             if (slotIndex < 0) _pack.Grid.Reconcile();
             Count(Bill.Of((item.Id, units)));
         }
+        Set(v, cell, block);
+        BlockPlaced?.Invoke(v, XpOf(s, block));
+        return true;
+    }
+
+    /// <summary>
+    /// The Sleeper tool's repair restores a block destroyed where it stood, at <paramref name="hp"/> hit
+    /// points (the tool pays for it as it fills). Null when it's back, else why not.
+    /// </summary>
+    public string Restore(Vessel v, Int3 cell, Block block, float hp)
+    {
+        if (Problem(v, cell, block) is string why) return why;
+        Set(v, cell, block);
+        v.Hits.Heal(cell, hp);
+        return null;
+    }
+
+    /// <summary>A block goes in: its storage, its ground, its shapes, a sound.</summary>
+    void Set(Vessel v, Int3 cell, Block block)
+    {
+        Structure s = v.Structure;
         Building.Place(s, cell, block);
         _placer.Sync(s, v.Storage, 0, 0, 0, spill: false); // placing only ever adds room
         if (v.IsBase)
@@ -722,8 +750,6 @@ public sealed partial class BuildTool
         Placed++;
         _planDirty |= Underway == v;
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, v.ToWorld(StructureBridge.BlockCenter(s, cell, block)), 1.3f, -6f);
-        BlockPlaced?.Invoke(v, XpOf(s, block));
-        return true;
     }
 
     /// <summary>

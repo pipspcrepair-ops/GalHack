@@ -153,7 +153,7 @@ public partial class ForceFieldTest : Node
         Check(Math.Abs(draw - f.Tiles * rules.DrawPerTile) < 1e-9, $"it draws its tiles x the per-tile rate: {f.Tiles} x {rules.DrawPerTile} = {draw:0.###} MW");
 
         // ---- Plating an emitter hardens it ---------------------------------------------------
-        foreach (int x in play.Tool(ToolMode.Plate)) yield return x;
+        foreach (int x in play.PlatingGun()) yield return x;
         pack.Add("iron-plate", 10);
         BlockType iron = s.Catalogue.Type("iron-plated");
         for (int i = 0; i < builder.Platings.Count && builder.Plating != iron; i++) { c.Wheel = 1; yield return 0; }
@@ -204,7 +204,7 @@ public partial class ForceFieldTest : Node
         foreach (int x in play.ShootAt(() => rig.World(3.5f, 2f, 0f))) yield return x;
         float bolt = _game.Zone.Data.Rules.Tool.ShotDamage;
         Check(ForceFields.Hits == hits + 1 && Math.Abs(strength - f.Strength - bolt) < 0.01f && f.Holding,
-            $"a survival tool bolt hits it: {strength:F0} to {f.Strength:F0} ({bolt:F0}), still up");
+            $"a Sleeper tool bolt hits it: {strength:F0} to {f.Strength:F0} ({bolt:F0}), still up");
 
         // ---- Knocked down, it grows back --------------------------------------------------------
         _game.Fields.TimeScale = 10f; // STAGING: the waits at ten times play speed
@@ -246,16 +246,19 @@ public partial class ForceFieldTest : Node
         for (int i = 0; i < 300 && BlockDoors.IsOpen(v, FieldRig.Door); i++) yield return 0;
 
         // ---- Taken down whole ---------------------------------------------------------------
-        foreach (int x in play.Tool(ToolMode.Deconstruct)) yield return x;
+        foreach (int x in play.Tool(ToolMode.Gather)) yield return x;
         _game.Survivor.PlaceAboard(v, rig.Local(3.5f, 0.55f, 2.5f));
         foreach (int x in _drive.Wait(10)) yield return x;
         int components = pack[T1], ironBack = pack["iron-plate"];
         foreach (int x in _drive.LookAt(rig.World(1.54f, 0.54f, 0.09f), 8)) yield return x;
         said = builder.Verdict;
+        Vector3 eyeAt = _game.Survivor.WorldEye(), lookAt = _game.Survivor.WorldLook();
+        _game.Arms.Sweep(eyeAt.ToNumerics(), (eyeAt + lookAt * 9f).ToNumerics(), Slice.Arms.ArmsHost.PlayerThing, 0, 0f, out ShotHit met);
+        string aimed = $"the blast meets {met.Kind} {met.CellX} {met.CellY} {met.CellZ} at {met.Distance:F1} m; the tool on our structure {_game.Tool.OnStructure}, the take-down on {builder.TargetCell}, corners {string.Join(" ", Enumerable.Range(0, 4).Select(i => f.Corner(i)))}";
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && pack[T1] == components + 1 && pack["iron-plate"] > ironBack && !rig.Sealed(),
-            $"deconstructing an emitter takes the field down whole: its emitters gone, the component back ({components} to {pack[T1]}), the plating's iron back; the line said \"{said}\"");
+            $"a blast at an emitter takes the field down whole: its emitters gone, the component back ({components} to {pack[T1]}), the plating's iron back; the line said \"{said}\" ({aimed})");
 
         // ---- Emitters: passed through, shot, destroyed --------------------------------------------
         f = new ForceField(FieldRig.OpeningMin, FieldRig.OpeningMax, 2, T1) { Strength = tier.Strength }; // STAGING: a second field, set down whole

@@ -86,12 +86,12 @@ public partial class GunSounds : Node3D
         Start(p, clip, at, pitch, db + (loud ? LoudDb : kind == VoiceKind.Report ? 0f : -4f));
     }
 
-    /// <summary>One of the fight's own sounds at a point.</summary>
-    public void Play(CombatSound kind, Vector3 at, float pitch = 1f, float db = 0f)
+    /// <summary>One of the fight's own sounds at a point; a loud one (a thunderclap) carries as far as a gunshot.</summary>
+    public void Play(CombatSound kind, Vector3 at, float pitch = 1f, float db = 0f, bool loud = false)
     {
         if (_pool.Count == 0) return;
         PlayedShared[(int)kind]++;
-        Start(_pool[_next++ % _pool.Count], _shared[(int)kind], at, pitch, db);
+        Start(loud ? _loud[_nextLoud++ % _loud.Count] : _pool[_next++ % _pool.Count], _shared[(int)kind], at, pitch, db);
     }
 
     /// <summary>The player's hit landed (or killed): a thud heard the same at any distance.</summary>

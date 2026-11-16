@@ -341,7 +341,7 @@ public partial class WeaponTest : Node
         var levels = new Dictionary<string, int>
         {
             // Empyrion's nearest hand weapon where it has one (Shotgun and AssaultRifle 3, Explosives 5,
-            // RocketLauncher 10); the pistol waits for 2, as the survival tool is the only starting weapon.
+            // RocketLauncher 10); the pistol waits for 2, as the Sleeper tool is the only starting weapon.
             ["tack-pistol"] = 2, ["pump-scattergun"] = 3, ["line-rifle"] = 3, ["pressure-thrower"] = 7, ["break-launcher"] = 8, ["shoulder-tube"] = 10,
             ["prox-mine"] = 5, ["hornet-hive"] = 11, ["stage-rifle"] = 14, ["wormspitter"] = 14, ["fork-gun"] = 16, ["bend-rounds"] = 16,
         };

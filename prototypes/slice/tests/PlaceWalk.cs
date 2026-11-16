@@ -116,7 +116,7 @@ public sealed class PlaceWalk
     /// <summary>Growths cut out of the way so far.</summary>
     public int GrowthsCut;
 
-    /// <summary>To a cell, cutting through whatever the Bloom has grown over the way with the survival tool.</summary>
+    /// <summary>To a cell, cutting through whatever the Bloom has grown over the way with the Sleeper tool.</summary>
     public IEnumerable<int> CutWay(Place p, Int3 goal, Action<bool> done)
     {
         PNav nav = p.Nav();

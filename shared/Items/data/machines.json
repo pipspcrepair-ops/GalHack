@@ -20,7 +20,7 @@
   "tierNames": [ "survival", "small", "large", "advanced" ],
 
   // Breaks items and wreck blocks back into what they were made of, one step down the tree.
-  // The design's salvage runs 33% (survival tool, multi-tool T1) to 65% (T2) and 80% (vessel
+  // The design's salvage runs 33% (Sleeper tool, multi-tool T1) to 65% (T2) and 80% (vessel
   // salvagers). The deconstructor is a fixed station you carry things to, so it sits between
   // the field tools at 50%. Fractions carry over inside the machine, so nothing is rounded away
   // and nothing is ever made from nothing.
@@ -33,7 +33,7 @@
 
   // Pacing reference for the tests: an experienced player on a starter world.
   "reference": {
-    // Ore a player gathers with the survival tool, walking between the deposits the planet
+    // Ore a player gathers with the Sleeper tool, walking between the deposits the planet
     // generator puts within about 230 m of each other (a 1 m ore cell yields oreUnitsPerCell).
     "gatherOrePerMinute": 45,
     "oreUnitsPerCell": 12,

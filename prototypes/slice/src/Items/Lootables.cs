@@ -11,12 +11,16 @@ namespace Slice.Items;
 /// <summary>What a ground container is.</summary>
 public enum LootKind
 {
-    /// <summary>A creature's body: its meat, hide and parts (a machine's salvage).</summary>
+    /// <summary>
+    /// A body that lies where it fell, holding what it had: an animal's meat, hide and parts (a machine's
+    /// salvage), a person's weapon, ammo and goods. Once the body is gone, by any means, what's left on it
+    /// is in a bag where it lay.
+    /// </summary>
     Corpse,
     /// <summary>
     /// A bag of someone's things: the one bag, the same everywhere. The sleeper's own (left on death with
-    /// everything but the toolbar and the tool, or set down out of the inventory), a person's when they
-    /// die, and the bundle a frightened one tosses down to make you leave.
+    /// everything but the toolbar and the tool, or set down out of the inventory), what's left of a body
+    /// once it's gone, and the bundle a frightened one tosses down to make you leave.
     /// </summary>
     Bag,
     /// <summary>
@@ -39,12 +43,16 @@ public sealed class Lootable
     public SharedStorage Storage => Grid.Storage;
     /// <summary>The creature this is the body of, while the wildlife still draws it.</summary>
     public Creature Creature;
+    /// <summary>A body's: true once the body is no more (eaten, cleared away, blown apart, gathered).</summary>
+    public Func<bool> Gone;
+    /// <summary>The colour of the bag what's left on a body ends up in.</summary>
+    public Color Colour = Lootables.HideColour;
     public Node3D Node;
     public bool IsEmpty => Storage.IsEmpty;
 
     /// <summary>A bag of the sleeper's own: marked on the compass and the map.</summary>
     public bool Yours;
-    /// <summary>Whose bag it was (a creature, a townsperson; null: the sleeper's).</summary>
+    /// <summary>Whose bag or body it was (a creature, a townsperson; null: the sleeper's).</summary>
     public object Owner;
     /// <summary>A bag in the air (tossed, or falling onto what is under it): how fast it goes; null once it rests.</summary>
     public Vector3? Flying;
@@ -82,6 +90,8 @@ public partial class Lootables : Node3D
     /// <summary>A bag's slots across and down, and the colour of the sleeper's own (set by the game).</summary>
     public int[] BagSize = { 8, 8 };
     public Color YourColour = new("a8481a");
+    /// <summary>A bag of hide: what's left of an animal once its body is gone.</summary>
+    public static readonly Color HideColour = new("7f5539");
 
     /// <summary>What a bag lands and rests on: the ground and rock, hulls, a place's floors and furniture (its scenery layer), boulders and logs.</summary>
     public const uint RestOn = Layers.World | Layers.Hull | Layers.Flora | (1u << 10);
@@ -99,7 +109,7 @@ public partial class Lootables : Node3D
         };
         if (contents != null) storage.AddAll(contents);
         loot.Grid.Reconcile();
-        loot.Node = kind == LootKind.Corpse ? Bundle() : new Node3D { Name = $"Loot{kind}" };
+        loot.Node = new Node3D { Name = $"Loot{kind}" };
         AddChild(loot.Node);
         loot.Node.GlobalPosition = at;
         All.Add(loot);
@@ -124,6 +134,10 @@ public partial class Lootables : Node3D
         bag.Flying = new Vector3(flat.X / time, (to.Y - start.Y) / time + 0.5f * Fall * time, flat.Z / time);
         return bag;
     }
+
+    /// <summary>What's left of a body once it's gone, in one bag set down where it lay (owner): nothing left, no bag.</summary>
+    public Lootable Leftovers(Bill items, Vector3 at, Color colour, object owner) =>
+        items.IsEmpty ? null : Bag(items, Settle != null ? Settle(at) : at, "Bag", colour, owner: owner);
 
     /// <summary>Puts the sleeper's things into their bag lying within 2.5 m of a spot, or a new one set down there.</summary>
     public Lootable Spill(Bill items, Vector3 at)
@@ -216,7 +230,7 @@ public partial class Lootables : Node3D
     /// <summary>The floor under a point that someone on foot can reach (set by the game): a body that came down on a ledge or a ceiling ends on it.</summary>
     public Func<Vector3, Vector3> Settle;
 
-    /// <summary>Empty ones that aren't open go; bags in the air come down; a body goes where its creature's body goes (it falls off a ledge, it lets go of a ceiling), and once the creature is cleared away it shows as a bundle on the floor below.</summary>
+    /// <summary>Empty ones that aren't open go; bags in the air come down; a body goes where its creature's body goes (it falls off a ledge, it lets go of a ceiling), and once the body is gone what's left on it is in a bag where it lay.</summary>
     public void Tick()
     {
         float dt = (float)GetPhysicsProcessDeltaTime();
@@ -232,15 +246,14 @@ public partial class Lootables : Node3D
                 continue;
             }
             if (l.Flying is Vector3 v) { Fly(l, v, dt); continue; }
-            if (l.Creature == null) continue;
-            if (l.Creature.Removed)
+            if (l.Gone?.Invoke() == true && l != Open)
             {
-                l.Creature = null;
-                if (Settle != null) l.Position = Settle(l.Position);
-                l.Node.GlobalPosition = l.Position;
-                l.Node.GetNode<Node3D>("Bundle").Visible = true;
+                Leftovers(l.Storage.Contents, l.Position, l.Colour, l.Owner);
+                l.Node.QueueFree();
+                All.RemoveAt(i);
+                continue;
             }
-            else if (BodyAt != null && BodyAt(l.Creature) is var at && at.DistanceSquaredTo(l.Position) > 1e-4f)
+            if (l.Creature != null && !l.Creature.Removed && BodyAt != null && BodyAt(l.Creature) is var at && at.DistanceSquaredTo(l.Position) > 1e-4f)
             {
                 l.Position = at;
                 l.Node.GlobalPosition = at;
@@ -380,18 +393,5 @@ public partial class Lootables : Node3D
         var body = new StaticBody3D { Name = "Body", CollisionLayer = 0, CollisionMask = 0 };
         body.AddChild(new CollisionShape3D { Shape = Hull() });
         root.AddChild(body);
-    }
-
-    /// <summary>A body's look once its creature is gone: a hide-wrapped bundle on the floor (until then a body is its own mark, with nothing drawn round it).</summary>
-    static Node3D Bundle()
-    {
-        var root = new Node3D { Name = "LootCorpse" };
-        root.AddChild(new MeshInstance3D
-        {
-            Name = "Bundle", Mesh = new CapsuleMesh { Radius = 0.22f, Height = 0.75f },
-            MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("7f5539"), Roughness = 0.8f },
-            Position = Vector3.Up * 0.22f, RotationDegrees = new Vector3(0, 0, 90), Visible = false,
-        });
-        return root;
     }
 }

@@ -37,8 +37,9 @@ public partial class Spaceflight
     public float SalvageProgress { get; private set; }
 
     /// <summary>
-    /// The hands in space (the game asks this first, before the surface's tools): the survival
-    /// tool salvages wrecks in gather mode and fires in shoot mode, a core item claims a wreck,
+    /// The hands in space (the game asks this first, before the surface's tools): the Sleeper
+    /// tool's gather salvages the wreck block it is on and fires at anything else (repair
+    /// does nothing yet in space), a core item claims a wreck,
     /// building waits for a later phase. False for what works the same anywhere (food, kits).
     /// </summary>
     public bool TakeHands(float dt, HandKind hand, bool primary, bool pressed)
@@ -48,11 +49,11 @@ public partial class Spaceflight
         switch (hand)
         {
             case HandKind.Tool:
-                if (Game.Tool.Mode == ToolMode.Gather) Salvage(dt, primary);
+                if (Game.Tool.Mode == ToolMode.Gather && OnWreckBlock()) Salvage(dt, primary);
                 else
                 {
                     Halt();
-                    if (primary && _shotCooldown <= 0f) Shoot();
+                    if (primary && _shotCooldown <= 0f && Game.Tool.Mode == ToolMode.Gather) Shoot();
                 }
                 return true;
             case HandKind.Core:
@@ -68,6 +69,10 @@ public partial class Spaceflight
                 return false;
         }
     }
+
+    /// <summary>The look is on a block of a vessel within salvage reach.</summary>
+    bool OnWreckBlock() => WorldRay.Cast(Game.Zone, Game.Survivor, Rules.Wrecks.SalvageReach, Layers.Hull, out LookHit look)
+                           && look.Vessel != null && look.Vessel.Structure.Has(look.Cell);
 
     void Halt()
     {
@@ -86,7 +91,7 @@ public partial class Spaceflight
 
     /// <summary>
     /// Gather mode on a wreck's block: held on one block for a moment (its mass decides how long),
-    /// it comes free and about a third of its bill goes in your bag (design: the survival tool
+    /// it comes free and about a third of its bill goes in your bag (design: the Sleeper tool
     /// salvages wrecks at about 33 %). Only wrecks: your own blocks come down whole with the build tool.
     /// </summary>
     void Salvage(float dt, bool primary)

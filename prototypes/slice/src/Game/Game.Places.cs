@@ -16,7 +16,7 @@ namespace Slice.Game;
 /// <summary>
 /// The planet's places as part of the game: they stand up as real structures as you come near
 /// (<see cref="PoiPlaces"/>), E opens their doors and their caches,
-/// the survival tool salvages them and breaks their hidden walls, ladders and lift shafts carry
+/// the Sleeper tool salvages them and breaks their hidden walls, ladders and lift shafts carry
 /// you, their creatures and caves live and hunt, and their towns go about their day.
 /// </summary>
 public partial class Game
@@ -137,14 +137,15 @@ public partial class Game
         t.Fell += who => PersonFell(t, who);
     }
 
-    /// <summary>A townsperson falls: their bag drops from them, holding their weapon, its ammo and the goods of their trade.</summary>
+    /// <summary>A townsperson falls: their body holds their weapon, its ammo and the goods of their trade (blown apart or burned away, their bag drops from them).</summary>
     void PersonFell(Town t, Town.Person who)
     {
         if (who.Looks == null) return;
         GalHack.Items.Bill drops = t.Leaves(who);
         foreach (var kv in BodyDrops(who.Looks, Wildlife.Rng.For(who.Looks.Seed, "drop", (long)t.People.IndexOf(who)))) drops.Add(kv.Key, kv.Value);
         Vector3 fell = who.Rig?.HitDir ?? Vector3.Zero;
-        DropBag(who.Looks, drops, EndPerson(t, who, out Vector3 left) ? left : t.World(who.Pos), fell, who);
+        if (EndPerson(t, who, out Vector3 left)) DropBag(who.Looks, drops, left, fell, who);
+        else Corpse(who.Looks, drops, t.World(who.Pos), who, () => who.Gone);
     }
 
     /// <summary>

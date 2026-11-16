@@ -89,7 +89,7 @@
     "orbit": [ 2600, 5400 ],
     // Sites keep within this latitude of the globe's equator, degrees.
     "maxLatitude": 55,
-    // What the survival tool's gather mode gets back from a wreck's block (design: about 33 %),
+    // What the Sleeper tool's gather mode gets back from a wreck's block (design: about 33 %),
     // and how long it takes to cut one free, seconds per tonne (a light block a second or two).
     "salvageReturn": 0.33,
     "salvageSecondsPerTonne": 0.6,

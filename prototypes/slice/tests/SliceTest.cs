@@ -113,7 +113,7 @@ public partial class SliceTest : Node
         _lastHealth = _game.Suit.Vitals.Health;
 
         foreach (int x in new Playthrough(_game).MakeTool()) yield return x;
-        Check(_game.Pack.Hand == Slice.Items.HandKind.Tool, "the survival tool, made free in the suit fabricator, is in hand");
+        Check(_game.Pack.Hand == Slice.Items.HandKind.Tool, "the Sleeper tool, made free in the suit fabricator, is in hand");
         foreach (int x in Arrival()) yield return x;
         foreach (int x in Locker()) yield return x;
         if (OS.GetCmdlineUserArgs().Contains("--locker-only")) yield break;
@@ -263,8 +263,8 @@ public partial class SliceTest : Node
                     // pack holds what the beam earned, whole items as the shares add up, not a whole cell's yield per pulse.
                     Check(got > 0 && got >= tellOre && _game.Tool.Gathered[material] - gatheredBefore == got,
                         $"digging ore fills the pack as it chips: {got} {material} in the pack, {tellOre} off the rock over it, about {got / (float)yield1:F1} cells' worth ({yield1} a cell)");
-                    Check(tellOre % Player.SurvivalTool.TellOrePerPulse == 0 && tellOre <= Player.SurvivalTool.TellPulses * Player.SurvivalTool.TellOrePerPulse,
-                        $"an ore rock gives {Player.SurvivalTool.TellOrePerPulse} a pulse for {Player.SurvivalTool.TellPulses} pulses at most ({tellOre}), then the tool digs through");
+                    Check(tellOre % Player.SleeperTool.TellOrePerPulse == 0 && tellOre <= Player.SleeperTool.TellPulses * Player.SleeperTool.TellOrePerPulse,
+                        $"an ore rock gives {Player.SleeperTool.TellOrePerPulse} a pulse for {Player.SleeperTool.TellPulses} pulses at most ({tellOre}), then the tool digs through");
                     Check(_game.Zone.Planet.Terrain.Store.RemovedCount > 0 && !Inside(_game.Survivor.Body),
                         $"the dig is real terrain, removed and logged: {_game.Zone.Planet.Terrain.Store.RemovedCount} cells so far, the sleeper still in the open");
                 }
@@ -493,7 +493,7 @@ public partial class SliceTest : Node
         int plain = store.RemovedCount;
         foreach (int x in _drive.HoldPrimary(b, 60)) yield return x;
         int fast = store.RemovedCount - plain;
-        Check(fast > mid * 1.4f, $"the plasma drill gathers faster: {fast} cells in a second against {mid} for the survival tool");
+        Check(fast > mid * 1.4f, $"the plasma drill gathers faster: {fast} cells in a second against {mid} for the Sleeper tool");
         foreach (int x in new Playthrough(_game).Select(0)) yield return x;
     }
 
@@ -532,7 +532,7 @@ public partial class SliceTest : Node
             // The rock the tool is really on: deposits overlap, and digging for ore may have worked it already.
             Deposit rock = _game.Tool.Tell.Value;
             string ore = _game.Tool.OreOf(rock.Kind).Id;
-            int left = _game.Tool.TellLeft(rock), before = _game.Tool.TellOre, pack = _game.Pack[ore], all = left * Slice.Player.SurvivalTool.TellOrePerPulse;
+            int left = _game.Tool.TellLeft(rock), before = _game.Tool.TellOre, pack = _game.Pack[ore], all = left * Slice.Player.SleeperTool.TellOrePerPulse;
             bool lost = false;
             foreach (int x in _drive.HoldPrimary(aim, 600, () =>
             {
@@ -549,7 +549,7 @@ public partial class SliceTest : Node
             foreach (int x in _drive.Wait(2)) yield return x;
             bool gone = _game.Tool.Tell is not Deposit still || still.X != rock.X || still.Y != rock.Y;
             Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && gone,
-                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} of {all} {ore} over the {left} of {Slice.Player.SurvivalTool.TellPulses} pulses it had left, then it digs on through (still on it: {!gone})");
+                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} of {all} {ore} over the {left} of {Slice.Player.SleeperTool.TellPulses} pulses it had left, then it digs on through (still on it: {!gone})");
             yield break;
         }
         GD.Print($"  (no ore rock to aim at among the {rocks.Count} nearest deposits)");
@@ -567,7 +567,7 @@ public partial class SliceTest : Node
             zone.Planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
             if (tried.Contains(at)) continue;
-            // Near enough the surface for the survival tool (it can't cut deep rock).
+            // Near enough the surface for the Sleeper tool (it can't cut deep rock).
             if (zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
             // Not one the bunker was dug through (what is left of it is behind the bunker's walls).
             if (_game.Bunker.WayOut.Append(_game.Bunker.RoomCentre).Any(w => w.DistanceTo(at) < 10f)) continue;
@@ -789,8 +789,10 @@ public partial class SliceTest : Node
             foreach (int x in _drive.LookAt(pad, 1)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel skiff = _game.Builder.Underway;
+        string looked = WorldRay.Cast(_game.Zone, _game.Survivor, _game.Zone.Data.Rules.Build.Reach, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit seen)
+            ? $"the look meets {(seen.Vessel?.Name ?? (seen.Collider as Node)?.Name ?? "something")} at {seen.Distance:F1} m" : $"the look meets nothing within reach (the pad {_game.Survivor.WorldEye().DistanceTo(pad):F1} m off)";
         Check(skiff != null && skiff.Structure.Count == 1 && skiff.Structure.Core != null && skiff.Controller.Frozen,
-            $"a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground (the tool says: {_game.Builder.Verdict})");
+            $"a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground (the tool says: {_game.Builder.Verdict}; {looked})");
         if (skiff == null) yield break;
         _skiff = skiff;
         int placed = 0, stalls = 0;

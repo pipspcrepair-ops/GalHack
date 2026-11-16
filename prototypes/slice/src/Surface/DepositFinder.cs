@@ -11,7 +11,7 @@ namespace Slice.Surface;
 /// The suit's ore scanner: the nearest deposit of each ore within 600 m (the planet generator
 /// promises each common one within about 400 m of any walkable spot, and scatters the uncommon
 /// ones so a walk finds them), at its ore body's centre, of
-/// those the survival tool can reach (dry, and near the surface). A
+/// those the Sleeper tool can reach (dry, and near the surface). A
 /// deposit dug out is no longer shown: its label leaves the compass and the next nearest takes its
 /// place. Asked often, recomputed a few times a second.
 /// </summary>
@@ -56,7 +56,7 @@ public sealed class DepositFinder
             planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
             float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
-            // Only what the survival tool can reach: dry, and its ore body near the surface (it can't cut deep rock).
+            // Only what the Sleeper tool can reach: dry, and its ore body near the surface (it can't cut deep rock).
             float ground = zone.GroundAt(at.X, at.Z).Y;
             if (dist < within && ground > 0.5f && ground - at.Y <= MaxDepth) candidates.Add((dist, at, ox, oy, oz));
         }

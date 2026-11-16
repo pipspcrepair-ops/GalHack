@@ -3,7 +3,7 @@ using Godot;
 namespace Slice.Player;
 
 /// <summary>
-/// A worn, mottled finish for held items (the survival tool now, every gun later): a soft
+/// A worn, mottled finish for held items (the Sleeper tool now, every gun later): a soft
 /// two-tone mottle, darker grime in the creases and near edges, lighter worn edges with a touch
 /// of bare metal, faint scratches, and a little roughness variation. All of it is noise worked
 /// out in the shader from the mesh's own local position, so there is no texture, no tiling, and

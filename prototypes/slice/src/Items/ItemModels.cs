@@ -40,8 +40,8 @@ public static class ItemModels
 
     static ItemModels()
     {
-        // The hand tools are one model in three liveries (by rarity); the survival tool is the plainest.
-        Register(i => Array.IndexOf(PlayerInventory.ToolItems, i.Id) >= 0, HeldTool.Build, ModelSource.Held);
+        // The hand tools are one model in three liveries (by rarity); the Sleeper tool is the plainest, the plating gun the same with teal plates.
+        Register(i => Array.IndexOf(PlayerInventory.ToolItems, i.Id) >= 0 || i.Id == PlayerInventory.PlatingGun, HeldTool.Build, ModelSource.Held);
         Register("scanner", HeldScanner.Build, ModelSource.Held);
         Register(i => i.Category == ItemCategory.Weapon, Slice.Arms.GunModel.Held, ModelSource.Held);
         Register("hover-bike", _ => new ItemModel { Root = BikeModel.Build() }, ModelSource.Vehicle);

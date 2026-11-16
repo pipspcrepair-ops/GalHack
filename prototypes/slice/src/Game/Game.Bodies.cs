@@ -9,9 +9,9 @@ using Layers = GalHack.Physics.Layers;
 namespace Slice.Game;
 
 /// <summary>
-/// How bodies end. One blown apart comes down as pieces of itself (a machine with sparks and smoke
-/// instead of blood); one burned away leaves ash on a scorch. Whatever it carried is never lost: it
-/// is left where the body was, to be searched there.
+/// How bodies end. One left lying holds what it had, searched as a body; one blown apart comes down as
+/// pieces of itself (a machine with sparks and smoke instead of blood); one burned away leaves ash on a
+/// scorch. Whatever it carried is never lost: once the body is gone it's in a bag where the body was.
 /// </summary>
 public partial class Game
 {
@@ -32,13 +32,26 @@ public partial class Game
         Zone.AddChild(Gibs);
     }
 
-    /// <summary>What a body that is no more had, left on the floor where it was.</summary>
-    void Remains(Species s, Vector3 at, Bill drops)
+    /// <summary>
+    /// A body left lying (a creature's, or a townsperson's: <paramref name="body"/>) holds what it had, searched
+    /// as a body until <paramref name="gone"/> says it is no more; then what's left is in a bag where it lay
+    /// (<see cref="Lootables.Leftovers"/>). Nothing on it, no container.
+    /// </summary>
+    public Lootable Corpse(Species s, Bill drops, Vector3 at, object body, Func<bool> gone)
     {
+        if (drops.IsEmpty) return null;
         int[] size = Zone.Data.Rules.Containers.Corpse;
-        Lootable left = Zone.Loot.Create(LootKind.Corpse, $"Remains of {s.CommonName}", at, size[0], size[1], drops);
-        left.Radius = 0.6f;
+        Lootable l = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
+        l.Creature = body as Creature;
+        l.Owner = body;
+        l.Gone = gone;
+        l.Colour = SackColour(s);
+        l.Radius = MathF.Max(0.5f, s.Stats.Radius);
+        return l;
     }
+
+    /// <summary>The colour of the bag what's left of a body is in: a person's clothes, an animal's hide.</summary>
+    static Color SackColour(Species s) => s.Figure != null ? BagColour(s.Figure) : Lootables.HideColour;
 
     /// <summary>
     /// A body comes apart or burns away, from its pieces where they are (world, from a rig's own space

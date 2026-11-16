@@ -28,7 +28,7 @@
     // The starting kit in the bunker's locker: a few days' food and air, not a ship.
     "startKit": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
     // What the sleeper has on the toolbar from the start, slot 1 first: nothing. They wake
-    // empty-handed and make the survival tool, free, in the suit fabricator.
+    // empty-handed and make the Sleeper tool, free, in the suit fabricator.
     "toolbar": [ ]
   },
 
@@ -73,8 +73,50 @@
     "digInterval": 0.18,
     "cutReach": 4,
     "shotDamage": 18,
-    "shotInterval": 0.22,
-    "shotRange": 120,
+    // Gather is a short blast of lightning (design: the Sleeper tool). Blasts at things that
+    // aren't being gathered come every shotInterval; gathering pulses keep digInterval.
+    "shotInterval": 0.3,
+    "lightning": {
+      // How far the blast reaches, m.
+      "range": 9,
+      // A person in front: a chip of damage, then held in their flinch for stunSeconds; not again
+      // until restunSeconds after it ends.
+      "personDamage": 4,
+      "stunSeconds": 1.1,
+      "restunSeconds": 1.5,
+      // A block on a core that isn't a sleeper's: damage per blast, and the share of its bill that
+      // comes away as its hit points do (a block blasted to nothing gives this share of its bill).
+      "blockDamage": 30,
+      "extractShare": 0.3,
+      // The tool shakes in the hand with each bolt (owner: a shake, not a kick; the view stays still):
+      // seconds, metres, Hz, and a gathering pulse's (every digInterval) as a share of a blast's.
+      "shakeSeconds": 0.12,
+      "shakeAmplitude": 0.004,
+      "shakeHz": 38,
+      "gatherShakeShare": 0.6,
+      // While fire is held the tool shakes steadily at this share of a blast's jolt, each bolt a sharper
+      // jolt on top; let go, it settles within settleSeconds (owner: shake as long as fire is held).
+      "heldShakeShare": 0.45,
+      "settleSeconds": 0.08,
+      // The flash that lights the surroundings (energy, range m).
+      "flashEnergy": 6,
+      "flashRange": 11,
+      // Seconds. A bolt comes up, holds and fades smoothly (owner: linger a little, easy on the eyes;
+      // it was 0.09 s on, then gone); its light comes up and fades longer, so held fire doesn't strobe.
+      "boltRise": 0.08,
+      "boltHold": 0.07,
+      "boltFade": 0.09,
+      "flashRise": 0.1,
+      "flashFade": 0.25,
+      // Thunder with every blast, no closer together than this, s.
+      "thunderGap": 0.28
+    },
+    // Repair is a green cone (owner: gradual, a lerping number; 1 hit point every 20 ms). The damaged block it's on fills at
+    // rate hit points a second, smoothly (a 158-point iron block from nothing in about 3.2 s, a 250-point core in
+    // 5), paid for as it fills, in proportion to its bill, from the bag, else the core's storage.
+    // A destroyed block in it comes back at restoreShare of its hit points and fills from there. Its
+    // sound pulses (and tries at restoring) every interval s.
+    "repair": { "range": 6, "angle": 14, "interval": 0.35, "rate": 50, "restoreShare": 0.1 },
     // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
     // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
     // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
@@ -82,9 +124,9 @@
     // wearing down from the centre out.
     "gatherRate": 3,
     "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 1.5, "boulderStone": 3 },
-    // The hand tools: each a faster survival tool (the tech tree unlocks them by level).
+    // The hand tools: each a faster Sleeper tool (the tech tree unlocks them by level).
     "tiers": {
-      "survival-tool": { "name": "Survival tool", "rate": 1, "radius": 1.42, "shot": 1 },
+      "sleeper-tool": { "name": "Sleeper tool", "rate": 1, "radius": 1.42, "shot": 1 },
       "mining-drill":  { "name": "Mining drill",  "rate": 2.5, "radius": 1.6, "shot": 1.4 },
       "plasma-drill":  { "name": "Plasma drill",  "rate": 5,   "radius": 1.9, "shot": 2 }
     }

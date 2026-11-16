@@ -255,10 +255,11 @@ public sealed class SliceRules
         public float DigInterval { get; set; } = 0.18f;
         public float CutReach { get; set; } = 4f;
         public float ShotDamage { get; set; } = 18f;
-        public float ShotInterval { get; set; } = 0.22f;
-        public float ShotRange { get; set; } = 120f;
+        public float ShotInterval { get; set; } = 0.3f;
+        public LightningRules Lightning { get; set; } = new();
+        public RepairRules Repair { get; set; } = new();
 
-        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the survival tool), against each thing's durability.</summary>
+        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the Sleeper tool), against each thing's durability.</summary>
         public float GatherRate { get; set; } = 3f;
         public DurabilityRules Durability { get; set; } = new();
         /// <summary>Each hand tool by item id: the faster drills the tech tree unlocks.</summary>
@@ -267,10 +268,48 @@ public sealed class SliceRules
         public ToolTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out ToolTier t) ? t : new ToolTier();
     }
 
-    /// <summary>How much a hand tool does: its gather rate as a multiple of the survival tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
+    /// <summary>The Sleeper tool's gather blast: a short arc of lightning (see data/slice.json).</summary>
+    public sealed class LightningRules
+    {
+        public float Range { get; set; } = 9f;
+        public float PersonDamage { get; set; } = 4f;
+        public float StunSeconds { get; set; } = 1.1f;
+        public float RestunSeconds { get; set; } = 1.5f;
+        public float BlockDamage { get; set; } = 30f;
+        public float ExtractShare { get; set; } = 0.3f;
+        /// <summary>The tool's shake in the hand with each bolt (the view stays still): how long, how far (m), how fast (Hz), and a gathering pulse's as a share of a blast's.</summary>
+        public float ShakeSeconds { get; set; } = 0.12f;
+        public float ShakeAmplitude { get; set; } = 0.004f;
+        public float ShakeHz { get; set; } = 38f;
+        public float GatherShakeShare { get; set; } = 0.6f;
+        /// <summary>The steady shake while fire is held, as a share of a blast's jolt, and how long it takes to settle once let go, s.</summary>
+        public float HeldShakeShare { get; set; } = 0.45f;
+        public float SettleSeconds { get; set; } = 0.08f;
+        public float FlashEnergy { get; set; } = 6f;
+        public float FlashRange { get; set; } = 11f;
+        /// <summary>The bolt comes up, holds and fades smoothly (an arc over a block a little longer); its light comes up and fades. Seconds.</summary>
+        public float BoltRise { get; set; } = 0.08f;
+        public float BoltHold { get; set; } = 0.07f;
+        public float BoltFade { get; set; } = 0.09f;
+        public float FlashRise { get; set; } = 0.1f;
+        public float FlashFade { get; set; } = 0.25f;
+        public float ThunderGap { get; set; } = 0.28f;
+    }
+
+    /// <summary>The Sleeper tool's repair cone: reach, half-angle in degrees, the time between its sound's pulses (and tries at restoring), how fast it fills a block (hit points a second), and the share a destroyed block comes back at.</summary>
+    public sealed class RepairRules
+    {
+        public float Range { get; set; } = 6f;
+        public float Angle { get; set; } = 14f;
+        public float Interval { get; set; } = 0.35f;
+        public float Rate { get; set; } = 50f;
+        public float RestoreShare { get; set; } = 0.1f;
+    }
+
+    /// <summary>How much a hand tool does: its gather rate as a multiple of the Sleeper tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
     public sealed class ToolTier
     {
-        public string Name { get; set; } = "Survival tool";
+        public string Name { get; set; } = "Sleeper tool";
         public float Rate { get; set; } = 1f;
         public float Radius { get; set; } = 1.42f;
         public float Shot { get; set; } = 1f;

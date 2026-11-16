@@ -223,13 +223,13 @@ public sealed partial class BuildTool
         return true;
     }
 
-    /// <summary>Deconstruct mode on a piece: aiming at the face under it takes it down.</summary>
+    /// <summary>The Sleeper tool on a piece: aiming at the face under it takes it down.</summary>
     public bool DecoToDeconstruct(out string verdict)
     {
         verdict = null;
         if (!HasTarget || TargetVessel == null) return false;
         if (!(TargetVessel.DecoAt(PlaceCell, out DecoPlaced d) || TargetVessel.DecoAt(TargetCell, out d))) return false;
-        verdict = $"Deconstruct {Decor.Shared?.Catalogue.Piece(d.Piece).Name}{(Creative ? "" : " · +1 Deco block")}";
+        verdict = $"{Decor.Shared?.Catalogue.Piece(d.Piece).Name}{(Creative ? "" : " · +1 Deco block")}";
         return true;
     }
 

@@ -219,7 +219,7 @@ public partial class Game
 
     /// <summary>
     /// On death your things go into your bag where you fell, marked on the compass and the map; the
-    /// toolbar and the survival tool stay with you, and nothing is lost. Then whoever was about takes it
+    /// toolbar and the Sleeper tool stay with you, and nothing is lost. Then whoever was about takes it
     /// in (<see cref="Aftermath"/>).
     /// </summary>
     void CheckDeath()
@@ -254,10 +254,11 @@ public partial class Game
     // ---- Creatures' bodies ---------------------------------------------------------------------
 
     /// <summary>
-    /// A creature died: its body becomes a container holding its drops (wildlife's drop table: meat by
-    /// size, hide, and a rare part by chance), or, a person, their bag drops from them with what they
-    /// carried. The player's kills are worth experience. The sleeper's own body is none of this: its
-    /// things are in its bag already.
+    /// A creature died: its body holds its drops (wildlife's drop table: meat by size, hide, and a rare part
+    /// by chance; a person's weapon, ammo and goods) and is searched as a body (owner). Blown apart or
+    /// burned away, a person's bag drops from them, and what an animal had is in a bag where it was. The
+    /// player's kills are worth experience. The sleeper's own body is none of this: its things are in
+    /// its bag already.
     /// </summary>
     void OnCreatureDied(Creature c, ITarget killer)
     {
@@ -281,17 +282,9 @@ public partial class Game
         Bill drops = BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", c.Id));
         Arms?.People?.Drops(c, drops); // the weapon it carried, and the ammo it had left for it
         if (_given.Remove(c, out Bill given)) drops = Less(drops, given); // (what it tossed you is on the ground already)
-        int[] size = Zone.Data.Rules.Containers.Corpse;
-        bool gone = EndCreature(c, out Vector3 left);
-        if (BagCarrier(s)) DropBag(s, drops, gone ? left : Zone.Wildlife.WorldOf(c), c.HitDir, c);
-        else if (gone) Remains(s, left, drops);
-        else
-        {
-            Vector3 at = Zone.Wildlife.WorldOf(c);
-            Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
-            body.Creature = c;
-            body.Radius = MathF.Max(0.5f, s.Stats.Radius);
-        }
+        if (!EndCreature(c, out Vector3 left)) Corpse(s, drops, Zone.Wildlife.WorldOf(c), c, () => c.Removed);
+        else if (BagCarrier(s)) DropBag(s, drops, left, c.HitDir, c);
+        else Zone.Loot.Leftovers(drops, left, SackColour(s), c);
         if (killer == Target)
         {
             Stats.Kills++;
@@ -319,18 +312,14 @@ public partial class Game
         return left;
     }
 
-    /// <summary>A person's bag drops from their hip as they go down, onto the ground at their feet, on the side they didn't fall to.</summary>
-    Lootable DropBag(Species s, Bill drops, Vector3 feet, Vector3 fell, object owner)
+    /// <summary>A person blown apart or burned away: their bag drops from their hip as they go, onto the ground where they were, on the side they didn't fall to.</summary>
+    void DropBag(Species s, Bill drops, Vector3 feet, Vector3 fell, object owner)
     {
-        if (drops.IsEmpty) return null;
+        if (drops.IsEmpty) return;
         Vector3 back = new(-fell.X, 0f, -fell.Z);
         back = back.LengthSquared() > 1e-4f ? back.Normalized() : Vector3.Back;
-        PeopleBags++;
-        return Zone.Loot.Toss(drops, feet + Vector3.Up * s.Figure.Height * 0.5f, feet + back * 0.45f, "Bag", BagColour(s.Figure), owner);
+        Zone.Loot.Toss(drops, feet + Vector3.Up * s.Figure.Height * 0.5f, feet + back * 0.45f, "Bag", BagColour(s.Figure), owner);
     }
-
-    /// <summary>People who fell and left a bag (tests).</summary>
-    public int PeopleBags { get; private set; }
 
     /// <summary>
     /// What a body holds follows what it was. A machine (robot, drone, cyborg) leaves salvage by its

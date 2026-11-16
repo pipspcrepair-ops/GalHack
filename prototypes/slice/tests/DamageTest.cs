@@ -162,7 +162,7 @@ public partial class DamageTest : Node
         Check(v.Hits.Queued == 1 && v.Structure.Get(cell).Hp == max, "a hit waits for the frame: nothing changes in the middle of a physics step");
         foreach (int x in _drive.Wait(2)) yield return x;
         float hp = v.Structure.Get(cell).Hp, expected = max - (shot - 10f) * 0.9f;
-        Check(MathF.Abs(hp - expected) < 0.01f, $"a survival tool bolt lowers a block's hit points, armour and resistance applied: {max:F0} to {hp:F1}");
+        Check(MathF.Abs(hp - expected) < 0.01f, $"a Sleeper tool bolt lowers a block's hit points, armour and resistance applied: {max:F0} to {hp:F1}");
         Check(v.View.Rebuilt > rebuilt && v.View.Waiting == 0, "and its chunk is redrawn within two frames");
         Check(v.Body.Damage > 0f, $"and it counts on the hull, down the same path as a crash ({v.Body.Damage:F4})");
 

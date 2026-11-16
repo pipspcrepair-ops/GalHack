@@ -12,9 +12,10 @@ namespace Slice.Player;
 /// both ask <see cref="ItemModels"/>, which asks here. Its parts sit where the glove holds them
 /// (the grip at about 0.17, -0.21, -0.33 in the hands' frame) and the barrel points down -Z.
 ///
-/// The survival tool, the mining drill and the plasma drill are the one tool at three levels, so they
+/// The Sleeper tool, the mining drill and the plasma drill are the one tool at three levels, so they
 /// are one model in three liveries: the plainest is cream, and each step up takes more of its
-/// rarity's colour (the one the bag draws round the slot) into its hull and plates.
+/// rarity's colour (the one the bag draws round the slot) into its hull and plates. The plating gun
+/// is the same body with teal plates.
 /// </summary>
 public static class HeldTool
 {
@@ -29,6 +30,7 @@ public static class HeldTool
             plate = plate.Lerp(mark, 0.5f);
             grip = grip.Lerp(mark.Darkened(0.6f), 0.35f);
         }
+        if (item?.Id == Slice.Items.PlayerInventory.PlatingGun) plate = new Color("2ec4b6").Darkened(0.25f); // the plating gun: the same body, teal plates
         var root = new Node3D { Name = "Tool" };
         var lenses = new List<ShaderMaterial>();
         void Add(Mesh mesh, Material material, Vector3 at, Vector3 degrees) =>

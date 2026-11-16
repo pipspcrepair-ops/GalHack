@@ -480,7 +480,8 @@ public partial class Visor : CanvasLayer
         string label = Game.UsePrompt();
         if (string.IsNullOrEmpty(label)) label = Game.Builder.Projecting ? Game.Builder.Verdict : Game.Pack.Hand switch
         {
-            HandKind.Tool => Game.Tool.Mode is ToolMode.Deconstruct or ToolMode.Plate ? Game.Builder.Verdict : Game.Tool.TargetLabel,
+            HandKind.Tool => Game.Tool.TargetLabel,
+            HandKind.Plater => Game.Builder.Verdict,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "[LMB] USE",
             HandKind.Vehicle => "[LMB] SET DOWN",
@@ -490,7 +491,13 @@ public partial class Visor : CanvasLayer
         };
         if (!string.IsNullOrEmpty(label))
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, PromptBox(_hud.Size, UiScale, label).Position.Y, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+        if (BlockHealth() is string hp)
+            _hud.TextIn(UiTheme.Label, (int)(16 * s), new Rect2(0, c.Y - 34 * s, _hud.Size.X, 20 * s), hp, C.Text, HorizontalAlignment.Center);
     }
+
+    /// <summary>The block the Sleeper tool is on: its hit points over its most, shown just above the reticle; null when it's on none.</summary>
+    public string BlockHealth() =>
+        Game.Pack.Hand == HandKind.Tool && !Game.Builder.Projecting && Game.Tool.BlockHealth is (float hp, float max) ? $"{MathF.Ceiling(hp):F0} / {max:F0}" : null;
 
     /// <summary>The hit ring's radius, and a kill's second thin ring's, in UI units (times the HUD scale: 8.4 and 10.8 px at 1080p).</summary>
     public const float RingRadius = 7f, KillRadius = 9f;
@@ -555,13 +562,9 @@ public partial class Visor : CanvasLayer
         {
             case HandKind.Tool:
                 string toolName = Game.Zone.Data.Rules.Tool.TierOf(pack.HandItem).Name.ToUpperInvariant();
-                return Game.Tool.Mode switch
-                {
-                    ToolMode.Shoot => $"{toolName} · SHOOT",
-                    ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
-                    ToolMode.Plate => $"{toolName} · PLATE · {Game.Builder.PlateOf(Game.Builder.Plating).Name}",
-                    _ => $"{toolName} · GATHER",
-                };
+                return Game.Tool.Mode == ToolMode.Repair ? $"{toolName} · REPAIR" : $"{toolName} · GATHER";
+            case HandKind.Plater:
+                return $"{items.Item(pack.HandItem).Name.ToUpperInvariant()} · {Game.Builder.PlateOf(Game.Builder.Plating).Name}";
             case HandKind.Vehicle:
                 return "HOVER BIKE";
             case HandKind.Weapon when Game.Zone.Data.Arms.OfItem(pack.HandItem) is GalHack.Arms.WeaponDef w:

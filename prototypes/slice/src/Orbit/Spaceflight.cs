@@ -51,7 +51,7 @@ public sealed record Crossing(bool Up, double MapX, double MapZ, double HeadingD
 /// and it thins to black space with the world curving away below.</para>
 ///
 /// <para><b>In space</b> the suit breathes from its own oxygen (in vacuum the helmet seals and the
-/// air runs down; a cockpit refills it), the survival tool's gather mode salvages a wreck's blocks
+/// air runs down; a cockpit refills it), the Sleeper tool's gather mode salvages a wreck's blocks
 /// (about a third of each bill back), its core item claims a wreck with no core, and E forces a
 /// wreck's dead doors. A vessel nobody is in waits at a zone's edge instead of crossing.</para>
 ///

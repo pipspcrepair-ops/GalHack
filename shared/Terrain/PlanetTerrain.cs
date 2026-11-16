@@ -124,7 +124,7 @@ public sealed class PlanetTerrain
 
     // ---- Edits ----------------------------------------------------------------------------
 
-    /// <summary>The survival tool: a small ball of cells around one cell.</summary>
+    /// <summary>The Sleeper tool: a small ball of cells around one cell.</summary>
     public PlanetEdit Dig(Int3 center, float radius) =>
         Remove(ChunkStore.SphereCells(center, Math.Clamp(radius, 0f, ChunkStore.MaxToolRadius)), EditKind.Tool);
 

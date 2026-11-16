@@ -6,7 +6,7 @@ using GalHack.Items;
 namespace Slice.Items;
 
 /// <summary>What the selected toolbar slot puts in your hands.</summary>
-public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Scanner, Other, Weapon }
+public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Scanner, Other, Weapon, Plater }
 
 /// <summary>Which toolbar the number keys use: your own, or the remote one (items left in cores' storage).</summary>
 public enum BarSource { Personal, Remote }
@@ -47,8 +47,8 @@ public sealed class PlayerInventory
     /// <summary>Toolbar shortcut for the starter vessel's blueprint (the blueprint projector).</summary>
     public const string BlueprintBlock = "@blueprint";
 
-    /// <summary>The hand tools, plainest first: each is the survival tool's gather, shoot and deconstruct, faster.</summary>
-    public static readonly string[] ToolItems = { "survival-tool", "mining-drill", "plasma-drill" };
+    /// <summary>The hand tools, plainest first: each is the Sleeper tool's gather and repair, faster.</summary>
+    public static readonly string[] ToolItems = { "sleeper-tool", "mining-drill", "plasma-drill" };
 
     /// <summary>The core's item: it founds a structure, whatever its mode.</summary>
     public const string Core = "core";
@@ -87,12 +87,15 @@ public sealed class PlayerInventory
         Grid = new ItemGrid(Storage, Columns, Rows, ToolbarSlots);
     }
 
-    /// <summary>The survival tool, which is never dropped, wherever it sits.</summary>
-    public const string SurvivalTool = "survival-tool";
+    /// <summary>The plating gun: sprays plates onto blocks, strips them, tops them up.</summary>
+    public const string PlatingGun = "plating-gun";
+
+    /// <summary>The Sleeper tool, which is never dropped, wherever it sits.</summary>
+    public const string SleeperTool = "sleeper-tool";
 
     /// <summary>
-    /// What a death leaves on the body: the bag goes, the toolbar and the survival tool stay with you
-    /// (design: the survival tool is never dropped; the owner: nor is anything on the toolbar).
+    /// What a death leaves on the body: the bag goes, the toolbar and the Sleeper tool stay with you
+    /// (design: the Sleeper tool is never dropped; the owner: nor is anything on the toolbar).
     /// Takes the rest out of the pack and returns it, for their bag.
     /// </summary>
     public Bill TakeBagForDeath()
@@ -104,7 +107,7 @@ public sealed class PlayerInventory
         var drop = new Bill();
         foreach (var (id, count) in Storage.Contents)
         {
-            int kept = id == SurvivalTool ? count : Math.Min(count, keep[id]);
+            int kept = id == SleeperTool ? count : Math.Min(count, keep[id]);
             if (count > kept) drop.Add(id, count - kept);
         }
         Storage.TryTake(drop);
@@ -259,6 +262,7 @@ public sealed class PlayerInventory
             if (item.Category == ItemCategory.Weapon) return HandKind.Weapon;
             if (id == "hover-bike") return HandKind.Vehicle;
             if (id == "scanner") return HandKind.Scanner;
+            if (id == PlatingGun) return HandKind.Plater;
             if (id == Core) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;
             if (id == Slice.Vessels.Device.ClimateItem || _items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;

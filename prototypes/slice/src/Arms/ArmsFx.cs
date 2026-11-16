@@ -391,12 +391,7 @@ public partial class ArmsFx : Node3D
         a.Mesh = new MeshInstance3D
         {
             Mesh = a.Lines, Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            MaterialOverride = new StandardMaterial3D
-            {
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = new Color(0.78f, 0.88f, 1f), CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-                EmissionEnabled = true, Emission = new Color(0.7f, 0.85f, 1f), EmissionEnergyMultiplier = 6f, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-                BlendMode = BaseMaterial3D.BlendModeEnum.Add,
-            },
+            MaterialOverride = PlanetSurface.Fx.Bolts.Material(new Color(0.7f, 0.85f, 1f), 4f),
         };
         a.Light = new OmniLight3D { Visible = false, LightColor = new Color(0.7f, 0.82f, 1f), LightEnergy = 3f, OmniRange = 6f };
         AddChild(a.Mesh);
@@ -411,47 +406,27 @@ public partial class ArmsFx : Node3D
         ArcFx a = _arcs[0];
         foreach (ArcFx c in _arcs) if (c.Left < a.Left) a = c;
         a.Left = 0.16f;
-        a.Lines.ClearSurfaces();
-        a.Lines.SurfaceBegin(Mesh.PrimitiveType.Triangles);
-        Bolt(a.Lines, from, to, eye, 0.06f, 10);
-        // A couple of short side forks off the main line.
+        // The main line and a couple of short side forks off it, drawn as every bolt is.
+        var channels = new List<PlanetSurface.Fx.Bolts.Channel>();
+        float len = from.DistanceTo(to);
+        var main = new List<Vector3>();
+        PlanetSurface.Fx.Bolts.Jag(main, from, to, 0.12f, 4, Random01);
+        channels.Add(new(main, 0.3f, 1f));
         for (int f = 0; f < 2; f++)
         {
-            float t = 0.3f + 0.4f * (float)_rng.NextDouble();
-            Vector3 p = from.Lerp(to, t);
-            Vector3 off = new Vector3((float)_rng.NextDouble() - 0.5f, (float)_rng.NextDouble() - 0.3f, (float)_rng.NextDouble() - 0.5f) * from.DistanceTo(to) * 0.35f;
-            Bolt(a.Lines, p, p + off, eye, 0.03f, 4);
+            Vector3 p = main[1 + _rng.Next(main.Count - 2)];
+            Vector3 off = new Vector3(Random01() - 0.5f, Random01() - 0.3f, Random01() - 0.5f) * len * 0.35f;
+            var fork = new List<Vector3>();
+            PlanetSurface.Fx.Bolts.Jag(fork, p, p + off, 0.15f, 2, Random01);
+            channels.Add(new(fork, 0.15f, 0.6f));
         }
-        a.Lines.SurfaceEnd();
+        PlanetSurface.Fx.Bolts.Draw(a.Lines, channels, eye);
         a.Mesh.Visible = true;
         a.Light.GlobalPosition = from.Lerp(to, 0.5f);
         a.Light.Visible = true;
     }
 
-    void Bolt(ImmediateMesh m, Vector3 from, Vector3 to, Vector3 eye, float width, int steps)
-    {
-        Vector3 line = to - from;
-        float len = line.Length();
-        if (len < 0.01f) return;
-        Vector3 prev = from;
-        for (int i = 1; i <= steps; i++)
-        {
-            float t = i / (float)steps;
-            Vector3 next = from + line * t;
-            if (i < steps)
-                next += new Vector3((float)_rng.NextDouble() - 0.5f, (float)_rng.NextDouble() - 0.5f, (float)_rng.NextDouble() - 0.5f) * len * 0.12f;
-            Vector3 seg = next - prev;
-            Vector3 side = seg.Cross(eye - prev);
-            side = side.LengthSquared() > 1e-6f ? side.Normalized() * width : Vector3.Up * width;
-            m.SurfaceAddVertex(prev - side);
-            m.SurfaceAddVertex(prev + side);
-            m.SurfaceAddVertex(next + side);
-            m.SurfaceAddVertex(prev - side);
-            m.SurfaceAddVertex(next + side);
-            m.SurfaceAddVertex(next - side);
-            prev = next;
-        }
-    }
+    float Random01() => (float)_rng.NextDouble();
 
     void TickArcs(float dt)
     {
