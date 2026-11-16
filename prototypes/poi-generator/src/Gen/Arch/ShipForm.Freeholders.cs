@@ -200,6 +200,7 @@ public sealed partial class ShipForm
                     int half = Mi(5, 8, 3);
                     Truss(MathF.Round(mid - len / 2), MathF.Round(mid + len / 2), half, bay);
                     Box(Scrap(), new NV3(0, -half + M(2f), mid), new NV3(half, M(2f), len / 2 - 1f));
+                    foreach (float end in new[] { mid - len / 2, mid + len / 2 }) Box("machine", new NV3(0, 0, MathF.Round(end)), new NV3(half, half, 1f), 0.4f);
                     break;
             }
             v = mid + len / 2;
@@ -266,7 +267,9 @@ public sealed partial class ShipForm
                         Pipe(c + new NV3(-hu, a * hy, b * hv), c + new NV3(hu, a * hy, b * hv));
                         Pipe(c + new NV3(a * hu, -hy, b * hv), c + new NV3(a * hu, hy, b * hv));
                     }
-                Box(Scrap(), c + new NV3(0, -hy + 2, 0), new NV3(hu, 1.5f, MathF.Max(1f, hv - 2f)));
+                // Its load on a pallet, from the truss's face out through the cage's floor.
+                float near = th - 0.5f, far = (axis == 0 ? MathF.Abs(c.X - off.X) - hu : MathF.Abs(c.Y - off.Y) - hy) + 3f, depth = (far - near) / 2;
+                Box(Scrap(), dir * (near + depth) + new NV3(off.X, off.Y, c.Z), axis == 0 ? new NV3(depth, hy, hv - 1f) : new NV3(hu, depth, hv - 1f));
                 break;
             }
             case "radiator":
@@ -286,8 +289,8 @@ public sealed partial class ShipForm
                 break;
             }
         }
-        // The clamp: a collar on the truss's face.
-        Box("machine", dir * (th + 0.5f) + new NV3(off.X, off.Y, v + len / 2), new NV3(M(1.5f)));
+        // The clamp: a collar on the truss's face, chord to chord.
+        Box("machine", dir * (th + 0.5f) + new NV3(off.X, off.Y, v + len / 2), !square ? new NV3(M(1.5f)) : axis == 0 ? new NV3(M(1.5f), th + 1f, M(1.5f)) : new NV3(th + 1f, M(1.5f), M(1.5f)));
         return len;
     }
 }

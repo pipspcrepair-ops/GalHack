@@ -36,21 +36,20 @@ public sealed partial class ShipForm
             for (int j = 0; j < rows; j++)
                 Bell(new NV3(cu - w + 2f * w * (i + 0.5f) / cols, cy - h + 2f * h * (j + 0.5f) / rows, ve1), br, bl, housing: false);
         Clutter(new NV3(cu - w, cy - h, ve0), new NV3(cu + w, cy + h, ve1), R.Chance(0.5f) ? 2 : 3, R.Between(0, 2));
-        if (fins)
-        {
-            int face = R.Range(0, 4);
-            NV3 o = Out(face), root = new NV3(cu, cy, (ve0 + ve1) / 2) + o * ((face < 2 ? w : h) - 1f);
+        NV3 o = Out(R.Range(0, 4));
+        if (fins && Surface(new NV3(cu, cy, MathF.Round((ve0 + ve1) / 2)), o) is { } root)
             Radiators(new NV3(MathF.Round(root.X), MathF.Round(root.Y), MathF.Round(root.Z)), o, R.Between(2, 4), MathF.Round(M(6f, 10f)), el * 0.7f);
-        }
         return ve0;
     }
 
-    /// <summary>Armour plates layered on a prow's brow and chin (its face pw by ph about (pu, py), pl long), jutting forward over the face and resting on its full-height back.</summary>
-    void BrowPlates(float pl, float pw, float ph, float pu, float py)
+    /// <summary>Armour plates layered on a prow's brow and chin (about (pu, py), pw wide, pl long), jutting forward over its face and resting on the surface at their backs.</summary>
+    void BrowPlates(float pl, float pw, float pu, float py)
     {
         for (int k = R.Between(1, 3); k > 0; k--)
         {
-            float up = R.Chance(0.6f) ? 1 : -1, t = M(1.5f, 2.5f), w = pw * R.Float(0.55f, 1f), du = R.Float(-0.25f, 0.25f) * pw, y = py + up * (ph + t * 0.5f);
+            float up = R.Chance(0.6f) ? 1 : -1, t = M(1.5f, 2.5f), w = pw * R.Float(0.55f, 1f), du = R.Float(-0.25f, 0.25f) * pw;
+            if (Surface(new NV3(pu + du, py, pl - 1f), up * NV3.UnitY) is not { } rest) continue;
+            float y = rest.Y + up * (t - 1f);
             Taper("trim", -R.Float(0f, 4f) * K, pl, (pu + du, y), (w * 0.75f, t * 0.6f), (pu + du, y), (w, t), chamfer: 0.4f);
         }
     }
@@ -121,7 +120,7 @@ public sealed partial class ShipForm
             float bw = pw * R.Float(1.1f, 1.35f), bh = ph * R.Float(0.35f, 0.5f), up = R.Chance(0.7f) ? 1 : -1;
             Box("hull", new NV3(pu, py + up * (ph + bh * 0.6f), pl * 0.4f - M(2f)), new NV3(bw, bh, pl * 0.4f + M(2f)), 0.3f);
         }
-        BrowPlates(pl, pw, ph, pu, py);
+        BrowPlates(pl, pw, pu, py);
         Blister(pl * R.Float(0.4f, 0.7f), pu, py);
         // The spine.
         float sm = (pl + ve0) / 2, sl = (ve0 - pl) / 2 + 2;
@@ -129,7 +128,7 @@ public sealed partial class ShipForm
         float ps = pair ? s * 0.6f : s, off = pair ? ps + M(1f, 3f) : 0f;
         foreach (float o in pair ? new[] { -off, off } : new[] { 0f })
             Box("hull", stacked ? new NV3(0, o, sm) : new NV3(o, 0, sm), new NV3(ps, ps, sl), ch, hab: true);
-        float ss = pair && !stacked ? off + ps : s, sy = stacked ? off + ps : s;
+        float ss = !pair ? s : stacked ? ps : off + ps, sy = !pair ? s : stacked ? off + ps : ps;
         if (R.Chance(0.4f))
         {
             float kh = M(2f, 5f), up = R.Chance(0.6f) ? 1 : -1;
@@ -166,7 +165,7 @@ public sealed partial class ShipForm
         float pw = s * R.Float(1.5f, 2.1f), ph = s * R.Float(1.4f, 1.9f), py = R.Float(-0.3f, 0.3f) * s, bw = ew * R.Float(0.7f, 0.9f), bh = eh * R.Float(0.8f, 1f);
         Taper("hull", 0, ve0 + M(2f), (0, py), (pw * 0.8f, ph * 0.65f), (0, ey), (bw, bh), chamfer: ch, hab: true);
         float pl = L * R.Float(0.12f, 0.2f);
-        BrowPlates(pl, pw, ph, 0, py);
+        BrowPlates(pl, pw, 0, py);
         Blister(pl * R.Float(0.4f, 0.8f), 0, py);
         // Terraces: shorter slabs stacked one on another, on its back and its belly alike, each stack to its own side.
         foreach (int up in new[] { 1, -1 })
@@ -219,7 +218,7 @@ public sealed partial class ShipForm
         float pw = hu + s + M(2f, 6f), pu = -back * hu;
         if (back != 0) pw = s * R.Float(1.8f, 2.4f);
         Taper("hull", 0, pl, (pu, py), (pw * 0.75f, ph * 0.6f), (pu, py), (pw, ph), chamfer: 0.25f, hab: true);
-        BrowPlates(pl, pw, ph, pu, py);
+        BrowPlates(pl, pw, pu, py);
         Blister(pl * R.Float(0.4f, 0.7f), pu, py);
         // The cross-beam amidships, and the bay between the hulls open forward under it.
         float cv = R.Float(0.55f, 0.75f) * ve0;

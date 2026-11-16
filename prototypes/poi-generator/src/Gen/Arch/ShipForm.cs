@@ -170,7 +170,7 @@ public sealed partial class ShipForm
         public override Prim Turned(float a) => Like(new Rod { A = Turn(A, a), B = Turn(B, a), RA = RA, RB = RB });
     }
 
-    /// <summary>A box at any turn: half sizes H along its axes E1, E2, E3, its E2 and E3 halves shrinking toward its +E1 end to Tip of their size (a blade's taper).</summary>
+    /// <summary>A box at any turn: half sizes H along its axes E1, E2, E3, its E2 half shrinking toward its +E1 end to Tip of its size (a blade's chord; never its thickness, which the grid needs whole).</summary>
     public sealed class Slab : Prim
     {
         public NV3 C, E1, E2, E3, H;
@@ -182,7 +182,7 @@ public sealed partial class ShipForm
             float x = NV3.Dot(d, E1);
             if (MathF.Abs(x) > H.X) return false;
             float k = 1f + (Tip - 1f) * (x / H.X + 1f) * 0.5f;
-            return MathF.Abs(NV3.Dot(d, E2)) <= H.Y * k && MathF.Abs(NV3.Dot(d, E3)) <= H.Z * k;
+            return MathF.Abs(NV3.Dot(d, E2)) <= H.Y * k && MathF.Abs(NV3.Dot(d, E3)) <= H.Z;
         }
 
         public override void Bound()
@@ -424,7 +424,7 @@ public sealed partial class ShipForm
     Rod Bar(string paint, NV3 a, NV3 b, float ra, float rb = -1f) => Add(new Rod { A = a, B = b, RA = MathF.Max(ra, Thin), RB = MathF.Max(rb < 0f ? ra : rb, Thin) }, paint);
 
     /// <summary>The least radius of a bar and half thickness of a slanting plate the 1 m grid holds whole.</summary>
-    const float Thin = 1.05f;
+    const float Thin = 1.25f;
 
     /// <summary>A box at any turn: along e1 (its taper's way), e2 across it, the third square to both.</summary>
     Slab Plate(string paint, NV3 c, NV3 e1, NV3 e2, NV3 h, float tip = 1f)
@@ -435,9 +435,9 @@ public sealed partial class ShipForm
         if (e2.LengthSquared() < 1e-4f) e2 = NV3.Cross(e1, MathF.Abs(e1.Y) < 0.9f ? NV3.UnitY : NV3.UnitX);
         e2 = NV3.Normalize(e2);
         NV3 e3 = NV3.Cross(e1, e2);
-        // (Slanting, never thinner than the grid holds whole.)
-        static bool Square(NV3 e) => MathF.Max(MathF.Abs(e.X), MathF.Max(MathF.Abs(e.Y), MathF.Abs(e.Z))) > 0.99f;
-        if (!Square(e1) || !Square(e2)) h = NV3.Max(h, new NV3(Thin));
+        static bool Square(NV3 e) => MathF.Max(MathF.Abs(e.X), MathF.Max(MathF.Abs(e.Y), MathF.Abs(e.Z))) > 0.9999f;
+        // (Slanting, never thinner than the grid holds whole, nor narrower at its tip than half again that.)
+        if (!Square(e1) || !Square(e2)) h = NV3.Max(h, new NV3(Thin, 1.6f / MathF.Max(0.2f, tip), Thin));
         return Add(new Slab { C = c, E1 = e1, E2 = e2, E3 = e3, H = h, Tip = tip }, paint);
     }
 
@@ -464,8 +464,10 @@ public sealed partial class ShipForm
     void Bell(NV3 throat, float r, float len, bool housing = true)
     {
         if (housing) Can("machine", 2, throat - new NV3(0, 0, Housing(r) / 2 - 1f), r + 1f, Housing(r));
-        Add(new Loft { S0 = throat.Z, S1 = throat.Z + len, A0 = throat.X, B0 = throat.Y, A1 = throat.X, B1 = throat.Y, HA0 = r, HB0 = r, HA1 = r * 1.4f, HB1 = r * 1.4f, Round = true, Wall = 1.3f, Plug = 1.5f }, "dark");
-        Drives.Add((throat + new NV3(0, 0, 1f), r - 1.3f));
+        // (A small bell is a solid nozzle: hollowed, its wall would break up on the grid.)
+        float wall = r < 3.5f ? 0f : MathF.Max(1.6f, r * 0.2f);
+        Add(new Loft { S0 = throat.Z, S1 = throat.Z + len, A0 = throat.X, B0 = throat.Y, A1 = throat.X, B1 = throat.Y, HA0 = r, HB0 = r, HA1 = r * 1.4f, HB1 = r * 1.4f, Round = true, Wall = wall, Plug = 1.5f }, "dark");
+        Drives.Add((throat + new NV3(0, 0, 1f), r - wall));
     }
 
     /// <summary>An open square truss along the thrust axis from v0 to v1: four chords at ±half about (cu, cy), a square frame every bay, a brace across each face of each bay, crossing the other way bay by bay.</summary>
@@ -518,22 +520,16 @@ public sealed partial class ShipForm
         if (dish is { } n) Add(new Dish { C = root + up * (len + 1f), N = NV3.Normalize(n), R = M(3f, 6f), Depth = M(2f) }, "machine");
     }
 
-    /// <summary>Machinery on a face of a box (0 +u, 1 -u, 2 +y, 3 -y): small housings half sunk into it.</summary>
+    /// <summary>Machinery on a face of a body within a box (face 0 +u, 1 -u, 2 +y, 3 -y): small housings half sunk into the surface it finds there.</summary>
     void Clutter(NV3 lo, NV3 hi, int face, int n, string paint = "machine")
     {
+        NV3 o = Out(face), mid = (lo + hi) / 2;
         for (int i = 0; i < n; i++)
         {
             var h = new NV3(M(1.5f, 3.5f), M(1.5f, 2.5f), M(1.5f, 4.5f));
-            float u = R.Float(lo.X + 1, hi.X - 1), y = R.Float(lo.Y + 1, hi.Y - 1), v = R.Float(lo.Z + 2, hi.Z - 2);
-            NV3 c = face switch
-            {
-                0 => new(hi.X + h.Y - 1f, y, v),
-                1 => new(lo.X - h.Y + 1f, y, v),
-                2 => new(u, hi.Y + h.Y - 1f, v),
-                _ => new(u, lo.Y - h.Y + 1f, v),
-            };
             if (face < 2) h = new NV3(h.Y, h.X, h.Z);
-            Box(paint, c, h);
+            var from = new NV3(face < 2 ? mid.X : R.Float(lo.X + 1, hi.X - 1), face < 2 ? R.Float(lo.Y + 1, hi.Y - 1) : mid.Y, R.Float(lo.Z + 2, hi.Z - 2));
+            if (Surface(from, o) is { } p) Box(paint, p + o * (MathF.Abs(o.X) > 0.5f ? h.X : h.Y) * 0.6f, h);
         }
     }
 

@@ -78,7 +78,7 @@ public partial class ShipFormSheet : Node
                         Structure colour = built.Structure;
                         double ms = clock.Elapsed.TotalMilliseconds;
                         Structure grey = HullVessel.Build(plan, plan.Pieces[0], cat, state, seed, intact: true, plain: true).Structure;
-                        return new Built($"{name}{(husk ? " (" + who + ")" : "")}  {role}  {plan.L} m", grey, colour, ms, built.Dropped, Loose(colour));
+                        return new Built($"{name}{(husk ? " (" + who + ")" : "")}  {plan.Form.Plan}  {role}  {plan.L} m", grey, colour, ms, built.Dropped, Loose(colour));
                     }
                     finally { gate.Release(); }
                 }));

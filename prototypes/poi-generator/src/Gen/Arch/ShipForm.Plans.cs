@@ -52,40 +52,28 @@ public sealed partial class ShipForm
     {
         var solid = Prims.Where(p => !p.Cut).ToList();
         float front = solid.Min(p => p.Lo.Z), back = solid.Max(p => p.Hi.Z);
-        float wide = solid.Max(p => MathF.Max(-p.Lo.X, p.Hi.X)), up = solid.Max(p => p.Hi.Y), down = solid.Min(p => p.Lo.Y);
-        // The prow crumpled: bites out of its front.
-        for (int i = R.Between(2, 4); i > 0; i--)
-            Cut(new Ball { C = new NV3(R.Float(-0.4f, 0.4f) * wide, R.Float(down, up) * 0.5f, front + R.Float(-2f, 6f) * K), R = new NV3(M(5f, 10f), M(4f, 8f), M(4f, 8f)) });
-        // The drive section torn open.
-        var tears = new List<NV3>();
-        for (int i = R.Between(2, 3); i > 0; i--)
-        {
-            var c = new NV3(R.Float(-0.6f, 0.6f) * wide, R.Float(down, up) * 0.6f, back - M(2f, 10f));
-            Cut(new Ball { C = c, R = new NV3(M(6f, 12f)) });
-            tears.Add(c);
-        }
-        // Breaches down the hull.
-        var breaches = new List<(NV3 P, NV3 O, float R)>();
-        for (int i = Math.Clamp((int)((back - front) / 18f), 1, 9) + R.Between(-1, 1); i > 0; i--)
+        // The prow crumpled, the drive section torn open, breaches down the hull: every wound bitten from the surface and
+        // never deeper than part of the way in, so it tears the plating and never cuts the ship in two.
+        var wounds = new List<(NV3 P, NV3 O, float R)>();
+        void Bite(float v, float r)
         {
             NV3 o = Round(R.Float(0f, MathF.Tau));
-            if (Surface(new NV3(0, 0, R.Float(front + M(8f), back - M(8f))), o) is not { } p) continue;
-            float r = M(3f, 6f);
+            if (Surface(new NV3(0, 0, v), o) is not { } p) return;
+            r = MathF.Min(r, MathF.Max(1.5f, new NV3(p.X, p.Y, 0f).Length() * 0.45f));
             Cut(new Ball { C = p, R = new NV3(r) });
-            breaches.Add((p, o, r));
+            wounds.Add((p, o, r));
         }
+        for (int i = R.Between(2, 4); i > 0; i--) Bite(front + M(1f, 6f), M(5f, 10f));
+        int bow = wounds.Count;
+        for (int i = R.Between(2, 3); i > 0; i--) Bite(back - M(2f, 10f), M(6f, 12f));
+        for (int i = Math.Clamp((int)((back - front) / 18f), 1, 9) + R.Between(-1, 1); i > 0; i--) Bite(R.Float(front + M(8f), back - M(8f)), M(3f, 6f));
         // What grows over it all, once the cutting is done (nothing cut after it, nothing left floating): buckled plates
         // folded over the crumpled prow, flesh in the tears and bulging out of the breaches, tendrils crawling over the
         // plating from them.
         for (int i = R.Between(3, 6); i > 0; i--)
             if (Surface(new NV3(0, 0, front + M(3f, 14f)), Round(R.Float(0f, MathF.Tau))) is { } p)
                 Plate(Scrap(), p, new NV3(R.Float(-1f, 1f), R.Float(-1f, 1f), R.Float(-1f, 1f)), new NV3(R.Float(-1f, 1f), R.Float(-1f, 1f), 1f), new NV3(M(2f, 4f), M(2f, 4f), 0.8f));
-        foreach (NV3 c in tears)
-        {
-            NV3 o = NV3.Normalize(c with { Z = 0 } + new NV3(0, 0.01f, 0));
-            if (Surface(new NV3(0, 0, c.Z), o) is { } p) Flesh(p, o, M(4f, 7f));
-        }
-        foreach (var (p, o, r) in breaches)
+        foreach (var (p, o, r) in wounds.Skip(bow))
         {
             Flesh(p, o, r);
             for (int k = R.Between(1, 3); k > 0; k--)

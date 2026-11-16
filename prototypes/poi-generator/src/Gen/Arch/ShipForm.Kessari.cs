@@ -50,7 +50,7 @@ public sealed partial class ShipForm
             _ => Bar("hull", p + o * (ms - 0.5f) - new NV3(0, 0, reach * 0.6f), p + o * (ms - 0.5f) + new NV3(0, 0, reach * 0.6f), ms * 0.75f),
         };
         Around(m, n);
-        Around(Sphere("glow", p + o * (ms - 0.5f + (kind == 2 ? ms * 0.75f : ms) + 0.3f), new NV3(1.05f)), n);
+        Around(Sphere("glow", p + o * (ms - 0.5f + (kind == 2 ? ms * 0.75f : ms) - 0.2f), new NV3(1.1f)), n);
     }
 
     /// <summary>The tube: bays of rings of struts with spokes in to the core, longerons and braces between them, a module on every ring's corners (or every other ring's), its profile even, a lens or tapering forward. The drives' ring radius.</summary>
