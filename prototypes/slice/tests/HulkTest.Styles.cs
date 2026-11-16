@@ -22,7 +22,8 @@ public partial class HulkTest
     /// (proportions, how full and how ragged it is, how lopsided, how regularly ribbed, how sharp its bow, how many
     /// drives, what stands out past its body); then each hull is judged with nothing of it in the judging: the measures'
     /// scales, their weights (how well each parts the factions against how much it wanders within one) and the factions'
-    /// averages all worked out without it, and it must be nearest its own faction's average. All 30 of 30, run after run.
+    /// averages all worked out without it, and it must be nearest its own faction (the nearer of that faction's average and its
+    /// nearest hull: a faction of several body plans is several clusters). All 30 of 30, run after run.
     /// --dir writes the outlines.
     /// </summary>
     IEnumerable<int> Styles()
@@ -66,10 +67,12 @@ public partial class HulkTest
             float[] me = Z(samples[i].Measure);
             string best = null;
             float bestD = float.MaxValue;
+            // Each faction by the nearer of its average and its nearest hull (a faction of several body plans is several clusters).
+            float Dist(Func<int, float> other) => Enumerable.Range(0, k).Sum(j => weight[j] * MathF.Pow(me[j] - other(j), 2));
             foreach (string f in Styled)
             {
                 var theirs = zs.Where(z => z.Faction == f).Select(z => z.Z).ToList();
-                float d = Enumerable.Range(0, k).Sum(j => weight[j] * MathF.Pow(me[j] - theirs.Average(o => o[j]), 2));
+                float d = MathF.Min(Dist(j => theirs.Average(o => o[j])), theirs.Min(o => Dist(j => o[j])));
                 if (d < bestD) (bestD, best) = (d, f);
             }
             if (best == samples[i].Faction) right++;
@@ -166,16 +169,32 @@ public partial class HulkTest
         // Bumps: how often the beam jumps down the length; the deepest waist down the middle half.
         int bumps = Enumerable.Range(1, nv - 1).Count(v => MathF.Abs(beam[v] - beam[v - 1]) >= 2);
         float waist = Enumerable.Range(nv / 4, nv / 2).Min(v => beam[v]) / maxBeam;
+        // End on: how round it is, whether it is the same mirrored and turned a quarter or a sixth or an eighth of the way
+        // round its axis (the Kessari's symmetry), how much of it stands past its body's radius.
+        int fu = front.GetLength(0), fy = front.GetLength(1);
+        var cells = new List<(int X, int Y)>();
+        for (int x = 0; x < fu; x++)
+            for (int y = 0; y < fy; y++)
+                if (front[x, y]) cells.Add((x, y));
+        float cx = (float)cells.Average(c => c.X), cy = (float)cells.Average(c => c.Y);
+        bool At(float x, float y) => (int)MathF.Round(x) is int i && (int)MathF.Round(y) is int j && i >= 0 && j >= 0 && i < fu && j < fy && front[i, j];
+        float Turned(float a) => cells.Count(c => At(cx + (c.X - cx) * MathF.Cos(a) - (c.Y - cy) * MathF.Sin(a), cy + (c.X - cx) * MathF.Sin(a) + (c.Y - cy) * MathF.Cos(a))) / (float)cells.Count;
+        float mirror = cells.Count(c => At(2 * cx - c.X, c.Y)) / (float)cells.Count;
+        float radius = MathF.Sqrt(cells.Count / MathF.PI), past = cells.Count(c => (c.X - cx) * (c.X - cx) + (c.Y - cy) * (c.Y - cy) > radius * radius * 1.4f) / (float)cells.Count;
+        // Side on: how its crown rises and falls down its length; from above, its ends against its middle (a hammer or a dumbbell).
+        float topMean = (float)tops.Average(), topSd = MathF.Sqrt((float)tops.Average(t => (t - topMean) * (t - topMean))) / ny;
+        int e = Math.Max(1, nv / 6);
+        float ends = (beam.Take(e).Average() + beam.Skip(nv - e).Average()) / 2f, middle = beam.Skip(nv / 4).Take(nv / 2).Average();
         return new[]
         {
-            nv / (float)nu, nv / (float)ny,
-            Fill(top), Ragged(top),
-            mismatch / (float)Math.Max(1, area),
+            MathF.Log(nv / (float)nu), MathF.Log(nv / (float)ny),
+            Fill(top), Ragged(top), Fill(side), Ragged(side), cells.Count / (float)(fu * fy),
+            mismatch / (float)Math.Max(1, area), mirror, Turned(MathF.PI / 2), MathF.Max(Turned(MathF.PI / 3), Turned(MathF.PI / 4)), past,
             rep,
-            beam.Take(Math.Max(1, nv / 12)).Average() / maxBeam,
+            beam.Take(Math.Max(1, nv / 12)).Average() / maxBeam, ends / MathF.Max(1f, middle),
             plan.Form.Drives.Count / 8f,
             beyond / (float)Math.Max(1, area), over / (float)Math.Max(1, sideArea),
-            bumps * 10f / nv, waist,
+            bumps * 10f / nv, waist, topSd,
             thin / (float)Math.Max(1, stand),
         };
     }

@@ -129,6 +129,7 @@ public sealed partial class HullVessel
         var faces = S.Blocks().Where(b => !b.block.IsFiller && S.TypeOf(b.block) == Plating && Air(b.pos + e)).Select(b => b.pos).OrderBy(p => p.Z).ThenBy(p => Math.Abs(p.X)).ToList();
         var used = new HashSet<Int3>();
         int placed = 0;
+        var why = new int[6];
         foreach (Int3 f in faces)
         {
             if (placed >= most) break;
@@ -142,8 +143,10 @@ public sealed partial class HullVessel
                     {
                         Int3 q = corner + new Int3(a, b, c);
                         int k = Int3.Dot(x - q, e);
-                        ok = InPiece(q.Z + Pc.V0) && !used.Contains(q) && (outside ? Air(q) : Takes(q)) && (k != 0 || Air(q + e))
-                             && (!outside || k != depth - 1 || S.TryGet(q - e, out Block back) && S.TypeOf(back) == Plating);
+                        int bad = !InPiece(q.Z + Pc.V0) ? 0 : used.Contains(q) ? 1 : !(outside ? Air(q) : Takes(q)) ? 2 : !(k != 0 || Air(q + e)) ? 3
+                                : !(!outside || k != depth - 1 || S.TryGet(q - e, out Block back) && S.TypeOf(back) == Plating) ? 4 : -1;
+                        ok = bad < 0;
+                        if (!ok) why[bad]++;
                         cells.Add(q);
                     }
             if (!ok) continue;
@@ -155,6 +158,7 @@ public sealed partial class HullVessel
             D.Thruster(t.Id, corner, push);
             placed++;
         }
+        if (placed < most) Out.Thrust += $"[{push} {t.Id} {(outside ? "out" : "in")}: {faces.Count} faces, {placed} of {most}; piece {why[0]} used {why[1]} cell {why[2]} exhaust {why[3]} back {why[4]}] ";
         return placed;
     }
 
@@ -297,12 +301,21 @@ public sealed partial class HullVessel
             // An engineer's chair at its wall: the piece the core claims can be flown from it whichever piece the bridge came down in.
             BlockType chair = Cat.Type("command-chair");
             int rot = Turn(Dir.PosY, Dir.NegZ);
-            foreach (var (u, v) in WallCells(core, 1))
-                if (Fits(chair, At(u, core.Y, v), rot, Free(core)))
-                {
-                    Device(chair, u, core.Y, v, rot, core);
-                    break;
-                }
+            // (Facing any way the room allows; failing that, in the nearest room that takes one: the piece must be flyable from somewhere.)
+            bool Seat(Space room)
+            {
+                foreach (int turn in new[] { rot, Turn(Dir.PosY, Dir.PosX), Turn(Dir.PosY, Dir.NegX), Turn(Dir.PosY, Dir.PosZ) })
+                    foreach (var (u, v) in WallCells(room, 1).Concat(room.Floor))
+                        if (Fits(chair, At(u, room.Y, v), turn, Free(room)) && !room.Doors.Any(d => d.Inside == (u, v)))
+                        {
+                            Device(chair, u, room.Y, v, turn, room);
+                            return true;
+                        }
+                return false;
+            }
+            if (!Seat(core))
+                foreach (Space room in Live.Where(x => !x.Corridor && x != core).OrderBy(x => Math.Abs(x.Deck - core.Deck) * 10 + Math.Abs(x.V0 - core.V0)))
+                    if (Seat(room)) break;
         }
         Turrets();
         Power();
@@ -427,6 +440,14 @@ public sealed partial class HullVessel
                         Device(chair, u, s.Y, v, turn, s);
                         chairs++;
                     }
+        // (A bridge too cramped for that: one chair anywhere but in a doorway itself.)
+        if (chairs == 0)
+            foreach (var (u, v) in s.Floor.Where(c => !s.Doors.Any(d => d.Inside == c)).OrderBy(c => c.V))
+                if (Fits(chair, At(u, s.Y, v), rot, Free(s)))
+                {
+                    Device(chair, u, s.Y, v, rot, s);
+                    break;
+                }
     }
 
     /// <summary>Turrets where the form mounts them, each on the first free cell out from its plating, looking out of that face.</summary>
@@ -532,6 +553,15 @@ public sealed partial class HullVessel
                 S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));
                 placed++;
             }
+            // A room whose ceiling takes none (open over a flight, a machine under every cell of it): a lamp high on a wall.
+            if (placed == 0)
+                foreach (var (u, v) in s.Floor.Where(c => !Has(c.U, top, c.V)))
+                    if (Four.FirstOrDefault(o => Has(u + o.U, top, v + o.V), (0, 0)) is var (du, dv) && (du, dv) != (0, 0))
+                    {
+                        Int3 at = D.Mount("light", At(u, top, v), DirOf(du, dv));
+                        S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));
+                        break;
+                    }
         }
     }
 }
