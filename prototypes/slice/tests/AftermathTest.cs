@@ -178,7 +178,7 @@ public partial class AftermathTest : Node
                     if (!shot && m.RummageFor < 4.5f)
                     {
                         shot = true;
-                        foreach (int x in Shot("rummage.png", Near(patch.FromPatch(m.Position), _game.Survivor.WorldFeet))) yield return x;
+                        foreach (int x in Shot("rummage.png", Near(patch.FromPatch(m.Position), bag.Position))) yield return x;
                     }
                 }
             }
@@ -201,9 +201,10 @@ public partial class AftermathTest : Node
         Check(_game.Zone.Loot.All.All(l => l.Creature == null || !band.Members.Contains(l.Creature)), "and their bodies are no containers: the bag is what's searched");
 
         // 3. A hungry predator near the body eats it.
-        Species hunter = patch.Life.Fauna.Species.Where(s => s.Behaviour == Behaviour.Predator && !s.Flies && s.Plan is BodyPlan.Walker or BodyPlan.Hopper && s.Figure == null && !s.IsDeep && s.Domestic == DomesticKind.None)
-            .OrderBy(s => MathF.Abs(s.Body.Size - 1.2f)).FirstOrDefault();
-        if (hunter == null) { GD.Print("  (no walking predator on this world: nothing to eat the body)"); }
+        // (A predator if the world has one that walks, else a scavenger: both eat what they find.)
+        Species hunter = patch.Life.Fauna.Species.Where(s => s.Behaviour is Behaviour.Predator or Behaviour.Scavenger && !s.Flies && s.Plan is BodyPlan.Walker or BodyPlan.Hopper && s.Figure == null && !s.IsDeep && s.Domestic == DomesticKind.None)
+            .OrderBy(s => s.Behaviour == Behaviour.Predator ? 0 : 1).ThenBy(s => MathF.Abs(s.Body.Size - 1.2f)).FirstOrDefault();
+        if (hunter == null) { GD.Print("  (no walking predator or scavenger on this world: nothing to eat the body)"); }
         else
         {
             float meat = body.MeatLeft;
@@ -215,7 +216,7 @@ public partial class AftermathTest : Node
                 ate = eater.State == CState.Eat && WildSim.Flat(eater.Position - body.Position).Length() < eater.Radius + body.Radius + 1f && body.MeatLeft < meat;
                 yield return 0;
             }
-            Check(ate, $"a hungry {hunter.CommonName} near the body feeds on it ({eater.State}, {WildSim.Flat(eater.Position - body.Position).Length():F1} m off, meat {meat:F1} to {body.MeatLeft:F1})");
+            Check(ate, $"a hungry {hunter.CommonName} ({hunter.Behaviour}) near the body feeds on it ({eater.State}, {WildSim.Flat(eater.Position - body.Position).Length():F1} m off, meat {meat:F1} to {body.MeatLeft:F1})");
             eater.Removed = true;
         }
 
@@ -237,6 +238,8 @@ public partial class AftermathTest : Node
         Vector3 feet = _game.Survivor.WorldFeet, ahead = Flat(_game.Survivor.WorldLook());
         Herd band = Band(sim, patch, feet + ahead * 9f, PersonRole.Trader, Occupancy.Friendly, "", 1, Stance.Welcoming);
         Creature trader = band.Members[0];
+        Vector3 toYou = patch.PatchLocal(feet) - trader.Position;
+        trader.Yaw = MathF.Atan2(-toYou.X, -toYou.Z); // (facing the sleeper: they see who has the gun on them)
         Arm("tack-pistol");
         int offered = _game.Offered;
         Lootable bag = null;
@@ -478,12 +481,12 @@ public partial class AftermathTest : Node
         return hit.Count > 0 ? (Vector3)hit["normal"] : Vector3.Up;
     }
 
-    /// <summary>A near third-person view of something from beside the sleeper's spot: from behind it a few metres, eye high, looking at it.</summary>
-    static Transform3D Near(Vector3 at, Vector3 from)
+    /// <summary>A near third-person view of someone at a thing: from the thing's far side a few strides off, eye high, both in view.</summary>
+    static Transform3D Near(Vector3 who, Vector3 thing)
     {
-        Vector3 to = Flat(at - from);
-        Vector3 eye = at - to * 3.4f + to.Cross(Vector3.Up) * 1.3f + Vector3.Up * 1.7f;
-        return new Transform3D(Basis.LookingAt(at + Vector3.Up * 0.6f - eye, Vector3.Up), eye);
+        Vector3 away = Flat(thing - who);
+        Vector3 eye = thing + away * 2.6f + away.Cross(Vector3.Up) * 0.9f + Vector3.Up * 1.6f;
+        return new Transform3D(Basis.LookingAt((who + thing) * 0.5f + Vector3.Up * 0.45f - eye, Vector3.Up), eye);
     }
 
     /// <summary>A weapon in hand on slot 1, loaded (people read it, aimed, as a threat).</summary>

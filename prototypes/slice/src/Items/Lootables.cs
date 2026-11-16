@@ -268,7 +268,9 @@ public partial class Lootables : Node3D
         {
             Vector3 p = (Vector3)hit["position"], n = (Vector3)hit["normal"];
             if (n.Y > 0.5f) { Rest(l, p); return; }
-            to = p + new Vector3(n.X, 0f, n.Z).Normalized() * (BagRadius + 0.05f);
+            // (A wall or a trunk: off it. A ceiling: back down.)
+            Vector3 side = new(n.X, 0f, n.Z);
+            to = side.LengthSquared() > 1e-4f ? p + side.Normalized() * (BagRadius + 0.05f) : p + Vector3.Down * 0.05f;
             v = new Vector3(0f, MathF.Min(v.Y, 0f), 0f);
         }
         v += Vector3.Down * Fall * dt;
