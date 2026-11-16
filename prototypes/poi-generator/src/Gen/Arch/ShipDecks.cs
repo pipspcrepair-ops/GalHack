@@ -11,7 +11,8 @@ namespace PoiGenerator.Gen;
 /// other way round). Every 5 m up the form a deck wherever 4 m stands clear inside a habitable part of it; on each, every
 /// open area of its own: its corridors run down it as the hull's roll has them (a spine, kept to one side, or twin
 /// corridors joined at their ends into a ring), cross passages through it, rooms cut from what is left between them in the
-/// hull's grain (Meridian's and the Kessari's all one length, a Reaver's anything), the halls two decks tall where the form
+/// hull's grain (Meridian's and the Kessari's all one length, a Reaver's anything, a Vharn's grown round; a Reaver's
+/// walls knocked through here and there), the halls two decks tall where the form
 /// is deep enough (the engine room aft, the holds and hangars), flights of stairs between rooms one over another,
 /// a door from every room, hatches out through the shell from every part nothing else joins (a Freeholder's modules on
 /// their truss each have their own), and what each room is for: the bridge in the nose, a blister, a sponson or buried
@@ -485,7 +486,10 @@ public sealed class ShipDecks
             foreach (var part in parts.SelectMany(Parts))
             {
                 int du = part.Max(c => c.U) - part.Min(c => c.U), dv = part.Max(c => c.V) - part.Min(c => c.V);
-                if (part.Count >= 9 && du >= 1 && dv >= 1) AddRoom("", d, part);
+                if (part.Count < 9 || du < 1 || dv < 1) continue;
+                // A Vharn room has no square corners: each grown round, the cell in it walled.
+                var cells = part.ToHashSet();
+                AddRoom("", d, _faction == Faction.Vharn && part.Count >= 16 ? part.Where(c => Four.Count(o => cells.Contains((c.U + o.U, c.V + o.V))) > 2) : part);
             }
         }
     }
@@ -584,6 +588,15 @@ public sealed class ShipDecks
             }
             if (!more) break;
         }
+        // A Reaver ship's walls knocked through between rooms here and there, as its crew found handy.
+        if (_faction == Faction.Reavers)
+            for (int id = 0; id < Rooms.Count; id++)
+            {
+                if (Rooms[id].Corridor || Rooms[id].Hall || Rooms[id].Floor.Count == 0) continue;
+                var walls = Walls(id);
+                foreach (var g in walls.Where(w => !Rooms[w.Other].Corridor && !Rooms[w.Other].Hall && w.Other > id).GroupBy(w => w.Other).ToList())
+                    if (R.Chance(0.3f)) Door(id, walls, g.Key, 1);
+            }
         // Rooms with no way to anything joined to a neighbour all the same: a chain of rooms opening one into the next, its way out its own.
         for (int id = 0; id < Rooms.Count; id++)
         {
