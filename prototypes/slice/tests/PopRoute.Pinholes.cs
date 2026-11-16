@@ -78,7 +78,7 @@ public partial class PopRoute
                     Stand(0);
                     yield return 0;
                 }
-                Viewport.Msaa msaa = GetViewport().Msaa3D;
+                Game.AntiAliasing aa = _game.Settings.Aa;
                 var sparked = new Dictionary<string, double>();
                 var holes = new Dictionary<string, double>();
                 foreach (string c in cases)
@@ -91,7 +91,7 @@ public partial class PopRoute
                         foreach (var (name, layer) in PinLayers) cam.SetCullMaskValue(layer, c != "-" + name);
                         zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = c == "-shadows" ? 0u : uint.MaxValue;
                         env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
-                        GetViewport().Msaa3D = c == "no msaa" ? Viewport.Msaa.Disabled : msaa;
+                        Game.Game.SetAntiAliasing(GetViewport(), c == "no msaa" ? Game.AntiAliasing.Off : aa);
                         Stand(i);
                         _game.FixedCamera = At(i);
                         yield return 0;
@@ -112,7 +112,7 @@ public partial class PopRoute
                     GD.Print(string.Create(CultureInfo.InvariantCulture, $"PINHOLES {label} {view} {c}: dots a frame {(double)found / PinFrames:F1} (sparks {sparked[c]:F2}), new a frame {(double)flicker / (PinFrames - 1):F1}, ground pixels showing the background a frame {holes[c]:F1}"));
                 }
                 foreach (var (_, layer) in PinLayers) cam.SetCullMaskValue(layer, true);
-                GetViewport().Msaa3D = msaa;
+                Game.Game.SetAntiAliasing(GetViewport(), aa);
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
                 env.BackgroundMode = Godot.Environment.BGMode.Sky;
                 if (label != "night" || view is "flying") continue;

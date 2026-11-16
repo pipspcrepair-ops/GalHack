@@ -10,6 +10,9 @@ public enum WindowKind { Windowed, Borderless, Fullscreen }
 /// <summary>The sun's shadows: how far they reach and how sharp they are. There is no "off": the sun's shadow is what keeps it out of rooms and under roofs.</summary>
 public enum ShadowLevel { Low, Medium, High, Ultra }
 
+/// <summary>How the 3D view's jagged edges are smoothed: none, a cheap screen-space pass (FXAA, SMAA) or multisampling.</summary>
+public enum AntiAliasing { Off, Fxaa, Smaa, Msaa2x, Msaa4x }
+
 /// <summary>
 /// The player's settings: graphics, mouse and keys (the four volumes keep their own file,
 /// <see cref="AudioSettings"/>). Kept in a small config file in user://, read at start; a missing
@@ -32,6 +35,8 @@ public sealed class GameSettings
     /// <summary>Vertical field of view, degrees.</summary>
     public float Fov = 75f;
     public ShadowLevel Shadows = ShadowLevel.High;
+    /// <summary>MSAA 4x by default, the game's look before this was a setting.</summary>
+    public AntiAliasing Aa = AntiAliasing.Msaa4x;
     /// <summary>How far the diggable ground streams round you, in 16 m columns each way; past it, the far land.</summary>
     public int GroundDetail = 5;
     /// <summary>How far land, flora, places and ruins draw in detail, m: from the default out to the horizon (DetailReach).</summary>
@@ -75,7 +80,7 @@ public sealed class GameSettings
     public void ResetGraphics()
     {
         var d = new GameSettings();
-        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, TreeDistance, SpawnDistance, ShadowDistance, Gamma, MarkersInWorld) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.TreeDistance, d.SpawnDistance, d.ShadowDistance, d.Gamma, d.MarkersInWorld);
+        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, Aa, GroundDetail, DetailDistance, TreeDistance, SpawnDistance, ShadowDistance, Gamma, MarkersInWorld) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.Aa, d.GroundDetail, d.DetailDistance, d.TreeDistance, d.SpawnDistance, d.ShadowDistance, d.Gamma, d.MarkersInWorld);
         Changed();
     }
 
@@ -100,6 +105,7 @@ public sealed class GameSettings
         s.RenderScale = Math.Clamp(Float(file, "graphics", "render_scale", s.RenderScale), MinScale, 1f);
         s.Fov = Math.Clamp(Float(file, "graphics", "fov", s.Fov), MinFov, MaxFov);
         s.Shadows = Enum.TryParse(Str(file, "graphics", "shadows"), true, out ShadowLevel sh) ? sh : s.Shadows;
+        s.Aa = Enum.TryParse(Str(file, "graphics", "aa"), true, out AntiAliasing aa) && Enum.IsDefined(aa) ? aa : s.Aa;
         s.GroundDetail = Math.Clamp(Int(file, "graphics", "ground_detail", s.GroundDetail), MinGround, MaxGround);
         s.DetailDistance = Math.Clamp(Float(file, "graphics", "detail_distance", s.DetailDistance), DetailReach.Default, DetailReach.Most);
         s.TreeDistance = Math.Clamp(Float(file, "graphics", "tree_distance", s.TreeDistance), DetailReach.LeastTrees, DetailReach.Most);
@@ -127,6 +133,7 @@ public sealed class GameSettings
         file.SetValue("graphics", "render_scale", RenderScale);
         file.SetValue("graphics", "fov", Fov);
         file.SetValue("graphics", "shadows", Shadows.ToString().ToLowerInvariant());
+        file.SetValue("graphics", "aa", Aa.ToString().ToLowerInvariant());
         file.SetValue("graphics", "ground_detail", GroundDetail);
         file.SetValue("graphics", "detail_distance", DetailDistance);
         file.SetValue("graphics", "tree_distance", TreeDistance);

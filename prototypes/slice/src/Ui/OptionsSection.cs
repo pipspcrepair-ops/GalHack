@@ -167,6 +167,14 @@ public sealed class OptionsSection : IMenuSection
             Changed();
         }
 
+        r = Row(g, body, i++, "ANTI-ALIASING", null, rh);
+        int aa = Choice(g, "opt:aa", r, new[] { "OFF", "FXAA", "SMAA", "MSAA 2X", "MSAA 4X" }, (int)s.Aa, 120);
+        if (aa >= 0 && aa != (int)s.Aa)
+        {
+            s.Aa = (AntiAliasing)aa;
+            Changed();
+        }
+
         r = Row(g, body, i++, "GROUND DETAIL", "diggable radius", rh);
         int[] radii = Enumerable.Range(GameSettings.MinGround, GameSettings.MaxGround - GameSettings.MinGround + 1).ToArray();
         int gd = Choice(g, "opt:ground", r, radii.Select(n => $"{n * 16} M").ToArray(), Array.IndexOf(radii, s.GroundDetail), 120);
