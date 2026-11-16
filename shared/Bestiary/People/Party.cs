@@ -68,7 +68,7 @@ public sealed class Party
     public bool Bending;
     public Vector3 BentTo, Bound;
     public float BendSide;
-    /// <summary>Tests: members who took in an event after their leader had, and before.</summary> who took in an event after their leader had, and before.</summary>
+    /// <summary>Tests: members who took in an event after their leader had, and before.</summary>
     public int AfterLeader, BeforeLeader;
 
     public Leaning Leaning => Temper.LeaningOf(Stance);
