@@ -89,7 +89,7 @@ public static class Spitting
             g.Landed = true;
             gobs.RemoveAt(i);
             w.RaiseSplash(g, hit);
-            if (t != null && !g.From.Removed) Attacks.Deliver(w, g.From, t, hit);
+            if (t != null && !g.From.Removed) Attacks.Deliver(w, g.From, t, hit, g.Position);
         }
     }
 }

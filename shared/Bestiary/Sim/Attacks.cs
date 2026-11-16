@@ -416,31 +416,30 @@ public static class Attacks
         Vector3 end = c.StrikePoint;
         float rise = end.Y - t.Position.Y, near = w.Combat.ContactRadius + c.Radius * 0.4f;
         if (c.Space == null) return t.Attackable && WildSim.Flat(t.Position - end).Length() <= near && t.Position.Y - w.Terrain.Height(end.X, end.Z) < 2.2f;
-        return t.Attackable
-               && WildSim.Flat(t.Position - end).Length() <= near
-               && rise > -0.8f && rise < 2.3f
-               && SpaceMath.Clear(c.Space, end, t.Position + Vector3.Up * (BodyHeight * 0.5f)); // never through a wall, floor or ceiling
+        return t.Attackable && WildSim.Flat(t.Position - end).Length() <= near && rise > -0.8f && rise < 2.3f;
     }
 
     /// <summary>The strike is over: it met the victim (the moment its part touched them) or it didn't, and the jaws snap shut either way.</summary>
     static void Land(WildSim w, Creature c, ITarget t, bool hit, float gap)
     {
         CombatRules r = w.Combat;
-        c.StrikeLanded = hit;
         if (Mouthed(c) && c.Move is AttackMove.Bite or AttackMove.Charge) c.Gape = -1f;
+        // What struck: the part its rig drove into them (Strikes.Touch), or where the lunge ends where that is the judge.
+        Vector3 part = c.Space == null && c.Species.Rig != RigKind.Swarm ? c.StrikerWas : c.StrikePoint;
+        // A seize needs room where it lands, as it did when it set off; without it, it's a blow.
+        if (hit && c.Seizing && Reaches(w, c, t, part) && Seizing.Free(w, t) && Seizing.CanReach(w, c, t))
+        {
+            // It has them by the head.
+            c.StrikeLanded = true;
+            Seizing.Begin(w, c, t);
+            return;
+        }
+        hit = c.StrikeLanded = Deliver(w, c, t, hit, part, gap);
         if (c.Move == AttackMove.Stomp)
         {
             Vector4 foot = c.Rig.Striker(c);
             Strikes.Quake(w, c, new Vector3(foot.X, 0f, foot.Z), true, hit); // hit or miss, the ground takes it: a thud, a shake, dust
         }
-        // A seize needs room where it lands, as it did when it set off; without it, it's a blow.
-        if (hit && c.Seizing && Seizing.Free(w, t) && Seizing.CanReach(w, c, t))
-        {
-            // It has them by the head.
-            Seizing.Begin(w, c, t);
-            return;
-        }
-        Deliver(w, c, t, hit, gap);
         if (c.Species.Flight == FlightKind.Hover) c.Velocity = Vector3.Zero; // a sting stops dead at the skin: what carried it in doesn't carry it through
         if (c.Space != null)
         {
@@ -461,9 +460,13 @@ public static class Attacks
     /// <summary>What its blow deals: its hand weapon's (or bare hands') where it's a person or machine that carries one, else its body's own.</summary>
     public static float BlowOf(Creature c) => Arming.BlowDamage?.Invoke(c) is float b && b >= 0f ? b : c.Stats.Damage;
 
-    /// <summary>A blow lands or doesn't: the damage, and everyone told. What the body does next is its own business.</summary>
-    internal static void Deliver(WildSim w, Creature c, ITarget t, bool hit, float gap = float.NaN)
+    /// <summary>
+    /// A blow lands or doesn't: the damage, and everyone told; whether it landed. Every blow of every kind comes through
+    /// here, and lands only where its part <see cref="Reaches"/> them. What the body does next is its own business.
+    /// </summary>
+    internal static bool Deliver(WildSim w, Creature c, ITarget t, bool hit, Vector3 part, float gap = float.NaN)
     {
+        hit = hit && Reaches(w, c, t, part);
         float dealt = 0f, blow = BlowOf(c) * Strikes.DamageShare(w, c);
         if (hit)
         {
@@ -480,7 +483,20 @@ public static class Attacks
         w.RaiseAttacked(new AttackEvent
         {
             Creature = c, Target = t, First = c.FirstAttack, Windup = c.WindupLength, Hit = hit, Damage = dealt, Time = w.Time,
-            Move = c.Move, Gap = gap, Push = hit ? Strikes.Push(w, c, t) : Vector3.Zero,
+            Move = c.Move, Gap = gap, Push = hit ? Strikes.Push(w, c, t) : Vector3.Zero, Part = part,
         });
+        return hit;
+    }
+
+    /// <summary>
+    /// Whether a striking part (sim frame) reaches whoever it strikes: a clear line from it to the middle of their body
+    /// through the world's own collision where the game has it, and, for a body living in a cave's or a place's space,
+    /// from its middle to the part and on to them through that space. Nothing lands through a wall, a floor, a ceiling or rock.
+    /// </summary>
+    public static bool Reaches(WildSim w, Creature c, ITarget t, Vector3 part)
+    {
+        Vector3 mark = t is CreatureTarget prey ? Interpenetration.Middle(prey.Creature) : t.Position + Vector3.Up * ((t.Crouched ? Strikes.CrouchHeight : BodyHeight) * 0.5f);
+        if (c.Space != null && !(SpaceMath.Clear(c.Space, Interpenetration.Middle(c), part) && SpaceMath.Clear(c.Space, part, mark))) return false;
+        return w.SightLine == null || c.NoRays || w.SightLine(part, mark);
     }
 }

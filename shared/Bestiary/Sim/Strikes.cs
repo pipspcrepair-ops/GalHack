@@ -97,8 +97,7 @@ public static class Strikes
         c.StrikerWas = now;
         c.StrikerWasOn = true;
         gap = s.W > 0f ? Gap(was, now, s.W, t) : float.MaxValue;
-        return t.Attackable && gap <= w.Combat.ContactSlack
-               && (c.Space == null || SpaceMath.Clear(c.Space, now, t.Position + Vector3.Up * (Attacks.BodyHeight * 0.5f))); // never through a wall, floor or ceiling
+        return t.Attackable && gap <= w.Combat.ContactSlack;
     }
 
     /// <summary>Whether any of its body is already into the victim's.</summary>
