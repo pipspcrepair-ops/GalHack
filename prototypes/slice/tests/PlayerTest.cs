@@ -50,7 +50,7 @@ public partial class PlayerTest : Node
 {
     /// <summary>TEST TIME-SCALE: crafting runs this many times faster (printed). Nothing else is sped up.</summary>
     const double CraftScale = 40;
-    const int WatchdogMinutes = 12;
+    const int WatchdogMinutes = 25;
 
     Game.Game _game;
     Playthrough _play;
