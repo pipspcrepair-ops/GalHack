@@ -92,7 +92,7 @@ public sealed partial class ShipForm
     void Welded()
     {
         float ram = L * R.Float(0.2f, 0.28f), fl = L * R.Float(0.3f, 0.38f), al = L * R.Float(0.24f, 0.32f);
-        float fw = M(10.5f, 14.5f), fh = M(8.5f, 12.5f), v0 = ram - M(4f), vj = v0 + fl;
+        float fw = Roomy(M(10.5f, 14.5f), 7.5f), fh = Roomy(M(8.5f, 12.5f), 7f), v0 = ram - M(4f), vj = v0 + fl;
         Hulk(0, 0, v0 + fl / 2, fw, fh, fl, false);
         float k = R.Chance(0.5f) ? R.Float(0.6f, 0.8f) : R.Float(1.15f, 1.45f), au = R.Float(-0.3f, 0.3f) * fw, ay = R.Float(-0.35f, 0.35f) * fh, aw = fw * k, ah = fh * k * R.Float(0.8f, 1.2f);
         float va = vj + M(2f) + al / 2;
@@ -107,7 +107,7 @@ public sealed partial class ShipForm
     /// <summary>Piggyback: a smaller hull of another ship welded on a bigger one's back (or flank), set forward or aft of it, each its own drives; the ram on the big one. Two brutes in one.</summary>
     void Piggyback()
     {
-        float ram = L * R.Float(0.18f, 0.25f), bl = L - ram - L * 0.1f, bw = M(10.5f, 14.5f), bh = M(7.5f, 10.5f), v0 = ram - M(4f), bv = v0 + bl / 2;
+        float ram = L * R.Float(0.18f, 0.25f), bl = L - ram - L * 0.1f, bw = Roomy(M(10.5f, 14.5f), 7.5f), bh = Roomy(M(7.5f, 10.5f), 7f), v0 = ram - M(4f), bv = v0 + bl / 2;
         Hulk(0, 0, bv, bw, bh, bl, R.Chance(0.3f));
         Ram(ram, bw, bh, 0);
         // The rider: its own section and size, on the back or a flank, forward or aft.

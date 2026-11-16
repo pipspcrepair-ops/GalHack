@@ -297,8 +297,17 @@ public sealed partial class ShipForm
 
     public bool Solid(NV3 p) => At(p) is { Cut: false };
 
-    /// <summary>Can a crew live here (a part rooms are fitted into)?</summary>
-    public bool Hab(NV3 p) => At(p) is { Cut: false, Hab: true };
+    /// <summary>Can a crew live here: solid, and inside a part rooms are fitted into (whatever was laid over it since, collars and plates round a spine or a pod on a block, takes none of its inside away)?</summary>
+    public bool Hab(NV3 p)
+    {
+        if (At(p) is not { Cut: false }) return false;
+        foreach (int i in _byV[(int)MathF.Floor(p.Z) - _v0])
+        {
+            Prim q = Prims[i];
+            if (q.Hab && !q.Cut && p.X >= q.Lo.X && p.X <= q.Hi.X && p.Y >= q.Lo.Y && p.Y <= q.Hi.Y && p.Z >= q.Lo.Z && p.Z <= q.Hi.Z && q.Contains(p)) return true;
+        }
+        return false;
+    }
 
     /// <summary>The paint of a cell: its middle's part, or the first of its corners' (a cell the surface only passes through).</summary>
     public string? PaintOf(int u, int y, int v)
@@ -364,6 +373,12 @@ public sealed partial class ShipForm
 
     /// <summary>A measure of a metres (or between a and b) at the ship's scale, never under a metre.</summary>
     float M(float a, float b = float.NaN) => MathF.Max(1f, (float.IsNaN(b) ? a : R.Float(a, b)) * K);
+
+    /// <summary>
+    /// A habitable part's measure, never under <paramref name="least"/> metres on a crewed hull: people are one size whatever the
+    /// ship's, and a deck needs 4 m clear over its slab with the shell round it, so a part rooms go in is 13 m or more across.
+    /// </summary>
+    float Roomy(float m, float least) => L >= 40f ? MathF.Max(m, least) : m;
 
     /// <summary>A whole number of metres between a and b at the ship's scale, never under <paramref name="least"/> (struts sit on cells).</summary>
     int Mi(int a, int b, int least = 1) => Math.Max(least, (int)MathF.Round(R.Between(a, b) * K));

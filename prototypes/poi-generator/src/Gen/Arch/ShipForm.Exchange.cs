@@ -97,7 +97,7 @@ public sealed partial class ShipForm
     /// <summary>The seed pod: one short, fat core in its cradle ringed with containers, the hab sphere forward, the drives aft. A fat seed pod bristling with blocks.</summary>
     void SeedPod()
     {
-        float cr = L * R.Float(0.15f, 0.2f), cyr = cr * R.Float(0.8f, 1.1f), hr = cr * R.Float(0.5f, 0.72f);
+        float cr = Roomy(L * R.Float(0.15f, 0.2f), 9f), cyr = Roomy(cr * R.Float(0.8f, 1.1f), 8f), hr = Roomy(cr * R.Float(0.5f, 0.72f), 8f);
         float hv = hr, cv0 = hr * 1.6f + M(2f), cl = L * R.Float(0.46f, 0.56f), cv = cv0 + cl / 2;
         Pod(cv, cl, cr, cyr);
         HabSphere(hv, hr, R.Float(-0.35f, 0.35f) * cr, cv0);
@@ -111,12 +111,12 @@ public sealed partial class ShipForm
     void Tandem()
     {
         int n = R.Between(2, 3);
-        float hr = L * R.Float(0.07f, 0.1f), hv = hr, v = hr * 1.6f + M(2f), neck = M(4f, 8f), room = L * 0.82f - v - neck * (n - 1), sag = R.Float(-1f, 1f) * L * 0.03f;
+        float hr = Roomy(L * R.Float(0.07f, 0.1f), 8f), hv = hr, v = hr * 1.6f + M(2f), neck = M(4f, 8f), room = L * 0.82f - v - neck * (n - 1), sag = R.Float(-1f, 1f) * L * 0.03f;
         HabSphere(hv, hr, R.Float(-0.3f, 0.3f) * hr, v);
         float last = v, lastR = hr;
         for (int i = 0; i < n; i++)
         {
-            float cl = room / n * R.Float(0.8f, 1.2f), cr = MathF.Min(L * R.Float(0.1f, 0.15f), cl * 0.55f), cyr = cr * R.Float(0.8f, 1.1f), cv = v + cl / 2, cy = sag * i;
+            float cl = room / n * R.Float(0.8f, 1.2f), cr = Roomy(MathF.Min(L * R.Float(0.1f, 0.15f), cl * 0.55f), 8f), cyr = Roomy(cr * R.Float(0.8f, 1.1f), 7.5f), cv = v + cl / 2, cy = sag * i;
             if (i > 0) Can("machine", 2, new NV3(0, cy * 0.5f, v - neck / 2), MathF.Min(lastR, cr) * 0.4f, neck + M(6f));
             Pod(cv, cl, cr, cyr, cy);
             ContainerRings(cv, cl, cr, cyr, R.Between(1, 2), cy);
@@ -131,7 +131,7 @@ public sealed partial class ShipForm
     /// <summary>The wheel: a short fat hub inside one or two great wheels of containers on spokes, the hab sphere forward, the drives aft. A broad drum of blocks round a hub.</summary>
     void Wheel()
     {
-        float cr = L * R.Float(0.09f, 0.12f), cyr = cr * R.Float(0.85f, 1.05f), hr = cr * R.Float(0.8f, 1.1f);
+        float cr = Roomy(L * R.Float(0.09f, 0.12f), 8f), cyr = Roomy(cr * R.Float(0.85f, 1.05f), 7.5f), hr = Roomy(cr * R.Float(0.8f, 1.1f), 8f);
         float hv = hr, cv0 = hr * 1.6f + M(2f), cl = L * R.Float(0.4f, 0.5f), cv = cv0 + cl / 2;
         Pod(cv, cl, cr, cyr);
         HabSphere(hv, hr, R.Float(-0.3f, 0.3f) * cr, cv0);

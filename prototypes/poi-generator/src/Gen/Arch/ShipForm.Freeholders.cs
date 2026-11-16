@@ -27,7 +27,7 @@ public sealed partial class ShipForm
     /// <summary>The command pod on a nose at (cu, cy) from v0: a small box or can drawn in at its front, some machinery on it. Its length and radius.</summary>
     (float Len, float R) CommandPod(float v0, float cu, float cy)
     {
-        float pl = M(10f, 15f), pr = M(4.5f, 6.5f);
+        float pl = Roomy(M(11f, 16f), 15f), pr = Roomy(M(5.5f, 7.5f), 7.5f);
         Taper("hull", v0, v0 + pl, (cu, cy), (pr * 0.55f, pr * 0.5f), (cu, cy), (pr, pr * 0.85f), round: R.Chance(0.5f), chamfer: 0.5f, hab: true);
         Clutter(new NV3(cu - pr, cy - pr, v0 + 2), new NV3(cu + pr, cy + pr * 0.85f, v0 + pl), R.Range(2, 4), R.Between(1, 3));
         if (R.Chance(0.6f)) Mast(new NV3(cu, cy, MathF.Round(v0 + pl * 0.6f)), NV3.UnitY, M(4f, 8f), new NV3(R.Float(-1f, 1f), 0.5f, -1f));
@@ -55,7 +55,7 @@ public sealed partial class ShipForm
             (first, last) = (MathF.Min(first, front), MathF.Max(last, front));
         }
         float fu0 = bells.Min(b => b.U - b.R), fu1 = bells.Max(b => b.U + b.R), fy0 = bells.Min(b => b.Y - b.R), fy1 = bells.Max(b => b.Y + b.R), fv = first - M(3f);
-        Box("machine", new NV3((fu0 + fu1) / 2, (fy0 + fy1) / 2, (fv + last + 1.5f) / 2), new NV3((fu1 - fu0) / 2 + 1, (fy1 - fy0) / 2 + 1, (last + 1.5f - fv) / 2), 0.3f);
+        Box("machine", new NV3((fu0 + fu1) / 2, (fy0 + fy1) / 2, (fv + last + 1.5f) / 2), new NV3((fu1 - fu0) / 2 + 1, (fy1 - fy0) / 2 + 1, (last + 1.5f - fv) / 2), 0.3f, hab: true);
         return fv;
     }
 
@@ -63,9 +63,9 @@ public sealed partial class ShipForm
     string[] Kinds => Role switch
     {
         "liner" => new[] { "can", "can", "can", "tank", "containers", "radiator" },
-        "miner" => new[] { "cage", "cage", "tank", "can", "containers", "radiator" },
-        "warship" => new[] { "can", "tank", "containers", "radiator", "cage" },
-        _ => new[] { "containers", "containers", "cage", "can", "tank", "radiator" },
+        "miner" => new[] { "cage", "cage", "tank", "can", "can", "containers", "radiator" },
+        "warship" => new[] { "can", "can", "tank", "containers", "radiator", "cage" },
+        _ => new[] { "containers", "containers", "cage", "can", "can", "tank", "radiator" },
     };
 
     /// <summary>
@@ -166,7 +166,7 @@ public sealed partial class ShipForm
         var (pl, _) = CommandPod(0, 0, 0);
         float fv = SalvagedDrives(0, 0, M(10f), M(9f), 2, 4);
         // The tug and its cab.
-        float tl = M(14f, 22f), tw = M(5.5f, 8.5f), tt = M(4.5f, 7.5f), tv1 = fv + M(2f), tv0 = tv1 - tl, tu = R.Float(-1f, 1f) * K, ty = R.Float(-1f, 1f) * K;
+        float tl = M(14f, 22f), tw = Roomy(M(5.5f, 8.5f), 7f), tt = Roomy(M(4.5f, 7.5f), 6.5f), tv1 = fv + M(2f), tv0 = tv1 - tl, tu = R.Float(-1f, 1f) * K, ty = R.Float(-1f, 1f) * K;
         Box(Scrap(), new NV3(tu, ty, (tv0 + tv1) / 2), new NV3(tw, tt, tl / 2), 0.35f, hab: true);
         Clutter(new NV3(tu - tw, ty - tt, tv0), new NV3(tu + tw, ty + tt, tv1), R.Range(0, 4), R.Between(2, 4));
         Box("trim", new NV3(tu + R.Float(-0.5f, 0.5f) * tw, ty + tt + M(2f), tv0 + M(4f)), new NV3(M(3f), M(2.5f), M(4f)), 0.5f, hab: true);
@@ -221,18 +221,18 @@ public sealed partial class ShipForm
         {
             case "can":
             {
-                float r = great ? M(8.5f, 11.5f) : M(3.5f, 8.5f);
+                float r = Roomy(great ? M(8.5f, 11.5f) : M(5f, 9f), 7f);
                 string paint = R.Chance(0.5f) ? "hull" : Scrap();
                 if (square && R.Chance(0.35f))
                 {
                     // Across the truss, sticking out.
-                    float reach = M(10f, 18f);
+                    float reach = Roomy(M(10f, 18f), 14f);
                     len = 2 * r;
                     Can(paint, axis, dir * (root + reach / 2) + new NV3(off.X, off.Y, v + r), r, reach, domes: true, hab: true);
                 }
                 else
                 {
-                    len = great ? M(16f, 26f) : M(8f, 18f);
+                    len = Roomy(great ? M(16f, 26f) : M(8f, 18f), 14f);
                     Can(paint, 2, dir * (root + r) + new NV3(off.X, off.Y, v + len / 2), r, len, domes: true, hab: true);
                 }
                 break;

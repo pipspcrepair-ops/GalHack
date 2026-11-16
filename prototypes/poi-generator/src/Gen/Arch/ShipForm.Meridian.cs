@@ -34,7 +34,7 @@ public sealed partial class ShipForm
     {
         int rows = h > w * 0.8f ? 2 : 1, cols = Math.Clamp((int)MathF.Round(w * 2f / (h * 2f / rows)), 2, 4);
         float br = MathF.Min(w * 2f / cols, h * 2f / rows) * 0.46f, bl = br * R.Float(1.5f, 2f), ve1 = L - bl - R.Float(0f, 3f) * K, ve0 = ve1 - el;
-        Taper("hull", ve0, ve1, (cu, cy), (w * 0.82f, h * 0.86f), (cu, cy), (w, h), chamfer: 0.12f);
+        Taper("hull", ve0, ve1, (cu, cy), (w * 0.82f, h * 0.86f), (cu, cy), (w, h), chamfer: 0.12f, hab: true);
         for (int i = 0; i < cols; i++)
             for (int j = 0; j < rows; j++)
                 Bell(new NV3(cu - w + 2f * w * (i + 0.5f) / cols, cy - h + 2f * h * (j + 0.5f) / rows, ve1), br, bl, housing: false);
@@ -99,7 +99,7 @@ public sealed partial class ShipForm
     /// <summary>A sponson standing out from a spine (half s about (cu, cy)) along o, l long about v, on a pylon, its hangar's mouth open forward.</summary>
     void Sponson(NV3 o, float v, float l, float cu, float cy, float s)
     {
-        float sw = M(4.5f, 8.5f), sh = M(3.5f, 6f), gap = M(3f, 8f), out_ = MathF.Abs(o.X) > 0.5f ? sw : sh;
+        float sw = Roomy(M(4.5f, 8.5f), 6.5f), sh = Roomy(M(3.5f, 6f), 6f), gap = M(3f, 8f), out_ = MathF.Abs(o.X) > 0.5f ? sw : sh;
         NV3 c = new NV3(cu, cy, v) + o * (s + gap + out_), h = MathF.Abs(o.X) > 0.5f ? new NV3(sw, sh, l / 2) : new NV3(sh * 1.4f, sh, l / 2);
         Box("hull", c, h, 0.25f, hab: true);
         Box("trim", new NV3(cu, cy, v + l * 0.1f) + o * (s + gap / 2f), MathF.Abs(o.X) > 0.5f ? new NV3(gap / 2f + M(1.5f), MathF.Min(sh, s) * 0.6f, l * 0.3f) : new NV3(MathF.Min(sh, s) * 0.6f, gap / 2f + M(1.5f), l * 0.3f));
@@ -112,7 +112,7 @@ public sealed partial class ShipForm
     /// <summary>The hammerhead: a hammer prow, one long spine, a bigger engine block and sponsons amidships, one side or both, never alike.</summary>
     void Hammerhead()
     {
-        float s = M(5.5f, 8f), ch = R.Chance(0.5f) ? 0.55f : 0.15f, ey = R.Float(-0.3f, 0.3f) * s, el = L * R.Float(0.14f, 0.2f);
+        float s = Roomy(M(5.5f, 8f), 6.5f), ch = R.Chance(0.5f) ? 0.55f : 0.15f, ey = R.Float(-0.3f, 0.3f) * s, el = L * R.Float(0.14f, 0.2f);
         float pl = L * R.Float(0.12f, 0.18f), pw = s * R.Float(2.2f, 2.9f), ph = s * R.Float(1.4f, 1.9f);
         float ew = MathF.Max(pw * R.Float(1.05f, 1.3f), s * 2.6f), eh = MathF.Max(ph * R.Float(1.1f, 1.4f), s * 2f);
         float ve0 = Engines(R.Float(-0.2f, 0.2f) * s, ey, ew, eh, el);
@@ -134,7 +134,7 @@ public sealed partial class ShipForm
     /// </summary>
     void Twin()
     {
-        float s = M(4f, 5.5f), gap = M(12f, 18f), hu = MathF.Round(s + gap / 2), ch = R.Chance(0.5f) ? 0.5f : 0.15f, el = L * R.Float(0.14f, 0.2f);
+        float s = Roomy(M(4f, 5.5f), 6f), gap = M(12f, 18f), hu = MathF.Round(s + gap / 2), ch = R.Chance(0.5f) ? 0.5f : 0.15f, el = L * R.Float(0.14f, 0.2f);
         float pl = L * R.Float(0.11f, 0.16f), pw = hu + s + M(3f, 7f), ph = s * R.Float(1.8f, 2.4f), py = R.Float(-0.3f, 0.3f) * s;
         float ew = pw * R.Float(1.05f, 1.25f), eh = ph * R.Float(1.15f, 1.4f);
         float ve0 = Engines(R.Float(-0.15f, 0.15f) * s, R.Float(-0.3f, 0.3f) * s, ew, eh, el);
@@ -155,7 +155,7 @@ public sealed partial class ShipForm
     /// <summary>The cross: a hammer prow, one long spine, a bigger engine block, and sponsons standing out from the spine above, below and to the sides, each its own size and place: a cross end on.</summary>
     void Cross()
     {
-        float s = M(5f, 7.5f), ch = R.Chance(0.5f) ? 0.55f : 0.15f, el = L * R.Float(0.13f, 0.18f);
+        float s = Roomy(M(5f, 7.5f), 6.5f), ch = R.Chance(0.5f) ? 0.55f : 0.15f, el = L * R.Float(0.13f, 0.18f);
         float pl = L * R.Float(0.12f, 0.17f), pw = s * R.Float(2.1f, 2.7f), ph = s * R.Float(1.6f, 2.2f);
         float ew = MathF.Max(pw * R.Float(1.05f, 1.25f), s * 2.6f), eh = MathF.Max(ph * R.Float(1.05f, 1.25f), s * 2.2f);
         float ve0 = Engines(0, R.Float(-0.2f, 0.2f) * s, ew, eh, el);

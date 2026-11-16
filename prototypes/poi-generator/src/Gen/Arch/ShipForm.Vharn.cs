@@ -29,6 +29,7 @@ public sealed partial class ShipForm
     /// <summary>A segment of carapace at c (its radii rad): a ridge down its back, or a shell over it.</summary>
     (NV3 C, NV3 R) Segment(NV3 c, NV3 rad, bool hab)
     {
+        if (hab) rad = new NV3(Roomy(rad.X, 8f), Roomy(rad.Y, 7.5f), rad.Z);
         Sphere("hull", c, rad, hab);
         if (R.Chance(0.6f)) Plate("trim", c + new NV3(0, rad.Y * 0.85f, 0), NV3.UnitZ, NV3.UnitY, new NV3(rad.Z * 0.84f, rad.Y * 0.35f, 0.9f));
         else Sphere("trim", c + new NV3(0, rad.Y * 0.25f, -rad.Z * 0.16f), new NV3(rad.X * 1.06f, rad.Y * 0.85f, rad.Z * 0.75f));

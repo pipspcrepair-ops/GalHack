@@ -23,14 +23,13 @@ namespace Slice.Places;
 /// It is built the way a player builds a capital ship (docs/place-patterns.md 1.4, 5.2; one-metre-grid.md 6): a
 /// shell of plated base blocks shaped to the plan's outer form (its faction's body plan, ShipForm) with slopes and
 /// corners wherever a face leans, its pipes and struts of cylinder blocks, thrusters packed in its bells' throats and
-/// turrets on its faces. Inside (switched off until rooms are fitted into the form, docs/ship-forms.md phase B):
-/// decks 5 m apart (a 1 m deck and 4 m clear), a spine
-/// corridor, side passages and cross passages on every deck, crawlways through the machinery decks, the holds, hangar and engine room as halls two decks
-/// tall, rooms off the corridors for what a crew needs (bridge, officers, quarters, galley, medbay, workshop, stores,
-/// reactor, generators, the core room), switchback stairs, doors that open by hand. Its devices are the player's
-/// real parts sized from the catalogue: thrusters in the nacelles, lift engines in the keel under the halls, a
-/// reactor of generators, gyros and a warp drive by the engines, turrets on the roof, cargo containers, a cockpit
-/// and command chairs on the bridge, and no core, only the seat for one. Every room is lit for its purpose and
+/// turrets on its faces. Inside, the decks its plan fitted inside the form (ShipDecks): 5 m apart (a 1 m deck and
+/// 4 m clear), corridors and cross passages as the hull's roll has them, the holds, hangars and engine room as halls
+/// two decks tall, rooms for what a crew needs (bridge, officers, quarters, galley, medbay, workshop, stores, reactor,
+/// generators, the core room), flights of stairs, doors that open by hand, hatches out. Its devices are the player's
+/// real parts sized from the catalogue: thrusters packed in its bells and set flush in its faces on every axis, lift
+/// engines in its belly, a reactor of generators, gyros and a warp drive in the engine room, turrets where the form
+/// mounts them, cargo containers (where the fuel is kept), command chairs on the bridge, and no core, only the seat for one. Every room is lit for its purpose and
 /// dressed by the decorations library, as a house's rooms are (RoomDecor, the interiors proof). The crash's tears
 /// and crushing come from the plan, the years' damage from the state, and enough always comes through to fly.
 /// </summary>
@@ -119,20 +118,31 @@ public sealed partial class HullVessel
     /// One piece of a capital hull as a coreless vessel. <paramref name="intact"/> builds it as its builder made it,
     /// before the crash and the years (what a full repair puts back). <paramref name="dress"/> is the decorations
     /// library (null: undressed). <paramref name="plain"/> paints it all one grey: its form with the livery off.
-    /// For now it is the outer form alone: its rooms, the crash's and the years' damage and the dressing wait until rooms
-    /// are fitted inside the form (docs/ship-forms.md phase B).
     /// </summary>
     public static Result Build(Plan plan, Piece piece, Catalogue cat, PoiState state, ulong seed, GalHack.Deco.DecoPoi dress = null, bool intact = false, bool plain = false)
     {
         var b = new HullVessel(plan, piece, cat, state, seed, intact, plain);
+        b._u0 = b.I.U0;
+        b._nu = b.I.NU;
+        b._ny = b.I.NY;
         b.Paints();
-        b.Corners();
+        b.Spaces();
         b.Shell();
         b.Pipes();
+        b.Walls();
+        b.Stairs();
+        b.Doors();
+        b.Ways();
+        b.Windows();
         b.Engines();
-        b.Turrets();
+        b.Fittings();
+        b.Lights();
+        b.Finish();
+        if (!intact) b.Damage();
+        if (!intact && (state == PoiState.Infested || plan.Husk)) b.Infest();
         b.Hollow();
         b.Join();
+        if (dress != null) b.Dress(dress);
         b.S.Name = plan.Role switch { "warship" => "Warship", "liner" => "Liner", "miner" => "Mining Ship", "carrier" => "Carrier", _ => "Freighter" } + piece.Name;
         b.S.Owner = null;
         b.S.DirtyChunks.Clear();
@@ -201,70 +211,25 @@ public sealed partial class HullVessel
         return b;
     }
 
-    void Put(int u, int y, int v, Block b) => S.Set(At(u, y, v), b);
+    void Put(int u, int y, int v, Block b)
+    {
+        if (InPiece(v)) S.Set(At(u, y, v), b);
+    }
     void Solid(int u, int y, int v, ushort paint) => Put(u, y, v, Armour(Plating, Cat.Cube, Orientations.Identity, paint));
     bool Has(int u, int y, int v) => S.Has(At(u, y, v));
     void Clear(int u, int y, int v) => S.Clear(At(u, y, v));
 
     // ---- the envelope ---------------------------------------------------------------------------------
 
-    int _u0, _nu, _ny, _nv;
-    byte[] _mask;
-    bool[] _inner;
+    int _u0, _nu, _ny;
 
-    /// <summary>
-    /// Each cell's corner mask (which of its corners lie inside the plan's solid: bit 0 +u, bit 1 +y, bit 2 +v) over the
-    /// piece's box, and which cells are inside the shell (the cell and every one round it wholly the hull's).
-    /// </summary>
-    void Corners()
-    {
-        _u0 = -H.ExtentU - 1;
-        _nu = 2 * H.ExtentU + 3;
-        _ny = H.ExtentY + 1;
-        _nv = VEnd - Pc.V0;
-        int cu = _nu + 1, cy = _ny + 1;
-        var corner = new bool[cu * cy * (_nv + 1)];
-        for (int k = 0; k <= _nv; k++)
-            for (int j = 0; j < cy; j++)
-                for (int i = 0; i < cu; i++)
-                    corner[i + cu * (j + cy * k)] = H.Solid(_u0 + i - 0.5f, j - 0.5f, Pc.V0 + k - 0.5f);
-        _mask = new byte[_nu * _ny * _nv];
-        for (int k = 0; k < _nv; k++)
-            for (int j = 0; j < _ny; j++)
-                for (int i = 0; i < _nu; i++)
-                {
-                    int m = 0;
-                    for (int c = 0; c < 8; c++)
-                        if (corner[i + (c & 1) + cu * (j + (c >> 1 & 1) + cy * (k + (c >> 2 & 1)))]) m |= 1 << c;
-                    _mask[i + _nu * (j + _ny * k)] = (byte)m;
-                }
-        _inner = new bool[_mask.Length];
-        for (int k = 1; k < _nv - 1; k++)
-            for (int j = 1; j < _ny - 1; j++)
-                for (int i = 1; i < _nu - 1; i++)
-                {
-                    bool all = true;
-                    for (int dk = -1; dk <= 1 && all; dk++)
-                        for (int dj = -1; dj <= 1 && all; dj++)
-                            for (int di = -1; di <= 1 && all; di++)
-                                all = _mask[i + di + _nu * (j + dj + _ny * (k + dk))] == 255;
-                    _inner[i + _nu * (j + _ny * k)] = all;
-                }
-    }
-
-    int Index(int u, int y, int v)
-    {
-        int i = u - _u0, k = v - Pc.V0;
-        return i < 0 || y < 0 || k < 0 || i >= _nu || y >= _ny || k >= _nv ? -1 : i + _nu * (y + _ny * k);
-    }
-
-    /// <summary>The cell's corner mask.</summary>
-    int Mask(int u, int y, int v) => Index(u, y, v) is int i && i >= 0 ? _mask[i] : 0;
+    /// <summary>The cell's corner mask (which of its corners lie inside the form), from the plan's decks.</summary>
+    int Mask(int u, int y, int v) => I.Mask(u, y, v);
 
     bool InPiece(int v) => v >= Pc.V0 && v < VEnd;
 
     /// <summary>Inside the shell: the cell and everything round it is the hull's.</summary>
-    public bool Interior(int u, int y, int v) => Index(u, y, v) is int i && i >= 0 && _inner[i];
+    public bool Interior(int u, int y, int v) => I.Interior(u, y, v);
 
     /// <summary>
     /// The shell: every cell the envelope passes through, shaped to it (slopes on the chamfers and the rake, corners
@@ -302,28 +267,5 @@ public sealed partial class HullVessel
                 if (InPiece(v) && y >= 0 && !Has(u, y, v)) Put(u, y, v, Armour(Plating, tube, rot, Paint.TryGetValue(paint, out ushort p) ? p : Paint["machine"]));
             }
         }
-    }
-
-    // ---- decks ------------------------------------------------------------------------------------------
-
-    /// <summary>The decks: a slab every 5 m inside the shell, in the main hull and up through the tower.</summary>
-    void Decks()
-    {
-        for (int v = Pc.V0; v < Math.Min(VEnd, H.L); v++)
-            for (int u = -H.Half; u <= H.Half; u++)
-                for (int d = 1; d <= H.Decks + 1; d++)
-                {
-                    int y = Plan.Pitch * d;
-                    if (Interior(u, y, v)) Solid(u, y, v, Paint["deck"]);
-                }
-    }
-
-    /// <summary>A column of a deck all inside the shell from its floor to its ceiling.</summary>
-    bool Open(int u, int d, int v)
-    {
-        int y0 = Plan.Walk(d);
-        for (int y = y0; y < y0 + 4; y++)
-            if (!Interior(u, y, v)) return false;
-        return true;
     }
 }

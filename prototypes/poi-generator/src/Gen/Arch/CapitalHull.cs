@@ -88,6 +88,8 @@ public static class CapitalHull
     public sealed class HullPlan
     {
         public string Role = "", Size = "", Crash = "";
+        /// <summary>The Husks have it: its form wounded and grown over with their flesh, inside and out.</summary>
+        public bool Husk;
         public TechLevel Tech;
         public ulong Seed;
         public Faction Faction;
@@ -100,7 +102,10 @@ public static class CapitalHull
 
         /// <summary>Its outer form, made first: every solid of the hull (ShipForm).</summary>
         public ShipForm Form = null!;
-        /// <summary>The length (the form's, prow to the drives' mouths), the half-beam, the decks of the rooms' program, the bow bay's end.</summary>
+        /// <summary>The decks fitted inside the form (planned once, on first use, whichever piece is built first).</summary>
+        public ShipDecks Inside => _inside.Value;
+        internal Lazy<ShipDecks> _inside = null!;
+        /// <summary>The length (the form's, prow to the drives' mouths), the half-beam, the decks that fit in its height, the bow bay's end.</summary>
         public int L, Half, Decks, Bz;
         /// <summary>The faction's livery (data/hull-styles.txt).</summary>
         public HullStyle Style = new();
@@ -192,6 +197,7 @@ sealed class Hulk
         H.Role = S.Role;
         H.Size = S.Size;
         H.Crash = S.Crash;
+        H.Husk = S.Husk;
         H.Tech = P.Tech;
         H.Seed = R.NextU64();
         H.Faction = S.Faction is { } f && Enum.TryParse(f, true, out Faction named) ? named : P.C.Kit.Faction;
@@ -239,14 +245,15 @@ sealed class Hulk
     /// <summary>The outer form, first: its faction's body plan at a length in the size class's range (now and then a huge hull runs on toward the longest Empyrion's derelicts reach).</summary>
     void Form()
     {
-        var (l0, l1, _, _, decks) = CapitalHull.SizeOf(S.Size);
+        var (l0, l1, _, _, _) = CapitalHull.SizeOf(S.Size);
         int length = S.Size == "huge" && R.Chance(0.15f) ? R.Between(250, 270) : R.Between(l0, l1);
         H.Form = ShipForm.Make(H.Faction, S.Role, length, R.Fork("form").NextU64(), S.Husk);
         H.L = H.Form.Length;
         H.ExtentU = H.Form.ExtentU;
         H.ExtentY = H.Form.Height;
         H.Half = H.ExtentU - 1;
-        H.Decks = decks;
+        H.Decks = Math.Max(1, (H.ExtentY - 1) / CapitalHull.HullPlan.Pitch);
+        H._inside = new Lazy<ShipDecks>(() => ShipDecks.Plan(H.Form, H.Faction, H.Role, H.Seed, v => H.Bays.FirstOrDefault(b => v >= b.V0 && v < b.V1)?.Kind ?? "engine"));
     }
 
     // ---- the bays, stem to stern -----------------------------------------------------------------------

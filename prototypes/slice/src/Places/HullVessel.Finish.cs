@@ -54,23 +54,29 @@ public sealed partial class HullVessel
     {
         foreach (var (p, _) in S.Blocks().ToList())
             if (H.Torn(p.X, p.Y, p.Z + Pc.V0)) S.Clear(p);
-        int top = H.Decks - 1;
         // The decks by the tears are the crash's too: what stands of them is ragged, low and open to the sky.
-        for (int v = Pc.V0; v < Math.Min(VEnd, H.L); v++)
+        for (int v = Pc.V0; v < VEnd; v++)
             if (H.Break >= 0 && Math.Abs(v - H.Break) < 9 || H.Cut >= 0 && v >= H.Cut - 6 && v < H.Cut + 8)
-                for (int d = 0; d < H.Decks; d++)
-                    for (int u = -H.Half; u <= H.Half; u++) Out.Crushed.Add(At(u, Plan.Walk(d), v));
-        for (int v = Pc.V0; v < Math.Min(VEnd, H.L); v++)
+                for (int d = 0; d < Levels; d++)
+                    for (int u = _u0; u < _u0 + _nu; u++)
+                        if (I.Zone(d, u, v) >= 0) Out.Crushed.Add(At(u, Walk(d), v));
+        // Where it struck: the topmost space at each cell crushed down from its ceiling.
+        for (int v = Pc.V0; v < VEnd; v++)
         {
-            if (H.Crushed(v) == 0) continue;
-            for (int u = -H.Half; u <= H.Half; u++)
-            {
-                if (ZoneAt(top, u, v) is not (int z and >= 0)) continue;
-                for (int y = H.Top - H.Crushed(v); y < H.Top; y++)
-                    if (Interior(u, y, v) && !H.Torn(u, y, v)) Solid(u, y, v, Paint["scorch"]);
-                Out.Spaces[z].Height = Math.Min(Out.Spaces[z].Height, 4 - H.Crushed(v));
-                Out.Crushed.Add(At(u, Plan.Walk(top), v));
-            }
+            int crush = H.Crushed(v);
+            if (crush == 0) continue;
+            for (int u = _u0; u < _u0 + _nu; u++)
+                for (int d = Levels - 1; d >= 0; d--)
+                {
+                    if (ZoneAt(d, u, v) is not (int z and >= 0)) continue;
+                    Space sp = Out.Spaces[z];
+                    int roof = sp.Y + sp.Height;
+                    for (int y = roof - crush; y < roof; y++)
+                        if (Interior(u, y, v) && !H.Torn(u, y, v)) Solid(u, y, v, Paint["scorch"]);
+                    sp.Height = Math.Min(sp.Height, 4 - crush + (sp.Hall ? ShipDecks.Pitch : 0));
+                    Out.Crushed.Add(At(u, sp.Y, v));
+                    break;
+                }
         }
         float devices = State switch { PoiState.Active => 0.1f, PoiState.Abandoned => 0.3f, PoiState.Infested => 0.4f, _ => 0.55f };
         float shell = State switch { PoiState.Active => 0.004f, PoiState.Abandoned => 0.012f, PoiState.Infested => 0.016f, _ => 0.04f };
@@ -99,9 +105,10 @@ public sealed partial class HullVessel
 
     /// <summary>
     /// A Husk ship (DESIGN: hijacked vessels of any faction, keeping its hull, overrun with worm flesh): flesh grown in
-    /// rounded masses out of its rooms' walls and corners, the holds and the engine room the worst, now and then through
-    /// the deck overhead into the room above; veins through the walls round it; every lamp that still works flickering a
-    /// light that looks wrong. Never in a doorway's way or a corridor: what lives here still gets about.
+    /// rounded, lumpy masses out of its rooms' walls and corners, the holds and the engine room the worst, now and then
+    /// through the deck overhead into the room above; raised veins running from every mass over it and up the walls and
+    /// ceiling round it; veins through the walls; every lamp that still works flickering a light that looks wrong. Never
+    /// in a doorway's way or a corridor: what lives here still gets about.
     /// </summary>
     void Infest()
     {
@@ -119,7 +126,7 @@ public sealed partial class HullVessel
                 // On the floor against the wall, or up through the deck overhead.
                 bool through = Rng.Next(4) == 0;
                 float cy = through ? s.Y + s.Height - 0.5f : s.Y - 0.5f + r * 0.6f;
-                Blob(s, near, cu + 0.5f, cy, cv + 0.5f, r, through);
+                Veins(s, near, Blob(s, near, cu + 0.5f, cy, cv + 0.5f, r, through));
             }
         }
         // Veins through the walls of the rooms it has taken.
@@ -128,11 +135,21 @@ public sealed partial class HullVessel
                 S.Set(p, Armour(Plating, S.ShapeOf(b), b.Rot, Paint["vein"]));
     }
 
-    /// <summary>A rounded mass of flesh about a point (hull frame, metres), shaped to its sphere a cell at a time, soft (the bare base block, no plating); through a deck it takes the slab's cells too.</summary>
-    void Blob(Space s, HashSet<(int, int)> near, float cu, float cy, float cv, float r, bool through)
+    /// <summary>
+    /// A rounded mass of flesh about a point (hull frame, metres): two or three swellings run together, shaped to them a
+    /// cell at a time, soft (the bare base block, no plating); through a deck it takes the slab's cells too. Its cells.
+    /// </summary>
+    List<Int3> Blob(Space s, HashSet<(int, int)> near, float cu, float cy, float cv, float r, bool through)
     {
-        bool In(float u, float y, float v) => (u - cu) * (u - cu) + (y - cy) * (y - cy) * 1.4f + (v - cv) * (v - cv) <= r * r;
-        int R = (int)MathF.Ceiling(r) + 1;
+        var lobes = new List<(float U, float Y, float V, float R)> { (cu, cy, cv, r) };
+        for (int k = Rng.Next(1, 3); k > 0; k--)
+        {
+            float a = (float)Rng.NextDouble() * MathF.Tau, d = r * (0.4f + 0.4f * (float)Rng.NextDouble());
+            lobes.Add((cu + MathF.Cos(a) * d, cy + ((float)Rng.NextDouble() - 0.3f) * r * 0.5f, cv + MathF.Sin(a) * d, r * (0.55f + 0.3f * (float)Rng.NextDouble())));
+        }
+        bool In(float u, float y, float v) => lobes.Any(l => (u - l.U) * (u - l.U) + (y - l.Y) * (y - l.Y) * 1.4f + (v - l.V) * (v - l.V) <= l.R * l.R);
+        var cells = new List<Int3>();
+        int R = (int)MathF.Ceiling(r * 1.8f) + 1;
         for (int v = (int)cv - R; v <= (int)cv + R; v++)
             for (int u = (int)cu - R; u <= (int)cu + R; u++)
             {
@@ -151,8 +168,42 @@ public sealed partial class HullVessel
                     if (m == 0 || Fit.For(m) is not var (shape, rot)) continue;
                     Put(u, y, v, Armour(Cat.Type("base-block"), shape, rot, Paint["flesh"]));
                     s.Taken.Add((u, v));
+                    cells.Add(At(u, y, v));
                 }
             }
+        return cells;
+    }
+
+    /// <summary>
+    /// Raised veins from a mass of flesh: two to four of them, each a run of round tubes crawling off the mass over it
+    /// and up the walls and ceiling round it (never along the floor, never in a doorway's way), turning as they go.
+    /// </summary>
+    void Veins(Space s, HashSet<(int, int)> near, List<Int3> flesh)
+    {
+        if (flesh.Count == 0) return;
+        ShapeDef tube = Cat.Shape("cylinder");
+        BlockType soft = Cat.Type("base-block");
+        var mine = new HashSet<Int3>(flesh);
+        bool Room(Int3 c) => c.Y > s.Y && c.Y < s.Y + s.Height && s.Floor.Contains((c.X, c.Z + Pc.V0)) && !near.Contains((c.X, c.Z + Pc.V0)) && !S.Has(c);
+        bool Hugs(Int3 c) => Dirs.All.Any(f => S.Has(c + f.Vec()));
+        for (int n = Rng.Next(2, 5); n > 0; n--)
+        {
+            Int3 from = flesh[Rng.Next(flesh.Count)];
+            var start = Dirs.All.Select(f => from + f.Vec()).Where(c => Room(c)).ToList();
+            if (start.Count == 0) continue;
+            Int3 at = start[Rng.Next(start.Count)];
+            Dir heading = Dirs.All[Rng.Next(6)];
+            for (int len = Rng.Next(4, 13); len > 0; len--)
+            {
+                // Mostly on as it was heading, now and then turning, always hugging something.
+                var next = Dirs.All.Where(f => Room(at + f.Vec()) && Hugs(at + f.Vec())).OrderBy(f => f == heading ? Rng.Next(3) : Rng.Next(2, 6)).ToList();
+                int axis = heading.Axis();
+                Put(at.X, at.Y, at.Z + Pc.V0, Armour(soft, tube, axis switch { 0 => Turn(Dir.PosX, Dir.NegZ), 1 => Orientations.Identity, _ => Turn(Dir.PosZ, Dir.PosY) }, Paint.GetValueOrDefault("vein", Paint["flesh"])));
+                if (next.Count == 0) break;
+                heading = next[0];
+                at += heading.Vec();
+            }
+        }
     }
 
     /// <summary>Solid that nobody sees or reaches (a cube of plating with plating on all six sides: the middle of a cargo stack, the fill behind the bow's rooms) is left out, as a builder would.</summary>

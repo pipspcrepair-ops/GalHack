@@ -16,10 +16,10 @@ public sealed partial class ShipForm
     void Kessari()
     {
         int n = R.Pick(new[] { 4, 4, 6, 8 }), kind = R.Range(0, 3);
-        float ms = M(2.5f, 4.5f), cr = M(2.5f, 3.5f), vp = L * R.Float(0.12f, 0.17f), vs = L - L * R.Float(0.08f, 0.12f);
+        float ms = M(2.5f, 4.5f), cr = M(3.5f, 5f), vp = L * R.Float(0.12f, 0.17f), vs = L - L * R.Float(0.08f, 0.12f);
         // The core column and the spire.
         Can("machine", 2, new NV3(0, 0, (vp * 0.5f + vs) / 2), cr, vs - vp * 0.5f);
-        Taper("hull", 0, vp, (0, 0), (0.8f, 0.8f), (0, 0), (cr + M(2.5f), cr + M(2.5f)), round: true);
+        Taper("hull", 0, vp, (0, 0), (0.8f, 0.8f), (0, 0), (cr + M(2.5f), cr + M(2.5f)), round: true, hab: true);
         int plan = R.PickWeighted(new[] { 1f, 1f, 0.8f });
         Plan = plan switch { 1 => "vanes", 2 => "wheels", _ => "tube" };
         float rd = plan switch
@@ -58,7 +58,7 @@ public sealed partial class ShipForm
     float Tube(int n, int kind, float ms, float cr, float vp, float vs)
     {
         int bays = R.Between(4, 7), profile = R.Range(0, 3);
-        float pitch = (vs - M(3f) - vp) / bays, rr = M(12f, 21f), a0 = MathF.PI / n, mr = cr + M(1f, 3f), ml = pitch * R.Float(0.3f, 0.5f);
+        float pitch = (vs - M(3f) - vp) / bays, rr = M(12f, 21f), a0 = MathF.PI / n, mr = Roomy(cr + M(2f, 4f), 7.5f), ml = Roomy(pitch * R.Float(0.3f, 0.5f), 12f);
         bool alternate = R.Chance(0.35f), hoops = R.Chance(0.3f);
         float Radius(int i) => profile switch { 1 => rr * (0.7f + 0.4f * MathF.Sin(MathF.PI * i / bays)), 2 => rr * (0.65f + 0.35f * i / bays), _ => rr };
         NV3 Vertex(int i, float a) => Round(a) * Radius(i) + new NV3(0, 0, vp + i * pitch);
@@ -74,17 +74,18 @@ public sealed partial class ShipForm
             // Longeron and brace to the next ring, and the bay's machinery on the core.
             Around(Bar("machine", p, Vertex(i + 1, a0), 1.3f * K), n);
             Around(Bar("machine", p, Vertex(i + 1, a0 + MathF.Tau / n), 0.75f * K), n);
-            Can("machine", 2, new NV3(0, 0, p.Z + pitch / 2), mr, ml);
+            Can("machine", 2, new NV3(0, 0, p.Z + pitch / 2), mr, ml, hab: true);
         }
         return Radius(bays) * 0.5f;
     }
 
-    /// <summary>The vanes: flat lattice fins standing out from the core the ship's length (a star end on), struts across them at every station and a brace in every bay, a module on every fin's edge at each station, rings tying the fins' edges fore and aft. The drives' ring radius.</summary>
+    /// <summary>The vanes: flat lattice fins standing out from the core the ship's length (a star end on), struts across them at every station and a brace in every bay, the bay's machinery on the core, a module on every fin's edge at each station, rings tying the fins' edges fore and aft. The drives' ring radius.</summary>
     float Vanes(int n, int kind, float ms, float cr, float vp, float vs)
     {
         int stations = R.Between(5, 9);
         float rv = M(11f, 19f), a0 = R.Chance(0.5f) ? 0f : MathF.PI / n, v0 = vp * 0.8f, v1 = vs - M(3f), pitch = (v1 - v0) / (stations - 1), swell = R.Float(-0.25f, 0.3f);
         NV3 o = Round(a0);
+        float mr = Roomy(cr + M(2f, 4f), 7.5f), ml = Roomy(pitch * R.Float(0.3f, 0.5f), 12f);
         float Reach(int i) => rv * (1f + swell * MathF.Sin(MathF.PI * i / (stations - 1)));
         NV3 Edge(int i) => o * Reach(i) + new NV3(0, 0, v0 + i * pitch);
         for (int i = 0; i < stations; i++)
@@ -95,6 +96,7 @@ public sealed partial class ShipForm
             if (i + 1 == stations) break;
             Around(Bar("machine", p, Edge(i + 1), 1.3f * K), n);
             Around(Bar("machine", o * cr + new NV3(0, 0, p.Z), Edge(i + 1), 0.75f * K), n);
+            Can("machine", 2, new NV3(0, 0, p.Z + pitch / 2), mr, ml, hab: true);
         }
         foreach (int i in new[] { 0, stations - 1 })
             Add(new Hoop { C = new NV3(0, 0, v0 + i * pitch), R = Reach(i), T = MathF.Max(Thin, 1.1f * K) }, "machine");
@@ -125,7 +127,7 @@ public sealed partial class ShipForm
             NV3 a = Round(a0) * cage + new NV3(0, 0, v), b = Round(a0) * cage + new NV3(0, 0, At(w + 1));
             Around(Bar("machine", a, b, 1.1f * K), n);
             Around(Bar("machine", a, Round(a0 + MathF.Tau / n) * cage + new NV3(0, 0, At(w + 1)), 0.75f * K), n);
-            Can("machine", 2, new NV3(0, 0, (v + At(w + 1)) / 2), cr + M(1f, 3f), (At(w + 1) - v) * R.Float(0.25f, 0.45f));
+            Can("machine", 2, new NV3(0, 0, (v + At(w + 1)) / 2), Roomy(cr + M(2f, 4f), 7.5f), Roomy((At(w + 1) - v) * R.Float(0.25f, 0.45f), 12f), hab: true);
         }
         return MathF.Max(cage, Rim(wheels - 1) * 0.4f);
     }
