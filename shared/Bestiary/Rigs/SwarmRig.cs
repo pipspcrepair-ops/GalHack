@@ -52,6 +52,8 @@ public sealed class SwarmRig : Rig
         Vector3 center = c.Position;
         // Wind-up: the cloud draws in tight and buzzes. Lunge: everyone flies at the aim.
         float radius = _radius * (1f - 0.55f * Rearing);
+        // In a cave or a place, one floor under the whole cloud (or its own underside, up in the air).
+        float? floor = c.Space != null ? FloorUnder(w, c, center.X, center.Z) ?? center.Y - radius : null;
         Vector3 goal = Lunging > 0.3f && c.Attacking ? c.AimPoint + Vector3.Up * (_flies ? 0.9f : 0f) : center;
         float maxSpeed = (_flies ? 7f : 6f) + 6f * Lunging;
         float sepR = MathF.Max(0.25f, _size * 2.5f);
@@ -82,7 +84,7 @@ public sealed class SwarmRig : Rig
             if (c.Dead) acc = Vector3.Down * 9f - _vel[i] * 2f;
             Vector3 v = (_vel[i] + acc * dt).LimitLength(maxSpeed);
             p += v * dt;
-            float ground = w.Terrain.Height(p.X, p.Z);
+            float ground = floor ?? w.Terrain.Height(p.X, p.Z);
             if (!_flies || c.Dead) p.Y = Mathf.Lerp(p.Y, ground + _size * 0.4f, _flies ? 0.2f : 1f);
             if (p.Y < ground + _size * 0.3f) { p.Y = ground + _size * 0.3f; if (v.Y < 0f) v.Y = 0f; }
             if (_flies && !c.Dead && p.Y > center.Y + radius * 1.5f) v.Y -= 4f * dt;
@@ -90,7 +92,7 @@ public sealed class SwarmRig : Rig
             Members[i] = p;
         }
 
-        float g0 = w.Terrain.Height(center.X, center.Z);
+        float g0 = floor ?? w.Terrain.Height(center.X, center.Z);
         BodyClearance = center.Y - g0;
         SetHit(0, center, radius);
         HitCount = 1;

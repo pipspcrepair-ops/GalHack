@@ -63,7 +63,7 @@ public sealed class HopRig : Rig
         SmoothIntents(c, dt);
         Proportions b = Species.Body;
         float L = b.Size, W = b.Width, H = b.Height;
-        float ground = w.Terrain.Height(c.Position.X, c.Position.Z);
+        float ground = GroundY(w, c, c.Position.X, c.Position.Z);
         bool boulder = Species.Tumbles;
 
         float squash, ext;

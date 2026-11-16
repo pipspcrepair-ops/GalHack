@@ -20,8 +20,9 @@ namespace Slice.Tests;
 /// on each level in, the deepest four; then the same for the world's nearest other place, as rolled. Every blow on the sleeper, from any sim, is logged with whether (a) its body is built, shown and
 /// posed within half a metre of where the sim has it, (b) a line through the world's collision is clear from its striking part
 /// to the sleeper's middle (and, for a body living in a cave's or a place's space, from its middle to that part), and (c) the
-/// shot sweep from the sleeper's eye meets it. None may fail, and nothing of a cave's or a tunnel's sim is ever in a place's dug
-/// rooms. --shots=dir: up to three pictures of attackers below ground.
+/// shot sweep from the sleeper's eye meets it. None may fail; nothing of a cave's or a tunnel's sim is ever in a place's dug
+/// rooms; and nothing shown within 14 m of the eye is drawn over a metre from where it is. --shots=dir: up to three pictures of
+/// attackers below ground.
 /// </summary>
 public partial class InsideTest
 {
@@ -31,7 +32,7 @@ public partial class InsideTest
     sealed class BlowLog
     {
         public int Blows, Below, Hidden, Through, Unshot, Shots;
-        public readonly HashSet<Creature> Dug = new();
+        public readonly HashSet<Creature> Dug = new(), Misposed = new();
         public readonly List<string> Examples = new();
         public void Note(string what) { if (Examples.Count < 8) Examples.Add(what); }
     }
@@ -61,6 +62,7 @@ public partial class InsideTest
         Check(log.Blows > 0, $"blows on the sleeper logged: {log.Blows}, {log.Below} of them below ground");
         Check(log.Hidden + log.Through + log.Unshot == 0, $"every blow by something drawn where it is, through nothing solid, and that a shot can meet: of {log.Blows}, {log.Hidden} not (a), {log.Through} not (b), {log.Unshot} not (c)");
         Check(log.Dug.Count == 0, $"nothing of a cave's or a tunnel's sim in a place's dug rooms: {log.Dug.Count}");
+        Check(log.Misposed.Count == 0, $"nothing shown within 14 m of the eye drawn over a metre from where it is: {log.Misposed.Count}");
     }
 
     IEnumerable<int> UnseenWalk(Stood s, BlowLog log)
@@ -88,13 +90,14 @@ public partial class InsideTest
             bool below = feet.Y < game.Zone.GroundAt(feet.X, feet.Z).Y - 2.5f;
             if (below) log.Below++;
             string who = $"a {c.Species.CommonName} of the {site?.Name.ToString() ?? "patch"} {body.DistanceTo(chest):F1} m off, {(below ? "below ground" : "above")} in {s.Site.Family.Id}";
-            bool drawn = view != null && view.IsVisibleInTree() && view.DrawnAt.DistanceTo(c.Position) < 0.5f;
+            float stale = view == null ? 0f : view.DrawnAt.DistanceTo(c.Position), off = PosedOff(c);
+            bool drawn = view != null && view.IsVisibleInTree() && stale < 0.5f && off < 0.5f;
             bool clear = patch.SightClear(part, chest) && (c.Space == null || patch.SightClear(body, part));
             bool shot = Shootable(game, c, origin, eye, out string met);
             if (!drawn)
             {
                 log.Hidden++;
-                log.Note($"(a) {who}: {(view == null ? "no body built" : !view.IsVisibleInTree() ? "its body hidden" : $"drawn {view.DrawnAt.DistanceTo(c.Position):F1} m from it")}");
+                log.Note($"(a) {who}: {(view == null ? "no body built" : !view.IsVisibleInTree() ? "its body hidden" : $"drawn where it was {stale:F1} m back, its pose {off:F1} m from it")}");
             }
             if (!clear)
             {
@@ -125,6 +128,16 @@ public partial class InsideTest
             }
         }
 
+        // What is shown near you is drawn where it is (a rig posed on the wrong floor puts a body a storey or the hill away).
+        void Posed()
+        {
+            Vector3 eye = game.Survivor.WorldEye();
+            foreach (DeepSite d in patch.Sites)
+                foreach (Creature c in d.Sim.Creatures)
+                    if (!c.Removed && !c.Dead && c.Shown && d.World(c.Position).DistanceTo(eye) < 14f && PosedOff(c) > 1f && log.Misposed.Add(c))
+                        log.Note($"a {c.Species.CommonName} ({c.Species.Rig} rig) of the {d.Name} drawn {PosedOff(c):F1} m from where it is in {s.Site.Family.Id}");
+        }
+
         patch.Attacked += Blow;
         // Round it outside, looking in, as you would come to it.
         Vector3 door = game.Survivor.WorldFeet;
@@ -138,6 +151,7 @@ public partial class InsideTest
             foreach (int x in drive.WalkTo(at, 2f, 20f, sprint: true, dig: false, hop: true)) { game.Suit.Vitals.Health = max; yield return x; }
             for (int i = 0; i < 150; i++) { game.Suit.Vitals.Health = max; drive.Face(middle + Vector3.Down * 6f); yield return 0; }
             Intruders();
+            Posed();
         }
         GD.Print($"  round it outside: {game.Caves.Found} caves filled so far, {patch.Sites.Count} sites standing");
 
@@ -159,7 +173,7 @@ public partial class InsideTest
             for (int i = 0; i < 600; i++)
             {
                 game.Suit.Vitals.Health = max;
-                if (i % 30 == 0) Intruders();
+                if (i % 30 == 0) { Intruders(); Posed(); }
                 yield return 0;
             }
             GD.Print($"  {(ok ? "at" : "put in")} the {r.Purpose} {r.Kind} {r.Level} in, storey {r.Storey}: {log.Blows - before} blows; {patch.Sites.Count} sites standing, {game.Caves.Found} caves");
@@ -175,6 +189,20 @@ public partial class InsideTest
             }
         }
         patch.Attacked -= Blow;
+    }
+
+    /// <summary>How far its posed body (the rig's hit spheres, what is drawn and shot at) is from its middle where the sim has it, m.</summary>
+    static float PosedOff(Creature c)
+    {
+        if (c.Rig is not { HitCount: > 0 } rig) return 0f;
+        Vector3 mid = Interpenetration.Middle(c);
+        float best = float.MaxValue;
+        for (int i = 0; i < rig.HitCount; i++)
+        {
+            Vector4 h = rig.Hits[i];
+            best = MathF.Min(best, MathF.Max(0f, new Vector3(h.X, h.Y, h.Z).DistanceTo(mid) - h.W));
+        }
+        return best;
     }
 
     /// <summary>Whether the shot sweep from the eye meets a creature, aimed at each of its hit spheres in turn (any will do); what it met if not.</summary>

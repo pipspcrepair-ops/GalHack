@@ -73,13 +73,15 @@ public abstract class Rig
 
     /// <summary>
     /// Ground height under a point for this creature: the planet's heights on the open surface,
-    /// the floor under it inside a cave or a place.
+    /// the floor under it inside a cave or a place (where it stands, if none is near). Every rig
+    /// poses on this, never on the planet's heights alone: in a place below ground, or up a tower,
+    /// those are a storey or the whole hill away, and a body drawn there is an unseen attacker.
     /// </summary>
-    public static float GroundY(WildSim w, Creature c, float x, float z)
-    {
-        if (c?.Space is { } s && SpaceMath.FloorBelow(s, x, c.Position.Y + 0.9f, z, 3f) is float y) return y;
-        return c?.Space != null ? c.Position.Y : w.Terrain.Height(x, z);
-    }
+    public static float GroundY(WildSim w, Creature c, float x, float z) => FloorUnder(w, c, x, z) ?? c.Position.Y;
+
+    /// <summary>The same, null in a cave or a place where no floor is within a few metres below it (up in the air).</summary>
+    public static float? FloorUnder(WildSim w, Creature c, float x, float z) =>
+        c?.Space is { } s ? SpaceMath.FloorBelow(s, x, c.Position.Y + 0.9f, z, 3f) : w.Terrain.Height(x, z);
 
     /// <summary>Snap to a resting pose at the creature's spawn point (feet planted, chains laid out).</summary>
     public abstract void Reset(WildSim w, Creature c);

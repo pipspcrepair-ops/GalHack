@@ -92,7 +92,7 @@ public partial class InsideTest : Node
         s.Drive = new Driver(game);
         foreach (int x in s.Drive.UntilPlaying()) yield return x;
         (PoiSiting.ForceFamily, PoiSiting.ForceState, PoiSiting.ForceOccupancy) = (null, null, null);
-        game.Zone.Weather.Bridge.Calm = true;
+        if (game.Zone.Weather?.Bridge is { } weather) weather.Calm = true; // (a world of thin air has none)
         GD.Print($"-- {family} held by {occ}, {world} --");
         PoiSite site = game.Zone.Planet.Pois.FirstOrDefault(p => p.Family.Id == family);
         Check(site != null, $"a {family} is seated near the start");
