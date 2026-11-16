@@ -186,8 +186,11 @@ public sealed partial class HullVessel
         if (InPiece(H.DoorV) && H.DoorV < H.L)
         {
             int v = H.DoorV, r = Reach(0, v);
-            // Cut through the shell to the outside; the door sits in its inner layer.
-            for (int u = r + 1; u <= H.Half + 1; u++)
+            // Cut through the shell to the outside; the door sits in its inner layer. The hull's reach counts walls, so a
+            // wall can stand between that layer and the passage: it is cut through too, or the door opens onto a wall.
+            int inner = r;
+            while (inner >= 0 && (ZoneAt(0, inner, v) == Fill || ZoneAt(0, inner, v + 1) == Fill)) inner--;
+            for (int u = inner + 1; u <= H.Half + 1; u++)
                 for (int dv = 0; dv < 2; dv++)
                     for (int y = y0; y < y0 + 2; y++) Clear(u, y, v + dv);
             Out.Door = Device(Cat.Type("door-2x2x1"), r + 1, y0, v, Turn(Dir.PosY, Dir.PosX));

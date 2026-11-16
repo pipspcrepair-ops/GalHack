@@ -581,7 +581,7 @@ public partial class OrbitTest : Node
         {
             float agl = v.AboveGround, vy = v.Body.Velocity.Y;
             float wanted = agl > 260f ? -60f : agl > 70f ? -20f : agl > 25f ? -8f : agl > 6f ? -3f : -1.2f;
-            bool onGear = agl < 3f && MathF.Abs(vy) < 0.4f; // hands off, and it settles
+            bool onGear = v.Controller.Gear is { Contact: true } && MathF.Abs(vy) < 0.4f; // hands off, and it settles (let go off its feet, the assist holds it there)
             // Sinking too fast, hands off: the assist brakes at least at its floor, where Space would climb only at thrust less weight.
             _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
             _pilot.Creep(v, pad, agl > 3f);
