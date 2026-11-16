@@ -237,8 +237,11 @@ public partial class CombatTest : Node
             for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             Check(unarmed.Fleeing || unarmed.Indoors || unarmed.Engaged, $"an unarmed one hit runs for it, or (a raider with the nerve) goes in with their fists ({(unarmed.Engaged ? $"fists, {unarmed.Part}" : unarmed.Fleeing ? "fleeing" : unarmed.Indoors ? "indoors" : "stood")})");
         }
+        // Any going in hand to hand (a blade, a club, fists) are given 20 s more to reach you, and every blow faces you.
+        bool hand = town.People.Any(p => p.Engaged && !p.Dead && p.Kit is { Strike: true });
+        for (int i = 0; hand && i < 60 * 20 && town.Blows == 0; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
-        if (town.Blows > 0) Check(town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows, the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
+        if (hand || town.Blows > 0) Check(town.Blows > 0 && town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows, the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
     }
 
     /// <summary>Out in the wild: a raider's rifle, a band's rally, a machine's mount, a club's blow.</summary>
