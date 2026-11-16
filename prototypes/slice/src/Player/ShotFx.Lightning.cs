@@ -84,16 +84,15 @@ public partial class ShotFx
 
     /// <summary>
     /// A blast of lightning from the barrel tip (asked afresh as the hand moves) to a point: a jagged bolt
-    /// with forks that comes up, holds (flickering into a new shape once) and fades smoothly, a flash of
-    /// light at the muzzle, and a light near where it strikes that comes up and fades with it (timing from the data).
+    /// with forks that comes up, holds (flickering into a new shape once) and fades smoothly from the tip
+    /// (no muzzle flash that would pop on), and a light near where it strikes that comes up and fades with it (timing from the data).
     /// </summary>
     public void Lightning(Func<Vector3> from, Vector3 to, Color colour, Slice.Game.SliceRules.LightningRules look)
     {
         EnsureSparks();
         LightningBolts++;
-        Vector3 start = from(), aim = to - start;
+        Vector3 start = from();
         Throw(from, to, colour, look, 1f, 0.2f, 1f, forks: 2);
-        Muzzle(GunFeel.Tool.Id, start, aim.LengthSquared() < 1e-6f ? Vector3.Forward : aim.Normalized(), colour, 1f, () => from());
         LightUp(start.Lerp(to, 0.7f), colour, look);
     }
 

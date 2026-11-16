@@ -117,8 +117,7 @@ public partial class GunFeelTest : Node
         }
         peakKick = hands.PeakKick;
         peakTilt = hands.PeakTilt;
-        Check(fx.Flashes == flashes + 1, "firing the tool shows one muzzle flare");
-        Check(fx.FlashesActive == 0, "and the flare has cleaned itself up a second later");
+        Check(fx.Flashes == flashes && fx.LightningBolts > 0, "firing the tool throws its bolt from the tip, no muzzle flare to pop on");
         Check(hands.PeakBuzz > 0.5f && peakKick == 0f && peakTilt == 0f, $"the tool shook in the hand ({hands.PeakBuzz:F2}) and neither kicked ({peakKick:F2}) nor moved the view ({Mathf.RadToDeg(peakTilt):F2} degrees)");
         Check(hands.Buzz == 0f && AimIsExact(), "then the shake died away and the camera aim is exactly where it was");
 
