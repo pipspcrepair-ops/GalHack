@@ -73,7 +73,7 @@
     "digInterval": 0.18,
     "cutReach": 4,
     "shotDamage": 18,
-    // Attack/gather is a short blast of lightning (design: the Sleeper tool). Blasts at things that
+    // Gather is a short blast of lightning (design: the Sleeper tool). Blasts at things that
     // aren't being gathered come every shotInterval; gathering pulses keep digInterval.
     "shotInterval": 0.3,
     "lightning": {

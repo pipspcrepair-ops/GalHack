@@ -47,7 +47,7 @@ public sealed class PlayerInventory
     /// <summary>Toolbar shortcut for the starter vessel's blueprint (the blueprint projector).</summary>
     public const string BlueprintBlock = "@blueprint";
 
-    /// <summary>The hand tools, plainest first: each is the Sleeper tool's attack/gather and repair, faster.</summary>
+    /// <summary>The hand tools, plainest first: each is the Sleeper tool's gather and repair, faster.</summary>
     public static readonly string[] ToolItems = { "sleeper-tool", "mining-drill", "plasma-drill" };
 
     /// <summary>The core's item: it founds a structure, whatever its mode.</summary>

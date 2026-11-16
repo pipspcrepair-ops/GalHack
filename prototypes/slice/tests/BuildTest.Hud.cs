@@ -59,7 +59,7 @@ public partial class BuildTest
         float far = _game.Survivor.WorldEye().DistanceTo(TestRows.Centre(v, on));
         string beyond = Shown();
         Check(gather == whole && sky == null && (far <= _game.Zone.Data.Rules.Tool.Lightning.Range || beyond == null),
-            $"in attack/gather too ({gather}); off the block nothing ({sky ?? "none"}), nor out of range ({beyond ?? "none"} at {far:F1} m)");
+            $"in gather too ({gather}); off the block nothing ({sky ?? "none"}), nor out of range ({beyond ?? "none"} at {far:F1} m)");
     }
 
     IEnumerable<int> HudCornerChecks()

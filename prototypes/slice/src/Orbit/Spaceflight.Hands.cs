@@ -38,7 +38,7 @@ public partial class Spaceflight
 
     /// <summary>
     /// The hands in space (the game asks this first, before the surface's tools): the Sleeper
-    /// tool's attack/gather salvages the wreck block it is on and fires at anything else (repair
+    /// tool's gather salvages the wreck block it is on and fires at anything else (repair
     /// does nothing yet in space), a core item claims a wreck,
     /// building waits for a later phase. False for what works the same anywhere (food, kits).
     /// </summary>

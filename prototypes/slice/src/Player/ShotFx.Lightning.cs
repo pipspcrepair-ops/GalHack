@@ -59,7 +59,7 @@ public partial class ShotFx
     public int Cones { get; private set; }
     public int SparksShowing { get { int n = 0; foreach (Spark s in _sparks) if (s.Node.Visible) n++; return n; } }
 
-    /// <summary>The attack/gather mode's light, and repair's.</summary>
+    /// <summary>The gather mode's light, and repair's.</summary>
     public static readonly Color LightningBlue = new(0.45f, 0.7f, 1f), RepairGreen = new(0.3f, 1f, 0.45f);
 
     void EnsureSparks()

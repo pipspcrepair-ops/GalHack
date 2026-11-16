@@ -562,7 +562,7 @@ public partial class Visor : CanvasLayer
         {
             case HandKind.Tool:
                 string toolName = Game.Zone.Data.Rules.Tool.TierOf(pack.HandItem).Name.ToUpperInvariant();
-                return Game.Tool.Mode == ToolMode.Repair ? $"{toolName} · REPAIR" : $"{toolName} · ATTACK/GATHER";
+                return Game.Tool.Mode == ToolMode.Repair ? $"{toolName} · REPAIR" : $"{toolName} · GATHER";
             case HandKind.Plater:
                 return $"{items.Item(pack.HandItem).Name.ToUpperInvariant()} · {Game.Builder.PlateOf(Game.Builder.Plating).Name}";
             case HandKind.Vehicle:

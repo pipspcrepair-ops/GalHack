@@ -587,7 +587,7 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(_base.Machines.Count == 1 && _base.Powered && _base.Storage.CapacitySu > 0 && _base.Storage.Count(Fuel) > 0,
             $"the base has a constructor, storage ({_base.Storage.CapacitySu:F0} SU) and power, its generator burning the {_base.Storage.Count(Fuel)} {Fuel} put in its storage");
-        // Take one down with the tool's attack/gather: our block comes back whole.
+        // Take one down with the tool's gather: our block comes back whole.
         string steel = _play.BlockItem("steel");
         int stock = _game.Pack[steel];
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;

@@ -268,7 +268,7 @@ public sealed class SliceRules
         public ToolTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out ToolTier t) ? t : new ToolTier();
     }
 
-    /// <summary>The Sleeper tool's attack/gather blast: a short arc of lightning (see data/slice.json).</summary>
+    /// <summary>The Sleeper tool's gather blast: a short arc of lightning (see data/slice.json).</summary>
     public sealed class LightningRules
     {
         public float Range { get; set; } = 9f;

@@ -9,7 +9,7 @@ namespace Slice.Player;
 /// <summary>
 /// The first-person hands: a gloved hand holding what is in it low on the right of the view. What it
 /// holds is the item's own model from <see cref="ItemModels"/> (the same one its inventory icon is
-/// rendered from): the Sleeper tool or a drill, its emitter lit by mode (blue to attack and gather,
+/// rendered from): the Sleeper tool or a drill, its emitter lit by mode (blue to gather,
 /// green to repair), the handheld scanner; a block, a core or a device in hand shows the plain
 /// tool, amber; the plating gun's emitter is teal. It kicks back on each shot and sways a little as you walk. Shown when a
 /// held model, a block, a core or a device is in hand, hidden in a seat or in third person.

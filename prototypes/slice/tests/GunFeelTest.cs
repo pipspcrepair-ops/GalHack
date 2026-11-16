@@ -92,7 +92,7 @@ public partial class GunFeelTest : Node
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = true;
         foreach (int x in _drive.UntilPlaying()) yield return x;
-        // Out of the cryopod, the locker's kit in the bag, then the tool in hand in attack/gather.
+        // Out of the cryopod, the locker's kit in the bag, then the tool in hand in gather.
         foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
