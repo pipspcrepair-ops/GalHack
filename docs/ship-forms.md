@@ -43,11 +43,7 @@ Stations follow the same body plans scaled up: a Meridian slab arcology, an Exch
 
 ## Small craft
 
-The lone Freeholder trader or scout in the start sky (`SmallCraft` in building, merged 16 Nov in batch2 c9e3a8be) is still the old box on stilts. It flies, lands, runs and burns fuel correctly, but its form doesn't follow these rules yet. It gets the same treatment after the big ships' form gate, through the same body-plan code at small scale:
-- **Trader:** a cockpit pod on a short spine, with clamped containers and stubby engine pods.
-- **Scout:** slim, long and needle-nosed, with a sensor mast and outrigger engines.
-
-Each faction's fighters and gunships follow later, from that faction's own body plan.
+The lone Freeholder trader or scout in the start sky (`SmallCraft` in building, merged 16 Nov in batch2 c9e3a8be) is still the old box on stilts. It flies, lands, runs and burns fuel correctly, but its form doesn't follow these rules yet. The owner accepted it as it is (16 Nov): "It's fine for the starter planet trader ship, in this case it's acceptable." So it stays. Each faction's fighters and gunships still come later from that faction's own body plan, through the same body-plan code at small scale.
 
 ## Crashes
 
