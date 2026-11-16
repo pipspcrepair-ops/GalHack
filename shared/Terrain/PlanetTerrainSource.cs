@@ -335,6 +335,17 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     }
 
     /// <summary>
+    /// Whether a cell is dug out for something built in it: a place's rooms below its pad, a buried sewer or station
+    /// (a road's bore is open rock). Its walls and floors stand there as blocks, not in the voxels.
+    /// </summary>
+    public bool Dug(int x, int y, int z)
+    {
+        foreach (int i in StampsAt(x + 0.5, z + 0.5))
+            if (Stamps[i].Shape != StampShape.Road && Stamps[i].IsCarved(x, y, z)) return true;
+        return false;
+    }
+
+    /// <summary>
     /// Whether a point is on a road's deck or shoulder and on no place's pad, and how worn that road
     /// is: old roads let grass and shrubs back in.
     /// </summary>

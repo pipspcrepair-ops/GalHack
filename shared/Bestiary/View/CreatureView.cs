@@ -305,10 +305,14 @@ public partial class CreatureView : Node3D
         return true;
     }
 
+    /// <summary>Where the creature stood when its pose was last put on the meshes (tests: what you see is where it is).</summary>
+    public Vector3 DrawnAt { get; private set; }
+
     /// <summary>Copies the rig's pose onto the meshes.</summary>
     public void Sync()
     {
         Creature c = Creature;
+        DrawnAt = c.Position;
         if (_swarm != null)
         {
             var swarm = (SwarmRig)c.Rig;

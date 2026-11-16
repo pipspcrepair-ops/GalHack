@@ -63,7 +63,7 @@ public sealed class HopRig : Rig
         SmoothIntents(c, dt);
         Proportions b = Species.Body;
         float L = b.Size, W = b.Width, H = b.Height;
-        float ground = w.Terrain.Height(c.Position.X, c.Position.Z);
+        float ground = GroundY(w, c, c.Position.X, c.Position.Z);
         bool boulder = Species.Tumbles;
 
         float squash, ext;
@@ -95,7 +95,8 @@ public sealed class HopRig : Rig
         }
         _lastPhase = c.Hop;
 
-        bool airborne = c.Hop == HopPhase.Air;
+        // Up in the air on a hop, or wherever the sim has it off its floor (a lunge through a place's open, a fall): drawn there, not on the floor.
+        bool airborne = c.Hop == HopPhase.Air || c.Position.Y > ground + 0.25f;
         float height = _restHeight * (1f - 0.35f * Math.Max(0f, _squash));
         float bodyY = airborne ? c.Position.Y + _restHeight : ground + height;
         bodyY = Mathf.Lerp(bodyY, ground + H * 0.45f, Dead);

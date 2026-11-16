@@ -4,10 +4,10 @@
 
 [sub_resource type="GDScript" id="quit"]
 script/source = "extends Node
-# Quits the run after 10 minutes of real time if the test itself never does: it holds even if the
-# C# script fails to load, and it counts the wall clock, not the fixed-step game clock.
+# Quits the run after 10 minutes of real time (30 for --unseen, a few worlds) if the test itself never does: it
+# holds even if the C# script fails to load, and it counts the wall clock, not the fixed-step game clock.
 func _process(_delta):
-	if Time.get_ticks_msec() > 600000:
+	if Time.get_ticks_msec() > (1800000 if OS.get_cmdline_user_args().has(\"--unseen\") else 600000):
 		printerr(\"FAIL  the run passed its time limit\")
 		get_tree().quit(1)
 		set_process(false)

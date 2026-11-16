@@ -629,7 +629,7 @@ public partial class Caves : Node3D
         _searchedFrom = feet;
         float surface = Zone.GroundAt(feet.X, feet.Z).Y;
         var anchor = new Vector3(MathF.Round(feet.X), MathF.Round(feet.Y), MathF.Round(feet.Z));
-        var space = new LoadedVoxels(planet.Terrain.Store, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z), Keep);
+        var space = new LoadedVoxels(planet, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z), Keep);
         float time = Zone.Wildlife.Sim?.Time ?? 0f;
         Vector3 look = Look();
         look.Y = 0f;
@@ -676,19 +676,26 @@ public partial class Caves : Node3D
     sealed class LoadedVoxels : ISolidSpace
     {
         readonly TD.ChunkStore _store;
+        readonly GalHack.Terrain.PlanetTerrainSource _source;
         readonly TerrainStreamer _streamer;
         readonly Vector3I _offset;
         readonly Func<Vector3, bool> _keep;
 
-        public LoadedVoxels(TD.ChunkStore store, TerrainStreamer streamer, Vector3I offset, Func<Vector3, bool> keep = null)
+        public LoadedVoxels(PlanetSurface.World.PlanetWorld planet, TerrainStreamer streamer, Vector3I offset, Func<Vector3, bool> keep = null)
         {
-            _store = store;
+            _store = planet.Terrain.Store;
+            _source = planet.Source;
             _streamer = streamer;
             _offset = offset;
             _keep = keep;
         }
 
-        bool Kept(float x, float y, float z) => _keep != null && _keep(new Vector3(x + _offset.X, y + _offset.Y, z + _offset.Z));
+        // Rock to them: ground kept clear, and what a place, a sewer or a station digs out below the ground (its walls
+        // and floors are blocks the voxels don't hold, and its own creatures live there): no cave is ever found in it,
+        // and nothing of a cave walks, lies or strikes through it.
+        bool Kept(float x, float y, float z) =>
+            _source.Dug((int)MathF.Floor(x) + _offset.X, (int)MathF.Floor(y) + _offset.Y, (int)MathF.Floor(z) + _offset.Z)
+            || _keep != null && _keep(new Vector3(x + _offset.X, y + _offset.Y, z + _offset.Z));
 
         bool Loaded(TD.Int3 c) => _streamer.IsReady(TD.ChunkStore.ChunkOf(c));
 

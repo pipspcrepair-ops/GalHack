@@ -85,7 +85,7 @@ public sealed class ChainRig : Rig
         for (int i = 0; i < _p.Length; i++)
         {
             Vector3 q = WildSim.Flat(c.Position) + back * _segLen * i;
-            _p[i] = new Vector3(q.X, w.Terrain.Height(q.X, q.Z) + _r[i], q.Z);
+            _p[i] = new Vector3(q.X, GroundY(w, c, q.X, q.Z) + _r[i], q.Z);
         }
         Update(w, c, 0.016f);
     }
@@ -110,14 +110,14 @@ public sealed class ChainRig : Rig
 
         // The head, driven along the path with the wave; then everyone follows.
         Vector3 drive = WildSim.Flat(c.Position) + right * MathF.Sin(_wave) * amp;
-        _p[0] = Lift(w, drive, 0, sink);
+        _p[0] = Lift(w, c, drive, 0, sink);
         for (int i = 1; i < _p.Length; i++)
         {
             Vector3 d = WildSim.Flat(_p[i] - _p[i - 1]);
             d = d.LengthSquared() > 1e-6f ? d.Normalized() : -fwd;
             float spacing = _segLen * (i < 4 ? 1f - Rearing * 0.35f : 1f);
             Vector3 q = WildSim.Flat(_p[i - 1]) + d * spacing;
-            _p[i] = Lift(w, q, i, sink);
+            _p[i] = Lift(w, c, q, i, sink);
         }
 
         float twitch = Species.Corrupted && !c.Dead ? MathF.Max(0f, MathF.Sin(c.Age * 6.3f + c.Id) - 0.85f) * 3f : 0f;
@@ -143,7 +143,7 @@ public sealed class ChainRig : Rig
             float swing = MathF.Sin(phase) * MathF.Min(1f, moving), lift = MathF.Max(0f, MathF.Cos(phase)) * MathF.Min(1f, moving);
             Vector3 hip = _p[seg] + rr * side * _r[seg] * 0.7f;
             Vector3 tip = _p[seg] + rr * side * (_r[seg] + _legLen * 0.62f) + f * swing * _legLen * 0.35f;
-            float ground = w.Terrain.Height(tip.X, tip.Z);
+            float ground = GroundY(w, c, tip.X, tip.Z);
             tip.Y = ground + lift * _legLen * 0.3f - sink + Dead * _r[seg];
             Pose[piece] = Geo.Segment(hip, tip, f, _legLen);
         }
@@ -152,7 +152,7 @@ public sealed class ChainRig : Rig
         if (_tailTip >= 0) Pose[_tailTip] = new Transform3D(Geo.AlongY(_p[last] - _p[last - 1], bases[last].X), _p[last]);
         if (_mound >= 0)
         {
-            float g = w.Terrain.Height(_p[0].X, _p[0].Z);
+            float g = GroundY(w, c, _p[0].X, _p[0].Z);
             float m = Species.Burrows ? Math.Clamp(Hidden * 1.4f - 0.2f, 0f, 1f) : 0f;
             Pose[_mound] = m < 0.02f ? Collapsed(_p[0]) : new Transform3D(new Basis(Vector3.Up, c.Yaw).Scaled(new Vector3(m, m, m)), new Vector3(_p[0].X, g, _p[0].Z));
         }
@@ -165,13 +165,13 @@ public sealed class ChainRig : Rig
         for (int i = 0; i < _p.Length && h < Hits.Length; i += 2) SetHit(h++, _p[i], _r[i] * 1.2f);
         HitCount = h;
         SetBounds(_p[_p.Length / 2], b.Size * 0.6f + rmax);
-        BodyClearance = _p[0].Y - w.Terrain.Height(_p[0].X, _p[0].Z);
+        BodyClearance = _p[0].Y - GroundY(w, c, _p[0].X, _p[0].Z);
     }
 
-    Vector3 Lift(WildSim w, Vector3 q, int i, float sink)
+    Vector3 Lift(WildSim w, Creature c, Vector3 q, int i, float sink)
     {
         float lift = Rearing * MathF.Max(0f, 1f - i / 3.5f) * Species.Body.Size * 0.28f;
-        float ground = w.Terrain.Height(q.X, q.Z);
+        float ground = GroundY(w, c, q.X, q.Z);
         return new Vector3(q.X, ground + _r[i] * 0.85f - sink + lift, q.Z);
     }
 

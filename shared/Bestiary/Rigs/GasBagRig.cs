@@ -63,7 +63,7 @@ public sealed class GasBagRig : Rig
         float tilt = Math.Clamp(local.Z * 0.06f, -0.25f, 0.25f), lean = Math.Clamp(-local.X * 0.06f, -0.25f, 0.25f);
         Basis body = yaw * new Basis(Vector3.Right, tilt) * new Basis(Vector3.Back, lean + Dead * 0.8f);
         var bodyT = new Transform3D(body, c.Position);
-        float ground = w.Terrain.Height(c.Position.X, c.Position.Z);
+        float ground = GroundY(w, c, c.Position.X, c.Position.Z);
         BodyClearance = c.Position.Y - ground;
 
         // Gondola hangs under the bags and swings a little.
@@ -96,7 +96,7 @@ public sealed class GasBagRig : Rig
                 var sway = new Vector3(MathF.Sin(c.Age * 0.9f + t * 1.3f + i * 0.5f), 0f, MathF.Cos(c.Age * 0.7f + t * 1.9f + i * 0.6f)) * 0.14f;
                 dir = (dir + Vector3.Down * 0.6f + trail * (i + 1) * 0.15f + sway + Vector3.Up * Rearing * 0.3f).Normalized();
                 Vector3 next = p + dir * seg;
-                float g = w.Terrain.Height(next.X, next.Z) + 0.05f;
+                float g = (FloorUnder(w, c, next.X, next.Z) ?? float.NegativeInfinity) + 0.05f;
                 if (next.Y < g) next.Y = g; // trail along the ground rather than through it
                 Pose[chain[i]] = Geo.Segment(p, next, body.X, seg);
                 p = next;

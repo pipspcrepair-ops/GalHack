@@ -20,6 +20,8 @@ public struct AttackEvent
     public AttackMove Move;
     public float Gap;
     public Vector3 Push;
+    /// <summary>Where its striking part was at the blow (a gob where it splashed), sim frame.</summary>
+    public Vector3 Part;
 }
 
 /// <summary>

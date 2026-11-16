@@ -574,7 +574,7 @@ public sealed class LeggedRig : Rig
 
     /// <summary>The creature being posed: in a cave or a place its ground is the floor under it.</summary>
     Creature _c;
-    Vector3 Ground(WildSim w, Vector3 p) => new(p.X, _c?.Space != null ? GroundY(w, _c, p.X, p.Z) : w.Terrain.Height(p.X, p.Z), p.Z);
+    Vector3 Ground(WildSim w, Vector3 p) => new(p.X, GroundY(w, _c, p.X, p.Z), p.Z);
 
     // ---- Layout -----------------------------------------------------------------------
 

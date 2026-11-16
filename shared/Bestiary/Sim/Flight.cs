@@ -491,17 +491,16 @@ public static class Swoop
         CombatRules r = w.Combat;
         Vector3 at = t.Position;
         float above = c.Position.Y - (at.Y + Attacks.BodyHeight);
-        bool hit = t.Attackable && WildSim.Flat(at - c.Position).Length() <= r.ContactRadius + c.Radius * 0.4f && above < 1.6f + c.Species.Body.Size * 0.3f
-            && (c.Space == null || SpaceMath.Clear(c.Space, c.Position, at + Vector3.Up * (Attacks.BodyHeight * 0.5f))); // never through a wall, floor or ceiling
+        bool hit = t.Attackable && WildSim.Flat(at - c.Position).Length() <= r.ContactRadius + c.Radius * 0.4f && above < 1.6f + c.Species.Body.Size * 0.3f;
         c.StrikePoint = c.Position;
-        Attacks.Deliver(w, c, t, hit);
+        Attacks.Deliver(w, c, t, hit, c.Position);
         Away(w, c);
     }
 
     /// <summary>Something in the way of the dive: it pulls out, and no blow is struck.</summary>
     public static void BreakOff(WildSim w, Creature c)
     {
-        if (c.AttackTarget != null) Attacks.Deliver(w, c, c.AttackTarget, false);
+        if (c.AttackTarget != null) Attacks.Deliver(w, c, c.AttackTarget, false, c.Position);
         Away(w, c);
     }
 

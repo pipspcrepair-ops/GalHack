@@ -33,10 +33,11 @@ public partial class InsideTest : Node
 
     public override void _Ready()
     {
+        int minutes = OS.GetCmdlineUserArgs().Contains("--unseen") ? UnseenMinutes : WatchdogMinutes;
         var thread = new System.Threading.Thread(() =>
         {
-            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
-            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(minutes));
+            Console.Error.WriteLine($"FAIL  the run took over {minutes} minutes: watchdog");
             System.Environment.Exit(1);
         }) { IsBackground = true };
         thread.Start();
@@ -71,30 +72,61 @@ public partial class InsideTest : Node
     /// <summary>Who may hold it when nobody says: people (each kind that lives in a place), nobody, beasts and machines.</summary>
     static readonly Occupant[] Holders = { Occupant.Squatters, Occupant.Scavengers, Occupant.Gang, Occupant.Cult, Occupant.Empty, Occupant.Prowlers, Occupant.Machines };
 
-    IEnumerable<int> Scenario()
+    /// <summary>A fresh world's game with one of a family seated near the start and standing round the sleeper at its way in (Place null if not).</summary>
+    sealed class Stood
     {
-        string family = Arg("family") ?? "ominous_tower";
-        Occupant occ = Enum.TryParse(Arg("occ"), true, out Occupant o) ? o : Holders[_rng.Next(Holders.Length)];
+        public Game.Game Game;
+        public Driver Drive;
+        public PoiSite Site;
+        public Place Place;
+    }
+
+    IEnumerable<int> Stand(string family, Occupant occ, string archetype, Stood s)
+    {
         PoiSiting.ForceFamily = family;
         PoiSiting.ForceState = PoiState.Abandoned;
         PoiSiting.ForceOccupancy = new OccupancyRoll(occ);
-        WorldChoice world = WorldChoice.Fresh("arid");
-        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
+        WorldChoice world = WorldChoice.Fresh(archetype);
+        Game.Game game = s.Game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
-        var drive = new Driver(game);
-        foreach (int x in drive.UntilPlaying()) yield return x;
+        s.Drive = new Driver(game);
+        foreach (int x in s.Drive.UntilPlaying()) yield return x;
         (PoiSiting.ForceFamily, PoiSiting.ForceState, PoiSiting.ForceOccupancy) = (null, null, null);
-        game.Zone.Weather.Bridge.Calm = true;
+        if (game.Zone.Weather?.Bridge is { } weather) weather.Calm = true; // (a world of thin air has none)
         GD.Print($"-- {family} held by {occ}, {world} --");
-        PoiSite site = game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == family);
+        PoiSite site = game.Zone.Planet.Pois.FirstOrDefault(p => p.Family.Id == family);
         Check(site != null, $"a {family} is seated near the start");
         if (site == null) yield break;
+        foreach (int x in Arrive(s, site)) yield return x;
+    }
+
+    /// <summary>The sleeper put at a place's way in, and it standing round them.</summary>
+    IEnumerable<int> Arrive(Stood s, PoiSite site)
+    {
+        Game.Game game = s.Game;
+        s.Site = site;
+        s.Place = null;
         Vector3 Local(Int3 c) => game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X + c.X + 0.5f, site.Origin.Y + c.Y, site.Origin.Z + c.Z + 0.5f), game.Survivor.WorldFeet);
         game.Survivor.PlaceOutside((Local(site.Layout.EntranceCell) + Vector3.Up * 0.2f).ToNumerics());
         for (int i = 0; i < 3600 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         Place place = game.Places.PlaceOf(site);
-        Check(place is { Ready: true }, $"it stands as a structure round the sleeper at its way in");
-        if (place is not { Ready: true }) yield break;
+        Check(place is { Ready: true }, $"the {site.Family.Id} stands as a structure round the sleeper at its way in");
+        if (place is { Ready: true }) s.Place = place;
+    }
+
+    IEnumerable<int> Scenario()
+    {
+        if (OS.GetCmdlineUserArgs().Contains("--unseen"))
+        {
+            foreach (int x in Unseen()) yield return x;
+            yield break;
+        }
+        string family = Arg("family") ?? "ominous_tower";
+        Occupant occ = Enum.TryParse(Arg("occ"), true, out Occupant o) ? o : Holders[_rng.Next(Holders.Length)];
+        var stood = new Stood();
+        foreach (int x in Stand(family, occ, "arid", stood)) yield return x;
+        if (stood.Place == null) yield break;
+        (Game.Game game, Driver drive, Place place) = (stood.Game, stood.Drive, stood.Place);
         PlaceFauna fauna = place.Memory.Fauna;
         Town town = place.Memory.Town;
         GD.Print($"  ({place.Inst.Layout.Modules.Count} modules, {fauna?.Rooms.Rooms.Count} rooms; population: {fauna?.Population?.Note ?? "none planned"}, {fauna?.Population?.Spawns.Count(PoiFauna.Threat)} threats planned, {fauna?.Population?.Deferred.Count} waiting; {town?.Data.People.Count ?? 0} people)");
