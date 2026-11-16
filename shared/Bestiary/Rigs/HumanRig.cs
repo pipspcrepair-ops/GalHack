@@ -4,7 +4,7 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>What a body says without words. Each is only where the hands, the back and the head go.</summary>
-public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play, Thanks }
+public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play, Thanks, Rummage }
 
 /// <summary>A blow with the body: a straight punch, an overhand swat, a Husk's two-handed seize, or its retch and spew.</summary>
 public enum StrikeKind { None, Punch, Swat, Seize, Spew }
@@ -202,17 +202,22 @@ public sealed partial class HumanRig : Rig
             stalk = low;
             low = Hidden;
         }
+        // Going through someone's things: down on the haunches, hands at work in them.
+        float rummage = _act == BodyAct.Rummage ? _actAmount : 0f;
+        // A Husk at a body's face: knelt, hands on the head, heaving its worms up into it.
+        bool infest = c.Infests != null && c.InfestFor > 0f;
         Drive(new Gesture
         {
             Feet = c.Position,
             Yaw = c.Yaw,
             Speed = speed,
             Walked = _walked,
-            Crouch = low,
+            Crouch = MathF.Max(low, rummage * 0.9f),
+            Work = rummage,
             Stalk = stalk,
             // A Husk holding a head keeps its hands on it; anyone held by one struggles.
-            Reach = c.Phase == AttackPhase.Hold ? 1f : c.HeldBy != null ? 0.6f * Rearing : 0f,
-            Retch = c.Attacking && !spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
+            Reach = c.Phase == AttackPhase.Hold || infest ? 1f : c.HeldBy != null ? 0.6f * Rearing : 0f,
+            Retch = infest ? 0.6f + 0.4f * MathF.Sin(c.Age * 7f) : c.Attacking && !spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
             Strike = strike,
             Blow = spew ? StrikeKind.Spew : StrikeKind.None,
             Look = LookYaw,
@@ -222,7 +227,7 @@ public sealed partial class HumanRig : Rig
             Aim = _raised = Mathf.MoveToward(_raised, shooting ? 1f : Aiming, dt * 4f), // (all the way up to shoot: a weapon part raised points part way)
             // Aiming at what it's after (the middle of it, not its feet), else at what it looks at.
             AimAt = Aiming > 0.05f || shooting ? (c.AttackTarget is { } at ? at.Position + Vector3.Up * 1.15f : c.LookAt) : null,
-            Act = shooting ? BodyAct.None : _act, // (a gesture never takes a hand off a weapon being fired)
+            Act = shooting || rummage > 0f ? BodyAct.None : _act, // (a gesture never takes a hand off a weapon being fired)
             ActAmount = _actAmount,
             ActAt = c.LookAt ?? c.Position + c.Forward * 6f + Vector3.Up * 1.4f,
             Style = w?.GreetStyle ?? 0,

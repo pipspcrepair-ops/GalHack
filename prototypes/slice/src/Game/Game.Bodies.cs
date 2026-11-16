@@ -33,19 +33,6 @@ public partial class Game
         Zone.AddChild(Gibs);
     }
 
-    /// <summary>A town person's body as it lies (it ragdolls), as balls in the world.</summary>
-    static IEnumerable<Vector4> PersonBalls(Town t, Town.Person p)
-    {
-        if (p.Rig == null || p.Gone) yield break;
-        p.Rig.UpdateHits();
-        for (int i = 0; i < p.Rig.HitCount; i++)
-        {
-            Vector4 h = p.Rig.Hits[i];
-            Vector3 w = t.World(new Vector3(h.X, h.Y, h.Z));
-            yield return new Vector4(w.X, w.Y, w.Z, h.W);
-        }
-    }
-
     /// <summary>What a body that is no more had, left on the floor where it was.</summary>
     void Remains(Species s, Vector3 at, Bill drops)
     {

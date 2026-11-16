@@ -49,6 +49,8 @@ public static partial class Brain
             Took(w, c, b, c == lead);
         }
         Answer(w, c, b, lead);
+        // Goods given up at gunpoint, or a dead one's things gone through (Brain.Aftermath): each holds them till it's done.
+        if (b.Mood != PartyMood.Fighting && (Offering(w, c, b.Outsider, dt) || b.Mood != PartyMood.Fleeing && Rummaging(w, c, dt))) return;
         if (b.Mood == PartyMood.Fleeing)
         {
             // Until it takes the fright in, the head comes round to it; then it runs with the band.
@@ -404,6 +406,7 @@ public static partial class Brain
             c.FacePoint = t.Position;
             c.LookAt = t.Position + Vector3.Up * 1.5f;
             Hold(w, c, f?.Aimed ?? BodyAct.HandsUp, 1f);
+            Offer(w, c, t);
             return;
         }
         if (w.Time < b.BackUntil || d < Comfort)

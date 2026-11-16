@@ -94,6 +94,7 @@ public partial class DeepSite : Node3D
         Sim.Telegraph += OnTelegraph;
         Sim.Warned += OnWarned;
         Sim.Attacked += OnAttacked;
+        Sim.Turned += Patch.RaiseTurned;
         Sim.Died += OnDied;
         Sim.Seized += OnSeized;
         Sim.LetGo += OnLetGo;

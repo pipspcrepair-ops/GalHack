@@ -146,8 +146,8 @@ public sealed partial class Town
         Arm(p);
         // Unseen a long while, they stand down (the place stays hostile).
         if (_alert && _clock - _seenClock > 40f) _alert = false;
-        // (Frightened enough to run, they run: Feeling.Flees.)
-        if (mood != Mood.Hostile || !Fighter(p) || p.ScaredFor > 0f || p.Engaged && !_alert)
+        // (Frightened enough to run, they run: Feeling.Flees. You dead, there's no one to fight.)
+        if (mood != Mood.Hostile || !Fighter(p) || p.ScaredFor > 0f || p.Engaged && !_alert || YouDown)
         {
             if (p.Engaged) Disengage(p);
             return false;

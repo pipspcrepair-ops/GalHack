@@ -92,6 +92,7 @@ public partial class Game
         CloseUp = Mathf.MoveToward(CloseUp, 0f, dt * 2f);
         if (HeldBy == null) return false;
         Creature h = HeldBy;
+        HurtBy(h);
         if (h.Removed || h.Dead || h.Phase != AttackPhase.Hold || Suit.Dead)
         {
             if (h.Phase == AttackPhase.Hold) Seizing.Finish(_heldIn, h);

@@ -178,7 +178,7 @@ public sealed class MapSection : IMenuSection
         foreach (Game.Game.Ping p in _game.Pings) Mark(p.At, p.Place != null ? "?" : p.Label.ToUpperInvariant(), new Color(p.Place != null ? C.Accent : C.Holo, _game.PingAlpha(p)), 5f, 7);
         foreach (Lootable l in _game.Zone.Loot.All)
             if (l.Kind != LootKind.Cache) // a place's caches are found by going in, not from the map
-                Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4, 2);
+                Mark(l.Position, l.Yours ? "YOUR BAG" : null, l.Yours ? C.Danger : C.Accent2, l.Yours ? 8 : 4, 2);
         foreach (Device d in _game.Zone.Devices) Mark(d.GlobalPosition, d.Label.ToUpperInvariant(), C.Accent2, 6f, 4);
         foreach (Vessel v in _game.Zone.Vessels)
             if (v.IsRuin) Mark(_game.Start, "BUNKER", C.Accent, 7, 1);

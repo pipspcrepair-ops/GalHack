@@ -188,16 +188,15 @@ public partial class Game
         return true;
     }
 
-    /// <summary>Sets things down where they can be picked up again (a full bag, a full storage, a refund with nowhere to go). Never lost.</summary>
+    /// <summary>Sets things down where they can be picked up again (a full bag, a full storage, a refund with nowhere to go): into your bag lying there, or a new one. Never lost.</summary>
     public void SetDown(Bill items, Vector3 at)
     {
         if (items == null || items.IsEmpty) return;
-        Vector3 ground = Zone.GroundAt(at.X, at.Z);
-        Zone.Loot.Spill(items, new Vector3(at.X, MathF.Max(at.Y - 0.2f, ground.Y), at.Z));
+        Zone.Loot.Spill(items, at);
         Say($"BAG FULL · DROPPED {Zone.Data.Items.Describe(items, 3)}", Tones.Caution);
     }
 
-    /// <summary>Drops a stack from the bag onto the ground in front of you (dragged out of the inventory window).</summary>
+    /// <summary>Drops a stack from the bag onto the ground in front of you (dragged out of the inventory window): into your bag there (in space it floats where it was let go).</summary>
     public void Drop(ItemGrid from, int slot)
     {
         Slot s = from[slot];
@@ -208,19 +207,21 @@ public partial class Game
         s.Clear();
         from.Reconcile();
         Vector3 look = Survivor.WorldLook();
-        Vector3 ahead = Survivor.WorldFeet + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
-        Vector3 ground = Zone.GroundAt(ahead.X, ahead.Z);
-        Zone.Loot.Spill(bill, float.IsFinite(ground.Y) ? ground : ahead + Vector3.Up * 0.6f); // in space it floats where it was let go
+        Zone.Loot.Spill(bill, Survivor.WorldFeet + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f + Vector3.Up * 0.3f);
     }
 
-    // ---- Death and the backpack -----------------------------------------------------------------
+    // ---- Death and the bag ----------------------------------------------------------------------
 
     bool _wasDead;
 
-    /// <summary>The backpack your last death left, if it still holds anything.</summary>
-    public Lootable Backpack { get; private set; }
+    /// <summary>The bag your last death left, while it holds anything.</summary>
+    public Lootable DeathBag { get; private set; }
 
-    /// <summary>On death the bag goes into a backpack where you fell, marked on the compass; the toolbar and the survival tool stay with you, and nothing is lost.</summary>
+    /// <summary>
+    /// On death your things go into your bag where you fell, marked on the compass and the map; the
+    /// toolbar and the survival tool stay with you, and nothing is lost. Then whoever was about takes it
+    /// in (<see cref="Aftermath"/>).
+    /// </summary>
     void CheckDeath()
     {
         if (Suit.Dead && !_wasDead)
@@ -228,14 +229,16 @@ public partial class Game
             _wasDead = true;
             if (Survivor.Seated != null) Survivor.StandUp();
             Bill all = Pack.TakeBagForDeath();
-            int[] size = Zone.Data.Rules.Containers.Backpack;
-            Vector3 feet = Zone.FloorUnder(Survivor.WorldFeet); // set down on what is under the body, never left in the air
-            if (!all.IsEmpty) Backpack = Zone.Loot.Create(LootKind.Backpack, "Your backpack", feet, size[0], size[1], all);
+            Vector3 feet = Survivor.WorldFeet, ahead = Survivor.WorldLook() with { Y = 0f };
+            ahead = ahead.LengthSquared() > 1e-4f ? ahead.Normalized() : Vector3.Forward;
+            // At the feet, a little ahead of them: the body goes down the other way.
+            if (!all.IsEmpty) DeathBag = Zone.Loot.Bag(all, feet + ahead * 0.5f, "Your bag", Zone.Loot.YourColour, yours: true);
             Stats.Deaths++;
             CloseContainer();
             Menu.Close();
+            Aftermath(feet, -ahead);
         }
-        if (Backpack != null && !Zone.Loot.All.Contains(Backpack)) Backpack = null;
+        if (DeathBag != null && !Zone.Loot.All.Contains(DeathBag)) DeathBag = null;
     }
 
     void Respawn()
@@ -251,12 +254,16 @@ public partial class Game
     // ---- Creatures' bodies ---------------------------------------------------------------------
 
     /// <summary>
-    /// A creature died: its body becomes a container holding its drops (wildlife's drop table:
-    /// meat by size, hide, and a rare part by chance). The player's kills are worth experience.
+    /// A creature died: its body becomes a container holding its drops (wildlife's drop table: meat by
+    /// size, hide, and a rare part by chance), or, a person, their bag drops from them with what they
+    /// carried. The player's kills are worth experience. The sleeper's own body is none of this: its
+    /// things are in its bag already.
     /// </summary>
     void OnCreatureDied(Creature c, ITarget killer)
     {
         Species s = c.Species;
+        if (s.Id == Slice.Player.CharacterModel.Sleeper.Id) return;
+        Laid(s);
         if (s.Rig == RigKind.Swarm)
         {
             // A swarm doesn't lie down and leave a body: the last of it goes in a burst.
@@ -273,8 +280,11 @@ public partial class Game
         }
         Bill drops = BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", c.Id));
         Arms?.People?.Drops(c, drops); // the weapon it carried, and the ammo it had left for it
+        if (_given.Remove(c, out Bill given)) drops = Less(drops, given); // (what it tossed you is on the ground already)
         int[] size = Zone.Data.Rules.Containers.Corpse;
-        if (EndCreature(c, out Vector3 left)) Remains(s, left, drops);
+        bool gone = EndCreature(c, out Vector3 left);
+        if (BagCarrier(s)) DropBag(s, drops, gone ? left : Zone.Wildlife.WorldOf(c), c.HitDir, c);
+        else if (gone) Remains(s, left, drops);
         else
         {
             Vector3 at = Zone.Wildlife.WorldOf(c);
@@ -295,13 +305,41 @@ public partial class Game
     /// <summary>How far out from a town its people go about on its ground (bands on its roads), m: your standing with the town is your standing with them.</summary>
     public const float BandReach = 400f;
 
+    /// <summary>Whether a body carries its things in a bag: a person (not a Husk, not a machine).</summary>
+    public static bool BagCarrier(Species s) => s.Figure != null && !s.Husk && !s.Mechanical;
+
+    /// <summary>The colour of someone's bag: their clothes' colour, gone toward their leather.</summary>
+    public static Color BagColour(Figure f) => f.Cloth.Lerp(f.Leather, 0.35f);
+
+    /// <summary>What's left of a bill once another is taken out of it.</summary>
+    static Bill Less(Bill from, Bill taken)
+    {
+        var left = new Bill();
+        foreach (var (id, n) in from) if (n > taken[id]) left.Add(id, n - taken[id]);
+        return left;
+    }
+
+    /// <summary>A person's bag drops from their hip as they go down, onto the ground at their feet, on the side they didn't fall to.</summary>
+    Lootable DropBag(Species s, Bill drops, Vector3 feet, Vector3 fell, object owner)
+    {
+        if (drops.IsEmpty) return null;
+        Vector3 back = new(-fell.X, 0f, -fell.Z);
+        back = back.LengthSquared() > 1e-4f ? back.Normalized() : Vector3.Back;
+        PeopleBags++;
+        return Zone.Loot.Toss(drops, feet + Vector3.Up * s.Figure.Height * 0.5f, feet + back * 0.45f, "Bag", BagColour(s.Figure), owner);
+    }
+
+    /// <summary>People who fell and left a bag (tests).</summary>
+    public int PeopleBags { get; private set; }
+
     /// <summary>
-    /// What a body holds follows what it was. A machine (robot, drone, cyborg) leaves salvage by
-    /// its size: metal, wiring, and a board or plate by chance. A person leaves what they carried
-    /// (a ration, a bit of scrap; their weapon and its ammo are added from what they really had), never meat or hide. An animal, a Husk or a
+    /// What a body holds follows what it was. A machine (robot, drone, cyborg) leaves salvage by its
+    /// size: metal, wiring, and a board or plate by chance. A person carries the goods of their trade
+    /// (slice.json "carried", each by chance) and what their hands held besides a weapon (their weapon
+    /// and its ammo are added from what they really had), never meat or hide. An animal, a Husk or a
     /// Hollow leaves meat and hide (no coat has a material of its own yet) and its rare part by chance.
     /// </summary>
-    public static Bill BodyDrops(Species s, Wildlife.Rng rng)
+    public Bill BodyDrops(Species s, Wildlife.Rng rng)
     {
         var drops = new Bill();
         if (s.Mechanical)
@@ -322,8 +360,9 @@ public partial class Game
                 case "hoe" or "cane": if (rng.Chance(0.5f)) drops.Add("iron-bar", 1); break;
                 case "umbrella": drops.Add("polymer", 1); break;
             }
-            if (rng.Chance(0.45f)) drops.Add("trail-ration", 1);
-            if (rng.Chance(0.3f)) drops.Add("copper-wire", rng.Int(1, 2));
+            if (Zone.Data.Rules.Carried.TryGetValue(s.Figure.Role.ToString().ToLowerInvariant(), out var goods))
+                foreach (SliceRules.CarriedGood g in goods)
+                    if (rng.Chance(g.Chance) && Zone.Data.Items.Has(g.Item)) drops.Add(g.Item, rng.Int(1, Math.Max(1, g.Most)));
             return drops;
         }
         if (s.Drops.Meat > 0) drops.Add("meat", s.Drops.Meat);
