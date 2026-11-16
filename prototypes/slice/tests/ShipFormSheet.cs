@@ -98,8 +98,8 @@ public partial class ShipFormSheet : Node
         {
             Environment = new Godot.Environment
             {
-                BackgroundMode = Godot.Environment.BGMode.Color, BackgroundColor = new Color(0.09f, 0.1f, 0.12f),
-                AmbientLightSource = Godot.Environment.AmbientSource.Color, AmbientLightColor = new Color(0.6f, 0.63f, 0.7f), AmbientLightEnergy = 0.5f,
+                BackgroundMode = Godot.Environment.BGMode.Color, BackgroundColor = new Color(0.19f, 0.21f, 0.25f),
+                AmbientLightSource = Godot.Environment.AmbientSource.Color, AmbientLightColor = new Color(0.6f, 0.63f, 0.7f), AmbientLightEnergy = 0.65f,
             },
         });
         var sun = new DirectionalLight3D { LightEnergy = 1.35f, ShadowEnabled = true, DirectionalShadowMaxDistance = 1500f };

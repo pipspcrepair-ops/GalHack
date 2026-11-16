@@ -402,7 +402,11 @@ public sealed partial class ShipForm
 
     Ball Sphere(string paint, NV3 c, NV3 r, bool hab = false) => Add(new Ball { C = c, R = r }, paint, hab);
 
-    Rod Bar(string paint, NV3 a, NV3 b, float ra, float rb = -1f) => Add(new Rod { A = a, B = b, RA = ra, RB = rb < 0f ? ra : rb }, paint);
+    /// <summary>A bar from a to b, its radius from ra to rb: never under a metre and a little, or a slanting one breaks into floating bits on the 1 m grid.</summary>
+    Rod Bar(string paint, NV3 a, NV3 b, float ra, float rb = -1f) => Add(new Rod { A = a, B = b, RA = MathF.Max(ra, Thin), RB = MathF.Max(rb < 0f ? ra : rb, Thin) }, paint);
+
+    /// <summary>The least radius of a bar and half thickness of a slanting plate the 1 m grid holds whole.</summary>
+    const float Thin = 1.05f;
 
     /// <summary>A box at any turn: along e1 (its taper's way), e2 across it, the third square to both.</summary>
     Slab Plate(string paint, NV3 c, NV3 e1, NV3 e2, NV3 h, float tip = 1f)
@@ -412,7 +416,11 @@ public sealed partial class ShipForm
         // (Across it any way square to it, where the way asked lies along it.)
         if (e2.LengthSquared() < 1e-4f) e2 = NV3.Cross(e1, MathF.Abs(e1.Y) < 0.9f ? NV3.UnitY : NV3.UnitX);
         e2 = NV3.Normalize(e2);
-        return Add(new Slab { C = c, E1 = e1, E2 = e2, E3 = NV3.Cross(e1, e2), H = h, Tip = tip }, paint);
+        NV3 e3 = NV3.Cross(e1, e2);
+        // (Slanting, never thinner than the grid holds whole.)
+        static bool Square(NV3 e) => MathF.Max(MathF.Abs(e.X), MathF.Max(MathF.Abs(e.Y), MathF.Abs(e.Z))) > 0.99f;
+        if (!Square(e1) || !Square(e2)) h = NV3.Max(h, new NV3(Thin));
+        return Add(new Slab { C = c, E1 = e1, E2 = e2, E3 = e3, H = h, Tip = tip }, paint);
     }
 
     /// <summary>A pipe or a strut from a to b: a run of cylinder blocks where it lies along an axis, else a bar a block thick.</summary>
@@ -475,7 +483,7 @@ public sealed partial class ShipForm
         Pipe(root, root + outward * (span + 2f));
         for (int i = 0; i < panels; i++)
         {
-            NV3 c = root + outward * (2f + span / 2f) + stack * ((i - (panels - 1) / 2f) * 3f);
+            NV3 c = root + outward * (2f + span / 2f) + stack * MathF.Round((i - (panels - 1) / 2f) * 3f);
             Plate("radiator", c, outward, NV3.UnitZ, new NV3(span / 2f, chord / 2f, 0.7f));
         }
     }

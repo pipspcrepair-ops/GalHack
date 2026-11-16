@@ -412,7 +412,7 @@ public sealed partial class ShipForm
             NV3 o = Round(R.Float(0f, MathF.Tau));
             if (Surface(new NV3(0, 0, R.Float(2f, va + al / 2)), o) is not { } p) continue;
             NV3 d = NV3.Normalize(o + new NV3(0, 0, R.Float(-0.9f, 0.3f)));
-            Bar("dark", p - d, p + d * R.Between(5, 14), R.Float(1.2f, 1.8f), 0.3f);
+            Bar("dark", p - d, p + d * R.Between(5, 14), R.Float(1.5f, 2.2f), 0.3f);
         }
         // Drives bolted on unevenly: one oversized, others smaller and off to a side on outriggers.
         float vs = va + al / 2, mr = MathF.Min(aw, ah) * R.Float(0.6f, 0.85f);
@@ -487,8 +487,8 @@ public sealed partial class ShipForm
         {
             NV3 p = Vertex(i, a0), q = Vertex(i, a0 + MathF.Tau / n), o = Round(a0);
             // One sector of the ring (its side, its spoke, its module and light), turned n ways round.
-            Around(Bar("machine", p, q, 1.0f), n);
-            Around(Bar("machine", o * cr + new NV3(0, 0, p.Z), p, 0.9f), n);
+            Around(Bar("machine", p, q, 1.3f), n);
+            Around(Bar("machine", o * cr + new NV3(0, 0, p.Z), p, 1.1f), n);
             if (hoops) Add(new Hoop { C = new NV3(0, 0, p.Z), R = Radius(i), T = 1.1f }, "machine");
             if (!alternate || i % 2 == 0)
             {
@@ -504,7 +504,7 @@ public sealed partial class ShipForm
             }
             if (i == bays) break;
             // Longeron and brace to the next ring, and the bay's machinery on the core.
-            Around(Bar("machine", p, Vertex(i + 1, a0), 1.0f), n);
+            Around(Bar("machine", p, Vertex(i + 1, a0), 1.3f), n);
             Around(Bar("machine", p, Vertex(i + 1, a0 + MathF.Tau / n), 0.75f), n);
             Can("machine", 2, new NV3(0, 0, p.Z + pitch / 2), mr, ml);
         }
