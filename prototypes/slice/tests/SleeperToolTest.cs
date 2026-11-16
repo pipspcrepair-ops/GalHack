@@ -120,7 +120,12 @@ public partial class SleeperToolTest : Node
         if (_shots == null) return;
         string file = System.IO.Path.Combine(_shots, name);
         GetViewport().GetTexture().GetImage().SavePng(file);
-        GD.Print($"  (picture: {file})");
+        // What tall whirls stand in view (a dust devil reads as a thin twisted column from far off).
+        Camera3D cam = _game.Camera;
+        var funnels = _game.Zone.FindChildren("*", nameof(Node3D), true, false).OfType<PlanetSurface.WeatherView.TornadoFx>()
+            .Where(f => f.IsVisibleInTree() && cam.IsPositionInFrustum(f.GlobalPosition + Vector3.Up * 20f))
+            .Select(f => $"a funnel {f.GlobalPosition.DistanceTo(cam.GlobalPosition):F0} m off, its foot {f.GlobalPosition.Y - _game.Zone.GroundAt(f.GlobalPosition.X, f.GlobalPosition.Z).Y:+0.0;-0.0} m from the ground, at {cam.UnprojectPosition(f.GlobalPosition + Vector3.Up * 20f)}");
+        GD.Print($"  (picture: {file}; in view: {string.Join("; ", funnels.DefaultIfEmpty("no funnels"))})");
     }
 
     /// <summary>For a picture: the next blast or cone held where it is (the effects and the hands stop), the picture taken, then everything runs on.</summary>
