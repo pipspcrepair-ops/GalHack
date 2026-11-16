@@ -126,7 +126,7 @@ public partial class CombatTest : Node
         Vector3 Local(PoiGenerator.Gen.Int3 c) => game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X + c.X + 0.5f, site.Origin.Y + c.Y, site.Origin.Z + c.Z + 0.5f), game.Survivor.WorldFeet);
         ActivitySpot camp = site.Instance.Townsfolk.Spots.First();
         game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
-        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
+        for (int i = 0; i < 3600 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0; // (a minute: a busy machine builds it slower)
         Place place = game.Places.PlaceOf(site);
         Town town = place?.Memory.Town;
         Check(town != null, $"it stands with its people ({town?.People.Count}, {place?.Memory.Mood})");

@@ -440,13 +440,19 @@ public partial class ShotFeelTest : Node
         var facing = new List<float>();
         int fired = 0;
         float wanted = -1f, first = -1f; // (when it first had you in reach on a clear line, and when its first round went)
+        int dropped = arms.People.Dropped, inReach = 0;
+        var states = new List<string>();
         for (int i = 0; i < 60 * 25 && offs.Count < 3 && !raider.Dead; i++)
         {
             game.Suit.Vitals.Health = max;
             drive.Face(patch.WorldOf(raider) + Vector3.Up * 1.4f);
             yield return 0;
             SimArms.Kit kit = arms.People.KitOf(raider);
-            if (wanted < 0f && Arming.ShootReach(raider, patch.Player) > 0f) wanted = i / 60f;
+            bool reach = Arming.ShootReach(raider, patch.Player) > 0f;
+            if (reach) inReach++;
+            if (wanted < 0f && reach) wanted = i / 60f;
+            string st = $"{raider.State}/{raider.Phase}";
+            if (first < 0f && (states.Count == 0 || states[^1] != st) && states.Count < 12) states.Add(st);
             if (first < 0f && kit?.Clip.Fired > 0) first = i / 60f;
             if (kit == null || kit.Clip.Fired <= fired || raider.Rig is not HumanRig hr) continue;
             fired = kit.Clip.Fired;
@@ -468,7 +474,7 @@ public partial class ShotFeelTest : Node
         }
         patch.Sim.Kill(raider, null);
         string Degrees(List<float> a) => a.Count == 0 ? "none" : string.Join(", ", a.Select(v => $"{v:F1}"));
-        Check(first >= 0f && wanted >= 0f && first - wanted <= FirstShot, $"with you in reach on a clear line, it fires within about a second ({(first < 0f ? "never fired" : $"{first - wanted:F2} s")}; reach first at {wanted:F1} s)");
+        Check(first >= 0f && wanted >= 0f && first - wanted <= FirstShot, $"with you in reach on a clear line, it fires within about a second ({(first < 0f ? "never fired" : $"{first - wanted:F2} s")}; reach first at {wanted:F1} s, in reach {inReach / 60f:F1} s, {arms.People.Dropped - dropped} bursts held off ({arms.People.LastHeldOff:F1} deg), before its first: {string.Join(" > ", states)})");
         Check(offs.Count >= 2 && offs.Max() <= HumanRig.OnMark + 0.5f, $"its {prop} is on you as each round goes: {Degrees(offs)} degrees off the line to you (at most {HumanRig.OnMark})");
         if (prop != "bow") Check(barrels.Count >= 2 && barrels.Max() <= HumanRig.OnMark + 1.5f, $"the round leaves the muzzle along the barrel: {Degrees(barrels)} degrees between the barrel and muzzle-to-you");
         GD.Print($"  (its chest turned {Degrees(facing)} degrees from you as it fired)");
