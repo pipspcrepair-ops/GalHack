@@ -115,7 +115,7 @@ public sealed partial class Town
         if (_places?.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = PlayerGive }); // (just inside their capsules' touch)
         _space.Resolve(dt, Open, 4);
         // (Someone who moved a long way at once, far off and updated now and then, can land on another: settle it now.)
-        if (_space.WorstOverlap > 0.015f) _space.Resolve(0f, Open, 6);
+        if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, Open, 6);
         if (_space.WorstOverlap > WorstOverlap)
         {
             WorstOverlap = _space.WorstOverlap;
@@ -133,7 +133,7 @@ public sealed partial class Town
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
         }
         // Two stood still in each other with no room to part (sent to the one spot in a narrow way): the second goes elsewhere.
-        if (_space.WorstOverlap > 0.015f)
+        if (_space.WorstOverlap > 0.05f)
             for (int i = 0; i < _bodies.Count; i++)
             {
                 Person p = _bodies[i];
@@ -143,11 +143,9 @@ public sealed partial class Town
                     Person o = _bodies[j];
                     if (MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
                     float d = new Vector2(o.Pos.X - p.Pos.X, o.Pos.Z - p.Pos.Z).Length();
-                    if (d >= BodyRadius(o) + BodyRadius(p) - 0.015f) continue;
-                    // (The one away from their own post goes: one keeping a stall would come straight back to it.)
-                    Person go = p.Spot == p.Spawn.Spot && o.Spot != o.Spawn.Spot ? o : p;
-                    go.Wait = 0f;
-                    go.Partner = null;
+                    if (d >= BodyRadius(o) + BodyRadius(p) - 0.05f) continue;
+                    p.Wait = 0f;
+                    p.Partner = null;
                     break;
                 }
             }

@@ -146,10 +146,8 @@ public sealed partial class Town
         /// <summary>How long you've been leaning on them.</summary>
         public float PressFor;
         public float Pursue;
-        /// <summary>The stand they're taking to talk to whom, and when they may look for one again after finding none.</summary>
+        /// <summary>The stand they're taking to talk (null: none, or there).</summary>
         public Vector3? ChatAt;
-        public Person ChatWith, ChatMovedWith;
-        public float ChatRetry;
         public BodyAct Answer;
         public float AnswerAt, AnswerFor, LookFor;
         public Vector3 LookAt;
@@ -775,7 +773,7 @@ public sealed partial class Town
         if (tags == null || tags.Length == 0) return null;
         // In a room their job is done in, most of the time (Town.Placement).
         if (Fitting(p, tags) is int fit) return fit;
-        var near = Spots.Select((s, i) => (s, i)).Where(t => Array.IndexOf(tags, t.s.Tag) >= 0).OrderBy(t => t.s.Cell.Manhattan(Spots[p.Spot].Cell) + _rng.Next(12)).Take(3).ToList();
+        var near = Spots.Select((s, i) => (s, i)).Where(t => Array.IndexOf(tags, t.s.Tag) >= 0 && (t.i == p.Spot || !Held(t.i, p))).OrderBy(t => t.s.Cell.Manhattan(Spots[p.Spot].Cell) + _rng.Next(12)).Take(3).ToList();
         return near.Count == 0 ? null : near[_rng.Next(near.Count)].i;
     }
 
@@ -825,7 +823,9 @@ public sealed partial class Town
                 Person who = People.Where(o => o != p && !o.Dead && !o.Indoors && !o.Away && o.Job != PersonRole.Guard && o.Job != PersonRole.Lawman).OrderBy(_ => _rng.Next()).FirstOrDefault();
                 if (who != null && _rng.NextDouble() < 0.6)
                 {
-                    GoTo(p, who.Spot);
+                    // Beside them at their culture's distance where there's room, else a spot of their own near them: never on top of them.
+                    p.ChatAt = TalkAt(who.Spot, who);
+                    GoTo(p, p.ChatAt != null ? who.Spot : Free(who.Spot, p));
                     p.Partner = who;
                     p.Working = true;
                     p.Wait = 6f + (float)_rng.NextDouble() * 6f;
@@ -898,7 +898,7 @@ public sealed partial class Town
                         // A pack of their own: the rest after whichever of them leads it, the leader off about the town.
                         // (Round the leader rather than on top of it: half of them to the spots beside the leader's.)
                         var round = Data.Links.Where(l => l.A == lead.Spot || l.B == lead.Spot).Select(l => l.A == lead.Spot ? l.B : l.A).Where(s => At(s).DistanceSquaredTo(At(lead.Spot)) < 36f).ToList();
-                        GoTo(p, lead == p ? (linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot) : round.Count > 0 && (p.GetHashCode() & 1) == 1 ? round[p.GetHashCode() / 2 % round.Count] : lead.Spot);
+                        GoTo(p, Free(lead == p ? (linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot) : round.Count > 0 && (p.GetHashCode() & 1) == 1 ? round[p.GetHashCode() / 2 % round.Count] : lead.Spot, p));
                         p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
                         p.Wait = lead != p ? 0.3f + (float)_rng.NextDouble() * 0.8f : 2f + (float)_rng.NextDouble() * 4f;
                         return;
@@ -917,27 +917,23 @@ public sealed partial class Town
                     if (keeper != null && (_rng.NextDouble() > play || other == null || p.Pos.DistanceTo(keeper.Pos) > leash))
                     {
                         // Back to the one minding them; old enough, at their work beside them.
-                        GoTo(p, keeper.Spot);
+                        GoTo(p, Free(keeper.Spot, p));
                         p.Working = Culture.Has("work") && p.Figure.Age >= 10f && keeper.Working;
                         p.Speed = 2.4f + (float)_rng.NextDouble() * 0.8f;
                         p.Wait = p.Working ? 8f + (float)_rng.NextDouble() * 8f : 0.6f + (float)_rng.NextDouble() * 1f;
                         return;
                     }
                     int dash = other != null && (keeper != null || _rng.NextDouble() < 0.6) ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
-                    GoTo(p, dash);
+                    GoTo(p, Free(dash, p));
                     p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
                     p.Wait = 0.3f + (float)_rng.NextDouble() * 1.6f;
                     return;
                 }
-                // A child goes where a grown-up is.
+                // A child goes where a grown-up is; anyone else a sit down in one of the rooms, or on along the way.
                 Person minder = p.Figure?.Stage == LifeStage.Child ? Minder(p) : null;
-                if (minder != null) GoTo(p, minder.Spot);
-                else if (_rng.NextDouble() < 0.35 && Haunt(p, Seat) is int seat_) GoTo(p, seat_); // a sit down in one of the rooms
-                else if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
+                int to = minder != null ? minder.Spot : _rng.NextDouble() < 0.35 && Haunt(p, Seat) is int seat_ ? seat_ : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
                 p.Wait = 4f + (float)_rng.NextDouble() * 9f;
-                // Someone else already at this spot: they stop and chat.
-                p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == p.Spot && o.Partner == null && o.Role is "wanderer" or "rusher" && Mixes(p, o));
-                if (p.Partner != null) { p.Partner.Partner = p; p.Partner.Wait = p.Wait; }
+                Talk(p, to);
                 return;
         }
     }
@@ -953,126 +949,111 @@ public sealed partial class Town
         {
             Vector3 d = p.Partner.Pos - p.Pos;
             if (d.LengthSquared() > 0.01f) p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 4f));
-            ChatApart(p, d, dt);
+            ChatApart(p, dt);
         }
     }
 
     /// <summary>
     /// Two talking stand at their culture's distance: close enough to touch on one world, two strides apart on
-    /// another. One of them takes a stand that far from the other (the one standing beside one sitting, else
-    /// either), the way they already are where there's room, else round the other till there is, else as far
-    /// as the room allows; never in a wall or the furniture, never across one.
+    /// another. The one who came to talk takes a stand worked out with the spot (<see cref="TalkAt"/>) and walks the
+    /// last of the way to it; where a spot has no stand at that distance, nobody stops there to talk. Nothing is
+    /// looked for each tick: a step a tick toward the stand, and only while they stand talking.
     /// </summary>
-    void ChatApart(Person p, Vector3 d, float dt)
+    void ChatApart(Person p, float dt)
     {
-        Person q = p.Partner;
-        // (Two at work, a medic seeing to someone, are close by their work; and not while the way somewhere is being worked out.)
-        if (p.Working || q.Working || p.Asked >= 0 || q.Asked >= 0) return;
-        if (p.Sitting || p.Path != null && p.Step < p.Path.Count || !q.Sitting && q.Partner == p && p.GetHashCode() < q.GetHashCode()) return;
-        // (Not while pressed, giving way or with you at their shoulder: nobody leans into you to keep their distance.)
-        if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f || (p.Pos - _you).LengthSquared() < 2.25f) { ChatHeld++; return; }
-        d.Y = 0f;
-        float gap = d.Length(), want = Culture.Trait("chat", 1.1f), r = BodyRadius(p), h = Height(p);
-        if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) { p.ChatAt = null; return; }
-        // (A step toward a stand, from a spot at a counter or a bench: clear of the furniture, or at least further out than they are.)
-        float here = _parts == null ? 0f : MathF.Min(0f, _parts.Gap(p.Pos, r, h) - 1e-4f);
-        bool Step(Vector3 at) => Open(at) && Ground(at) is float g && MathF.Abs(g - p.Pos.Y) < 0.1f && (_parts == null || _parts.Gap(at, r, h) >= here);
-        // (A stand found is kept till they're on it: the looking is done once, not every tick.)
-        if (p.ChatAt is not { } stand || p.ChatWith != q)
-        {
-            if (_clock < p.ChatRetry) return;
-            Vector3 away = gap > 0.05f ? -d / gap : Vector3.Right * (p.GetHashCode() < q.GetHashCode() ? -1f : 1f);
-            if (StandBy(q.Pos, away, want, r, h, p.Pos) is not { } found) { NoRoom(p, q, want, r, h); return; }
-            stand = found;
-            p.ChatAt = stand;
-            p.ChatWith = q;
-        }
-        Vector3 to = p.Pos.MoveToward(stand, 0.7f * dt);
-        // (A way out to it blocked, round a chair or a counter: there's no room here after all.)
-        if (!Step(to)) { p.ChatAt = null; NoRoom(p, q, want, r, h); return; }
-        p.Pos = to;
-        ChatSet++;
-        if (p.Pos.DistanceSquaredTo(stand) < 1e-4f) p.ChatAt = null;
+        if (p.ChatAt is not { } stand || p.Sitting || p.Path != null && p.Step < p.Path.Count) return;
+        // (Not while pressed or giving way: nobody leans into anyone to keep their distance.)
+        if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f) return;
+        p.Pos = p.Pos.MoveToward(stand with { Y = p.Pos.Y }, 0.7f * dt);
+        if (new Vector2(p.Pos.X - stand.X, p.Pos.Z - stand.Z).LengthSquared() < 1e-4f) p.ChatAt = null;
     }
 
     /// <summary>
-    /// No room for two to talk at their distance here: they go once to a spot nearby that has it, with a way there; failing
-    /// that, or still no room when they get there, they part and go about their day. Never closer.
+    /// To a spot, and someone already there stops to talk, where there's room at their culture's distance; with
+    /// nobody to talk to, or no room, a spot of their own nearby: never on top of anyone.
     /// </summary>
-    void NoRoom(Person p, Person q, float want, float r, float h)
+    void Talk(Person p, int to)
     {
-        if (p.ChatMovedWith != q && Roomy(q, p, want, r, h) is int spot)
+        Person with = p.Figure?.Stage == LifeStage.Child ? null : People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == to && o.Partner == null && o.Role is "wanderer" or "rusher" && Mixes(p, o));
+        Vector3? stand = with != null ? TalkAt(to, with) : null;
+        GoTo(p, stand != null ? to : Free(to, p));
+        if (stand == null) return;
+        p.Partner = with;
+        with.Partner = p;
+        with.Wait = MathF.Max(with.Wait, p.Wait);
+        p.ChatAt = stand;
+    }
+
+    /// <summary>Where one coming to a spot stands to talk with someone there: the spot's stand nearest the culture's distance from them, never closer than 85% of it (null: no room here to talk at it).</summary>
+    Vector3? TalkAt(int spot, Person with)
+    {
+        float dist = Culture.Trait("chat", 1.1f);
+        Vector3? best = null;
+        float off = float.MaxValue;
+        foreach (Vector3 s in Stands(spot, dist))
         {
-            GoTo(p, spot);
-            GoTo(q, spot);
-            if (p.Path is { Count: > 0 } || p.Asked >= 0)
-            {
-                p.ChatMovedWith = q;
-                ChatMoved++;
-                return;
-            }
+            float d = new Vector2(s.X - with.Pos.X, s.Z - with.Pos.Z).Length();
+            if (d < 0.85f * dist || MathF.Abs(d - dist) >= off) continue;
+            (best, off) = (s, MathF.Abs(d - dist));
         }
-        p.Partner = q.Partner = null;
-        p.ChatMovedWith = null;
-        p.Wait = MathF.Min(p.Wait, 0.5f);
-        q.Wait = MathF.Min(q.Wait, 0.5f);
-        ChatStuck++;
+        return best;
     }
 
     /// <summary>
-    /// Room to stand and talk at a point: its walking grid, a floor at that height under it, not in a doorway, and a
-    /// stride clear of the furniture (so the way on from there starts clear).
+    /// The points at a spot two can talk from, worked out once a spot and distance: the spot's own, and those round it that
+    /// far off with room for a body (over floor at its height, not a doorway or a seat's cell, a stride off the furniture)
+    /// and a clear straight way from the spot.
     /// </summary>
-    bool Room(Vector3 at, float y, float r, float h) => Open(at) && Ground(at) is float g && MathF.Abs(g - y) < 0.1f
-        && DoorWays.At(Memory, Cell(at with { Y = y })) == null && (_parts == null || _parts.Gap(at, r + 0.2f, h) >= 0f);
-
-    /// <summary>
-    /// A stand a distance from someone (the way given where there's room, else round them till there is), clear and over
-    /// floor, with the way to it from where one stands now open (null: none).
-    /// </summary>
-    Vector3? StandBy(Vector3 by, Vector3 away, float dist, float r, float h, Vector3 from)
+    List<Vector3> Stands(int spot, float dist)
     {
-        foreach (float turn in Turns)
+        if (_stands.TryGetValue((spot, dist), out List<Vector3> list)) return list;
+        Vector3 at = At(spot);
+        list = new List<Vector3> { at };
+        for (int k = 0; k < 8; k++)
         {
-            Vector3 at = by + away.Rotated(Vector3.Up, turn) * dist;
-            at.Y = by.Y;
-            Vector3 mid = (at + from) * 0.5f;
-            if (Room(at, by.Y, r, h) && Open(mid) && DoorWays.At(Memory, Cell(mid with { Y = by.Y })) == null) return at;
+            Vector3 dir = new(MathF.Cos(k * MathF.Tau / 8f), 0f, MathF.Sin(k * MathF.Tau / 8f));
+            bool clear = true;
+            for (float t = 0.3f; t <= dist + 1e-3f && clear; t += 0.3f) clear = Room(at + dir * MathF.Min(t, dist), at.Y);
+            if (clear && Room(at + dir * dist, at.Y)) list.Add(at + dir * dist);
         }
-        return null;
+        return _stands[(spot, dist)] = list;
     }
 
-    /// <summary>The nearest other standing spot round two where they can stand that far apart (null: none within a dozen metres).</summary>
-    int? Roomy(Person by, Person with, float dist, float r, float h)
+    readonly Dictionary<(int, float), List<Vector3>> _stands = new();
+    HashSet<PInt3> _seats;
+
+    /// <summary>Room for a body at a point: the walking grid, floor at that height under it, not a doorway or a seat's cell, and a stride clear of the furniture.</summary>
+    bool Room(Vector3 at, float y)
     {
-        if (by.Spot < 0 || by.Spot >= Spots.Count) return null;
-        // (Spots and the furniture stand still: each spot's neighbours and each spot's room at a distance are worked out once.)
-        if (!_nearSpots.TryGetValue(by.Spot, out int[] near))
-        {
-            PInt3 from = Spots[by.Spot].Cell;
-            _nearSpots[by.Spot] = near = Spots.Select((s, i) => (s, i)).Where(t => t.i != by.Spot && t.s.Tag is not ("bed" or "home" or "sit") && t.s.Cell.Manhattan(from) <= 12)
-                .OrderBy(t => t.s.Cell.Manhattan(from)).Take(13).Select(t => t.i).ToArray();
-        }
-        foreach (int i in near)
-        {
-            if (i == with.Spot) continue;
-            if (!_roomAt.TryGetValue((i, dist), out bool room))
-            {
-                Vector3 at = At(i);
-                _roomAt[(i, dist)] = room = Room(at, at.Y, r, h) && StandBy(at, Vector3.Right, dist, r, h, at) != null;
-            }
-            if (room) return i;
-        }
-        return null;
+        _seats ??= Spots.Where(s => s.Tag == "sit").Select(s => s.Cell).ToHashSet();
+        PInt3 c = Cell(at with { Y = y });
+        return Open(at) && Ground(at) is float g && MathF.Abs(g - y) < 0.1f && !_seats.Contains(c) && DoorWays.At(Memory, c) == null
+            && (_parts == null || _parts.Gap(at, PlaceParts.PersonRadius + 0.2f, PlaceParts.PersonHeight) >= 0f);
     }
 
-    readonly System.Collections.Generic.Dictionary<int, int[]> _nearSpots = new();
-    readonly System.Collections.Generic.Dictionary<(int, float), bool> _roomAt = new();
+    /// <summary>Whether someone else has a spot: stands on it, or is on the way to it.</summary>
+    bool Held(int spot, Person p)
+    {
+        foreach (Person o in People)
+            if (o != p && o.Spot == spot && !o.Dead && !o.Indoors && !o.Away) return true;
+        return false;
+    }
 
-    /// <summary>Steps taken toward a chatting distance, pairs gone elsewhere for room, pairs parted for want of it, and steps held off by a push or by you (tests).</summary>
-    public int ChatSet, ChatMoved, ChatStuck, ChatHeld;
-
-    static readonly float[] Turns = { 0f, 0.8f, -0.8f, 1.6f, -1.6f, 2.4f, -2.4f, MathF.PI };
+    /// <summary>A spot nobody else has: this one, else the nearest free one linked to it (else where they are: never onto someone).</summary>
+    int Free(int spot, Person p)
+    {
+        if (!Held(spot, p)) return spot;
+        int best = p.Spot;
+        float near = float.MaxValue;
+        foreach (var (a, b) in Data.Links)
+        {
+            int o = a == spot ? b : b == spot ? a : -1;
+            if (o < 0 || Held(o, p)) continue;
+            float d = At(o).DistanceSquaredTo(At(spot));
+            if (d < near) (best, near) = (o, d);
+        }
+        return best;
+    }
 
     /// <summary>A guard in a wary or hostile place: watches you. (Hostile, they fight with what they carry: Town.Combat.)</summary>
     void Guard(Person p, Vector3 player, Mood mood, float dt)

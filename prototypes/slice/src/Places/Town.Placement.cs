@@ -65,8 +65,9 @@ public sealed partial class Town
             int best = -1, bestD = int.MaxValue;
             for (int i = 0; i < Spots.Count; i++)
             {
-                if (!ForJob(p, i) || Spots[i].Tag is "bed" or "home" || taken.Contains(i) && Spots[i].Tag == "sit") continue;
-                int d = Spots[i].Cell.Manhattan(p.Spawn.Cell) + (taken.Contains(i) ? 6 : 0);
+                // (Each to a station of their own: two never share one.)
+                if (!ForJob(p, i) || Spots[i].Tag is "bed" or "home" || taken.Contains(i)) continue;
+                int d = Spots[i].Cell.Manhattan(p.Spawn.Cell);
                 if (d < bestD) (best, bestD) = (i, d);
             }
             if (best < 0) continue;
@@ -101,8 +102,8 @@ public sealed partial class Town
     int? Fitting(Person p, string[] tags)
     {
         if (_rng.NextDouble() > 0.7) return null;
-        if (_station.TryGetValue(p, out int own) && _rng.NextDouble() < 0.5) return own;
-        var fit = Spots.Select((s, i) => (s, i)).Where(t => (tags == null || Array.IndexOf(tags, t.s.Tag) >= 0) && ForJob(p, t.i)).Select(t => t.i).ToList();
+        if (_station.TryGetValue(p, out int own) && _rng.NextDouble() < 0.5 && (own == p.Spot || !Held(own, p))) return own;
+        var fit = Spots.Select((s, i) => (s, i)).Where(t => (tags == null || Array.IndexOf(tags, t.s.Tag) >= 0) && ForJob(p, t.i) && (t.i == p.Spot || !Held(t.i, p))).Select(t => t.i).ToList();
         return fit.Count == 0 ? null : fit[_rng.Next(fit.Count)];
     }
 
@@ -138,11 +139,9 @@ public sealed partial class Town
             if (common.Count > 0) at = common[_rng.Next(common.Count)];
         }
         if (at == null) return false;
-        GoTo(p, at.Value);
         p.Wait = 20f + (float)_rng.NextDouble() * 25f;
-        // Someone else gathered here already: they talk.
-        p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == at && o.Partner == null && Mixes(p, o));
-        if (p.Partner != null) { p.Partner.Partner = p; p.Partner.Wait = MathF.Max(p.Partner.Wait, p.Wait); }
+        // Someone else gathered here already: they talk (Town.Talk).
+        Talk(p, at.Value);
         return true;
     }
 }

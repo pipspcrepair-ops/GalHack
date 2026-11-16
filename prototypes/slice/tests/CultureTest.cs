@@ -460,7 +460,7 @@ public partial class CultureTest : Node
             Culture cu = f.World.Culture;
             var chat = new List<float>();
             var pairs = new HashSet<(Town.Person, Town.Person)>();
-            int mixed = 0, adultPairs = 0, kids = 0, kept = 0, places = 0, chatSet = 0, chatStuck = 0, chatHeld = 0, chatMoved = 0;
+            int mixed = 0, adultPairs = 0, kids = 0, kept = 0, places = 0;
             float overlap = 0f, standing = 0f;
             string standingAt = "";
             var why = new List<string>();
@@ -526,7 +526,7 @@ public partial class CultureTest : Node
                                 {
                                     chat.Add(apart);
                                     if (apart < 0.85f * cu.Trait("chat", 1.1f) && why.Count < 6)
-                                        why.Add($"{p.Job}/{q.Job} {apart:F2} m at {town.Spots[p.Spot].Tag}/{town.Spots[q.Spot].Tag}, partners {(p.Partner == q ? "p>q" : "")}{(q.Partner == p ? " q>p" : "")}, stand {p.ChatAt != null}/{q.ChatAt != null}, retry {p.ChatRetry - at:F1}/{q.ChatRetry - at:F1}, working {p.Working}/{q.Working}, wait {p.Wait:F1}/{q.Wait:F1}");
+                                        why.Add($"{p.Job}/{q.Job} {apart:F2} m at {town.Spots[p.Spot].Tag}/{town.Spots[q.Spot].Tag}, partners {(p.Partner == q ? "p>q" : "")}{(q.Partner == p ? " q>p" : "")}, stand {p.ChatAt != null}/{q.ChatAt != null}, working {p.Working}/{q.Working}, wait {p.Wait:F1}/{q.Wait:F1}");
                                 }
                             }
                         }
@@ -542,10 +542,6 @@ public partial class CultureTest : Node
                             }
                         }
                     }, apart: true);
-                chatSet += town.ChatSet;
-                chatStuck += town.ChatStuck;
-                chatHeld += town.ChatHeld;
-                chatMoved += town.ChatMoved;
                 if (town.WorstOverlap > overlap) { overlap = town.WorstOverlap; overlapAt = $"{fam.Id}: {town.WorstNote}"; }
             }
             GD.Print($"     {name}: {places} towns, {chat.Count} chat samples, {adultPairs} pairs of grown-ups, {kids} child samples");
@@ -553,7 +549,7 @@ public partial class CultureTest : Node
                 Check(ours <= MathF.Max(1.2f * plain, plain + 0.3f), $"{name}: a town's day costs {ours:F3} ms a tick under this culture against {plain:F3} ms under today's ways (within 20% or 0.3 ms)");
             float want = cu.Trait("chat", 1.1f), median = chat.Count > 0 ? chat.OrderBy(d => d).ElementAt(chat.Count / 2) : float.NaN;
             var sorted = chat.OrderBy(d => d).ToList();
-            if (sorted.Count > 4) GD.Print($"     {name}: chat quartiles {sorted[sorted.Count / 4]:F2} / {median:F2} / {sorted[3 * sorted.Count / 4]:F2} m; steps {chatSet}, pairs gone elsewhere for room {chatMoved}, parted {chatStuck}, held off {chatHeld}");
+            if (sorted.Count > 4) GD.Print($"     {name}: chat quartiles {sorted[sorted.Count / 4]:F2} / {median:F2} / {sorted[3 * sorted.Count / 4]:F2} m");
             float closer = chat.Count(d => d < 0.85f * want) / (float)Math.Max(1, chat.Count);
             if (chat.Count < 10) GD.Print($"     {name}: only {chat.Count} settled chat samples, too few to judge");
             else Check(MathF.Abs(median - want) <= 0.15f * want && closer <= 0.05f, $"{name}: two talking stand {median:F2} m apart (median; the culture's {want:F2} m), {Pct(closer)} of the time closer than 85% of it (5% at most)");

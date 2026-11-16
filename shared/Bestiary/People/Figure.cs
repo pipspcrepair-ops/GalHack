@@ -29,6 +29,8 @@ public sealed class Figure
     public Culture Culture = Culture.Default;
     /// <summary>Their caste, 0 the highest (0 where their culture has none).</summary>
     public int Caste;
+    /// <summary>Dressed in their culture's colour (by sex, caste, job or for all): every layer they wear takes it.</summary>
+    public bool Garbed;
     /// <summary>The culture's stranger distances and a band's spacing against today's: 1 where it says nothing.</summary>
     public float StrangerK => Culture.Trait("stranger", 1f);
     public float SpacingK => Culture.Trait("band", 2.4f) / 2.4f;

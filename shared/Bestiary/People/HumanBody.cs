@@ -34,7 +34,7 @@ public static class HumanBody
     public static float Scale(Figure f) => f.Height / 1.72f;
 
     /// <summary>A layer's own colour: a pale base, a knit insulation layer, a wind layer in the outer cloth; coveralls in the work colour.</summary>
-    static Color LayerColour(Figure f, string id) => id switch
+    static Color LayerColour(Figure f, string id) => f.Garbed ? (id is "thermals" or "undershirt" ? f.Cloth.Lightened(0.15f) : f.Cloth) : id switch
     {
         "thermals" or "undershirt" => f.Cloth.Lerp(new Color(0.78f, 0.76f, 0.7f), 0.65f),
         "sweater" => f.Trim.Lerp(new Color(0.48f, 0.3f, 0.24f), 0.45f),

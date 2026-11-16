@@ -387,6 +387,7 @@ public sealed partial class PeopleGenerator
             float v = _w.Backdrop.V > 0.5f ? 0.12f + 0.43f * level : 0.15f + 0.7f * level;
             f.Cloth = Color.FromHsv(Wrap(gh + own.Range(-0.01f, 0.01f)), gs, Math.Clamp(v + own.Range(-0.02f, 0.02f), 0f, 1f));
             f.Trim = f.Cloth.Darkened(0.2f);
+            f.Garbed = true;
         }
         // One saturated mark by their job, never the hue of the ground.
         f.Accent = AccentOf(look, rng, _w.Backdrop);
