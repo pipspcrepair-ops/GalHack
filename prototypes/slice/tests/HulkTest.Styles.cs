@@ -19,7 +19,7 @@ public partial class HulkTest
     /// Silhouette first (DESIGN, "Ships and structures by faction"): every faction's hull is told from every other's by its
     /// outline alone. Hulls of each style on fresh seeds (any role and size), each projected side on, from above and end on;
     /// each outline reduced to a handful of measures (proportions, how full and how ragged it is, how lopsided, how
-    /// regularly ribbed, how sharp its bow, how big its engine bank, how high its crown and spine); then each hull, left
+    /// regularly ribbed, how sharp its bow, how many drives, how high its crown and spine); then each hull, left
     /// out of its own faction's average, must be nearest that average of all the factions' (each measure weighed by how well
     /// it parts the factions against how much it wanders within one). --dir writes the outlines.
     /// </summary>
@@ -99,7 +99,7 @@ public partial class HulkTest
         return (side, top, front);
     }
 
-    /// <summary>An outline's measures: proportions; how full and how ragged each view; how lopsided from above; how regularly its beam repeats down its length; its bow's sharpness; the engine bank's share; the crown's and the spine's height.</summary>
+    /// <summary>An outline's measures: proportions; how full and how ragged each view; how lopsided from above; how regularly its beam repeats down its length; its bow's sharpness; how many drives; the crown's and the spine's height.</summary>
     static float[] Measure(bool[,] side, bool[,] top, bool[,] front, CapitalHull.HullPlan plan)
     {
         int nv = side.GetLength(0), ny = side.GetLength(1), nu = top.GetLength(1);
@@ -132,7 +132,7 @@ public partial class HulkTest
         for (int lag = 4; lag <= 12; lag++) rep = MathF.Max(rep, Enumerable.Range(0, nv - lag).Sum(i => d[i] * d[i + lag]) / var0);
         float maxBeam = beam.Max();
         // Beyond the body: what stands out past the hull's own beam from above (pods, modules, spikes, frames, fins), and
-        // over its roof side on, away from the tower (a superstructure, a truss, pods, spikes).
+        // over its roof side on (a superstructure, a truss, pods, spikes).
         int beyond = 0, over = 0, sideArea = 0, half = plan.Half, roof = plan.Top + 2;
         for (int v = 0; v < nv; v++)
         {
@@ -142,7 +142,7 @@ public partial class HulkTest
             {
                 if (!side[v, y]) continue;
                 sideArea++;
-                if (y > roof && (v < plan.TV0 - 1 || v > plan.TV1 + 1)) over++;
+                if (y > roof) over++;
             }
         }
         // How thin what stands out past the beam is: its share in runs of three metres or less down the length (a spike's, not a crate's).
@@ -169,7 +169,7 @@ public partial class HulkTest
             mismatch / (float)Math.Max(1, area),
             rep,
             beam.Take(Math.Max(1, nv / 12)).Average() / maxBeam,
-            plan.Nac * (float)plan.Nacelles.Count / nv,
+            plan.Form.Drives.Count / 8f,
             beyond / (float)Math.Max(1, area), over / (float)Math.Max(1, sideArea),
             bumps * 10f / nv, waist,
             thin / (float)Math.Max(1, stand),

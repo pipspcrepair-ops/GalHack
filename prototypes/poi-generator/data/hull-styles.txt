@@ -1,21 +1,15 @@
-# How each faction builds a hull (src/Gen/HullStyle.cs): one rule set for every generated vessel and station, these its
-# numbers. DESIGN, "Ships and structures by faction": a faction reads by its silhouette at long range before colour or
-# detail, so the shape rules come first and differ most. Counts are per 100 m of hull; length and beam are shares of the
-# size class's; colours are hex. Husk ships are any faction's hull hijacked (the Infested state), not a style of their own.
+# Each faction's livery (src/Gen/HullStyle.cs), and the numbers its broken stations are built by. A capital ship's shape
+# is its faction's body plan (src/Gen/Arch/ShipForm.Plans.cs, docs/ship-forms.md), never these. Counts are per 100 m;
+# colours are hex. Husk ships are any faction's ship hijacked, not a style of their own.
 #
-#   length L / beam B          proportions
-#   bow taper|round|blunt|needle|ram
-#   shoulder S                 the shoulders' chamfer, a share of the hull's height (small: a block)
-#   spine H [W]                dorsal spine height and half width, m
-#   segments N DEPTH           waists between N+1 segments, taking DEPTH of the beam in
-#   ribs EVERY [OUT]           frames round the hull every EVERY m, standing OUT m proud
-#   lattice yes|no             a truss down the spine
+#   length L / beam B          a station's proportions
+#   segments N                 a station's segments
+#   ribs EVERY                 frames round a station's hub
 #   pods N / bolted N / spikes N    per 100 m: cargo pod stacks, bolted-on modules, spikes
 #   plates SHARE               mismatched plates over this share of the shell
-#   fins N                     swept fins, built in short straight runs (the 1 m grid's curve)
+#   fins N                     swept fins
 #   symmetric yes|no           everything added mirrored port and starboard
-#   tower-offset S             the tower shifted to starboard, a share of its half width
-#   engines MIN MAX LENGTH HEIGHT   nacelles, their length against the default, their height a share of the hull's
+#   engines LENGTH             a station's engine block against the default
 #   hull / trim / band A [B] / dark / pattern stripes|chevrons|checker|hazard|none / grime 0-3
 #   glow COLOUR|none           glowing strips; numbers yes|no: stencilled hull numbers
 #   cargo / scrap C...         pods' colours (colour-coded), mismatched plates' and modules' colours
@@ -24,12 +18,9 @@
 [freeholders]
 length 0.9
 beam 1.0
-bow blunt
-shoulder 0.25
-spine 0
 bolted 6
 plates 0.08
-engines 2 2 0.8 0.45
+engines 0.8
 hull 8f8676
 trim 5e574a
 band b8743a 6f8a68
@@ -43,10 +34,7 @@ scrap 7a6a52 5d6b70 8a5a3a 6b7a52
 [meridian]
 length 1.3
 beam 0.8
-bow taper
-shoulder 0.12
-spine 3.5 2
-engines 4 5 2.2 0.85
+engines 2.2
 hull d8dadc
 trim 2a3a5a
 band f0b020 2060c0
@@ -59,12 +47,9 @@ numbers yes
 [exchange]
 length 0.8
 beam 1.3
-bow round
-shoulder 0.33
-spine 0
 pods 10
 symmetric yes
-engines 2 3 0.9 0.5
+engines 0.9
 hull c8b896
 trim 6a5a3a
 band 2a8a5a d8a020
@@ -77,13 +62,10 @@ cargo e85d04 2a7ab0 3a9a4a d8b020 b03a3a 7a4ab0
 [reavers]
 length 0.8
 beam 1.05
-bow ram
-shoulder 0.3
-spine 0.5
 spikes 22
 plates 0.35
 bolted 1.5
-engines 2 3 0.9 0.6
+engines 0.9
 hull 6a4a3a
 trim 3a2a22
 band e0b000 1a1a1a
@@ -96,13 +78,9 @@ scrap 8a3a22 5a5a52 9a6a3a 4a3a30 7a2a1a
 [kessari]
 length 1.0
 beam 0.95
-bow blunt
-shoulder 0.15
-spine 2 1
-ribs 6 3
-lattice yes
+ribs 6
 symmetric yes
-engines 5 6 1.1 0.7
+engines 1.1
 hull a8aeb2
 trim 54626b
 band 54626b ffae00
@@ -115,13 +93,9 @@ glow ffae00
 [vharn]
 length 1.1
 beam 0.9
-bow needle
-shoulder 0.45
-spine 2.5 1
-segments 3 0.42
+segments 3
 fins 4
-tower-offset 0.45
-engines 2 2 1.3 0.7
+engines 1.3
 hull 2a2638
 trim 1b192a
 band 3a3050 2edeb6

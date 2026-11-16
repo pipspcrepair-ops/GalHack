@@ -7,9 +7,9 @@ using PoiGenerator.Gen;
 namespace PoiGenerator;
 
 /// <summary>
-/// The capital hulks' plans (src/Gen/Arch/CapitalHull.cs) on fresh seeds, every crash variant: length, beam and
-/// decks in the size class's range (Empyrion's capital wrecks and derelicts, place-patterns 1.4), the role's bays
-/// stem to stern with the crew, power and engine bays and a hall, a tower, nacelles and the ways in; the place round
+/// The capital hulks' plans (src/Gen/Arch/CapitalHull.cs) on fresh seeds, every crash variant: a length up to what
+/// Empyrion's capital wrecks and derelicts reach (place-patterns 1.4), the role's bays stem to stern with the crew,
+/// power and engine bays and a hall, drives and the ways in; the place round
 /// it (the ground it lies in, its ramps, yard and wreckage) passes the layout checks; and each way of coming down is
 /// a pose of its own. The vessel's own blocks, rooms and dressing are the slice's HulkTest.
 /// </summary>
@@ -35,13 +35,12 @@ public partial class PoiTest
                 CapitalHull.HullPlan plan = CapitalHull.Of(layout);
                 Bad(plan != null, "no vessel plan for the place");
                 if (plan == null) continue;
-                var (l0, l1, h0, h1, decks) = CapitalHull.SizeOf(plan.Size);
-                GD.Print($"      {v.Name}: {plan.Role} {plan.Size}, {plan.Pieces.Count} piece(s), {plan.L + plan.Nac} m long, {2 * plan.Half + 1} m beam, {plan.Decks} decks {CapitalHull.HullPlan.Pitch} m apart, " +
-                         $"{plan.TowerTop + 1} m to the tower top; bays {string.Join(" ", plan.Bays.Select(b => $"{b.Kind} {b.V1 - b.V0}"))}; ways {string.Join(", ", plan.Ways.Select(w => w.What))}; " +
+                GD.Print($"      {v.Name}: {plan.Role} {plan.Size}, {plan.Pieces.Count} piece(s), {plan.L} m long, {2 * plan.Half + 1} m beam, {plan.ExtentY} m high, " +
+                         $"{plan.Form.Drives.Count} drives; bays {string.Join(" ", plan.Bays.Select(b => $"{b.Kind} {b.V1 - b.V0}"))}; ways {string.Join(", ", plan.Ways.Select(w => w.What))}; " +
                          $"pitch {string.Join("/", plan.Pieces.Select(p => PitchOf(p.Rotation).ToString("F1")))} deg");
-                Bad(plan.L >= l0 && plan.L <= Math.Max(l1, 270) && plan.Half >= h0 && plan.Half <= h1 && plan.Decks == decks, $"{plan.L} m long, half-beam {plan.Half}, {plan.Decks} decks: outside the {plan.Size} class");
+                Bad(plan.L >= 50 && plan.L <= 290, $"{plan.L} m long: past what Empyrion's longest derelicts reach");
                 Bad(new[] { "bow", "crew", "power", "engine" }.All(b => plan.Bays.Any(x => x.Kind == b)) && plan.Bays.Any(b => b.Hall && b.Kind != "engine"), "a bay missing");
-                Bad(plan.TV1 > plan.TV0 + 8 && plan.Nacelles.Count >= 2 && plan.Ways.Any(w => w.What == "cargo") && plan.DoorV > 0, "no tower, nacelles, cargo ramp or hull door");
+                Bad(plan.Form.Drives.Count >= 1 && plan.Ways.Any(w => w.What == "cargo") && plan.DoorV > 0, "no drives, cargo ramp or hull door");
                 var walk = LayoutCheck.Check(layout);
                 Bad(walk.Count == 0, "layout: " + string.Join("; ", walk.Take(3)));
                 PoiInstance inst = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed + 1);
@@ -55,6 +54,6 @@ public partial class PoiTest
             for (int j = i + 1; j < poses.Count; j++)
                 if (poses[i].Pose == poses[j].Pose) { alike++; problems.Add($"{poses[i].Name} and {poses[j].Name} lie alike ({poses[i].Pose})"); }
         foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
-        Check(bad == 0 && alike == 0 && built == fam.Variants.Count * 2, $"capital hulks: {built} plans on fresh seeds, sizes in their class, the role's bays with crew, power, engines and a hall, a tower, nacelles and ways in; {poses.Count} poses all different");
+        Check(bad == 0 && alike == 0 && built == fam.Variants.Count * 2, $"capital hulks: {built} plans on fresh seeds, lengths in range, the role's bays with crew, power, engines and a hall, drives and ways in; {poses.Count} poses all different");
     }
 }

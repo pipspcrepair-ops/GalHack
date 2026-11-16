@@ -58,7 +58,7 @@ public partial class HulkTest
             hulls++;
             string name = $"{plan.Style.Id} {spec.Role} {spec.Size} {spec.Crash} ({seed})";
             var (l0, l1, _, _, _) = CapitalHull.SizeOf(spec.Size);
-            int length = plan.L + plan.Nac;
+            int length = plan.L;
             Bad(plan.L >= l0 && length <= 290, $"{name}: {length} m long");
             // Its rooms, as built.
             var purposes = intact.SelectMany(r => r.Spaces).Where(s => !s.Corridor && s.Floor.Count >= 6).Select(s => s.Purpose).ToHashSet();
@@ -176,7 +176,7 @@ public partial class HulkTest
             $"{ship.Name} built again from its system's seed block for block, its hold and its dressing the same (what a save keeps its changes against)");
         WreckAudit a = WreckAudit.Of(ship.Structure);
         GD.Print($"      {ship.Name}: {a}; {ship.Hull.Decor.Count} pieces of dressing");
-        int length = ship.Hull.Plan.L + ship.Hull.Plan.Nac;
+        int length = ship.Hull.Plan.L;
         Check(ship.Structure.Core == null && ship.Hull.Decor.Count > 0 && length >= 60 && a.Clear4 >= a.Floor * 0.85f,
             $"{ship.Name} is the hull builder's: coreless, a {length} m hull ({a.Length} m of it in this piece), {ship.Hull.Decor.Count} pieces of dressing, {a.Clear4 * 100f / Math.Max(1, a.Floor):F0}% of its floor 4 m clear");
     }

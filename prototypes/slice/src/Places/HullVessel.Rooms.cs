@@ -19,8 +19,8 @@ namespace Slice.Places;
 /// </summary>
 public sealed partial class HullVessel
 {
-    /// <summary>Walking levels: the hull's decks, then the tower's two.</summary>
-    int Levels => H.Decks + Plan.TowerDecks;
+    /// <summary>Walking levels: the hull's decks.</summary>
+    int Levels => H.Decks;
 
     int[] _zone;
     const int Fill = -1, None = -2;
@@ -58,16 +58,16 @@ public sealed partial class HullVessel
         for (int v = Pc.V0; v < VEnd; v++)
             for (int u = _u0; u < _u0 + _nu; u++)
                 for (int d = 0; d < Levels; d++)
-                    _zone[Z(d, u, v)] = v < H.L && (d < H.Decks || InTower(u, v)) && Open(u, d, v) && H.Body(u, Plan.Walk(d) + 2, v) ? Fill : None;
-        // The stair cores first: they run the height of the hull, and up through the tower over their bay.
+                    _zone[Z(d, u, v)] = v < H.L && Open(u, d, v) && H.Body(u, Plan.Walk(d) + 2, v) ? Fill : None;
+        // The stair cores first: they run the height of the hull.
         foreach (Bay b in H.Bays.Where(b => b.Kind is "crew" or "power"))
         {
-            int s = b.V0 + 4, top = InTower(4, s) ? Levels - 1 : H.Decks - 1;
-            // Its own cells wholly inside the hull on every deck it serves: under the shoulders' slope or the tower's crown its
-            // wall is the shaped skin itself, so a narrow hull keeps its stairs to the top.
+            int s = b.V0 + 4, top = H.Decks - 1;
+            // Its own cells wholly inside the hull on every deck it serves: under a sloping face its wall is the shaped skin
+            // itself, so a narrow hull keeps its stairs to the top.
             bool Inside(int d, int u, int v)
             {
-                if (!InPiece(v) || v >= H.L || d >= H.Decks && !InTower(u, v)) return false;
+                if (!InPiece(v) || v >= H.L || d >= H.Decks) return false;
                 for (int y = Plan.Walk(d); y < Plan.Walk(d) + 4; y++)
                     if (Mask(u, y, v) != 255) return false;
                 return true;
@@ -113,14 +113,6 @@ public sealed partial class HullVessel
                 else if (hall) Catwalk(b, corridor);
                 else Rooms(b, d, corridor);
             }
-        }
-        // The tower: the officers' deck, the bridge over it.
-        foreach (var (d, purpose) in new[] { (H.Decks, "officers"), (H.Decks + 1, "bridge") })
-        {
-            int room = NewSpace(purpose, d);
-            for (int v = H.TV0; v <= H.TV1; v++)
-                for (int u = H.TU0; u <= H.TU1; u++)
-                    if (ZoneAt(d, u, v) == Fill && !InCore(u, v, 1)) SetZone(d, u, v, room);
         }
     }
 

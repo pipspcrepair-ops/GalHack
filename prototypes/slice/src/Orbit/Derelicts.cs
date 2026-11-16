@@ -132,7 +132,7 @@ public static class Derelicts
     static List<DerelictPlan> Capital(PoiLibrary library, SiteDef site, OrbitPoi poi, string id, Catalogue catalogue, ItemCatalogue items, OrbitRules rules)
     {
         SitePart part = site.Parts[0];
-        CapitalHull.HullPlan plan = CapitalHull.Plan(library.Kits[site.Style], WorldProfile.Parse(part.Arg("tech", "mid")), CapitalHull.SpecOf(part), poi.Seed);
+        CapitalHull.HullPlan plan = CapitalHull.Plan(library.Kits[site.Style], WorldProfile.Parse(part.Arg("tech", "mid")), CapitalHull.SpecOf(part) with { Husk = poi.State == PoiState.Infested }, poi.Seed);
         var pieces = new List<DerelictPlan>();
         var rng = new Random(unchecked((int)(poi.Seed ^ (poi.Seed >> 17))));
         N.Vector3 first = plan.Pieces[0].Origin;

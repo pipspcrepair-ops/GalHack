@@ -229,17 +229,9 @@ public sealed partial class HullVessel
 
     // ---- windows --------------------------------------------------------------------------------------
 
-    /// <summary>The bridge's windows across its front and down its sides (a lower band for the officers' deck), portholes along the flank passages.</summary>
+    /// <summary>Portholes along the flank passages.</summary>
     void Windows()
     {
-        foreach (var (d, rows) in new[] { (H.Decks + 1, 2), (H.Decks, 1) })
-            for (int y = Plan.Walk(d) + 1; y <= Plan.Walk(d) + rows; y++)
-                for (int v = H.TV0 - 1; v <= H.TV1 + 1; v++)
-                    for (int u = H.TU0 - 1; u <= H.TU1 + 1; u++)
-                    {
-                        bool front = v <= H.TV0 + 1, side = (u <= H.TU0 + 1 || u >= H.TU1 - 1) && v < H.TV0 + (H.TV1 - H.TV0) * 2 / 3;
-                        if ((front || side) && !Interior(u, y, v) && S.TryGet(At(u, y, v), out Block b) && S.TypeOf(b) == Plating) Glaze(u, y, v, b);
-                    }
         for (int d = 0; d < H.Decks; d++)
             for (int v = Math.Max(Pc.V0, H.Bz); v < Math.Min(VEnd, H.L - 4); v++)
             {
@@ -264,43 +256,44 @@ public sealed partial class HullVessel
     // ---- the engines ----------------------------------------------------------------------------------
 
     /// <summary>
-    /// The nacelles' faces packed with the biggest main engines that fit them, their exhausts flush with the face; a
-    /// retro and side jets in a pod on each flank; down jets on the roof. The lift engines go in last, once the hull's
+    /// The drives: each bell's throat packed with the biggest main thrusters that fit wholly inside it, exhausts aft and
+    /// flush with its face, the gaps between them filled with smaller ones. The lift engines go in last, once the hull's
     /// weight is known (<see cref="Lift"/>).
     /// </summary>
     void Engines()
     {
-        if (!Pc.Last) return;
-        int face = H.L + H.Nac - 1, rot = Turn(Dir.PosY, Dir.NegZ);
-        BlockType main = Best("thruster", new Int3(3, 3, H.Nac - 1), rot, t => t.Thrust);
-        if (main == null) return;
-        Int3 size = Footprint.WorldSize(main, rot);
-        // Packed into each nacelle's face wherever one fits wholly inside it (its rounded edges and all), the lowest and
-        // outermost first.
-        int v = face - size.Z + 1;
-        var packed = new HashSet<(int, int)>();
-        foreach (var (u0, u1) in H.Nacelles)
-            for (int y = H.NY0; y + size.Y - 1 <= H.NY1; y++)
-                for (int u = u0; u + size.X - 1 <= u1; u++)
-                {
-                    bool inside = true;
-                    for (int dy = 0; dy < size.Y && inside; dy++)
-                        for (int du = 0; du < size.X && inside; du++) inside = Mask(u + du, y + dy, face) == 255 && !packed.Contains((u + du, y + dy));
-                    if (!inside) continue;
-                    Device(main, u, y, v, rot, null, Paint["dark"]);
-                    for (int dy = 0; dy < size.Y; dy++)
-                        for (int du = 0; du < size.X; du++) packed.Add((u + du, y + dy));
-                }
-        // Manoeuvring pods on both flanks aft of the bow: a retro (pushing aft) and a side jet each.
-        BlockType jet = Best("thruster", new Int3(2, 2, 4), Turn(Dir.PosY, Dir.PosZ), t => t.Thrust);
-        if (jet == null) return;
-        int pv = Math.Max(Pc.V0, H.Bz + 2), py = H.Top / 2;
-        foreach (int side in new[] { -1, 1 })
+        int rot = Turn(Dir.PosY, Dir.NegZ);
+        var mains = new[] { new Int3(3, 3, 6), new Int3(2, 2, 4), new Int3(1, 1, 2) }.Select(box => Best("thruster", box, rot, t => t.Thrust)).Where(t => t != null).Distinct().ToList();
+        var packed = new HashSet<(int, int, int)>();
+        foreach (var (face, radius) in H.Form.Drives)
         {
-            int u = side > 0 ? H.Half + 1 : -H.Half - 2;
-            if (Fits(jet, At(u, py, pv), Turn(Dir.PosY, Dir.PosZ))) Device(jet, u, py, pv, Turn(Dir.PosY, Dir.PosZ), null, Paint["trim"]);
-            int sr = Turn(Dir.PosZ, side > 0 ? Dir.NegX : Dir.PosX), su = side > 0 ? H.Half + 1 : -H.Half - 4;
-            if (Fits(jet, At(su, py + 3, pv), sr)) Device(jet, su, py + 3, pv, sr, null, Paint["trim"]);
+            // The throat's face: the last solid plane at the bell's middle before the hollow behind it.
+            int cu = (int)MathF.Round(face.X), cy = (int)MathF.Round(face.Y), vf = (int)MathF.Round(face.Z);
+            bool Face(int u, int y) => Mask(u, y, vf) == 255 && Mask(u, y, vf + 1) != 255;
+            for (int k = 0; k < 3 && !Face(cu, cy); k++) vf += Mask(cu, cy, vf) == 255 ? 1 : -1;
+            if (!Face(cu, cy)) continue;
+            int r = (int)MathF.Ceiling(radius);
+            foreach (BlockType t in mains)
+            {
+                Int3 size = Footprint.WorldSize(t, rot);
+                int v = vf - size.Z + 1;
+                if (!InPiece(v)) continue;
+                for (int y = cy - r; y <= cy + r; y++)
+                    for (int u = cu - r; u <= cu + r; u++)
+                    {
+                        bool fits = true;
+                        for (int dy = 0; dy < size.Y && fits; dy++)
+                            for (int du = 0; du < size.X && fits; du++)
+                            {
+                                float a = u + du - face.X, b = y + dy - face.Y;
+                                fits = a * a + b * b <= radius * radius && Face(u + du, y + dy) && !packed.Contains((u + du, y + dy, vf));
+                            }
+                        if (!fits) continue;
+                        Device(t, u, y, v, rot, null, Paint["dark"]);
+                        for (int dy = 0; dy < size.Y; dy++)
+                            for (int du = 0; du < size.X; du++) packed.Add((u + du, y + dy, vf));
+                    }
+            }
         }
     }
 
@@ -546,26 +539,19 @@ public sealed partial class HullVessel
                 }
     }
 
-    /// <summary>Turrets on the roof and the tower's crown: a warship bristles, a hauler carries a few.</summary>
+    /// <summary>Turrets where the form mounts them, each on the first free cell out from its plating, looking out of that face.</summary>
     void Turrets()
     {
         BlockType turret = Cat.Type("turret");
-        int want = H.Role == "warship" ? 12 : H.Role == "carrier" ? 8 : 4, placed = 0;
-        int every = Math.Max(6, (Math.Min(VEnd, H.L) - Math.Max(Pc.V0, H.Bz)) / Math.Max(1, want / 2));
-        for (int v = Math.Max(Pc.V0, H.Bz) + 2; v < Math.Min(VEnd, H.L - 3) && placed < want; v += every)
-            foreach (int side in new[] { -1, 1 })
-            {
-                // The roof's first free footing out from half the beam, then in toward the spine.
-                int y = H.Top + 1;
-                foreach (int a in Enumerable.Range(0, H.Half).Select(k => H.Half / 2 + (k % 2 == 0 ? k / 2 : -(k + 1) / 2)).Where(a => a > 1 && a < H.Half))
-                {
-                    int u = side * a;
-                    if (InTower(u, v) || Mask(u, H.Top, v) != 255 || Has(u, y, v) || Has(u, y + 1, v)) continue;
-                    Device(turret, u, y, v, 0);
-                    placed++;
-                    break;
-                }
-            }
+        foreach (var (at, face) in H.Form.Turrets)
+        {
+            Dir d = face switch { 0 => Dir.PosX, 1 => Dir.NegX, 2 => Dir.PosY, 3 => Dir.NegY, 4 => Dir.PosZ, _ => Dir.NegZ };
+            Int3 step = d.Vec();
+            int u = (int)MathF.Round(at.X), y = (int)MathF.Round(at.Y), v = (int)MathF.Round(at.Z);
+            for (int k = 0; k < 6 && Has(u, y, v); k++) (u, y, v) = (u + step.X, y + step.Y, v + step.Z);
+            if (!InPiece(v) || y < 0 || Has(u, y, v) || !Has(u - step.X, y - step.Y, v - step.Z)) continue;
+            Device(turret, u, y, v, d == Dir.PosY ? Orientations.Identity : Turn(d, d.Axis() == 2 ? Dir.PosY : Dir.NegZ));
+        }
     }
 
     /// <summary>

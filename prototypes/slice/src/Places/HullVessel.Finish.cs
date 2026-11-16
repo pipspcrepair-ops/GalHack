@@ -65,7 +65,7 @@ public sealed partial class HullVessel
             if (H.Crushed(v) == 0) continue;
             for (int u = -H.Half; u <= H.Half; u++)
             {
-                if (InTower(u, v) || ZoneAt(top, u, v) is not (int z and >= 0)) continue;
+                if (ZoneAt(top, u, v) is not (int z and >= 0)) continue;
                 for (int y = H.Top - H.Crushed(v); y < H.Top; y++)
                     if (Interior(u, y, v) && !H.Torn(u, y, v)) Solid(u, y, v, Paint["scorch"]);
                 Out.Spaces[z].Height = Math.Min(Out.Spaces[z].Height, 4 - H.Crushed(v));

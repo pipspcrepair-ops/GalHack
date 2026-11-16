@@ -170,7 +170,7 @@ public sealed partial class Staging
             foreach (int x in _drive.Wait(40)) yield return x;
             foreach (int x in Shot($"{dir}/faction-{name}-near.png")) yield return x;
             _game.FixedCamera = null;
-            GD.Print($"faction: {name} ({plan.Style.Id}, {spec.Role}, {state}): {r.Structure.Count} blocks, {span:F0} m, {plan.Parts.Count} parts");
+            GD.Print($"faction: {name} ({plan.Style.Id}, {spec.Role}, {state}): {r.Structure.Count} blocks, {span:F0} m, {plan.Form.Prims.Count} parts");
             if (state == PoiState.Infested)
             {
                 string why = r.CoreSlot is Int3 slot ? v.ClaimWith(slot) : "no seat";

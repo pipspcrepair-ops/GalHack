@@ -21,8 +21,10 @@ namespace Slice.Places;
 /// one piece of it at a time: the one hull builder for the planet's crashed hulks and orbit's derelicts.
 ///
 /// It is built the way a player builds a capital ship (docs/place-patterns.md 1.4, 5.2; one-metre-grid.md 6): a
-/// shell of plated base blocks shaped to the plan's envelope with slopes and corners (the tapered, raked bow, the
-/// chamfered shoulders and bilges, the tower and nacelles), decks 5 m apart (a 1 m deck and 4 m clear), a spine
+/// shell of plated base blocks shaped to the plan's outer form (its faction's body plan, ShipForm) with slopes and
+/// corners wherever a face leans, its pipes and struts of cylinder blocks, thrusters packed in its bells' throats and
+/// turrets on its faces. Inside (switched off until rooms are fitted into the form, docs/ship-forms.md phase B):
+/// decks 5 m apart (a 1 m deck and 4 m clear), a spine
 /// corridor, side passages and cross passages on every deck, crawlways through the machinery decks, the holds, hangar and engine room as halls two decks
 /// tall, rooms off the corridors for what a crew needs (bridge, officers, quarters, galley, medbay, workshop, stores,
 /// reactor, generators, the core room), switchback stairs, doors that open by hand. Its devices are the player's
@@ -82,20 +84,22 @@ public sealed partial class HullVessel
     readonly Random Rng;
     readonly bool Intact;
     readonly PoiState State;
+    readonly bool Plain;
     readonly ShapeFit Fit;
     readonly BlockType Plating, Glass;
     readonly Dictionary<string, ushort> Paint = new();
 
-    int VEnd => Pc.Last ? H.L + H.Nac : Pc.V1;
+    int VEnd => Pc.Last ? H.L : Pc.V1;
     Int3 At(int u, int y, int v) => new(u, y, v - Pc.V0);
 
-    HullVessel(Plan plan, Piece piece, Catalogue cat, PoiState state, ulong seed, bool intact)
+    HullVessel(Plan plan, Piece piece, Catalogue cat, PoiState state, ulong seed, bool intact, bool plain)
     {
         H = plan;
         Pc = piece;
         Cat = cat;
         State = state;
         Intact = intact;
+        Plain = plain;
         Rng = new Random(unchecked((int)(seed ^ (seed >> 29))));
         D = new Designer(cat, "hulk", CoreMode.Flight);
         S = D.S;
@@ -112,29 +116,20 @@ public sealed partial class HullVessel
     /// <summary>
     /// One piece of a capital hull as a coreless vessel. <paramref name="intact"/> builds it as its builder made it,
     /// before the crash and the years (what a full repair puts back). <paramref name="dress"/> is the decorations
-    /// library (null: undressed).
+    /// library (null: undressed). <paramref name="plain"/> paints it all one grey: its form with the livery off.
+    /// For now it is the outer form alone: its rooms, the crash's and the years' damage and the dressing wait until rooms
+    /// are fitted inside the form (docs/ship-forms.md phase B).
     /// </summary>
-    public static Result Build(Plan plan, Piece piece, Catalogue cat, PoiState state, ulong seed, GalHack.Deco.DecoPoi dress = null, bool intact = false)
+    public static Result Build(Plan plan, Piece piece, Catalogue cat, PoiState state, ulong seed, GalHack.Deco.DecoPoi dress = null, bool intact = false, bool plain = false)
     {
-        var b = new HullVessel(plan, piece, cat, state, seed, intact);
+        var b = new HullVessel(plan, piece, cat, state, seed, intact, plain);
         b.Paints();
         b.Corners();
         b.Shell();
-        b.Decks();
-        b.Spaces();
-        b.Walls();
-        b.Stairs();
-        b.Doors();
-        b.Ways();
-        b.Windows();
+        b.Pipes();
         b.Engines();
-        b.Fittings();
-        b.Lights();
-        b.Finish();
-        if (!intact) b.Damage();
-        if (!intact && state == PoiState.Infested) b.Infest();
+        b.Turrets();
         b.Hollow();
-        if (dress != null) b.Dress(dress);
         b.S.Name = plan.Role switch { "warship" => "Warship", "liner" => "Liner", "miner" => "Mining Ship", "carrier" => "Carrier", _ => "Freighter" } + piece.Name;
         b.S.Owner = null;
         b.S.DirtyChunks.Clear();
@@ -145,13 +140,25 @@ public sealed partial class HullVessel
 
     static uint Hex(Rgb c) => (uint)(c.R << 16 | c.G << 8 | c.B);
 
+    /// <summary>The one grey of a form with its livery off.</summary>
+    const uint Grey = 0x9a9c9e;
+
     void Paints()
     {
         GalHack.Structures.Paint Coat(uint c, int grime) => GalHack.Structures.Paint.Solid(c) with { Grime = (byte)grime };
         HullStyle st = H.Style;
         // (A Husk ship keeps its faction's livery, fouled.)
-        int outside = State == PoiState.Infested && !Intact ? 3 : Math.Clamp(st.Grime, 0, 3);
-        foreach (var (name, c) in H.Paints) Paint[name] = D.Paint(name, Coat(Hex(c), name is "deck" ? 3 : outside));
+        int outside = Plain ? 1 : State == PoiState.Infested && !Intact ? 3 : Math.Clamp(st.Grime, 0, 3);
+        foreach (var (name, c) in H.Paints) Paint[name] = D.Paint(name, Coat(Plain ? Grey : Hex(c), name is "deck" ? 3 : outside));
+        // The form's own: tanks and radiators in the hull's and the dark's shades.
+        Paint["tank"] = D.Paint("tank", Coat(Plain ? Grey : Hex(H.Paints["hull"].Lerp(H.Paints["trim"], 0.4f)), outside));
+        Paint["radiator"] = D.Paint("radiator", Coat(Plain ? Grey : Hex(H.Paints["dark"].Lerp(H.Paints["machine"], 0.3f)), outside));
+        Paint["flesh"] = D.Paint("flesh", Coat(Plain ? Grey : 0x8a3a50u, 3));
+        if (Plain)
+        {
+            Paint["glow"] = Paint["hull"];
+            return;
+        }
         // The band in the style's pattern over its second colour.
         if (st.Pattern is "stripes" or "chevrons" or "checker" or "hazard")
             Paint["orange"] = D.Paint("band", Coat(Hex(st.Band), outside).WithPattern(Enum.Parse<Pattern>(st.Pattern, true), Hex(st.Band2)));
@@ -159,8 +166,7 @@ public sealed partial class HullVessel
         if (st.Glow is { } glow)
             Paint["glow"] = D.Paint("glow", GalHack.Structures.Paint.Lit(LampShape.Strip, LightSettings.Make(Hex(glow), LightAnim.Steady, 0.6f, 0)));
         for (char c = '0'; c <= '9'; c++) Paint["num" + c] = D.Paint("num" + c, Coat(Hex(H.Paints["trim"]), outside).WithStencil(c, Hex(st.Band)));
-        // A Husk ship's flesh and the veins through its walls, and the light that looks wrong.
-        Paint["flesh"] = D.Paint("flesh", Coat(0x8a3a50, 3));
+        // The veins through a Husk ship's walls.
         Paint["vein"] = D.Paint("vein", Coat(0x5a2a3a, 3).WithPattern(Pattern.Stripes, 0xb8486e));
         uint hazard = Hex(H.Paints["hazard"]), black = Hex(H.Paints["black"]);
         Paint["hazard"] = D.Paint("hazard", Coat(hazard, 2).WithPattern(Pattern.Hazard, black));
@@ -257,8 +263,6 @@ public sealed partial class HullVessel
     /// <summary>Inside the shell: the cell and everything round it is the hull's.</summary>
     public bool Interior(int u, int y, int v) => Index(u, y, v) is int i && i >= 0 && _inner[i];
 
-    bool InTower(int u, int v) => u >= H.TU0 && u <= H.TU1 && v >= H.TV0 && v <= H.TV1;
-
     /// <summary>
     /// The shell: every cell the envelope passes through, shaped to it (slopes on the chamfers and the rake, corners
     /// where two meet), and the full cells just inside those, plated and in the livery's paint. What the crash tore
@@ -277,49 +281,24 @@ public sealed partial class HullVessel
                 }
     }
 
-    /// <summary>The livery on the outside: bands down the flanks, chevrons on the bow, hazard checks on the stern and the tower's crown, dark nacelles.</summary>
-    ushort Livery(int u, int y, int v)
-    {
-        if (H.InPart(u, y, v) is { } part) return Paint.TryGetValue(part.Paint, out ushort pp) ? pp : Paint["trim"];
-        if (H.InRib(u, y, v) && !H.Body(u, y, v)) return Glowing(u, y, v) ?? Paint["trim"];
-        if (Glowing(u, y, v) is ushort g) return g;
-        if (Numeral(u, y, v) is ushort n) return n;
-        int band = H.Top * 3 / 5;
-        bool flank = MathF.Abs(u) >= H.HalfWidth(v) - 1.5f && y > 2 && y < H.Top - 2 && v < H.L;
-        if (v >= H.L) return (u + y) % 5 == 0 ? Paint["dark"] : Paint["trim"];
-        if (y > H.Top + 1) return y >= H.TowerTop - 1 ? ((u / 2 + v / 2 + y / 2) & 1) == 0 ? Paint["hazard"] : Paint["black"] : y <= H.Top + 2 ? Paint["orange"] : Paint["hull"];
-        if (flank && (y == band || y == band + 1)) return Paint["orange"];
-        if (flank && y == band + 2) return Paint["teal"];
-        if (flank && v < H.Bz && y > 2 && y < band - 1 && Mod(v - y, 6) < 3) return Mod(v - y, 12) < 6 ? Paint["orange"] : Paint["black"];
-        if (v >= H.L - 3 && y < band && ((v / 2 + y / 2) & 1) == 0) return Paint["hazard"];
-        if (y == 0 || y == 1 && MathF.Abs(u) > H.HalfWidth(v) - 3) return Paint["dark"];
-        return Paint["hull"];
-    }
+    /// <summary>The paint on the outside: each part of the form its own (the livery's patterns come with the rooms, phase B).</summary>
+    ushort Livery(int u, int y, int v) => H.Form.PaintOf(u, y, v) is { } name && Paint.TryGetValue(name, out ushort p) ? p : Paint["hull"];
 
     static int Mod(int a, int m) => ((a % m) + m) % m;
 
-    /// <summary>
-    /// The style's glowing strips: a status light on every frame at the band's height (a lattice hull's), else a marking run
-    /// down each segment of the flank and round the tower's crown (a carapace's).
-    /// </summary>
-    ushort? Glowing(int u, int y, int v)
+    /// <summary>The form's pipes and struts along an axis: runs of cylinder blocks, plated, wherever the cells are free.</summary>
+    void Pipes()
     {
-        if (!Paint.TryGetValue("glow", out ushort glow) || v >= H.L) return null;
-        int band = H.Top * 3 / 5;
-        if (H.Style.Ribs > 0) return H.InRib(u, y, v) && (y == band || y == 2) ? glow : null;
-        bool flank = MathF.Abs(u) >= H.HalfWidth(v) - 1.5f;
-        if (flank && y == band - 3 && v > H.Bz && H.Waists.All(w => Math.Abs(v - w) > 5) && Mod(v, 9) < 6) return glow;
-        return y == H.TowerTop - 2 && InTower(u, v) && Mod(u + v, 4) == 0 ? glow : null;
-    }
-
-    /// <summary>The hull's number stencilled big on both bows (its seed's three digits), for a style that numbers its hulls.</summary>
-    ushort? Numeral(int u, int y, int v)
-    {
-        if (!H.Style.Numbers) return null;
-        int at = H.Bz + 1, band = H.Top * 3 / 5;
-        if (y != band - 2 || v < at || v >= at + 3 || MathF.Abs(u) < H.HalfWidth(v) - 1.5f) return null;
-        int digit = (int)(H.Seed / (ulong)Math.Pow(10, v - at) % 10);
-        return Paint["num" + (char)('0' + digit)];
+        ShapeDef tube = Cat.Shape("cylinder");
+        foreach (var (from, axis, n, paint) in H.Form.Pipes)
+        {
+            int rot = axis switch { 0 => Turn(Dir.PosX, Dir.NegZ), 1 => Orientations.Identity, _ => Turn(Dir.PosZ, Dir.PosY) };
+            for (int k = 0; k < n; k++)
+            {
+                int u = from.X + (axis == 0 ? k : 0), y = from.Y + (axis == 1 ? k : 0), v = from.Z + (axis == 2 ? k : 0);
+                if (InPiece(v) && y >= 0 && !Has(u, y, v)) Put(u, y, v, Armour(Plating, tube, rot, Paint.TryGetValue(paint, out ushort p) ? p : Paint["machine"]));
+            }
+        }
     }
 
     // ---- decks ------------------------------------------------------------------------------------------
