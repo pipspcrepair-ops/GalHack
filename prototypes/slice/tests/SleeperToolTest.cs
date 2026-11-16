@@ -648,12 +648,16 @@ public partial class SleeperToolTest : Node
             foreach (int x in _drive.Wait(90)) yield return x;
         }
         int before = _game.Pack[ore], cells = Tool.OreCells, rock = Tool.TellOre, bolts = Fx.LightningBolts, arcs = Fx.LightningArcs;
+        // Every ore the tool pays out counts, since a cell dug at a deposit's edge can be a neighbour's ore.
+        string[] ores = Enum.GetValues<DepositKind>().Select(Tool.OreOf).OfType<ItemDef>().Select(i => i.Id).Distinct().ToArray();
+        var was = ores.ToDictionary(id => id, id => Tool.Gathered.GetValueOrDefault(id));
         foreach (int x in _play.Gather(kind, before + 8, 60f)) yield return x;
-        int dug = Tool.OreCells - cells, got = _game.Pack[ore] - before;
+        var paid = ores.Select(id => (id, n: Tool.Gathered.GetValueOrDefault(id) - was[id])).Where(p => p.n > 0).ToList();
+        int dug = Tool.OreCells - cells, got = paid.Sum(p => p.n);
         float per = _game.Zone.Data.Rules.Materials.OrePerCell;
         // (Ore trickles in as cells chip, so a cell's share can come before the cell goes.)
-        Check(got > 0 && got >= dug * per + (Tool.TellOre - rock) && got <= (dug + 4) * per + (Tool.TellOre - rock) + 1,
-            $"digging {kind} pays {per} {ore} a cell as before: {dug} cells and {Tool.TellOre - rock} off its rock, +{got}");
+        Check(_game.Pack[ore] > before && got >= dug * per + (Tool.TellOre - rock) && got <= (dug + 4) * per + (Tool.TellOre - rock) + 1,
+            $"digging {kind} pays {per} ore a cell as before: {dug} cells and {Tool.TellOre - rock} off its rock, +{got} ({string.Join(", ", paid.Select(p => $"{p.n} {p.id}"))})");
         Check(Fx.LightningBolts - bolts >= dug && Fx.LightningArcs - arcs >= dug,
             $"each pulse is a flash of lightning arcing to the ground being worked ({Fx.LightningBolts - bolts} bolts, {Fx.LightningArcs - arcs} arcs)");
         if (_shots != null && Tool.HasTarget)
