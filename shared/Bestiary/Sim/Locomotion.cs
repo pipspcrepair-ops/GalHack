@@ -383,8 +383,12 @@ public static class Locomotion
                 if (d >= min) continue;
                 Vector3 n = d > 1e-3f ? away / d : Vector3.Right;
                 p += n * (min - d);
-                float into = v.Dot(n);
-                if (into < 0f) v -= n * into;
+                float into = v.Dot(n), speed = v.Length();
+                if (into >= 0f) continue;
+                // Round it at the pace it came: what went into the trunk goes along its side (only dead on does it stop).
+                v -= n * into;
+                float along = v.Length();
+                if (along > 1e-3f) v *= speed / along;
             }
         float now = IntoObstacles(w, c, p);
         if (now > 0.01f && now >= IntoObstacles(w, c, c.Position) - 1e-4f)

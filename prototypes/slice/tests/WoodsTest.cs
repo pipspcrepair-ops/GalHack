@@ -154,9 +154,10 @@ public partial class WoodsTest : Node
         }
         foreach (Creature c in watched) c.Noticed = patch.Player;
 
-        // Three minutes, every footprint against every trunk and rock it could reach.
+        // Three minutes, every body's footprint against every trunk and rock: a frame a body is into one counts once.
         var log = new List<string>();
         int overlaps = 0, people = 0, animals = 0, frames = 60 * 180;
+        float deepest = 0f;
         var walked = new Dictionary<Creature, float>();
         var last = watched.ToDictionary(c => c, c => patch.WorldOf(c));
         int passedTrunks = 0;

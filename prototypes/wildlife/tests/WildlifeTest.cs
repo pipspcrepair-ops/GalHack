@@ -816,7 +816,7 @@ public partial class WildlifeTest : Node
         var field = new HarvestField(_data.Harvest, w.Nav);
         Plant tree = field.Add(PlantKind.Tree, Ground(w, new Vector3(0f, 0f, -8f)), 0.45f, 8f, 3f, 0);
         Creature c = w.Spawn(walker, new Vector3(0.05f, 0f, 0f));
-        float allowed = tree.TrunkRadius + c.Radius * 0.5f, closest = float.MaxValue;
+        float allowed = tree.TrunkRadius + Locomotion.Footprint(c.Species), closest = float.MaxValue;
         bool past = false;
         for (int step = 0; step < 480; step++)
         {
@@ -837,7 +837,7 @@ public partial class WildlifeTest : Node
         h.Awareness = 1f;
         h.NoticedAt = w2.Time;
         h.LastSeen = prey.Position;
-        float allowed2 = tree2.TrunkRadius + h.Radius * 0.5f, closest2 = float.MaxValue;
+        float allowed2 = tree2.TrunkRadius + Locomotion.Footprint(h.Species), closest2 = float.MaxValue;
         bool reached = false;
         w2.Attacked += e => reached = true;
         for (int step = 0; step < 900 && !reached; step++)
@@ -846,7 +846,7 @@ public partial class WildlifeTest : Node
             closest2 = MathF.Min(closest2, WildSim.Flat(h.Position - tree2.Position).Length());
         }
         Check(closest >= allowed - 1e-3f && past && closest2 >= allowed2 - 1e-3f && reached,
-            $"creatures can't pass through a tree trunk: one pushed straight at it slides round (closest {closest:F2} m from its middle, trunk + half body {allowed:F2} m), a hunter goes round one to reach its prey (closest {closest2:F2} m)");
+            $"creatures can't pass through a tree trunk: one pushed straight at it slides round{(past ? "" : " (never got past)")} (closest {closest:F2} m from its middle, trunk + its footprint {allowed:F2} m), a hunter goes round one to reach its prey{(reached ? "" : " (never reached)")} (closest {closest2:F2} m)");
     }
 
     /// <summary>
