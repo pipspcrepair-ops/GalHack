@@ -831,7 +831,7 @@ public sealed partial class Town
                     // Beside them at their culture's distance where there's room, else a spot of their own near them: never on top of them.
                     Vector3? beside = TalkAt(who.Spot, who);
                     GoTo(p, beside != null ? who.Spot : Free(who.Spot, p));
-                    p.ChatAt = beside;
+                    if (Bound(p, who.Spot)) p.ChatAt = beside;
                     p.Partner = who;
                     p.Working = true;
                     p.Wait = 6f + (float)_rng.NextDouble() * 6f;
@@ -990,7 +990,7 @@ public sealed partial class Town
         Person with = p.Figure?.Stage == LifeStage.Child ? null : People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == to && o.Partner == null && o.Role is "wanderer" or "rusher" && Mixes(p, o));
         Vector3? stand = with != null ? TalkAt(to, with) : null;
         GoTo(p, stand != null ? to : Free(to, p));
-        if (stand == null) return;
+        if (stand == null || !Bound(p, to)) return;
         p.Partner = with;
         with.Partner = p;
         with.Wait = MathF.Max(with.Wait, p.Wait);
@@ -1004,11 +1004,14 @@ public sealed partial class Town
             if (!People.Any(o => o != p && !o.Dead && !o.Indoors && !o.Away && (o.ChatAt ?? o.Pos).DistanceSquaredTo(s) < 0.5f))
             {
                 GoTo(p, spot);
-                p.ChatAt = s;
+                if (Bound(p, spot)) p.ChatAt = s;
                 return;
             }
         GoTo(p, Free(spot, p));
     }
+
+    /// <summary>Whether a person is now bound for a spot: at it or on the way there, or their way there being worked out (no way there: they stay where they were).</summary>
+    static bool Bound(Person p, int spot) => p.Spot == spot || p.Asked == spot;
 
     /// <summary>Where one coming to a spot stands to talk with someone there: the spot's stand nearest the culture's distance from them (from where they're headed, if on their way), never closer than 85% of it (null: no room here to talk at it).</summary>
     Vector3? TalkAt(int spot, Person with)
