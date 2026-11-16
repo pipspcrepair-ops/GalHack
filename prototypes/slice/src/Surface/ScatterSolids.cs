@@ -45,14 +45,43 @@ public sealed class ScatterSolids
     public static float Reach(FloraSolid s) =>
         s.IsTrunk ? s.Extents.X : new Vector2(s.Extents.X, s.Extents.Z).Length() * (s.IsCanopy ? s.Scale : 1f);
 
-    /// <summary>Whether it stands on the ground in a walker's way: a trunk or a rock, not a crown overhead.</summary>
-    public static bool InTheWay(FloraSolid s) => !s.IsCanopy;
+    /// <summary>How high over its plant's foot a part still stands in a walker's way, m: a limb or a cap higher up is walked under.</summary>
+    public const float Underfoot = 2f;
 
-    /// <summary>Where a solid stands, flat, in the frame nearest a point (the planet wraps).</summary>
-    public Vector3 Nearest(FloraSolid s, Vector3 near)
+    readonly Dictionary<long, float> _feet = new();
+
+    /// <summary>
+    /// Where solids stand in a walker's way, as flat circles in the frame nearest a point (the planet wraps): a rock whole;
+    /// a trunk, a limb, a pipe or a stalk along as much of it as comes within <see cref="Underfoot"/> of its plant's foot,
+    /// a circle every radius; never a crown, nor a limb or a cap overhead.
+    /// </summary>
+    public void Footprints(List<FloraSolid> solids, Vector3 near, List<(long Id, Vector3 At, float R)> into)
     {
+        into.Clear();
+        _feet.Clear();
+        foreach (FloraSolid s in solids)
+            if (s.IsTrunk) _feet[s.Id] = MathF.Min(_feet.GetValueOrDefault(s.Id, float.MaxValue), Low(s).Y);
         var planet = _zone.Planet;
-        return new Vector3(near.X + (float)Mathx.WrapDelta(s.Center.X - Mathx.WrapX(near.X, planet.Width), planet.Width), 0f,
-            near.Z + (float)Mathx.WrapDelta(s.Center.Z - Mathx.Wrap(near.Z, planet.Height), planet.Height));
+        foreach (FloraSolid s in solids)
+        {
+            if (s.IsCanopy) continue;
+            var at = new Vector3(near.X + (float)Mathx.WrapDelta(s.Center.X - Mathx.WrapX(near.X, planet.Width), planet.Width), 0f,
+                near.Z + (float)Mathx.WrapDelta(s.Center.Z - Mathx.Wrap(near.Z, planet.Height), planet.Height));
+            if (!s.IsTrunk) { into.Add((s.Id, at, Reach(s))); continue; }
+            Vector3 low = Low(s), run = (s.Center - low) * 2f;
+            float above = _feet[s.Id] + Underfoot - low.Y;
+            if (above < 0f) continue;
+            Vector3 flat = new Vector3(run.X, 0f, run.Z) * (run.Y > 1e-3f ? MathF.Min(1f, above / run.Y) : 1f);
+            Vector3 from = at + new Vector3(low.X - s.Center.X, 0f, low.Z - s.Center.Z);
+            int n = (int)MathF.Ceiling(flat.Length() / MathF.Max(0.25f, s.Extents.X));
+            for (int i = 0; i <= n; i++) into.Add((s.Id, from + flat * (n == 0 ? 0f : (float)i / n), s.Extents.X));
+        }
+    }
+
+    /// <summary>A trunk's lower end (canonical): its foot, or a limb's end nearer the ground.</summary>
+    static Vector3 Low(FloraSolid s)
+    {
+        Vector3 half = s.Basis.Y * s.Extents.Y;
+        return half.Y > 0f ? s.Center - half : s.Center + half;
     }
 }

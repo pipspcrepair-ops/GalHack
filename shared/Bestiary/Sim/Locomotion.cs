@@ -350,12 +350,12 @@ public static class Locomotion
     }
 
     /// <summary>How wide a body is round its feet where trunks and rocks are concerned, m: a person's shoulders, an animal's flanks.</summary>
-    public static float Footprint(Creature c) => c.Species.Figure != null ? 0.3f : MathF.Max(0.12f, c.Species.Body.Width * 0.5f);
+    public static float Footprint(Species s) => s.Figure != null ? 0.3f : MathF.Max(0.12f, s.Body.Width * 0.5f);
 
     /// <summary>How far a body standing at p would be into the nearest trunk or rock, m (0 or less: clear of them all).</summary>
     public static float IntoObstacles(WildSim w, Creature c, Vector3 p)
     {
-        float r = Footprint(c), worst = 0f;
+        float r = Footprint(c.Species), worst = 0f;
         foreach (Obstacle o in w.Nav.Around(p, r))
             if (o.Active) worst = MathF.Max(worst, o.Radius + r - WildSim.Flat(p - o.Position).Length());
         return worst;
@@ -371,7 +371,7 @@ public static class Locomotion
     /// </summary>
     internal static void Avoid(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
     {
-        float r = Footprint(c);
+        float r = Footprint(c.Species);
         var near = w.Nav.Around(p, r);
         if (near.Count == 0) return;
         for (int pass = 0; pass < 2; pass++)

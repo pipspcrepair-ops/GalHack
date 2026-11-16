@@ -167,7 +167,12 @@ public partial class CreaturesTest
                 float off = Mathf.RadToDeg(MathF.Acos(Math.Clamp(chest.Dot(to), -1f, 1f)));
                 log.Squared++;
                 if (c.Species.Figure != null) log.PeopleBlows++;
-                if (off > log.WorstFacing) { log.WorstFacing = off; log.WorstFaced = $"{s.Body.Size:F1} m {s.CommonName} {e.Move}"; }
+                if (off > log.WorstFacing)
+                {
+                    log.WorstFacing = off;
+                    float yawOff = Mathf.RadToDeg(MathF.Abs(Geo.WrapAngle(MathF.Atan2(-to.X, -to.Z) - c.Yaw)));
+                    log.WorstFaced = $"{s.Body.Size:F1} m {s.CommonName} {e.Move} from {WildSim.Flat(p.Position - c.Position).Length():F2} m, its yaw {yawOff:F0} degrees off";
+                }
             }
             log.HitsBy[e.Move] = log.HitsBy.GetValueOrDefault(e.Move) + 1;
             if (dodge) log.FarHits++;

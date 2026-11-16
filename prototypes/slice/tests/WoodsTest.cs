@@ -5,6 +5,7 @@ using System.Linq;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
+using Slice.Game;
 using Slice.Surface;
 using Wildlife;
 
@@ -85,10 +86,10 @@ public partial class WoodsTest : Node
             Vector3 at = start + new Vector3(MathF.Cos(a) * d, 0f, MathF.Sin(a) * d);
             List<PlanetSurface.Terrain.FloraSolid> near;
             while ((near = game.Zone.Scatter.Near(at.ToNumerics(), 20f)) == null) yield return 0;
-            int trunks = near.Count(s => s.IsTrunk);
-            if (trunks > most && Ground(at).Y > 1f) { most = trunks; wood = at; }
+            int count = near.Where(s => s.IsTrunk).Select(s => s.Id).Distinct().Count();
+            if (count > most && Ground(at).Y > 1f) { most = count; wood = at; }
         }
-        Check(most >= 8, $"a wood to watch: {most} trunks within 20 m of a spot {wood.DistanceTo(start):F0} m from the start");
+        Check(most >= 8, $"a wood to watch: {most} trees within 20 m of a spot {wood.DistanceTo(start):F0} m from the start");
         game.Survivor.PlaceOutside((Ground(wood) + Vector3.Up * 0.3f).ToNumerics());
         WildlifePatch patch = game.Zone.Wildlife;
         patch.FinishFollowing();
@@ -96,12 +97,15 @@ public partial class WoodsTest : Node
         WildSim sim = patch.Sim;
         if (sim == null) { Check(false, "the patch has a sim"); yield break; }
         patch.Frozen = false;
-        GD.Print($"  (trunks and rocks in the creatures' grid: {patch.Wooded}{(before ? ", woods kept out (--before)" : "")})");
+        GD.Print($"  (footprints of trunks and rocks in the creatures' grid: {patch.Wooded}{(before ? ", woods kept out (--before)" : $", read in in {patch.WoodMs:F1} ms")})");
 
         // The ground's own trunks and rocks round the wood, where they stand in the zone: what is watched against.
         List<PlanetSurface.Terrain.FloraSolid> solids;
         while ((solids = game.Zone.Scatter.Near(wood.ToNumerics(), 90f)) == null) yield return 0;
-        var trunks = solids.Where(ScatterSolids.InTheWay).Select(s => (At: game.Zone.Scatter.Nearest(s, wood), R: ScatterSolids.Reach(s), s.IsTrunk)).ToList();
+        var trunks = new List<(long Id, Vector3 At, float R)>();
+        game.Zone.Scatter.Footprints(solids, wood, trunks);
+        // How far a body this wide standing here would be into the nearest of them, m.
+        float Into(Vector3 at, float r) => trunks.Max(t => r + t.R - WildSim.Flat(at - t.At).Length());
 
         // Hunters from one side, a raiding band from the other, grazers in among the trees, and a giant.
         foreach (Creature other in sim.Creatures) if (patch.WorldOf(other).DistanceTo(wood) < 150f) other.Removed = true;
@@ -120,9 +124,16 @@ public partial class WoodsTest : Node
         {
             for (int i = 0; i < n; i++)
             {
-                Vector3 p = at + new Vector3((float)_rng.NextDouble() - 0.5f, 0f, (float)_rng.NextDouble() - 0.5f) * spread;
-                watched.Add(sim.Spawn(s, patch.PatchLocal(Ground(p))));
+                watched.Add(sim.Spawn(s, patch.PatchLocal(Ground(Open(at, spread, Locomotion.Footprint(s))))));
             }
+        }
+        // Set down on open ground, as the game's own spawns are: none starts inside a trunk.
+        Vector3 Open(Vector3 at, float spread, float r)
+        {
+            Vector3 p = at;
+            for (int k = 0; k < 200 && (k == 0 && spread > 0f || Into(p, r) > 0f); k++)
+                p = at + new Vector3((float)_rng.NextDouble() - 0.5f, 0f, (float)_rng.NextDouble() - 0.5f) * (spread + k * 0.1f);
+            return p;
         }
         Vector3 east = new(1f, 0f, 0f);
         if (walkers.Count > 0)
@@ -136,7 +147,7 @@ public partial class WoodsTest : Node
         {
             Species p = patch.Life.People.Person((ulong)_rng.NextInt64(), PersonRole.Raider, Occupancy.Raider);
             p.Figure.Prop = i % 2 == 0 ? "club" : "machete";
-            Creature c = sim.Spawn(p, patch.PatchLocal(Ground(wood - east * 40f + new Vector3(0f, 0f, i * 2f - 3f))));
+            Creature c = sim.Spawn(p, patch.PatchLocal(Ground(Open(wood - east * 40f + new Vector3(0f, 0f, i * 2f - 3f), 0f, Locomotion.Footprint(p)))));
             band.Add(c);
             watched.Add(c);
             sim.Damage(c, 0.01f, patch.Player); // set on: the band comes for you through the wood
@@ -161,19 +172,15 @@ public partial class WoodsTest : Node
                 Vector3 at = patch.WorldOf(c);
                 walked[c] = walked.GetValueOrDefault(c) + WildSim.Flat(at - last[c]).Length();
                 last[c] = at;
-                float r = Locomotion.Footprint(c);
-                foreach (var t in trunks)
-                {
-                    float d = WildSim.Flat(at - t.At).Length();
-                    if (t.IsTrunk && d < r + t.R + 1.5f) passedTrunks++;
-                    float into = r + t.R - d;
-                    if (into <= 0.02f) continue;
-                    overlaps++;
-                    if (c.Species.Figure != null) people++; else animals++;
-                    if (log.Count < 12) log.Add($"{f / 60f:F1} s: {c.Species.CommonName} ({(c.Species.Figure != null ? "person" : $"{c.Species.Body.Size:F1} m animal")}, {c.State}{(c.Attacking ? $" {c.Phase}" : "")}) {into:F2} m into a {(t.IsTrunk ? "trunk" : "rock")}");
-                }
+                float into = Into(at, Locomotion.Footprint(c.Species));
+                if (into > -1.5f) passedTrunks++;
+                if (into <= 0.02f) continue;
+                overlaps++;
+                deepest = MathF.Max(deepest, into);
+                if (c.Species.Figure != null) people++; else animals++;
+                if (log.Count < 12) log.Add($"{f / 60f:F1} s: {c.Species.CommonName} ({(c.Species.Figure != null ? "person" : $"{c.Species.Body.Size:F1} m animal")}, {c.State}{(c.Attacking ? $" {c.Phase}" : "")}) {into:F2} m into a trunk or rock");
             }
-            if (!shotTaken && f > 60 * 6 && band.Count(c => !c.Dead && trunks.Any(t => t.IsTrunk && WildSim.Flat(patch.WorldOf(c) - t.At).Length() < 3f)) >= 2)
+            if (!shotTaken && f > 60 * 6 && band.Count(c => !c.Dead && Into(patch.WorldOf(c), 0.3f) > -3f) >= 2)
             {
                 shotTaken = true;
                 Vector3 mid = band.Where(c => !c.Dead).Aggregate(Vector3.Zero, (a, c) => a + patch.WorldOf(c)) / band.Count(c => !c.Dead);
@@ -189,7 +196,7 @@ public partial class WoodsTest : Node
         }
         foreach (string line in log) GD.Print($"  ({line})");
         float peopleWalked = band.Sum(c => walked.GetValueOrDefault(c)), animalsWalked = watched.Except(band).Sum(c => walked.GetValueOrDefault(c));
-        string what = $"over 3 minutes in a wood of {trunks.Count(t => t.IsTrunk)} trunks and {trunks.Count(t => !t.IsTrunk)} rocks: {overlaps} footprint overlaps ({people} by people, {animals} by animals); the band walked {peopleWalked:F0} m, the animals {animalsWalked:F0} m, {passedTrunks / 60} trunk-seconds within reach of a trunk";
+        string what = $"over 3 minutes in a wood of {trunks.Select(t => t.Id).Distinct().Count()} trees and rocks ({trunks.Count} footprint circles): {overlaps} body-frames into one ({people} by people, {animals} by animals, deepest {deepest:F2} m); the band walked {peopleWalked:F0} m, the animals {animalsWalked:F0} m, {passedTrunks / 60} body-seconds within 1.5 m of one";
         if (before) GD.Print($"  (BEFORE, woods kept out of the grid: {what})");
         else
         {
