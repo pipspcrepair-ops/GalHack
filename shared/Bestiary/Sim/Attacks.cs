@@ -180,7 +180,8 @@ public static class Attacks
                 c.Desired = Vector3.Zero;
                 if (!c.Committed) c.AimPoint = t.Position;
                 c.FacePoint = c.AimPoint;
-                FaceStrike(w, c, c.AimPoint, dt);
+                // What will be a blow squares up to them; a shot or a spit comes round its own way (the aim pose, the throat).
+                if (!(Arming.Fire != null && Shooting(c, t)) && !Spitting.Wants(c)) FaceStrike(w, c, c.AimPoint, dt);
                 WindupPose(c, Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f));
                 if (c.Move == AttackMove.Swipe) Sweep(c, -0.3f * Math.Clamp(c.PhaseTime / c.PhaseLength * 2f, 0f, 1f)); // it turns a little away: the tail cocks
                 CommitIfDue(w, c, t);
