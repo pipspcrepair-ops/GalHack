@@ -390,7 +390,8 @@ public static partial class SmallCraft
         int bx = flank ? bhi.X + 1 : R(l, -1, 0), by = flank ? 0 : Math.Max(bhi.Y, chi.Y) + 1;
         int tip = zf - R(l, 3, 7);
         if (!flank) d.Fill(P(bx, bhi.Y + 1, zb0), P(bx, by - 1, zb0), Plate, l.Coat(4));
-        Boom(l, bx, by, tip, zb0 + 1, l.Coat(4));
+        Boom(l, bx, by, tip + 1, zb0, l.Coat(4));
+        d.Fill(P(bx, by, zb0), P(bx, by, zb0 + 1), Plate, l.Coat(4)).Fill(P(bx, by, tip), P(bx, by, tip), Plate, l.Coat(4)); // a collar where it meets the hull, a cap at its tip
         int r = R(l, 2, 3);
         for (int y = -r; y <= r; y++)
             for (int x = -r; x <= r; x++)

@@ -69,12 +69,16 @@ public static partial class SmallCraft
             Structure plan = Lay(cat, role, style, rng, gravity, needs, form ?? CraftForm.Box);
             Structure built = Assemble(plan, style.Owner);
             why = Shortfall(built, gravity, needs);
+            Dropped = string.Join(", ", plan.Blocks().Where(b => !built.Has(b.pos)).Select(b => plan.TypeOf(b.block).Id + (plan.TypeOf(b.block).IsArmor ? "/" + plan.ShapeOf(b.block).Id : "")));
             if (why == null) return built;
             if (built.BlockCount < plan.BlockCount)
                 why += $" ({plan.BlockCount - built.BlockCount} of {plan.BlockCount} blocks would not go on: {string.Join(", ", plan.Blocks().Where(b => !built.Has(b.pos)).Select(b => plan.TypeOf(b.block).Id + (plan.TypeOf(b.block).IsArmor ? "/" + plan.ShapeOf(b.block).Id : "")).Distinct())})";
         }
         return null;
     }
+
+    /// <summary>Tests: the blocks of the last roll's plan that would not go on (each would need a block it could hang on).</summary>
+    public static string Dropped { get; private set; } = "";
 
     /// <summary>Why a structure falls short of the needs here, or null when it meets them all.</summary>
     public static string Shortfall(Structure s, float gravity, CraftNeeds needs)
