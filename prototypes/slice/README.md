@@ -321,7 +321,7 @@ The owner's first concern: that you can always get out. Two fresh games must rol
 
 ## Pacing
 
-The design target is a small vessel within one to two hours for an experienced player. shared/Items' pacing reference (45 ore a minute with the survival tool, 12 ore a cell, 1.2 s to place a block) and the real-player test's own route give:
+The design target is a small vessel within one to two hours for an experienced player. shared/Items' pacing reference (45 ore a minute with the Sleeper tool, 12 ore a cell, 1.2 s to place a block) and the real-player test's own route give:
 
 | Step | What it takes | An experienced player |
 | --- | --- | --- |
