@@ -47,8 +47,8 @@ public sealed class ShipDecks
     /// <summary>A door: its low corner (a wall cell), the way through it (du, dv), its width along the wall, the rooms either side.</summary>
     public sealed record DoorPlan(int Deck, int U, int V, int DU, int DV, int Width, int A, int B);
 
-    /// <summary>A flight of stairs up from a deck to the next: its landing's first cell, rising along (du, dv), two lanes wide (+u or +v across).</summary>
-    public sealed record Flight(int Deck, int U, int V, int DU, int DV);
+    /// <summary>A flight of stairs up from a deck to the next: its landing's first cell, rising along (du, dv), two lanes wide (+u or +v across), or one where no more will go.</summary>
+    public sealed record Flight(int Deck, int U, int V, int DU, int DV, int Width = 2);
 
     /// <summary>A way out through the shell: from a room's edge cell out along (du, dv), Width wide (+u or +v across) and Height high, its door in the first wall cell (Door), the shell cut through to the outside.</summary>
     public sealed record Opening(int Deck, int U, int V, int DU, int DV, int Width, int Height, int Depth, string What, int Room);
@@ -113,10 +113,10 @@ public sealed class ShipDecks
         Faction f = faction;
         _weights = f switch
         {
-            Faction.Meridian => new[] { 0.6f, 0.1f, 0.3f },
-            Faction.Freeholders => new[] { 0.4f, 0.5f, 0.1f },
-            Faction.Exchange => new[] { 0.4f, 0.4f, 0.2f },
-            Faction.Reavers => new[] { 0.3f, 0.6f, 0.1f },
+            Faction.Meridian => new[] { 0.5f, 0.1f, 0.4f },
+            Faction.Freeholders => new[] { 0.4f, 0.4f, 0.2f },
+            Faction.Exchange => new[] { 0.3f, 0.3f, 0.4f },
+            Faction.Reavers => new[] { 0.3f, 0.5f, 0.2f },
             Faction.Kessari => new[] { 0.8f, 0f, 0.2f },
             _ => new[] { 0.3f, 0.3f, 0.4f },
         };
@@ -124,7 +124,7 @@ public sealed class ShipDecks
         _regular = f is Faction.Meridian or Faction.Kessari;
         _cw = f == Faction.Meridian && R.Chance(0.35f) ? 4 : 3;
         _xw = R.Chance(0.5f) ? 2 : 3;
-        _every = R.Between(12, 24);
+        _every = R.Between(8, 15);
         _deep = R.Between(9, 13);
         (_g0, _g1) = f switch
         {
@@ -397,7 +397,7 @@ public sealed class ShipDecks
         }
         int style = R.Chance(_reroll) ? 1 + R.PickWeighted(_weights) : _style;
         if (W <= 10) style = Single;
-        else if (style == Twin && W < 21) style = Spine;
+        else if (style == Twin && W < 17) style = Spine;
         float f = style == Offset ? R.Float(0.2f, 0.34f) : style == Twin ? R.Float(0.22f, 0.3f) : 0.5f;
         bool flip = R.Chance(0.5f);
         int len = a1 - a0 + 1;
@@ -593,6 +593,13 @@ public sealed class ShipDecks
         }
         r.Floor.Clear();
         r.Doors.Clear();
+        // Its doors gone from the rooms beyond them, its flights with it.
+        foreach (DoorPlan dp in Doors.Where(x => x.A == id || x.B == id).ToList())
+        {
+            Doors.Remove(dp);
+            Rooms[dp.A == id ? dp.B : dp.A].Doors.RemoveAll(x => x.Wall == (dp.U, dp.V));
+        }
+        Flights.RemoveAll(f => Zone(f.Deck, f.U, f.V) < 0);
     }
 
     // ---- stairs ---------------------------------------------------------------------------------------
@@ -605,8 +612,9 @@ public sealed class ShipDecks
 
     /// <summary>
     /// Flights of stairs joining what no door joins: a straight flight of five up from a room on one deck into a room on
-    /// the deck over it, landings at both ends, the deck over the flight open; the smallest rooms that take one first. A
-    /// long run of decks gets a second flight far from the first.
+    /// the deck over it (or down one side of a corridor), 2 m wide or 1 m where no more will go, landings at both ends,
+    /// the deck over the flight open; the smallest rooms that take one first. A long run of decks gets a second flight
+    /// far from the first.
     /// </summary>
     void Stairs()
     {
@@ -636,6 +644,7 @@ public sealed class ShipDecks
         Room A = Rooms[a], B = Rooms[b];
         var dirs = Four.ToList();
         R.Shuffle(dirs);
+        foreach (int width in new[] { 2, 1 })
         foreach (var (du, dv) in dirs)
         {
             var (pu, pv) = dv != 0 ? (1, 0) : (0, 1);
@@ -645,7 +654,7 @@ public sealed class ShipDecks
                 var steps = new HashSet<(int, int)>();
                 var holes = new HashSet<(int, int)>();
                 bool ok = true;
-                for (int lane = 0; lane < 2 && ok; lane++)
+                for (int lane = 0; lane < width && ok; lane++)
                 {
                     ok &= A.Floor.Contains(At(c, 0, lane)) && B.Floor.Contains(At(c, 6, lane));
                     for (int j = 1; j <= 5 && ok; j++)
@@ -656,8 +665,8 @@ public sealed class ShipDecks
                     }
                 }
                 if (!ok) continue;
-                if (!Clear(A, steps, new[] { At(c, 0, 0), At(c, 0, 1) }) || !Clear(B, holes, new[] { At(c, 6, 0), At(c, 6, 1) })) continue;
-                Flights.Add(new Flight(d, c.U, c.V, du, dv));
+                if (!Clear(A, steps, new[] { At(c, 0, 0), At(c, 0, width - 1) }) || !Clear(B, holes, new[] { At(c, 6, 0), At(c, 6, width - 1) })) continue;
+                Flights.Add(new Flight(d, c.U, c.V, du, dv, width));
                 A.Stair.UnionWith(steps);
                 B.Stair.UnionWith(holes);
                 foreach (Room r in new[] { A, B })
@@ -819,6 +828,14 @@ public sealed class ShipDecks
             Take("medbay", r => -MathF.Abs(r.Vc - vMid), r => r.Area >= 12);
         }
         foreach (Room r in free) r.Purpose = Program(Bay(r.Vc), r.Area, crewed, crew);
+        // A hull too small for a core room of its own keeps the seat for a core in its reactor, its engine room or its bridge.
+        if (CoreRoom < 0)
+            foreach (string host in new[] { "reactor", "engine-room", "bridge" })
+                if (Rooms.FindIndex(r => r.Area > 0 && r.Purpose == host) is int at && at >= 0)
+                {
+                    CoreRoom = at;
+                    break;
+                }
     }
 
     string Bay(float v) => _program(v);

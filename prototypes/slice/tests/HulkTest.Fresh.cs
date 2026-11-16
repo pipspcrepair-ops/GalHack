@@ -42,7 +42,7 @@ public partial class HulkTest
     {
         GD.Print("-- fresh hulls, every capital site, built away from the world --");
         PoiLibrary lib = WorldChoice.Library;
-        Catalogue cat = _game.Zone.Data.Catalogue;
+        Catalogue cat = Cat;
         var deco = Hulks.Deco();
         var sites = lib.Sites.Values.Where(s => s.Parts.Count > 0 && s.Parts[0].Arg("what") == "capital").ToList();
         var specs = sites.Select(s => (Site: s, Spec: CapitalHull.SpecOf(s.Parts[0]))).ToList();
@@ -103,7 +103,7 @@ public partial class HulkTest
             {
                 WreckAudit a = WreckAudit.Of(r.Structure);
                 var loose = a.LowCells.Where(c => !r.Crushed.Contains(c) && !Stair(r, c)).ToList();
-                GD.Print($"      {name}{r.Piece.Name}: {a}; {r.Decor.Count} pieces of dressing; built in {clock.Elapsed.TotalMilliseconds / wrecks.Count:F0} ms" +
+                GD.Print($"      {name}{r.Piece.Name}: {a}; {r.Decor.Count} pieces of dressing; built in {clock.Elapsed.TotalMilliseconds / wrecks.Count:F0} ms ({r.Took}); {r.Thrust}" +
                          (loose.Count > 0 ? $"; under 4 m outside the crush: {string.Join(", ", loose.GroupBy(c => c.Y).Select(g => $"{g.Count()} at y {g.Key} (e.g. {g.First()} in {r.Spaces.FirstOrDefault(s => s.Y == g.Key && s.Floor.Contains((g.First().X, g.First().Z + r.Piece.V0)))?.Purpose ?? "no space"} under {Over(r.Structure, g.First())})"))}" : ""));
                 floor += a.Floor;
                 corridor += a.Corridor;

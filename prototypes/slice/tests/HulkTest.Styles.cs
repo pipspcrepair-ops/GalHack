@@ -29,7 +29,7 @@ public partial class HulkTest
     {
         GD.Print("-- faction silhouettes on fresh seeds --");
         PoiLibrary lib = WorldChoice.Library;
-        Catalogue cat = _game.Zone.Data.Catalogue;
+        Catalogue cat = Cat;
         SiteDef site = lib.Sites.Values.First(s => s.Parts.Count > 0 && s.Parts[0].Arg("what") == "capital");
         string[] roles = { "freighter", "warship", "liner", "miner", "carrier" }, sizes = { "medium", "large", "huge" };
         const int each = 5;

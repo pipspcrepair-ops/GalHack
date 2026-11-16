@@ -112,7 +112,7 @@ public sealed partial class HullVessel
         {
             var (pu, pv) = f.DV != 0 ? (1, 0) : (0, 1);
             Dir up = DirOf(f.DU, f.DV);
-            for (int lane = 0; lane < 2; lane++)
+            for (int lane = 0; lane < f.Width; lane++)
                 for (int j = 1; j <= 5; j++)
                 {
                     int u = f.U + f.DU * j + pu * lane, v = f.V + f.DV * j + pv * lane, y = Walk(f.Deck) + j - 1;
@@ -155,6 +155,7 @@ public sealed partial class HullVessel
             Int3 anchor = Device(Cat.Type(o.Width >= 2 ? "door-2x2x1" : "door-1x2x1"), du, y0, dv, Turn(Dir.PosY, DirOf(o.DU, o.DV)));
             if (o.What == "door") Out.Door ??= anchor;
         }
+        Bulkheads();
         foreach (CapitalHull.Way w in H.Ways.Where(w => w.Side != 0))
             for (int v = w.V0; v < w.V0 + w.Width; v++)
             {
@@ -169,6 +170,29 @@ public sealed partial class HullVessel
                     break;
                 }
             }
+    }
+
+    /// <summary>
+    /// Where the hull is built in pieces (it broke apart), the frame it parted at is a bulkhead: every space that runs on
+    /// past the piece's end has a door in it there (1 to 3 m wide, as many as its width takes), what the break tore open.
+    /// </summary>
+    void Bulkheads()
+    {
+        foreach (int v in new[] { Pc.V0 > 0 ? Pc.V0 : -1, !Pc.Last ? VEnd - 1 : -1 })
+        {
+            if (v < 0) continue;
+            int beyond = v == Pc.V0 ? v - 1 : v + 1;
+            for (int d = 0; d < Levels; d++)
+                for (int u = _u0; u < _u0 + _nu;)
+                {
+                    int z = I.Zone(d, u, v);
+                    if (z < 0 || I.Zone(d, u, beyond) != z || I.Upper(d, z)) { u++; continue; }
+                    int w = 0;
+                    while (w < 3 && I.Zone(d, u + w, v) == z && I.Zone(d, u + w, beyond) == z) w++;
+                    Device(Cat.Type(w >= 3 ? "door-3x3x1" : w == 2 ? "door-2x2x1" : "door-1x2x1"), u, Walk(d), v, Turn(Dir.PosY, Dir.PosZ));
+                    u += w;
+                }
+        }
     }
 
     /// <summary>A way's cell cut open to its height, a sill under it.</summary>

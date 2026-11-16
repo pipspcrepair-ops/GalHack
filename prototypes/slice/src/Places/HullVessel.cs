@@ -74,6 +74,8 @@ public sealed partial class HullVessel
         public PoiState State;
         /// <summary>A Husk ship's worms rooted in this piece's flesh (structure frame, metres): what <see cref="Slice.Vessels.HuskWorms"/> grows.</summary>
         public readonly List<(NV3 At, NV3 Out, float Length, float Thick)> Worms = new();
+        /// <summary>How long each step of building it took (ms), and what its thrusters came to: for the checks.</summary>
+        public string Took = "", Thrust = "";
         /// <summary>Its collision, worked out where it was built (off the main thread), or null.</summary>
         public List<GalHack.Physics.ChunkColliders> Colliders;
     }
@@ -127,24 +129,34 @@ public sealed partial class HullVessel
         b._u0 = b.I.U0;
         b._nu = b.I.NU;
         b._ny = b.I.NY;
-        b.Paints();
-        b.Spaces();
-        b.Shell();
-        b.Pipes();
-        b.Walls();
-        b.Stairs();
-        b.Doors();
-        b.Ways();
-        b.Windows();
-        b.Engines();
-        b.Fittings();
-        b.Lights();
-        b.Finish();
-        if (!intact) b.Damage();
-        if (!intact && (state == PoiState.Infested || plan.Husk)) b.Infest();
-        b.Hollow();
-        b.Join();
-        if (dress != null) b.Dress(dress);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var took = new System.Text.StringBuilder();
+        void Step(string name, Action step)
+        {
+            long t0 = clock.ElapsedMilliseconds;
+            step();
+            took.Append($"{name} {clock.ElapsedMilliseconds - t0}, ");
+        }
+        Step("plan", () => _ = b.I);
+        Step("paint", b.Paints);
+        Step("spaces", b.Spaces);
+        Step("shell", b.Shell);
+        Step("pipes", b.Pipes);
+        Step("walls", b.Walls);
+        Step("stairs", b.Stairs);
+        Step("doors", b.Doors);
+        Step("ways", b.Ways);
+        Step("windows", b.Windows);
+        Step("engines", b.Engines);
+        Step("fittings", b.Fittings);
+        Step("lights", b.Lights);
+        Step("finish", b.Finish);
+        if (!intact) Step("damage", b.Damage);
+        if (!intact && (state == PoiState.Infested || plan.Husk)) Step("infest", b.Infest);
+        Step("hollow", b.Hollow);
+        Step("join", b.Join);
+        if (dress != null) Step("dress", () => b.Dress(dress));
+        b.Out.Took = took.ToString().TrimEnd(',', ' ');
         foreach (var w in plan.Form.Worms)
             if (b.InPiece((int)MathF.Floor(w.At.Z))) b.Out.Worms.Add(w with { At = w.At - new NV3(0, 0, piece.V0) });
         b.S.Name = plan.Role switch { "warship" => "Warship", "liner" => "Liner", "miner" => "Mining Ship", "carrier" => "Carrier", _ => "Freighter" } + piece.Name;
@@ -171,11 +183,6 @@ public sealed partial class HullVessel
         Paint["tank"] = D.Paint("tank", Coat(Plain ? Grey : Hex(H.Paints["hull"].Lerp(H.Paints["trim"], 0.4f)), outside));
         Paint["radiator"] = D.Paint("radiator", Coat(Plain ? Grey : Hex(H.Paints["dark"].Lerp(H.Paints["machine"], 0.3f)), outside));
         Paint["flesh"] = D.Paint("flesh", Coat(Plain ? Grey : 0x8a3a50u, 3));
-        if (Plain)
-        {
-            Paint["glow"] = Paint["hull"];
-            return;
-        }
         // The livery's panels (HullVessel.Livery): the style's two band colours, the same faded, kill marks in bone.
         Paint["band"] = D.Paint("livery", Coat(Hex(st.Band), outside));
         Paint["band2"] = D.Paint("livery2", Coat(Hex(st.Band2), outside));
@@ -188,6 +195,10 @@ public sealed partial class HullVessel
         if (st.Glow is { } glow)
             Paint["glow"] = D.Paint("glow", GalHack.Structures.Paint.Lit(LampShape.Strip, LightSettings.Make(Hex(glow), LightAnim.Steady, 0.6f, 0)));
         for (char c = '0'; c <= '9'; c++) Paint["num" + c] = D.Paint("num" + c, Coat(Hex(H.Paints["trim"]), outside).WithStencil(c, Hex(st.Band)));
+        // (The livery off: everything on the outside one grey, the rooms inside as they are.)
+        if (Plain)
+            foreach (string name in new[] { "band", "band2", "faded", "mark", "orange", "glow" })
+                Paint[name] = Paint["hull"];
         // The veins through a Husk ship's walls.
         Paint["vein"] = D.Paint("vein", Coat(0x5a2a3a, 3).WithPattern(Pattern.Stripes, 0xb8486e));
         uint hazard = Hex(H.Paints["hazard"]), black = Hex(H.Paints["black"]);

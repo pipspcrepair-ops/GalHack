@@ -20,11 +20,12 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Crashed capital ships and orbit's derelicts, one hull builder (HullVessel), redone from the Empyrion study
-/// (docs/place-patterns.md 1.4, 5.2). First every capital site's hull on fresh seeds, built away from the world: a
-/// ship's own plan, damaged, of the player's blocks, at Empyrion's sizes, 4 m decks (2 m only where crushed), rooms
+/// (docs/place-patterns.md 1.4, 5.2; docs/ship-forms.md). First the faction silhouettes, livery off, each hull judged
+/// without it. Then every capital site's hull on fresh seeds, built away from the world: its faction's form with its
+/// decks fitted inside, damaged, of the player's blocks, at Empyrion's sizes, 4 m decks (2 m only where crushed), rooms
 /// dressed and lit for their purpose, corridors about 60% of the floor, machines and containers about 2.7 per
-/// 100 m², the engines, power, gyros, warp drive, turrets, cargo and a cockpit, no fuel tanks, no core but a seat for
-/// one, a tapered bow and sloped shoulders, and each hull its own. Then on a fresh world with a crashed freighter
+/// 100 m², the engines, power, gyros, warp drive, turrets, cargo and command chairs, no cockpit and no fuel tanks, no
+/// core but a seat for one, once repaired nothing missing to fly, and each hull its own. Then on a fresh world with a crashed freighter
 /// forced near the start (any of its four poses): it is set down as coreless wrecks nobody waits in; a core set into
 /// its core room claims it; Creative fills in what the crash and the years took; in Flight Mode nothing is missing,
 /// its thrust beats its weight and it has power; and it lifts off along capital-base's clean lift-off, the ground it
@@ -112,8 +113,19 @@ public partial class HulkTest : Node
         return placed;
     }
 
+    /// <summary>The catalogue: the world's, or the game's data on its own when the hulls are checked without one.</summary>
+    Catalogue Cat => _game?.Zone.Data.Catalogue ?? GameData.Shared.Catalogue;
+
     IEnumerable<int> Scenarios()
     {
+        string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?[7..];
+        // The hulls on their own need no world: built away from one, as the game builds them on a worker.
+        if (only is "styles" or "fresh" or "hulls")
+        {
+            if (only is "styles" or "hulls") foreach (int x in Styles()) yield return x;
+            if (only is "fresh" or "hulls") foreach (int x in Fresh()) yield return x;
+            yield break;
+        }
         string variant = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--variant="))?[10..];
         Force(variant != null ? int.Parse(variant) : null);
         _game = new Game.Game { Interactive = false, SkipIntro = true, Mode = GalHack.Items.GameMode.Creative, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
@@ -122,7 +134,6 @@ public partial class HulkTest : Node
         foreach (int x in _drive.UntilPlaying()) yield return x;
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = true;
-        string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?[7..];
         if (only is null or "styles") foreach (int x in Styles()) yield return x;
         if (only is null or "fresh") foreach (int x in Fresh()) yield return x;
         if (only is null or "crashed") foreach (int x in Crashed()) yield return x;

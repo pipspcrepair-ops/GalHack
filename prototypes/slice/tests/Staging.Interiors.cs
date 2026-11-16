@@ -100,7 +100,7 @@ public sealed partial class Staging
             for (int k = 0; k < o.Width; k++) Cell(o.U + o.DU + (o.DV != 0 ? k : 0), o.V + o.DV + (o.DV != 0 ? 0 : k), new Color(1f, 0.15f, 0.15f));
         foreach (ShipDecks.Flight f in I.Flights.Where(f => f.Deck == deck || f.Deck == deck - 1))
             for (int j = 1; j <= 5; j++)
-                for (int lane = 0; lane < 2; lane++)
+                for (int lane = 0; lane < f.Width; lane++)
                     Cell(f.U + f.DU * j + (f.DV != 0 ? lane : 0), f.V + f.DV * j + (f.DV != 0 ? 0 : lane), j % 2 == 0 ? new Color(0.1f, 0.1f, 0.1f) : new Color(0.95f, 0.55f, 0.2f));
         img.SavePng(file);
         GD.Print($"interior: {title}, deck {deck} of {I.Levels}: {file}");

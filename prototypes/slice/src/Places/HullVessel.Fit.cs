@@ -158,11 +158,12 @@ public sealed partial class HullVessel
         return placed;
     }
 
-    /// <summary>The biggest thrusters of each class that fit a box when turned to push that way, largest first.</summary>
-    List<BlockType> Thrusters(Dir push, params Int3[] boxes)
+    /// <summary>The biggest thrusters of each class that fit a box (its width across, its depth along the push) when turned to push that way, largest first.</summary>
+    List<BlockType> Thrusters(Dir push, params (int Wide, int Deep)[] boxes)
     {
-        int rot = Turn(push.Axis() == 1 ? Dir.PosZ : Dir.PosY, push);
-        return boxes.Select(b => Best("thruster", b, rot, t => t.Thrust)).Where(t => t != null).Distinct().ToList();
+        int rot = Turn(push.Axis() == 1 ? Dir.PosZ : Dir.PosY, push), axis = push.Axis();
+        return boxes.Select(b => Best("thruster", axis == 0 ? new Int3(b.Deep, b.Wide, b.Wide) : axis == 1 ? new Int3(b.Wide, b.Deep, b.Wide) : new Int3(b.Wide, b.Wide, b.Deep), rot, t => t.Thrust))
+                    .Where(t => t != null).Distinct().ToList();
     }
 
     double ThrustTo(Dir push) => S.Blocks().Where(b => !b.block.IsFiller && S.TypeOf(b.block).IsThruster && Orientations.ToWorld(b.block.Rot, Dir.NegZ) == push).Sum(b => (double)S.TypeOf(b.block).Thrust);
@@ -176,10 +177,16 @@ public sealed partial class HullVessel
     {
         const double g = 9.81 * 1.3;
         double need = StructureStats.Compute(S).Mass * 1.3 * g * 1.5, up = ThrustTo(Dir.PosY);
-        var kinds = Thrusters(Dir.PosY, new Int3(3, 6, 3), new Int3(2, 4, 2), new Int3(1, 2, 1));
+        var kinds = Thrusters(Dir.PosY, (3, 6), (2, 4), (1, 2));
         foreach (bool outside in new[] { false, true })
             foreach (BlockType t in kinds)
-                if (up < need) up += t.Thrust * Embed(Dir.PosY, t, (int)Math.Ceiling((need - up) / t.Thrust), outside);
+                if (up < need)
+                {
+                    int n = Embed(Dir.PosY, t, (int)Math.Ceiling((need - up) / t.Thrust), outside);
+                    up += t.Thrust * n;
+                    if (n > 0) Out.Thrust += $"{n} {t.Id} {(outside ? "under" : "in")} the belly, ";
+                }
+        Out.Thrust += $"lift {up / 1000:F0} of {need / 1000:F0} MN; ";
     }
 
     /// <summary>Thrusters on every other axis (DESIGN 5: thrusters on every axis): flush in the flanks, the roof and the faces looking forward, a few of each spread along the hull.</summary>
@@ -190,8 +197,9 @@ public sealed partial class HullVessel
         {
             int set = 0;
             foreach (bool outside in new[] { false, true })
-                foreach (BlockType t in Thrusters(push, new Int3(2, 2, 4), new Int3(1, 1, 2)))
+                foreach (BlockType t in Thrusters(push, (2, 4), (1, 2)))
                     if (set < n) set += Embed(push, t, n - set, outside);
+            Out.Thrust += $"{push} {set}; ";
         }
     }
 
@@ -410,13 +418,15 @@ public sealed partial class HullVessel
         BlockType chair = Cat.Type("command-chair");
         int centre = (s.U0 + s.U1) / 2, chairs = 0, most = Math.Clamp(s.Floor.Count / 12, 2, 5);
         var columns = Enumerable.Range(s.U0, s.U1 - s.U0 + 1).OrderBy(u => Math.Abs(u - centre)).ToList();
-        for (int v = s.V0 + 1; v <= s.V1 && chairs < most; v++)
-            foreach (int u in columns)
-                if (chairs < most && Fits(chair, At(u, s.Y, v), rot, Clear))
-                {
-                    Device(chair, u, s.Y, v, rot, s);
-                    chairs++;
-                }
+        // The helm's faces the prow (a vessel's forward is its pilot's seat's); the rest the prow or a flank where the room is narrow.
+        foreach (int turn in new[] { rot, Turn(Dir.PosY, Dir.PosX), Turn(Dir.PosY, Dir.NegX) })
+            for (int v = s.V0 + 1; v <= s.V1 && chairs < most && (turn == rot || chairs > 0); v++)
+                foreach (int u in columns)
+                    if (chairs < most && Fits(chair, At(u, s.Y, v), turn, Clear))
+                    {
+                        Device(chair, u, s.Y, v, turn, s);
+                        chairs++;
+                    }
     }
 
     /// <summary>Turrets where the form mounts them, each on the first free cell out from its plating, looking out of that face.</summary>
