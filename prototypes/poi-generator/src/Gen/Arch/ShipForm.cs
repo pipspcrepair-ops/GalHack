@@ -458,22 +458,30 @@ public sealed partial class ShipForm
     }
 
     /// <summary>
-    /// A drive, oversized as Foss drew them: its housing ahead of the throat (never shorter than the largest thruster, as
-    /// long as <paramref name="reach"/> when asked), banded with collars, the bell flaring wide aft of it, hollow and open at
-    /// its mouth, and the throat's face where the thrusters are packed, exhausts aft. The housing's length.
+    /// A drive, oversized as Foss drew them, of crisp eight-sided sections (round would come out lumpy on the grid): its
+    /// housing ahead of the throat (never shorter than the largest thruster, as long as <paramref name="reach"/> when
+    /// asked), banded with collars; the nozzle flaring aft of the throat, open and hollow, a heavy lip round its mouth; the
+    /// throat's face where the thrusters are packed, exhausts aft. The housing's length.
     /// </summary>
     float Bell(NV3 throat, float r, float len, bool housing = true, float reach = 0f)
     {
+        const float Octagon = 0.6f;
+        Loft Section(float s0, float s1, float h0, float h1, float wall = 0f, float plug = 0f) =>
+            new() { S0 = s0, S1 = s1, A0 = throat.X, B0 = throat.Y, A1 = throat.X, B1 = throat.Y, HA0 = h0, HB0 = h0, HA1 = h1, HB1 = h1, Chamfer = Octagon, Wall = wall, Plug = plug };
         float h = housing ? MathF.Max(Housing(r), reach) : 0f;
         if (housing)
         {
-            Can("machine", 2, throat - new NV3(0, 0, h / 2 - 1f), r + 1f, h);
+            Add(Section(throat.Z - h + 1f, throat.Z + 1f, r + 1f, r + 1f), "machine");
             for (int k = 1, n = Math.Min(3, (int)(h / M(6f))); k <= n; k++)
-                Add(new Hoop { C = new NV3(throat.X, throat.Y, throat.Z + 1f - h * k / (n + 1f)), R = r + 1f, T = MathF.Max(Thin, 0.9f * K) }, "trim");
+            {
+                float at = throat.Z + 1f - h * k / (n + 1f);
+                Add(Section(at - M(0.75f), at + M(0.75f), r + 2f, r + 2f), "trim");
+            }
         }
-        // (A small bell is a solid nozzle: hollowed, its wall would break up on the grid.)
-        float wall = r < 3.5f ? 0f : MathF.Max(1.6f, r * 0.2f);
-        Add(new Loft { S0 = throat.Z, S1 = throat.Z + len, A0 = throat.X, B0 = throat.Y, A1 = throat.X, B1 = throat.Y, HA0 = r, HB0 = r, HA1 = r * 1.5f, HB1 = r * 1.5f, Round = true, Wall = wall, Plug = 1.5f }, "dark");
+        // The nozzle (a small one a solid cone: hollowed, its wall would break up on the grid) and its lip.
+        float wall = r < 3.5f ? 0f : MathF.Max(1.6f, r * 0.2f), mouth = r * 1.45f, lip = MathF.Min(M(1.5f), len * 0.25f);
+        Add(Section(throat.Z, throat.Z + len, r, mouth, wall, 1.5f), "dark");
+        if (wall > 0f) Add(Section(throat.Z + len - lip, throat.Z + len, mouth + 1f, mouth + 1.2f, wall + 1f), "machine");
         Drives.Add((throat + new NV3(0, 0, 1f), r - wall));
         return h;
     }
