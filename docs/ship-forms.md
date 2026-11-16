@@ -24,7 +24,11 @@ DESIGN.md section 5 had already set the direction. The first try ignored it:
 3. **The bridge is never a tower on a deck.** It sits in the nose, in a blister above or below, in a sponson, or buried deep inside.
 4. **The machinery shows.** Oversized drive clusters, propellant tanks (spheres and cylinders), radiator panels, open trusses, masts and dishes, docking collars, hangar mouths, cargo racks, armour slabs, and turrets on several faces. All of it is made from our own blocks and components in the right amounts, and it flies by the same rules as the player's ships.
 5. **Asymmetry, Foss style,** for every faction except the Kessari, who are perfectly symmetric.
-6. **Variety within a faction.** Rolls of one faction share its body plan and traits but differ in length, module count, layout and which traits appear. No two rolls should look like copies.
+6. **Variety everywhere, inside and out.** The owner (16 Nov): "ideally, we'd have a lot of procgen variety in ALL ships regardless of size or faction, inside and out." So:
+   - each faction has several body plans per size, not one;
+   - each roll varies its length, module count, layout and which traits appear;
+   - interiors vary too: deck count and layout, how the corridors run, which rooms appear and how they're furnished.
+   - No two rolls may look like copies, from outside or inside. This holds for the smallest craft and the biggest capital ship alike.
 7. **Livery comes last.** With livery greyed out, every faction must still read by its form alone, at long range, from any side.
 
 ## Body plans by faction
