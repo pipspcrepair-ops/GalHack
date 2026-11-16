@@ -625,6 +625,9 @@ public sealed partial class HullVessel
                     }
                     if (placed > 0) break;
                 }
+            // (Or anywhere on its floor at all.)
+            if (placed == 0 && s.Floor.FirstOrDefault(c => !Has(c.U, s.Y, c.V) && Has(c.U, s.Y - 1, c.V)) is var (fu, fv) && Has(fu, s.Y - 1, fv) && !Has(fu, s.Y, fv))
+                S.SetLight(D.Mount("light", At(fu, s.Y, fv), Dir.NegY), LightSettings.Make(colour, LightAnim.Steady, 0.5f, fu * 7 + fv));
         }
     }
 }

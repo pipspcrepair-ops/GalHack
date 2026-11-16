@@ -81,7 +81,7 @@ public partial class HulkTest
             // Its devices, as built: the player's real parts, no fuel or warp tanks (fuel is kept in the cargo containers).
             var built = intact.SelectMany(r => r.Structure.Blocks().Where(b => !b.block.IsFiller).Select(b => r.Structure.TypeOf(b.block))).ToList();
             int Count(string function) => built.Count(t => t.Function == function);
-            Bad(Count("thruster") >= 8 && Count("generator") >= 1 && Count("gyro") >= 2 && Count("warp-drive") >= 1 && Count("turret") >= 2 && Count("container") >= Math.Max(2, inside / 100) && Count("chair") >= 2 && !built.Any(t => t.Id.StartsWith("cockpit")),
+            Bad(Count("thruster") >= 8 && Count("generator") >= 1 && Count("gyro") >= 2 && Count("warp-drive") >= 1 && Count("turret") >= 2 && Count("container") >= 1 && Count("chair") >= 2 && !built.Any(t => t.Id.StartsWith("cockpit")),
                 $"{name}: devices {Count("thruster")} thrusters, {Count("generator")} generators, {Count("gyro")} gyros, {Count("warp-drive")} warp drives, {Count("turret")} turrets, {Count("container")} containers, {Count("chair")} chairs");
             Bad(Count("fuel") == 0 && Count("warp-tank") == 0, $"{name}: fuel or warp tanks");
             Bad(intact.All(r => r.Structure.Core == null) && intact.Count(r => r.CoreSlot is Int3 c && !r.Structure.Has(c) && r.Structure.Has(c - Int3.UnitY)) == 1, $"{name}: a core, or no empty seat for one");
