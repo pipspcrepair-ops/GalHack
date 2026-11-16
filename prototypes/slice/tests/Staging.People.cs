@@ -298,7 +298,7 @@ public sealed partial class Staging
         // A settlement where people live, not a held ruin: the family forced (--force-family) first, peaceful first, then the nearest.
         string forced = _args.GetValueOrDefault("force-family", "");
         PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk is { People.Count: > 4 } && s.Family.Tags.Contains("settlement"))
-            .OrderBy(s => s.Family.Id == forced ? 0 : 1).ThenBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0).ThenBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault();
+            .OrderBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0).ThenBy(s => s.Family.Id == forced ? 0 : 1).ThenBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault();
         if (site == null) { GD.Print("(no settlement on this world)"); yield break; }
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
