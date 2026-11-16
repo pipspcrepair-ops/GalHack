@@ -401,7 +401,7 @@ public static class Attacks
         Vector3 at = WildSim.Flat(aim - c.LungeTo);
         Vector3 dir = at.LengthSquared() > 1e-4f ? at.Normalized() : c.Forward;
         c.StrikePoint = c.LungeTo + dir * Math.Clamp(stop, 0f, at.Length()); // someone already inside its reach is bitten where they stand
-        c.Yaw = MathF.Atan2(-dir.X, -dir.Z);
+        if (c.Species.Figure == null) c.Yaw = MathF.Atan2(-dir.X, -dir.Z); // (a person stays squared up to them through the swing instead)
         c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / (c.Species.Flight == FlightKind.Hover ? MostLungeSpeed : MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f)));
     }
 
