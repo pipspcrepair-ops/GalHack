@@ -440,8 +440,8 @@ public sealed class ShipDecks
         // Cross passages through the whole width (and a twin's joined at its ends into a ring).
         var xs = new List<int>();
         if (style == Twin) { xs.Add(aS); xs.Add(aE - _xw + 1); }
-        // (A narrow area's single row of rooms is cut by them half as often.)
-        int every = style == Single ? _every * 2 : _every;
+        // (A narrow area's single row of rooms is cut by them half as often, and a Kessari bay's.)
+        int every = style == Single || _faction == Faction.Kessari ? _every * 2 : _every;
         for (int a = aS + R.Between(every / 2, every); a + _xw - 1 <= aE - 4; a += _regular ? every : R.Between(every - 3, every + 3)) xs.Add(a);
         foreach (int a in xs)
             for (int r = a; r < a + _xw; r++)
@@ -647,14 +647,18 @@ public sealed class ShipDecks
         _group = Enumerable.Range(0, Rooms.Count).ToArray();
         foreach (DoorPlan dp in Doors) Union(dp.A, dp.B);
         // Rooms first; a corridor takes a flight down one side of it where no room will (the way past it a lane wide).
-        bool Usable(Room r) => (r.Corridor ? r.Purpose == "corridor" : r.Purpose == "" && r.Doors.Count > 0) && !r.Hall && r.Area >= 12;
+        // (A room is never the last of its deck's to be given to a flight: that deck then has its own way out instead.)
+        bool Usable(Room r) => (r.Corridor ? r.Purpose == "corridor" : r.Purpose == "" && r.Doors.Count > 0 && Rooms.Count(x => x.Deck == r.Deck && !x.Corridor && !x.Hall && x.Area >= 12) >= 3) && !r.Hall && r.Area >= 12;
         for (int d = 0; d + 1 < Levels; d++)
         {
             var lower = Enumerable.Range(0, Rooms.Count).Where(i => Rooms[i].Deck == d && Usable(Rooms[i])).ToList();
             var upper = Enumerable.Range(0, Rooms.Count).Where(i => Rooms[i].Deck == d + 1 && Usable(Rooms[i])).ToList();
+            // (A deck with few rooms keeps them for what they are for: its flights go down a corridor's side first.)
+            int Spare(int deck) => Rooms.Count(r => r.Deck == deck && !r.Corridor && !r.Hall && r.Area >= 12);
+            int Cost(int i) => Rooms[i].Corridor ? (Spare(Rooms[i].Deck) < 4 ? 0 : 1000) : (Spare(Rooms[i].Deck) < 4 ? 3000 : 0);
             var pairs = (from a in lower from b in upper
                          where Rooms[a].Floor.Overlaps(Rooms[b].Floor)
-                         orderby (Rooms[a].Corridor ? 1000 : 0) + (Rooms[b].Corridor ? 1000 : 0) + Rooms[a].Area + Rooms[b].Area
+                         orderby Cost(a) + Cost(b) + Rooms[a].Area + Rooms[b].Area
                          select (a, b)).ToList();
             foreach (var (a, b) in pairs)
             {
@@ -836,11 +840,11 @@ public sealed class ShipDecks
             3 => r => -MathF.Abs(r.Vc - vMid) - MathF.Abs(r.Uc - uMid) * 2f - MathF.Abs(r.Y - yTop / 2f),
             _ => r => -r.Vc,
         };
-        Take("bridge", bridge, r => r.Area >= 12);
+        if (Take("bridge", bridge, r => r.Area >= 12) == null) Take("bridge", bridge);
         Room? engine = Rooms.FirstOrDefault(r => r.Purpose == "engine-room" && r.Area > 0) ?? Take("engine-room", r => r.Vc + r.Area * 0.05f, r => r.Area >= 16);
         float aft = engine?.Vc ?? NV;
         Room? reactor = Take("reactor", r => -MathF.Abs(r.Vc - aft) - MathF.Abs(r.Deck - (engine?.Deck ?? 0)) * 4f, r => r.Area >= 24 && CoreCut(r, true))
-                        ?? Take("reactor", r => -MathF.Abs(r.Vc - aft), r => r.Area >= 12);
+                        ?? Take("reactor", r => -MathF.Abs(r.Vc - aft), r => r.Area >= 9);
         if (reactor != null && !CoreCut(reactor, false))
         {
             Room? core = Take("core-room", r => -MathF.Abs(r.Vc - reactor.Vc) - MathF.Abs(r.Deck - reactor.Deck) * 5f);
