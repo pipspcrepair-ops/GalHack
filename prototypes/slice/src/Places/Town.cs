@@ -1342,9 +1342,15 @@ public sealed partial class Town
     /// Once a drawn frame, before the draw: every body owed a pose, posed. One out of sight (outside the view, with room for its
     /// size) and whose shadow can't reach into it waits, its time kept for when it comes back: what can't be seen isn't posed.
     /// </summary>
+    int _frame;
+
+    /// <summary>How many drawn frames apart a body this far off is posed.</summary>
+    static int PoseFrames(float away) => away < 15f ? 1 : away < 30f ? 2 : away < 60f ? 3 : 4;
+
     void PoseFrame()
     {
         if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
+        _frame++;
         Camera3D eye = _place.GetViewport()?.GetCamera3D();
         Godot.Collections.Array<Plane> frustum = eye?.GetFrustum();
         Vector3 toSun = _places.Zone.Sky?.ToSun ?? Vector3.Up;
@@ -1358,6 +1364,9 @@ public sealed partial class Town
             // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed.)
             bool needed = p.Engaged || p.Dead && !p.Laid;
             if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)) continue;
+            // Further off, posed every few frames with the time between (as their steps already are, Due): a body 40 m off is a
+            // few dozen pixels tall.
+            if (!needed && (_frame + i) % PoseFrames(p.PoseAway) != 0) continue;
             float dt = p.PoseOwed;
             int who = p.PoseWho;
             p.PoseOwed = 0f;
