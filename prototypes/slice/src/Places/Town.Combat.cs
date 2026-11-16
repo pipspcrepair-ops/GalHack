@@ -329,7 +329,9 @@ public sealed partial class Town
         Vector3 to = player - p.Pos;
         float dist = to.Length();
         // No line for a while: they move up to where they last saw you.
-        if (p.Unseen > 3f && p.Rethink > 0.5f && p.Part != FightPart.FallBack) p.Rethink = 0f;
+        // (Once, as the three seconds pass: every tick after it made each unseen fighter look round every spot again, 5,000 rays a frame
+        // in a hostile town's hall.)
+        if (p.Unseen > 3f && p.Unseen - dt <= 3f && p.Rethink > 0.5f && p.Part != FightPart.FallBack) p.Rethink = 0f;
         if (p.Reloading > 0f)
         {
             p.Reloading -= dt;

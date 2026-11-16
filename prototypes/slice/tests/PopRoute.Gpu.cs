@@ -120,7 +120,7 @@ public partial class PopRoute
             views.Add(("in the city", mid - way * 60f, 1.7f, -2f));
             views.Add(("low over the city", mid - way * (radius + 150f), 40f, -10f));
         }
-        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-msaa" })
+        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow" }).Concat(Enum.GetNames<Game.AntiAliasing>().Select(n => "aa " + n))
             .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).Concat(new[] { "-sky glow", "-cumulus", "-clouds" }).Append("all again").ToList();
         foreach (var (view, at, up, pitch) in views)
         {
@@ -136,7 +136,7 @@ public partial class PopRoute
             }
             TagAll();
             var parts = Kinds();
-            Viewport.Msaa msaa = GetViewport().Msaa3D;
+            Game.AntiAliasing aa = _game.Settings.Aa;
             bool glow = env.GlowEnabled;
             var sky = env.Sky?.SkyMaterial as ShaderMaterial;
             int glows = sky?.GetShaderParameter("glow_count").AsInt32() ?? 0, cumuli = sky?.GetShaderParameter("cumulus_count").AsInt32() ?? 0;
@@ -151,7 +151,7 @@ public partial class PopRoute
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = c == "-shadows" ? 0u : uint.MaxValue;
                 env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                 env.GlowEnabled = c != "-glow" && glow;
-                GetViewport().Msaa3D = c == "-msaa" ? Viewport.Msaa.Disabled : msaa;
+                Game.Game.SetAntiAliasing(GetViewport(), c.StartsWith("aa ") ? Enum.Parse<Game.AntiAliasing>(c[3..]) : aa);
                 // The sky's own parts: the lit places' glow on the cloud, the heaped cumulus, all cloud (each set back after).
                 if (sky != null)
                 {
@@ -192,10 +192,11 @@ public partial class PopRoute
             zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
             env.BackgroundMode = Godot.Environment.BGMode.Sky;
             env.GlowEnabled = glow;
-            GetViewport().Msaa3D = msaa;
+            Game.Game.SetAntiAliasing(GetViewport(), aa);
             double all = cost["all"];
             double allCpu = renderCpu["all"], allDraws = drawCalls["all"];
-            string costs = string.Join(", ", cases.Skip(1).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view} by anti-aliasing (gpu ms, median of 80 frames, one scene): {string.Join(", ", cases.Where(c => c.StartsWith("aa ")).Select(c => $"{c[3..]} {cost[c]:F2}"))}"));
+            string costs = string.Join(", ", cases.Skip(1).Where(c => !c.StartsWith("aa ")).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
             // The whole picture measured again last: what it moved meanwhile (a place still coming in) is the measure's own error.
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: drift over the cases gpu {cost["all again"] - all:F2} ms, render cpu {renderCpu["all again"] - allCpu:F2} ms, draw calls {drawCalls["all again"] - allDraws:F0}"));
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); without each (what it costs, gpu/render cpu ms/draw calls): {costs}"));

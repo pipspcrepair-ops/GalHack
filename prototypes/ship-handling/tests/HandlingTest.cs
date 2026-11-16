@@ -123,29 +123,31 @@ public partial class HandlingTest : Node
         Check(same && state.AngularVelocity == Vector3.Zero && state.Orientation.IsEqualApprox(Basis.Identity),
             "a lopsided build (every thruster on the left flank) has the same numbers and 3 s of full thrust adds zero spin");
 
-        // Top speeds and turn caps by mass band; Hover Mode by its own speeds whatever its mass.
+        // Turn caps by mass band; top speeds one Flight pair whatever the mass, Hover Mode its own.
         var bandList = _t.Speeds.Bands;
+        Tunables.SpeedData fl = _t.Speeds.Flight;
         bool banded = bandList.Select((b, i) => b.Below > 0f ? b.Below * 0.5f : bandList[i - 1].Below * 5f).Zip(bandList).All(x =>
         {
             var heavy = new VesselLoadout { HullMass = x.First };
             heavy.GyroList.Add(new GyroSpec("test", Vector3.Zero, 1e7f, 0f)); // gyros far past any cap
             HandlingStats a = HandlingModel.Compute(heavy, air, _t), sp = HandlingModel.Compute(heavy, space, _t);
-            return a.TopSpeed == x.Second.TopSpeedAir && sp.TopSpeed == x.Second.TopSpeedSpace && a.TurnRate == x.Second.MaxTurn && a.TurnCapped;
+            return a.TopSpeed == fl.TopSpeedAir && sp.TopSpeed == fl.TopSpeedSpace && a.TurnRate == x.Second.MaxTurn && a.TurnCapped;
         });
         var hoverHeavy = new VesselLoadout { HullMass = 500f, HoverMode = true };
         HandlingStats hh = HandlingModel.Compute(hoverHeavy, air, _t);
         var limp = new VesselLoadout { HullMass = 5000f };
         Check(banded && hh.TopSpeed == _t.Speeds.Hover.TopSpeedAir && HandlingModel.Compute(hoverHeavy, space, _t).TopSpeed == _t.Speeds.Hover.TopSpeedSpace
               && HandlingModel.Compute(limp, air, _t).TurnRate == _t.Turning.Floor,
-            $"by mass band: {string.Join(", ", bandList.Select(b => $"{(b.Below > 0f ? $"under {b.Below:F0} t" : "heavier")} {b.TopSpeedAir:F0}/{b.TopSpeedSpace:F0} m/s and {b.MaxTurn:F0}°/s"))}; Hover Mode {_t.Speeds.Hover.TopSpeedAir:F0}/{_t.Speeds.Hover.TopSpeedSpace:F0}; never below the turn floor");
+            $"top speed {fl.TopSpeedAir:F0}/{fl.TopSpeedSpace:F0} m/s at every mass; turn caps by mass band: {string.Join(", ", bandList.Select(b => $"{(b.Below > 0f ? $"under {b.Below:F0} t" : "heavier")} {b.MaxTurn:F0}°/s"))}; Hover Mode {_t.Speeds.Hover.TopSpeedAir:F0}/{_t.Speeds.Hover.TopSpeedSpace:F0}; never below the turn floor");
         float airTop = HandlingModel.Compute(fighter, air, _t).TopSpeed, spaceTop = HandlingModel.Compute(fighter, space, _t).TopSpeed;
         var (airMax, _) = SimulateTopSpeed(fighter, air, boost: true);
         var (spaceMax, lightTime) = SimulateTopSpeed(fighter, space, boost: true);
         Check(airMax <= airTop + 1e-3f && airMax > airTop - 0.1f && spaceMax <= spaceTop + 1e-3f && spaceMax > spaceTop - 0.1f,
             $"full throttle and boost reach but never pass top speed ({airMax:F2} m/s in air, {spaceMax:F2} in space)");
         var (heavyMax, heavyTime) = SimulateTopSpeed(heavy, space, boost: true);
-        Check(spaceTop >= 200f && heavyMax > HandlingModel.Compute(heavy, space, _t).TopSpeed - 0.1f && heavyTime > lightTime,
+        Check(spaceTop == fl.TopSpeedSpace && heavyMax > HandlingModel.Compute(heavy, space, _t).TopSpeed - 0.1f && heavyTime > lightTime,
             $"in space the {f.Mass:F0} t fighter reaches {spaceMax:F0} m/s in {lightTime:F1} s, and at {h.Mass:F0} t it gets to {heavyMax:F0} m/s too, in {heavyTime:F1} s");
+        CheckDive(fighter);
 
         float turning = 0f;
         foreach (var where in new[] { air, space })
@@ -245,6 +247,32 @@ public partial class HandlingTest : Node
     /// Flight assist off: a push in space carries on with no thrust between inputs; on a planet it falls; a spin
     /// carries on; cruise and the autopilot still hold; top speed still caps; on again, it eases to a hold.
     /// </summary>
+    /// <summary>
+    /// Diving from 1,500 m at the space speed, nose down and the stick held forward with boost: slowed to the air speed by the
+    /// 1,060 m crossing, no tick taking off more than 5 m/s, and never back over the air speed under it.
+    /// </summary>
+    void CheckDive(VesselLoadout fighter)
+    {
+        const float From = 1500f, Crossing = 1060f;
+        var state = FlightState.At(new Basis(Vector3.Right, -Mathf.Pi / 2f)); // nose straight down
+        HandlingStats st = HandlingModel.Compute(fighter, new FlightConditions(9.8f, false), _t), air = HandlingModel.Compute(fighter, new FlightConditions(9.8f, true), _t);
+        state.Velocity = Vector3.Down * st.TopSpeedSpace;
+        float y = From, worstDrop = 0f, atCrossing = float.NaN, under = 0f;
+        while (y > Crossing - 300f)
+        {
+            bool inAir = y < Crossing;
+            float was = state.Velocity.Length();
+            FlightModel.Step(ref state, PilotInput.Hands(Vector3.Forward, boost: true), inAir ? air : st, new FlightConditions(9.8f, inAir, y + state.Velocity.Y * Dt - Crossing), _t, Dt);
+            worstDrop = Mathf.Max(worstDrop, was - state.Velocity.Length());
+            y += state.Velocity.Y * Dt;
+            if (inAir && float.IsNaN(atCrossing)) atCrossing = was;
+            if (inAir) under = Mathf.Max(under, state.Velocity.Length());
+        }
+        Check(atCrossing <= air.TopSpeedAir + 0.01f && worstDrop <= 5f && under <= air.TopSpeedAir + 0.01f,
+            $"a dive from {From:F0} m at {st.TopSpeedSpace:F0} m/s, nose down at full thrust and boost, is at {atCrossing:F1} m/s by the {Crossing:F0} m crossing (air {air.TopSpeedAir:F0}), " +
+            $"at most {worstDrop:F2} m/s off in a tick, {under:F1} at most under it");
+    }
+
     void CheckAssistOff(VesselLoadout fighter, FlightConditions air, FlightConditions space)
     {
         HandlingStats sp = HandlingModel.Compute(fighter, space, _t), a = HandlingModel.Compute(fighter, air, _t);

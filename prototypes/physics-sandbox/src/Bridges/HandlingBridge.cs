@@ -36,6 +36,9 @@ public sealed class HandlingFlight : IFlightRules
     public readonly float[] Throttle = new float[6];
     public float Turning { get; private set; }
 
+    /// <summary>Its cap where it is now, m/s (<see cref="HandlingStats.TopAt"/>): what the console shows.</summary>
+    public float Top { get; private set; }
+
     /// <summary>What it flies on now: <see cref="Stats"/> at the power it gets.</summary>
     HandlingStats _live;
 
@@ -49,7 +52,7 @@ public sealed class HandlingFlight : IFlightRules
         Tunables = tunables;
     }
 
-    public static FlightConditions Conditions(PhysicsFlightZone zone) => new(zone.PlanetGravity, zone.InAtmosphere);
+    public static FlightConditions Conditions(PhysicsFlightZone zone) => new(zone.PlanetGravity, zone.InAtmosphere, zone.Above);
 
     VesselStats IFlightRules.Stats(Body body, PhysicsFlightZone zone)
     {
@@ -70,6 +73,7 @@ public sealed class HandlingFlight : IFlightRules
             _livePower = power;
             _live = power >= 1f ? Stats : HandlingModel.Compute(Structure, Conditions(zone), Tunables, carried, power);
         }
+        Top = _live.TopAt(Conditions(zone));
         // Short of power, the console says so, not that it is too heavy.
         string warning = _live.CanLiftOff ? null : !Stats.CanLiftOff ? Stats.LiftWarning : power <= 0f ? "NO POWER" : "LOW POWER";
         return new VesselStats(_live.IsHover, _live.CanLiftOff, _live.RideHeight, warning);

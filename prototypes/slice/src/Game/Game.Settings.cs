@@ -94,7 +94,15 @@ public partial class Game
         }
         Pacer.Asked = s.FpsCap;
         GetViewport().Scaling3DScale = s.RenderScale;
+        SetAntiAliasing(GetViewport(), s.Aa);
         _brightness?.SetGamma(s.Gamma);
+    }
+
+    /// <summary>The one place an anti-aliasing option becomes a viewport's settings: a screen-space pass or multisampling, never both.</summary>
+    public static void SetAntiAliasing(Viewport v, AntiAliasing aa)
+    {
+        v.ScreenSpaceAA = aa switch { AntiAliasing.Fxaa => Viewport.ScreenSpaceAAEnum.Fxaa, AntiAliasing.Smaa => Viewport.ScreenSpaceAAEnum.Smaa, _ => Viewport.ScreenSpaceAAEnum.Disabled };
+        v.Msaa3D = aa switch { AntiAliasing.Msaa2x => Viewport.Msaa.Msaa2X, AntiAliasing.Msaa4x => Viewport.Msaa.Msaa4X, _ => Viewport.Msaa.Disabled };
     }
 
     /// <summary>The settings the world's own nodes carry: the field of view (every frame, under a Husk's pull), the sun's shadows and how far the diggable ground streams.</summary>
