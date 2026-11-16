@@ -176,6 +176,11 @@ public sealed partial class HullVessel
             Paint["glow"] = Paint["hull"];
             return;
         }
+        // The livery's panels (HullVessel.Livery): the style's two band colours, the same faded, kill marks in bone.
+        Paint["band"] = D.Paint("livery", Coat(Hex(st.Band), outside));
+        Paint["band2"] = D.Paint("livery2", Coat(Hex(st.Band2), outside));
+        Paint["faded"] = D.Paint("faded", Coat(Hex(st.Band.Lerp(st.Hull, 0.45f)), outside));
+        Paint["mark"] = D.Paint("mark", Coat(0xd8d0c0, outside));
         // The band in the style's pattern over its second colour.
         if (st.Pattern is "stripes" or "chevrons" or "checker" or "hazard")
             Paint["orange"] = D.Paint("band", Coat(Hex(st.Band), outside).WithPattern(Enum.Parse<Pattern>(st.Pattern, true), Hex(st.Band2)));
@@ -252,9 +257,6 @@ public sealed partial class HullVessel
                     Put(u, y, v, Armour(Plating, shape, rot, Livery(u, y, v)));
                 }
     }
-
-    /// <summary>The paint on the outside: each part of the form its own (the livery's patterns come with the rooms, phase B).</summary>
-    ushort Livery(int u, int y, int v) => H.Form.PaintOf(u, y, v) is { } name && Paint.TryGetValue(name, out ushort p) ? p : Paint["hull"];
 
     static int Mod(int a, int m) => ((a % m) + m) % m;
 

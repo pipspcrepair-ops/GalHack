@@ -104,9 +104,9 @@ public sealed partial class HullVessel
     /// Thrusters of a type set flush in the hull's faces that look the other way from their push (an exhaust out of
     /// every one), in the shell and the bulk behind it, never in a room but a hold, hangar or engine room (where they
     /// stand in the floor); or, <paramref name="outside"/>, bolted on outside those faces. Spread along the hull, until
-    /// <paramref name="most"/> are set or <paramref name="enough"/> says so. How many it set.
+    /// <paramref name="most"/> are set. How many it set.
     /// </summary>
-    int Embed(Dir push, BlockType t, int most, Func<bool> enough = null, bool outside = false)
+    int Embed(Dir push, BlockType t, int most, bool outside = false)
     {
         if (t == null) return 0;
         int rot = Turn(push.Axis() == 1 ? Dir.PosZ : Dir.PosY, push);
@@ -131,7 +131,7 @@ public sealed partial class HullVessel
         int placed = 0;
         foreach (Int3 f in faces)
         {
-            if (placed >= most || enough?.Invoke() == true) break;
+            if (placed >= most) break;
             // Its exhaust layer on the face (or a thruster's depth out past it), the rest behind it (or back against the face).
             Int3 x = outside ? f + e * depth : f, corner = Int3.Dot(e, new Int3(1, 1, 1)) > 0 ? x - e * (depth - 1) : x;
             bool ok = true;
@@ -179,11 +179,7 @@ public sealed partial class HullVessel
         var kinds = Thrusters(Dir.PosY, new Int3(3, 6, 3), new Int3(2, 4, 2), new Int3(1, 2, 1));
         foreach (bool outside in new[] { false, true })
             foreach (BlockType t in kinds)
-                if (up < need)
-                {
-                    Embed(Dir.PosY, t, 400, () => (up = ThrustTo(Dir.PosY)) >= need, outside);
-                    up = ThrustTo(Dir.PosY);
-                }
+                if (up < need) up += t.Thrust * Embed(Dir.PosY, t, (int)Math.Ceiling((need - up) / t.Thrust), outside);
     }
 
     /// <summary>Thrusters on every other axis (DESIGN 5: thrusters on every axis): flush in the flanks, the roof and the faces looking forward, a few of each spread along the hull.</summary>
@@ -195,7 +191,7 @@ public sealed partial class HullVessel
             int set = 0;
             foreach (bool outside in new[] { false, true })
                 foreach (BlockType t in Thrusters(push, new Int3(2, 2, 4), new Int3(1, 1, 2)))
-                    if (set < n) set += Embed(push, t, n - set, null, outside);
+                    if (set < n) set += Embed(push, t, n - set, outside);
         }
     }
 
