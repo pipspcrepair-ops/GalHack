@@ -531,6 +531,7 @@ public partial class TerrainStreamer : Node3D
 
         // Columns wanted, nearest first; ask workers for their heights.
         if (_ring.Count == 0) BuildRing();
+        int heightsFinished = _heightsDone.Count; // drained below, so they don't hold a worker
         foreach (var (dx, dz) in _ring)
         {
             var key = (fcx + dx, fcz + dz);
@@ -539,7 +540,7 @@ public partial class TerrainStreamer : Node3D
                 column = new Column { Cx = key.Item1, Cz = key.Item2 };
                 _columns[key] = column;
             }
-            if (column.HeightsRequested || _heightsInFlight >= _maxInFlight) continue;
+            if (column.HeightsRequested || _heightsInFlight - heightsFinished >= _maxInFlight) continue;
             column.HeightsRequested = true;
             _heightsInFlight++;
             RequestHeights(source, column.Cx, column.Cz);
@@ -578,8 +579,9 @@ public partial class TerrainStreamer : Node3D
             }
         }
 
-        // Start mesh jobs from snapshots.
-        while (_voxelInFlight < _maxInFlight && _queue.TryDequeue(out Int3 next, out _))
+        // Start mesh jobs from snapshots. A finished job waiting for its frame doesn't hold a worker: workers are kept
+        // busy while the uploads catch up (paced at 60, a frame comes round less often), a few frames' worth ahead at most.
+        while (_voxelInFlight - _voxelDone.Count < _maxInFlight && _voxelInFlight < 3 * _maxInFlight && _queue.TryDequeue(out Int3 next, out _))
         {
             if (!_chunks.TryGetValue(next, out VChunk c)) continue;
             c.Queued = c.Urgent = false;
