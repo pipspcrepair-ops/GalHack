@@ -1444,6 +1444,7 @@ public sealed partial class Town
             ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,
             Clock = t,
             Style = _style ??= Gestures.FriendlyStyle(_places.Zone.Wildlife.Life.World.Seed),
+            Far = p.PoseAway >= 30f && !p.Engaged,
         });
         p.LookFor = MathF.Max(0f, p.LookFor - dt);
         p.View.Sync();
