@@ -41,6 +41,14 @@ DESIGN.md section 5 had already set the direction. The first try ignored it:
 
 Stations follow the same body plans scaled up: a Meridian slab arcology, an Exchange pod-ring market, a Kessari lattice spire, a Vharn hive of segments, a Freeholder raft of clamped modules, a Reaver haven welded into a hollowed asteroid.
 
+## Small craft
+
+The lone Freeholder trader or scout in the start sky (`SmallCraft` in building, merged 16 Nov in batch2 c9e3a8be) is still the old box on stilts. It flies, lands, runs and burns fuel correctly, but its form doesn't follow these rules yet. It gets the same treatment after the big ships' form gate, through the same body-plan code at small scale:
+- **Trader:** a cockpit pod on a short spine, with clamped containers and stubby engine pods.
+- **Scout:** slim, long and needle-nosed, with a sensor mast and outrigger engines.
+
+Each faction's fighters and gunships follow later, from that faction's own body plan.
+
 ## Crashes
 
 The faction comes from the region: the world's place on the journey to the core and the factions present there (see the "journey to the core" section of DESIGN.md). Every crash rolls each of these:
