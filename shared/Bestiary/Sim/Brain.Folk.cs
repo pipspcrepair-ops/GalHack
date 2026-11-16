@@ -11,14 +11,14 @@ public static partial class Brain
     const float AimClose = 12f, AimReach = 32f, ShotPast = 3f, ShotBy = 6f;
     /// <summary>How close a friendly one lets you come before stepping aside; how close its leader comes to meet you; how far off a gesture of yours is seen.</summary>
     const float Comfort = 2.6f, MeetAt = 4f, SeeGesture = 24f;
-    /// <summary>How long a warning stands before anything more can come of it, s.</summary>
-    const float WarnHold = 1.6f;
-    /// <summary>Seconds a run to cover may take before it's given up.</summary>
-    const float CoverRun = 4f;
     /// <summary>How far a band sees others in the open by day (half by night), m; how often it looks round, s; below this share of health a body runs on its own; within this the brave stand against what the band runs from, m.</summary>
     const float SeeFar = 60f, ScanEvery = 0.5f, HurtRun = 0.3f, StandIn = 25f;
     /// <summary>How far round a danger a band's way steps at a time, radians; how long one out of sight is remembered, s.</summary>
     const float RoundStep = 0.5f, ThreatMemory = 6f;
+    /// <summary>How long a warning stands before anything more can come of it, s.</summary>
+    const float WarnHold = 1.6f;
+    /// <summary>Seconds a run to cover may take before it's given up.</summary>
+    const float CoverRun = 4f;
     static readonly float AimCone = MathF.Cos(Mathf.DegToRad(7f));
 
     /// <summary>
