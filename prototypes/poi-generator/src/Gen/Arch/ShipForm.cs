@@ -408,7 +408,10 @@ public sealed partial class ShipForm
     Slab Plate(string paint, NV3 c, NV3 e1, NV3 e2, NV3 h, float tip = 1f)
     {
         e1 = NV3.Normalize(e1);
-        e2 = NV3.Normalize(e2 - e1 * NV3.Dot(e2, e1));
+        e2 -= e1 * NV3.Dot(e2, e1);
+        // (Across it any way square to it, where the way asked lies along it.)
+        if (e2.LengthSquared() < 1e-4f) e2 = NV3.Cross(e1, MathF.Abs(e1.Y) < 0.9f ? NV3.UnitY : NV3.UnitX);
+        e2 = NV3.Normalize(e2);
         return Add(new Slab { C = c, E1 = e1, E2 = e2, E3 = NV3.Cross(e1, e2), H = h, Tip = tip }, paint);
     }
 
