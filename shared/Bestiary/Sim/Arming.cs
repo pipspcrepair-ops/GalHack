@@ -28,4 +28,8 @@ public static class Arming
 
     /// <summary>How far a group hears one of its own set on, m.</summary>
     public const float RallyRadius = 32f;
+
+    /// <summary>How high above its feet a shot at a target is aimed: a person's chest (yours too), an animal's middle.</summary>
+    public static float Chest(ITarget t) => t is CreatureTarget { Creature: var c } ? Chest(c) : 1.15f;
+    public static float Chest(Creature c) => c.Species.Figure is { } f ? f.Height * 0.68f : MathF.Max(0.3f, c.Species.BodyHeight * 0.6f);
 }

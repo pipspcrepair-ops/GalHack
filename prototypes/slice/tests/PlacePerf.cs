@@ -166,7 +166,7 @@ public partial class PlacePerf : Node
     IEnumerable<int> Runs()
     {
         GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}");
-        foreach (int x in _args.ContainsKey("standing") ? Standing() : Scenario()) yield return x;
+        foreach (int x in _args.ContainsKey("bands") ? BandScene() : _args.ContainsKey("standing") ? Standing() : Scenario()) yield return x;
         if (_args.ContainsKey("compare-force") && _flyTo != Vector3.Zero)
         {
             // The same world without the forced place, over the same routes.
@@ -293,6 +293,19 @@ public partial class PlacePerf : Node
         Begin();
         while (_times.Count < frames) yield return 0;
         End(stage);
+        // --reactions=ab: the same frame again with nobody looking round for others (Sightings off), then on, twice over (so the
+        // machine's own drift shows against the difference): what people's reactions to each other cost.
+        if (_args.GetValueOrDefault("reactions") == "ab" && !stage.StartsWith("far") && stage != "start")
+        {
+            for (int k = 0; k < 4; k++)
+            {
+                Wildlife.Sightings.On = k % 2 == 1;
+                foreach (int x in _drive.Wait(30)) yield return x;
+                Begin();
+                while (_times.Count < frames) yield return 0;
+                End($"{stage} reactions {(k % 2 == 1 ? "on" : "off")} {k / 2 + 1}");
+            }
+        }
         // --ab: the same frame again with places' surfaces left as plain colour, then back: their cost, on one world.
         if (!_args.ContainsKey("ab") || stage.EndsWith(" plain") || stage.StartsWith("far") || stage == "start") yield break;
         PoiGenerator.BlockMaterials.Detail(false);

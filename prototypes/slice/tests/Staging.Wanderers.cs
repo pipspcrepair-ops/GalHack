@@ -77,15 +77,7 @@ public sealed partial class Staging
         GD.Print($"(STAGING: {felled} plants between you and where the band goes felled)");
         // Friendly: off to one side ahead, on their way across in front of you. Wary: ahead, inside their warning.
         Vector3 at = Ground(feet + fwd * (wary ? 23f : 9f) + side * (wary ? 0f : 6f));
-        List<Creature> band = patch.Sim.SpawnGroup(s, patch.PatchLocal(at), 4);
-        if (band.Count == 0)
-        {
-            // Ground a band wouldn't be put down on by itself (near the bunker's clearance): put there by hand (STAGING).
-            var herd = new Herd { Home = patch.PatchLocal(at), Goal = patch.PatchLocal(at), Center = patch.PatchLocal(at), Spread = 3f, Party = Party.Roll(s, Wildlife.Rng.Mix(s.Seed, 77)) };
-            patch.Sim.Herds.Add(herd);
-            for (int i = 0; i < 4; i++) band.Add(patch.Sim.Spawn(s, patch.PatchLocal(Ground(at + side * (i - 1.5f) * 1.6f + fwd * (i % 2) * 1.2f)), herd));
-            GD.Print("(STAGING: the band set down by hand: the ground here is inside a clearance no band is put down in)");
-        }
+        List<Creature> band = PutBand(patch.Sim, s, patch.PatchLocal(at), 4);
         Herd h = band[0].Herd;
         Party party = h.Party;
         party.Temper.Stance = stance;

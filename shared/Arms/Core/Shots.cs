@@ -52,6 +52,8 @@ public struct Shot
     public float Age, Life, Damage, Speed;
     public int PierceLeft, BouncesLeft, Bounces, Jumps;
     public object LastHit;
+    /// <summary>Who it's from (a creature, a town's person; null the player's own): whom what it hits turns on.</summary>
+    public object By;
     public object Target;
     public float Retarget;
     public Anchor Anchor;

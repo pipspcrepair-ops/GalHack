@@ -82,6 +82,11 @@ public partial class WildlifePatch : Node3D
     /// <summary>A creature died, and what killed it (the player's target, another creature, or nothing).</summary>
     public event Action<Creature, ITarget> Died;
 
+    /// <summary>One of the open country's people held at gunpoint tossed down goods (who, at whom, where to land in the patch's frame, how frightened); a Husk's body or held one rose a Husk (any sim).</summary>
+    public event Action<Creature, ITarget, Vector3, float> Offered;
+    public event Action<SeizeEvent> Turned;
+    internal void RaiseTurned(SeizeEvent e) => Turned?.Invoke(e);
+
     bool _frozen;
     public bool Frozen
     {
@@ -244,6 +249,8 @@ public partial class WildlifePatch : Node3D
             Quaked?.Invoke(e with { Position = FromPatch(e.Position) });
         };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
+        sim.Offered += (c, to, at, fear) => Offered?.Invoke(c, to, at, fear);
+        sim.Turned += RaiseTurned;
         sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };
         sim.LetGo += e => { if (e.Victim == Player) LetGo?.Invoke(e); };
         sim.Murmured += c => Audio.Murmur(c);
@@ -561,9 +568,9 @@ public partial class WildlifePatch : Node3D
     }
 
     /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it. Your shot says which way it went: people it passes read it as being shot at.</summary>
-    public void Noise(Vector3 at, float radius, Vector3 shotDir = default)
+    public void Noise(Vector3 at, float radius, Vector3 shotDir = default, object by = null)
     {
-        Sim?.Noise(PatchLocal(at), radius, shotDir, shotDir == default ? null : Player);
+        Sim?.Noise(PatchLocal(at), radius, shotDir, shotDir == default ? null : by == null ? Player : TargetIn(Sim, by));
         foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius);
     }
 
@@ -660,11 +667,19 @@ public partial class WildlifePatch : Node3D
     public const float RetchDb = 4f;
 
     /// <summary>The survivor hurts a creature, in whichever sim it lives (or someone else did: then it doesn't turn on the survivor).</summary>
-    public void Damage(Creature c, float amount, bool byPlayer = true)
+    public void Damage(Creature c, float amount, bool byPlayer = true, object by = null)
     {
         WildSim sim = SimOf(c, out _, out ITarget player);
-        sim?.Damage(c, amount, byPlayer ? player : null);
+        sim?.Damage(c, amount, byPlayer ? player : TargetIn(sim, by));
     }
+
+    /// <summary>Someone else who did something (a creature, a town's person), as the given sim sees them: null if they aren't in it.</summary>
+    ITarget TargetIn(WildSim sim, object by) => by switch
+    {
+        Creature o when sim != null && sim.Creatures.Contains(o) => o.AsTarget,
+        ITarget t when sim == Sim => t,
+        _ => null,
+    };
 
     /// <summary>The survivor's feet in the zone.</summary>
     public Vector3 PlayerWorld() => Player == null ? Origin : FromPatch(Player.Position);

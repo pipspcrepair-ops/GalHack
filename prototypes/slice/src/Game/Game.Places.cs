@@ -131,41 +131,21 @@ public partial class Game
             Alerts.Attack("hostile", from);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, from, 0.5f, -4f);
         };
-        // Seeing off a stray: their own gun's shot, flash and report (a rifle's if theirs isn't one), harming nothing.
-        t.ShotAway += (who, from, to) =>
-        {
-            GalHack.Arms.WeaponDef d = Zone.Data.Arms.OfItem(Wildlife.Weapons.ItemOf(who.Figure.Prop));
-            if (d == null || d.Delivery == GalHack.Arms.Delivery.Strike) d = Zone.Data.Arms.OfItem("line-rifle");
-            Arms?.FireFrom(d, from, to - from, 0.3f, who, model: who.Model, look: true);
-        };
-        // Their own weapon, fired (or swung) from their own hands: the same shots and blows as the player's.
+        // Their own weapon, fired (or swung) from their own hands at you or at whatever they're fighting: the same shots and blows as the player's.
         t.ShotFired += (who, def, muzzle, dir, unsteady) => Arms?.FireFrom(def, muzzle, dir, unsteady, who, who.Now > 0.6f, who.Model);
         // Where one falls, what they carried: their weapon and what's left of its ammo, and a little besides.
         t.Fell += who => PersonFell(t, who);
     }
 
-    /// <summary>A townsperson's body: a container where they lie, holding their weapon, its ammo and their pockets.</summary>
+    /// <summary>A townsperson falls: their bag drops from them, holding their weapon, its ammo and the goods of their trade.</summary>
     void PersonFell(Town t, Town.Person who)
     {
         if (who.Looks == null) return;
         GalHack.Items.Bill drops = t.Leaves(who);
         foreach (var kv in BodyDrops(who.Looks, Wildlife.Rng.For(who.Looks.Seed, "drop", (long)t.People.IndexOf(who)))) drops.Add(kv.Key, kv.Value);
-        int[] size = Zone.Data.Rules.Containers.Corpse;
-        Vector3 feet = t.World(who.Pos);
-        if (EndPerson(t, who, out Vector3 left))
-        {
-            Remains(who.Looks, left, drops);
-            return;
-        }
-        // The search target is the whole body as it lies: round its middle, a body's length across.
-        Slice.Items.Lootable body = Zone.Loot.Create(Slice.Items.LootKind.Corpse, $"{Cap(who.Looks.CommonName)} body", feet + who.Forward * 0.4f, size[0], size[1], drops);
-        body.Radius = MathF.Max(0.85f, (who.Looks.Figure?.Height ?? 1.7f) * 0.5f);
-        body.Shape = () => PersonBalls(t, who); // (it ragdolls: the balls follow the body to where it comes to rest)
-        PeopleBodies++;
+        Vector3 fell = who.Rig?.HitDir ?? Vector3.Zero;
+        DropBag(who.Looks, drops, EndPerson(t, who, out Vector3 left) ? left : t.World(who.Pos), fell, who);
     }
-
-    /// <summary>Townsfolk bodies left to search (tests).</summary>
-    public int PeopleBodies { get; private set; }
 
     /// <summary>
     /// Out of reach of whatever walks the surface: down in the ground (a cave, a hole, a basement)

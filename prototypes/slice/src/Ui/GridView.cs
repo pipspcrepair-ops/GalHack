@@ -80,7 +80,7 @@ public static class Selection
 
 /// <summary>
 /// Drawing and handling inventory slots, shared by every grid on the menu (the bag and toolbar,
-/// a core's storage, an opened container, a body, a backpack). Each stack is drawn as a small 3D icon
+/// a core's storage, an opened container, a body, a bag). Each stack is drawn as a small 3D icon
 /// (rendered once) with its short name, and its full details in the tooltip.
 ///
 /// Moving: drag a stack to move it (onto a slot, a storage tab, or out of the window to set it

@@ -42,7 +42,7 @@ namespace Slice.Tests;
 ///   7  found a base, build onto it: two containers, a generator, a small constructor, steel
 ///   8  earn level 5, unlock the vessel's blocks, make a second core and the parts in the base's constructor
 ///   9  set the second core down, build a vessel on it, switch it to Flight Mode, fly 500 m and land
-///   10 every Tab menu tab, the head torch, and dying: your backpack, recovered from its marker
+///   10 every Tab menu tab, the head torch, and dying: your bag, recovered from its marker
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/PlayerTest.tscn
 /// </summary>
@@ -404,14 +404,14 @@ public partial class PlayerTest : Node
             var machines = life.Machines.Concat(life.Cyborgs).ToList();
             var folk = Enum.GetValues<PersonRole>().Select((r, i) => life.People.Person(Wildlife.Rng.Mix(_prey.Species.Seed, 0xB0D1 + (ulong)i), r, i % 2 == 0 ? Occupancy.Friendly : Occupancy.Raider)).ToList();
             bool Flesh(Bill b) => b["meat"] + b["hide"] > 0;
-            var mBills = machines.Select((s, i) => Game.Game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
-            var pBills = folk.Select((s, i) => Game.Game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
+            var mBills = machines.Select((s, i) => _game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
+            var pBills = folk.Select((s, i) => _game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
             bool known(Bill b) => b.Ids.All(_game.Zone.Data.Items.Has);
             // Some worlds have no machine wildlife at all: then there is nothing to check.
             if (machines.Count == 0) GD.Print("  (no machines or cyborgs on this world)");
             else Check(mBills.All(b => !Flesh(b) && b["iron-bar"] > 0 && known(b)),
                 $"a machine's body holds salvage, no meat or hide ({machines.Count} kinds; {_game.Zone.Data.Items.Describe(mBills[0])})");
-            Check(pBills.All(b => !Flesh(b) && known(b)), $"a person's body holds what they carried, no meat or hide ({folk.Count} people; {string.Join(" | ", pBills.Where(b => !b.IsEmpty).Take(3).Select(b => _game.Zone.Data.Items.Describe(b)))})");
+            Check(pBills.All(b => !Flesh(b) && known(b)), $"a person's bag holds what they carried, no meat or hide ({folk.Count} people; {string.Join(" | ", pBills.Where(b => !b.IsEmpty).Take(3).Select(b => _game.Zone.Data.Items.Describe(b)))})");
         }
         foreach (int x in _drive.WalkTo(body.Position, 1.6f, 30f)) yield return x;
         foreach (int x in _drive.LookAt(body.Position + Vector3.Up * 0.3f, 6)) yield return x;
@@ -943,14 +943,14 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> Death()
     {
-        GD.Print("-- 10. dying, and the backpack recovered from its marker --");
+        GD.Print("-- 10. dying, and the bag recovered from its marker --");
         Vessel v = _vessel;
         if (v == null || _game.Survivor.Seated != v) yield break;
         // Up high (falls of a dozen metres are harmless; from 200 m nobody walks away), out of the seat, and a jump off the side.
         // Back over flat ground near home on the way up (a landing on a slope glances), so the walk
-        // from the bunker to the backpack is a short one.
+        // from the bunker to the bag is a short one.
         // Over the flattest ground along a walkable way out of the bunker (a landing on a slope
-        // glances off), so the walk from the bunker to the backpack is a short, sure one.
+        // glances off), so the walk from the bunker to the bag is a short, sure one.
         Vector3 over = FlattestOut(_game.Bunker);
         for (int t = 0; t < 60 * 60; t++)
         {
@@ -1017,18 +1017,18 @@ public partial class PlayerTest : Node
             _game.Controls.ReleaseAll();
             foreach (int x in _play.WaitFor(() => _game.Suit.Dead, 12)) yield return x;
         }
-        if (!_game.Suit.Dead || _game.Backpack == null || !_game.Backpack.Storage.Contents.Equals(drops))
-            GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
-        Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(drops),
-            $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the sleeper: the bag is in a backpack where they fell ({_game.Zone.Data.Items.Describe(drops, 4)})");
-        Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.Backpack?.Storage.Count(toolId) == 0, "the survival tool is never dropped: it stays with the body");
+        if (!_game.Suit.Dead || _game.DeathBag == null || !_game.DeathBag.Storage.Contents.Equals(drops))
+            GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, bag {(_game.DeathBag == null ? "none" : _game.Zone.Data.Items.Describe(_game.DeathBag.Storage.Contents, 4))})");
+        Check(_game.Suit.Dead && _game.DeathBag != null && _game.DeathBag.Storage.Contents.Equals(drops),
+            $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the sleeper: their things are in their bag where they fell ({_game.Zone.Data.Items.Describe(drops, 4)})");
+        Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.DeathBag?.Storage.Count(toolId) == 0, "the survival tool is never dropped: it stays with the body");
         Check(_game.Pack.Storage.Contents.Equals(stays) && Enumerable.Range(0, _game.Pack.Grid.Toolbar).All(i => _game.Pack.Grid[i].ToString() == onBar[i]),
             $"everything on the toolbar stays, slot for slot ({_game.Zone.Data.Items.Describe(stays, 4)})");
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.R)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;
         Check(!_game.Suit.Dead && _game.Survivor.WorldFeet.DistanceTo(_game.Bunker.CryoFront) < 1.5f, "R: awake in the bunker, by the cryopod");
-        Lootable pack = _game.Backpack;
+        Lootable pack = _game.DeathBag;
         if (pack == null) yield break;
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         foreach (int x in _drive.WalkTo(pack.Position, 1.6f, 120f)) yield return x;
@@ -1041,10 +1041,10 @@ public partial class PlayerTest : Node
         if (_game.Opened?.Loot != pack)
             foreach (int x in _drive.HopToward(pack.Position + Vector3.Up * 0.25f, Game.Game.UseReach - 0.5f, 1f, () => _game.Opened?.Loot == pack, () => _game.Controls.Tap(Key.E))) yield return x;
         if (_game.Opened?.Loot != pack)
-            GD.Print($"  (E at the backpack: \"{_said}\"; feet {_game.Survivor.WorldFeet}, the backpack at {pack.Position}, {_game.Survivor.WorldFeet.DistanceTo(pack.Position):F1} m; menu {_game.Menu.IsOpen})");
+            GD.Print($"  (E at the bag: \"{_said}\"; feet {_game.Survivor.WorldFeet}, the bag at {pack.Position}, {_game.Survivor.WorldFeet.DistanceTo(pack.Position):F1} m; menu {_game.Menu.IsOpen})");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        Check(_game.Pack.Storage.Contents.Equals(carried) && _game.Backpack == null, "walked to the backpack's marker: E and take all, everything back");
+        Check(_game.Pack.Storage.Contents.Equals(carried) && _game.DeathBag == null, "walked to the bag's marker: E and take all, everything back");
         Mark("recovered");
     }
 

@@ -70,6 +70,9 @@ public static partial class Brain
             return;
         }
 
+        // A Husk at the body of someone it killed, putting its worms in.
+        if (c.Infests != null && Infesting(w, c, dt)) return;
+
         // A settlement's own animals keep to their pens and their people.
         if (c.Species.Domestic != DomesticKind.None)
         {
@@ -269,6 +272,7 @@ public static partial class Brain
 
     static void Predator(WildSim w, Creature c, ITarget near, float dist, float dt)
     {
+        c.Hunger = MathF.Min(1f, c.Hunger + dt * Hungers);
         if (c.Health < c.Stats.MaxHealth * 0.25f && near != null) { Flee(w, c, near.Position); return; }
         if (Provoked(w, c) is { } attacker) { Hunt(w, c, attacker, dist); return; }
 
@@ -302,7 +306,7 @@ public static partial class Brain
                 break;
             default:
                 if (prey) c.SetState(CState.Stalk);
-                else WanderAndGraze(w, c, 35f, dt);
+                else if (!Carrion(w, c, dt)) WanderAndGraze(w, c, 35f, dt);
                 break;
         }
     }
@@ -673,8 +677,22 @@ public static partial class Brain
         if (ShouldFlee(w, c, near, dist)) { Flee(w, c, near.Position); return; }
         if (Provoked(w, c) is { } attacker) { Hunt(w, c, attacker, dist); return; }
         if (c.Stats.Hunts && Huntable(c, near, dist)) { Hunt(w, c, near, dist); return; }
+        if (!Carrion(w, c, dt)) WanderAndGraze(w, c, 30f, dt);
+    }
 
-        // Look for carrion now and then, not every frame: 200 creatures times every corpse adds up.
+    /// <summary>How hungry a hunter must be to eat what it didn't kill (0..1), and how fast hunger comes back, per second.</summary>
+    const float CarrionHunger = 0.35f, Hungers = 1f / 240f;
+
+    /// <summary>
+    /// Carrion: a body lying within its senses (looked for now and then, not every frame: 200 creatures
+    /// times every corpse adds up), gone to and fed on, head down, until it is picked clean. A scavenger
+    /// always looks; a hunter only when it is hungry, and eats until it isn't. True while at it.
+    /// </summary>
+    static bool Carrion(WildSim w, Creature c, float dt)
+    {
+        bool hunter = c.Species.Behaviour != Behaviour.Scavenger;
+        bool at = c.State is CState.Scavenge or CState.Eat;
+        if (hunter && !at && c.Hunger < CarrionHunger) return false;
         if (c.Think <= 0f)
         {
             c.Think = 1f;
@@ -683,33 +701,30 @@ public static partial class Brain
             {
                 c.Goal = corpse.Position;
                 c.HasGoal = true;
-                if (c.State is not (CState.Scavenge or CState.Eat)) c.SetState(CState.Scavenge);
+                if (!at) c.SetState(CState.Scavenge);
                 c.HasGoal = true;
             }
-            else if (c.State is CState.Scavenge or CState.Eat) c.SetState(CState.Wander);
+            else if (at) c.SetState(CState.Wander);
         }
-
-        if (c.State is CState.Scavenge or CState.Eat)
+        if (c.State is not (CState.Scavenge or CState.Eat)) return false;
+        Creature body = w.NearestCorpse(c.Goal, 2f);
+        if (body == null || hunter && c.Hunger <= 0.02f) { c.SetState(CState.Wander); return true; }
+        float d = WildSim.Flat(body.Position - c.Position).Length();
+        if (d < c.Radius + body.Radius + 0.6f && (c.Landed || c.Species.Flight != FlightKind.Glide))
         {
-            Creature corpse = w.NearestCorpse(c.Goal, 2f);
-            if (corpse == null) { c.SetState(CState.Wander); return; }
-            float d = WildSim.Flat(corpse.Position - c.Position).Length();
-            if (d < c.Radius + corpse.Radius + 0.6f && (c.Landed || c.Species.Flight != FlightKind.Glide))
-            {
-                c.SetState(CState.Eat);
-                c.Desired = Vector3.Zero;
-                c.WantGraze = 1f;
-                c.FacePoint = corpse.Position;
-                corpse.MeatLeft -= dt * 0.4f * MathF.Max(0.5f, c.Species.Body.Size);
-            }
-            else
-            {
-                c.State = CState.Scavenge;
-                Steer(w, c, corpse.Position, c.Stats.WalkSpeed * 1.3f);
-            }
-            return;
+            c.SetState(CState.Eat);
+            c.Desired = Vector3.Zero;
+            c.WantGraze = 1f;
+            c.FacePoint = body.Position;
+            body.MeatLeft -= dt * 0.4f * MathF.Max(0.5f, c.Species.Body.Size);
+            c.Hunger = MathF.Max(0f, c.Hunger - dt * 0.12f);
         }
-        WanderAndGraze(w, c, 30f, dt);
+        else
+        {
+            c.State = CState.Scavenge;
+            Steer(w, c, body.Position, c.Stats.WalkSpeed * 1.3f);
+        }
+        return true;
     }
 
     static void SwarmMind(WildSim w, Creature c, ITarget near, float dist, float dt)

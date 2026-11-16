@@ -130,9 +130,9 @@ public sealed partial class Town
         /// <summary>At a checkpoint or a post: how long they've had you halted, and whether their gun is on you (never fired outside a hostile place).</summary>
         public float Halt;
         public bool Holding;
-        /// <summary>A creature they're dealing with, how long until their shot at it, how long they're scared off or waving one away; whether they're working stock.</summary>
+        /// <summary>A creature they're dealing with; how long they keep fighting it once it no longer calls for a fight, how long they're scared off, keeping wide of one or waving one away; whether they're working stock.</summary>
         public Creature Threat;
-        public float Facing, ScaredFor, ShooFor;
+        public float Facing, ScaredFor, AvoidFor, ShooFor;
         public bool Herding;
         /// <summary>Their answer to your gesture (from when, for how long), and where they've been shown to look.</summary>
         /// <summary>You robbed them (they remember); a guard on your trail after a robbery, for how long.</summary>
@@ -401,7 +401,7 @@ public sealed partial class Town
     void OnStray(Creature c, Settlement town)
     {
         if (town != _settlement) return;
-        if (c.Species.Husk) return; // a Husk is met by temper: fought, fled or barricaded against (Town.Reactions)
+        if (c.Species.Husk || CrossReactions.People(c.Species)) return; // a Husk, or people, are met by temper and nerve: fought, fled, barricaded against or let by (Town.Reactions)
         Person guard = People.Where(p => p.Role == "guard" && !p.Dead).OrderBy(p => (p.Position - c.Position).LengthSquared()).FirstOrDefault();
         _places.Zone.Wildlife.Sim.CullStray(c, guard);
         Culled++;
@@ -413,7 +413,7 @@ public sealed partial class Town
     /// <summary>You killed something dangerous at their door: they're glad of it.</summary>
     void OnDied(Creature c, ITarget killer)
     {
-        if (killer == null || killer != _places.Zone.Wildlife.Player || !(c.Species.Husk || CrossReactions.Danger(c.Species))) return;
+        if (killer == null || killer != _places.Zone.Wildlife.Player || !(c.Species.Husk || CrossReactions.Danger(c.Species) || Foe(c))) return;
         if (_place != null && Covers(_places.Zone.Wildlife.WorldOf(c)) || _place != null && (_place.FromWorld(_places.Zone.Wildlife.WorldOf(c)) - Walk(Data.AreaCenter)).Length() < Data.AreaRadius + 25f) Did(Deed.Help);
     }
 
@@ -421,6 +421,7 @@ public sealed partial class Town
     void OnBitten(AttackEvent e)
     {
         if (e.Target is not Person p || p.Town != this || !e.Hit) return;
+        Harmed(e.Creature);
         p.Health.Current -= e.Damage * 0.6f;
         if (p.Dead) Fall(p);
     }
@@ -578,13 +579,9 @@ public sealed partial class Town
             p.ScaredFor = MathF.Max(0f, p.ScaredFor - dt);
             p.ShovedFor = MathF.Max(0f, p.ShovedFor - dt);
             p.ShooFor = MathF.Max(0f, p.ShooFor - dt);
-            // Something dangerous about: those who answer it with a gun do; the scared run in; a barricaded place keeps everyone in.
-            if (Fight(p, dt))
-            {
-                Pose(p, who, away, dt);
-                continue;
-            }
-            // A hostile place's fighters fight you (Town.Combat); the rest go to their doors.
+            p.AvoidFor = MathF.Max(0f, p.AvoidFor - dt);
+            // Something dangerous about: those who answer it with a gun fight it, as a hostile place's fighters fight you (Town.Combat);
+            // the rest go to their doors (the scared at a run, those keeping wide of it at a walk); a barricaded place keeps everyone in.
             if (Combat(p, player, mood, dt))
             {
                 Pose(p, who, away, dt);
@@ -592,7 +589,7 @@ public sealed partial class Town
             }
             bool scared = p.ScaredFor > 0f || Barricaded;
             bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
-            bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared);
+            bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
             if (hide && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night
             if (p.Away)
             {
@@ -614,12 +611,12 @@ public sealed partial class Town
             // Morning, or the fright over, or a fright in the night: up and about.
             if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
             if (p.Indoors || p.Asleep) { Pose(p, who, away, dt); continue; }
-            if (guard && mood != Mood.Hostile && Pursuit(p, player, dt))
+            if (guard && mood != Mood.Hostile && !YouDown && Pursuit(p, player, dt))
             {
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (guard && mood != Mood.Hostile && Checkpoint(p, player, mood, dt))
+            if (guard && mood != Mood.Hostile && !YouDown && Checkpoint(p, player, mood, dt))
             {
                 Pose(p, who, away, dt);
                 continue;
@@ -632,7 +629,7 @@ public sealed partial class Town
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
+            if (guard && mood != Mood.Peaceful && !YouDown && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
                 Pose(p, who, away, dt);
@@ -1400,10 +1397,10 @@ public sealed partial class Town
         return shows;
     }
 
-    /// <summary>What someone's raised weapon is aimed at, in the place's frame: a stray they're seeing off, else you once they're in a fight; null otherwise.</summary>
+    /// <summary>What someone's raised weapon is aimed at, in the place's frame: what they fight (a danger, else you: Town.Combat), else a stray they're seeing off; null otherwise.</summary>
     Vector3? AimedAt(Person p)
     {
-        if (p.Threat is { Dead: false, Removed: false } c) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * 0.6f);
+        if (p.Threat is { Dead: false, Removed: false } c && (p.Facing > 0f || !p.Engaged)) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * Arming.Chest(c));
         return p.Engaged ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) + Vector3.Up * 1.15f : null;
     }
 

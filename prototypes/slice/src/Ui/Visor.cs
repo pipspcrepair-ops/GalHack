@@ -398,7 +398,7 @@ public partial class Visor : CanvasLayer
     /// <summary>
     /// What is marked in the world: your bunker and the place in view from its way out (both known from the
     /// first moment, at any distance); then only what you have found by going near it (places,
-    /// deposits: the nearest few of each), your own map marks, vessels, bases and backpack, and the
+    /// deposits: the nearest few of each), your own map marks, vessels, bases and your bag, and the
     /// scanner's pings for as long as they last. Each marks the thing itself: a place and a deposit at
     /// the ground there, a little above it.
     /// </summary>
@@ -432,7 +432,7 @@ public partial class Visor : CanvasLayer
         }
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && v.Structure.Owner == GalHack.Structures.Building.DefaultOwner && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
-        if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        if (Game.DeathBag != null) marks.Add(new("BAG", Game.DeathBag.Position, C.Danger, 1f, "bag"));
         // The scan's marks: an ore by name, a place by its icon and distance alone (a found place's own marker stands for it).
         var named = marks.Where(m => m.Kind == "place").Select(m => new Vector2(m.At.X, m.At.Z)).ToList();
         foreach (Game.Game.Ping p in Game.Pings)

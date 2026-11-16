@@ -19,6 +19,8 @@ namespace Slice.Places;
 /// in a beat apart. The first to see you pins you from cover, the others flank wide of them; the
 /// hurt and the unnerved fall back to cover further off when hurt or when the one who led them drops;
 /// the out-of-rounds close in with their fists. Every shot is aimed first, where you can see it.
+/// Something dangerous at hand (a predator, raiders, whoever hurt one of them: Town.Reactions) is
+/// fought the same way, by those with the nerve for it, whatever the town makes of you.
 /// </summary>
 public sealed partial class Town
 {
@@ -112,9 +114,10 @@ public sealed partial class Town
         }
     }
 
-    /// <summary>One of them is hit (by the player, or anything else): hurt, remembered, the rest told; down if it killed them.</summary>
-    public void Struck(Person p, float damage, DamageClass harm, bool byPlayer)
+    /// <summary>One of them is hit (by the player, or anything else): hurt, remembered, the rest told; down if it killed them. A creature that did it (<paramref name="by"/>) is met as a danger.</summary>
+    public void Struck(Person p, float damage, DamageClass harm, bool byPlayer, object by = null)
     {
+        if (by is Creature from) Harmed(from);
         if (p.Dead) return;
         p.Health.Current -= damage;
         // They cry out (once for a shot's pellets, always as they go down).
@@ -139,42 +142,47 @@ public sealed partial class Town
     }
 
     /// <summary>
-    /// A person's fight this tick, in a hostile place: true while they're in it (moving, aiming,
-    /// firing, striking); false leaves them to the routine (and those who don't fight to their doors).
+    /// A person's fight this tick: with something dangerous at hand they've taken on (Town.Reactions),
+    /// else, in a hostile place, with you. True while they're in it (moving, aiming, firing, striking);
+    /// false leaves them to the routine (and those who don't fight to their doors).
     /// </summary>
     bool Combat(Person p, Vector3 player, Mood mood, float dt)
     {
         if (p.Looks == null || _place == null) return false;
         Arm(p);
+        p.Facing = MathF.Max(0f, p.Facing - dt);
+        Creature foe = p.Facing > 0f && p.Threat is { Dead: false, Removed: false } c ? c : null;
         // Unseen a long while, they stand down (the place stays hostile).
         if (_alert && _clock - _seenClock > 40f) _alert = false;
-        // (Frightened enough to run, they run: Feeling.Flees.)
-        if (mood != Mood.Hostile || !Fighter(p) || p.ScaredFor > 0f || p.Engaged && !_alert)
+        // (Frightened enough to run, they run: Feeling.Flees. You down, they fight only what else is about.)
+        if (foe == null && (mood != Mood.Hostile || p.Engaged && !_alert || YouDown) || !Fighter(p) || p.ScaredFor > 0f)
         {
             if (p.Engaged) Disengage(p);
             return false;
         }
+        Vector3 at = foe != null ? _place.FromWorld(_places.Zone.Wildlife.WorldOf(foe)) : player;
+        float chest = foe != null ? Arming.Chest(foe) : 1.15f;
         if (!p.Engaged)
         {
-            if (!Notices(p, player, dt)) return false;
-            Engage(p, player);
+            if (foe == null && !Notices(p, player, dt)) return false;
+            Engage(p, foe == null);
         }
         if (p.Indoors || p.Asleep) { p.Indoors = false; Wake(p); }
         p.Halt = 0f;
-        // What they can see of you, a few times a second.
+        // What they can see of it, a few times a second.
         if ((p.LookIn -= dt) <= 0f)
         {
             p.LookIn = 0.3f;
-            p.Sees = (player - p.Pos).Length() < NoticeRange * 1.4f && Clear(Eye(p), player + Vector3.Up * 1.2f);
-            if (p.Sees) { _seenAt = player; _seenClock = _clock; }
+            p.Sees = (at - p.Pos).Length() < NoticeRange * 1.4f && Clear(Eye(p), at + Vector3.Up * chest);
+            if (p.Sees && foe == null) { _seenAt = player; _seenClock = _clock; }
         }
         p.Unseen = p.Sees ? 0f : p.Unseen + dt;
         p.Pause = MathF.Max(0f, p.Pause - dt);
         p.SwingIn = MathF.Max(0f, p.SwingIn - dt);
         p.Rethink -= dt;
-        Choose(p, player);
-        if (p.Kit.Strike) Close(p, player, dt);
-        else Shoot(p, player, dt);
+        Choose(p, foe == null && _clock - _seenClock < 8f ? _seenAt : at);
+        if (p.Kit.Strike) Close(p, at, chest, dt);
+        else Shoot(p, at, chest, foe == null, dt);
         return true;
     }
 
@@ -196,7 +204,8 @@ public sealed partial class Town
         return true;
     }
 
-    void Engage(Person p, Vector3 player)
+    /// <summary>Into the fight: with you, the first in leads and pins you down and the bold of the rest go wide; with anything else, each pins it from where they are.</summary>
+    void Engage(Person p, bool you)
     {
         p.Engaged = true;
         Engagements++;
@@ -207,9 +216,8 @@ public sealed partial class Town
         p.Partner = null;
         p.Sitting = false;
         p.Greeted = true;
-        // The first in leads and pins you down; of the rest, the bold go wide, the others pin too.
-        if (_leader == null || _leader.Dead) _leader = p;
-        p.Part = !p.Armed ? FightPart.Rush : p.Kit.Strike ? FightPart.Rush : p == _leader ? FightPart.Pin : (Flanking() < 2 && p.Nerve > 0.3f ? FightPart.Flank : FightPart.Pin);
+        if (you && (_leader == null || _leader.Dead)) _leader = p;
+        p.Part = !p.Armed ? FightPart.Rush : p.Kit.Strike ? FightPart.Rush : !you || p == _leader ? FightPart.Pin : (Flanking() < 2 && p.Nerve > 0.3f ? FightPart.Flank : FightPart.Pin);
         if (p.Part == FightPart.Flank) Flanks++;
         Speak(p, VoiceMood.Shout);
     }
@@ -234,8 +242,8 @@ public sealed partial class Town
         p.Post = -1;
     }
 
-    /// <summary>Where they're going and why: hurt or leaderless and unnerved, back to cover further off; out of rounds, in with their fists; otherwise their part.</summary>
-    void Choose(Person p, Vector3 player)
+    /// <summary>Where they're going and why: hurt or leaderless and unnerved, back to cover further off; out of rounds, in with their fists; otherwise their part (against what they fight, where they know it to be).</summary>
+    void Choose(Person p, Vector3 you)
     {
         float health = p.Health.Current / MathF.Max(1f, p.Health.Max);
         bool leaderDown = _leader != null && _leader != p && _leader.Dead;
@@ -259,7 +267,9 @@ public sealed partial class Town
         if (p.Rethink > 0f) return;
         p.Rethink = ThinkEvery * (0.8f + 0.4f * (float)_rng.NextDouble());
         if (p.Part == FightPart.Rush) return;
-        int spot = Position(p, player);
+        int spot = Position(p, you);
+        // Nowhere in reach with a line, and none from here a while (walls between, it beyond the edge): up to the spot nearest it.
+        if (spot < 0 && p.Unseen > 1.5f) spot = NearestSpot(you);
         if (spot >= 0 && spot != p.Post)
         {
             p.Post = spot;
@@ -272,9 +282,8 @@ public sealed partial class Town
     /// best of all, cover crouching (something between them and you below the chest); a flanker as
     /// far round you from the one pinning you as it can get; falling back, cover further from you.
     /// </summary>
-    int Position(Person p, Vector3 player)
+    int Position(Person p, Vector3 you)
     {
-        Vector3 you = _clock - _seenClock < 8f ? _seenAt : player;
         float range = p.Kit.Range;
         Vector3 pin = _leader != null && !_leader.Dead && _leader != p ? _leader.Pos : p.Pos;
         Vector3 pinDir = (pin - you) with { Y = 0f };
@@ -320,13 +329,13 @@ public sealed partial class Town
         return false;
     }
 
-    /// <summary>A gun's fight: to their spot (aiming as they go once there's a line), then aim, bursts, breaths between, reloads behind cover.</summary>
-    void Shoot(Person p, Vector3 player, float dt)
+    /// <summary>A gun's fight: to their spot (aiming as they go once there's a line), then aim, bursts, breaths between, reloads behind cover. The foe's feet are local, its chest so high up them; you, or something else.</summary>
+    void Shoot(Person p, Vector3 foe, float chest, bool you, float dt)
     {
         WeaponDef d = p.Kit.Def;
         bool there = Move(p, dt);
         p.Holding = true;
-        Vector3 to = player - p.Pos;
+        Vector3 to = foe - p.Pos;
         float dist = to.Length();
         // No line for a while: they move up to where they last saw you.
         // (Once, as the three seconds pass: every tick after it made each unseen fighter look round every spot again, 5,000 rays a frame
@@ -358,21 +367,21 @@ public sealed partial class Town
             {
                 // The aim: where you can see it, a beat before the first round of each burst.
                 p.Aim = Spotted * (p.Part == FightPart.Pin ? 0.7f : 1f) * (0.8f + 0.4f * (float)_rng.NextDouble());
-                if (p.Role == "guard") GuardAims++;
-                Aimed?.Invoke(World(p.Pos + Vector3.Up * Height(p) * 0.85f));
+                if (you && p.Role == "guard") GuardAims++;
+                if (you) Aimed?.Invoke(World(p.Pos + Vector3.Up * Height(p) * 0.85f));
                 return;
             }
             p.Aim -= dt;
             if (p.Aim > 0f) return;
             p.Pending = Math.Min(p.Kit.Burst(Wildlife.Rng.For(Memory.Inst.SpawnSeed, "burst", (long)(_clock * 10f) + People.IndexOf(p))), p.Kit.Loaded);
             p.NextRound = 0f;
-            if (p.Role == "guard") GuardShots++;
+            if (you && p.Role == "guard") GuardShots++;
         }
         p.Now = 0f;
         if (p.Path != null && p.Step < p.Path.Count) { p.Path = null; p.Step = 0; } // they stand to fire
         if ((p.NextRound -= dt) > 0f) return;
         // Not until the weapon is on you: the round leaves along the barrel (or the arrow's line).
-        float off = p.View is { Visible: true } ? p.Rig?.AimError(player + Vector3.Up * 1.15f) ?? 0f : 0f;
+        float off = p.View is { Visible: true } ? p.Rig?.AimError(foe + Vector3.Up * chest) ?? 0f : 0f;
         if (off > HumanRig.OnMark)
         {
             // Still coming round: they wait; never on: they take aim again.
@@ -387,7 +396,7 @@ public sealed partial class Town
         p.Pending--;
         Shots++;
         Vector3 muzzle = Muzzle(p);
-        Vector3 aim = World(player + Vector3.Up * 1.15f);
+        Vector3 aim = World(foe + Vector3.Up * chest);
         float unsteady = 1.2f + (1f - p.Nerve) * 1.5f + (p.Hurt > 0f ? 1.5f : 0f) + (p.Part == FightPart.Pin ? 0.6f : 0f);
         ShotFired?.Invoke(p, d, muzzle, aim - muzzle, unsteady);
         if (p.Pending == 0)
@@ -399,10 +408,10 @@ public sealed partial class Town
         }
     }
 
-    /// <summary>How far off you, radians, someone may still be turned as their blow lands.</summary>
+    /// <summary>How far off what they strike, radians, someone may still be turned as their blow lands.</summary>
     public static readonly float SquaredUp = Mathf.DegToRad(15f);
 
-    /// <summary>Turns them, whole body, to face you as fast as a strike turns; returns how far off they still are, radians.</summary>
+    /// <summary>Turns them, whole body, to face along <paramref name="to"/> as fast as a strike turns; returns how far off they still are, radians.</summary>
     float SquareUp(Person p, Vector3 to, float dt)
     {
         float want = MathF.Atan2(-to.X, -to.Z);
@@ -410,12 +419,12 @@ public sealed partial class Town
         return MathF.Abs(Geo.WrapAngle(want - p.Yaw));
     }
 
-    /// <summary>A hand weapon's (or bare hands') fight: straight at you by the walking grid, then close; a wind-up you can see, then the blow.</summary>
-    void Close(Person p, Vector3 player, float dt)
+    /// <summary>A hand weapon's (or bare hands') fight: straight at the foe (local feet) by the walking grid, then close; a wind-up you can see, then the blow, at its chest.</summary>
+    void Close(Person p, Vector3 foe, float chest, float dt)
     {
         WeaponDef d = p.Kit.Def;
         p.Holding = d.Id != Weapons.Fists;
-        Vector3 to = player - p.Pos;
+        Vector3 to = foe - p.Pos;
         float flat = new Vector2(to.X, to.Z).Length();
         float reach = MathF.Max(0.8f, d.Reach * 0.85f);
         if (p.Winding >= 0f)
@@ -432,11 +441,11 @@ public sealed partial class Town
             Blows++;
             if (p.Rig != null)
             {
-                Vector3 chest = WildSim.Flat(p.Rig.Facing).Normalized(), want = WildSim.Flat(to).Normalized();
-                WorstBlowFacing = MathF.Max(WorstBlowFacing, Mathf.RadToDeg(MathF.Acos(Math.Clamp(chest.Dot(want), -1f, 1f))));
+                Vector3 body = WildSim.Flat(p.Rig.Facing).Normalized(), want = WildSim.Flat(to).Normalized();
+                WorstBlowFacing = MathF.Max(WorstBlowFacing, Mathf.RadToDeg(MathF.Acos(Math.Clamp(body.Dot(want), -1f, 1f))));
             }
             Vector3 from = World(p.Pos + Vector3.Up * Height(p) * 0.78f);
-            ShotFired?.Invoke(p, d, from, World(player + Vector3.Up * 1.1f) - from, 0f);
+            ShotFired?.Invoke(p, d, from, World(foe + Vector3.Up * MathF.Min(1.1f, chest)) - from, 0f);
             return;
         }
         p.Strike = Mathf.MoveToward(p.Strike, 0f, dt * 4f);
@@ -449,24 +458,30 @@ public sealed partial class Town
         }
         // On their way in: at a run, straight once there's a clear line, else to the spot nearest you.
         p.Speed = 3.6f;
-        if (p.Sees && flat < 8f && Clear(p.Pos + Vector3.Up * 0.5f, player + Vector3.Up * 0.5f))
+        if (p.Sees && flat < 8f && Clear(p.Pos + Vector3.Up * 0.5f, foe + Vector3.Up * 0.5f))
         {
-            Vector3 stop = player - new Vector3(to.X, 0f, to.Z) / MathF.Max(flat, 0.01f) * reach * 0.8f;
+            Vector3 stop = foe - new Vector3(to.X, 0f, to.Z) / MathF.Max(flat, 0.01f) * reach * 0.8f;
             if (p.Path == null || p.Path.Count != 1 || (p.Path[0] - stop).LengthSquared() > 0.25f) { p.Path = new List<Vector3> { stop with { Y = p.Pos.Y } }; p.Step = 0; }
         }
         else if (p.Rethink <= 0f || p.Path == null || p.Step >= p.Path.Count)
         {
             p.Rethink = 1.2f;
-            int near = -1;
-            float best = float.MaxValue;
-            for (int i = 0; i < Spots.Count; i++)
-            {
-                float d2 = (At(i) - player).LengthSquared();
-                if (d2 < best) { best = d2; near = i; }
-            }
-            if (near >= 0) GoTo(p, near);
+            if (NearestSpot(foe) is var near and >= 0) GoTo(p, near);
         }
         Move(p, dt);
+    }
+
+    /// <summary>The town's spot nearest a point (local), -1 if it has none.</summary>
+    int NearestSpot(Vector3 to)
+    {
+        int near = -1;
+        float best = float.MaxValue;
+        for (int i = 0; i < Spots.Count; i++)
+        {
+            float d2 = (At(i) - to).LengthSquared();
+            if (d2 < best) { best = d2; near = i; }
+        }
+        return near;
     }
 
     /// <summary>Where they look from (local).</summary>

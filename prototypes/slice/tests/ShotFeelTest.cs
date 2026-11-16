@@ -249,6 +249,7 @@ public partial class ShotFeelTest : Node
             if (c.Position.DistanceTo(patch.PatchLocal(spot)) < 5f) break;
             patch.Sim.Kill(c, null);
         }
+        c.Nerve = 1f; // (one with the nerve to fight you: hurt, a timid one runs)
         return c;
     }
 
@@ -470,7 +471,7 @@ public partial class ShotFeelTest : Node
         if (offs.Count == 0)
         {
             SimArms.Kit k0 = arms.People.KitOf(raider);
-            GD.Print($"  (no round measured: {raider.State} {raider.Phase}{(raider.Dead ? " dead" : "")}, {WildSim.Flat(patch.Player.Position - raider.Position).Length():F0} m off, {(patch.WorldOf(raider).Y - patch.PlayerWorld().Y):F1} m above you, fired {k0?.Clip.Fired}, target {(k0?.Target == patch.Player ? "you" : k0?.Target == null ? "none" : "else")}, reach {Arming.ShootReach(raider, patch.Player):F0}, line {(raider.Rig is HumanRig r0 ? r0.WeaponLine.Length().ToString("F2") : "no rig")}, aim error {(raider.Rig is HumanRig r1 ? r1.AimError(patch.Player.Position + Vector3.Up * 1.15f).ToString("F1") : "-")}, bursts dropped {arms.People.Dropped} (last held {arms.People.LastHeldOff:F1} off))");
+            GD.Print($"  (no round measured: {raider.State} {raider.Phase}{(raider.Dead ? " dead" : "")}, {WildSim.Flat(patch.Player.Position - raider.Position).Length():F0} m off, {(patch.WorldOf(raider).Y - patch.PlayerWorld().Y):F1} m above you, fired {k0?.Clip.Fired}, target {(k0?.Target == patch.Player ? "you" : k0?.Target == null ? "none" : "else")}, reach {Arming.ShootReach(raider, patch.Player):F0}, line {(raider.Rig is HumanRig r0 ? r0.WeaponLine.Length().ToString("F2") : "no rig")}, aim error {(raider.Rig is HumanRig r1 ? r1.AimError(patch.Player.Position + Vector3.Up * 1.15f).ToString("F1") : "-")}, bursts dropped {arms.People.Dropped} (last held {arms.People.LastHeldOff:F1} off); its band: {Band(raider)})");
         }
         patch.Sim.Kill(raider, null);
         string Degrees(List<float> a) => a.Count == 0 ? "none" : string.Join(", ", a.Select(v => $"{v:F1}"));
@@ -478,6 +479,13 @@ public partial class ShotFeelTest : Node
         Check(offs.Count >= 2 && offs.Max() <= HumanRig.OnMark + 0.5f, $"its {prop} is on you as each round goes: {Degrees(offs)} degrees off the line to you (at most {HumanRig.OnMark})");
         if (prop != "bow") Check(barrels.Count >= 2 && barrels.Max() <= HumanRig.OnMark + 1.5f, $"the round leaves the muzzle along the barrel: {Degrees(barrels)} degrees between the barrel and muzzle-to-you");
         GD.Print($"  (its chest turned {Degrees(facing)} degrees from you as it fired)");
+    }
+
+    /// <summary>What a band is about, in a line (tests' notes): its mood, whom it fights and deals with, and what it has seen.</summary>
+    string Band(Creature c)
+    {
+        string Who(ITarget t) => t == null ? "none" : t == _game.Zone.Wildlife.Player ? "you" : t is CreatureTarget { Creature: var o } ? (o.Herd == c.Herd ? "its own" : o.Species.CommonName) : "else";
+        return c.Herd?.Party is not { } b ? "none" : $"{c.Herd.Members.Count} strong, {b.Mood}, stance {b.Stance}, turned {b.Turned}, foe {Who(b.Foe)}, outsider {Who(b.Outsider)}, threat {Who(b.Threat)}, stranger {Who(b.Stranger)}, {b.Events} events";
     }
 
     /// <summary>(--shots) A raider close by on open ground, facing you, shooting at you: its muzzle flash, and one of its rounds coming at you, mid-flight.</summary>
