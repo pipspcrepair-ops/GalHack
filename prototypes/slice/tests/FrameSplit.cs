@@ -55,14 +55,17 @@ public sealed partial class FrameSplit
         _viewport = viewport;
         root.AddChild(new Edge { Split = this, Start = true, Name = "Frame split start", ProcessPriority = -3_000_000, ProcessPhysicsPriority = -3_000_000 });
         root.AddChild(new Edge { Split = this, Start = false, Name = "Frame split end", ProcessPriority = 3_000_000, ProcessPhysicsPriority = 3_000_000 });
+        StallWatch.Start();
         RenderingServer.FramePreDraw += () =>
         {
+            StallWatch.Stamp("the draw's start");
             _preDraw = Stopwatch.GetTimestamp();
             if (_processEnd != 0) _flush += Ms(_processEnd, _preDraw);
             _processEnd = 0;
         };
         RenderingServer.FramePostDraw += () =>
         {
+            StallWatch.Stamp("the draw's end");
             if (_preDraw != 0) _draw += Ms(_preDraw, Stopwatch.GetTimestamp());
             _preDraw = 0;
         };
@@ -77,6 +80,7 @@ public sealed partial class FrameSplit
     void Mark(bool start, bool physics)
     {
         long now = Stopwatch.GetTimestamp();
+        StallWatch.Stamp(start ? physics ? "the physics pass's start" : "the process pass's start" : physics ? "the physics pass's end" : "the process pass's end");
         if (start)
         {
             if (!_open) Close(now);
@@ -114,7 +118,7 @@ public sealed partial class FrameSplit
             {
                 string pipes = string.Join("/", Pipes.Select((m, i) => Performance.GetMonitor(m) - _pipes[i]));
                 string gcs = $"{GC.CollectionCount(0) - _gcs[0]}/{GC.CollectionCount(1) - _gcs[1]}/{GC.CollectionCount(2) - _gcs[2]}";
-                Hitches.Add(string.Create(CultureInfo.InvariantCulture, $"{f.Total:F0} ms at frame {Frames.Count} ({Parts(f)}; collections (gen 0/1/2) {gcs}; pipelines compiled (draw/specialization/surface/mesh) {pipes}; {Doing()}; systems: {Systems?.LastFrame(8) ?? "?"})"));
+                Hitches.Add(string.Create(CultureInfo.InvariantCulture, $"{f.Total:F0} ms at frame {Frames.Count} ({Parts(f)}; collections (gen 0/1/2) {gcs}; pipelines compiled (draw/specialization/surface/mesh) {pipes}; {Doing()}; systems: {Systems?.LastFrame(8) ?? "?"}; stalls: {StallWatch.Take()})"));
             }
         }
         for (int i = 0; i < Pipes.Length; i++) _pipes[i] = Performance.GetMonitor(Pipes[i]);

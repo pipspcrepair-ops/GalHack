@@ -120,6 +120,7 @@ public sealed partial class SystemSplit
         }
         _at = now;
         _allocAt = alloc;
+        StallWatch.Stamp(_names[index]);
         // The end marker closes the pass: nothing is open until the next pass's first marker.
         _open = index == EndIndex ? -1 : index;
     }
