@@ -219,10 +219,10 @@ public sealed partial class HumanRig : Rig
             Down = Dead,
             Dead = c.Dead,
             Clock = c.Age,
-            Aim = shooting ? MathF.Max(Aiming, 0.9f) : Aiming,
+            Aim = _raised = Mathf.MoveToward(_raised, shooting ? 1f : Aiming, dt * 4f), // (all the way up to shoot: a weapon part raised points part way)
             // Aiming at what it's after (the middle of it, not its feet), else at what it looks at.
             AimAt = Aiming > 0.05f || shooting ? (c.AttackTarget is { } at ? at.Position + Vector3.Up * 1.15f : c.LookAt) : null,
-            Act = _act,
+            Act = shooting ? BodyAct.None : _act, // (a gesture never takes a hand off a weapon being fired)
             ActAmount = _actAmount,
             ActAt = c.LookAt ?? c.Position + c.Forward * 6f + Vector3.Up * 1.4f,
             Style = w?.GreetStyle ?? 0,
@@ -232,6 +232,8 @@ public sealed partial class HumanRig : Rig
     }
 
     BodyAct _act;
+    /// <summary>How far the weapon is raised: up to the creature's aim, and all the way while it shoots.</summary>
+    float _raised;
     float _actAmount;
 
     /// <summary>The spheres shots (and a search) meet, from the body as it is posed now, standing or lying: chest, head, each leg.</summary>

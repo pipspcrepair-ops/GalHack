@@ -189,6 +189,7 @@ public static class Attacks
                     {
                         // A gun, not a lunge: it fires from where it stands, and waits as its weapon makes it.
                         float wait = Arming.Fire(w, c, t);
+                        c.ShotAt = w.Time;
                         c.RememberAttack(t, w.Time);
                         c.Phase = AttackPhase.Recover;
                         c.PhaseTime = 0f;

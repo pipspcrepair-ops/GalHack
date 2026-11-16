@@ -1365,7 +1365,7 @@ public sealed partial class Town
             Dead = p.Dead,
             Crouch = p.Crouched,
             Strike = p.Strike,
-            Act = p.Act,
+            Act = p.Engaged && p.Raised > 0.05f && p.Kit is { Strike: false } ? BodyAct.None : p.Act, // (a gesture never takes a hand off a gun being fired)
             ActAmount = p.ActAmount,
             ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,
             Clock = t,
