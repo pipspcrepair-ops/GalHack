@@ -72,6 +72,8 @@ public sealed partial class HullVessel
         public Plan Plan;
         public ulong Seed;
         public PoiState State;
+        /// <summary>A Husk ship's worms rooted in this piece's flesh (structure frame, metres): what <see cref="Slice.Vessels.HuskWorms"/> grows.</summary>
+        public readonly List<(NV3 At, NV3 Out, float Length, float Thick)> Worms = new();
         /// <summary>Its collision, worked out where it was built (off the main thread), or null.</summary>
         public List<GalHack.Physics.ChunkColliders> Colliders;
     }
@@ -143,6 +145,8 @@ public sealed partial class HullVessel
         b.Hollow();
         b.Join();
         if (dress != null) b.Dress(dress);
+        foreach (var w in plan.Form.Worms)
+            if (b.InPiece((int)MathF.Floor(w.At.Z))) b.Out.Worms.Add(w with { At = w.At - new NV3(0, 0, piece.V0) });
         b.S.Name = plan.Role switch { "warship" => "Warship", "liner" => "Liner", "miner" => "Mining Ship", "carrier" => "Carrier", _ => "Freighter" } + piece.Name;
         b.S.Owner = null;
         b.S.DirtyChunks.Clear();

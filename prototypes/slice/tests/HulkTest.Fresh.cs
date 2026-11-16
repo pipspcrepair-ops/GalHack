@@ -16,12 +16,23 @@ namespace Slice.Tests;
 
 public partial class HulkTest
 {
-    /// <summary>The rooms every capital hull has (as it was built), whatever its role: the crew's and the ship's.</summary>
-    static readonly string[][] Needs =
+    /// <summary>
+    /// The rooms a capital hull has (as it was built), whatever its role, by how much floor its form gave it: the ship's
+    /// own always (a bridge, an engine room, the reactor and the core room), a hold from 300 m², and on a hull crewed by
+    /// people (not the Kessari's machines) the crew's quarters, a galley and a medbay from 600 m².
+    /// </summary>
+    static IEnumerable<string[]> Needs(float floor, bool people)
     {
-        new[] { "bridge" }, new[] { "crew-quarters", "cabin", "barracks" }, new[] { "galley" }, new[] { "medbay" },
-        new[] { "hold", "ore-hold" }, new[] { "engine-room" }, new[] { "reactor" },
-    };
+        yield return new[] { "bridge" };
+        yield return new[] { "engine-room" };
+        yield return new[] { "reactor" };
+        yield return new[] { "core-room" };
+        if (floor >= 300) yield return new[] { "hold", "ore-hold" };
+        if (!people || floor < 600) yield break;
+        yield return new[] { "crew-quarters", "cabin", "barracks" };
+        yield return new[] { "galley" };
+        yield return new[] { "medbay" };
+    }
 
     /// <summary>
     /// Every capital site's hull (and two more of a random role and size) on fresh seeds, built as a wreck and as it was
@@ -62,21 +73,30 @@ public partial class HulkTest
             Bad(plan.L >= l0 && length <= 290, $"{name}: {length} m long");
             // Its rooms, as built.
             var purposes = intact.SelectMany(r => r.Spaces).Where(s => !s.Corridor && s.Floor.Count >= 6).Select(s => s.Purpose).ToHashSet();
-            foreach (string[] need in Needs) Bad(need.Any(purposes.Contains), $"{name}: no {need[0]}");
+            float inside = plan.Inside.Rooms.Sum(r => r.Area);
+            foreach (string[] need in Needs(inside, plan.Faction != Faction.Kessari)) Bad(need.Any(purposes.Contains), $"{name}: no {need[0]} ({inside:F0} m² inside; {plan.Inside.Log})");
             // Its devices, as built: the player's real parts, no fuel or warp tanks (fuel is kept in the cargo containers).
             var built = intact.SelectMany(r => r.Structure.Blocks().Where(b => !b.block.IsFiller).Select(b => r.Structure.TypeOf(b.block))).ToList();
             int Count(string function) => built.Count(t => t.Function == function);
-            Bad(Count("thruster") >= 8 && Count("generator") >= 2 && Count("gyro") >= 2 && Count("warp-drive") >= 1 && Count("turret") >= 2 && Count("container") >= 10 && Count("chair") >= 2 && built.Any(t => t.Id.StartsWith("cockpit")),
+            Bad(Count("thruster") >= 8 && Count("generator") >= 2 && Count("gyro") >= 2 && Count("warp-drive") >= 1 && Count("turret") >= 2 && Count("container") >= 10 && Count("chair") >= 2 && !built.Any(t => t.Id.StartsWith("cockpit")),
                 $"{name}: devices {Count("thruster")} thrusters, {Count("generator")} generators, {Count("gyro")} gyros, {Count("warp-drive")} warp drives, {Count("turret")} turrets, {Count("container")} containers, {Count("chair")} chairs");
             Bad(Count("fuel") == 0 && Count("warp-tank") == 0, $"{name}: fuel or warp tanks");
             Bad(intact.All(r => r.Structure.Core == null) && intact.Count(r => r.CoreSlot is Int3 c && !r.Structure.Has(c) && r.Structure.Has(c - Int3.UnitY)) == 1, $"{name}: a core, or no empty seat for one");
-            // Flight-worthy once repaired (the piece with the core's seat): lift for its weight at a heavy world's gravity, power for what draws it.
+            // Flight-worthy once repaired, by the player's rules (DESIGN 5): the piece with the core's seat has a command chair,
+            // thrusters on every axis with lift for its weight at a heavy world's gravity, gyros, generators for what draws
+            // power, and containers for its fuel (no fuel tanks; no capacitor component exists to need).
             foreach (HullVessel.Result r in intact.Where(r => r.CoreSlot != null))
             {
                 // (A structure's stats count thrust only once a core flies it: summed here as the stats would.)
                 var st = StructureStats.Compute(r.Structure);
-                double up = r.Structure.Blocks().Where(b => !b.block.IsFiller && r.Structure.TypeOf(b.block).IsThruster && Orientations.ToWorld(b.block.Rot, GalHack.Structures.Dir.NegZ) == GalHack.Structures.Dir.PosY).Sum(b => (double)r.Structure.TypeOf(b.block).Thrust);
-                Bad(up > st.Mass * StructureStats.G * 1.3 && st.PowerOut >= st.PowerUse, $"{name}{r.Piece.Name}: lift {up / 1000:F0} MN for {st.Mass * StructureStats.G * 1.3 / 1000:F0} MN, power {st.PowerOut:F0} of {st.PowerUse:F0} MW");
+                var push = new double[6];
+                foreach (var (_, b) in r.Structure.Blocks())
+                    if (!b.IsFiller && r.Structure.TypeOf(b).IsThruster) push[(int)Orientations.ToWorld(b.Rot, GalHack.Structures.Dir.NegZ)] += r.Structure.TypeOf(b).Thrust;
+                double up = push[(int)GalHack.Structures.Dir.PosY];
+                var types = r.Structure.Blocks().Where(b => !b.block.IsFiller).Select(b => r.Structure.TypeOf(b.block)).ToList();
+                bool chair = types.Any(t => t.IsCommandChair), gyros = types.Any(t => t.Function == "gyro"), fuel = types.Any(t => t.IsContainer);
+                Bad(up > st.Mass * StructureStats.G * 1.3 && push.All(p => p > 0) && chair && gyros && fuel && st.PowerOut >= st.PowerUse,
+                    $"{name}{r.Piece.Name}: lift {up / 1000:F0} MN for {st.Mass * StructureStats.G * 1.3 / 1000:F0} MN, thrust by axis {string.Join("/", push.Select(p => (p / 1000).ToString("F0")))} MN, chair {chair}, gyros {gyros}, containers {fuel}, power {st.PowerOut:F0} of {st.PowerUse:F0} MW");
             }
             // The wreck as found: measured from its blocks.
             foreach (HullVessel.Result r in wrecks)
@@ -120,19 +140,10 @@ public partial class HulkTest
                     else if (lit >= 0) problems.Add($"{name}{r.Piece.Name}: an unlit {s.Purpose} of {s.Floor.Count} m² on deck {s.Deck}");
                 litRooms += r.Spaces.Count(s => !s.Corridor && s.Floor.Count >= 6);
             }
-            // The silhouette: a tapered bow and sloped shoulders, of the shaped blocks.
-            HullVessel.Result fore = intact[0];
-            Structure f0 = fore.Structure;
-            int Beam(int z) => f0.Blocks().Where(b => b.pos.Z == z).Select(b => b.pos.X).DefaultIfEmpty(0).Max() * 2 + 1;
-            int mid = Math.Min(plan.Bz + 6, plan.Pieces[0].V1 - 1) - fore.Piece.V0;
-            bool tapered = Beam(0) <= Beam(mid) * 0.6f;
-            int edge = f0.Blocks().Where(b => b.pos.Z == mid && b.pos.Y >= plan.Top - 3 && b.pos.Y <= plan.Top).Max(b => b.pos.X);
-            bool shoulder = f0.TryGet(new Int3(edge, f0.Blocks().Where(b => b.pos.Z == mid && b.pos.X == edge).Max(b => b.pos.Y), mid), out Block top) && !f0.ShapeOf(top).IsCube;
-            Bad(tapered && shoulder, $"{name}: beam {Beam(0)} m at the stem against {Beam(mid)} m, shoulder {(shoulder ? "sloped" : "square")}");
-            shapes.Add($"{plan.L}/{plan.Half}/{string.Join(",", plan.Bays.Select(b => b.V1 - b.V0))}");
+            shapes.Add($"{plan.Form.Plan}/{plan.L}/{plan.Inside.Style}/{string.Join(",", plan.Inside.Rooms.Where(x => x.Area > 0).Select(x => x.Area))}");
         }
         foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
-        Check(bad == 0, $"{hulls} hulls on fresh seeds: each a ship's own plan of the player's blocks with bridge, quarters, galley, medbay, hold, engine room and reactor, every deck got into by a door or a stair; thrusters, generators, gyros, a warp drive, turrets, cargo containers, chairs and a cockpit, no fuel tanks; coreless with a seat for a core; lift and power to fly once repaired; a tapered bow and sloped shoulders");
+        Check(bad == 0, $"{hulls} hulls on fresh seeds: each its decks fitted inside its form, of the player's blocks, with a bridge, engine room, reactor and core room (a hold, quarters, galley and medbay as its floor allows), every deck got into by a door, a stair or a hatch; thrusters, generators, gyros, a warp drive, turrets, cargo containers and command chairs, no cockpit and no fuel tanks; coreless with a seat for a core; once repaired it lacks nothing to fly: thrust on every axis, lift for its weight, gyros, power, a chair and containers for fuel");
         Check(shapes.Distinct().Count() == shapes.Count, $"each hull its own: {shapes.Distinct().Count()} different plans of {shapes.Count}");
         Check(rooms > 0 && dressed >= rooms * 0.9f && lit >= litRooms, $"rooms dressed and lit for their purpose: {dressed} of {rooms} dressed ({pieces} pieces), {lit} of {litRooms} lit as built");
         float share = corridor / Math.Max(1f, floor), per100 = machines * 100f / Math.Max(1f, floor);

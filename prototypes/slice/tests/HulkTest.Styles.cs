@@ -16,12 +16,14 @@ public partial class HulkTest
     static readonly string[] Styled = { "freeholders", "meridian", "exchange", "reavers", "kessari", "vharn" };
 
     /// <summary>
-    /// Silhouette first (DESIGN, "Ships and structures by faction"): every faction's hull is told from every other's by its
-    /// outline alone. Hulls of each style on fresh seeds (any role and size), each projected side on, from above and end on;
-    /// each outline reduced to a handful of measures (proportions, how full and how ragged it is, how lopsided, how
-    /// regularly ribbed, how sharp its bow, how many drives, how high its crown and spine); then each hull, left
-    /// out of its own faction's average, must be nearest that average of all the factions' (each measure weighed by how well
-    /// it parts the factions against how much it wanders within one). --dir writes the outlines.
+    /// Silhouette first (DESIGN, "Ships and structures by faction"; docs/ship-forms.md gate 3): every faction's hull is told
+    /// from every other's by its outline alone. Hulls of each style on fresh seeds (any role and size), built with the
+    /// livery off, each projected side on, from above and end on; each outline reduced to a handful of measures
+    /// (proportions, how full and how ragged it is, how lopsided, how regularly ribbed, how sharp its bow, how many
+    /// drives, what stands out past its body); then each hull is judged with nothing of it in the judging: the measures'
+    /// scales, their weights (how well each parts the factions against how much it wanders within one) and the factions'
+    /// averages all worked out without it, and it must be nearest its own faction's average. All 30 of 30, run after run.
+    /// --dir writes the outlines.
     /// </summary>
     IEnumerable<int> Styles()
     {
@@ -38,37 +40,36 @@ public partial class HulkTest
                 ulong seed = (ulong)Random.Shared.NextInt64();
                 var spec = new CapitalHull.Spec(roles[Random.Shared.Next(roles.Length)], sizes[Random.Shared.Next(sizes.Length)], "long", faction);
                 CapitalHull.HullPlan plan = CapitalHull.Plan(lib.Kits[site.Style], WorldProfile.Parse(site.Parts[0].Arg("tech", "mid")), spec, seed);
-                Structure s = HullVessel.Build(plan, plan.Pieces[0], cat, PoiState.Abandoned, seed, intact: true).Structure;
+                Structure s = HullVessel.Build(plan, plan.Pieces[0], cat, PoiState.Abandoned, seed, intact: true, plain: true).Structure;
                 var (side, top, front) = Outlines(s);
                 samples.Add((faction, Measure(side, top, front, plan), side, top));
                 yield return 0;
             }
-        // Each measure on one scale (its spread over every hull), then each hull against the factions' averages without it.
-        int k = samples[0].Measure.Length;
-        float[] mean = Enumerable.Range(0, k).Select(j => samples.Average(x => x.Measure[j])).ToArray();
-        float[] sd = Enumerable.Range(0, k).Select(j => MathF.Sqrt(samples.Average(x => (x.Measure[j] - mean[j]) * (x.Measure[j] - mean[j]))) + 1e-4f).ToArray();
-        float[] Z(float[] m) => m.Select((x, j) => (x - mean[j]) / sd[j]).ToArray();
-        // Each measure weighed by how far apart it holds the factions against how much it wanders within one (a measure that
-        // only follows role and size counts for little).
-        var zs = samples.Select(x => Z(x.Measure)).ToList();
-        float[] weight = Enumerable.Range(0, k).Select(j =>
-        {
-            var byF = Styled.Select(f => zs.Where((z, i) => samples[i].Faction == f).Select(z => z[j]).ToList()).ToList();
-            float between = byF.Select(g => g.Average()).Select(m => m * m).Average();
-            float within = byF.Average(g => g.Select(x => (x - g.Average()) * (x - g.Average())).Average()) + 0.05f;
-            return between / within;
-        }).ToArray();
-        int right = 0;
+        // Each hull judged by the rest alone: their spread puts every measure on one scale, their factions' spreads weigh
+        // the measures (a measure that only follows role and size counts for little), their factions' averages are the targets.
+        int k = samples[0].Measure.Length, right = 0;
         var wrong = new List<string>();
         for (int i = 0; i < samples.Count; i++)
         {
+            var rest = samples.Where((_, j) => j != i).ToList();
+            float[] mean = Enumerable.Range(0, k).Select(j => rest.Average(x => x.Measure[j])).ToArray();
+            float[] sd = Enumerable.Range(0, k).Select(j => MathF.Sqrt(rest.Average(x => (x.Measure[j] - mean[j]) * (x.Measure[j] - mean[j]))) + 1e-4f).ToArray();
+            float[] Z(float[] m) => m.Select((x, j) => (x - mean[j]) / sd[j]).ToArray();
+            var zs = rest.Select(x => (x.Faction, Z: Z(x.Measure))).ToList();
+            float[] weight = Enumerable.Range(0, k).Select(j =>
+            {
+                var byF = Styled.Select(f => zs.Where(z => z.Faction == f).Select(z => z.Z[j]).ToList()).ToList();
+                float between = byF.Select(g => g.Average()).Select(m => m * m).Average();
+                float within = byF.Average(g => g.Select(x => (x - g.Average()) * (x - g.Average())).Average()) + 0.05f;
+                return between / within;
+            }).ToArray();
             float[] me = Z(samples[i].Measure);
             string best = null;
             float bestD = float.MaxValue;
             foreach (string f in Styled)
             {
-                var others = samples.Where((x, j) => x.Faction == f && j != i).Select(x => Z(x.Measure)).ToList();
-                float d = Enumerable.Range(0, k).Sum(j => weight[j] * MathF.Pow(me[j] - others.Average(o => o[j]), 2));
+                var theirs = zs.Where(z => z.Faction == f).Select(z => z.Z).ToList();
+                float d = Enumerable.Range(0, k).Sum(j => weight[j] * MathF.Pow(me[j] - theirs.Average(o => o[j]), 2));
                 if (d < bestD) (bestD, best) = (d, f);
             }
             if (best == samples[i].Faction) right++;
@@ -77,7 +78,7 @@ public partial class HulkTest
         foreach (string f in Styled)
             GD.Print($"      {f}: {string.Join(" ", Enumerable.Range(0, k).Select(j => samples.Where(x => x.Faction == f).Average(x => x.Measure[j]).ToString("F2")))}");
         if (_args.TryGetValue("dir", out string dir)) SaveOutlines(samples.Select(x => (x.Faction, x.Side, x.Top)).ToList(), $"{dir}/silhouettes.png");
-        Check(right >= samples.Count * 0.9f, $"each faction told by its outline alone: {right} of {samples.Count} hulls nearest their own faction's outline{(wrong.Count > 0 ? " (" + string.Join(", ", wrong) + ")" : "")}");
+        Check(right == samples.Count, $"each faction told by its outline alone, livery off, each hull judged without it: {right} of {samples.Count} hulls nearest their own faction's outline{(wrong.Count > 0 ? " (" + string.Join(", ", wrong) + ")" : "")}");
     }
 
     readonly Dictionary<string, string> _args = OS.GetCmdlineUserArgs().Where(a => a.StartsWith("--") && a.Contains('=')).ToDictionary(a => a[2..a.IndexOf('=')], a => a[(a.IndexOf('=') + 1)..]);
@@ -133,7 +134,10 @@ public partial class HulkTest
         float maxBeam = beam.Max();
         // Beyond the body: what stands out past the hull's own beam from above (pods, modules, spikes, frames, fins), and
         // over its roof side on (a superstructure, a truss, pods, spikes).
-        int beyond = 0, over = 0, sideArea = 0, half = plan.Half, roof = plan.Top + 2;
+        // (The body: its median beam from above and median height side on, the outline's own.)
+        float half = beam.Where(b => b > 0).OrderBy(b => b).ElementAt(beam.Count(b => b > 0) / 2) / 2f;
+        var tops = Enumerable.Range(0, nv).Select(v => Enumerable.Range(0, ny).LastOrDefault(y => side[v, y], -1)).Where(t => t >= 0).OrderBy(t => t).ToList();
+        int beyond = 0, over = 0, sideArea = 0, roof = tops[tops.Count / 2];
         for (int v = 0; v < nv; v++)
         {
             for (int u = 0; u < nu; u++)

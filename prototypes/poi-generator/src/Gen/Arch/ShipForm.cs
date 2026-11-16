@@ -254,6 +254,9 @@ public sealed partial class ShipForm
     /// <summary>Turret mounts: a point on the solid and the face a turret looks out of (0 +u, 1 -u, 2 +y, 3 -y, 4 +v, 5 -v).</summary>
     public readonly List<(NV3 At, int Face)> Turrets = new();
 
+    /// <summary>A Husk ship's worms: each rooted in a lump of its flesh (the point, the way it grows out), its length and thickness (m).</summary>
+    public readonly List<(NV3 At, NV3 Out, float Length, float Thick)> Worms = new();
+
     /// <summary>Pipes and struts along an axis (0 u, 1 y, 2 v): a run of cylinder blocks from a cell.</summary>
     public readonly List<(Int3 From, int Axis, int Length, string Paint)> Pipes = new();
 
@@ -340,6 +343,7 @@ public sealed partial class ShipForm
         }
         for (int i = 0; i < Drives.Count; i++) Drives[i] = (Drives[i].Face + d, Drives[i].Radius);
         for (int i = 0; i < Turrets.Count; i++) Turrets[i] = (Turrets[i].At + d, Turrets[i].Face);
+        for (int i = 0; i < Worms.Count; i++) Worms[i] = Worms[i] with { At = Worms[i].At + d };
         var cell = new Int3(0, (int)d.Y, (int)d.Z);
         for (int i = 0; i < Pipes.Count; i++) Pipes[i] = (Pipes[i].From + cell, Pipes[i].Axis, Pipes[i].Length, Pipes[i].Paint);
         float wide = solid.Max(p => MathF.Max(MathF.Abs(p.Lo.X), MathF.Abs(p.Hi.X)));

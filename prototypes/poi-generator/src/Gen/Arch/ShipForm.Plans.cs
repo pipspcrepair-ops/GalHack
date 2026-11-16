@@ -91,14 +91,23 @@ public sealed partial class ShipForm
         }
     }
 
-    /// <summary>A mass of flesh filling a hole about p and bulging out of it along o, every lump overlapping the hole's rim.</summary>
+    /// <summary>A mass of flesh filling a hole about p and bulging out of it along o, every lump overlapping the hole's rim, worms rooted in each lump.</summary>
     void Flesh(NV3 p, NV3 o, float r)
     {
         for (int k = R.Between(3, 6); k > 0; k--)
         {
             float fr = R.Float(MathF.Max(M(2.5f), r * 0.7f), r * 1.1f + M(1f));
             NV3 jitter = new NV3(R.Float(-1f, 1f), R.Float(-1f, 1f), R.Float(-1f, 1f)) * r * 0.35f;
-            Sphere("flesh", p + o * fr * R.Float(0.1f, 0.45f) + jitter, new NV3(fr * R.Float(0.8f, 1.2f), fr * R.Float(0.8f, 1.2f), fr * R.Float(0.8f, 1.4f)));
+            NV3 c = p + o * fr * R.Float(0.1f, 0.45f) + jitter, rad = new NV3(fr * R.Float(0.8f, 1.2f), fr * R.Float(0.8f, 1.2f), fr * R.Float(0.8f, 1.4f));
+            Sphere("flesh", c, rad);
+            // (Its worms from a stream of their own, so the form's own rolls run on as they were.)
+            Rng w = R.Fork("worms" + Prims.Count);
+            for (int n = w.Between(2, 6); n > 0; n--)
+            {
+                NV3 dir = NV3.Normalize(o + new NV3(w.Float(-1f, 1f), w.Float(-1f, 1f), w.Float(-1f, 1f)) * 0.9f);
+                float least = MathF.Min(rad.X, MathF.Min(rad.Y, rad.Z));
+                Worms.Add((c + dir * least * 0.8f, dir, MathF.Max(2f, w.Float(4f, 18f) * K), MathF.Max(0.25f, w.Float(0.3f, 1.1f) * K)));
+            }
         }
     }
 }

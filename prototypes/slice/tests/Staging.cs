@@ -185,6 +185,8 @@ public sealed partial class Staging
             "skyship" => SkyshipView(),
             "derelict-hull" => DerelictHullView(),
             "factions" => FactionView(),
+            "interiors" => InteriorView(),
+            "husk-ram" => HuskRamView(),
             "visor" => VisorView(),
             "feet" => FeetView(),
             "zfight" => ZFightView(),

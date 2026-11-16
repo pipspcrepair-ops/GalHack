@@ -206,13 +206,21 @@ public sealed partial class Staging
             GD.Print($"inside: {room.Purpose}, {room.Floor.Count} m², {Dressed(room)} cells dressed");
             foreach (int x in InsideShot(v, eye, look, $"{dir}/{tag}-room.png")) yield return x;
         }
-        // Down the spine of a deck, from a third of the way along it.
-        HullVessel.Space corridor = hull.Spaces.Where(sp => sp.Purpose == "corridor" && sp.Floor.Count(f => f.U == 0) > 30).OrderBy(sp => Math.Abs(sp.Deck - 2)).FirstOrDefault();
-        if (corridor != null)
+        // Down the longest straight run of a corridor's middle, from a quarter of the way along it.
+        var best = (Len: 0, Sp: (HullVessel.Space)null, U: 0, V: 0, DU: 0, DV: 0);
+        foreach (HullVessel.Space sp in hull.Spaces.Where(sp => sp.Purpose == "corridor"))
+            foreach (var (fu, fv) in sp.Floor)
+                foreach (var (du, dv) in new[] { (0, 1), (1, 0) })
+                {
+                    if (sp.Floor.Contains((fu - du, fv - dv)) || !sp.Floor.Contains((fu + dv, fv + du)) || !sp.Floor.Contains((fu - dv, fv - du))) continue;
+                    int n = 0;
+                    while (sp.Floor.Contains((fu + du * n, fv + dv * n))) n++;
+                    if (n > best.Len) best = (n, sp, fu, fv, du, dv);
+                }
+        if (best.Sp != null && best.Len >= 10)
         {
-            var spine = corridor.Floor.Where(f => f.U == 0).Select(f => f.V).OrderBy(z => z).ToList();
-            int start = spine[spine.Count / 3];
-            foreach (int x in InsideShot(v, At(corridor, 0, start, 1.7f), At(corridor, 0, start + 30, 1.3f), $"{dir}/{tag}-corridor.png")) yield return x;
+            int k = best.Len / 4;
+            foreach (int x in InsideShot(v, At(best.Sp, best.U + best.DU * k, best.V + best.DV * k, 1.7f), At(best.Sp, best.U + best.DU * (k + 25), best.V + best.DV * (k + 25), 1.3f), $"{dir}/{tag}-corridor.png")) yield return x;
         }
     }
 

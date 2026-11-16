@@ -149,6 +149,7 @@ public partial class Hulks : Node
             Vessel v = Vessel.SpawnGroundWreck(Zone, r.Structure, at, piece.Rotation, r.Colliders);
             v.Derelict = new Slice.Orbit.DerelictPlan { Id = $"hulk-{site.Origin.X}-{site.Origin.Z}-{list.Count}", Name = r.Structure.Name, Structure = r.Structure, Position = at, Rotation = piece.Rotation, Door = r.Door, Hull = r };
             _dressing.Enqueue(v.DressSteps(r.Decor).GetEnumerator());
+            HuskWorms.Grow(v.Node, r.Worms, rng.Next());
             Stock(v, rng, site.State);
             list.Add(v);
             Set?.Invoke(site, v);
