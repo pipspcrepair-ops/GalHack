@@ -109,7 +109,7 @@ public partial class SleeperToolTest : Node
         foreach (int x in Person()) yield return x;
         foreach (int x in Repair()) yield return x;
         foreach (int x in Ore()) yield return x;
-        foreach (int x in KickSync()) yield return x;
+        foreach (int x in ShakeSync()) yield return x;
         foreach (int x in NoBuildUp()) yield return x;
         if (_shots != null) foreach (int x in BlockPicture()) yield return x;
         _game.QueueFree();
@@ -186,7 +186,7 @@ public partial class SleeperToolTest : Node
         Check(Tool.Shots == shots + 1 && Fx.LightningBolts == bolts + 1 && Fx.LightningFlashes == flashes + 1 && lit,
             $"a click is one blast: a bolt of lightning and a flash that lights round it ({Fx.LightningBolts - bolts} bolt, {Fx.LightningFlashes - flashes} flash)");
         Check(Played(CombatSound.Crackle) == crackle + 1 && Played(CombatSound.Thunder) == thunder + 1, "with a crackle and a thunderclap, from the shot pipeline's sound pool");
-        Check(_game.Hands.PeakKick > 0.5f && Tool.Kick.Recoil == Bolt.Kick, $"and the tool kicks ({_game.Hands.PeakKick:F2}, recoil {Tool.Kick.Recoil} from the data)");
+        Check(_game.Hands.PeakBuzz > 0.5f && _game.Hands.PeakKick == 0f && _game.Hands.PeakTilt == 0f, $"and the tool shakes in the hand ({_game.Hands.PeakBuzz:F2}), the view still");
         Check(Fx.SparksShowing == 0, "the lightning is gone a moment later");
         BoltLook();
     }
@@ -507,12 +507,12 @@ public partial class SleeperToolTest : Node
 
     /// <summary>
     /// Held for 3 s each way (owner): digging, where pulses come every dig interval, and blasting, every
-    /// shot interval: every bolt drawn kicks on its own tick, no kick without a bolt, and each kick has
-    /// eased off before the next (quick pulses read as kicks, not a blur). Repair never kicks.
+    /// shot interval: every bolt drawn shakes the tool on its own tick, no shake without a bolt, and each
+    /// shake has died down before the next (quick pulses read as shakes, not a blur). Repair never shakes.
     /// </summary>
-    IEnumerable<int> KickSync()
+    IEnumerable<int> ShakeSync()
     {
-        GD.Print("-- a kick with every bolt --");
+        GD.Print("-- a shake with every bolt --");
         foreach (int x in MoveOn()) yield return x;
         Hands hands = _game.Hands;
         Vector3 feet = _game.Survivor.WorldFeet, eye = _game.Survivor.WorldEye();
@@ -525,28 +525,28 @@ public partial class SleeperToolTest : Node
         {
             foreach (int x in _play.Tool(mode)) yield return x;
             foreach (int x in _drive.LookAt(at, 6)) yield return x;
-            int bolts = Fx.LightningBolts, kicks = hands.ToolKicks, blurred = 0, lastKicks = kicks;
+            int bolts = Fx.LightningBolts, kicks = hands.ToolShakes, blurred = 0, lastKicks = kicks;
             bool eased = true;
             for (int i = 0; i < 180; i++)
             {
                 _drive.Face(at);
                 _game.Controls.Primary = true;
-                bool sameTick = Fx.LightningBolts - bolts == hands.ToolKicks - kicks;
+                bool sameTick = Fx.LightningBolts - bolts == hands.ToolShakes - kicks;
                 yield return 0;
-                if (hands.ToolKicks != lastKicks)
+                if (hands.ToolShakes != lastKicks)
                 {
                     if (!eased) blurred++;
                     eased = false;
-                    lastKicks = hands.ToolKicks;
+                    lastKicks = hands.ToolShakes;
                 }
-                else if (hands.Kick < 0.35f) eased = true;
+                else if (hands.Buzz < 0.35f) eased = true;
                 if (!sameTick) blurred += 1000; // a bolt and its kick on different ticks
             }
             _game.Controls.Primary = false;
             foreach (int x in _drive.Wait(20)) yield return x;
-            int b = Fx.LightningBolts - bolts, k = hands.ToolKicks - kicks;
+            int b = Fx.LightningBolts - bolts, k = hands.ToolShakes - kicks;
             Check(mode == ToolMode.Repair ? b == 0 && k == 0 : b >= 8 && b == k && blurred == 0,
-                $"{label} for 3 s: {b} bolts and {k} kicks, each kick its bolt's own tick and eased off before the next ({blurred} not)");
+                $"{label} for 3 s: {b} bolts and {k} shakes, each shake on its bolt's own tick and died down before the next ({blurred} not)");
         }
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
     }

@@ -23,10 +23,13 @@ public partial class Hands : Node3D
     readonly Dictionary<string, ItemModel> _models = new();
     ItemModel _shown;
     Color _tint;
-    bool _kickHeard;
+    bool _shakeHeard;
+    float _buzz, _buzzLeft, _buzzTime;
 
-    /// <summary>Kicks from the Sleeper tool's bolts (tests: one a bolt).</summary>
-    public int ToolKicks { get; private set; }
+    /// <summary>Shakes from the Sleeper tool's bolts (tests: one a bolt), how strong the shake is now (0 to 1), and the strongest since <see cref="ResetPeaks"/>.</summary>
+    public int ToolShakes { get; private set; }
+    public float Buzz { get; private set; }
+    public float PeakBuzz { get; private set; }
     float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime;
 
     /// <summary>Where the barrel's tip is now, in the world, or null when the hands aren't showing: flashes and bolts begin here, riding the hand and its recoil.</summary>
@@ -52,7 +55,15 @@ public partial class Hands : Node3D
     /// <summary>The biggest kick and camera tilt since <see cref="ResetPeaks"/> (tests: a tick can fall between drawn frames).</summary>
     public float PeakKick { get; private set; }
     public float PeakTilt { get; private set; }
-    public void ResetPeaks() => PeakKick = PeakTilt = 0f;
+    public void ResetPeaks() => PeakKick = PeakTilt = PeakBuzz = 0f;
+
+    /// <summary>The Sleeper tool's shake with a bolt: a short tight vibration of the tool in the hand; the view doesn't move.</summary>
+    void ToolShake(float strength)
+    {
+        ToolShakes++;
+        _buzz = strength;
+        _buzzLeft = Game.Zone.Data.Rules.Tool.Lightning.ShakeSeconds;
+    }
 
     /// <summary>A light camera shake for a pilot whose vessel gun fired (strength 0..1); it dies away on its own.</summary>
     public void Shake(float strength)
@@ -137,11 +148,16 @@ public partial class Hands : Node3D
         float dt = (float)delta;
         var g = Game;
         if (g?.Tool != null && g.Tool.HeldMuzzle == null) g.Tool.HeldMuzzle = () => BarrelTip;
-        if (g?.Tool != null && !_kickHeard)
+        if (g?.Tool != null && !_shakeHeard)
         {
-            _kickHeard = true;
-            g.Tool.Kicked += feel => { ToolKicks++; Recoil(feel); }; // on the tick its bolt is thrown
+            _shakeHeard = true;
+            g.Tool.Shook += ToolShake; // on the tick its bolt is thrown
         }
+        var buzz = g?.Zone?.Data.Rules.Tool.Lightning;
+        _buzzLeft = MathF.Max(0f, _buzzLeft - dt);
+        _buzzTime += dt;
+        Buzz = buzz == null || _buzzLeft <= 0f ? 0f : _buzz * _buzzLeft / buzz.ShakeSeconds;
+        PeakBuzz = MathF.Max(PeakBuzz, Buzz);
         _kick = Mathf.MoveToward(_kick, 0f, dt / 0.15f);
         _shake = Mathf.MoveToward(_shake, 0f, dt * 4f);
         _jolt = Mathf.MoveToward(_jolt, 0f, dt * 3.5f);
@@ -181,6 +197,12 @@ public partial class Hands : Node3D
         float k = _kick * _kick * _strength;
         _rig.Position = new Vector3(0.05f + MathF.Sin(_bob) * 0.008f * sway, -0.03f + MathF.Abs(MathF.Cos(_bob)) * 0.01f * sway + k * 0.012f, k * 0.06f);
         _rig.RotationDegrees = new Vector3(k * 7f, 0f, 0f);
+        // The Sleeper tool's shake: a tight vibration on three axes at once, dying away.
+        if (Buzz > 0f && buzz != null)
+        {
+            float w = MathF.Tau * buzz.ShakeHz * _buzzTime, a = buzz.ShakeAmplitude * Buzz;
+            _rig.Position += new Vector3(MathF.Sin(w), MathF.Sin(w * 1.37f + 1f), 0.5f * MathF.Sin(w * 0.83f + 2f)) * a;
+        }
     }
 
     /// <summary>

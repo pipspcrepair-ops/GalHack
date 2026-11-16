@@ -59,13 +59,8 @@ public sealed class SleeperTool
     /// <summary>The build tool: blocks that come away whole go through its take-down, destroyed ones come back through its restore.</summary>
     public Slice.Construction.BuildTool Builder;
 
-    /// <summary>The kick of a blast, and the lighter one of a gathering pulse (so quick pulses read as kicks, not a shake): the data's recoil and camera tilt.</summary>
-    public GunFeel Kick => _kick ??= GunFeel.Tool with { Recoil = _rules.Lightning.Kick, CameraKick = _rules.Lightning.CameraKick };
-    public GunFeel GatherKick => _gatherKick ??= Kick with { Recoil = Kick.Recoil * _rules.Lightning.GatherKickShare, CameraKick = Kick.CameraKick * _rules.Lightning.GatherKickShare };
-    GunFeel _kick, _gatherKick;
-
-    /// <summary>Every bolt the tool throws, on the tick it is drawn: the hands kick with it (one kick a bolt).</summary>
-    public event Action<GunFeel> Kicked;
+    /// <summary>Every bolt the tool throws, on the tick it is drawn: the tool shakes in the hand with it (one shake a bolt; a gathering pulse's lighter, by this share of a blast's).</summary>
+    public event Action<float> Shook;
 
     /// <summary>The held tool's barrel tip in the world, when the hands show it (set by <see cref="Hands"/>); null otherwise.</summary>
     public Func<Vector3?> HeldMuzzle;
@@ -97,7 +92,7 @@ public sealed class SleeperTool
 
     /// <summary>Ore broken off tell rocks so far (a few a pulse), apart from what the cells gave.</summary>
     public int TellOre { get; private set; }
-    /// <summary>Bolts of lightning thrown (each one kicks).</summary>
+    /// <summary>Bolts of lightning thrown (each one shakes the tool).</summary>
     public int Shots { get; private set; }
     /// <summary>People zapped and stunned, blocks taken whole, foreign blocks blasted, blocks repaired and restored (tests).</summary>
     public int Zapped { get; private set; }
@@ -665,10 +660,10 @@ public sealed class SleeperTool
     void Strike(Vector3 to, Vector3 half, int arcs, bool attack = false)
     {
         Color blue = ShotFx.LightningBlue;
-        // One event a bolt: drawn, counted and kicked together.
+        // One event a bolt: drawn, counted and shaken together.
         Shots++;
         Fx?.Lightning(Muzzle, to, blue, Bolt);
-        Kicked?.Invoke(attack ? Kick : GatherKick);
+        Shook?.Invoke(attack ? 1f : Bolt.GatherShakeShare);
         if (arcs > 0) Fx?.ArcOver(to, half, blue, arcs, Bolt);
         float pitch = 0.9f + 0.2f * (float)Random.Shared.NextDouble();
         Arms?.Sounds?.Play(CombatSound.Crackle, to, pitch, attack ? 0f : -6f);

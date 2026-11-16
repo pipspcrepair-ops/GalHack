@@ -104,7 +104,7 @@ public partial class GunFeelTest : Node
         Check(fx.FlashPool >= 8 && fx.FlashesActive == 0, $"the flash pool is built up front ({fx.FlashPool} slots) and idle");
         Check(AimIsExact() && hands.Kick == 0f, "at rest, no kick and the camera is exactly on the aim");
 
-        // ---- The Sleeper tool: a flare, a kick, and everything home again ----
+        // ---- The Sleeper tool: a flare, a shake of the tool in the hand, the view left still ----
         int flashes = fx.Flashes;
         float peakKick, peakTilt;
         hands.ResetPeaks();
@@ -119,8 +119,8 @@ public partial class GunFeelTest : Node
         peakTilt = hands.PeakTilt;
         Check(fx.Flashes == flashes + 1, "firing the tool shows one muzzle flare");
         Check(fx.FlashesActive == 0, "and the flare has cleaned itself up a second later");
-        Check(peakKick > 0.5f && peakTilt > 0.0005f, $"the hand kicked ({peakKick:F2}) and the camera tilted ({Mathf.RadToDeg(peakTilt):F2} degrees)");
-        Check(hands.Kick == 0f && AimIsExact(), "then the recoil returned to rest and the camera aim came back exactly");
+        Check(hands.PeakBuzz > 0.5f && peakKick == 0f && peakTilt == 0f, $"the tool shook in the hand ({hands.PeakBuzz:F2}) and neither kicked ({peakKick:F2}) nor moved the view ({Mathf.RadToDeg(peakTilt):F2} degrees)");
+        Check(hands.Buzz == 0f && AimIsExact(), "then the shake died away and the camera aim is exactly where it was");
 
         Check(GunFeel.Tool.Colour.B > 0.9f && GunFeel.Tool.Colour.R < 0.6f && fx.LightningBolts > 0, $"the blast is lightning, its flash blue ({GunFeel.Tool.Colour}, {fx.LightningBolts} bolts)");
 

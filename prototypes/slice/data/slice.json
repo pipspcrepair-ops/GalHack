@@ -88,12 +88,13 @@
       // comes away as its hit points do (a block blasted to nothing gives this share of its bill).
       "blockDamage": 30,
       "extractShare": 0.3,
-      // The tool's kick (the hand's recoil and the camera's tilt, degrees) and the flash that lights
-      // the surroundings (energy, range m).
-      "kick": 1.1,
-      "cameraKick": 0.5,
-      // A gathering pulse (every digInterval) kicks lighter than a blast, so quick pulses read as kicks, not a blur.
-      "gatherKickShare": 0.45,
+      // The tool shakes in the hand with each bolt (owner: a shake, not a kick; the view stays still):
+      // seconds, metres, Hz, and a gathering pulse's (every digInterval) as a share of a blast's.
+      "shakeSeconds": 0.12,
+      "shakeAmplitude": 0.004,
+      "shakeHz": 38,
+      "gatherShakeShare": 0.6,
+      // The flash that lights the surroundings (energy, range m).
       "flashEnergy": 6,
       "flashRange": 11,
       // Seconds. A bolt comes up, holds and fades smoothly (owner: linger a little, easy on the eyes;

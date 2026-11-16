@@ -35,7 +35,7 @@ public sealed record GunFeel(
     public static float FlashScale = 1f;
 
     /// <summary>The Sleeper tool's blast of lightning: a small blue bloom at the tip with no light of its own (the bolt's flash rises and fades instead; its kick comes from the tool's data).</summary>
-    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Bloom, new Color(0.45f, 0.7f, 1f), 0.06f, 0f, 5f, 2, 0f, 0f, 0.6f, 0.12f);
+    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Bloom, new Color(0.45f, 0.7f, 1f), 0.06f, 0f, 5f, 2, 0f, 0f, 0f, 0f); // no recoil: the tool shakes instead (Hands, from the data)
 
     static readonly Dictionary<string, GunFeel> Table = Build(
         Tool,
