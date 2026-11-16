@@ -237,19 +237,19 @@ public partial class CombatTest : Node
             for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             Check(unarmed.Fleeing || unarmed.Indoors || unarmed.Engaged, $"an unarmed one hit runs for it, or (a raider with the nerve) goes in with their fists ({(unarmed.Engaged ? $"fists, {unarmed.Part}" : unarmed.Fleeing ? "fleeing" : unarmed.Indoors ? "indoors" : "stood")})");
         }
-        // Hand to hand: whoever goes in with a blade, a club or fists reaches you within 20 s and every blow faces you. With
-        // nobody yet, the nearest gunman's rounds run out (and their nerve holds), so they come on with their fists.
-        string brawler = "";
-        if (!town.People.Any(p => p.Engaged && !p.Dead && p.Kit is { Strike: true })
-            && town.People.Where(p => p.Engaged && !p.Dead && p.Kit is { Strike: false }).OrderBy(p => town.World(p.Pos).DistanceTo(game.Survivor.WorldFeet)).FirstOrDefault() is { } gunman)
+        // Hand to hand: one of them with a blade, a club or fists (or a gunman whose rounds run out, nerve up, so fists), and
+        // you at their side, out of their line: within 20 s a blow lands, and every blow faces you.
+        string brawler = "none";
+        if (town.People.Where(p => p.Engaged && !p.Dead && p.Kit != null).OrderBy(p => p.Kit.Strike ? 0 : 1).FirstOrDefault() is { } fighter)
         {
-            gunman.Kit.Loaded = gunman.Kit.Loose = gunman.Kit.Items = 0;
-            gunman.Nerve = 1f;
-            brawler = $", a {gunman.Kit.Def.Id} run dry";
+            brawler = fighter.Kit.Strike ? fighter.Kit.Def.Id : $"a {fighter.Kit.Def.Id} run dry";
+            if (!fighter.Kit.Strike) fighter.Kit.Loaded = fighter.Kit.Loose = fighter.Kit.Items = 0;
+            fighter.Nerve = 1f;
+            game.Survivor.PlaceOutside(town.World(fighter.Pos + fighter.Forward.Cross(Vector3.Up).Normalized() * 1.2f + Vector3.Up * 0.1f).ToNumerics());
         }
         for (int i = 0; i < 60 * 20 && town.Blows == 0; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
-        Check(town.Blows > 0 && town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows{brawler}, the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
+        Check(town.Blows > 0 && town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows ({brawler}, you at their side), the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
     }
 
     /// <summary>Out in the wild: a raider's rifle, a band's rally, a machine's mount, a club's blow.</summary>
