@@ -47,6 +47,7 @@ public static class GunModel
     public static Built Hang(Node3D on, WeaponDef def, Transform3D at)
     {
         Built b = Build(def);
+        Slice.Player.HeldFinish.Merge(b.Root); // one draw, not one a part: a town has dozens of these in hand
         var hold = new Node3D { Name = "Weapon", Transform = at };
         hold.AddChild(b.Root);
         on.AddChild(hold);
