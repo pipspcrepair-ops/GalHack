@@ -441,7 +441,7 @@ public partial class SleeperToolTest : Node
             $"held, its hit points climb a little a frame ({climbing} of 30 frames, at most {biggest:F2} a frame at {rate} a second), the readout counting up ({readout0} then {readout1}), and let go they stop partway ({partway:F0} of {max:F0})");
         foreach (int x in HoldRepair(FaceOf(v, hurt), 600)) yield return x;
         var paid = bill.ToDictionary(kv => kv.Key, kv => bag[kv.Key] - _game.Pack[kv.Key]);
-        var whole0 = BuildingBridge.BillOf(items, s, s.Get(hurt));
+        var whole0 = Tool.BillOf(v, s.Get(hurt)); // (a plated block is mended with its plates alone)
         // (Each item is taken as soon as any of it is owed: what 70% of the bill comes to, rounded up.)
         bool fair = whole0.All(kv => paid.GetValueOrDefault(kv.Key) == (int)Math.Ceiling(kv.Value * 0.7 - 1e-6));
         Check(s.Get(hurt).Hp >= max - 0.01f && Tool.Repaired > repaired && fair,

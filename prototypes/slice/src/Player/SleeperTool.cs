@@ -737,7 +737,7 @@ public sealed class SleeperTool
     }
 
     /// <summary>What a whole block costs to mend from nothing: its bill (a plated block, its plates).</summary>
-    Bill BillOf(Slice.Vessels.Vessel v, GalHack.Structures.Block b)
+    public Bill BillOf(Slice.Vessels.Vessel v, GalHack.Structures.Block b)
     {
         GalHack.Structures.BlockType t = v.Structure.TypeOf(b);
         return t.IsPlated ? Bill.Of((t.Plate, v.Structure.Catalogue.PlatesOf(b))) : GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, v.Structure, b);
