@@ -22,7 +22,7 @@ namespace Slice.Tests;
 /// to the sleeper's middle (and, for a body living in a cave's or a place's space, from its middle to that part), and (c) the
 /// shot sweep from the sleeper's eye meets it. None may fail; nothing of a cave's or a tunnel's sim is ever in a place's dug
 /// rooms; and nothing shown within 14 m of the eye is drawn over a metre from where it is. --shots=dir: up to three pictures of
-/// attackers below ground.
+/// attackers below ground; --occ=kind: who holds the underground place.
 /// </summary>
 public partial class InsideTest
 {
@@ -47,7 +47,8 @@ public partial class InsideTest
         for (int w = 0; w < worlds; w++)
         {
             var stood = new Stood();
-            foreach (int x in Stand(Arg("family") ?? deep[_rng.Next(deep.Count)], Beasts[_rng.Next(Beasts.Length)], lands[_rng.Next(lands.Length)], stood)) yield return x;
+            Occupant occ = Enum.TryParse(Arg("occ"), true, out Occupant o) ? o : Beasts[_rng.Next(Beasts.Length)];
+            foreach (int x in Stand(Arg("family") ?? deep[_rng.Next(deep.Count)], occ, lands[_rng.Next(lands.Length)], stood)) yield return x;
             if (stood.Place != null) foreach (int x in UnseenWalk(stood, log)) yield return x;
             // And the nearest other place of the world, whatever it is and whoever holds it, as rolled.
             Vector3 feet = stood.Game.Survivor.WorldFeet;
@@ -158,24 +159,27 @@ public partial class InsideTest
             bool ok = false;
             foreach (int x in walk.To(place, goal, v => ok = v)) { game.Suit.Vitals.Health = max; yield return x; }
             if (!ok) game.Survivor.PlaceOutside(place.ToWorld(new Vector3(goal.X + 0.5f, goal.Y + 0.1f, goal.Z + 0.5f)).ToNumerics());
-            int before = log.Blows;
+            int before = log.Blows, nextShot = 0;
             for (int i = 0; i < 600; i++)
             {
                 game.Suit.Vitals.Health = max;
                 if (i % 30 == 0) { Intruders(); Posed(); }
                 yield return 0;
-            }
-            GD.Print($"  {(ok ? "at" : "put in")} the {r.Purpose} {r.Kind} {r.Level} in, storey {r.Storey}: {log.Blows - before} blows; {patch.Sites.Count} sites standing, {game.Caves.Found} caves");
-            // A picture of what came at you below ground, facing it, the torch on.
-            if (shots != null && subject is { Removed: false, Dead: false } c && log.Shots < 3)
-            {
+                // A picture of what is coming at you below ground (the last to strike, or the nearest winding up), facing it, the torch on.
+                if (shots == null || log.Shots >= 3 || i < nextShot) continue;
+                Vector3 at = game.Survivor.WorldFeet;
+                if (subject == null && at.Y < game.Zone.GroundAt(at.X, at.Z).Y - 2.5f)
+                    subject = fauna?.Sim?.Creatures.Where(x => x.Attacking && x.Shown && !x.Dead && !x.Removed).OrderBy(x => patch.WorldOf(x).DistanceTo(at)).FirstOrDefault();
+                if (subject is not { Removed: false, Dead: false } c) continue;
                 if (!torch) { torch = true; foreach (int x in drive.Tap(Key.L)) yield return x; }
-                for (int i = 0; i < 30; i++) { game.Suit.Vitals.Health = max; drive.Face(patch.WorldOf(c) + Vector3.Up * 0.4f); yield return 0; }
+                for (int k = 0; k < 20; k++) { game.Suit.Vitals.Health = max; drive.Face(patch.WorldOf(c) + Vector3.Up * 0.4f); yield return 0; }
                 string file = System.IO.Path.Combine(shots, $"unseen-{s.Site.Family.Id}-{++log.Shots}.png");
                 GetViewport().GetTexture().GetImage()?.SavePng(file);
                 GD.Print($"  (shot: {file}, a {c.Species.CommonName}, storey {r.Storey})");
                 subject = null;
+                nextShot = i + 150; // the next a while on
             }
+            GD.Print($"  {(ok ? "at" : "put in")} the {r.Purpose} {r.Kind} {r.Level} in, storey {r.Storey}: {log.Blows - before} blows; {patch.Sites.Count} sites standing, {game.Caves.Found} caves");
         }
         patch.Attacked -= Blow;
     }
