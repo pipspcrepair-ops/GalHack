@@ -50,6 +50,10 @@ public static class Shutdown
         await anyNode.ToSignal(tree.CreateTimer(AudioDrainSeconds, true, false, true), SceneTreeTimer.SignalName.Timeout);
         Backstop.Stage("audio drained");
         await anyNode.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        // Nothing runs on with the shared materials once they are gone (the wildlife's fades touched freed ones in the frames waited
+        // out below): the tree is held while they go and the runtime collects, as it was after.
+        bool paused = tree.Paused;
+        tree.Paused = true;
 
         MeshBuilder.ReleaseCache();
         CreatureMaterials.Release();
@@ -65,6 +69,7 @@ public static class Shutdown
             await anyNode.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         Backstop.Stage(finalizing.IsCompleted ? "finalized" : "finalizer thread still busy");
         if (finalizing.IsCompleted) GC.Collect();
+        tree.Paused = paused;
     }
 
     /// <summary>Quiets everything, then quits with the given exit code. The process ends itself if the engine does not get out.</summary>
@@ -73,6 +78,7 @@ public static class Shutdown
         SceneTree tree = anyNode.GetTree();
         Backstop.Arm(exitCode);
         await Quiet(anyNode);
+        tree.Paused = true; // (the frame the engine quits in runs nothing more on what was released)
         Backstop.Stage("quit asked of the engine");
         tree.Quit(exitCode);
     }

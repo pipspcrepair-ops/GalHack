@@ -86,4 +86,6 @@ public sealed class PlaceRoom
     public readonly HashSet<Int3> Cells = new();
     /// <summary>Each blocking piece's cells: those it stands in, and those whose middle a person can't reach for it.</summary>
     public readonly Dictionary<int, HashSet<Int3>> Blocking = new();
+    /// <summary>Its wires' mesh, every cable of its plan, made on the place's worker (null: no cables).</summary>
+    public GalHack.Deco.DecoMeshData Wires;
 }

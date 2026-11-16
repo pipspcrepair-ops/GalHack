@@ -122,7 +122,7 @@ public partial class Underworld : Node3D
         UnderBuilt b = _built;
         HashSet<PInt3> air = _air;
         ulong seed = Zone.Planet.Spec.Seed ^ 0x5E3E;
-        spot.Filling = Task.Run(() =>
+        spot.Filling = Task.Run(() => GalHack.Testing.AllocMeter.Measure("underworld", () =>
         {
             // The sim and its ground are made here too: its terrain reads the planet at hundreds of points.
             var terrain = new WTerrain(Height, 40f);
@@ -131,7 +131,7 @@ public partial class Underworld : Node3D
             lock (Deep.Lock) made = IncidentalFauna.Fill(spot.Sim, b, air, spot.Space, anchor, key, Deep, seed, Unseen);
             spot.Made = made;
             return made;
-        });
+        }));
     }
 
     void Raise(Spot spot, Vector3 at)

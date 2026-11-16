@@ -190,6 +190,8 @@ public partial class PopRoute : Node
         else if (only?.Contains("city") == true) GD.Print("ROUTE city: none on this world");
         if (only?.Contains("gpu") == true)
             foreach (int x in GpuCost(start, way)) yield return x;
+        if (only?.Contains("skyday") == true)
+            foreach (int x in SkyByDay(start, way)) yield return x;
         if (only == null || only.Contains("flicker"))
             foreach (int x in Flicker(start)) yield return x;
         if (only == null || only.Contains("pinholes"))

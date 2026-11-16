@@ -39,7 +39,7 @@ public partial class DecoNode : Node3D
         Mesh mesh = cache.Mesh(look);
         float longest = mesh.GetAabb().GetLongestAxisSize();
         node.MeshInstance = new MeshInstance3D { Mesh = mesh, Name = "Mesh", VisibilityRangeEnd = MathF.Max(40f, longest * 600f) };
-        node.ShadowReach = DecoShadows.Reach(longest);
+        node._longest = longest;
         node.AddChild(node.MeshInstance);
         if (collide)
         {
@@ -79,19 +79,18 @@ public partial class DecoNode : Node3D
     internal float AnimOwed;
 
     // Its shadow cast only as far as it can be made out (DecoShadows).
-    internal int ShadowIndex = -1;
-    internal float ShadowReach;
+    float _longest;
 
     public override void _EnterTree()
     {
         if (_anim != null) DecoAnimator.Join(this);
-        DecoShadows.Join(this);
+        DecoShadows.Track(MeshInstance, _longest);
     }
 
     public override void _ExitTree()
     {
         if (_anim != null) DecoAnimator.Leave(this);
-        DecoShadows.Leave(this);
+        DecoShadows.Untrack(MeshInstance);
     }
 
     void AddSparks(Vector3 at)

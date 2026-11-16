@@ -590,11 +590,11 @@ public partial class TerrainStreamer : Node3D
             var job = new VoxelJob { Key = next, Version = c.Version, Hood = World.Terrain.Store.CaptureNeighborhood(next), NeedFaces = near };
             GroundPalette palette = World.Palette;
             double w = World.Terrain.Width, h = World.Terrain.Height;
-            Task.Run(() =>
+            Task.Run(() => GalHack.Testing.AllocMeter.Measure("voxels", () =>
             {
                 VoxelMeshing.Build(job, source, palette, w, h);
                 _voxelDone.Enqueue((job, sx, sz));
-            });
+            }));
         }
 
         // Swap finished meshes in, within the frame budget (always at least one, so it drains).
@@ -808,11 +808,11 @@ public partial class TerrainStreamer : Node3D
         PlanetTerrainSource source = World.Source;
         GroundPalette palette = World.Palette;
         HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
-        Task.Run(() =>
+        Task.Run(() => GalHack.Testing.AllocMeter.Measure("far chunks", () =>
         {
             FarBuilder.Build(job, source, palette, dug, felled);
             _farDone.Enqueue(job);
-        });
+        }));
     }
 
     void StreamFar()

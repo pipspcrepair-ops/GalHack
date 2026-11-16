@@ -36,6 +36,15 @@ public static class Fade
         foreach (Node child in node.GetChildren()) Set(child, from, to);
     }
 
+    /// <summary>One geometry only (no walk through its children): for a caller that keeps its own list of what fades.</summary>
+    public static void SetGeometry(GeometryInstance3D g, float from, float to) => SetOne(g, from, to);
+
+    /// <summary>One geometry's fade over: its own materials back.</summary>
+    public static void ClearGeometry(GeometryInstance3D g) => ClearOne(g);
+
+    /// <summary>One geometry going away: what it had forgotten.</summary>
+    public static void ForgetGeometry(GeometryInstance3D g) => _own.Remove(g.GetInstanceId());
+
     /// <summary>The fade is over: everything under the node has its own materials back, drawn whole.</summary>
     public static void Clear(Node node)
     {
