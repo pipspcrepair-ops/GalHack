@@ -971,6 +971,12 @@ public sealed partial class Town
         if (p.ChatAt is not { } stand || p.Sitting || p.Path != null && p.Step < p.Path.Count) return;
         // (Not while pressed or giving way: nobody leans into anyone to keep their distance.)
         if (p.ShovedFor > 0f || p.PressFor > 0f || p.Yield > 0f) return;
+        // Only along the way worked out for it, from the spot to the stand: one who never got to the spot (no way there) stays put.
+        Vector3 a = At(p.Spot), ab = stand - a;
+        ab.Y = 0f;
+        float t = ab.LengthSquared() > 1e-6f ? Math.Clamp((p.Pos - a).Dot(ab) / ab.LengthSquared(), 0f, 1f) : 0f;
+        Vector3 off = p.Pos - (a + ab * t);
+        if (off.X * off.X + off.Z * off.Z > 0.06f) { p.ChatAt = null; return; }
         p.Pos = p.Pos.MoveToward(stand with { Y = p.Pos.Y }, 0.7f * dt);
         if (new Vector2(p.Pos.X - stand.X, p.Pos.Z - stand.Z).LengthSquared() < 1e-4f) p.ChatAt = null;
     }
