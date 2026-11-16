@@ -7,11 +7,12 @@ using NV3 = System.Numerics.Vector3;
 namespace PoiGenerator.Gen;
 
 /// <summary>
-/// Vharn Dominion: alien, insect-like. Whatever the plan, the shared traits are bulbous segments of dark carapace joined
-/// by narrow waists (a ridge or a shell on each), long curved blades sweeping back unevenly port against starboard, a
-/// needle prow or mandible forks, legs folded under now and then, the drives in the tail. Three body plans: the wasp (a
-/// head, a thorax and a tapering abdomen); the beetle (a broad shield and a great abdomen under two splayed shell halves);
-/// the centipede (a long undulating chain of small segments, a pair of blades on each).
+/// Vharn Dominion: alien ships, insect-like but never animals: no legs, no feelers, no limbs. Whatever the plan, the
+/// shared traits are bulbous segments of dark carapace joined by narrow waists (a ridge or a shell on each), long blades
+/// and fins swept hard back, unevenly port against starboard, a needle prow or heavy mandible forks, a cluster of
+/// oversized drives in the tail. Three body plans: the wasp (a head, a thorax and a tapering abdomen); the beetle (a broad
+/// shield and a great abdomen under two splayed shell halves); the centipede (a long undulating chain of small segments,
+/// a pair of swept blades on each).
 /// </summary>
 public sealed partial class ShipForm
 {
@@ -41,7 +42,7 @@ public sealed partial class ShipForm
             Bar("machine", segs[i].C + new NV3(0, 0, segs[i].R.Z - 1), segs[i + 1].C - new NV3(0, 0, segs[i + 1].R.Z - 1), R.Float(1.5f, 2.5f) * K);
     }
 
-    /// <summary>The prow on the head: a needle (needle m long), or mandible forks of uneven length curving in.</summary>
+    /// <summary>The prow on the head: a needle (needle m long), or heavy mandible forks, short prongs one a little longer than the other.</summary>
     void Prow((NV3 C, NV3 R) head, float needle)
     {
         NV3 nose = head.C - new NV3(0, 0, head.R.Z);
@@ -52,53 +53,52 @@ public sealed partial class ShipForm
         }
         foreach (int s in new[] { -1, 1 })
         {
-            float k = R.Float(0.8f, 1.25f);
-            NV3 a = head.C + new NV3(s * head.R.X * 0.6f, -head.R.Y * 0.3f, -head.R.Z * 0.6f);
-            NV3 b = a + new NV3(s * head.R.X * 0.5f, 0, -L * 0.07f * k), c = b + new NV3(-s * head.R.X * 0.55f, 0, -L * 0.06f * k);
-            Bar("trim", a, b, 1.8f * K, 1.4f * K);
-            Bar("trim", b, c, 1.4f * K, 0.4f);
+            float k = R.Float(0.85f, 1.2f);
+            NV3 a = head.C + new NV3(s * head.R.X * 0.5f, -head.R.Y * 0.25f, -head.R.Z * 0.5f);
+            NV3 b = a + new NV3(s * head.R.X * 0.25f, 0, -L * 0.05f * k), c = b + new NV3(-s * head.R.X * 0.3f, 0, -L * 0.035f * k);
+            Bar("trim", a, b, head.R.X * 0.32f, head.R.X * 0.24f);
+            Bar("trim", b, c, head.R.X * 0.24f, 0.4f);
         }
     }
 
-    /// <summary>Pairs of legs folded under a segment.</summary>
-    void Legs((NV3 C, NV3 R) seg, int pairs)
+    /// <summary>Ventral fins under a segment, swept hard back, one each side a little off straight down, never alike.</summary>
+    void Fins((NV3 C, NV3 R) seg)
     {
-        var (c, rad) = seg;
-        for (int k = 0; k < pairs; k++)
-            foreach (int s in new[] { -1, 1 })
-            {
-                NV3 hip = c + new NV3(s * rad.X * 0.5f, -rad.Y * 0.7f, (k - (pairs - 1) / 2f) * rad.Z * 0.5f);
-                NV3 knee = hip + new NV3(s * rad.X * 0.7f, -rad.Y * 0.5f, R.Float(-2f, 2f) * K), foot = knee + new NV3(s * M(1.5f), -rad.Y * 0.7f, M(2f, 6f));
-                Bar("dark", hip, knee, 1.3f * K, 1.0f * K);
-                Bar("dark", knee, foot, 1.0f * K, 0.5f);
-            }
+        foreach (int s in new[] { -1, 1 })
+            Blade(seg.C, seg.R, -MathF.PI / 2 + s * R.Float(0.35f, 0.7f), L * R.Float(0.1f, 0.18f), M(7f, 11f));
     }
 
-    /// <summary>The drives in the tail segment: one, two or three bells.</summary>
+    /// <summary>The tail's drives: a cluster of two to four oversized bells in long housings, spread wider than the tail tip they grow from.</summary>
     void TailDrives((NV3 C, NV3 R) tail)
     {
-        NV3 end = tail.C + new NV3(0, 0, tail.R.Z - M(2f));
-        int nb = R.Between(1, 3);
-        float br = tail.R.X * (nb == 1 ? 0.55f : 0.36f);
+        NV3 end = tail.C + new NV3(0, 0, tail.R.Z * 0.6f);
+        int nb = R.Between(2, 4);
+        float br = tail.R.X * R.Float(0.45f, 0.6f), a0 = R.Float(0f, MathF.Tau);
         for (int k = 0; k < nb; k++)
         {
-            NV3 off = nb == 1 ? NV3.Zero : Round(MathF.PI / 2 + k * MathF.Tau / nb) * br * 1.25f;
-            Bell(end + off, br, br * R.Float(1.3f, 1.8f));
+            NV3 off = Round(a0 + k * MathF.Tau / nb) * br * R.Float(1f, 1.3f);
+            float r = br * R.Float(0.8f, 1.1f);
+            Bell(end + off + new NV3(0, 0, tail.R.Z * 0.4f + M(2f)), r, r * R.Float(1.5f, 2f), reach: tail.R.Z * 0.8f + M(4f));
         }
     }
 
-    /// <summary>Blades sweeping back unevenly from the given segments: a different count port and starboard, a dorsal or ventral one now and then.</summary>
+    /// <summary>Blades swept hard back from the given segments: a different count port and starboard, a dorsal fin now and then.</summary>
     void Blades(List<(NV3 C, NV3 R)> from, float fewest, float most, float chord0, float chord1)
     {
         int port = R.Between(1, 3), star = port == 1 ? R.Between(2, 3) : port == 3 ? R.Between(1, 2) : R.Chance(0.5f) ? 1 : 3;
         var roots = new List<float>();
         for (int i = 0; i < port; i++) roots.Add(MathF.PI + R.Float(-0.3f, 0.3f));
         for (int i = 0; i < star; i++) roots.Add(R.Float(-0.3f, 0.3f));
-        if (R.Chance(0.4f)) roots.Add(MathF.PI / 2 * (R.Chance(0.6f) ? 1 : -1) + R.Float(-0.2f, 0.2f));
         foreach (float a in roots)
         {
             var (c, rad) = R.Pick(from);
             Blade(c, rad, a, L * R.Float(fewest, most), M(chord0, chord1));
+        }
+        // A dorsal fin: short, broad and swept.
+        if (R.Chance(0.5f))
+        {
+            var (c, rad) = R.Pick(from);
+            Blade(c, rad, MathF.PI / 2 + R.Float(-0.2f, 0.2f), L * R.Float(0.08f, 0.14f), M(chord0, chord1) * 1.4f);
         }
     }
 
@@ -109,7 +109,7 @@ public sealed partial class ShipForm
         float needle = R.Chance(0.55f) ? L * R.Float(0.12f, 0.2f) : 0f, waist = M(3f, 6f), fy = R.Float(0.7f, 1f);
         var share = new List<float> { R.Float(0.7f, 1f), R.Float(1.2f, 1.6f) };
         for (int i = 2; i < m; i++) share.Add(i == 2 ? R.Float(2f, 2.6f) : share[^1] * R.Float(0.6f, 0.85f));
-        float scale = (L * 0.94f - needle - waist * (m - 1)) / share.Sum(), sag = L * R.Float(-0.06f, 0.12f), lift = L * R.Float(-0.02f, 0.04f), v = needle;
+        float scale = (L * 0.88f - needle - waist * (m - 1)) / share.Sum(), sag = L * R.Float(-0.06f, 0.12f), lift = L * R.Float(-0.02f, 0.04f), v = needle;
         var segs = new List<(NV3 C, NV3 R)>();
         for (int i = 0; i < m; i++)
         {
@@ -121,22 +121,22 @@ public sealed partial class ShipForm
         Waists(segs);
         Prow(segs[0], needle);
         Blades(segs.GetRange(1, Math.Min(2, m - 1)), 0.24f, 0.4f, 6f, 11f);
-        if (R.Chance(0.4f)) Legs(segs[1], R.Between(2, 3));
+        if (R.Chance(0.5f)) Fins(segs[1]);
         TailDrives(segs[^1]);
         Guns(R.Between(2, 4), segs[1].C.Z - segs[1].R.Z, segs[^1].C.Z);
     }
 
-    /// <summary>The beetle: a small head, a broad shield of a thorax and a great wide abdomen under two shell halves splayed apart unevenly, mandibles, short thick blades, legs folded under. A broad dark shell at range.</summary>
+    /// <summary>The beetle: a small head, a broad shield of a thorax and a great wide abdomen under two shell halves splayed apart unevenly, mandibles, short broad blades and fins. A broad dark shell at range.</summary>
     void Beetle()
     {
-        float fy = R.Float(0.55f, 0.75f), waist = M(2f, 4f), v = L * 0.1f, sag = L * R.Float(-0.02f, 0.05f);
-        float hl = L * R.Float(0.11f, 0.15f), tl = L * R.Float(0.17f, 0.23f), al = L * 0.9f - v - hl - tl - 2 * waist;
+        float fy = R.Float(0.55f, 0.75f), waist = M(2f, 4f), v = L * 0.08f, sag = L * R.Float(-0.02f, 0.05f);
+        float hl = L * R.Float(0.11f, 0.15f), tl = L * R.Float(0.17f, 0.23f), al = L * 0.84f - v - hl - tl - 2 * waist;
         var segs = new List<(NV3 C, NV3 R)>
         {
             Segment(new NV3(0, sag * 0.5f, v + hl / 2), new NV3(hl * 0.55f, hl * 0.55f * fy, hl / 2), false),
             Segment(new NV3(0, 0, v + hl + waist + tl / 2), new NV3(tl * R.Float(0.7f, 0.9f), tl * 0.45f, tl / 2), true),
         };
-        var ab = Segment(new NV3(0, -sag, v + hl + tl + 2 * waist + al / 2), new NV3(al * R.Float(0.36f, 0.46f), al * R.Float(0.36f, 0.46f) * fy, al / 2), true);
+        var ab = Segment(new NV3(0, -sag, v + hl + tl + 2 * waist + al / 2), new NV3(al * R.Float(0.34f, 0.42f), al * R.Float(0.34f, 0.42f) * fy, al / 2), true);
         segs.Add(ab);
         Waists(segs);
         // The shell halves over the abdomen, each splayed its own way.
@@ -146,21 +146,17 @@ public sealed partial class ShipForm
             Sphere("trim", ab.C + new NV3(s * ab.R.X * (0.4f + splay), ab.R.Y * lift, -ab.R.Z * R.Float(0f, 0.12f)), new NV3(ab.R.X * 0.62f, ab.R.Y * 0.72f, ab.R.Z * R.Float(0.85f, 1f)));
         }
         Prow(segs[0], 0f);
-        Blades(segs.GetRange(1, 1), 0.12f, 0.22f, 7f, 12f);
-        if (R.Chance(0.6f))
-        {
-            Legs(segs[1], R.Between(1, 2));
-            Legs(ab, R.Between(1, 2));
-        }
+        Blades(segs.GetRange(1, 1), 0.14f, 0.24f, 8f, 13f);
+        Fins(segs[1]);
         TailDrives(ab);
         Guns(R.Between(2, 4), segs[1].C.Z - segs[1].R.Z, ab.C.Z);
     }
 
-    /// <summary>The centipede: a long chain of small segments winding off the line, tapering to the tail, a pair of short blades of uneven length on each. A long segmented thing at range.</summary>
+    /// <summary>The centipede: a long chain of small segments winding off the line, tapering to the tail, a pair of short swept blades of uneven length on each. A long segmented thing at range.</summary>
     void Centipede()
     {
         int m = R.Between(7, 10);
-        float needle = R.Chance(0.5f) ? L * R.Float(0.08f, 0.14f) : 0f, waist = M(1.5f, 3f), fy = R.Float(0.65f, 0.9f), seg = (L * 0.92f - needle - waist * (m - 1)) / m;
+        float needle = R.Chance(0.5f) ? L * R.Float(0.08f, 0.14f) : 0f, waist = M(1.5f, 3f), fy = R.Float(0.65f, 0.9f), seg = (L * 0.86f - needle - waist * (m - 1)) / m;
         float wave = L * R.Float(0.01f, 0.04f), phase = R.Float(0f, MathF.Tau), v = needle;
         var segs = new List<(NV3 C, NV3 R)>();
         for (int i = 0; i < m; i++)
@@ -183,19 +179,19 @@ public sealed partial class ShipForm
         Guns(R.Between(2, 4), segs[1].C.Z, segs[^1].C.Z);
     }
 
-    /// <summary>A blade from a segment's flank at angle a round the axis: pieces stepping out and sweeping further back each, its chord narrowing to the tip.</summary>
+    /// <summary>A blade from a segment's flank at angle a round the axis: pieces swept hard back from the root and further back each, its chord narrowing to the tip.</summary>
     void Blade(NV3 c, NV3 rad, float a, float len, float chord)
     {
         NV3 o = Round(a), root = c + new NV3(o.X * rad.X * 0.8f, o.Y * rad.Y * 0.8f, R.Float(-0.2f, 0.2f) * rad.Z);
         int pieces = R.Between(3, 5);
-        float piece = len / pieces, sweep = R.Float(0.2f, 0.45f), droop = R.Float(-0.1f, 0.1f);
-        NV3 dir = NV3.Normalize(o + new NV3(0, 0, sweep * 0.3f)), n = NV3.Normalize(NV3.Cross(o, NV3.UnitZ));
+        float piece = len / pieces, sweep = R.Float(0.15f, 0.3f), droop = R.Float(-0.06f, 0.06f);
+        NV3 dir = NV3.Normalize(o + new NV3(0, 0, R.Float(0.6f, 1f))), n = NV3.Normalize(NV3.Cross(o, NV3.UnitZ));
         for (int i = 0; i < pieces; i++)
         {
             NV3 end = root + dir * piece;
             Plate("trim", (root + end) / 2, dir, NV3.Cross(n, dir), new NV3(piece / 2 + 0.8f, chord / 2, 0.8f), 0.8f);
             root = end;
-            chord *= 0.78f;
+            chord *= 0.8f;
             dir = NV3.Normalize(dir + new NV3(0, 0, sweep) + n * droop);
         }
     }

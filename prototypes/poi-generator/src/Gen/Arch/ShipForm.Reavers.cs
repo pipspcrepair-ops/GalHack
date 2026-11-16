@@ -77,14 +77,14 @@ public sealed partial class ShipForm
     /// <summary>Drives bolted on unevenly behind a stern face at v (half w by h about (u, y)): one oversized, others smaller and off to a side on outriggers.</summary>
     void BoltedDrives(float v, float u, float y, float w, float h, int outriggers)
     {
-        float mr = MathF.Min(w, h) * R.Float(0.6f, 0.85f);
-        Bell(new NV3(u + R.Float(-0.2f, 0.2f) * w, y + R.Float(-0.2f, 0.2f) * h, v + 1), mr, mr * R.Float(1.1f, 1.5f));
+        float mr = MathF.Min(w, h) * R.Float(0.75f, 1f);
+        Bell(new NV3(u + R.Float(-0.2f, 0.2f) * w, y + R.Float(-0.2f, 0.2f) * h, v + 1), mr, mr * R.Float(1.4f, 1.9f), reach: M(8f, 14f));
         for (int i = outriggers; i > 0; i--)
         {
-            float r = mr * R.Float(0.35f, 0.6f), z = v - M(2f, 8f);
+            float r = mr * R.Float(0.45f, 0.7f), z = v - M(2f, 8f), reach = M(12f, 20f);
             NV3 o = Round(R.Float(0f, MathF.Tau)), c = new NV3(u, y, 0f) + o * (MathF.Max(w, h) + r + R.Float(0f, 3f) * K + M(0f, 8f) * (outriggers > 2 ? 1 : 0));
-            Bar("machine", new NV3(u, y, z - M(3f)) + o * MathF.Min(w, h) * 0.5f, c + new NV3(0, 0, z - M(3f)), 1.6f * K);
-            Bell(c + new NV3(0, 0, z), r, r * R.Float(1.2f, 1.7f));
+            Bar("machine", new NV3(u, y, z - reach / 2) + o * MathF.Min(w, h) * 0.5f, c + new NV3(0, 0, z - reach / 2), 1.8f * K);
+            Bell(c + new NV3(0, 0, z), r, r * R.Float(1.5f, 2f), reach: reach);
         }
     }
 

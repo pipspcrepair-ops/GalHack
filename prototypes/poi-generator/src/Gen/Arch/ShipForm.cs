@@ -257,7 +257,7 @@ public sealed partial class ShipForm
     /// <summary>Pipes and struts along an axis (0 u, 1 y, 2 v): a run of cylinder blocks from a cell.</summary>
     public readonly List<(Int3 From, int Axis, int Length, string Paint)> Pipes = new();
 
-    /// <summary>Which of its faction's body plans made it (spine, raft, pusher; hammerhead, monolith, twin; seedpod, tandem, wheel; welded, piggyback, ramsled; tube, vanes, wheels; wasp, beetle, centipede).</summary>
+    /// <summary>Which of its faction's body plans made it (spine, raft, pusher; hammerhead, twin, cross; seedpod, tandem, wheel; welded, piggyback, ramsled; tube, vanes, wheels; wasp, beetle, centipede).</summary>
     public string Plan { get; private set; } = "";
 
     /// <summary>Once settled: how far it reaches across (|u|), how high and how long it is (cells).</summary>
@@ -458,16 +458,43 @@ public sealed partial class ShipForm
     }
 
     /// <summary>
-    /// A drive: its housing ahead of the throat (never shorter than the largest thruster), the bell flaring aft of it,
-    /// hollow and open at its mouth, and the throat's face where the thrusters are packed, exhausts aft.
+    /// A drive, oversized as Foss drew them: its housing ahead of the throat (never shorter than the largest thruster, as
+    /// long as <paramref name="reach"/> when asked), banded with collars, the bell flaring wide aft of it, hollow and open at
+    /// its mouth, and the throat's face where the thrusters are packed, exhausts aft. The housing's length.
     /// </summary>
-    void Bell(NV3 throat, float r, float len, bool housing = true)
+    float Bell(NV3 throat, float r, float len, bool housing = true, float reach = 0f)
     {
-        if (housing) Can("machine", 2, throat - new NV3(0, 0, Housing(r) / 2 - 1f), r + 1f, Housing(r));
+        float h = housing ? MathF.Max(Housing(r), reach) : 0f;
+        if (housing)
+        {
+            Can("machine", 2, throat - new NV3(0, 0, h / 2 - 1f), r + 1f, h);
+            for (int k = 1, n = Math.Min(3, (int)(h / M(6f))); k <= n; k++)
+                Add(new Hoop { C = new NV3(throat.X, throat.Y, throat.Z + 1f - h * k / (n + 1f)), R = r + 1f, T = MathF.Max(Thin, 0.9f * K) }, "trim");
+        }
         // (A small bell is a solid nozzle: hollowed, its wall would break up on the grid.)
         float wall = r < 3.5f ? 0f : MathF.Max(1.6f, r * 0.2f);
-        Add(new Loft { S0 = throat.Z, S1 = throat.Z + len, A0 = throat.X, B0 = throat.Y, A1 = throat.X, B1 = throat.Y, HA0 = r, HB0 = r, HA1 = r * 1.4f, HB1 = r * 1.4f, Round = true, Wall = wall, Plug = 1.5f }, "dark");
+        Add(new Loft { S0 = throat.Z, S1 = throat.Z + len, A0 = throat.X, B0 = throat.Y, A1 = throat.X, B1 = throat.Y, HA0 = r, HB0 = r, HA1 = r * 1.5f, HB1 = r * 1.5f, Round = true, Wall = wall, Plug = 1.5f }, "dark");
         Drives.Add((throat + new NV3(0, 0, 1f), r - wall));
+        return h;
+    }
+
+    /// <summary>
+    /// Drive pods on a stern block's faces (about (cu, cy), half w by h, from ve0 to its stern ve1): two to four oversized
+    /// drives half sunk into the block's flanks, back or belly, running from part way along it to past its stern, so they
+    /// read as engines from any side.
+    /// </summary>
+    void DrivePods(float cu, float cy, float w, float h, float ve0, float ve1, int fewest, int most)
+    {
+        int[] faces = { 0, 1, 2, 3 };
+        R.Shuffle(faces);
+        float r = MathF.Min(w, h) * R.Float(0.32f, 0.45f);
+        foreach (int face in faces.Take(R.Between(fewest, most)))
+        {
+            NV3 o = Out(face);
+            float out_ = face < 2 ? w : h, along = R.Float(-0.4f, 0.4f) * (face < 2 ? h : w), pr = r * R.Float(0.8f, 1.15f), throat = ve1 + M(2f, 6f);
+            NV3 c = new NV3(cu, cy, 0f) + o * (out_ + pr * 0.4f) + (face < 2 ? NV3.UnitY : NV3.UnitX) * along;
+            Bell(new NV3(c.X, c.Y, throat), pr, pr * R.Float(1.5f, 2f), reach: throat - (ve0 + (ve1 - ve0) * R.Float(0.15f, 0.45f)));
+        }
     }
 
     /// <summary>An open square truss along the thrust axis from v0 to v1: four chords at ±half about (cu, cy), a square frame every bay, a brace across each face of each bay, crossing the other way bay by bay.</summary>

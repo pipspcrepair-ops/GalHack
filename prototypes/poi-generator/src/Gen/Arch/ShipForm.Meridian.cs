@@ -6,45 +6,62 @@ using NV3 = System.Numerics.Vector3;
 namespace PoiGenerator.Gen;
 
 /// <summary>
-/// Meridian Combine: clean, massive slabs. Whatever the plan, the shared traits are square or hex sections with big flat
-/// faces, an armoured hammer-faced prow layered with plates and a bridge blister low in it or on its flank, armour
-/// collars, engine blocks heavier than the prow with four to eight big bells, hangars with open mouths, few greebles.
-/// Three body plans: the hammerhead (a heavy prow, a long spine and a heavier engine block); the monolith (one slab
-/// swelling from the prow into the engine block, terraces stacked on its back); twin hulls joined by a hammer cross-block.
+/// Meridian Combine: clean, massive slabs, a hammer or a dumbbell at range whatever the plan. The shared traits are a
+/// heavy armoured prow block (a hammerhead layered with plates, its bridge in a blister low in it or on its flank), a long
+/// thick spine you can see (square or hex, ribbed with collars or bare), an engine block bigger than the prow with four
+/// to eight big bells and drive pods on its flanks, sponsons carrying hangars with open mouths, few greebles. Three body
+/// plans: the hammerhead (one spine); twin spines joined by a bridge between a cross-block prow and one great engine
+/// block; the cross (one spine, sponsons standing out above, below and to the sides).
 /// </summary>
 public sealed partial class ShipForm
 {
     void Meridian()
     {
-        switch (R.PickWeighted(Role switch { "carrier" => new[] { 1f, 0.7f, 1.5f }, "freighter" or "miner" => new[] { 1f, 1.4f, 0.8f }, _ => new[] { 1.2f, 1f, 1f } }))
+        switch (R.PickWeighted(Role switch { "carrier" => new[] { 1f, 1.4f, 1.2f }, "warship" => new[] { 1.2f, 1f, 1.3f }, _ => new[] { 1.2f, 1f, 1f } }))
         {
-            case 1: Plan = "monolith"; Monolith(); break;
-            case 2: Plan = "twin"; Twin(); break;
+            case 1: Plan = "twin"; Twin(); break;
+            case 2: Plan = "cross"; Cross(); break;
             default: Plan = "hammerhead"; Hammerhead(); break;
         }
     }
 
     /// <summary>
-    /// An engine block about (cu, cy), half w across and h high, el long, its bells rows by cols filling its rear face and
-    /// flaring past the stern, a little machinery on it, radiator fins off it now and then. Its front.
+    /// The engine block about (cu, cy), half w across and h high, el long, its bells (rows by cols) filling its rear face
+    /// and flaring past the stern, drive pods on two to four of its faces, a little machinery on it, radiator fins off it
+    /// now and then. Its front.
     /// </summary>
-    float Engines(float cu, float cy, float w, float h, int rows, int cols, float el, bool fins)
+    float Engines(float cu, float cy, float w, float h, float el)
     {
-        float br = MathF.Min(w * 2f / cols, h * 2f / rows) * 0.44f, bl = br * R.Float(1.1f, 1.5f), ve1 = L - bl - R.Float(0f, 3f) * K, ve0 = ve1 - el;
-        Taper("hull", ve0, ve1, (cu, cy), (w * 0.8f, h * 0.84f), (cu, cy), (w, h), chamfer: 0.12f);
+        int rows = h > w * 0.8f ? 2 : 1, cols = Math.Clamp((int)MathF.Round(w * 2f / (h * 2f / rows)), 2, 4);
+        float br = MathF.Min(w * 2f / cols, h * 2f / rows) * 0.46f, bl = br * R.Float(1.5f, 2f), ve1 = L - bl - R.Float(0f, 3f) * K, ve0 = ve1 - el;
+        Taper("hull", ve0, ve1, (cu, cy), (w * 0.82f, h * 0.86f), (cu, cy), (w, h), chamfer: 0.12f);
         for (int i = 0; i < cols; i++)
             for (int j = 0; j < rows; j++)
                 Bell(new NV3(cu - w + 2f * w * (i + 0.5f) / cols, cy - h + 2f * h * (j + 0.5f) / rows, ve1), br, bl, housing: false);
+        DrivePods(cu, cy, w, h, ve0, ve1, 2, 4);
         Clutter(new NV3(cu - w, cy - h, ve0), new NV3(cu + w, cy + h, ve1), R.Chance(0.5f) ? 2 : 3, R.Between(0, 2));
         NV3 o = Out(R.Range(0, 4));
-        if (fins && Surface(new NV3(cu, cy, MathF.Round((ve0 + ve1) / 2)), o) is { } root)
-            Radiators(new NV3(MathF.Round(root.X), MathF.Round(root.Y), MathF.Round(root.Z)), o, R.Between(2, 4), MathF.Round(M(6f, 10f)), el * 0.7f);
+        if (R.Chance(0.3f) && Surface(new NV3(cu, cy, MathF.Round((ve0 + ve1) / 2)), o) is { } root)
+            Radiators(new NV3(MathF.Round(root.X), MathF.Round(root.Y), MathF.Round(root.Z)), o, R.Between(2, 4), MathF.Round(M(6f, 10f)), el * 0.6f);
         return ve0;
     }
 
-    /// <summary>Armour plates layered on a prow's brow and chin (about (pu, py), pw wide, pl long), jutting forward over its face and resting on the surface at their backs.</summary>
-    void BrowPlates(float pl, float pw, float pu, float py)
+    /// <summary>
+    /// The hammer: an armoured prow block pl long about (pu, py), half pw by ph, its front raked in; stood on end, stepped
+    /// with a brow over its face, or drawn to an armoured ram's edge; plates on its brow and chin, the bridge blister in it,
+    /// a mast now and then.
+    /// </summary>
+    void Hammer(float pl, float pw, float ph, float pu, float py)
     {
+        int kind = R.Range(0, 4);
+        if (kind == 1) (pw, ph) = (ph * 1.1f, pw);
+        Taper("hull", 0, pl, (pu, py), kind == 3 ? (pw * 0.95f, ph * 0.22f) : (pw * 0.7f, ph * 0.6f), (pu, py), (pw, ph), chamfer: 0.25f, hab: true);
+        if (kind == 2)
+        {
+            // The brow: wider and stubbier, standing over the block's face.
+            float bw = pw * R.Float(1.1f, 1.35f), bh = ph * R.Float(0.35f, 0.5f), up = R.Chance(0.7f) ? 1 : -1;
+            Box("hull", new NV3(pu, py + up * (ph + bh * 0.6f), pl * 0.4f - M(2f)), new NV3(bw, bh, pl * 0.4f + M(2f)), 0.3f);
+        }
         for (int k = R.Between(1, 3); k > 0; k--)
         {
             float up = R.Chance(0.6f) ? 1 : -1, t = M(1.5f, 2.5f), w = pw * R.Float(0.55f, 1f), du = R.Float(-0.25f, 0.25f) * pw;
@@ -52,174 +69,105 @@ public sealed partial class ShipForm
             float y = rest.Y + up * (t - 1f);
             Taper("trim", -R.Float(0f, 4f) * K, pl, (pu + du, y), (w * 0.75f, t * 0.6f), (pu + du, y), (w, t), chamfer: 0.4f);
         }
-    }
-
-    /// <summary>The combat bridge: a glazed blister low in a prow's head or on its flank, set on the surface it finds there.</summary>
-    void Blister(float v, float pu, float py)
-    {
+        // The combat bridge: a glazed blister low in the head, or on its flank.
         bool flank = R.Chance(0.35f);
-        NV3 o = flank ? (R.Chance(0.5f) ? NV3.UnitX : -NV3.UnitX) : -NV3.UnitY;
-        if (Surface(new NV3(pu, py, v), o) is not { } p) return;
-        NV3 h = flank ? new NV3(M(3.5f), M(3.5f), M(4.5f, 6.5f)) : new NV3(M(4.5f, 6.5f), M(3.5f), M(4.5f, 6.5f));
-        Box("trim", p + o * (MathF.Abs(o.X) > 0.5f ? h.X : h.Y) * 0.5f, h, 0.6f, hab: true);
-    }
-
-    /// <summary>Armour collars round a body from v0 to v1 about (cu, cy), half w by h, every so often (or none).</summary>
-    void Collars(float v0, float v1, float cu, float cy, float w, float h, float chamfer)
-    {
-        if (!R.Chance(0.65f)) return;
-        float every = M(8f, 16f), thick = R.Chance(0.5f) ? M(1.5f) : M(2.5f);
-        for (float v = v0 + R.Float(M(3f), every); v < v1 - M(3f); v += every) Box("trim", new NV3(cu, cy, v), new NV3(w + thick, h + thick, M(1f)), chamfer);
-    }
-
-    /// <summary>Sponsons between v0 and v1 off a body w across (about u 0) carrying hangars, their mouths open forward: one side or both, never alike.</summary>
-    void Sponsons(int count, float v0, float v1, float w, float s)
-    {
-        int side = R.Chance(0.5f) ? 1 : -1;
-        for (int k = 0; k < count; k++, side = -side)
+        NV3 bo = flank ? (R.Chance(0.5f) ? NV3.UnitX : -NV3.UnitX) : -NV3.UnitY;
+        if (Surface(new NV3(pu, py, pl * R.Float(0.4f, 0.7f)), bo) is { } p)
         {
-            float l = L * R.Float(0.14f, 0.26f), sw = M(4.5f, 8.5f), sh = M(3.5f, 6.5f), gap = M(3f, 8f);
-            float sv = R.Float(v0 + l / 2 + M(4f), v1 - l / 2 - M(4f)), y = R.Float(-0.7f, 0.7f) * s, su = side * (w + gap + sw);
-            Box("hull", new NV3(su, y, sv), new NV3(sw, sh, l / 2), 0.25f, hab: true);
-            Box("trim", new NV3(side * (w + gap / 2f), y, sv + l * 0.1f), new NV3(gap / 2f + M(1.5f), MathF.Min(sh, s) * 0.6f, l * 0.3f));
-            Mouth(su, y, sv - l / 2, sw, sh);
+            NV3 h = flank ? new NV3(M(3.5f), M(3.5f), M(4.5f, 6.5f)) : new NV3(M(4.5f, 6.5f), M(3.5f), M(4.5f, 6.5f));
+            Box("trim", p + bo * (MathF.Abs(bo.X) > 0.5f ? h.X : h.Y) * 0.5f, h, 0.6f, hab: true);
+        }
+        if (R.Chance(0.4f)) Mast(new NV3(MathF.Round(pu + R.Float(-0.5f, 0.5f) * pw), py, MathF.Round(pl * R.Float(0.6f, 0.9f))), NV3.UnitY, M(5f, 10f), R.Chance(0.6f) ? new NV3(R.Float(-1f, 1f), 0.6f, -1f) : null);
+    }
+
+    /// <summary>A spine from v0 to v1 about (cu, cy), half s across and up, its section square or hex, ribbed with armour collars or bare, a keel slab down its back or belly now and then.</summary>
+    void Spine(float v0, float v1, float cu, float cy, float s, float ch)
+    {
+        Box("hull", new NV3(cu, cy, (v0 + v1) / 2), new NV3(s, s, (v1 - v0) / 2), ch, hab: true);
+        if (R.Chance(0.6f))
+        {
+            float every = M(8f, 16f), thick = R.Chance(0.5f) ? M(1.5f) : M(2.5f);
+            for (float v = v0 + R.Float(M(3f), every); v < v1 - M(3f); v += every) Box("trim", new NV3(cu, cy, v), new NV3(s + thick, s + thick, M(1f)), ch);
+        }
+        if (R.Chance(0.35f))
+        {
+            float kh = M(2f, 4f), up = R.Chance(0.6f) ? 1 : -1, mid = (v0 + v1) / 2, half = (v1 - v0) / 2;
+            Taper("trim", mid - half * 0.75f, mid + half * 0.75f, (cu, cy + up * (s + kh * 0.5f)), (s * 0.35f, kh * 0.3f), (cu, cy + up * (s + kh * 0.5f)), (s * 0.45f, kh), chamfer: 0.4f);
         }
     }
 
-    /// <summary>A hangar's open mouth in the front face (at v) of a block about (u, y), half w by h.</summary>
-    void Mouth(float u, float y, float v, float w, float h) =>
-        Cut(new Loft { S0 = v - 1, S1 = v + M(7f), A0 = u, B0 = y, A1 = u, B1 = y, HA0 = w - 1.5f, HB0 = h - 1.5f, HA1 = w - 1.5f, HB1 = h - 1.5f });
+    /// <summary>A sponson standing out from a spine (half s about (cu, cy)) along o, l long about v, on a pylon, its hangar's mouth open forward.</summary>
+    void Sponson(NV3 o, float v, float l, float cu, float cy, float s)
+    {
+        float sw = M(4.5f, 8.5f), sh = M(3.5f, 6f), gap = M(3f, 8f), out_ = MathF.Abs(o.X) > 0.5f ? sw : sh;
+        NV3 c = new NV3(cu, cy, v) + o * (s + gap + out_), h = MathF.Abs(o.X) > 0.5f ? new NV3(sw, sh, l / 2) : new NV3(sh * 1.4f, sh, l / 2);
+        Box("hull", c, h, 0.25f, hab: true);
+        Box("trim", new NV3(cu, cy, v + l * 0.1f) + o * (s + gap / 2f), MathF.Abs(o.X) > 0.5f ? new NV3(gap / 2f + M(1.5f), MathF.Min(sh, s) * 0.6f, l * 0.3f) : new NV3(MathF.Min(sh, s) * 0.6f, gap / 2f + M(1.5f), l * 0.3f));
+        Cut(new Loft { S0 = v - l / 2 - 1, S1 = v - l / 2 + M(7f), A0 = c.X, B0 = c.Y, A1 = c.X, B1 = c.Y, HA0 = h.X - 1.5f, HB0 = h.Y - 1.5f, HA1 = h.X - 1.5f, HB1 = h.Y - 1.5f });
+    }
 
     /// <summary>Guns by what the ship is for.</summary>
     int Battery => Role == "warship" ? R.Between(10, 14) : Role == "carrier" ? R.Between(6, 9) : R.Between(4, 6);
 
-    /// <summary>
-    /// The hammerhead, a hammer or a dumbbell at range: an armoured prow block wider than the spine (stood on end,
-    /// stepped with a brow over its face, or drawn to an armoured ram's edge), a long thick spine (square or hex, or a pair
-    /// of them side by side or one over the other) ribbed or bare, a keel now and then, a heavier engine block (or two
-    /// side by side) at the stern, sponsons or a slung hangar amidships.
-    /// </summary>
+    /// <summary>The hammerhead: a hammer prow, one long spine, a bigger engine block and sponsons amidships, one side or both, never alike.</summary>
     void Hammerhead()
     {
-        float s = M(5.5f, 8.5f), ch = R.Chance(0.5f) ? 0.55f : 0.15f;
-        bool twin = R.Chance(0.3f);
-        int rows = R.Chance(0.3f) ? 1 : 2, cols = twin ? R.Between(1, 2) : rows == 1 ? R.Between(4, 5) : R.Between(2, 4);
-        float ew = s * (twin ? R.Float(1.3f, 1.7f) : R.Float(2.6f, 3.5f)), eh = rows == 1 ? s * R.Float(1.5f, 1.9f) : s * R.Float(2.0f, 2.7f), el = L * R.Float(0.14f, 0.24f), ey = R.Float(-0.4f, 0.4f) * s;
-        float[] blocks = twin ? new[] { -(ew + M(1f, 4f)), ew + M(1f, 4f) } : new[] { R.Float(-0.25f, 0.25f) * s };
-        bool fins = R.Chance(0.5f);
-        float ve0 = blocks.Select((eu, i) => Engines(eu, ey, ew, eh, rows, cols, el, fins && i == 0)).Max();
-        if (twin) Box("trim", new NV3(0, ey, ve0 + el / 2), new NV3(MathF.Abs(blocks[0]), eh * 0.5f, el * 0.3f), 0.2f);
-        // The hammer.
-        float pl = L * R.Float(0.12f, 0.21f), pw = s * R.Float(2.2f, 3.0f), ph = s * R.Float(1.3f, 1.8f), pu = R.Float(-0.3f, 0.3f) * s, py = R.Float(-0.45f, 0.45f) * s;
-        int hammer = R.Range(0, 4);
-        if (hammer == 1) (pw, ph) = (ph * 1.1f, pw);
-        Taper("hull", 0, pl, (pu, py), hammer == 3 ? (pw * 0.95f, ph * 0.22f) : (pw * 0.7f, ph * 0.6f), (pu, py), (pw, ph), chamfer: 0.25f, hab: true);
-        if (hammer == 2)
+        float s = M(5.5f, 8f), ch = R.Chance(0.5f) ? 0.55f : 0.15f, ey = R.Float(-0.3f, 0.3f) * s, el = L * R.Float(0.14f, 0.2f);
+        float pl = L * R.Float(0.12f, 0.18f), pw = s * R.Float(2.2f, 2.9f), ph = s * R.Float(1.4f, 1.9f);
+        float ew = MathF.Max(pw * R.Float(1.05f, 1.3f), s * 2.6f), eh = MathF.Max(ph * R.Float(1.1f, 1.4f), s * 2f);
+        float ve0 = Engines(R.Float(-0.2f, 0.2f) * s, ey, ew, eh, el);
+        Hammer(pl, pw, ph, R.Float(-0.3f, 0.3f) * s, R.Float(-0.4f, 0.4f) * s);
+        Spine(pl - M(2f), ve0 + M(2f), 0, 0, s, ch);
+        int side = R.Chance(0.5f) ? 1 : -1;
+        for (int k = 0, n = Role is "carrier" or "warship" ? R.Between(1, 2) : 1; k < n; k++, side = -side)
         {
-            // The brow: wider and stubbier, standing over the block's face.
-            float bw = pw * R.Float(1.1f, 1.35f), bh = ph * R.Float(0.35f, 0.5f), up = R.Chance(0.7f) ? 1 : -1;
-            Box("hull", new NV3(pu, py + up * (ph + bh * 0.6f), pl * 0.4f - M(2f)), new NV3(bw, bh, pl * 0.4f + M(2f)), 0.3f);
+            float l = L * R.Float(0.14f, 0.24f);
+            Sponson(NV3.UnitX * side, R.Float(pl + l / 2 + M(4f), ve0 - l / 2 - M(4f)), l, 0, R.Float(-0.5f, 0.5f) * s, s);
         }
-        BrowPlates(pl, pw, pu, py);
-        Blister(pl * R.Float(0.4f, 0.7f), pu, py);
-        // The spine.
-        float sm = (pl + ve0) / 2, sl = (ve0 - pl) / 2 + 2;
-        bool pair = R.Chance(0.25f), stacked = pair && R.Chance(0.4f);
-        float ps = pair ? s * 0.6f : s, off = pair ? ps + M(1f, 3f) : 0f;
-        foreach (float o in pair ? new[] { -off, off } : new[] { 0f })
-            Box("hull", stacked ? new NV3(0, o, sm) : new NV3(o, 0, sm), new NV3(ps, ps, sl), ch, hab: true);
-        float ss = !pair ? s : stacked ? ps : off + ps, sy = !pair ? s : stacked ? off + ps : ps;
-        if (R.Chance(0.4f))
-        {
-            float kh = M(2f, 5f), up = R.Chance(0.6f) ? 1 : -1;
-            Taper("trim", sm - sl * 0.8f, sm + sl * 0.8f, (0, up * (sy + kh * 0.5f)), (ss * 0.35f, kh * 0.3f), (0, up * (sy + kh * 0.5f)), (ss * 0.45f, kh), chamfer: 0.4f);
-        }
-        Collars(pl, ve0, 0, 0, ss, sy, ch);
-        // Sponsons, or a hangar slung under the spine.
-        int sponsons = Role is "carrier" or "warship" ? R.Between(1, 2) : R.Chance(0.6f) ? 1 : 0;
-        if (sponsons > 0 && R.Chance(0.25f))
-        {
-            float hl = L * R.Float(0.2f, 0.3f), hw = ss * R.Float(0.9f, 1.3f), hh = M(4.5f, 6.5f), hv = R.Float(pl + hl / 2 + M(3f), ve0 - hl / 2 - M(3f));
-            Box("hull", new NV3(0, -sy - hh + 1, hv), new NV3(hw, hh, hl / 2), 0.3f, hab: true);
-            Mouth(0, -sy - hh + 1, hv - hl / 2, hw, hh);
-            sponsons--;
-        }
-        Sponsons(sponsons, pl, ve0, ss, s);
-        if (R.Chance(0.45f))
-            Mast(new NV3(MathF.Round(pu + R.Float(-0.5f, 0.5f) * pw), py, MathF.Round(pl * R.Float(0.6f, 0.9f))), NV3.UnitY, M(5f, 10f), R.Chance(0.6f) ? new NV3(R.Float(-1f, 1f), 0.6f, -1f) : null);
         Guns(Battery, 2, L - 2);
     }
 
     /// <summary>
-    /// The monolith, a great armoured lozenge at range: one massive slab from a hammer-faced prow swelling back into the
-    /// engine block, long low armour slabs laid along two to four of its faces, each its own length and off to one side
-    /// (never stacked up into a tower on a deck), armour collars round it, sponsons or none.
-    /// </summary>
-    void Monolith()
-    {
-        float s = M(5.5f, 8.5f), ch = R.Chance(0.5f) ? 0.45f : 0.12f;
-        int rows = R.Between(1, 2), cols = rows == 1 ? R.Between(4, 5) : R.Between(3, 4);
-        float ew = s * R.Float(2.4f, 3.2f), eh = s * (rows == 1 ? R.Float(1.4f, 1.8f) : R.Float(1.9f, 2.5f)), el = L * R.Float(0.12f, 0.18f), ey = R.Float(-0.3f, 0.3f) * s;
-        float ve0 = Engines(0, ey, ew, eh, rows, cols, el, R.Chance(0.4f));
-        // The slab: its section from the prow's face to most of the engine block's.
-        float pw = s * R.Float(1.5f, 2.1f), ph = s * R.Float(1.4f, 1.9f), py = R.Float(-0.3f, 0.3f) * s, bw = ew * R.Float(0.7f, 0.9f), bh = eh * R.Float(0.8f, 1f);
-        Taper("hull", 0, ve0 + M(2f), (0, py), (pw * 0.8f, ph * 0.65f), (0, ey), (bw, bh), chamfer: ch, hab: true);
-        float pl = L * R.Float(0.12f, 0.2f);
-        BrowPlates(pl, pw, 0, py);
-        Blister(pl * R.Float(0.4f, 0.8f), 0, py);
-        // Long low armour slabs along two to four of its faces, each its own length, off to one side of the face.
-        int[] faces = { 0, 1, 2, 3 };
-        R.Shuffle(faces);
-        foreach (int face in faces.Take(R.Between(2, 4)))
-        {
-            NV3 o = Out(face), across = face < 2 ? NV3.UnitY : NV3.UnitX;
-            float len = (ve0 - pl) * R.Float(0.45f, 0.85f), mid = R.Float(pl + len / 2, ve0 - len / 2 + M(4f)), off = R.Float(-0.35f, 0.35f) * (face < 2 ? bh : bw);
-            if (Surface(across * off + new NV3(0, (py + ey) / 2, mid), o) is not { } at) continue;
-            float wide = (face < 2 ? ph : pw) * R.Float(0.35f, 0.65f), deep = M(2f, 3.5f);
-            Box(R.Chance(0.6f) ? "trim" : "hull", at + o * (deep - 1f), face < 2 ? new NV3(deep, wide, len / 2) : new NV3(wide, deep, len / 2), 0.4f);
-        }
-        // Collars round the slab where it is wide enough to wear them.
-        if (R.Chance(0.6f))
-        {
-            float every = M(10f, 18f);
-            for (float v = pl + every * R.Float(0.3f, 1f); v < ve0 - M(4f); v += every)
-            {
-                float t = v / (ve0 + M(2f));
-                Box("trim", new NV3(0, py + (ey - py) * t, v), new NV3(pw + (bw - pw) * t + M(1.5f), ph + (bh - ph) * t + M(1.5f), M(1f)), ch);
-            }
-        }
-        Sponsons(Role is "carrier" or "warship" ? R.Between(0, 2) : R.Chance(0.3f) ? 1 : 0, pl, ve0, (pw + bw) / 2, s);
-        Guns(Battery, 2, L - 2);
-    }
-
-    /// <summary>
-    /// Twin hulls, an H or a tuning fork at range: two long slab hulls side by side, never the same length, a hammer
-    /// cross-block joining their bows (or one hull's alone, the other set back), a cross-beam amidships, each its own
-    /// engine block; the gap between them a hangar bay open forward.
+    /// Twin spines, a tuning fork or an H at range: two long spines side by side with clear space between them, joined by
+    /// a bridge block amidships, a hammer cross-block over both their bows and one great engine block over both their
+    /// sterns, a sponson outboard of one or both.
     /// </summary>
     void Twin()
     {
-        float s = M(4.5f, 6.5f), gap = M(10f, 18f), hu = MathF.Round(s + gap / 2), ch = R.Chance(0.5f) ? 0.5f : 0.15f;
-        float ey = R.Float(-0.3f, 0.3f) * s, pl = L * R.Float(0.12f, 0.18f), ph = s * R.Float(1.3f, 1.8f), py = R.Float(-0.3f, 0.3f) * s;
-        int rows = R.Between(1, 2), cols = R.Between(1, 2);
-        float ve0 = new[] { -hu, hu }.Select(u => Engines(u, ey, s * R.Float(1.2f, 1.6f), s * R.Float(1.3f, 1.9f), rows, cols, L * R.Float(0.12f, 0.18f), R.Chance(0.25f))).Max();
-        // The hulls: one set back behind the cross-block's line now and then.
-        int back = R.Chance(0.4f) ? (R.Chance(0.5f) ? 1 : -1) : 0;
-        foreach (int side in new[] { -1, 1 })
+        float s = M(4f, 5.5f), gap = M(12f, 18f), hu = MathF.Round(s + gap / 2), ch = R.Chance(0.5f) ? 0.5f : 0.15f, el = L * R.Float(0.14f, 0.2f);
+        float pl = L * R.Float(0.11f, 0.16f), pw = hu + s + M(3f, 7f), ph = s * R.Float(1.8f, 2.4f), py = R.Float(-0.3f, 0.3f) * s;
+        float ew = pw * R.Float(1.05f, 1.25f), eh = ph * R.Float(1.15f, 1.4f);
+        float ve0 = Engines(R.Float(-0.15f, 0.15f) * s, R.Float(-0.3f, 0.3f) * s, ew, eh, el);
+        Hammer(pl, pw, ph, 0, py);
+        foreach (int side in new[] { -1, 1 }) Spine(pl - M(2f), ve0 + M(2f), side * hu, R.Float(-0.3f, 0.3f) * s, s, ch);
+        // The bridge between them, its own length, somewhere amidships.
+        float bv = R.Float(0.35f, 0.65f) * (ve0 + pl);
+        Box("trim", new NV3(0, R.Float(-0.4f, 0.4f) * s, bv), new NV3(hu, s * R.Float(0.6f, 0.9f), M(4f, 9f)), 0.3f, hab: true);
+        int side0 = R.Chance(0.5f) ? 1 : -1;
+        for (int k = 0, n = R.Between(1, 2); k < n; k++, side0 = -side0)
         {
-            float v0 = side == back ? pl + M(10f, 25f) : pl * 0.5f;
-            Box("hull", new NV3(side * hu, 0, (v0 + ve0 + M(2f)) / 2), new NV3(s, s * R.Float(0.9f, 1.2f), (ve0 + M(2f) - v0) / 2), ch, hab: true);
-            Collars(v0, ve0, side * hu, 0, s, s, ch);
+            float l = L * R.Float(0.12f, 0.2f);
+            Sponson(NV3.UnitX * side0, R.Float(pl + l / 2 + M(4f), ve0 - l / 2 - M(4f)), l, side0 * hu, 0, s);
         }
-        // The hammer cross-block on the bows, as wide as both hulls and more.
-        float pw = hu + s + M(2f, 6f), pu = -back * hu;
-        if (back != 0) pw = s * R.Float(1.8f, 2.4f);
-        Taper("hull", 0, pl, (pu, py), (pw * 0.75f, ph * 0.6f), (pu, py), (pw, ph), chamfer: 0.25f, hab: true);
-        BrowPlates(pl, pw, pu, py);
-        Blister(pl * R.Float(0.4f, 0.7f), pu, py);
-        // The cross-beam amidships, and the bay between the hulls open forward under it.
-        float cv = R.Float(0.55f, 0.75f) * ve0;
-        Box("trim", new NV3(0, R.Float(-0.5f, 0.5f) * s, cv), new NV3(hu, s * 0.6f, M(4f, 8f)), 0.3f);
+        Guns(Battery, 2, L - 2);
+    }
+
+    /// <summary>The cross: a hammer prow, one long spine, a bigger engine block, and sponsons standing out from the spine above, below and to the sides, each its own size and place: a cross end on.</summary>
+    void Cross()
+    {
+        float s = M(5f, 7.5f), ch = R.Chance(0.5f) ? 0.55f : 0.15f, el = L * R.Float(0.13f, 0.18f);
+        float pl = L * R.Float(0.12f, 0.17f), pw = s * R.Float(2.1f, 2.7f), ph = s * R.Float(1.6f, 2.2f);
+        float ew = MathF.Max(pw * R.Float(1.05f, 1.25f), s * 2.6f), eh = MathF.Max(ph * R.Float(1.05f, 1.25f), s * 2.2f);
+        float ve0 = Engines(0, R.Float(-0.2f, 0.2f) * s, ew, eh, el);
+        Hammer(pl, pw, ph, R.Float(-0.25f, 0.25f) * s, R.Float(-0.3f, 0.3f) * s);
+        Spine(pl - M(2f), ve0 + M(2f), 0, 0, s, ch);
+        int[] faces = { 0, 1, 2, 3 };
+        R.Shuffle(faces);
+        foreach (int face in faces.Take(R.Between(3, 4)))
+        {
+            float l = L * R.Float(0.12f, 0.22f);
+            Sponson(Out(face), R.Float(pl + l / 2 + M(4f), ve0 - l / 2 - M(4f)), l, 0, 0, s);
+        }
         Guns(Battery, 2, L - 2);
     }
 }

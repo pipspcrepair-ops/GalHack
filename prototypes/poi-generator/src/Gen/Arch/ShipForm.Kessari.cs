@@ -29,10 +29,11 @@ public sealed partial class ShipForm
             _ => Tube(n, kind, ms, cr, vp, vs),
         };
         // The drives: a central bell and a ring of n about it, on a round thrust plate.
-        float a0 = MathF.PI / n, bb = M(2.5f, 3.5f), plate = M(5f);
+        float a0 = MathF.PI / n, bb = M(4f, 6f), plate = M(5f), reach = M(8f, 14f);
+        rd = MathF.Max(rd * 1.4f, cr + M(3f) + bb * 2f);
         Can("machine", 2, new NV3(0, 0, vs), rd + bb + M(1f), plate);
-        Bell(new NV3(0, 0, vs + plate / 2), cr + M(1.5f), (cr + M(1.5f)) * 1.4f, housing: false);
-        for (int k = 0; k < n; k++) Bell(Round(a0 + k * MathF.Tau / n) * rd + new NV3(0, 0, vs + plate / 2), bb, bb * 1.4f, housing: false);
+        Bell(new NV3(0, 0, vs + plate / 2), cr + M(3f), (cr + M(3f)) * 1.7f, reach: reach);
+        for (int k = 0; k < n; k++) Bell(Round(a0 + k * MathF.Tau / n) * rd + new NV3(0, 0, vs + plate / 2), bb, bb * 1.8f, reach: reach);
         // Guns the same on all four faces fore and aft (a six-fold frame keeps one in its spire's tip).
         if (n == 6) Turret(new NV3(0, 0, vp), 5);
         else

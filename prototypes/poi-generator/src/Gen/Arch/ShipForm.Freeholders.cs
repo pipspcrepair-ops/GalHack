@@ -44,15 +44,14 @@ public sealed partial class ShipForm
         int want = R.Between(fewest, most);
         for (int tries = 0; tries < 120 && bells.Count < want; tries++)
         {
-            float r = bells.Count == 0 ? M(4.5f, 7.5f) : M(2f, 5f), u = cu + R.Float(-1f, 1f) * su, y = cy + R.Float(-1f, 1f) * sy;
+            float r = bells.Count == 0 ? M(6f, 9f) : M(3.5f, 6f), u = cu + R.Float(-1f, 1f) * su, y = cy + R.Float(-1f, 1f) * sy;
             if (bells.Any(b => MathF.Sqrt((b.U - u) * (b.U - u) + (b.Y - y) * (b.Y - y)) < b.R + r + M(3f))) continue;
             bells.Add((u, y, r));
         }
-        float vt = L - bells.Max(b => b.R) * 1.4f, first = float.MaxValue, last = float.MinValue;
+        float vt = L - bells.Max(b => b.R) * 1.9f, first = float.MaxValue, last = float.MinValue;
         foreach (var (u, y, r) in bells)
         {
-            float throat = vt - R.Float(0f, 4f) * K, front = throat - Housing(r) + 1f;
-            Bell(new NV3(u, y, throat), r, r * R.Float(1.1f, 1.5f));
+            float throat = vt - R.Float(0f, 4f) * K, front = throat - Bell(new NV3(u, y, throat), r, r * R.Float(1.4f, 1.9f), reach: M(10f, 18f)) + 1f;
             (first, last) = (MathF.Min(first, front), MathF.Max(last, front));
         }
         float fu0 = bells.Min(b => b.U - b.R), fu1 = bells.Max(b => b.U + b.R), fy0 = bells.Min(b => b.Y - b.R), fy1 = bells.Max(b => b.Y + b.R), fv = first - M(3f);
@@ -78,7 +77,7 @@ public sealed partial class ShipForm
     {
         int th = Mi(2, 4);
         var (pl, _) = CommandPod(0, 0, MathF.Round(R.Float(-2f, 2f) * K));
-        float fv = SalvagedDrives(0, 0, th + M(6f), th + M(5f), 2, 5), t0 = pl - M(2f), t1 = fv + M(2f);
+        float fv = SalvagedDrives(0, 0, th + M(9f), th + M(8f), 2, 5), t0 = pl - M(2f), t1 = fv + M(2f);
         int bay = Mi(5, 7, 3);
         var legs = new List<(float V0, float V1, NV3 Off)>();
         if (R.Chance(0.4f) && t1 - t0 > M(60f))
@@ -127,7 +126,7 @@ public sealed partial class ShipForm
         float[] us = Enumerable.Range(0, n).Select(i => MathF.Round((i - (n - 1) / 2f) * gap + R.Float(-1.5f, 1.5f) * K)).ToArray();
         var (pl, _) = CommandPod(0, us[lead], 0);
         float lo = us.Min(), hi = us.Max();
-        float fv = SalvagedDrives((lo + hi) / 2, 0, (hi - lo) / 2 + th + M(3f), th + M(5f), 3, 6), t1 = fv + M(2f);
+        float fv = SalvagedDrives((lo + hi) / 2, 0, (hi - lo) / 2 + th + M(5f), th + M(8f), 3, 6), t1 = fv + M(2f);
         float[] t0 = us.Select((u, i) => i == lead ? pl - M(2f) : MathF.Round(M(8f, 30f))).ToArray();
         for (int i = 0; i < n; i++)
         {
@@ -165,7 +164,7 @@ public sealed partial class ShipForm
     {
         int th = Mi(2, 3), bay = Mi(4, 6, 3);
         var (pl, _) = CommandPod(0, 0, 0);
-        float fv = SalvagedDrives(0, 0, M(7f), M(6f), 2, 4);
+        float fv = SalvagedDrives(0, 0, M(10f), M(9f), 2, 4);
         // The tug and its cab.
         float tl = M(14f, 22f), tw = M(5.5f, 8.5f), tt = M(4.5f, 7.5f), tv1 = fv + M(2f), tv0 = tv1 - tl, tu = R.Float(-1f, 1f) * K, ty = R.Float(-1f, 1f) * K;
         Box(Scrap(), new NV3(tu, ty, (tv0 + tv1) / 2), new NV3(tw, tt, tl / 2), 0.35f, hab: true);

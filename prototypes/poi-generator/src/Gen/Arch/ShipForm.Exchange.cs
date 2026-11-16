@@ -68,14 +68,14 @@ public sealed partial class ShipForm
     {
         Can("machine", 2, new NV3(0, 0, fv + M(4f)), fr, M(10f));
         int nb = R.Between(3, 5);
-        float bb = fr * R.Float(0.4f, 0.48f), bv = fv + M(9f);
+        float bb = fr * R.Float(0.5f, 0.6f), bv = fv + M(9f);
         (float U, float Y)[] at = nb switch
         {
             3 => new[] { (-1f, -0.7f), (1f, -0.7f), (0f, 0.9f) },
             4 => new[] { (-1.1f, -0.7f), (1.1f, -0.7f), (-0.5f, 0.85f), (0.5f, 0.85f) },
             _ => new[] { (-1.2f, -0.8f), (0f, -0.9f), (1.2f, -0.8f), (-0.6f, 0.8f), (0.6f, 0.8f) },
         };
-        foreach (var (u, y) in at) Bell(new NV3(u * bb * 1.2f, y * bb * 1.2f, bv), bb, bb * R.Float(1.2f, 1.6f));
+        foreach (var (u, y) in at) Bell(new NV3(u * bb * 1.25f, y * bb * 1.25f, bv), bb, bb * R.Float(1.6f, 2f), reach: M(10f, 14f));
         float ta = R.Float(0f, MathF.Tau);
         for (int k = 0, n = R.Between(2, 4); k < n; k++)
         {
