@@ -417,7 +417,8 @@ public partial class AftermathTest : Node
             var (gap, sink, overlap) = Fit(l);
             if (gap > 0.03f || sink > 0.03f || overlap) bad.Add($"{l.Name} at {l.Position}: gap {gap:F3}, sink {sink:F3}{(overlap ? ", overlaps" : "")}");
         }
-        Check(n >= 5 && bad.Count == 0, $"{n} bags, each on the ground: no gap, no overlap ({string.Join("; ", bad.Take(4))})");
+        // (The sleeper's bags and the tossed bundle: the dead keep their things on their bodies.)
+        Check(n >= 3 && bad.Count == 0, $"{n} bags, each on the ground: no gap, no overlap ({string.Join("; ", bad.Take(4))})");
         Check(_bags.All(l => !GodotObject.IsInstanceValid(l.Node) || l.Node.GetNode<StaticBody3D>("Body").CollisionLayer == GalHack.Physics.Layers.Props), "each has a body of its own shape on the props' layer: real collision");
     }
 
