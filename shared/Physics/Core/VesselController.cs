@@ -3,8 +3,8 @@ using System.Numerics;
 
 namespace GalHack.Physics;
 
-/// <summary>Where a vessel is flying: the planet's gravity (for lift margin) and whether it is in air.</summary>
-public readonly record struct FlightZone(float PlanetGravity, bool InAtmosphere)
+/// <summary>Where a vessel is flying: the planet's gravity (for lift margin), whether it is in air, and how far over the crossing, m.</summary>
+public readonly record struct FlightZone(float PlanetGravity, bool InAtmosphere, float Above = float.PositiveInfinity)
 {
     /// <summary>What actually pulls: nothing above the atmosphere ceiling.</summary>
     public float Gravity => InAtmosphere ? PlanetGravity : 0f;
@@ -217,7 +217,8 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
     public void Drive(PhysicsWorld world, Body body, float dt)
     {
-        Zone = new FlightZone(world.Zone.Strength, world.Zone.InAtmosphere(body.Position));
+        // (Its height over the crossing where this tick ends: a dive's cap is the crossing's by the time it gets there.)
+        Zone = new FlightZone(world.Zone.Strength, world.Zone.InAtmosphere(body.Position), world.Zone.AboveCrossing(body.Position + body.Velocity * dt));
         Stats = Flight.Stats(body, Zone);
         ConsoleMessageAge += dt;
 

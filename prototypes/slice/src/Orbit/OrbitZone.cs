@@ -160,6 +160,8 @@ public partial class OrbitZone : SurfaceZone
         // No weight anywhere and never in the atmosphere: the handling model flies by its space rules.
         Physics.Zone.Strength = 0f;
         Physics.Zone.Ceiling = float.NegativeInfinity;
+        // How far over the crossing of the body whose reach a craft is in: what its cap goes by (HandlingStats.TopAt).
+        Physics.Zone.Above = p => { Vector3 at = p.ToGodot(); Celestial c = OwnerOf(at); return c.Height(at) - c.Ceiling; };
         Host = new PhysicsHost(Physics);
         AddChild(Host);
         Physics.MotionChanged += body => VesselOf(body)?.BecomeWreck();
