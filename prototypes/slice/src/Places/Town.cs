@@ -991,6 +991,8 @@ public sealed partial class Town
         Vector3? stand = with != null ? TalkAt(to, with) : null;
         GoTo(p, stand != null ? to : Free(to, p));
         if (stand == null || !Bound(p, to)) return;
+        // (A while to talk once they stand at their distance.)
+        p.Wait += 4f;
         p.Partner = with;
         with.Partner = p;
         with.Wait = MathF.Max(with.Wait, p.Wait);

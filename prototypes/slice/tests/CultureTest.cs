@@ -522,7 +522,8 @@ public partial class CultureTest : Node
                             if (key.Item1 == p)
                             {
                                 if (!still) together.Remove(key);
-                                else if (!together.TryAdd(key, at) && at - together[key] >= 4f && (int)(at * 30f) % 30 == 0)
+                                else if (p.ChatAt != null || q.ChatAt != null) together[key] = at;
+                                else if (!together.TryAdd(key, at) && at - together[key] >= 1f && (int)(at * 30f) % 30 == 0)
                                 {
                                     chat.Add(apart);
                                     if (apart < 0.85f * cu.Trait("chat", 1.1f) && why.Count < 6)

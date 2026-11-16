@@ -141,7 +141,8 @@ public sealed partial class Town
                 for (int j = 0; j < i; j++)
                 {
                     Person o = _bodies[j];
-                    if (MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
+                    // (One stepping to their stand beside the other is about to part from them.)
+                    if (MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f || p.ChatAt != null || o.ChatAt != null) continue;
                     float d = new Vector2(o.Pos.X - p.Pos.X, o.Pos.Z - p.Pos.Z).Length();
                     if (d >= BodyRadius(o) + BodyRadius(p) - 0.05f) continue;
                     p.Wait = 0f;
