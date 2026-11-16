@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -69,7 +70,7 @@ public partial class PopRoute
             views.Add(("in the city", mid - way * 60f, 1.7f, -2f));
             views.Add(("low over the city", mid - way * (radius + 150f), 40f, -10f));
         }
-        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-msaa" })
+        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow" }).Concat(Enum.GetNames<Game.AntiAliasing>().Select(n => "aa " + n))
             .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).ToList();
         foreach (var (view, at, up, pitch) in views)
         {
@@ -96,7 +97,7 @@ public partial class PopRoute
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = c == "-shadows" ? 0u : uint.MaxValue;
                 env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                 env.GlowEnabled = c != "-glow" && glow;
-                Game.Game.SetAntiAliasing(GetViewport(), c == "-msaa" ? Game.AntiAliasing.Off : aa);
+                Game.Game.SetAntiAliasing(GetViewport(), c.StartsWith("aa ") ? Enum.Parse<Game.AntiAliasing>(c[3..]) : aa);
                 foreach (var (kind, list) in parts)
                     foreach (var (g, cast, shown) in list)
                     {
@@ -133,7 +134,8 @@ public partial class PopRoute
             Game.Game.SetAntiAliasing(GetViewport(), aa);
             double all = cost["all"];
             double allCpu = renderCpu["all"], allDraws = drawCalls["all"];
-            string costs = string.Join(", ", cases.Skip(1).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view} by anti-aliasing (gpu ms, median of 80 frames, one scene): {string.Join(", ", cases.Where(c => c.StartsWith("aa ")).Select(c => $"{c[3..]} {cost[c]:F2}"))}"));
+            string costs = string.Join(", ", cases.Skip(1).Where(c => !c.StartsWith("aa ")).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); without each (what it costs, gpu/render cpu ms/draw calls): {costs}"));
             _game.FixedCamera = null;
         }
