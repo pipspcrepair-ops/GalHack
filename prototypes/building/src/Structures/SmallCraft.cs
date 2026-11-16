@@ -49,7 +49,7 @@ public sealed record CraftNeeds(float Lift = 1.5f, float Forward = 6f, float Bac
 /// on top. It is laid out, then built block by block as a player builds (each block placed against one already
 /// there, the core first), so only what a player could place is in it, and it flies only by what it is made of.
 /// </summary>
-public static class SmallCraft
+public static partial class SmallCraft
 {
     const string Plate = "iron-plated", Patch = "base-block";
 
@@ -58,18 +58,20 @@ public static class SmallCraft
         Roll(cat, role, style, seed, gravity, out _, needs);
 
     /// <param name="why">What the last roll fell short in, when none met the needs.</param>
-    public static Structure Roll(Catalogue cat, CraftRole role, CraftStyle style, int seed, float gravity, out string why, CraftNeeds needs = null)
+    /// <param name="form">The body plan (null: the box the game rolls today; the others wait on the owner's pick).</param>
+    public static Structure Roll(Catalogue cat, CraftRole role, CraftStyle style, int seed, float gravity, out string why, CraftNeeds needs = null, CraftForm? form = null)
     {
         needs ??= CraftNeeds.Default;
         why = null;
         for (int attempt = 0; attempt < 6; attempt++)
         {
             var rng = new Random(unchecked(seed + attempt * 7919));
-            Structure plan = Lay(cat, role, style, rng, gravity, needs);
+            Structure plan = Lay(cat, role, style, rng, gravity, needs, form ?? CraftForm.Box);
             Structure built = Assemble(plan, style.Owner);
             why = Shortfall(built, gravity, needs);
             if (why == null) return built;
-            if (built.BlockCount < plan.BlockCount) why += $" ({plan.BlockCount - built.BlockCount} of {plan.BlockCount} blocks would not go on)";
+            if (built.BlockCount < plan.BlockCount)
+                why += $" ({plan.BlockCount - built.BlockCount} of {plan.BlockCount} blocks would not go on: {string.Join(", ", plan.Blocks().Where(b => !built.Has(b.pos)).Select(b => plan.TypeOf(b.block).Id + (plan.TypeOf(b.block).IsArmor ? "/" + plan.ShapeOf(b.block).Id : "")).Distinct())})";
         }
         return null;
     }
@@ -106,19 +108,52 @@ public static class SmallCraft
         public readonly List<Int3> Inside = new();      // interior cells, for devices
         public readonly HashSet<Int3> Cockpit = new();
         public Structure S => D.S;
+        /// <summary>A coat by index (each module takes its own), and a dirt level within the style's.</summary>
+        public Func<int, ushort> Coat;
+        public Func<int> Grime;
+        public uint[] Coats;
+        /// <summary>Where the machinery sits (devices that don't fit inside go on the hull nearest it), and the thrust axis's height.</summary>
+        public Int3 Heart;
+        public float AxisY = 0.5f;
+        /// <summary>Where the mains want to go, lower first (null: round the thrust axis at the stern).</summary>
+        public Func<Int3, float> Mains;
+        /// <summary>Runs of armour cells the hull number is painted along (start, step, the face it shows on), and boxes a band of livery goes round.</summary>
+        public readonly List<(Int3 Start, Int3 Step, Dir Face)> Number = new();
+        public readonly List<(Int3 Lo, Int3 Hi, Dir Face)> Band = new();
     }
 
-    static Structure Lay(Catalogue cat, CraftRole role, CraftStyle style, Random rng, float gravity, CraftNeeds needs)
+    static Structure Lay(Catalogue cat, CraftRole role, CraftStyle style, Random rng, float gravity, CraftNeeds needs, CraftForm form)
     {
         int number = rng.Next(10, rng.Next(2) == 0 ? 100 : 1000);
         var d = new Designer(cat, number.ToString(), CoreMode.Flight);
-        var l = new Lay_ { D = d, Rng = rng };
-        uint[] coats = style.Coats.OrderBy(_ => rng.Next()).ToArray();
-        int Grime() => rng.Next(style.GrimeLow, style.GrimeHigh + 1);
-        ushort Coat(int i) => d.Paint($"coat{i}", Paint.Solid(coats[i % coats.Length]) with { Grime = (byte)Grime() });
-        ushort body = Coat(0), belly = Coat(1), flank = Coat(2);
-
+        var l = new Lay_ { D = d, Rng = rng, Coats = style.Coats.OrderBy(_ => rng.Next()).ToArray() };
+        l.Grime = () => rng.Next(style.GrimeLow, style.GrimeHigh + 1);
+        l.Coat = i => d.Paint($"coat{i % l.Coats.Length}", Paint.Solid(l.Coats[i % l.Coats.Length]) with { Grime = (byte)l.Grime() });
         bool trader = role == CraftRole.Trader;
+
+        // The body plan lays the form, its machinery room, where its number and band go, and (the box) its pads.
+        bool pads = Forms[form](l, trader, style);
+        Dress(l, style, number);
+        if (!pads) LandingLegs(l);
+        l.Inside.Sort((a, b) => Int3.Dot(a - l.Heart, a - l.Heart).CompareTo(Int3.Dot(b - l.Heart, b - l.Heart)));
+
+        // The power and gyro inside, a hold for its fuel; then thrust and the rest, sized by its mass.
+        Device(l, "generator-t1");
+        Device(l, "gyro-t1");
+        // A trader's hold fills its inside but for a few cells kept for what sizing adds; then it is sized with its hold aboard.
+        if (trader) while (l.Inside.Count > 4 && Device(l, "container-t1")) { }
+        else Device(l, "container-t1"); // a scout's locker
+        Size(l, gravity, needs, trader);
+        Lights(l, rng);
+        return d.S;
+    }
+
+    /// <summary>The box: a cockpit up front, a body behind it on a belly with pads set in its corners, the role's pods or mast bolted on.</summary>
+    static bool BoxForm(Lay_ l, bool trader, CraftStyle style)
+    {
+        Designer d = l.D;
+        Random rng = l.Rng;
+        ushort body = l.Coat(0), belly = l.Coat(1), flank = l.Coat(2);
         int hw = trader ? 2 : 1, top = trader ? 2 : 1;
         int len = trader ? rng.Next(7, 11) : rng.Next(5, 7);
         int zf = -(4 + len) / 2, zb0 = zf + 4, zb = zb0 + len - 1;
@@ -138,32 +173,15 @@ public static class SmallCraft
         for (int z = zb0 + 1; z < zb; z++)
             for (int y = 0; y < top; y++)
                 for (int x = -hw + 1; x <= hw - 1; x++) l.Inside.Add(P(x, y, z));
-        l.Inside.Sort((a, b) => (a.Y, Math.Abs(a.X), a.Z).CompareTo((b.Y, Math.Abs(b.X), b.Z)));
-
-        // Livery and patches first, on the plates as laid: a faded band, odd plates patched in another coat or plating.
-        if (rng.NextDouble() < style.Livery)
-        {
-            ushort band = d.Paint("band", Paint.Solid(coats[0]).WithPattern(rng.Next(2) == 0 ? Pattern.Stripes : Pattern.Chevrons, coats[3]) with { Grime = (byte)Grime() });
-            d.Face(P(-hw, 0, zb0), P(-hw, 0, zb), Dir.NegX, band).Face(P(hw, 0, zb0), P(hw, 0, zb), Dir.PosX, band);
-        }
-        foreach (var (p, b) in d.S.Blocks().ToList())
-        {
-            if (!d.S.TypeOf(b).IsArmor || d.S.ShapeOf(b) != cat.Cube || rng.NextDouble() >= style.Patches) continue;
-            d.Fill(p, p, rng.Next(3) == 0 ? Patch : Plate, Coat(3 + rng.Next(coats.Length - 3)));
-        }
-        // The hull number, hand-painted on both flanks of the body's top row.
-        uint mark = style.Marks[rng.Next(style.Marks.Length)];
-        string digits = number.ToString();
-        for (int i = 0; i < digits.Length; i++)
-        {
-            ushort glyph = d.Paint($"n{i}", Paint.Solid(coats[0]).WithStencil(digits[i], mark) with { Grime = (byte)Grime() });
-            d.Face(P(hw, top, zb0 + 2 + digits.Length - 1 - i), P(hw, top, zb0 + 2 + digits.Length - 1 - i), Dir.PosX, glyph);
-            d.Face(P(-hw, top, zb0 + 2 + i), P(-hw, top, zb0 + 2 + i), Dir.NegX, glyph);
-        }
+        l.Heart = P(0, 0, zb0);
+        l.Band.Add((P(-hw, 0, zb0), P(-hw, 0, zb), Dir.NegX));
+        l.Band.Add((P(hw, 0, zb0), P(hw, 0, zb), Dir.PosX));
+        l.Number.Add((P(hw, top, zb0 + 4), P(0, 0, -1), Dir.PosX));
+        l.Number.Add((P(-hw, top, zb0 + 2), P(0, 0, 1), Dir.NegX));
 
         // The role's modules, bolted on.
-        if (trader) CargoPods(l, hw, top, zb0, zb, () => Coat(rng.Next(coats.Length)), style.Lopsided);
-        else SensorMast(l, hw, top, zb0, zb, body, () => Coat(rng.Next(coats.Length)), style.Lopsided);
+        if (trader) CargoPods(l, hw, top, zb0, zb, () => l.Coat(rng.Next(l.Coats.Length)), style.Lopsided);
+        else SensorMast(l, hw, top, zb0, zb, body, () => l.Coat(rng.Next(l.Coats.Length)), style.Lopsided);
 
         // Pads in the belly's corners, their legs' room kept clear below.
         foreach (int x in new[] { -hw, hw })
@@ -172,16 +190,31 @@ public static class SmallCraft
                 d.Put("pad-t1", P(x, -1, z));
                 for (int k = 1; k <= 3; k++) { l.Reserved.Add(P(x, -1 - k, z)); l.Reserved.Add(P(x, -1 - k, z + 1)); }
             }
+        return true;
+    }
 
-        // The power and gyro inside, a hold for its fuel; then thrust and the rest, sized by its mass.
-        Device(l, "generator-t1");
-        Device(l, "gyro-t1");
-        // A trader's hold fills its inside but for a few cells kept for what sizing adds; then it is sized with its hold aboard.
-        if (trader) while (l.Inside.Count > 4 && Device(l, "container-t1")) { }
-        else Device(l, "container-t1"); // a scout's locker
-        Size(l, gravity, needs, trader);
-        Lights(l, rng);
-        return d.S;
+    /// <summary>Livery and patches on the plates as laid: a faded band, odd plates patched in another coat or plating, the hull number hand-painted.</summary>
+    static void Dress(Lay_ l, CraftStyle style, int number)
+    {
+        Designer d = l.D;
+        Random rng = l.Rng;
+        if (rng.NextDouble() < style.Livery)
+        {
+            ushort band = d.Paint("band", Paint.Solid(l.Coats[0]).WithPattern(rng.Next(2) == 0 ? Pattern.Stripes : Pattern.Chevrons, l.Coats[3]) with { Grime = (byte)l.Grime() });
+            foreach (var (lo, hi, face) in l.Band) d.Face(lo, hi, face, band);
+        }
+        foreach (var (p, b) in d.S.Blocks().ToList())
+        {
+            if (!d.S.TypeOf(b).IsArmor || d.S.ShapeOf(b) != d.S.Catalogue.Cube || rng.NextDouble() >= style.Patches) continue;
+            d.Fill(p, p, rng.Next(3) == 0 ? Patch : Plate, l.Coat(3 + rng.Next(l.Coats.Length - 3)));
+        }
+        uint mark = style.Marks[rng.Next(style.Marks.Length)];
+        string digits = number.ToString();
+        for (int i = 0; i < digits.Length; i++)
+        {
+            ushort glyph = d.Paint($"n{i}", Paint.Solid(l.Coats[0]).WithStencil(digits[i], mark) with { Grime = (byte)l.Grime() });
+            foreach (var (start, step, face) in l.Number) d.Face(start + step * i, start + step * i, face, glyph);
+        }
     }
 
     /// <summary>Cargo pods of containers strapped along the flanks (one side only, sometimes), and maybe one on the roof; each pod's ends are plates in its own coat.</summary>
@@ -227,7 +260,7 @@ public static class SmallCraft
         }
     }
 
-    /// <summary>A device in the next free interior cell, or bolted onto the roof when the inside is full. False if there is no room at all.</summary>
+    /// <summary>A device in the next free interior cell (nearest the machinery's heart), or bolted onto the hull when the inside is full. False if there is no room at all.</summary>
     static bool Device(Lay_ l, string type)
     {
         if (l.Inside.Count > 0)
@@ -237,19 +270,24 @@ public static class SmallCraft
             l.D.Put(type, c);
             return true;
         }
-        // The roof: the highest free cell over the body with a plate under it, its column clear above.
-        var (lo, hi) = l.S.Bounds();
-        foreach (int z in Enumerable.Range(lo.Z, hi.Z - lo.Z + 1).OrderBy(z => z))
-            for (int x = 0; Math.Abs(x) <= 1; x = x <= 0 ? -x + 1 : -x)
-            {
-                int y = hi.Y + 1;
-                while (y > lo.Y && !l.S.Has(P(x, y - 1, z))) y--;
-                Int3 c = P(x, y, z);
-                if (y <= lo.Y || l.Reserved.Contains(c) || l.Cockpit.Contains(c - Int3.UnitY) || !l.S.TypeOf(l.S.Get(c - Int3.UnitY)).IsArmor) continue;
-                l.D.Put(type, c);
-                return true;
-            }
-        return false;
+        // On the hull: the free cell resting on a plate nearest the machinery, out of every exhaust line and pad leg's room.
+        Structure s = l.S;
+        var (lo, hi) = s.Bounds();
+        Int3 best = default;
+        int bestD = int.MaxValue;
+        for (int y = lo.Y - 1; y <= hi.Y + 1; y++)
+            for (int z = lo.Z - 1; z <= hi.Z + 1; z++)
+                for (int x = lo.X - 1; x <= hi.X + 1; x++)
+                {
+                    Int3 c = P(x, y, z);
+                    int dist = Int3.Dot(c - l.Heart, c - l.Heart);
+                    if (dist >= bestD || s.Has(c) || l.Reserved.Contains(c)) continue;
+                    if (!s.TryGet(c - Int3.UnitY, out Block under) || !s.TypeOf(under).IsArmor || s.ShapeOf(under) != s.Catalogue.Cube || l.Cockpit.Contains(c - Int3.UnitY)) continue;
+                    (best, bestD) = (c, dist);
+                }
+        if (bestD == int.MaxValue) return false;
+        l.D.Put(type, best);
+        return true;
     }
 
     /// <summary>Adds what its mass lacks, one part at a time, until it meets the needs (or runs out of room).</summary>
@@ -297,7 +335,7 @@ public static class SmallCraft
             if (!s.TryGet(mount, out Block m) || l.Cockpit.Contains(mount)) return false;
             BlockType mt = s.TypeOf(m);
             if (mt.IsThruster || mt.IsLight || mt.Function == "gear" || mt.IsCommandChair) return false;
-            if (mt.IsArmor && s.ShapeOf(m) != s.Catalogue.Cube) return false;
+            if (mt.IsArmor && s.ShapeOf(m) != s.Catalogue.Cube || s.AttachCoverage(m, push.Opposite()) == Coverage.None) return false;
             Int3 tail = cells.OrderBy(c => Int3.Dot(c, exhaust.Vec())).Last();
             for (int k = 1; k <= 5; k++)
                 if (s.Has(tail + exhaust.Vec() * k) || l.Reserved.Contains(tail + exhaust.Vec() * k)) return false;
@@ -314,7 +352,7 @@ public static class SmallCraft
         {
             // Lift balances the mass: nearest the centre of mass along the keel, then out from it.
             Dir.PosY => MathF.Abs(c.Z - centre.Z) * 2f + MathF.Abs(MathF.Abs(c.X) - 1f),
-            Dir.NegZ => MathF.Abs(c.X) + MathF.Abs(c.Y - 0.5f),
+            Dir.NegZ => l.Mains?.Invoke(c) ?? MathF.Abs(c.X) + MathF.Abs(c.Y - l.AxisY),
             Dir.PosZ => MathF.Abs(c.X) + c.Y * 2f,
             Dir.NegY => MathF.Abs(c.Z - centre.Z) + MathF.Abs(c.X),
             _ => MathF.Abs(c.Z - centre.Z) - c.Y * 0.5f,
@@ -356,7 +394,7 @@ public static class SmallCraft
         var (lo, hi) = s.Bounds();
         bool Free(Int3 c, Dir onto) => !s.Has(c) && !l.Reserved.Contains(c) && s.TryGet(c + onto.Vec(), out Block b)
                                         && !l.Cockpit.Contains(c + onto.Vec()) && s.TypeOf(b) is { IsThruster: false, IsLight: false } bt && bt.Function != "gear"
-                                        && (!bt.IsArmor || s.ShapeOf(b) == s.Catalogue.Cube);
+                                        && (!bt.IsArmor || s.ShapeOf(b) == s.Catalogue.Cube) && s.AttachCoverage(b, onto.Opposite()) != Coverage.None;
         void Light(IEnumerable<Int3> cells, Dir onto, LightSettings settings)
         {
             foreach (Int3 c in cells)
@@ -377,12 +415,12 @@ public static class SmallCraft
             return cells.OrderBy(order);
         }
         var warm = LightSettings.Steady(0xffddaa);
-        Light(Box(-2, 2, lo.Y - 1, -2, lo.Z, hi.Z, c => c.Z + MathF.Abs(c.X) - c.Y * 8), Dir.PosY, warm);
-        Light(Box(-2, 2, lo.Y - 1, -2, lo.Z, hi.Z, c => -c.Z + MathF.Abs(c.X) - c.Y * 8), Dir.PosY, warm);
+        Light(Box(lo.X, hi.X, lo.Y - 1, hi.Y, lo.Z, hi.Z, c => c.Z + MathF.Abs(c.X) + c.Y * 8), Dir.PosY, warm);
+        Light(Box(lo.X, hi.X, lo.Y - 1, hi.Y, lo.Z, hi.Z, c => -c.Z + MathF.Abs(c.X) + c.Y * 8), Dir.PosY, warm);
         Light(Box(lo.X - 1, hi.X, lo.Y, hi.Y, lo.Z, hi.Z, c => c.X * 4 + c.Z * 0.5f - c.Y), Dir.PosX, LightSettings.Steady(0xff3322));
         Light(Box(lo.X, hi.X + 1, lo.Y, hi.Y, lo.Z, hi.Z, c => -c.X * 4 + c.Z * 0.5f - c.Y), Dir.NegX, LightSettings.Steady(0x44ff88));
         Light(Box(lo.X, hi.X, lo.Y, hi.Y, lo.Z, hi.Z + 1, c => -c.Z * 4 + MathF.Abs(c.X) - c.Y), Dir.NegZ, LightSettings.Steady(0xffffff));
-        Light(Box(-1, 1, lo.Y, hi.Y + 1, lo.Z, hi.Z, c => -c.Y * 4 + MathF.Abs(c.X)), Dir.NegY, LightSettings.Make(0xffaa44, LightAnim.Strobe, 0.5f, rng.Next(64)));
+        Light(Box(lo.X, hi.X, lo.Y, hi.Y + 1, lo.Z, hi.Z, c => -c.Y * 4 + MathF.Abs(c.X)), Dir.NegY, LightSettings.Make(0xffaa44, LightAnim.Strobe, 0.5f, rng.Next(64)));
     }
 
     // ---- Building it as a player builds ---------------------------------------------------------------------
