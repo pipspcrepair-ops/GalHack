@@ -229,11 +229,7 @@ public static partial class Brain
                 {
                     // One of a band down or gone: on to the next of them still standing near; else it's over.
                     if (foe is CreatureTarget { Creature.Herd: { } theirs } && Closest(theirs, h.Center, out float next) is { } one && next < SeeFar * 0.8f) ToFight(w, h, b, lead, one.AsTarget);
-                    else
-                    {
-                        b.Foe = null;
-                        Settle(w, h, b, lead, PartyMood.Easy);
-                    }
+                    else Settle(w, h, b, lead, PartyMood.Easy);
                 }
                 // A band that was only defending itself lets it go once you back off with your gun off them.
                 else if (b.Leaning != Leaning.Hostile && foe == t && d > WarnIn && !AimedAtAny(h, foe, AimReach))
@@ -387,7 +383,7 @@ public static partial class Brain
         shooter = null;
         foreach (WorldNoise n in w.Noises)
         {
-            if (n.By == null || n.Time <= b.ShotHeard) continue;
+            if (n.By is null or CreatureTarget { Attackable: false } || n.Time <= b.ShotHeard) continue; // (nor one fired by someone fallen since: a fight with them is over before it starts)
             b.ShotHeard = n.Time;
             if (n.By is CreatureTarget { Creature.Herd: var by } && by == h) continue;
             foreach (Creature m in h.Members)
@@ -454,6 +450,7 @@ public static partial class Brain
 
     static void Settle(WildSim w, Herd h, Party b, Creature lead, PartyMood mood)
     {
+        b.Foe = null; // (settled, they fight no one: a fight broken off in a run is over too)
         b.Greeted = false;
         b.MeetUntil = -999f;
         b.AimedSince = -1f;
