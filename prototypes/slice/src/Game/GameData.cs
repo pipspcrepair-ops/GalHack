@@ -292,7 +292,7 @@ public sealed class SliceRules
         public float Range { get; set; } = 6f;
         public float Angle { get; set; } = 14f;
         public float Interval { get; set; } = 0.35f;
-        public float Rate { get; set; } = 60f;
+        public float Rate { get; set; } = 50f;
         public float RestoreShare { get; set; } = 0.1f;
     }
 

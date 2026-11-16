@@ -111,12 +111,12 @@
       // Thunder with every blast, no closer together than this, s.
       "thunderGap": 0.28
     },
-    // Repair is a green cone (owner: gradual, a lerping number). The damaged block it's on fills at
-    // rate hit points a second (a 158-point iron block from nothing in about 2.6 s, a 250-point core in
-    // about 4), paid for as it fills, in proportion to its bill, from the bag, else the core's storage.
+    // Repair is a green cone (owner: gradual, a lerping number; 1 hit point every 20 ms). The damaged block it's on fills at
+    // rate hit points a second, smoothly (a 158-point iron block from nothing in about 3.2 s, a 250-point core in
+    // 5), paid for as it fills, in proportion to its bill, from the bag, else the core's storage.
     // A destroyed block in it comes back at restoreShare of its hit points and fills from there. Its
     // sound pulses (and tries at restoring) every interval s.
-    "repair": { "range": 6, "angle": 14, "interval": 0.35, "rate": 60, "restoreShare": 0.1 },
+    "repair": { "range": 6, "angle": 14, "interval": 0.35, "rate": 50, "restoreShare": 0.1 },
     // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
     // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
     // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
