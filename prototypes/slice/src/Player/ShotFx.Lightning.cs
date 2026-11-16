@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using BoltDraw = PlanetSurface.Fx.Bolts;
 
 namespace Slice.Player;
 
 /// <summary>
-/// The Sleeper tool's look: jagged bolts of lightning (midpoint-displaced polylines drawn as
-/// camera-facing ribbons, a soft glow under a hot core, forks off the main bolt) with a flash that
+/// The Sleeper tool's look: jagged bolts of lightning (midpoint-displaced paths with forks, drawn
+/// as every bolt is, by <see cref="PlanetSurface.Fx.Bolts"/>) with a flash that
 /// lights the surroundings for a moment, short arcs crawling over what they touch, and the repair
 /// mode's luminous cone. All generated; the bolts and lights are pooled.
 /// </summary>
@@ -35,9 +36,8 @@ public partial class ShotFx
 
     readonly List<Spark> _sparks = new();
     readonly List<Glow> _glows = new();
-    readonly List<Vector3> _path = new();
     readonly Random _rng = new();
-    StandardMaterial3D _sparkMaterial;
+    ShaderMaterial _sparkMaterial;
 
     /// <summary>For tests and pictures: bolts thrown (main and arcs), lightning flashes, and whether the repair cone shows.</summary>
     public int LightningBolts { get; private set; }
@@ -53,12 +53,7 @@ public partial class ShotFx
     void EnsureSparks()
     {
         if (_sparks.Count > 0) return;
-        _sparkMaterial = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            BlendMode = BaseMaterial3D.BlendModeEnum.Add, CullMode = BaseMaterial3D.CullModeEnum.Disabled, VertexColorUseAsAlbedo = true,
-            NoDepthTest = false, DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled,
-        };
+        _sparkMaterial = BoltDraw.Material(Colors.White, 3f, 0.5f);
         for (int i = 0; i < SparkPool; i++)
         {
             var mesh = new ImmediateMesh();
@@ -154,83 +149,38 @@ public partial class ShotFx
         return p;
     }
 
-    /// <summary>The bolt's shape, new each time: a midpoint-displaced line and its forks, as ribbons facing the camera.</summary>
+    /// <summary>The bolt's shape, new each time: a midpoint-displaced line and its forks, drawn as every bolt is (<see cref="PlanetSurface.Fx.Bolts"/>).</summary>
     void Draw(Spark s)
     {
         Vector3 a = s.From(), b = s.To;
         float len = a.DistanceTo(b);
-        ImmediateMesh m = s.Mesh;
-        m.ClearSurfaces();
-        if (len < 0.02f) return;
+        _channels.Clear();
+        if (len < 0.02f) { s.Mesh.ClearSurfaces(); return; }
         Vector3 eye = GetViewport()?.GetCamera3D()?.GlobalPosition ?? a + Vector3.Up;
         int depth = Math.Clamp((int)MathF.Ceiling(MathF.Log2(len / 0.3f)), 2, 6);
-        m.SurfaceBegin(Mesh.PrimitiveType.Triangles);
-        _path.Clear();
-        _path.Add(a);
-        Jag(a, b, len * s.Rough, depth);
-        Ribbons(m, eye, s.Colour, s.Width, len);
-        for (int f = 0; f < s.Forks && _path.Count > 4; f++)
+        float width = BoltWidth * s.Width * Mathf.Clamp(len / 6f, 0.6f, 1.4f);
+        var main = new List<Vector3>();
+        BoltDraw.Jag(main, a, b, s.Rough, depth, Random01);
+        _channels.Add(new BoltDraw.Channel(main, width, 1f));
+        for (int f = 0; f < s.Forks && main.Count > 4; f++)
         {
-            int at = _rng.Next(1, _path.Count * 2 / 3);
-            Vector3 root = _path[at], dir = (b - root);
+            Vector3 root = main[_rng.Next(1, main.Count * 2 / 3)], dir = b - root;
             float left = dir.Length();
             if (left < 0.3f) continue;
-            Vector3 end = root + (dir / left + Perp(dir / left) * 0.9f).Normalized() * left * (0.25f + 0.25f * (float)_rng.NextDouble());
-            _path.Clear();
-            _path.Add(root);
-            Jag(root, end, root.DistanceTo(end) * s.Rough, Math.Max(2, depth - 2));
-            Ribbons(m, eye, s.Colour, s.Width * 0.55f, len);
+            Vector3 side = dir.Cross(MathF.Abs(dir.Y / left) > 0.9f ? Vector3.Right : Vector3.Up).Normalized().Rotated(dir / left, Random01() * MathF.Tau);
+            Vector3 end = root + (dir / left + side * 0.9f).Normalized() * left * (0.25f + 0.25f * Random01());
+            var fork = new List<Vector3>();
+            BoltDraw.Jag(fork, root, end, s.Rough, Math.Max(2, depth - 2), Random01);
+            _channels.Add(new BoltDraw.Channel(fork, width * 0.55f, 0.6f));
         }
-        m.SurfaceEnd();
+        BoltDraw.Draw(s.Mesh, _channels, eye, 1f, 1f, s.Colour);
     }
 
-    /// <summary>A random unit direction across a line.</summary>
-    Vector3 Perp(Vector3 dir)
-    {
-        Vector3 side = MathF.Abs(dir.Y) > 0.9f ? Vector3.Right : Vector3.Up;
-        Vector3 u = dir.Cross(side).Normalized(), w = dir.Cross(u);
-        float spin = (float)_rng.NextDouble() * MathF.Tau;
-        return u * MathF.Cos(spin) + w * MathF.Sin(spin);
-    }
+    /// <summary>A bolt's whole width (its glow's, the core a sixth of it), m, at a 6 m reach.</summary>
+    const float BoltWidth = 0.11f;
 
-    void Jag(Vector3 a, Vector3 b, float disp, int depth)
-    {
-        if (depth == 0)
-        {
-            _path.Add(b);
-            return;
-        }
-        Vector3 mid = (a + b) * 0.5f + Perp((b - a).Normalized()) * disp * (0.4f + 0.6f * (float)_rng.NextDouble());
-        Jag(a, mid, disp * 0.5f, depth - 1);
-        Jag(mid, b, disp * 0.5f, depth - 1);
-    }
-
-    /// <summary>The path as two ribbons: a soft glow in the light's colour and a thin hot core, each segment turned to the eye.</summary>
-    void Ribbons(ImmediateMesh m, Vector3 eye, Color colour, float width, float len)
-    {
-        float scale = Mathf.Clamp(len / 6f, 0.6f, 1.4f);
-        Ribbon(m, eye, new Color(colour.R, colour.G, colour.B, 0.5f), 0.045f * width * scale);
-        Ribbon(m, eye, new Color(colour.Lerp(Colors.White, 0.45f), 1f), 0.012f * width * scale);
-    }
-
-    void Ribbon(ImmediateMesh m, Vector3 eye, Color colour, float half)
-    {
-        for (int i = 0; i + 1 < _path.Count; i++)
-        {
-            Vector3 p0 = _path[i], p1 = _path[i + 1], seg = p1 - p0;
-            Vector3 side = seg.Cross(eye - p0);
-            if (side.LengthSquared() < 1e-10f) continue;
-            // Thinner close to the eye, so the stretch leaving the barrel doesn't fill the view.
-            side = side.Normalized() * half * Mathf.Clamp(p0.DistanceTo(eye) / 1.5f, 0.3f, 1f);
-            m.SurfaceSetColor(colour);
-            m.SurfaceAddVertex(p0 - side);
-            m.SurfaceAddVertex(p0 + side);
-            m.SurfaceAddVertex(p1 + side);
-            m.SurfaceAddVertex(p0 - side);
-            m.SurfaceAddVertex(p1 + side);
-            m.SurfaceAddVertex(p1 - side);
-        }
-    }
+    readonly List<BoltDraw.Channel> _channels = new();
+    float Random01() => (float)_rng.NextDouble();
 
     void TickLightning(float dt)
     {

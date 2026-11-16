@@ -789,8 +789,10 @@ public partial class SliceTest : Node
             foreach (int x in _drive.LookAt(pad, 1)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel skiff = _game.Builder.Underway;
+        string looked = WorldRay.Cast(_game.Zone, _game.Survivor, _game.Zone.Data.Rules.Build.Reach, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit seen)
+            ? $"the look meets {(seen.Vessel?.Name ?? (seen.Collider as Node)?.Name ?? "something")} at {seen.Distance:F1} m" : $"the look meets nothing within reach (the pad {_game.Survivor.WorldEye().DistanceTo(pad):F1} m off)";
         Check(skiff != null && skiff.Structure.Count == 1 && skiff.Structure.Core != null && skiff.Controller.Frozen,
-            $"a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground (the tool says: {_game.Builder.Verdict})");
+            $"a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground (the tool says: {_game.Builder.Verdict}; {looked})");
         if (skiff == null) yield break;
         _skiff = skiff;
         int placed = 0, stalls = 0;

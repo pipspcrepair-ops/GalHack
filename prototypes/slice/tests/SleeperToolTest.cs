@@ -168,6 +168,42 @@ public partial class SleeperToolTest : Node
         Check(Played(CombatSound.Crackle) == crackle + 1 && Played(CombatSound.Thunder) == thunder + 1, "with a crackle and a thunderclap, from the shot pipeline's sound pool");
         Check(_game.Hands.PeakKick > 0.5f && Tool.Kick.Recoil == Bolt.Kick, $"and the tool kicks ({_game.Hands.PeakKick:F2}, recoil {Tool.Kick.Recoil} from the data)");
         Check(Fx.SparksShowing == 0, "the lightning is gone a moment later");
+        BoltLook();
+    }
+
+    /// <summary>
+    /// Every bolt (the tool's, a storm's, an arc gun's) is drawn by one renderer: its band's brightness
+    /// across the strip falls smoothly to nothing at the edge with no step anywhere outside the thin core,
+    /// and each channel is one strip, edges shared at every joint, untwisted, closed to a point at both
+    /// ends, never thinner than a few pixels far off.
+    /// </summary>
+    void BoltLook()
+    {
+        float edge = PlanetSurface.Fx.Bolts.Profile(1f), nearEdge = PlanetSurface.Fx.Bolts.Profile(0.97f), mid = PlanetSurface.Fx.Bolts.Profile(0f);
+        float step = 0f;
+        for (float d = 0.4f; d < 1f; d += 1f / 128f) step = MathF.Max(step, PlanetSurface.Fx.Bolts.Profile(d) - PlanetSurface.Fx.Bolts.Profile(d + 1f / 128f));
+        float core = PlanetSurface.Fx.Bolts.Profile(PlanetSurface.Fx.Bolts.CoreShare * 2f);
+        Check(mid >= 1f && core < 0.35f * mid && edge < 1e-4f && nearEdge < 1e-3f && step < 0.01f,
+            $"a bolt's band: bright core ({mid:F2}), down to {core:F2} two core-widths out, then fading to nothing at its edge ({edge:F5}; {nearEdge:F5} just inside), no step over {step:F4} a 128th of the way");
+        int bad = 0, channels = 0;
+        var rng = new Random();
+        Vector3 eye = _game.Survivor.WorldEye();
+        foreach (float far in new[] { 3f, 40f, 300f })
+            for (int k = 0; k < 10; k++)
+            {
+                Vector3 a = eye + new Vector3(far, 1f, 0.5f), b = a + new Vector3(rng.NextSingle() - 0.5f, -1f, rng.NextSingle() - 0.5f) * 6f;
+                var path = new List<Vector3>();
+                PlanetSurface.Fx.Bolts.Jag(path, a, b, 0.2f, 5, () => rng.NextSingle());
+                var e = PlanetSurface.Fx.Bolts.Strip(new PlanetSurface.Fx.Bolts.Channel(path, 0.11f, 1f), eye, 1f);
+                channels++;
+                float widest = e.Max(x => x.left.DistanceTo(x.right));
+                bool ends = e[0].left.DistanceTo(e[0].right) < 0.05f * widest && e[^1].left.DistanceTo(e[^1].right) < 0.05f * widest;
+                bool untwisted = true;
+                for (int i = 1; i < e.Length; i++) if ((e[i].right - e[i].left).Dot(e[i - 1].right - e[i - 1].left) < 0f) untwisted = false;
+                bool seen = widest >= a.DistanceTo(eye) * 0.004f * 0.99f;
+                if (!ends || !untwisted || !seen || e.Length != path.Count) bad++;
+            }
+        Check(bad == 0, $"each bolt channel is one strip with an edge pair per joint, shared by the pieces either side: untwisted, closed at both ends, a few pixels wide at 3, 40 and 300 m ({channels} channels, {bad} not)");
     }
 
     // ---- Blocks: ours whole into the bag, someone else's damaged for a share ---------------------
