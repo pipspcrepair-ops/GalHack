@@ -27,12 +27,16 @@ public sealed class Playthrough
 {
     public readonly Game.Game Game;
     public readonly Driver Drive;
-    public Action<string> Log = s => GD.Print("  " + s);
+    public Action<string> Log;
+
+    /// <summary>The last line logged (a watchdog says where a run stopped).</summary>
+    public volatile string LastLog;
 
     public Playthrough(Game.Game game)
     {
         Game = game;
         Drive = new Driver(game);
+        Log = s => { LastLog = s; GD.Print("  " + s); };
     }
 
     Controls Controls => Game.Controls;
@@ -142,10 +146,10 @@ public sealed class Playthrough
             check(Game.Shots.LightningBolts > bolts && Game.Tool.TakenWhole == whole + 1 && b.Ruin.Structure.Count < blocks && back.Count == 1,
                 $"{label}a blast inside the bunker: lightning at its wall, and the block it met back in the bag whole ({string.Join(", ", back)}; {blocks - b.Ruin.Structure.Count} blocks gone)");
             foreach (string id in back) Pack.Remove(id, Pack[id] - bag.GetValueOrDefault(id)); // (what follows counts the kit and what's crafted alone)
-            int removed = Game.Zone.Planet.Terrain.Store.RemovedCount;
+            // On the floor the tool is on the bunker's block, not the ground under it (a blast would take the block, as at the wall).
             foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
-            foreach (int x in Drive.HoldPrimary(b.At(new Vector3(0f, 0.25f, -1.5f)), 30)) yield return x;
-            check(Game.Zone.Planet.Terrain.Store.RemovedCount == removed && Game.Tool.OnBlock, $"{label}the tool inside digs nothing through its floor");
+            foreach (int x in Drive.LookAt(b.At(new Vector3(0f, 0.25f, -1.5f)), 8)) yield return x;
+            check(Game.Tool.OnBlock && Game.Tool.OnStructure, $"{label}the tool inside is on its floor's block, not the ground under it ({Game.Tool.TargetLabel})");
         }
 
         double start = Game.Stats.Seconds;

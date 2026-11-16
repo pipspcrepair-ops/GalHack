@@ -252,10 +252,13 @@ public partial class ForceFieldTest : Node
         int components = pack[T1], ironBack = pack["iron-plate"];
         foreach (int x in _drive.LookAt(rig.World(1.54f, 0.54f, 0.09f), 8)) yield return x;
         said = builder.Verdict;
+        Vector3 eyeAt = _game.Survivor.WorldEye(), lookAt = _game.Survivor.WorldLook();
+        _game.Arms.Sweep(eyeAt.ToNumerics(), (eyeAt + lookAt * 9f).ToNumerics(), Slice.Arms.ArmsHost.PlayerThing, 0, 0f, out ShotHit met);
+        string aimed = $"the blast meets {met.Kind} {met.CellX} {met.CellY} {met.CellZ} at {met.Distance:F1} m; the tool on our structure {_game.Tool.OnStructure}, the take-down on {builder.TargetCell}, corners {string.Join(" ", Enumerable.Range(0, 4).Select(i => f.Corner(i)))}";
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(s.Fields.Count == 0 && Enumerable.Range(0, 4).All(i => !s.Has(f.Corner(i))) && pack[T1] == components + 1 && pack["iron-plate"] > ironBack && !rig.Sealed(),
-            $"deconstructing an emitter takes the field down whole: its emitters gone, the component back ({components} to {pack[T1]}), the plating's iron back; the line said \"{said}\"");
+            $"a blast at an emitter takes the field down whole: its emitters gone, the component back ({components} to {pack[T1]}), the plating's iron back; the line said \"{said}\" ({aimed})");
 
         // ---- Emitters: passed through, shot, destroyed --------------------------------------------
         f = new ForceField(FieldRig.OpeningMin, FieldRig.OpeningMax, 2, T1) { Strength = tier.Strength }; // STAGING: a second field, set down whole

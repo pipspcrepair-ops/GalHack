@@ -50,7 +50,7 @@ public partial class PlayerTest : Node
 {
     /// <summary>TEST TIME-SCALE: crafting runs this many times faster (printed). Nothing else is sped up.</summary>
     const double CraftScale = 40;
-    const int WatchdogMinutes = 25;
+    const int WatchdogMinutes = 12;
 
     Game.Game _game;
     Playthrough _play;
@@ -71,7 +71,7 @@ public partial class PlayerTest : Node
         var thread = new System.Threading.Thread(() =>
         {
             System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
-            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
+            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog, in {_section} (last: {_play?.LastLog ?? "nothing logged"})");
             System.Environment.Exit(1);
         }) { IsBackground = true };
         thread.Start();
@@ -134,6 +134,15 @@ public partial class PlayerTest : Node
 
     void Mark(string step) => _gameTimeAt[step] = _game.Stats.Seconds;
 
+    /// <summary>The scenario's part now (the watchdog says where it stopped).</summary>
+    volatile string _section = "the start";
+
+    void Section(string header)
+    {
+        _section = header.Trim('-', ' ');
+        GD.Print(header);
+    }
+
     // ==== 1. The pod ===============================================================================
 
     IEnumerable<int> WakeUp()
@@ -184,7 +193,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> Gathering()
     {
-        GD.Print("-- 2. gathering with the tool from the toolbar --");
+        Section("-- 2. gathering with the tool from the toolbar --");
         Bill raw = Plan();
         GD.Print($"  the whole loop needs {_game.Zone.Data.Items.Describe(raw)} from the ground");
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
@@ -237,7 +246,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> Hunting()
     {
-        GD.Print("-- 3. shooting: the ground, then a creature --");
+        Section("-- 3. shooting: the ground, then a creature --");
         // A patch of ground 5 m off that the eye can see (the real ground, dug holes and all).
         Vector3 ahead = _game.Zone.GroundAt(_game.Survivor.WorldFeet.X + 4f, _game.Survivor.WorldFeet.Z + 3f);
         var space = _game.Zone.GetWorld3D().DirectSpaceState;
@@ -367,7 +376,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> Inventory()
     {
-        GD.Print("-- 4. the body, and the inventory by hand --");
+        Section("-- 4. the body, and the inventory by hand --");
         Lootable body = _game.Zone.Loot.All.FirstOrDefault(l => l.Kind == LootKind.Corpse && l.Creature == _prey);
         if (body == null) { Fail("the creature left no body to loot"); yield break; }
         Check(body.Storage.Count("meat") > 0 && body.Storage.Count("hide") > 0, $"its body is a container: {_game.Zone.Data.Items.Describe(body.Storage.Contents)}");
@@ -445,7 +454,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> SurvivalConstructor()
     {
-        GD.Print("-- 5. the suit fabricator makes a survival constructor; set it down --");
+        Section("-- 5. the suit fabricator makes a survival constructor; set it down --");
         foreach (int x in _play.OpenMenu(MenuTab.You)) yield return x;
         Check(_game.Menu.RectOf("tab:you") != null && _game.Menu.Root.You != null, "Tab opens the menu on YOU: bag, toolbar, paperdoll and the suit fabricator");
         foreach (int x in _play.Order("fab", "survival-constructor", 1)) yield return x;
@@ -466,7 +475,7 @@ public partial class PlayerTest : Node
         Check(_fab != null && _game.Pack["survival-constructor"] == 0, "3 and a click set it down on open ground");
         if (_fab == null) yield break;
 
-        GD.Print("-- 6. the Big Core, made in the survival constructor --");
+        Section("-- 6. the Big Core, made in the survival constructor --");
         // Up to its front, as you would to use it.
         foreach (int x in OpenFab()) yield return x;
         if (!FabPanelOpen)
@@ -507,7 +516,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> Base()
     {
-        GD.Print("-- 7. found a base and build it up --");
+        Section("-- 7. found a base and build it up --");
         // The base's blocks, crafted as items in the constructor's own lane. What's unlocked first;
         // the small constructor once level 2 and its node are in.
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
@@ -599,7 +608,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> VesselCore()
     {
-        GD.Print("-- 8. level 5, the vessel's tech, and a second core from the base's constructor --");
+        Section("-- 8. level 5, the vessel's tech, and a second core from the base's constructor --");
         // The vessel's parts first (they need no unlock): the base's own constructor makes them.
         Vector3 core = _base.Body.Position.ToGodot();
         foreach (int x in _drive.WalkTo(core, 6f, 30f)) yield return x;
@@ -678,7 +687,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> BuildVessel()
     {
-        GD.Print("-- 9. build a vessel on its core --");
+        Section("-- 9. build a vessel on its core --");
         foreach (int x in _play.ToToolbar("core", 3)) yield return x;
         foreach (var (block, slot) in Slots)
             foreach (int x in _play.BlockToToolbar(block, slot)) yield return x;
@@ -718,7 +727,7 @@ public partial class PlayerTest : Node
     {
         Vessel v = _vessel;
         if (v == null) yield break;
-        GD.Print("-- 9. fly it 500 m and land --");
+        Section("-- 9. fly it 500 m and land --");
         if (v.Seat == null) { Fail("the vessel has no seat to fly it from"); yield break; }
         // Fuel for its generator into its storage: the cells left in the bag.
         Check(!v.Powered, "built, it has no power until there is fuel in its storage");
@@ -831,7 +840,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> MenuAndTorch()
     {
-        GD.Print("-- 10. every tab of the menu, and the head torch --");
+        Section("-- 10. every tab of the menu, and the head torch --");
         foreach (MenuTab tab in Enum.GetValues<MenuTab>())
         {
             foreach (int x in _play.OpenMenu(tab)) yield return x;
@@ -847,7 +856,7 @@ public partial class PlayerTest : Node
     /// <summary>The jetpack up off the ground: rising fast is never a fall, so the suit's fall alert stays off until the sleeper comes down (on foot it is the suit's own, never shown on the glass).</summary>
     IEnumerable<int> JetpackLiftOff()
     {
-        GD.Print("-- the jetpack: the fall alert only when falling --");
+        Section("-- the jetpack: the fall alert only when falling --");
         bool warnedRising = false;
         float top = 0f;
         // Full tanks first: the walk here may have burned them.
@@ -916,7 +925,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> Death()
     {
-        GD.Print("-- 10. dying, and the backpack recovered from its marker --");
+        Section("-- 10. dying, and the backpack recovered from its marker --");
         Vessel v = _vessel;
         if (v == null || _game.Survivor.Seated != v) yield break;
         // Up high (falls of a dozen metres are harmless; from 200 m nobody walks away), out of the seat, and a jump off the side.
@@ -1023,7 +1032,7 @@ public partial class PlayerTest : Node
 
     void Summary()
     {
-        GD.Print("-- throughout --");
+        Section("-- throughout --");
         var oxygen = _game.Suit.Sim.Data.Vitals.Oxygen;
         Check(_game.Zone.Data.Consumables["o2-bottle"].Oxygen == oxygen.SmallBottle && _game.Zone.Data.Consumables["air-cell"].Oxygen == oxygen.LargeBottle
               && _game.Zone.Data.Items.Item("o2-bottle").Name == "Air bottle", "oxygen items give the design's +75 and +250, in suit oxygen");

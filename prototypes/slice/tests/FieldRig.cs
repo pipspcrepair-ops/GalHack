@@ -30,7 +30,7 @@ public sealed class FieldRig
     public static FieldRig Build(Game.Game game, Vector3 ground)
     {
         Catalogue cat = game.Zone.Data.Catalogue;
-        var s = new Structure(cat) { Name = "Field room", Mode = CoreMode.Base };
+        var s = new Structure(cat) { Name = "Field room", Mode = CoreMode.Base, Owner = Building.DefaultOwner }; // a sleeper's, as a base the player founds is
         Block wall = Building.Make(s, cat.Type("iron-plated"));
         for (int x = 0; x <= 7; x++)
             for (int y = 0; y <= 5; y++)

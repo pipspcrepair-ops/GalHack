@@ -533,14 +533,22 @@ public sealed class SleeperTool
                 Slice.Vessels.ForceFields.Hit(f.Vessel, f.Field, damage);
                 Strike(at, new Vector3(0.6f, 0.6f, 0.05f), 3, attack: true);
                 return;
-            case HitKind.Block:
-                Blocks((Slice.Vessels.Vessel)hit.Thing, new SInt3(hit.CellX, hit.CellY, hit.CellZ), at, hit.Normal.ToGodot());
-                return;
             case HitKind.Ground when hit.Thing is WormMass mass:
                 Arms.HurtMass(mass, damage);
                 MassHit?.Invoke(mass);
                 Strike(at, Vector3.One * 0.4f, 3, attack: true);
                 return;
+        }
+        // Our own block or deco piece, outlined (from inside, the cabin's walls are met as ground): it comes back whole.
+        if (OnStructure)
+        {
+            Blocks(Builder.TargetVessel, Builder.TargetCell, at, -dir);
+            return;
+        }
+        if (met && hit.Kind == HitKind.Block)
+        {
+            Blocks((Slice.Vessels.Vessel)hit.Thing, new SInt3(hit.CellX, hit.CellY, hit.CellZ), at, hit.Normal.ToGodot());
+            return;
         }
         // Ground, a plant, a place or nothing: gathered as before (each pulse at the gathering rate), the bolt to what is worked.
         if (!OnBlock && OnPlace)

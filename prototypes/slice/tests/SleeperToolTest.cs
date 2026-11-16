@@ -109,6 +109,7 @@ public partial class SleeperToolTest : Node
         foreach (int x in Person()) yield return x;
         foreach (int x in Repair()) yield return x;
         foreach (int x in Ore()) yield return x;
+        foreach (int x in NoBuildUp()) yield return x;
         _game.QueueFree();
         yield return 0;
     }
@@ -179,8 +180,11 @@ public partial class SleeperToolTest : Node
         s.DirtyChunks.Clear();
         Vector3 feet = _game.Survivor.WorldFeet;
         Vector3 spot = feet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * 3.5f;
-        Vector3 ground = _game.Zone.GroundAt(spot.X, spot.Z);
-        N.Vector3 at = (ground + Vector3.Up * (s.Grid.CellSize * 0.5f + 0.3f)).ToNumerics();
+        // Clear of the ground all along it, however the land lies (a few blocks may stand a little off it).
+        float top = float.MinValue;
+        for (float dx = -4f; dx <= 4f; dx += 1f)
+            for (float dz = -4f; dz <= 4f; dz += 1f) top = MathF.Max(top, _game.Zone.GroundAt(spot.X + dx, spot.Z + dz).Y);
+        N.Vector3 at = new(spot.X, top + s.Grid.CellSize * 0.5f + 0.3f, spot.Z);
         Vessel v = core ? Vessel.SpawnBase(_game.Zone, s, at, bearing) : Vessel.SpawnGroundWreck(_game.Zone, s, at, N.Quaternion.CreateFromAxisAngle(N.Vector3.UnitY, -bearing));
         foreach (var (p, _) in s.Blocks()) v.ClearGround(p);
         return v;
@@ -425,6 +429,53 @@ public partial class SleeperToolTest : Node
             _game.Controls.Primary = false;
         }
         foreach (int x in _drive.Tap(Key.Q)) yield return x;
+    }
+
+    // ---- Held a long while, nothing builds up ---------------------------------------------------------
+
+    static long Objects() => (long)Performance.GetMonitor(Performance.Monitor.ObjectCount);
+    static long Nodes() => (long)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount);
+    static double Megabytes() => OS.GetStaticMemoryUsage() / 1048576.0;
+
+    /// <summary>
+    /// The trigger held for a long stretch each way a pulse can go (into the ground out of reach, digging, the
+    /// repair cone on nothing): nodes, objects and memory level off rather than grow with every blast.
+    /// </summary>
+    IEnumerable<int> NoBuildUp()
+    {
+        GD.Print("-- held a long while: nothing builds up --");
+        foreach (int x in MoveOn()) yield return x;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        Vector3 feet = _game.Survivor.WorldFeet, eye = _game.Survivor.WorldEye();
+        foreach (var (label, at, repair) in new[]
+        {
+            ("blasting the ground beyond reach", _game.Zone.GroundAt(feet.X + 8.5f, feet.Z), false),
+            ("digging", _game.Zone.GroundAt(feet.X + 2f, feet.Z + 1f), false),
+            ("the repair cone on nothing", eye + Vector3.Up * 20f, true),
+        })
+        {
+            if (repair != (Tool.Mode == ToolMode.Repair)) foreach (int x in _drive.Tap(Key.Q)) yield return x;
+            foreach (int x in _drive.LookAt(at, 6)) yield return x;
+            int shots = Tool.Shots;
+            // Settle in for 10 s, then measure 40 s more of it.
+            foreach (int x in _drive.HoldPrimary(at, 600)) yield return x;
+            long nodes = Nodes(), objects = Objects();
+            double mb = Megabytes();
+            long most = nodes;
+            for (int i = 0; i < 2400; i++)
+            {
+                _drive.Face(at);
+                _game.Controls.Primary = true;
+                yield return 0;
+                if (i % 60 == 0) most = Math.Max(most, Nodes());
+            }
+            _game.Controls.Primary = false;
+            foreach (int x in _drive.Wait(120)) yield return x;
+            // (Objects counts what the garbage collector has yet to free, so only nodes and memory are held to it.)
+            Check(most - nodes < 150 && Nodes() - nodes < 60 && Megabytes() - mb < 64,
+                $"{label} for 40 s ({Tool.Shots - shots} blasts): nodes {nodes} to at most {most}, then {Nodes()}; objects {objects} to {Objects()}; memory {mb:F0} to {Megabytes():F0} MB");
+        }
+        if (Tool.Mode == ToolMode.Repair) foreach (int x in _drive.Tap(Key.Q)) yield return x;
     }
 
     // ---- Ore: as it was, with lightning -------------------------------------------------------------
