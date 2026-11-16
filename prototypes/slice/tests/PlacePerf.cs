@@ -44,6 +44,7 @@ public partial class PlacePerf : Node
     SystemSplit _split;
     AllocCensus _allocs;
     readonly List<double> _script = new();
+    double _townTick, _townPose;
     readonly List<string> _hitches = new();
     int _gc0, _gc2;
     bool _failed;
@@ -169,6 +170,8 @@ public partial class PlacePerf : Node
         if (_times == null) return;
         _times.Add(ms);
         _script.Add(_probe.LastMs);
+        foreach (Slice.Places.Place pl in _game.Places.Standing)
+            if (pl.Memory.Town is { } town) { _townTick += town.LastTickMs; _townPose += town.LastPoseMs; }
         int gc = GC.CollectionCount(0), gc2 = GC.CollectionCount(2);
         if (ms > 33.4 && _hitches.Count < 40) _hitches.Add($"{ms:F0}ms script {_probe.LastMs:F0} frame {_times.Count} gc0 +{gc - _gc0} gc2 +{gc2 - _gc2} pause {GC.GetGCMemoryInfo(GCKind.Ephemeral).PauseDurations[0].TotalMilliseconds:F0} promoted {GC.GetGCMemoryInfo(GCKind.Ephemeral).PromotedBytes / 1024 / 1024} MB heap {GC.GetGCMemoryInfo(GCKind.Ephemeral).HeapSizeBytes / 1024 / 1024} MB gen0 {GC.GetGCMemoryInfo(GCKind.Ephemeral).GenerationInfo[0].SizeBeforeBytes / 1024 / 1024} at {_game.Survivor?.WorldFeet.X:F0},{_game.Survivor?.WorldFeet.Z:F0} objs {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}");
         _gc0 = gc;
@@ -188,6 +191,7 @@ public partial class PlacePerf : Node
     void Begin()
     {
         _times = new List<double>();
+        _townTick = _townPose = 0;
         _script.Clear();
         _cpu.Clear();
         _gpu.Clear();
@@ -206,6 +210,8 @@ public partial class PlacePerf : Node
         List<double> t = _times;
         _times = null;
         if (t.Count == 0) { GD.Print($"PERF {stage}: no frames"); return; }
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} towns a frame: their last tick {_townTick / t.Count:F2} ms, posing {_townPose / t.Count:F2} ms"));
+        _townTick = _townPose = 0;
         t.Sort();
         double P(double q) => t[Math.Min(t.Count - 1, (int)(t.Count * q))];
         int hitches = t.Count(x => x > 33.4);
