@@ -69,9 +69,7 @@ public partial class Visor
             if (b.Value.Length > 0)
                 _hud.TextIn(UiTheme.Mono, (int)(10 * s), new Rect2(box.Position + new Vector2(2, 1), new Vector2(cell - 4, 13 * s)), b.Value, picked ? C.Glass : ink, HorizontalAlignment.Right);
         }
-        int nameSize = (int)(13 * s), hintSize = (int)(13 * s);
+        int nameSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Display, nameSize, layout.BarName, HudLayout.Fit(UiTheme.Display, nameSize, v.Name.ToUpperInvariant(), layout.BarName.Size.X), C.Accent, HorizontalAlignment.Right);
-        string keys = $"[{KeyBindings.Name(Game.Settings.Keys["slot-1"])}-{KeyBindings.Name(Game.Settings.Keys["slot-9"])}] SLOTS   [LMB] FIRE   {Bound("seat")} STAND UP";
-        _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, keys, layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
     }
 }

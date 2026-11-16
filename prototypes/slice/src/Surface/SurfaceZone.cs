@@ -61,6 +61,10 @@ public partial class SurfaceZone : Node3D
 
     public PlanetWorld Planet { get; private set; }
     public TerrainStreamer Streamer { get; private set; }
+
+    /// <summary>The ground's trees and rocks by chunk, without streaming them in (<see cref="ScatterSolids"/>).</summary>
+    public ScatterSolids Scatter => _scatter ??= new ScatterSolids(this);
+    ScatterSolids _scatter;
     public SkyRig Sky { get; private set; }
     public SurfaceWeather Weather { get; protected set; }
     public WildlifePatch Wildlife { get; protected set; }

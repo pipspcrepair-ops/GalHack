@@ -112,6 +112,9 @@ public abstract class Rig
         return best;
     }
 
+    /// <summary>Which way its chest faces as it is posed now, flat (a test of a blow squarely given).</summary>
+    public virtual Vector3 Chest(Creature c) => c.Forward;
+
     /// <summary>How far ahead of its middle its striking part can reach, for a strike at this height: by default its jaws as it stands, thrown forward.</summary>
     public virtual float Reach(Creature c, float y) => Attacks.Jaws(c) + Attacks.Stretch(c);
 

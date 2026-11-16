@@ -91,7 +91,7 @@ public sealed partial class Staging
                 var src = _game.Zone.Planet.Source;
                 if (q.Y - 1.7f < src.WaterLevel + 0.5f || src.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(q.X, _game.Zone.Planet.Width), Planets.Gen.Mathx.Wrap(q.Z, _game.Zone.Planet.Height), out _)) continue; // dry ground
                 List<PlanetSurface.Terrain.FloraSolid> near;
-                while ((near = _game.Sky.ScatterNear(q.ToNumerics(), 12f)) == null) yield return 0;
+                while ((near = _game.Zone.Scatter.Near(q.ToNumerics(), 12f)) == null) yield return 0;
                 // Over the ground all the way, and no tree or rock within 8 m of the line for its first 200 m (where a crown would hide it).
                 bool seen = true;
                 for (float s = 0.05f; s < 0.95f && seen; s += 0.05f)
@@ -102,7 +102,7 @@ public sealed partial class Staging
                 for (float d = 10f; seen && d < MathF.Min(200f, q.DistanceTo(look)); d += 12f)
                 {
                     List<PlanetSurface.Terrain.FloraSolid> line;
-                    while ((line = _game.Sky.ScatterNear((q + (look - q).Normalized() * d).ToNumerics(), 8f)) == null) yield return 0;
+                    while ((line = _game.Zone.Scatter.Near((q + (look - q).Normalized() * d).ToNumerics(), 8f)) == null) yield return 0;
                     seen = line.Count == 0;
                 }
                 if (near.Count == 0 && seen) { set(q); yield break; }

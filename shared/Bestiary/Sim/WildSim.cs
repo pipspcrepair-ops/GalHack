@@ -562,9 +562,10 @@ public sealed class WildSim
             Vector3 moved = Space.Bodies[i].Moved;
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
-            Vector3 was = c.Position;
-            c.Position += new Vector3(moved.X, 0f, moved.Z);
-            if (Interpenetration.Inside(this, c)) c.Position = was; // never shoved into a wall
+            Vector3 was = c.Position, to = was + new Vector3(moved.X, 0f, moved.Z);
+            if (Locomotion.IntoTrees(this, c, to)) continue; // never jostled into a trunk or a rock
+            c.Position = to;
+            if (Interpenetration.Inside(this, c)) c.Position = was; // nor a wall
         }
     }
 

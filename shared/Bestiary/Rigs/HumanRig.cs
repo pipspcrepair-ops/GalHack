@@ -258,6 +258,8 @@ public sealed partial class HumanRig : Rig
         SetBounds(chest, _f.Height * 0.65f);
     }
 
+    public override Vector3 Chest(Creature c) => WildSim.Flat(Facing).Normalized();
+
     /// <summary>A person strikes with the fist of their leading arm, or the blade or club swung in it.</summary>
     public override Vector4 Striker(Creature c)
     {
