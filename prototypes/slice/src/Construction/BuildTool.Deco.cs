@@ -223,12 +223,15 @@ public sealed partial class BuildTool
         return true;
     }
 
+    /// <summary>The deco piece the aim is on (the face under it, or the cell it sits in), or null.</summary>
+    public DecoPlaced AimedDeco() =>
+        HasTarget && TargetVessel != null && (TargetVessel.DecoAt(PlaceCell, out DecoPlaced d) || TargetVessel.DecoAt(TargetCell, out d)) ? d : null;
+
     /// <summary>The Sleeper tool on a piece: aiming at the face under it takes it down.</summary>
     public bool DecoToDeconstruct(out string verdict)
     {
         verdict = null;
-        if (!HasTarget || TargetVessel == null) return false;
-        if (!(TargetVessel.DecoAt(PlaceCell, out DecoPlaced d) || TargetVessel.DecoAt(TargetCell, out d))) return false;
+        if (AimedDeco() is not { } d) return false;
         verdict = $"{Decor.Shared?.Catalogue.Piece(d.Piece).Name}{(Creative ? "" : " · +1 Deco block")}";
         return true;
     }

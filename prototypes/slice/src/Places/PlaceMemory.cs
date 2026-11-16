@@ -37,6 +37,8 @@ public sealed class PlaceMemory
     /// <summary>Deco pieces salvaged, by room (module) and placement index; and damage on the ones being worked.</summary>
     public readonly Dictionary<int, HashSet<int>> DecoTaken = new();
     public readonly Dictionary<(int Room, int Piece), float> DecoDamage = new();
+    /// <summary>Hit points worn off each doorway's door (by doorway index), by the Sleeper tool's blasts.</summary>
+    public readonly Dictionary<int, float> DoorDamage = new();
     /// <summary>Where each lift's car stands (walk height).</summary>
     public float[] LiftY;
 

@@ -197,12 +197,59 @@ public partial class PoiPlaces
         return (Pay(m, yield.Select(kv => (kv.Key, kv.Value))), $"Salvaged: {b.Material.ToString().ToLowerInvariant()} {b.Type.ToString().ToLowerInvariant()}");
     }
 
+    static float HpOf(DecoPiece piece) => piece.Hp > 0 ? piece.Hp : 120f;
+
+    /// <summary>
+    /// A gather blast's wear on a place's door or piece of dressing: <paramref name="damage"/> hit points off it,
+    /// and what that share of it is worth (item, amount before the tool's extract share). Worked through, it
+    /// comes away as it does otherwise: a piece taken from its room (a hazard goes up), a door out of its doorway.
+    /// Anything else (a plain block, a lift's door) takes nothing and gives nothing.
+    /// </summary>
+    public IEnumerable<(string Id, double Amount)> Wear(Hit h, float damage)
+    {
+        PlaceMemory m = h.Place.Memory;
+        Dictionary<string, double> whole;
+        float hp, done, dealt;
+        if (h.Piece != null)
+        {
+            var key = (h.Piece.Room.Module, h.Piece.Index);
+            hp = HpOf(h.Piece.Piece);
+            done = m.DecoDamage.GetValueOrDefault(key) + damage;
+            dealt = MathF.Min(damage, hp - (done - damage));
+            whole = (h.Piece.Piece.Salvage != null ? Decor.Shared.Catalogue.SalvageYield(h.Piece.Piece.Salvage) : h.Piece.Piece.Bill).ToDictionary(kv => kv.Key, kv => (double)kv.Value);
+            if (done < hp) m.DecoDamage[key] = done;
+            else if (h.Piece.Piece.Blast != null) Detonate(h.Place, h.Piece);
+            else
+            {
+                m.DecoDamage.Remove(key);
+                h.Place.TakePiece(h.Piece);
+                Salvaged++;
+            }
+        }
+        else if (h.Door is { Lift: < 0 } door && h.Place.Inst.Blocks.Get(door.Cells.First(c => h.Place.Inst.Blocks.Get(c).Type == BlockType.Door)) is var b)
+        {
+            hp = BlockInfo.HitPoints(b) * door.Cells.Count;
+            done = m.DoorDamage.GetValueOrDefault(door.Index) + damage;
+            dealt = MathF.Min(damage, hp - (done - damage));
+            whole = Rules.Salvage.Materials.TryGetValue(b.Material.ToString().ToLowerInvariant(), out var per) ? per.ToDictionary(kv => kv.Key, kv => kv.Value * door.Cells.Count * 0.5) : new();
+            if (done < hp) m.DoorDamage[door.Index] = done;
+            else
+            {
+                m.DoorDamage.Remove(door.Index);
+                h.Place.TakeDoor(door);
+                Salvaged++;
+            }
+        }
+        else return Enumerable.Empty<(string, double)>();
+        return whole.Select(kv => (kv.Key, kv.Value * dealt / hp));
+    }
+
     (Bill, string) WorkPiece(Hit h, float damage)
     {
         DecoPiece piece = h.Piece.Piece;
         PlaceMemory m = h.Place.Memory;
         var key = (h.Piece.Room.Module, h.Piece.Index);
-        float hp = piece.Hp > 0 ? piece.Hp : 120f;
+        float hp = HpOf(piece);
         float done = m.DecoDamage.GetValueOrDefault(key) + damage;
         if (done < hp)
         {

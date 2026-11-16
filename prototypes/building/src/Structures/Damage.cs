@@ -47,12 +47,12 @@ public static class Damage
     public static void Hit(Structure s, Int3 p, DamageType type, float amount, DamageReport report) =>
         Hit(s, p, type, amount, report, p.ToVector3(), Vector3.Zero);
 
-    /// <summary>The same, knowing where it struck (cell units) and which way the hit came from, for sparks and marks.</summary>
-    public static void Hit(Structure s, Int3 p, DamageType type, float amount, DamageReport report, Vector3 point, Vector3 outward)
+    /// <summary>The same, knowing where it struck (cell units) and which way the hit came from, for sparks and marks. <paramref name="wear"/>: the points come off whole, armour and resistance never touch them.</summary>
+    public static void Hit(Structure s, Int3 p, DamageType type, float amount, DamageReport report, Vector3 point, Vector3 outward, bool wear = false)
     {
         // A hit on any cell of a block spanning several goes to its anchor: one block, one pool of hit points.
         if (!s.TryGetBlock(p, out p, out Block b)) return;
-        Apply(s, p, b, Effective(s.StatsOf(b), type, amount), report, point, outward);
+        Apply(s, p, b, wear ? amount : Effective(s.StatsOf(b), type, amount), report, point, outward);
     }
 
     static void Apply(Structure s, Int3 p, Block b, float dealt, DamageReport report, Vector3 point, Vector3 outward)

@@ -566,7 +566,17 @@ public sealed class SleeperTool
             return;
         }
         // Ground, a plant, a place or nothing: gathered as before (each pulse at the gathering rate), the bolt to what is worked.
-        if (!OnBlock && OnPlace)
+        if (!OnBlock && OnPlace && _placeHit is { } dressed && (dressed.Piece != null || dressed.Door != null))
+        {
+            // A door or a piece of dressing: worn at the blast's rate, giving up its bill's share as it goes.
+            var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (id, n) in Places.Wear(dressed, BlastWear))
+                if (_zone.Data.Items.Has(id)) Earn(id, n * Bolt.ExtractShare, got);
+            Announce(got, quietStone: false);
+            Sfx?.Play(Sfx.Sound.Clank, _placePoint, 1.25f, -12f);
+            Strike(_placePoint, Vector3.One * 0.35f, 4, attack: true);
+        }
+        else if (!OnBlock && OnPlace)
         {
             if (_placeHit is PoiPlaces.Hit ph) Places.Shot(ph, damage); // a hazard goes up, a faction's core is shot out
             WorkPlace();
@@ -673,6 +683,12 @@ public sealed class SleeperTool
 
     public const string Biomass = "biomass";
 
+    /// <summary>The hit points one blast takes off whatever it is on: so many a second, over the shot interval, by the tool's tier.</summary>
+    float BlastWear => Bolt.BlockPerSecond * _rules.ShotInterval * Tier.Shot;
+
+    /// <summary>The hit points of a deco piece (a piece with none stated takes 120).</summary>
+    static float DecoHp(string piece) => Decor.Shared?.Catalogue.Piece(piece).Hp is > 0 and var hp ? hp : 120f;
+
     /// <summary>A sleeper's structure, or one with no core: its blocks are ours to take back whole.</summary>
     public static bool Ours(Slice.Vessels.Vessel v) => v.Structure.Core == null || v.Structure.Owner == GalHack.Structures.Building.DefaultOwner;
 
@@ -698,14 +714,24 @@ public sealed class SleeperTool
             }
             return;
         }
-        float amount = Bolt.BlockDamage * Tier.Shot, max = s.StatsOf(b).MaxHp;
-        float dealt = MathF.Min(b.Hp, GalHack.Structures.Damage.Effective(s.StatsOf(b), GalHack.Structures.DamageType.Energy, amount));
-        v.Hits.Shot(cell, at.ToNumerics(), normal.ToNumerics(), amount, GalHack.Structures.DamageType.Energy);
-        Extracted++;
+        float amount = BlastWear, max = s.StatsOf(b).MaxHp, dealt = MathF.Min(b.Hp, amount);
         var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        if (max > 0f && dealt > 0f)
-            foreach (var (id, n) in GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, s, b))
-                Earn(id, n * Bolt.ExtractShare * dealt / max, got);
+        if (Builder?.AimedDeco() is { } deco && Builder.TargetVessel == v)
+        {
+            // A piece set on it: worn the same, and it comes away as a piece does (the whole piece's bill is the one deco block).
+            float hp = DecoHp(deco.Piece);
+            deco.Worn += amount;
+            Earn(DecoCatalogue.UniversalItem, Bolt.ExtractShare * MathF.Min(amount, hp) / hp, got);
+            if (deco.Worn >= hp) Builder.RemoveDecoNear(v);
+        }
+        else
+        {
+            v.Hits.Shot(cell, at.ToNumerics(), normal.ToNumerics(), amount, GalHack.Structures.DamageType.Energy, wear: true);
+            if (max > 0f && dealt > 0f)
+                foreach (var (id, n) in GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, s, b))
+                    Earn(id, n * Bolt.ExtractShare * dealt / max, got);
+        }
+        Extracted++;
         Announce(got, quietStone: false);
         Fx?.Impact(at, normal, ImpactKind.Block, v.Node, lit: false);
         Strike(centre, Vector3.One * size * 0.5f, 5, attack: true);
