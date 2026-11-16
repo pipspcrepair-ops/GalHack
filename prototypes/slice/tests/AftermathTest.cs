@@ -257,12 +257,16 @@ public partial class AftermathTest : Node
         // The gestures after it: a point at it, then at the way out.
         var seen = new List<(BodyAct Act, Vector3 At)>();
         bool flew = bag.Flying != null;
-        for (int i = 0; i < 60 * 4; i++)
+        for (int i = 0, down = 0; i < 60 * 4; i++)
         {
-            _game.Controls.Look = Vector2.Zero;
+            // Once it is down, the sleeper looks at it and at the one who threw it (the shot through their own eyes).
+            if (bag.Flying == null) _drive.Face(bag.Position * 0.65f + patch.FromPatch(trader.Position) * 0.35f + Vector3.Up * 0.5f);
+            else _game.Controls.Look = Vector2.Zero;
             if (trader.Act != BodyAct.None && trader.LookAt is { } at) seen.Add((trader.Act, patch.FromPatch(at)));
+            if (bag.Flying == null && ++down == 20) foreach (int x in Shot("tossed.png", null)) yield return x;
             yield return 0;
         }
+        _game.Controls.Look = Vector2.Zero;
         Check(flew && bag.Flying == null, "it comes down on an arc and rests");
         Vector3 b = bag.Position, line = Flat(thrower - me);
         float d = WildSim.Flat(thrower - me).Length(), along = (b - me).Dot(line), off = WildSim.Flat(b - me - line * along).Length();
@@ -274,8 +278,6 @@ public partial class AftermathTest : Node
         int first = seen.FindIndex(s => s.Act == BodyAct.Point && WildSim.Flat(s.At - b).Length() < 1.2f);
         bool away = first >= 0 && seen.Skip(first).Any(s => s.Act == BodyAct.Point && WildSim.Flat(s.At - thrower).Length() > d + 5f);
         Check(seen.Any(s => s.Act == BodyAct.Present) && atBag && away, $"the toss, a point at it, then a point at the way out ({string.Join(" > ", seen.Select(s => s.Act).Distinct())})");
-        Vector3 eye = _game.Survivor.WorldEye();
-        foreach (int x in Shot("tossed.png", new Transform3D(Basis.LookingAt((b + thrower) * 0.5f + Vector3.Up * 0.4f - eye, Vector3.Up), eye))) yield return x;
         trader.Removed = true;
         Disarm();
     }

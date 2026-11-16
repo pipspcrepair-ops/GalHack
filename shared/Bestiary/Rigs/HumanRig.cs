@@ -204,20 +204,20 @@ public sealed partial class HumanRig : Rig
         }
         // Going through someone's things: down on the haunches, hands at work in them.
         float rummage = _act == BodyAct.Rummage ? _actAmount : 0f;
-        // A Husk at a body's face: knelt, hands on the head, heaving its worms up into it.
-        bool infest = c.Infests != null && c.InfestFor > 0f;
+        // A Husk at a body's face: knelt and bent right down to it, hands on it, heaving its worms up into it.
+        float infest = c.Infests != null && c.InfestFor > 0f ? 1f : 0f;
         Drive(new Gesture
         {
             Feet = c.Position,
             Yaw = c.Yaw,
             Speed = speed,
             Walked = _walked,
-            Crouch = MathF.Max(low, rummage * 0.9f),
-            Work = rummage,
+            Crouch = MathF.Max(low, MathF.Max(rummage * 0.9f, infest)),
+            Work = MathF.Max(rummage, infest),
             Stalk = stalk,
             // A Husk holding a head keeps its hands on it; anyone held by one struggles.
-            Reach = c.Phase == AttackPhase.Hold || infest ? 1f : c.HeldBy != null ? 0.6f * Rearing : 0f,
-            Retch = infest ? 0.6f + 0.4f * MathF.Sin(c.Age * 7f) : c.Attacking && !spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
+            Reach = c.Phase == AttackPhase.Hold ? 1f : c.HeldBy != null ? 0.6f * Rearing : 0f,
+            Retch = infest > 0f ? 0.35f + 0.3f * MathF.Sin(c.Age * 7f) : c.Attacking && !spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
             Strike = strike,
             Blow = spew ? StrikeKind.Spew : StrikeKind.None,
             Look = LookYaw,
