@@ -25,6 +25,7 @@
       "push": 1.6, "pushMost": 11, "quake": 0.35, "quakeReach": 14, "quakeFootfall": 0.35
     },
     "commitFraction": 0.5,
+    "strikeTurn": 9,
     "lungeSeconds": 0.25,
     "lungeReach": 1.2,
     "contactRadius": 1.0,

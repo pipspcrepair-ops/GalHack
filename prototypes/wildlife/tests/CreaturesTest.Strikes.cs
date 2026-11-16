@@ -20,6 +20,10 @@ public partial class CreaturesTest
     {
         public int Hits, Misses, FarHits, Untold, OpenLunges, Bites, Snapped, Quakes, Stomps;
         public float WorstGap = float.MinValue, DeepestGap = float.MaxValue, MaxPartGap = float.MinValue, MaxDrawnGap = float.MinValue;
+        /// <summary>The most any striker's chest was turned from its victim as a blow landed, degrees (not a tail swipe, which turns into it), and how many such blows by people.</summary>
+        public float WorstFacing;
+        public int Squared, PeopleBlows;
+        public string WorstFaced = "";
         public readonly List<(float size, float windup, bool first)> Windups = new();
         public readonly Dictionary<AttackMove, int> HitsBy = new(), TriesBy = new();
         public string Worst = "", WorstDrawn = "";
@@ -43,6 +47,15 @@ public partial class CreaturesTest
                 StrikeCase(log, s, new Vector3(0f, 0f, -(s.Body.Size + 6f)), dodge: false);
                 StrikeCase(log, s, new Vector3(0f, 0f, -(s.Body.Size + 6f)), dodge: true);
             }
+        }
+        // People: bare fists, clubs and blades, a few of each kind of folk on fresh worlds.
+        var folk = new PeopleGenerator(_data.People, new WorldConditions { Seed = (ulong)rng.NextInt64(), Alienness = (float)rng.NextDouble() * 0.6f, TempC = 15f }) { HuskRules = _data.Husks };
+        for (int i = 0; i < 6; i++)
+        {
+            Species person = folk.Person((ulong)rng.NextInt64(), i % 2 == 0 ? PersonRole.Guard : PersonRole.Worker, Occupancy.Raider);
+            person.Stats.Damage = 1f;
+            species++;
+            StrikeCase(log, person, new Vector3(0.6f * (i % 3 - 1), 0f, -2.4f), dodge: false);
         }
         // Megafauna's own strikes, from their parts: a stomp on pillar legs, a charge with horns, a swipe with a heavy tail.
         PlanetFauna world = _gen.Generate((ulong)rng.NextInt64(), 0.3f, false);
@@ -68,6 +81,8 @@ public partial class CreaturesTest
             $"blows land only on contact: {log.Hits} hits over {species} species from 0.6 to 9 m, none with the striking part further than {r.ContactSlack:F2} m from the body (worst gap {log.WorstGap:F3} m, deepest {log.DeepestGap:F2} m; {log.Worst})");
         Check(log.MaxPartGap <= r.ContactSlack + 1e-3f && log.MaxDrawnGap <= 0.3f,
             $"the striking part the rig draws is at the body the step damage applies: its sweep over the last step at most {log.MaxPartGap:F3} m off, the drawn frame at most {log.MaxDrawnGap:F2} m ({log.WorstDrawn})");
+        Check(log.Squared > 0 && log.PeopleBlows > 0 && log.WorstFacing <= 20f,
+            $"everything squares up to what it hits: {log.Squared} blows (people's {log.PeopleBlows}), the chest at worst {log.WorstFacing:F1} degrees off the victim as each landed ({log.WorstFaced}; at most 20)");
         Check(log.Untold == 0, $"every hit is preceded by its tell ({log.Hits} hits, {log.Untold} without one)");
         var firsts = log.Windups.Where(x => x.first).ToList();
         float least = firsts.Min(x => x.windup), most = firsts.Max(x => x.windup);
@@ -137,7 +152,7 @@ public partial class CreaturesTest
             if (e.Move == AttackMove.Stomp) log.Stomps++;
             if (!told.Contains(c) && e.Hit) log.Untold++;
             told.Remove(c);
-            if (lunging && e.Move == AttackMove.Bite && c.Species.Part("head") != "none")
+            if (lunging && e.Move == AttackMove.Bite && c.Species.Figure == null && c.Species.Part("head") != "none")
             {
                 log.Bites++;
                 if (opened) log.OpenLunges++;
@@ -145,6 +160,15 @@ public partial class CreaturesTest
             }
             if (!e.Hit) { log.Misses++; return; }
             log.Hits++;
+            if (e.Move != AttackMove.Swipe)
+            {
+                // Faced squarely: its chest, as drawn, on whoever it hit.
+                Vector3 chest = c.Rig.Chest(c), to = WildSim.Flat(p.Position - c.Position).Normalized();
+                float off = Mathf.RadToDeg(MathF.Acos(Math.Clamp(chest.Dot(to), -1f, 1f)));
+                log.Squared++;
+                if (c.Species.Figure != null) log.PeopleBlows++;
+                if (off > log.WorstFacing) { log.WorstFacing = off; log.WorstFaced = $"{s.Body.Size:F1} m {s.CommonName} {e.Move}"; }
+            }
             log.HitsBy[e.Move] = log.HitsBy.GetValueOrDefault(e.Move) + 1;
             if (dodge) log.FarHits++;
             // Judged again from the rig's own drawn part, swept from last step to this one.

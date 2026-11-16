@@ -179,7 +179,7 @@ public static class Attacks
                 }
                 c.Desired = Vector3.Zero;
                 if (!c.Committed) c.AimPoint = t.Position;
-                c.FacePoint = c.AimPoint;
+                FaceStrike(w, c, c.AimPoint, dt);
                 WindupPose(c, Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f));
                 if (c.Move == AttackMove.Swipe) Sweep(c, -0.3f * Math.Clamp(c.PhaseTime / c.PhaseLength * 2f, 0f, 1f)); // it turns a little away: the tail cocks
                 CommitIfDue(w, c, t);
@@ -214,6 +214,7 @@ public static class Attacks
                 c.Lunge = c.Move is AttackMove.Bite or AttackMove.Charge ? 1f : 0f;
                 c.Desired = Vector3.Zero;
                 c.LookAt = c.StrikeAt;
+                if (c.Space == null && c.Move != AttackMove.Charge) FaceStrike(w, c, c.StrikeAt, dt); // a charge holds the line it set off on
                 float k = Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f);
                 if (c.Move == AttackMove.Swipe) Sweep(c, Mathf.Lerp(-0.3f, 1.25f, k * k * (3f - 2f * k)));
                 if (c.Move == AttackMove.Charge && c.Rig.Steps != c.StrikeSteps)
@@ -305,6 +306,19 @@ public static class Attacks
                 c.WantCrouch = 0.5f * snap;
                 break;
         }
+    }
+
+    /// <summary>
+    /// Its whole body (feet, hips, chest and head) turns to face what it is striking, quickly:
+    /// nothing hits you while looking past you. A swipe turns into its sweep instead.
+    /// </summary>
+    static void FaceStrike(WildSim w, Creature c, Vector3 at, float dt)
+    {
+        if (c.Move == AttackMove.Swipe) return;
+        Vector3 to = WildSim.Flat(at - c.Position);
+        if (to.LengthSquared() < 1e-4f) return;
+        c.Yaw = Mathf.RotateToward(c.Yaw, MathF.Atan2(-to.X, -to.Z), MathF.Max(w.Combat.StrikeTurn, Heft.TurnRate(c, 0f)) * dt);
+        c.FacePoint = at;
     }
 
     /// <summary>Whether it bites with a mouth of some kind (jaws, beak, pincers, a round maw), not only a head.</summary>

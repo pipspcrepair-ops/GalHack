@@ -57,6 +57,8 @@ public sealed partial class Town
     /// <summary>What the town has done in a fight (tests): shots and blows its people dealt, rounds used, parts taken.</summary>
     public int Shots { get; private set; }
     public int Blows { get; private set; }
+    /// <summary>The most anyone's chest was turned from you as their blow landed, degrees (tests).</summary>
+    public float WorstBlowFacing { get; private set; }
     public int Engagements { get; private set; }
     /// <summary>Bursts not fired because the weapon never came onto its mark, and how far off the last held round was, with its raise and gesture (tests).</summary>
     public int Dropped;
@@ -395,6 +397,17 @@ public sealed partial class Town
         }
     }
 
+    /// <summary>How far off you, radians, someone may still be turned as their blow lands.</summary>
+    public static readonly float SquaredUp = Mathf.DegToRad(15f);
+
+    /// <summary>Turns them, whole body, to face you as fast as a strike turns; returns how far off they still are, radians.</summary>
+    float SquareUp(Person p, Vector3 to, float dt)
+    {
+        float want = MathF.Atan2(-to.X, -to.Z);
+        p.Yaw = Mathf.RotateToward(p.Yaw, want, _places.Zone.Data.Wildlife.Combat.StrikeTurn * dt);
+        return MathF.Abs(Geo.WrapAngle(want - p.Yaw));
+    }
+
     /// <summary>A hand weapon's (or bare hands') fight: straight at you by the walking grid, then close; a wind-up you can see, then the blow.</summary>
     void Close(Person p, Vector3 player, float dt)
     {
@@ -406,15 +419,20 @@ public sealed partial class Town
         if (p.Winding >= 0f)
         {
             // Committed: the blow lands when the wind-up is done, whoever is still there.
-            p.Winding += dt;
-            float wind = 0.42f;
+            float wind = 0.42f, facing = SquareUp(p, to, dt);
+            // Nobody lands a blow looking past you: it waits at the top of the swing until squared up.
+            if (p.Winding + dt < wind || facing <= SquaredUp) p.Winding += dt;
             p.Strike = Math.Clamp(p.Winding / wind, 0f, 1f);
             p.Now = 0f;
-            p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-to.X, -to.Z), MathF.Min(1f, dt * 5f));
             if (p.Winding < wind) return;
             p.Winding = -1f;
             p.SwingIn = d.SecondsPerShot;
             Blows++;
+            if (p.Rig != null)
+            {
+                Vector3 chest = WildSim.Flat(p.Rig.Facing).Normalized(), want = WildSim.Flat(to).Normalized();
+                WorstBlowFacing = MathF.Max(WorstBlowFacing, Mathf.RadToDeg(MathF.Acos(Math.Clamp(chest.Dot(want), -1f, 1f))));
+            }
             Vector3 from = World(p.Pos + Vector3.Up * Height(p) * 0.78f);
             ShotFired?.Invoke(p, d, from, World(player + Vector3.Up * 1.1f) - from, 0f);
             return;
@@ -424,8 +442,7 @@ public sealed partial class Town
         {
             p.Now = 0f;
             p.Path = null;
-            p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-to.X, -to.Z), MathF.Min(1f, dt * 8f));
-            if (p.SwingIn <= 0f) p.Winding = 0f;
+            if (SquareUp(p, to, dt) <= SquaredUp * 2f && p.SwingIn <= 0f) p.Winding = 0f;
             return;
         }
         // On their way in: at a run, straight once there's a clear line, else to the spot nearest you.

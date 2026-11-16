@@ -238,6 +238,7 @@ public partial class CombatTest : Node
             Check(unarmed.Fleeing || unarmed.Indoors || unarmed.Engaged, $"an unarmed one hit runs for it, or (a raider with the nerve) goes in with their fists ({(unarmed.Engaged ? $"fists, {unarmed.Part}" : unarmed.Fleeing ? "fleeing" : unarmed.Indoors ? "indoors" : "stood")})");
         }
         GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
+        if (town.Blows > 0) Check(town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows, the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
     }
 
     /// <summary>Out in the wild: a raider's rifle, a band's rally, a machine's mount, a club's blow.</summary>

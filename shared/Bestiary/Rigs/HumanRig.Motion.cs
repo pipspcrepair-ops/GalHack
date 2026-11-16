@@ -50,13 +50,13 @@ public sealed partial class HumanRig
         switch (_blow)
         {
             case StrikeKind.Punch:
-                twist = -0.4f * w + 0.5f * h;
+                twist = -0.3f * w + 0.25f * h; // the shoulders roll into it; the chest stays on them
                 pitch = 0.04f * w + 0.14f * h;
                 forward = -0.03f * w + 0.12f * h;
                 down = 0.04f * w;
                 break;
             case StrikeKind.Swat:
-                twist = -0.35f * w + 0.5f * h;
+                twist = -0.25f * w + 0.25f * h;
                 pitch = -0.14f * w + 0.38f * h;
                 forward = -0.04f * w + 0.1f * h;
                 down = 0.03f * w + 0.05f * h;
