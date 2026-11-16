@@ -264,15 +264,23 @@ public static partial class SmallCraft
         l.Inside.Remove(l.Heart);
         l.AxisY = 0;
         Marks(l, P(-w - 1, -1, zf), P(w + 1, 0, zb));
-        // The cargo pod between the booms, or two, a gap between.
-        int pz0 = chi.Z + 2, pz1 = zb - 4;
-        if (pz1 - pz0 >= 6 && l.Rng.Next(2) == 0)
+        // The cargo pod slung between the booms, narrower than the gap and hung on struts (or two, a gap between), so the booms show.
+        int pz0 = chi.Z + 2, pz1 = zb - 4, py = -R(l, 1, 2);
+        void Pod(int z0, int z1)
+        {
+            if (z1 - z0 < 2) return;
+            Rack(l, P(-1, py - 1, z0), P(1, py, z1), l.Coat(R(l, 1, 7)));
+            foreach (int side in new[] { 1, -1 })
+                foreach (int z in new[] { z0 + 1, z1 - 1 })
+                    d.Fill(P(side * 2, py, z), P(side * (w - 1), py, z), Plate, l.Coat(4)).Fill(P(side * (w - 1), py, z), P(side * (w - 1), -1, z), Plate, l.Coat(4));
+        }
+        if (pz1 - pz0 >= 8 && l.Rng.Next(2) == 0)
         {
             int mid = (pz0 + pz1) / 2;
-            Rack(l, P(-w + 1, -1, pz0), P(w - 1, 0, mid - 1), l.Coat(R(l, 1, 7)));
-            Rack(l, P(-w + 1, -2, mid + 1), P(w - 1, 0, pz1), l.Coat(R(l, 1, 7)));
+            Pod(pz0, mid - 1);
+            Pod(mid + 1, pz1);
         }
-        else if (pz1 - pz0 >= 2) Rack(l, P(-w + 1, -1 - R(l, 0, 1), pz0), P(w - 1, 0, pz1), l.Coat(R(l, 1, 7)));
+        else Pod(pz0, pz1);
         return false;
     }
 
