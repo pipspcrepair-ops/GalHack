@@ -24,7 +24,7 @@ public partial class Hands : Node3D
     ItemModel _shown;
     Color _tint;
     bool _shakeHeard;
-    float _buzz, _buzzLeft, _buzzTime;
+    float _buzz, _buzzLeft, _buzzTime, _held;
 
     /// <summary>Shakes from the Sleeper tool's bolts (tests: one a bolt), how strong the shake is now (0 to 1), and the strongest since <see cref="ResetPeaks"/>.</summary>
     public int ToolShakes { get; private set; }
@@ -156,7 +156,11 @@ public partial class Hands : Node3D
         var buzz = g?.Zone?.Data.Rules.Tool.Lightning;
         _buzzLeft = MathF.Max(0f, _buzzLeft - dt);
         _buzzTime += dt;
-        Buzz = buzz == null || _buzzLeft <= 0f ? 0f : _buzz * _buzzLeft / buzz.ShakeSeconds;
+        // Shaking all the while fire is held, settling quickly once let go (a bolt's jolt with it).
+        bool firing = buzz != null && g.Pack?.Hand == HandKind.Tool && g.Tool.Firing && g.Controls.Primary && !g.Menu.IsOpen;
+        if (!firing) _buzzLeft = MathF.Min(_buzzLeft, buzz?.SettleSeconds ?? 0f);
+        _held = buzz == null ? 0f : Mathf.MoveToward(_held, firing ? buzz.HeldShakeShare : 0f, dt * buzz.HeldShakeShare / buzz.SettleSeconds);
+        Buzz = buzz == null ? 0f : _held + (_buzzLeft <= 0f ? 0f : _buzz * _buzzLeft / buzz.ShakeSeconds);
         PeakBuzz = MathF.Max(PeakBuzz, Buzz);
         _kick = Mathf.MoveToward(_kick, 0f, dt / 0.15f);
         _shake = Mathf.MoveToward(_shake, 0f, dt * 4f);

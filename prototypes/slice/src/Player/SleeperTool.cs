@@ -59,8 +59,11 @@ public sealed class SleeperTool
     /// <summary>The build tool: blocks that come away whole go through its take-down, destroyed ones come back through its restore.</summary>
     public Slice.Construction.BuildTool Builder;
 
-    /// <summary>Every bolt the tool throws, on the tick it is drawn: the tool shakes in the hand with it (one shake a bolt; a gathering pulse's lighter, by this share of a blast's).</summary>
+    /// <summary>Every bolt the tool throws, on the tick it is drawn: a sharper jolt on top of the tool's shake (a gathering pulse's lighter, by this share of a blast's).</summary>
     public event Action<float> Shook;
+
+    /// <summary>Fire held in attack/gather on the last tick: the tool shakes in the hand all the while.</summary>
+    public bool Firing { get; private set; }
 
     /// <summary>The held tool's barrel tip in the world, when the hands show it (set by <see cref="Hands"/>); null otherwise.</summary>
     public Func<Vector3?> HeldMuzzle;
@@ -161,8 +164,9 @@ public sealed class SleeperTool
         if (OnStructure && !Ours(Builder.TargetVessel)) { OnStructure = false; Builder.Hide(); }
         if (OnStructure) TargetLabel = Builder.Verdict;
         BlockHealth = HealthOn(Mode == ToolMode.Repair ? _rules.Repair.Range : Bolt.Range);
+        Firing = trigger && !_suit.Dead && Mode == ToolMode.Gather;
         if (!trigger || _suit.Dead) return;
-        if (Mode == ToolMode.Repair) Mend();
+        if (Mode == ToolMode.Repair) Mend(dt);
         else if (_cooldown <= 0f) Blast();
     }
 
@@ -681,48 +685,93 @@ public sealed class SleeperTool
     // ---- Repair: the green cone ------------------------------------------------------------------
 
     /// <summary>
-    /// Repair held: the green cone shows and, a pulse at a time, mends the damaged block the look is on
-    /// (whole again, for the share of its bill its damage is), or restores a destroyed block in the
-    /// cone, paid for from the bag, else the core's storage. It harms nothing.
+    /// Repair held: the green cone shows, and the damaged block the look is on fills back up at the data's
+    /// rate (hit points a second), paid for as it goes, in proportion to its bill, from the bag, else the
+    /// core's storage; let go and it stops where it is. A destroyed block in the cone comes back at a low
+    /// share of its hit points and fills the same way. It harms nothing.
     /// </summary>
-    void Mend()
+    void Mend(float dt)
     {
         SliceRules.RepairRules r = _rules.Repair;
         Fx?.RepairCone(Muzzle, _survivor.WorldLook, r.Range, r.Angle);
-        if (_cooldown > 0f) return;
-        _cooldown = r.Interval;
-        Arms?.Sounds?.Play(CombatSound.Mend, Muzzle(), 0.95f + 0.1f * (float)Random.Shared.NextDouble(), -10f);
+        bool pulse = _cooldown <= 0f;
+        if (pulse)
+        {
+            _cooldown = r.Interval;
+            Arms?.Sounds?.Play(CombatSound.Mend, Muzzle(), 0.95f + 0.1f * (float)Random.Shared.NextDouble(), -10f);
+        }
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         if (WorldRay.Cast(_zone, _survivor, r.Range, Layers.World | Layers.Hull, out LookHit look) && look.OnBlock
-            && GalHack.Structures.Building.IsDamaged(look.Vessel.Structure, look.Cell))
+            && look.Vessel.Structure.TryGetBlock(look.Cell, out SInt3 anchor, out GalHack.Structures.Block b) && b.Hp < look.Vessel.Structure.StatsOf(b).MaxHp - 0.01f)
         {
             Slice.Vessels.Vessel v = look.Vessel;
-            Bill bill = v.Hits.RepairBill(look.Cell);
-            SharedStorage from = _pack.Storage.Has(bill) ? _pack.Storage : v.Storage;
-            GalHack.Structures.RepairStatus done = v.Hits.Repair(look.Cell, 1f, from);
-            LastMend = $"{done} {look.Cell} for {_zone.Data.Items.Describe(bill, 2)}";
-            if (done == GalHack.Structures.RepairStatus.Repaired)
+            float max = v.Structure.StatsOf(b).MaxHp, gain = MathF.Min(r.Rate * dt, max - b.Hp);
+            if (!Pay(v, anchor, b, gain / max))
             {
-                Repaired++;
-                if (from == _pack.Storage) _pack.Grid.Reconcile();
+                LastMend = $"short of {_zone.Data.Items.Describe(BillOf(v, b), 3)} for {anchor}";
+                if (pulse) Said?.Invoke($"REPAIR · {_zone.Data.Items.Describe(BillOf(v, b), 3)} NEEDED", Tones.Caution);
+                return;
             }
-            else Said?.Invoke($"REPAIR · {_zone.Data.Items.Describe(bill, 2)} NEEDED", Tones.Caution);
+            v.Hits.Heal(anchor, b.Hp + gain);
+            LastMend = $"mending {anchor}";
+            if (b.Hp + gain >= max - 0.01f) Repaired++;
             return;
         }
         LastMend = look.OnBlock ? $"whole {look.Cell}" : "no block";
-        // A destroyed block in the cone, nearest the look first.
+        if (!pulse) return;
+        // A destroyed block in the cone, nearest the look first: back at a low share, to fill from there.
         float cos = MathF.Cos(Mathf.DegToRad(r.Angle));
         string why = null;
-        foreach (var (v, cell, b) in FallenInCone(eye, dir, r.Range, cos))
+        foreach (var (v, cell, fallen) in FallenInCone(eye, dir, r.Range, cos))
         {
             if (v.Structure.Has(cell)) { v.Hits.Fallen.Remove(cell); continue; }
-            why = Builder?.Restore(v, cell, b);
+            if (!Pay(v, cell, fallen, r.RestoreShare, commit: false)) { why = $"REPAIR · {_zone.Data.Items.Describe(BillOf(v, fallen), 3)} NEEDED"; continue; }
+            why = Builder?.Restore(v, cell, fallen, v.Structure.StatsOf(fallen).MaxHp * r.RestoreShare);
             if (why != null) continue;
+            Pay(v, cell, fallen, r.RestoreShare);
             v.Hits.Fallen.Remove(cell);
             Restored++;
             return;
         }
         if (why != null) Said?.Invoke(LastMend = why, Tones.Caution);
+    }
+
+    /// <summary>What a whole block costs to mend from nothing: its bill (a plated block, its plates).</summary>
+    Bill BillOf(Slice.Vessels.Vessel v, GalHack.Structures.Block b)
+    {
+        GalHack.Structures.BlockType t = v.Structure.TypeOf(b);
+        return t.IsPlated ? Bill.Of((t.Plate, v.Structure.Catalogue.PlatesOf(b))) : GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, v.Structure, b);
+    }
+
+    /// <summary>What the block being mended owes so far, item by item, in fractions not yet paid in whole items.</summary>
+    readonly Dictionary<string, double> _owed = new(StringComparer.Ordinal);
+    (Slice.Vessels.Vessel, SInt3) _owedFor;
+
+    /// <summary>
+    /// Pays for <paramref name="share"/> of a block's health: that share of its bill added to what it owes,
+    /// whole items taken as they come due, from the bag, else the core's storage. False (nothing taken)
+    /// when neither holds them. Free in Creative.
+    /// </summary>
+    bool Pay(Slice.Vessels.Vessel v, SInt3 cell, GalHack.Structures.Block b, float share, bool commit = true)
+    {
+        if (_zone.WorldRules.Creative) return true;
+        if (_owedFor != (v, cell)) { _owed.Clear(); _owedFor = (v, cell); }
+        var due = new Bill();
+        var next = new Dictionary<string, double>(_owed, StringComparer.Ordinal);
+        foreach (var (id, n) in BillOf(v, b))
+        {
+            double owed = next.GetValueOrDefault(id) + n * share;
+            int whole = (int)Math.Floor(owed + 1e-9);
+            next[id] = owed - whole;
+            if (whole > 0) due.Add(id, whole);
+        }
+        SharedStorage from = due.IsEmpty ? _pack.Storage : _pack.Storage.Has(due) ? _pack.Storage : v.Storage.Has(due) ? v.Storage : null;
+        if (from == null) return false;
+        if (!commit) return true;
+        from.TryTake(due);
+        if (from == _pack.Storage && !due.IsEmpty) _pack.Grid.Reconcile();
+        foreach (var (id, owed) in next) _owed[id] = owed;
+        return true;
     }
 
     /// <summary>Destroyed blocks of structures about, inside the cone, nearest the look's line first.</summary>

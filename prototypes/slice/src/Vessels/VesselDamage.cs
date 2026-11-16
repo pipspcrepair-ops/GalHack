@@ -206,23 +206,30 @@ public sealed class VesselDamage : ILocatedDamageSink
 
     /// <summary>
     /// Gives a damaged block back a share of its health, paid for from the structure's shared
-    /// storage (or <paramref name="from"/>, the sleeper's bag): that share of the block's bill,
-    /// rounded up. The look steps back as it heals.
+    /// storage: that share of the block's bill, rounded up. The look steps back as it heals.
     /// </summary>
-    public RepairStatus Repair(Int3 cell, float share = 1f, SharedStorage from = null)
+    public RepairStatus Repair(Int3 cell, float share = 1f)
     {
         if (!Building.IsDamaged(S, cell)) return RepairStatus.NotDamaged;
         if (!_v.Zone.WorldRules.Creative)
         {
-            from ??= _v.Storage;
             Bill bill = RepairBill(cell, share);
-            if (!from.TryTake(bill)) return RepairStatus.NotEnoughMaterials;
+            if (!_v.Storage.TryTake(bill)) return RepairStatus.NotEnoughMaterials;
             S.CargoSu = _v.Storage.UsedSu;
         }
         Building.Repair(S, cell, share);
         _v.View.Queue(S.DirtyChunks);
         S.DirtyChunks.Clear();
         return RepairStatus.Repaired;
+    }
+
+    /// <summary>A block's hit points set (the Sleeper tool's repair, a little at a time, paid for as it goes): its look follows.</summary>
+    public void Heal(Int3 cell, float hp)
+    {
+        S.SetHp(cell, hp);
+        S.CargoSu = _v.Storage.UsedSu;
+        _v.View.Queue(S.DirtyChunks);
+        S.DirtyChunks.Clear();
     }
 
     /// <summary>What repairing this share of a block would cost.</summary>

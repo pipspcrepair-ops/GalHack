@@ -141,11 +141,11 @@ public partial class SleeperToolTest : Node
             float wide = MathF.Max(box.Size.X, box.Size.Z);
             if (box.Size.Y < 12f || wide > box.Size.Y * 0.15f) continue;
             Vector3 mid = box.GetCenter();
-            if (!cam.IsPositionInFrustum(mid) || mid.DistanceTo(cam.GlobalPosition) > 3000f) continue;
+            if (mid.DistanceTo(cam.GlobalPosition) > 60000f) continue; // in view or not: anything of the kind about, however far
             Vector2 at = cam.UnprojectPosition(mid) / screen;
-            thin.Add($"{g.GetPath()} ({g.GetType().Name}, {box.Size.Y:F0} m tall, {wide:F1} m wide, {mid.DistanceTo(cam.GlobalPosition):F0} m off, top {box.End.Y - _game.Zone.GroundAt(mid.X, mid.Z).Y:F0} m over the ground, at {at.X:F2} {at.Y:F2} of the frame)");
+            thin.Add($"{(cam.IsPositionInFrustum(mid) ? "IN VIEW " : "")}{g.GetPath()} ({g.GetType().Name}, {box.Size.Y:F0} m tall, {wide:F1} m wide, {mid.DistanceTo(cam.GlobalPosition):F0} m off, top {box.End.Y - _game.Zone.GroundAt(mid.X, mid.Z).Y:F0} m over the ground, at {at.X:F2} {at.Y:F2} of the frame)");
         }
-        GD.Print($"  (picture: {file}; whirls: {string.Join("; ", whirls.DefaultIfEmpty("none"))}; tall and thin in view: {string.Join(" | ", thin.Take(8).DefaultIfEmpty("none"))})");
+        GD.Print($"  (picture: {file}; whirls: {string.Join("; ", whirls.DefaultIfEmpty("none"))}; tall and thin in view: {string.Join(" | ", thin.Take(12).DefaultIfEmpty("none"))})");
     }
 
     /// <summary>For a picture: the next blast or cone held where it is (the effects and the hands stop), the picture taken, then everything runs on.</summary>
@@ -415,11 +415,36 @@ public partial class SleeperToolTest : Node
             $"held, repair shows the green cone with its lighter sound ({Played(CombatSound.Mend) - mends} pulses), gone when let go, and no blast or kick");
         Check(s.Get(hurt).Hp <= max * 0.3f + 0.01f, $"without the ingredients ({items.Describe(bill, 3)}) nothing is mended");
         foreach (var (id, n) in bill) _game.Pack.Add(id, n);
+        var bag = bill.ToDictionary(kv => kv.Key, kv => _game.Pack[kv.Key]);
         int repaired = Tool.Repaired;
-        foreach (int x in HoldRepair(FaceOf(v, hurt), 120)) yield return x;
-        bool onIt = WorldRay.Cast(_game.Zone, _game.Survivor, _game.Zone.Data.Rules.Tool.Repair.Range, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit look);
-        Check(s.Get(hurt).Hp >= max - 0.01f && Tool.Repaired > repaired && bill.All(kv => _game.Pack[kv.Key] < kv.Value),
-            $"with them in the bag it is mended to full ({s.Get(hurt).Hp:F0} of {max:F0}), paid from the bag (last pulse: {Tool.LastMend}; the look on {(onIt ? $"{look.Vessel?.Name ?? "ground"} {look.Cell} at {look.Distance:F1} m" : "nothing")})");
+        // Held half a second: the hit points climb a little every frame, never a jump, and stop where they are when let go.
+        float rate = _game.Zone.Data.Rules.Tool.Repair.Rate, last = s.Get(hurt).Hp, biggest = 0f;
+        string readout0 = null, readout1 = null;
+        int climbing = 0;
+        foreach (int x in _drive.LookAt(FaceOf(v, hurt), 6)) yield return x;
+        for (int i = 0; i < 30; i++)
+        {
+            _drive.Face(FaceOf(v, hurt));
+            _game.Controls.Primary = true;
+            yield return 0;
+            float now = s.Get(hurt).Hp;
+            if (now > last + 1e-3f) climbing++;
+            biggest = MathF.Max(biggest, now - last);
+            last = now;
+            if (i == 5) readout0 = _game.Visor.BlockHealth();
+            if (i == 25) readout1 = _game.Visor.BlockHealth();
+        }
+        _game.Controls.Primary = false;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        float partway = s.Get(hurt).Hp;
+        Check(climbing >= 20 && biggest <= rate / 60f * 1.5f + 0.01f && partway > max * 0.3f + 1f && partway < max - 1f && readout0 != readout1,
+            $"held, its hit points climb a little a frame ({climbing} of 30 frames, at most {biggest:F2} a frame at {rate} a second), the readout counting up ({readout0} then {readout1}), and let go they stop partway ({partway:F0} of {max:F0})");
+        foreach (int x in HoldRepair(FaceOf(v, hurt), 600)) yield return x;
+        var paid = bill.ToDictionary(kv => kv.Key, kv => bag[kv.Key] - _game.Pack[kv.Key]);
+        var whole0 = BuildingBridge.BillOf(items, s, s.Get(hurt));
+        bool fair = whole0.All(kv => paid.GetValueOrDefault(kv.Key) <= Math.Ceiling(kv.Value * 0.7 + 1e-6) && paid.GetValueOrDefault(kv.Key) >= Math.Floor(kv.Value * 0.7 - 1e-6));
+        Check(s.Get(hurt).Hp >= max - 0.01f && Tool.Repaired > repaired && fair,
+            $"held on, it fills to {s.Get(hurt).Hp:F0} of {max:F0}, paid as it went, in proportion: {string.Join(", ", whole0.Select(kv => $"{paid.GetValueOrDefault(kv.Key)} of its {kv.Value} {kv.Key}"))} for the 70% it was missing (last: {Tool.LastMend})");
 
         // Destroyed: restored from what the bag holds, nothing without.
         S.Block was = s.Get(gone);
@@ -431,8 +456,8 @@ public partial class SleeperToolTest : Node
         _game.Pack.Remove(item, _game.Pack[item]);
         foreach (var (id, _) in whole) _game.Pack.Remove(id, _game.Pack[id]);
         foreach (int x in HoldRepair(Centre(v, gone), 60)) yield return x;
-        Check(!s.Has(gone), "without its block or its bill, repair can't restore it");
-        _game.Pack.Add(item, 1);
+        Check(!s.Has(gone), "without its bill, repair can't restore it");
+        foreach (var (id, n) in whole) _game.Pack.Add(id, n);
         // Within the cone's reach of where it stood, however the land raised the row.
         Vector3 spot = Centre(v, gone), feet = _game.Survivor.WorldFeet, away = new Vector3(feet.X - spot.X, 0f, feet.Z - spot.Z);
         away = away.LengthSquared() > 1e-4f ? away.Normalized() : Vector3.Right;
@@ -440,9 +465,19 @@ public partial class SleeperToolTest : Node
         _game.Survivor.PlaceOutside((near + Vector3.Up * 0.3f).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;
         int restored = Tool.Restored;
-        foreach (int x in HoldRepair(Centre(v, gone), 60)) yield return x;
-        Check(s.Has(gone) && s.TypeOf(s.Get(gone)) == s.TypeOf(was) && s.Get(gone).Hp >= s.StatsOf(s.Get(gone)).MaxHp - 0.01f && _game.Pack[item] == 0 && Tool.Restored == restored + 1,
-            $"with the block in the bag, repair restores it where it stood, whole (last pulse: {Tool.LastMend})");
+        float first = -1f;
+        foreach (int x in _drive.LookAt(Centre(v, gone), 6)) yield return x;
+        for (int i = 0; i < 480 && !(s.Has(gone) && s.Get(gone).Hp >= s.StatsOf(s.Get(gone)).MaxHp - 0.01f); i++)
+        {
+            _drive.Face(Centre(v, gone));
+            _game.Controls.Primary = true;
+            yield return 0;
+            if (first < 0f && s.Has(gone)) first = s.Get(gone).Hp;
+        }
+        _game.Controls.Primary = false;
+        float full = s.Has(gone) ? s.StatsOf(s.Get(gone)).MaxHp : 1f;
+        Check(s.Has(gone) && s.TypeOf(s.Get(gone)) == s.TypeOf(was) && first > 0f && first <= full * 0.2f && s.Get(gone).Hp >= full - 0.01f && Tool.Restored == restored + 1,
+            $"with its bill in the bag, repair restores it where it stood: back at {first:F0} of {full:F0}, then filled whole (last: {Tool.LastMend})");
 
         // Harmless: a person and someone else's block in the cone come to no harm.
         Vessel theirs = Row("raiders", true, NextBearing(), out S.Int3[] row);
@@ -512,7 +547,7 @@ public partial class SleeperToolTest : Node
     /// </summary>
     IEnumerable<int> ShakeSync()
     {
-        GD.Print("-- a shake with every bolt --");
+        GD.Print("-- the tool shakes while fire is held, a jolt with every bolt --");
         foreach (int x in MoveOn()) yield return x;
         Hands hands = _game.Hands;
         Vector3 feet = _game.Survivor.WorldFeet, eye = _game.Survivor.WorldEye();
@@ -525,28 +560,26 @@ public partial class SleeperToolTest : Node
         {
             foreach (int x in _play.Tool(mode)) yield return x;
             foreach (int x in _drive.LookAt(at, 6)) yield return x;
-            int bolts = Fx.LightningBolts, kicks = hands.ToolShakes, blurred = 0, lastKicks = kicks;
-            bool eased = true;
+            int bolts = Fx.LightningBolts, jolts = hands.ToolShakes, still = 0, apart = 0;
             for (int i = 0; i < 180; i++)
             {
                 _drive.Face(at);
                 _game.Controls.Primary = true;
-                bool sameTick = Fx.LightningBolts - bolts == hands.ToolShakes - kicks;
                 yield return 0;
-                if (hands.ToolShakes != lastKicks)
-                {
-                    if (!eased) blurred++;
-                    eased = false;
-                    lastKicks = hands.ToolShakes;
-                }
-                else if (hands.Buzz < 0.35f) eased = true;
-                if (!sameTick) blurred += 1000; // a bolt and its kick on different ticks
+                if (i >= 10 && hands.Buzz <= 0f) still++;
+                if (Fx.LightningBolts - bolts != hands.ToolShakes - jolts) apart++; // a bolt without its jolt, or one without a bolt
             }
             _game.Controls.Primary = false;
-            foreach (int x in _drive.Wait(20)) yield return x;
-            int b = Fx.LightningBolts - bolts, k = hands.ToolShakes - kicks;
-            Check(mode == ToolMode.Repair ? b == 0 && k == 0 : b >= 8 && b == k && blurred == 0,
-                $"{label} for 3 s: {b} bolts and {k} shakes, each shake on its bolt's own tick and died down before the next ({blurred} not)");
+            int settled = -1;
+            for (int i = 0; i < 30; i++)
+            {
+                yield return 0;
+                if (settled < 0 && hands.Buzz <= 0f) settled = i + 1;
+            }
+            int b = Fx.LightningBolts - bolts, k = hands.ToolShakes - jolts;
+            float settle = _game.Zone.Data.Rules.Tool.Lightning.SettleSeconds;
+            Check(mode == ToolMode.Repair ? b == 0 && k == 0 && still == 170 : b >= 8 && b == k && apart == 0 && still == 0 && settled > 0 && settled <= (int)MathF.Ceiling(settle * 60f) + 2,
+                $"{label} for 3 s: {b} bolts and {k} jolts on their own ticks, the tool {(still == 0 ? "shaking every frame" : $"still for {still} frames")} while held, settled {settled} frames after letting go");
         }
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
     }

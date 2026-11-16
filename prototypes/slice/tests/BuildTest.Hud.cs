@@ -43,10 +43,10 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(2)) yield return x;
         string hit = Shown();
         foreach (var (id, n) in v.Hits.RepairBill(on)) Pack.Add(id, n);
-        foreach (int x in _drive.HoldPrimary(aim, 40)) yield return x;
+        foreach (int x in _drive.HoldPrimary(aim, 600, () => Shown() == whole)) yield return x;
         string mended = Shown();
         Check(whole == $"{max:F0} / {max:F0}" && hit == $"{MathF.Ceiling(max * 0.4f):F0} / {max:F0}" && mended == whole,
-            $"on a block the tool shows its hit points over its most above the reticle: {whole}, {hit} after a hit, {mended} repaired");
+            $"on a block the tool shows its hit points over its most above the reticle: {whole}, {hit} after a hit, {mended} repaired (counting up as it fills)");
         foreach (int x in _play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
         foreach (int x in _drive.LookAt(aim, 4)) yield return x;
         string gather = Shown();

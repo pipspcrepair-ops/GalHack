@@ -726,26 +726,14 @@ public sealed partial class BuildTool
     }
 
     /// <summary>
-    /// The Sleeper tool's repair restores a block destroyed where it stood, paid for with the block's
-    /// item, else its bill, from the bag, else the structure's storage. Null when it's back, else why not.
+    /// The Sleeper tool's repair restores a block destroyed where it stood, at <paramref name="hp"/> hit
+    /// points (the tool pays for it as it fills). Null when it's back, else why not.
     /// </summary>
-    public string Restore(Vessel v, Int3 cell, Block block)
+    public string Restore(Vessel v, Int3 cell, Block block, float hp)
     {
-        Structure s = v.Structure;
         if (Problem(v, cell, block) is string why) return why;
-        ItemDef item = BuildingBridge.ItemOf(Items, s, block);
-        if (!Creative && item != null)
-        {
-            SharedStorage[] stores = { _pack.Storage, v.Storage };
-            Bill paid = Bill.Of((item.Id, s.TypeOf(block).Units));
-            SharedStorage from = stores.FirstOrDefault(st => st.Has(paid));
-            if (from == null) from = stores.FirstOrDefault(st => st.Has(paid = BuildingBridge.BillOf(Items, s, block)));
-            if (from == null) return $"{item.Name} · NEEDED";
-            from.TryTake(paid);
-            if (from == _pack.Storage) _pack.Grid.Reconcile();
-            Count(paid);
-        }
         Set(v, cell, block);
+        v.Hits.Heal(cell, hp);
         return null;
     }
 

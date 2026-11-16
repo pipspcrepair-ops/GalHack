@@ -272,23 +272,28 @@ public sealed class SliceRules
         public float ShakeAmplitude { get; set; } = 0.004f;
         public float ShakeHz { get; set; } = 38f;
         public float GatherShakeShare { get; set; } = 0.6f;
+        /// <summary>The steady shake while fire is held, as a share of a blast's jolt, and how long it takes to settle once let go, s.</summary>
+        public float HeldShakeShare { get; set; } = 0.45f;
+        public float SettleSeconds { get; set; } = 0.08f;
         public float FlashEnergy { get; set; } = 6f;
         public float FlashRange { get; set; } = 11f;
         /// <summary>The bolt comes up, holds and fades smoothly (an arc over a block a little longer); its light comes up and fades. Seconds.</summary>
-        public float BoltRise { get; set; } = 0.05f;
+        public float BoltRise { get; set; } = 0.08f;
         public float BoltHold { get; set; } = 0.07f;
         public float BoltFade { get; set; } = 0.09f;
-        public float FlashRise { get; set; } = 0.07f;
+        public float FlashRise { get; set; } = 0.1f;
         public float FlashFade { get; set; } = 0.25f;
         public float ThunderGap { get; set; } = 0.28f;
     }
 
-    /// <summary>The Sleeper tool's repair cone: reach, half-angle in degrees, and the time between pulses (each mends or restores one block).</summary>
+    /// <summary>The Sleeper tool's repair cone: reach, half-angle in degrees, the time between its sound's pulses (and tries at restoring), how fast it fills a block (hit points a second), and the share a destroyed block comes back at.</summary>
     public sealed class RepairRules
     {
         public float Range { get; set; } = 6f;
         public float Angle { get; set; } = 14f;
         public float Interval { get; set; } = 0.35f;
+        public float Rate { get; set; } = 60f;
+        public float RestoreShare { get; set; } = 0.1f;
     }
 
     /// <summary>How much a hand tool does: its gather rate as a multiple of the Sleeper tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>

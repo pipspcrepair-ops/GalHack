@@ -94,22 +94,29 @@
       "shakeAmplitude": 0.004,
       "shakeHz": 38,
       "gatherShakeShare": 0.6,
+      // While fire is held the tool shakes steadily at this share of a blast's jolt, each bolt a sharper
+      // jolt on top; let go, it settles within settleSeconds (owner: shake as long as fire is held).
+      "heldShakeShare": 0.45,
+      "settleSeconds": 0.08,
       // The flash that lights the surroundings (energy, range m).
       "flashEnergy": 6,
       "flashRange": 11,
       // Seconds. A bolt comes up, holds and fades smoothly (owner: linger a little, easy on the eyes;
       // it was 0.09 s on, then gone); its light comes up and fades longer, so held fire doesn't strobe.
-      "boltRise": 0.05,
+      "boltRise": 0.08,
       "boltHold": 0.07,
       "boltFade": 0.09,
-      "flashRise": 0.07,
+      "flashRise": 0.1,
       "flashFade": 0.25,
       // Thunder with every blast, no closer together than this, s.
       "thunderGap": 0.28
     },
-    // Repair is a green cone: each pulse mends the damaged block it's on, whole, or restores one
-    // destroyed block in it, paid for from the bag, else the core's storage.
-    "repair": { "range": 6, "angle": 14, "interval": 0.35 },
+    // Repair is a green cone (owner: gradual, a lerping number). The damaged block it's on fills at
+    // rate hit points a second (a 158-point iron block from nothing in about 2.6 s, a 250-point core in
+    // about 4), paid for as it fills, in proportion to its bill, from the bag, else the core's storage.
+    // A destroyed block in it comes back at restoreShare of its hit points and fills from there. Its
+    // sound pulses (and tries at restoring) every interval s.
+    "repair": { "range": 6, "angle": 14, "interval": 0.35, "rate": 60, "restoreShare": 0.1 },
     // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
     // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
     // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
