@@ -31,7 +31,8 @@ public partial class BuildTest
         foreach (int x in _play.Tool(Slice.Player.ToolMode.Repair)) yield return x;
         Vessel v = TestRows.Row(_game, GalHack.Structures.Building.DefaultOwner, true, (float)new Random().NextDouble() * MathF.Tau, out GalHack.Structures.Int3[] cells);
         foreach (int x in _drive.Wait(30)) yield return x;
-        foreach (int x in _drive.LookAt(TestRows.FaceOf(_game, v, cells[1]), 8)) yield return x;
+        Vector3 aim = TestRows.FaceOf(_game, v, cells[1]); // one aim throughout: whichever block it meets is the one shown
+        foreach (int x in _drive.LookAt(aim, 8)) yield return x;
         GalHack.Structures.Int3 on = Slice.Game.WorldRay.Cast(_game.Zone, _game.Survivor, 6f, Layers.World | Layers.Hull, out Slice.Game.LookHit look) && look.Vessel == v ? look.Cell : cells[1];
         var s = v.Structure;
         float max = s.StatsOf(s.Get(on)).MaxHp;
@@ -42,11 +43,12 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(2)) yield return x;
         string hit = Shown();
         foreach (var (id, n) in v.Hits.RepairBill(on)) Pack.Add(id, n);
-        foreach (int x in _drive.HoldPrimary(TestRows.FaceOf(_game, v, on), 40)) yield return x;
+        foreach (int x in _drive.HoldPrimary(aim, 40)) yield return x;
         string mended = Shown();
         Check(whole == $"{max:F0} / {max:F0}" && hit == $"{MathF.Ceiling(max * 0.4f):F0} / {max:F0}" && mended == whole,
             $"on a block the tool shows its hit points over its most above the reticle: {whole}, {hit} after a hit, {mended} repaired");
         foreach (int x in _play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
+        foreach (int x in _drive.LookAt(aim, 4)) yield return x;
         string gather = Shown();
         foreach (int x in _drive.LookAt(_game.Survivor.WorldEye() + Vector3.Up * 20f, 8)) yield return x;
         string sky = Shown();

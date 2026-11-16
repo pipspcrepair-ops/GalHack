@@ -721,7 +721,7 @@ public sealed class SleeperTool
             Restored++;
             return;
         }
-        if (why != null) Said?.Invoke(why, Tones.Caution);
+        if (why != null) Said?.Invoke(LastMend = why, Tones.Caution);
     }
 
     /// <summary>Destroyed blocks of structures about, inside the cone, nearest the look's line first.</summary>

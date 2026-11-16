@@ -130,7 +130,21 @@ public partial class SleeperToolTest : Node
             float bearing = (Mathf.RadToDeg(MathF.Atan2(to.X, -to.Z)) + 360f) % 360f;
             return $"a {t.Kind} {to.Length():F0} m off at bearing {bearing:F0}{(fx != null && cam.IsPositionInFrustum(at + Vector3.Up * 20f) ? ", in view" : "")}";
         });
-        GD.Print($"  (picture: {file}; whirls: {string.Join("; ", whirls.DefaultIfEmpty("none"))})");
+        // And anything tall and thin in view (a mast, a cable, a rope): what it is and where it hangs from.
+        Vector2 screen = GetViewport().GetVisibleRect().Size;
+        var thin = new List<string>();
+        foreach (Node n in GetTree().Root.FindChildren("*", nameof(GeometryInstance3D), true, false))
+        {
+            if (n is not GeometryInstance3D g || !g.IsVisibleInTree()) continue;
+            Aabb box = g.GlobalTransform * g.GetAabb();
+            float wide = MathF.Max(box.Size.X, box.Size.Z);
+            if (box.Size.Y < 12f || wide > box.Size.Y * 0.15f) continue;
+            Vector3 mid = box.GetCenter();
+            if (!cam.IsPositionInFrustum(mid) || mid.DistanceTo(cam.GlobalPosition) > 3000f) continue;
+            Vector2 at = cam.UnprojectPosition(mid) / screen;
+            thin.Add($"{g.GetPath()} ({g.GetType().Name}, {box.Size.Y:F0} m tall, {wide:F1} m wide, {mid.DistanceTo(cam.GlobalPosition):F0} m off, top {box.End.Y - _game.Zone.GroundAt(mid.X, mid.Z).Y:F0} m over the ground, at {at.X:F2} {at.Y:F2} of the frame)");
+        }
+        GD.Print($"  (picture: {file}; whirls: {string.Join("; ", whirls.DefaultIfEmpty("none"))}; tall and thin in view: {string.Join(" | ", thin.Take(8).DefaultIfEmpty("none"))})");
     }
 
     /// <summary>For a picture: the next blast or cone held where it is (the effects and the hands stop), the picture taken, then everything runs on.</summary>
@@ -421,7 +435,7 @@ public partial class SleeperToolTest : Node
         int restored = Tool.Restored;
         foreach (int x in HoldRepair(Centre(v, gone), 60)) yield return x;
         Check(s.Has(gone) && s.TypeOf(s.Get(gone)) == s.TypeOf(was) && s.Get(gone).Hp >= s.StatsOf(s.Get(gone)).MaxHp - 0.01f && _game.Pack[item] == 0 && Tool.Restored == restored + 1,
-            "with the block in the bag, repair restores it where it stood, whole");
+            $"with the block in the bag, repair restores it where it stood, whole (last pulse: {Tool.LastMend})");
 
         // Harmless: a person and someone else's block in the cone come to no harm.
         Vessel theirs = Row("raiders", true, NextBearing(), out S.Int3[] row);
@@ -480,7 +494,7 @@ public partial class SleeperToolTest : Node
         _game.Controls.Primary = false;
         float jump = 0f, swing = means.Max() - means.Min();
         for (int i = 1; i < means.Count; i++) jump = MathF.Max(jump, means[i] - means[i - 1]);
-        Check(Tool.Shots - shots >= 8 && jump <= 0.6f * swing + 0.002f && jump < 0.03f,
+        Check(Tool.Shots - shots >= 8 && jump <= 0.4f * swing + 0.002f,
             $"3 s of held fire ({Tool.Shots - shots} blasts at {Bolt.BoltRise + Bolt.BoltHold + Bolt.BoltFade:F3} s a bolt, its light {Bolt.FlashRise + Bolt.FlashFade:F2} s): the frame's brightness swings {swing:F4} and rises at most {jump:F4} from one frame to the next, never dark to full at once");
     }
 
