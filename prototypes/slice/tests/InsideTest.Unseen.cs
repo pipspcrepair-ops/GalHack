@@ -26,7 +26,7 @@ namespace Slice.Tests;
 /// </summary>
 public partial class InsideTest
 {
-    const int UnseenMinutes = 25;
+    const int UnseenMinutes = 28;
     static readonly Occupant[] Beasts = { Occupant.Empty, Occupant.Nesters, Occupant.Prowlers };
 
     sealed class BlowLog
@@ -94,22 +94,11 @@ public partial class InsideTest
             bool drawn = view != null && view.IsVisibleInTree() && stale < 0.5f && off < 0.5f;
             bool clear = patch.SightClear(part, chest) && (c.Space == null || patch.SightClear(body, part));
             bool shot = Shootable(game, c, origin, eye, out string met);
-            if (!drawn)
-            {
-                log.Hidden++;
-                log.Note($"(a) {who}: {(view == null ? "no body built" : !view.IsVisibleInTree() ? "its body hidden" : $"drawn where it was {stale:F1} m back, its pose {off:F1} m from it")}");
-            }
-            if (!clear)
-            {
-                log.Through++;
-                log.Note($"(b) {who}: struck from {part} through something solid");
-            }
-            if (!shot)
-            {
-                log.Unshot++;
-                log.Note($"(c) {who}: a shot at it meets {met}");
-            }
-            GD.Print($"    blow {log.Blows}: {who}: (a) {(drawn ? "ok" : "FAIL")}, (b) {(clear ? "ok" : "FAIL")}, (c) {(shot ? "ok" : "FAIL")}");
+            if (!drawn) log.Hidden++;
+            if (!clear) log.Through++;
+            if (!shot) log.Unshot++;
+            string a = drawn ? "ok" : $"FAIL ({(view == null ? "no body built" : !view.IsVisibleInTree() ? "its body hidden" : $"drawn where it was {stale:F1} m back, posed {off:F1} m from it")})";
+            GD.Print($"    blow {log.Blows}: {who}: (a) {a}, (b) {(clear ? "ok" : $"FAIL (struck from {part})")}, (c) {(shot ? "ok" : $"FAIL (a shot at it meets {met})")}");
             if (below && drawn && shot) subject = c;
         }
 
@@ -205,7 +194,7 @@ public partial class InsideTest
         return best;
     }
 
-    /// <summary>Whether the shot sweep from the eye meets a creature, aimed at each of its hit spheres in turn (any will do); what it met if not.</summary>
+    /// <summary>Whether the shot sweep from the eye meets a creature (or another body in front of it), aimed at each of its hit spheres in turn (any will do); what it met if not.</summary>
     static bool Shootable(Game.Game game, Creature c, Vector3 origin, Vector3 eye, out string met)
     {
         met = "nothing";
@@ -216,7 +205,7 @@ public partial class InsideTest
             Vector3 p = origin + (c.Rig is { HitCount: > 0 } rig ? new Vector3(rig.Hits[i].X, rig.Hits[i].Y, rig.Hits[i].Z) : Interpenetration.Middle(c));
             Vector3 to = p + (p - eye).Normalized() * 0.5f;
             if (!game.Arms.Sweep(eye.ToNumerics(), to.ToNumerics(), Slice.Arms.ArmsHost.PlayerThing, 0, 0f, out ShotHit hit)) continue;
-            if (hit.Thing == c) return true;
+            if (hit.Thing == c || hit.Kind is HitKind.Creature or HitKind.Person) return true; // (another body in the way is no wall)
             met = $"{hit.Kind} {hit.Distance:F1} m out ({(p - eye).Length():F1} m to it)";
         }
         return false;
