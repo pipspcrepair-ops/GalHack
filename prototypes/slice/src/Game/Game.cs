@@ -352,6 +352,7 @@ public partial class Game : Node3D
         };
         Zone.Wildlife.Died += OnCreatureDied;
         SetUpBodies();
+        SetUpAftermath();
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         if (Zone.Weather.Bridge != null) Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
         Zone.Weather.Shelter = Sheltered;
@@ -755,6 +756,7 @@ public partial class Game : Node3D
         FireBar(dt);
         TickMachines(dt);
         CheckDeath();
+        KeepRisen();
         Stats.Tick(this, dt);
         TrackProgress();
         Controls.EndTick();
@@ -765,6 +767,7 @@ public partial class Game : Node3D
         // A lunge that meets a wall on the way lands on the wall.
         if (Slice.Vessels.VesselDamage.Struck(Zone, e.Creature, Survivor.WorldEye())) return;
         if (!e.Hit || e.Damage <= 0f) return;
+        HurtBy(e.Creature);
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
         Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
         Visor.Hurt(from);

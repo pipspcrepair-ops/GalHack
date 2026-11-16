@@ -81,6 +81,11 @@ public partial class WildlifePatch : Node3D
     /// <summary>A creature died, and what killed it (the player's target, another creature, or nothing).</summary>
     public event Action<Creature, ITarget> Died;
 
+    /// <summary>One of the open country's people held at gunpoint tossed down goods (who, at whom, where to land in the patch's frame, how frightened); a Husk's body or held one rose a Husk (any sim).</summary>
+    public event Action<Creature, ITarget, Vector3, float> Offered;
+    public event Action<SeizeEvent> Turned;
+    internal void RaiseTurned(SeizeEvent e) => Turned?.Invoke(e);
+
     bool _frozen;
     public bool Frozen
     {
@@ -238,6 +243,8 @@ public partial class WildlifePatch : Node3D
             Quaked?.Invoke(e with { Position = FromPatch(e.Position) });
         };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
+        sim.Offered += (c, to, at, fear) => Offered?.Invoke(c, to, at, fear);
+        sim.Turned += RaiseTurned;
         sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };
         sim.LetGo += e => { if (e.Victim == Player) LetGo?.Invoke(e); };
         sim.Murmured += c => Audio.Murmur(c);

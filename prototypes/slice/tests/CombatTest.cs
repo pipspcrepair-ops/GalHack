@@ -22,7 +22,7 @@ namespace Slice.Tests;
 /// - A gang's place: each armed one holds the player's own model of their weapon item; when they
 ///   fire it's that row from that model's muzzle (never the chest), the player takes that row's
 ///   damage, rounds are used up, the group goes in together (one pinning, others flanking), each
-///   burst is aimed first; one killed leaves their weapon and its ammo in a body to search.
+///   burst is aimed first; one killed drops their weapon and its ammo in their bag.
 /// - Out in the wild: a raider with a rifle shoots from its muzzle and drops the rifle; a band set on
 ///   rallies as one; a machine fires its mount; a club strikes for the club's damage.
 ///
@@ -217,16 +217,16 @@ public partial class CombatTest : Node
         int fighting = armed.Count(p => p.Engaged && !p.Dead);
         Check(fighting >= Math.Min(2, armed.Count(p => !p.Dead && p.Figure.Stage is not (LifeStage.Child or LifeStage.Elder))), $"they go in together: {fighting} of {armed.Count} armed in the fight; parts {string.Join(", ", town.People.Where(p => p.Engaged).GroupBy(p => p.Part).Select(g => $"{g.Count()} {g.Key}"))}");
         if (armed.Count(p => p.Engaged && p.Kit is { Strike: false }) >= 3) Check(town.Flanks >= 1, $"one pins you while others go wide ({town.Flanks} flanking)");
-        // One of them killed: what they carried is left in their body.
+        // One of them killed: what they carried is in the bag that drops from them.
         Town.Person victim = armed.FirstOrDefault(p => !p.Dead && p.Kit != null);
         if (victim != null)
         {
             string item = victim.Kit.Def.Item;
-            int bodies = game.PeopleBodies;
+            int bags = game.PeopleBags;
             town.Struck(victim, 9999f, DamageClass.Kinetic, byPlayer: true);
             yield return 0;
-            var body = game.Zone.Loot.All.Where(l => l.Kind == Items.LootKind.Corpse).OrderBy(l => l.Position.DistanceTo(town.World(victim.Pos))).FirstOrDefault();
-            Check(game.PeopleBodies >= bodies + 1 && body != null && body.Storage.Count(item) == 1, $"one killed leaves a body holding their {item} ({body?.Storage.Count(item)}) and its ammo ({(victim.Kit.Def.Ammo == "" ? "none needed" : $"{body?.Storage.Count(victim.Kit.Def.Ammo)} {victim.Kit.Def.Ammo}")})");
+            var body = game.Zone.Loot.All.FirstOrDefault(l => l.Kind == Items.LootKind.Bag && l.Owner == victim);
+            Check(game.PeopleBags >= bags + 1 && body != null && body.Storage.Count(item) == 1, $"one killed drops a bag holding their {item} ({body?.Storage.Count(item)}) and its ammo ({(victim.Kit.Def.Ammo == "" ? "none needed" : $"{body?.Storage.Count(victim.Kit.Def.Ammo)} {victim.Kit.Def.Ammo}")})");
             Check(victim.LastHarm == DamageClass.Kinetic, "and how they were killed reaches the body (its damage class)");
         }
         // Unarmed and hurt: they run.
@@ -292,10 +292,10 @@ public partial class CombatTest : Node
         Check(kit?.Model != null, $"its rifle is drawn in its hands ({game.Arms.People.Drawn} weapons drawn on the wild's people)");
         Check(muzzles.Count == 0 || muzzles.Max() < 0.05f, $"from the muzzle of the model ({(muzzles.Count > 0 ? muzzles.Max() : 0f):F2} m off)");
         Check(kit != null && kit.Clip.Fired > 0, $"using up its rounds ({kit?.Clip.Fired} fired, {kit?.Clip.Rounds} left)");
-        // Killed: the rifle and what's left of its rounds in the body.
+        // Killed: the rifle and what's left of its rounds in the bag that drops from it.
         sim.Damage(rifle, 9999f, patch.Player);
         for (int i = 0; i < 10; i++) yield return 0;
-        var corpse = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == rifle);
+        var corpse = game.Zone.Loot.All.FirstOrDefault(l => l.Owner == rifle);
         Check(corpse != null && corpse.Storage.Count("line-rifle") == 1, $"it dies and leaves the rifle ({corpse?.Storage.Count("line-rifle")}) and its rounds ({corpse?.Storage.Count("rifle-rounds")})");
 
         // A band set on as one.
