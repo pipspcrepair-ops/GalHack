@@ -596,7 +596,7 @@ public partial class Game : Node3D
     public bool ToolEquipped { get; private set; }
 
     /// <summary>The hint at waking, until the tool is equipped; null after.</summary>
-    public string ToolHint => ToolEquipped ? null : $"[{KeyBindings.Name(Settings.Keys["terminal"])}] SUIT FABRICATOR";
+    public string ToolHint => ToolEquipped ? null : "SUIT FABRICATOR";
 
     /// <summary>Puts a toolbar slot in your hands.</summary>
     public void Select(int slot)
