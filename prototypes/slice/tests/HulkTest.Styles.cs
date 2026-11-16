@@ -21,7 +21,7 @@ public partial class HulkTest
     /// built with the livery off and projected side on, from above and end on; each outline reduced to its measures
     /// (proportions; how full, ragged and holed each view; how lopsided, how symmetric end on and about its axis; how
     /// steady its sides, how regularly ribbed, how sharp its bow, its ends against its middle; its drives, what stands
-    /// past its body, its waists, crown and spikes). Each is judged by what knows nothing of it: a reference of 120 more
+    /// past its body, its waists, crown and spikes). Each is judged by what knows nothing of it: a reference of 200 more
     /// forms of each faction on their own fresh seeds, which alone sets the measures' scales and teaches a model (softmax
     /// regression) what each faction's outlines are; every one of the thirty must come out its own faction's. All 30 of
     /// 30, run after run. --dir writes the thirty's outlines.
@@ -37,7 +37,7 @@ public partial class HulkTest
         string[] roles = { "freighter", "warship", "liner", "miner", "carrier" }, sizes = { "medium", "large", "huge" };
         CapitalHull.Spec Roll(string faction) => new(roles[Random.Shared.Next(roles.Length)], sizes[Random.Shared.Next(sizes.Length)], "long", faction);
         // The reference, on workers: forms only, their outlines the cells their shells take.
-        const int teach = 120;
+        const int teach = 200;
         var reference = System.Threading.Tasks.Task.Run(() =>
         {
             var jobs = Styled.SelectMany(f => Enumerable.Range(0, teach).Select(_ => (Faction: f, Spec: Roll(f), Seed: (ulong)Random.Shared.NextInt64()))).ToList();
@@ -80,7 +80,7 @@ public partial class HulkTest
     }
 
     /// <summary>
-    /// Softmax regression over the measures (sklearn's multinomial logistic regression with C = 1): the reference's
+    /// Softmax regression over the measures (sklearn's multinomial logistic regression with C = 3.3): the reference's
     /// spread sets each measure's scale, then batch gradient descent fits a weight per faction and measure.
     /// </summary>
     sealed class Softmax
@@ -102,7 +102,7 @@ public partial class HulkTest
             _w = new double[c, k + 1];
             var grad = new double[c, k + 1];
             var p = new double[c];
-            for (int step = 0; step < 4000; step++)
+            for (int step = 0; step < 8000; step++)
             {
                 Array.Clear(grad);
                 for (int i = 0; i < n; i++)
@@ -115,9 +115,9 @@ public partial class HulkTest
                         grad[a, k] += e;
                     }
                 }
-                // (The L2 term on the weights, not the biases: 1/C, C = 1.)
+                // (The L2 term on the weights, not the biases: 1/C, C = 3.3.)
                 for (int a = 0; a < c; a++)
-                    for (int j = 0; j <= k; j++) _w[a, j] -= 0.5 / n * (grad[a, j] + (j < k ? _w[a, j] : 0));
+                    for (int j = 0; j <= k; j++) _w[a, j] -= 0.5 / n * (grad[a, j] + (j < k ? 0.3 * _w[a, j] : 0));
             }
             Fits = rows.Count(r => Judge(r.Measure) == r.Faction) / (float)n;
         }
