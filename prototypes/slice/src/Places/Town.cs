@@ -724,7 +724,7 @@ public sealed partial class Town
     void GoTo(Person p, int spot)
     {
         // (Off somewhere new: a stand taken to talk or to keep by someone is left behind.)
-        p.ChatAt = null;
+        if (spot != p.Spot) p.ChatAt = null;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - At(spot)).Length() < 1.5f) return;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)
         {
