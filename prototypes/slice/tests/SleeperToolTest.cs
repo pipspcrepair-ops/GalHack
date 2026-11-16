@@ -109,6 +109,7 @@ public partial class SleeperToolTest : Node
         foreach (int x in Person()) yield return x;
         foreach (int x in Repair()) yield return x;
         foreach (int x in Ore()) yield return x;
+        foreach (int x in KickSync()) yield return x;
         foreach (int x in NoBuildUp()) yield return x;
         if (_shots != null) foreach (int x in BlockPicture()) yield return x;
         _game.QueueFree();
@@ -391,7 +392,7 @@ public partial class SleeperToolTest : Node
         GD.Print("-- repair: mends and restores with the ingredients, harmless --");
         ItemCatalogue items = _game.Zone.Data.Items;
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
-        Vessel v = Row(S.Building.DefaultOwner, true, NextBearing(), out S.Int3[] cells);
+        Vessel v = TestRows.Row(_game, S.Building.DefaultOwner, true, NextBearing(), out S.Int3[] cells, off: 5f); // far enough that none of it stands at your feet
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.Q)) yield return x;
         S.Structure s = v.Structure;
@@ -432,6 +433,12 @@ public partial class SleeperToolTest : Node
         foreach (int x in HoldRepair(Centre(v, gone), 60)) yield return x;
         Check(!s.Has(gone), "without its block or its bill, repair can't restore it");
         _game.Pack.Add(item, 1);
+        // Within the cone's reach of where it stood, however the land raised the row.
+        Vector3 spot = Centre(v, gone), feet = _game.Survivor.WorldFeet, away = new Vector3(feet.X - spot.X, 0f, feet.Z - spot.Z);
+        away = away.LengthSquared() > 1e-4f ? away.Normalized() : Vector3.Right;
+        Vector3 near = _game.Zone.GroundAt(spot.X + away.X * 3f, spot.Z + away.Z * 3f);
+        _game.Survivor.PlaceOutside((near + Vector3.Up * 0.3f).ToNumerics());
+        foreach (int x in _drive.Wait(30)) yield return x;
         int restored = Tool.Restored;
         foreach (int x in HoldRepair(Centre(v, gone), 60)) yield return x;
         Check(s.Has(gone) && s.TypeOf(s.Get(gone)) == s.TypeOf(was) && s.Get(gone).Hp >= s.StatsOf(s.Get(gone)).MaxHp - 0.01f && _game.Pack[item] == 0 && Tool.Restored == restored + 1,
@@ -496,6 +503,52 @@ public partial class SleeperToolTest : Node
         for (int i = 1; i < means.Count; i++) jump = MathF.Max(jump, means[i] - means[i - 1]);
         Check(Tool.Shots - shots >= 8 && jump <= 0.4f * swing + 0.002f,
             $"3 s of held fire ({Tool.Shots - shots} blasts at {Bolt.BoltRise + Bolt.BoltHold + Bolt.BoltFade:F3} s a bolt, its light {Bolt.FlashRise + Bolt.FlashFade:F2} s): the frame's brightness swings {swing:F4} and rises at most {jump:F4} from one frame to the next, never dark to full at once");
+    }
+
+    /// <summary>
+    /// Held for 3 s each way (owner): digging, where pulses come every dig interval, and blasting, every
+    /// shot interval: every bolt drawn kicks on its own tick, no kick without a bolt, and each kick has
+    /// eased off before the next (quick pulses read as kicks, not a blur). Repair never kicks.
+    /// </summary>
+    IEnumerable<int> KickSync()
+    {
+        GD.Print("-- a kick with every bolt --");
+        foreach (int x in MoveOn()) yield return x;
+        Hands hands = _game.Hands;
+        Vector3 feet = _game.Survivor.WorldFeet, eye = _game.Survivor.WorldEye();
+        foreach (var (label, at, mode) in new[]
+        {
+            ("digging", _game.Zone.GroundAt(feet.X + 2f, feet.Z + 1f), ToolMode.Gather),
+            ("blasting", eye + new Vector3(0.4f, 1f, 0.3f).Normalized() * 20f, ToolMode.Gather),
+            ("repairing", _game.Zone.GroundAt(feet.X + 2f, feet.Z + 1f), ToolMode.Repair),
+        })
+        {
+            foreach (int x in _play.Tool(mode)) yield return x;
+            foreach (int x in _drive.LookAt(at, 6)) yield return x;
+            int bolts = Fx.LightningBolts, kicks = hands.ToolKicks, blurred = 0, lastKicks = kicks;
+            bool eased = true;
+            for (int i = 0; i < 180; i++)
+            {
+                _drive.Face(at);
+                _game.Controls.Primary = true;
+                bool sameTick = Fx.LightningBolts - bolts == hands.ToolKicks - kicks;
+                yield return 0;
+                if (hands.ToolKicks != lastKicks)
+                {
+                    if (!eased) blurred++;
+                    eased = false;
+                    lastKicks = hands.ToolKicks;
+                }
+                else if (hands.Kick < 0.35f) eased = true;
+                if (!sameTick) blurred += 1000; // a bolt and its kick on different ticks
+            }
+            _game.Controls.Primary = false;
+            foreach (int x in _drive.Wait(20)) yield return x;
+            int b = Fx.LightningBolts - bolts, k = hands.ToolKicks - kicks;
+            Check(mode == ToolMode.Repair ? b == 0 && k == 0 : b >= 8 && b == k && blurred == 0,
+                $"{label} for 3 s: {b} bolts and {k} kicks, each kick its bolt's own tick and eased off before the next ({blurred} not)");
+        }
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
     }
 
     // ---- Held a long while, nothing builds up ---------------------------------------------------------

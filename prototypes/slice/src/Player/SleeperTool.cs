@@ -59,9 +59,13 @@ public sealed class SleeperTool
     /// <summary>The build tool: blocks that come away whole go through its take-down, destroyed ones come back through its restore.</summary>
     public Slice.Construction.BuildTool Builder;
 
-    /// <summary>The kick of a blast: the tool's flash with the data's recoil and camera tilt.</summary>
+    /// <summary>The kick of a blast, and the lighter one of a gathering pulse (so quick pulses read as kicks, not a shake): the data's recoil and camera tilt.</summary>
     public GunFeel Kick => _kick ??= GunFeel.Tool with { Recoil = _rules.Lightning.Kick, CameraKick = _rules.Lightning.CameraKick };
-    GunFeel _kick;
+    public GunFeel GatherKick => _gatherKick ??= Kick with { Recoil = Kick.Recoil * _rules.Lightning.GatherKickShare, CameraKick = Kick.CameraKick * _rules.Lightning.GatherKickShare };
+    GunFeel _kick, _gatherKick;
+
+    /// <summary>Every bolt the tool throws, on the tick it is drawn: the hands kick with it (one kick a bolt).</summary>
+    public event Action<GunFeel> Kicked;
 
     /// <summary>The held tool's barrel tip in the world, when the hands show it (set by <see cref="Hands"/>); null otherwise.</summary>
     public Func<Vector3?> HeldMuzzle;
@@ -93,7 +97,7 @@ public sealed class SleeperTool
 
     /// <summary>Ore broken off tell rocks so far (a few a pulse), apart from what the cells gave.</summary>
     public int TellOre { get; private set; }
-    /// <summary>Blasts of lightning (each one kicks).</summary>
+    /// <summary>Bolts of lightning thrown (each one kicks).</summary>
     public int Shots { get; private set; }
     /// <summary>People zapped and stunned, blocks taken whole, foreign blocks blasted, blocks repaired and restored (tests).</summary>
     public int Zapped { get; private set; }
@@ -500,7 +504,6 @@ public sealed class SleeperTool
     /// </summary>
     void Blast()
     {
-        Shots++;
         _cooldown = _rules.ShotInterval;
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         float damage = _rules.ShotDamage * Tier.Shot;
@@ -531,7 +534,7 @@ public sealed class SleeperTool
                 _zone.Wildlife.Damage(c, damage * _zone.Wildlife.HitScale(c, at));
                 CreatureHit?.Invoke(c);
                 CreatureStruck?.Invoke(c, at, dir);
-                Fx?.Impact(at, -dir, ImpactKind.Creature);
+                Fx?.Impact(at, -dir, ImpactKind.Creature, lit: false);
                 Strike(at, Vector3.One * 0.3f, 3, attack: true);
                 return;
             case HitKind.Field:
@@ -580,7 +583,7 @@ public sealed class SleeperTool
         else
         {
             // Into the air, or ground beyond the tool's reach: lightning and nothing else. In a town that's noticed.
-            if (met) Fx?.Impact(at, hit.Normal.ToGodot(), ImpactKind.Ground);
+            if (met) Fx?.Impact(at, hit.Normal.ToGodot(), ImpactKind.Ground, lit: false);
             Strike(at, Vector3.One * 0.25f, met ? 2 : 0, attack: true);
             (Places?.TownAt(eye) ?? Places?.TownAt(at))?.Provoked();
         }
@@ -599,7 +602,7 @@ public sealed class SleeperTool
         if (t.Stun(p, Bolt.StunSeconds, Bolt.RestunSeconds)) Stunned++;
         Arms?.Confirm(p.Dead);
         Arms?.Sounds?.Play(CombatSound.Flesh, at, 1.1f, -4f);
-        Fx?.Impact(at, -dir, ImpactKind.Creature);
+        Fx?.Impact(at, -dir, ImpactKind.Creature, lit: false);
         Strike(at, new Vector3(0.22f, 0.45f, 0.22f), 4, attack: true);
     }
 
@@ -612,7 +615,7 @@ public sealed class SleeperTool
         if (c.Stun(Bolt.StunSeconds, Bolt.RestunSeconds)) Stunned++;
         CreatureHit?.Invoke(c);
         CreatureStruck?.Invoke(c, at, dir);
-        Fx?.Impact(at, -dir, ImpactKind.Creature);
+        Fx?.Impact(at, -dir, ImpactKind.Creature, lit: false);
         Strike(at, new Vector3(0.22f, 0.45f, 0.22f), 4, attack: true);
     }
 
@@ -650,7 +653,7 @@ public sealed class SleeperTool
             foreach (var (id, n) in GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, s, b))
                 Earn(id, n * Bolt.ExtractShare * dealt / max, got);
         Announce(got, quietStone: false);
-        Fx?.Impact(at, normal, ImpactKind.Block, v.Node);
+        Fx?.Impact(at, normal, ImpactKind.Block, v.Node, lit: false);
         Strike(centre, Vector3.One * size * 0.5f, 5, attack: true);
     }
 
@@ -662,7 +665,10 @@ public sealed class SleeperTool
     void Strike(Vector3 to, Vector3 half, int arcs, bool attack = false)
     {
         Color blue = ShotFx.LightningBlue;
+        // One event a bolt: drawn, counted and kicked together.
+        Shots++;
         Fx?.Lightning(Muzzle, to, blue, Bolt);
+        Kicked?.Invoke(attack ? Kick : GatherKick);
         if (arcs > 0) Fx?.ArcOver(to, half, blue, arcs, Bolt);
         float pitch = 0.9f + 0.2f * (float)Random.Shared.NextDouble();
         Arms?.Sounds?.Play(CombatSound.Crackle, to, pitch, attack ? 0f : -6f);

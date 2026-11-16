@@ -358,8 +358,8 @@ public partial class ShotFx : Node3D
 
     public static readonly Color BeamColour = new(0.3f, 0.6f, 1f);
 
-    /// <summary>The impact where a shot landed: sparks, a flash, and a scorch on ground or blocks (on a structure, riding its node).</summary>
-    public void Impact(Vector3 at, Vector3 normal, ImpactKind kind, Node3D onto = null)
+    /// <summary>The impact where a shot landed: sparks, a flash, and a scorch on ground or blocks (on a structure, riding its node). Without <paramref name="lit"/> no flash of its own (lightning brings its own light, rising and fading).</summary>
+    public void Impact(Vector3 at, Vector3 normal, ImpactKind kind, Node3D onto = null, bool lit = true)
     {
         if (kind == ImpactKind.Nothing) return;
         Impacts++;
@@ -381,7 +381,7 @@ public partial class ShotFx : Node3D
         AddChild(burst);
         burst.GlobalPosition = at + normal * 0.05f;
         GetTree().CreateTimer(1.2).Timeout += burst.QueueFree;
-        Flash(at + normal * 0.2f, spark, kind == ImpactKind.Creature ? 1.2f : 3f, 0.12f);
+        if (lit) Flash(at + normal * 0.2f, spark, kind == ImpactKind.Creature ? 1.2f : 3f, 0.12f);
         if (kind == ImpactKind.Creature) return;
 
         var scorch = new Decal

@@ -269,6 +269,8 @@ public sealed class SliceRules
         public float ExtractShare { get; set; } = 0.3f;
         public float Kick { get; set; } = 1.1f;
         public float CameraKick { get; set; } = 0.5f;
+        /// <summary>A gathering pulse's kick, as a share of a blast's.</summary>
+        public float GatherKickShare { get; set; } = 0.45f;
         public float FlashEnergy { get; set; } = 6f;
         public float FlashRange { get; set; } = 11f;
         /// <summary>The bolt comes up, holds and fades smoothly (an arc over a block a little longer); its light comes up and fades. Seconds.</summary>

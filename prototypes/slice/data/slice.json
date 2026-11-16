@@ -92,6 +92,8 @@
       // the surroundings (energy, range m).
       "kick": 1.1,
       "cameraKick": 0.5,
+      // A gathering pulse (every digInterval) kicks lighter than a blast, so quick pulses read as kicks, not a blur.
+      "gatherKickShare": 0.45,
       "flashEnergy": 6,
       "flashRange": 11,
       // Seconds. A bolt comes up, holds and fades smoothly (owner: linger a little, easy on the eyes;

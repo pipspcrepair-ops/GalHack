@@ -23,7 +23,10 @@ public partial class Hands : Node3D
     readonly Dictionary<string, ItemModel> _models = new();
     ItemModel _shown;
     Color _tint;
-    int _shotsSeen;
+    bool _kickHeard;
+
+    /// <summary>Kicks from the Sleeper tool's bolts (tests: one a bolt).</summary>
+    public int ToolKicks { get; private set; }
     float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime;
 
     /// <summary>Where the barrel's tip is now, in the world, or null when the hands aren't showing: flashes and bolts begin here, riding the hand and its recoil.</summary>
@@ -134,10 +137,10 @@ public partial class Hands : Node3D
         float dt = (float)delta;
         var g = Game;
         if (g?.Tool != null && g.Tool.HeldMuzzle == null) g.Tool.HeldMuzzle = () => BarrelTip;
-        if (g?.Tool != null && g.Tool.Shots != _shotsSeen)
+        if (g?.Tool != null && !_kickHeard)
         {
-            _shotsSeen = g.Tool.Shots;
-            Recoil(g.Tool.Kick);
+            _kickHeard = true;
+            g.Tool.Kicked += feel => { ToolKicks++; Recoil(feel); }; // on the tick its bolt is thrown
         }
         _kick = Mathf.MoveToward(_kick, 0f, dt / 0.15f);
         _shake = Mathf.MoveToward(_shake, 0f, dt * 4f);

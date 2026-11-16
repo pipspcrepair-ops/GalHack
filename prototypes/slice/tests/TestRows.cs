@@ -12,7 +12,7 @@ namespace Slice.Tests;
 public static class TestRows
 {
     /// <summary>A few iron blocks off a core (or none), set down on the ground a few metres off.</summary>
-    public static Vessel Row(Game.Game game, string owner, bool core, float bearing, out S.Int3[] cells)
+    public static Vessel Row(Game.Game game, string owner, bool core, float bearing, out S.Int3[] cells, float off = 3.5f)
     {
         S.Catalogue cat = game.Zone.Data.Catalogue;
         var s = new S.Structure(cat) { Name = $"Sleeper tool test {owner}" };
@@ -24,7 +24,7 @@ public static class TestRows
         if (!core) s.Set(S.Int3.Zero, S.Building.Make(s, bare));
         s.DirtyChunks.Clear();
         Vector3 feet = game.Survivor.WorldFeet;
-        Vector3 spot = feet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * 3.5f;
+        Vector3 spot = feet + new Vector3(MathF.Cos(bearing), 0f, MathF.Sin(bearing)) * off;
         // Clear of the ground all along it, however the land lies (a few blocks may stand a little off it).
         float top = float.MinValue;
         for (float dx = -4f; dx <= 4f; dx += 1f)
