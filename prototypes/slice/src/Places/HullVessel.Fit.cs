@@ -577,15 +577,21 @@ public sealed partial class HullVessel
                 S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));
                 placed++;
             }
-            // A room whose ceiling takes none (open over a flight, a machine under every cell of it): a lamp high on a wall.
+            // A room whose ceiling takes none (open over a flight, a machine under every cell of it): a lamp high on a wall,
+            // or failing that one standing on the floor in a corner.
             if (placed == 0)
-                foreach (var (u, v) in s.Floor.Where(c => !Has(c.U, top, c.V)))
+                foreach (int y in new[] { top, s.Y })
                 {
-                    var wall = Four.FirstOrDefault(o => Has(u + o.U, top, v + o.V));
-                    if (wall == default) continue;
-                    Int3 at = D.Mount("light", At(u, top, v), DirOf(wall.U, wall.V));
-                    S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));
-                    break;
+                    foreach (var (u, v) in s.Floor.Where(c => !Has(c.U, y, c.V) && !s.Taken.Contains(c)))
+                    {
+                        var wall = Four.FirstOrDefault(o => Has(u + o.U, y, v + o.V));
+                        if (wall == default) continue;
+                        Int3 at = D.Mount("light", At(u, y, v), y == top ? DirOf(wall.U, wall.V) : Dir.NegY);
+                        S.SetLight(at, LightSettings.Make(colour, LightAnim.Steady, 0.5f, u * 7 + v));
+                        placed++;
+                        break;
+                    }
+                    if (placed > 0) break;
                 }
         }
     }
