@@ -63,15 +63,15 @@ public sealed partial class Staging
 
         // A band bound across ahead, past a predator it has seen: its way bends round it.
         Clear(patch, feet, fwd, 60f);
-        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Danger(s) && !s.Flies && s.Rig != RigKind.Swarm && s.Body.Size < 3f).OrderByDescending(s => s.Body.Size).FirstOrDefault()
+        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Danger(s) && !s.Flies && s.Rig != RigKind.Swarm && s.Body.Size < 5f).OrderByDescending(s => s.Body.Size).FirstOrDefault()
             ?? patch.Life.Fauna.Species.FirstOrDefault(CrossReactions.Danger);
         if (beast == null) { GD.Print("(no predator on this world: no berth to show)"); yield break; }
-        Vector3 lair = Ground(feet + fwd * 40f);
+        Vector3 lair = Ground(feet + fwd * 24f);
         Creature it = patch.Sim.Spawn(beast, patch.PatchLocal(lair));
         it.ThinkEvery = 1e9f; // STAGING: it stays where it was put
         Species walkers = BandKind(patch.Life, armed: true);
-        // Bound across just this side of it: the way bends toward you, round it.
-        List<Creature> c = Band(patch, walkers, feet + fwd * 36f - side * 45f, Stance.Welcoming, feet + fwd * 36f + side * 50f);
+        // Bound away from you past it, a little to one side of it: the way bends wide round it, out to the side, level with it.
+        List<Creature> c = Band(patch, walkers, feet + fwd * 5f + side * 3f, Stance.Welcoming, feet + fwd * 95f + side * 3f);
         foreach (Creature m in c) m.Nerve = 0.1f; // (none with the nerve to go for it: they give it room)
         Creature lead = Brain.Leader(c[0].Herd);
         float berth = CrossReactions.Berth(lead.Nerve, c.Any(m => Weapons.Armed(m.Species.Figure.Prop)));
@@ -82,11 +82,10 @@ public sealed partial class Staging
             _game.Suit.Vitals.Health = max;
             Vector3 mid = Mid(patch, c);
             least = MathF.Min(least, c.Where(m => m.Alive).Min(m => (patch.WorldOf(m) - lair).Length()));
-            // Taken as they go round it: level with it, beyond it.
-            if ((mid - lair).Dot(side) > -2f && c[0].Herd.Party.Bending) break;
+            // Taken as they go round it, out to the side and coming level with it.
+            if ((mid - lair).Dot(fwd) > -10f && MathF.Abs((mid - lair).Dot(side)) > berth * 0.7f && c[0].Herd.Party.Bending) break;
             yield return 0;
         }
-        _game.Survivor.PlaceOutside((Ground(feet) + Vector3.Up * 0.2f).ToNumerics());
         foreach (int x in _drive.LookAt(lair.Lerp(Mid(patch, c), 0.5f) + Vector3.Up * 1f, 12)) yield return x;
         GD.Print($"(the berth: {walkers.CommonName} led at nerve {lead.Nerve:F2}, berth {berth:F0} m, the nearest of them {least:F0} m from the {beast.CommonName}; {c[0].Herd.Party.Mood}, bending {c[0].Herd.Party.Bending}; {Line(patch, c, feet)})");
         foreach (int x in Shot(_args.GetValueOrDefault("berth", "clash-berth.png"))) yield return x;
