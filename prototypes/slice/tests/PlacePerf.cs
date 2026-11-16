@@ -46,6 +46,30 @@ public partial class PlacePerf : Node
     readonly List<double> _script = new();
     double _townTick, _townPose;
     int _plainFrames, _plainSites;
+    /// <summary>The physics pass's scripts (first to last node), and the engine's step after them, ms (measured by two edge nodes).</summary>
+    double _tickMs, _stepMs;
+    long _tickStart, _tickEnd;
+
+    sealed partial class TickEdge : Node
+    {
+        public PlacePerf Perf;
+        public bool Start;
+        public override void _PhysicsProcess(double delta)
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (Start)
+            {
+                if (Perf._tickEnd != 0) Perf._stepMs += (now - Perf._tickEnd) * 1000.0 / Stopwatch.Frequency;
+                Perf._tickStart = now;
+            }
+            else
+            {
+                Perf._tickMs += (now - Perf._tickStart) * 1000.0 / Stopwatch.Frequency;
+                Perf._tickEnd = now;
+            }
+        }
+        public override void _Process(double delta) => Perf._tickEnd = 0; // (the engine's step only counts up to the next tick in the same frame)
+    }
     readonly List<string> _hitches = new();
     int _gc0, _gc2;
     bool _failed;
@@ -124,6 +148,8 @@ public partial class PlacePerf : Node
         PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = _args.ContainsKey("places-at-load") || _args.ContainsKey("compare-load") && _args["compare-load"] != "new";
         NewGame(WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested));
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
+        AddChild(new TickEdge { Perf = this, Start = true, ProcessPhysicsPriority = -3_000_000, ProcessPriority = -3_000_000 });
+        AddChild(new TickEdge { Perf = this, Start = false, ProcessPhysicsPriority = 3_000_000, ProcessPriority = 3_000_000 });
         _clock.Start();
         _probe = new PlanetSurface.FrameProbe(this);
         _run = Runs().GetEnumerator();
@@ -224,6 +250,7 @@ public partial class PlacePerf : Node
         _times = new List<double>();
         _townTick = _townPose = 0;
         _plainFrames = _plainSites = 0;
+        _tickMs = _stepMs = 0;
         _script.Clear();
         _cpu.Clear();
         _gpu.Clear();
@@ -252,7 +279,8 @@ public partial class PlacePerf : Node
             $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000 / t.Count,6}k draws {_draws / t.Count,5} objs {_objs / t.Count,5} shadow {_shadowPrims / 1000 / t.Count,6}k/{_shadowDraws / t.Count,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
         GD.Print(line);
         var (bodies, shapes) = JoltWatch.Census(GetTree().Root);
-        GD.Print($"PERF {stage,-16} live bodies {bodies}, shapes {shapes}, failed to create {JoltWatch.Failed}; physics process {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0:F2} ms");
+        GD.Print($"PERF {stage,-16} live bodies {bodies}, shapes {shapes}, failed to create {JoltWatch.Failed}; physics process {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0:F2} ms; a frame: scripts' physics ticks {_tickMs / t.Count:F2} ms, the engine's steps {_stepMs / t.Count:F2} ms");
+        _tickMs = _stepMs = 0;
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics ticks a frame {(Engine.GetPhysicsFrames() - _ticksAt) / (double)t.Count:F2}, their callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
         if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
         if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");

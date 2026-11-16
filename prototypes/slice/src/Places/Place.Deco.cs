@@ -571,6 +571,9 @@ public partial class Place
             {
                 d.Bodies[DecoNode.CollisionLayer] = body = new StaticBody3D { Name = "Body", CollisionLayer = DecoNode.CollisionLayer, CollisionMask = 0 };
                 d.Node.AddChild(body);
+                // Out of the physics space while its pieces' shapes go in (the room shows nothing until all of it dissolves in
+                // together): in it, Jolt rebuilt the body's whole compound for every shape, a step of 7 to 13 ms by a room's end.
+                PhysicsServer3D.BodySetSpace(body.GetRid(), new Rid());
             }
             foreach (var (shape, xf) in decor.Meshes.Shapes(pl.Look))
             {
@@ -591,6 +594,9 @@ public partial class Place
             }
         }
         DecoNode.CollisionLayer = Layers.World;
+        // Its collision into the world in one go, as it starts to dissolve in.
+        foreach (StaticBody3D body in d.Bodies.Values)
+            if (IsInstanceValid(body) && body.IsInsideTree() && body.ProcessMode != ProcessModeEnum.Disabled) PhysicsServer3D.BodySetSpace(body.GetRid(), body.GetWorld3D().Space);
         if (room.Plan.Cables.Count > 0)
         {
             // The wires strung between pieces: made on the place's worker, made again here only when a piece they hang from was taken.
