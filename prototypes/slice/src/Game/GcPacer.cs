@@ -26,12 +26,41 @@ public partial class GcPacer : Node
 
     long _last;
 
+    int _fullAtDone;
+    long _done = -1;
+    double _runningSince;
+
+    /// <summary>
+    /// A full (generation 2) collection started and not yet over: more started than had been when the last one finished.
+    /// (After 2 s it counts as over whatever the count says: two finishing between looks would otherwise hold it for good.)
+    /// </summary>
+    bool FullRunning()
+    {
+        long done = Math.Max(GC.GetGCMemoryInfo(GCKind.Background).Index, GC.GetGCMemoryInfo(GCKind.FullBlocking).Index);
+        int started = GC.CollectionCount(2);
+        double now = Time.GetTicksMsec() / 1000.0;
+        if (done != _done)
+        {
+            _done = done;
+            _fullAtDone = started;
+        }
+        if (started <= _fullAtDone) { _runningSince = 0; return false; }
+        if (_runningSince == 0) _runningSince = now;
+        if (now - _runningSince < 2.0) return true;
+        _fullAtDone = started;
+        _runningSince = 0;
+        return false;
+    }
+
     public override void _Process(double delta)
     {
         long since = GC.GetTotalAllocatedBytes(false) - _last;
         if (since < LeastBytes) return;
         double mb = since / 1048576.0;
         if (since < MostBytes && Room != null && mb * PausePerMb > Room()) return;
+        // Never while a full collection runs in the background: a forced collection then waits for it, 50 to 100 ms on the
+        // main thread with only a few of them counted as pause (the city's unexplained hitches, caught after this node).
+        if (FullRunning()) return;
         TimeSpan before = GC.GetTotalPauseDuration();
         GC.Collect(0, GCCollectionMode.Forced, blocking: true, compacting: false);
         PausePerMb += ((GC.GetTotalPauseDuration() - before).TotalMilliseconds / mb - PausePerMb) * 0.3;

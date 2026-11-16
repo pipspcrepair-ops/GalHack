@@ -15,6 +15,7 @@
          planet as diggable voxels. -->
     <Compile Include="..\..\shared\Physics\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\**\*.cs" />
+    <Compile Include="..\..\shared\Testing\AllocMeter.cs" />
     <!-- Other prototypes' pure cores, used in place and never changed here. -->
     <Compile Include="..\building\src\Structures\**\*.cs" />
     <Compile Include="..\ship-handling\src\Handling\**\*.cs" />

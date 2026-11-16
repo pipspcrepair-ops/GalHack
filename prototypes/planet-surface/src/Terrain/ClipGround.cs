@@ -361,11 +361,11 @@ public sealed partial class ClipGround : Node3D
             int w = _width, h = _height;
             float s = lv.S;
             IReadOnlyList<PoiSite> pois = lv.Top != null ? _pois : null;
-            Task.Run(() =>
+            Task.Run(() => GalHack.Testing.AllocMeter.Measure("ground tiles", () =>
             {
                 Fill(job, s, source, palette, w, h, pois);
                 _done.Enqueue(job);
-            });
+            }));
         }
     }
 

@@ -125,12 +125,12 @@ public partial class TerrainStreamer
         int version = _coverVersion;
         PlanetSurface.World.PlanetWorld world = World;
         HashSet<long> dug = _dugSnapshot;
-        Task.Run(() =>
+        Task.Run(() => GalHack.Testing.AllocMeter.Measure("cover", () =>
         {
             CoverCell cell = CoverBuilder.Build(cx, cz, world.Source, world.Palette, dug);
             cell.Version = version;
             _coverDone.Enqueue(cell);
-        });
+        }));
     }
 
     void FillCover(int fx, int fz, int width, int height)

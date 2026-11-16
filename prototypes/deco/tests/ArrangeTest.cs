@@ -204,6 +204,8 @@ public partial class ArrangeTest : TestBase
         return room.Doors.Skip(1).All(d => Starts(d).Any(s => seen[s]));
     }
 
+    ulong _print = 14695981039346656037UL;
+
     void TestRooms()
     {
         var sizes = new (float w, float d)[] { (6, 5), (10, 8), (14, 10), (20, 3) };
@@ -218,12 +220,14 @@ public partial class ArrangeTest : TestBase
                             DecoRoom room = MakeRoom(set, recipe, w, d, doors, state, seed * 1000 + (ulong)(w * 10 + d));
                             if (d < 4) room.Doors.RemoveAll(x => x.Wall == DecoWall.North);
                             DecoPlan plan = _poi.Dress(room);
+                            _print = unchecked(_print * 1099511628211UL ^ GalHack.Deco.DecoHash.Fnv(plan.Fingerprint()));
                             _rooms++;
                             _placements += plan.Placements.Count;
                             List<string> bad = Audit(plan);
                             if (bad.Count > 0 && failures++ < 8) foreach (string b in bad.Take(3)) Note($"{room}: {b}");
                             Check(bad.Count == 0, $"{recipe ?? set} {w}x{d} {doors} doors {state} seed {seed}: legal ({bad.Count} problems)");
                         }
+        Note($"every room's plan, one fingerprint: {_print:X16}");
         Note($"{_rooms} rooms dressed and audited, {_placements} placements, {_paths} independent path searches");
     }
 
