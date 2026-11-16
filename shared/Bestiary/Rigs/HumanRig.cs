@@ -226,7 +226,7 @@ public sealed partial class HumanRig : Rig
             Clock = c.Age,
             Aim = _raised = Mathf.MoveToward(_raised, shooting ? 1f : Aiming, dt * 4f), // (all the way up to shoot: a weapon part raised points part way)
             // Aiming at what it's after (the middle of it, not its feet), else at what it looks at.
-            AimAt = Aiming > 0.05f || shooting ? (c.AttackTarget is { } at ? at.Position + Vector3.Up * 1.15f : c.LookAt) : null,
+            AimAt = Aiming > 0.05f || shooting ? (c.AttackTarget is { } at ? at.Position + Vector3.Up * Arming.Chest(at) : c.LookAt) : null,
             Act = shooting || rummage > 0f ? BodyAct.None : _act, // (a gesture never takes a hand off a weapon being fired)
             ActAmount = _actAmount,
             ActAt = c.LookAt ?? c.Position + c.Forward * 6f + Vector3.Up * 1.4f,
