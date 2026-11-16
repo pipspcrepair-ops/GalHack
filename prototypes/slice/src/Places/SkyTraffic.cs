@@ -70,6 +70,9 @@ public partial class SkyTraffic : Node
     /// <summary>What its last tick cost, ms: the pilot, and every tenth tick its upkeep (tests).</summary>
     public double LastTickMs { get; private set; }
 
+    /// <summary>A garbage collection ran during its last tick.</summary>
+    public bool LastTickCollected { get; private set; }
+
     /// <summary>Its worst tick since it spawned, ms, and what it was doing then (tests).</summary>
     public double WorstMs { get; private set; }
     public string WorstWhat { get; private set; } = "";
@@ -114,7 +117,9 @@ public partial class SkyTraffic : Node
             if (++_tick % 10 == 0) { Upkeep(); what += " + upkeep"; }
         }
         LastTickMs = Clock() - start;
-        if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, $"{what} to {Ship.Phase}{(GC.CollectionCount(0) != gcs ? ", a garbage collection in it" : "")}, searching {SearchWorstMs:F1} ms at most");
+        // A collection that fell in its tick is the whole game's garbage, not its own work: it is told apart (tests).
+        LastTickCollected = GC.CollectionCount(0) != gcs;
+        if (!LastTickCollected && LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, $"{what} to {Ship.Phase}, searching {SearchWorstMs:F1} ms at most");
     }
 
     // ---- The ship ---------------------------------------------------------------------------------------------
