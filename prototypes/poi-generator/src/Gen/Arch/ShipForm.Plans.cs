@@ -56,7 +56,7 @@ public sealed partial class ShipForm
         int want = R.Between(2, 5);
         for (int tries = 0; tries < 80 && bells.Count < want; tries++)
         {
-            float r = R.Between(2, 5) + (bells.Count == 0 ? 1.5f : 0f), u = R.Float(-1f, 1f) * (th + 6), y = R.Float(-1f, 1f) * (th + 5);
+            float r = bells.Count == 0 ? R.Between(4, 7) + 0.5f : R.Between(2, 5), u = R.Float(-1f, 1f) * (th + 6), y = R.Float(-1f, 1f) * (th + 5);
             if (bells.Any(b => MathF.Sqrt((b.U - u) * (b.U - u) + (b.Y - y) * (b.Y - y)) < b.R + r + 3f)) continue;
             bells.Add((u, y, r));
         }
@@ -65,6 +65,7 @@ public sealed partial class ShipForm
         float fu0 = bells.Min(b => b.U - b.R), fu1 = bells.Max(b => b.U + b.R), fy0 = bells.Min(b => b.Y - b.R), fy1 = bells.Max(b => b.Y + b.R);
         float fv = vt - 5f - MathF.Max(7f, big * 1.4f);
         Box("machine", new NV3((fu0 + fu1) / 2, (fy0 + fy1) / 2, fv), new NV3((fu1 - fu0) / 2 + 1, (fy1 - fy0) / 2 + 1, 2.5f), 0.3f);
+        Clutter(new NV3(-pr, py - pr, 2), new NV3(pr, py + pr * 0.85f, pl), R.Range(2, 4), R.Between(1, 3));
         // The truss from the pod to the frame, now and then jogged off its line amidships where two were joined (a
         // junction box at each joint), and the modules clamped round it, leaning to one side, one of them now and then a
         // great hab can or tank.
@@ -346,10 +347,10 @@ public sealed partial class ShipForm
             Plate(Cargo(), tip + o * 3f, NV3.UnitZ, new NV3(-o.Y, o.X, 0f), new NV3(clen, chh, chh));
         }
         // The thrust frame, its drives in an A, round tanks clustered on it.
-        float fv = cv + cl / 2 - 3, fr = cr * R.Float(0.45f, 0.6f);
+        float fv = cv + cl / 2 - 3, fr = cr * R.Float(0.55f, 0.7f);
         Can("machine", 2, new NV3(0, 0, fv + 4), fr, 10);
         int nb = R.Between(3, 5);
-        float bb = fr * R.Float(0.36f, 0.44f), bv = fv + 9;
+        float bb = fr * R.Float(0.4f, 0.48f), bv = fv + 9;
         (float U, float Y)[] at = nb switch
         {
             3 => new[] { (-1f, -0.7f), (1f, -0.7f), (0f, 0.9f) },
@@ -379,11 +380,13 @@ public sealed partial class ShipForm
         float ram = L * R.Float(0.2f, 0.28f), fl = L * R.Float(0.3f, 0.38f), al = L * R.Float(0.24f, 0.32f);
         float fw = R.Between(10, 14) + 0.5f, fh = R.Between(8, 12) + 0.5f, v0 = ram - 4f, vj = v0 + fl;
         Box(Scrap(), new NV3(0, 0, v0 + fl / 2), new NV3(fw, fh, fl / 2), R.Float(0.15f, 0.5f), hab: true);
+        Clutter(new NV3(-fw, -fh, v0), new NV3(fw, fh, vj), R.Range(0, 4), R.Between(2, 5));
         // The aft half: another ship's, round or square, bigger or smaller, off the fore's axis.
         float k = R.Chance(0.5f) ? R.Float(0.6f, 0.8f) : R.Float(1.15f, 1.45f), au = R.Float(-0.3f, 0.3f) * fw, ay = R.Float(-0.35f, 0.35f) * fh, aw = fw * k, ah = fh * k * R.Float(0.8f, 1.2f);
         float va = vj + 2 + al / 2;
         if (R.Chance(0.45f)) Taper(Scrap(), va - al / 2, va + al / 2, (au, ay), (aw, ah), (au, ay), (aw * 0.9f, ah * 0.9f), round: true, hab: true);
         else Box(Scrap(), new NV3(au, ay, va), new NV3(aw, ah, al / 2), R.Float(0f, 0.35f), hab: true);
+        Clutter(new NV3(au - aw, ay - ah, va - al / 2), new NV3(au + aw, ay + ah, va + al / 2), R.Range(0, 4), R.Between(2, 5));
         // The weld: a narrow collar between them, plates across the seam.
         Box("machine", new NV3(au / 2, ay / 2, vj + 1), new NV3(MathF.Min(fw, aw) * 0.7f, MathF.Min(fh, ah) * 0.7f, 2.5f));
         for (int i = R.Between(3, 6); i > 0; i--)
@@ -641,7 +644,7 @@ public sealed partial class ShipForm
         }
         // Breaches down the hull.
         var breaches = new List<(NV3 P, NV3 O, float R)>();
-        for (int i = R.Between(6, 10); i > 0; i--)
+        for (int i = Math.Clamp((int)((back - front) / 18f), 4, 9) + R.Between(-1, 1); i > 0; i--)
         {
             NV3 o = Round(R.Float(0f, MathF.Tau));
             if (Surface(new NV3(0, 0, R.Float(front + 8f, back - 8f)), o) is not { } p) continue;

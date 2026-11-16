@@ -64,12 +64,12 @@ public static class CapitalHull
         return hulk.Result;
     }
 
-    /// <summary>One structure of a hulk: the stretch of the hull it is (cells V0..V1-1, and the nacelles when it is the last), and where it lies.</summary>
+    /// <summary>One structure of a hulk: the stretch of the hull it is (cells V0..V1-1), and where it lies.</summary>
     public sealed class HullPiece
     {
         public string Name = "";
         public int V0, V1;
-        /// <summary>The stern piece carries the nacelles.</summary>
+        /// <summary>The stern piece, the drives in it.</summary>
         public bool Last;
         /// <summary>Where its structure's cell 0, 0, 0 (the hull's cell 0, 0, V0) lies, metres in the place's frame, and its turn.</summary>
         public NV3 Origin;
