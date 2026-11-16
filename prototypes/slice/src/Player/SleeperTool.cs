@@ -743,14 +743,15 @@ public sealed class SleeperTool
         return t.IsPlated ? Bill.Of((t.Plate, v.Structure.Catalogue.PlatesOf(b))) : GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, v.Structure, b);
     }
 
-    /// <summary>What the block being mended owes so far, item by item, in fractions not yet paid in whole items.</summary>
+    /// <summary>What the block being mended owes so far, item by item (below zero: paid ahead, an item's worth not yet used).</summary>
     readonly Dictionary<string, double> _owed = new(StringComparer.Ordinal);
     (Slice.Vessels.Vessel, SInt3) _owedFor;
 
     /// <summary>
     /// Pays for <paramref name="share"/> of a block's health: that share of its bill added to what it owes,
-    /// whole items taken as they come due, from the bag, else the core's storage. False (nothing taken)
-    /// when neither holds them. Free in Creative.
+    /// each item taken as soon as any of it is owed (so nothing is mended without the ingredients in hand,
+    /// and what is taken is used up before the next), from the bag, else the core's storage. False
+    /// (nothing taken) when neither holds them. Free in Creative.
     /// </summary>
     bool Pay(Slice.Vessels.Vessel v, SInt3 cell, GalHack.Structures.Block b, float share, bool commit = true)
     {
@@ -760,8 +761,8 @@ public sealed class SleeperTool
         var next = new Dictionary<string, double>(_owed, StringComparer.Ordinal);
         foreach (var (id, n) in BillOf(v, b))
         {
-            double owed = next.GetValueOrDefault(id) + n * share;
-            int whole = (int)Math.Floor(owed + 1e-9);
+            double owed = next.GetValueOrDefault(id) + n * share; // below zero: paid ahead
+            int whole = owed > 1e-4 ? (int)Math.Ceiling(owed - 1e-4) : 0; // (a hair of float drift is no new item)
             next[id] = owed - whole;
             if (whole > 0) due.Add(id, whole);
         }

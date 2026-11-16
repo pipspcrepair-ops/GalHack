@@ -442,7 +442,8 @@ public partial class SleeperToolTest : Node
         foreach (int x in HoldRepair(FaceOf(v, hurt), 600)) yield return x;
         var paid = bill.ToDictionary(kv => kv.Key, kv => bag[kv.Key] - _game.Pack[kv.Key]);
         var whole0 = BuildingBridge.BillOf(items, s, s.Get(hurt));
-        bool fair = whole0.All(kv => paid.GetValueOrDefault(kv.Key) <= Math.Ceiling(kv.Value * 0.7 + 1e-6) && paid.GetValueOrDefault(kv.Key) >= Math.Floor(kv.Value * 0.7 - 1e-6));
+        // (Each item is taken as soon as any of it is owed: what 70% of the bill comes to, rounded up.)
+        bool fair = whole0.All(kv => paid.GetValueOrDefault(kv.Key) == (int)Math.Ceiling(kv.Value * 0.7 - 1e-6));
         Check(s.Get(hurt).Hp >= max - 0.01f && Tool.Repaired > repaired && fair,
             $"held on, it fills to {s.Get(hurt).Hp:F0} of {max:F0}, paid as it went, in proportion: {string.Join(", ", whole0.Select(kv => $"{paid.GetValueOrDefault(kv.Key)} of its {kv.Value} {kv.Key}"))} for the 70% it was missing (last: {Tool.LastMend})");
 
