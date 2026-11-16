@@ -15,7 +15,7 @@ public enum CraftForm : byte { Box, Spine, Lifter, TwinBoom, Tug, Needle, Tripod
 /// </summary>
 public static partial class SmallCraft
 {
-    /// <summary>The body plans each role can be laid out as (the box first: the game rolls it until the owner picks).</summary>
+    /// <summary>The body plans each role can be laid out as; a roll picks one.</summary>
     public static readonly IReadOnlyDictionary<CraftRole, CraftForm[]> FormsOf = new Dictionary<CraftRole, CraftForm[]>
     {
         [CraftRole.Trader] = new[] { CraftForm.Box, CraftForm.Spine, CraftForm.Lifter, CraftForm.TwinBoom, CraftForm.Tug },

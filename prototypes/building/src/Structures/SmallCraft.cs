@@ -58,15 +58,17 @@ public static partial class SmallCraft
         Roll(cat, role, style, seed, gravity, out _, needs);
 
     /// <param name="why">What the last roll fell short in, when none met the needs.</param>
-    /// <param name="form">The body plan (null: the box the game rolls today; the others wait on the owner's pick).</param>
+    /// <param name="form">The body plan (null: one of the role's plans, rolled from the seed).</param>
     public static Structure Roll(Catalogue cat, CraftRole role, CraftStyle style, int seed, float gravity, out string why, CraftNeeds needs = null, CraftForm? form = null)
     {
         needs ??= CraftNeeds.Default;
         why = null;
+        CraftForm[] plans = FormsOf[role];
+        CraftForm body = form ?? plans[new Random(seed).Next(plans.Length)];
         for (int attempt = 0; attempt < 6; attempt++)
         {
             var rng = new Random(unchecked(seed + attempt * 7919));
-            Structure plan = Lay(cat, role, style, rng, gravity, needs, form ?? CraftForm.Box);
+            Structure plan = Lay(cat, role, style, rng, gravity, needs, body);
             Structure built = Assemble(plan, style.Owner);
             why = Shortfall(built, gravity, needs);
             Dropped = string.Join(", ", plan.Blocks().Where(b => !built.Has(b.pos)).Select(b => plan.TypeOf(b.block).Id + (plan.TypeOf(b.block).IsArmor ? "/" + plan.ShapeOf(b.block).Id : "")));
