@@ -90,8 +90,25 @@ public partial class PlacePerf : Node
             return;
         }
         JoltWatch.Install();
-        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
-        Engine.MaxFps = 0;
+        // --settings=path: as the owner plays (his settings, vsync on and paced, full screen; --screen=N for which); --minspec=1: the
+        // minimum spec's stand-in as PopRoute's (4 cores, workers for 4, the lowest graphics). Without either, vsync off and no cap.
+        if (_args.ContainsKey("minspec"))
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
+            _args.TryAdd("settings", "res://tests/minspec.cfg");
+        }
+        if (_args.ContainsKey("settings"))
+        {
+            if (_args.TryGetValue("screen", out string screen)) DisplayServer.WindowSetCurrentScreen(int.Parse(screen));
+            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+            DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
+        }
+        else
+        {
+            DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
+            Engine.MaxFps = 0;
+        }
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
         if (_args.ContainsKey("audit") || _args.ContainsKey("city")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.TryGetValue("as", out string type)) PoiSiting.ForceType = type;
@@ -113,7 +130,7 @@ public partial class PlacePerf : Node
 
     void NewGame(WorldChoice world)
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world, SettingsPath = _args.GetValueOrDefault("settings") };
         _loading = Stopwatch.StartNew();
         AddChild(_game);
         _drive = new Driver(_game);
