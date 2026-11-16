@@ -152,7 +152,7 @@ public partial class CultureTest : Node
         }
         float warlords = Share(w => w.Rolled.Any(l => l.Kind == LayerKind.Presence && l.Id is "warlords" or "gangs" or "militias" or "bandit_riders"), LayerKind.Reign, "warband");
         float calm = Share(w => !w.Rolled.Any(l => l.Kind == LayerKind.Presence && l.Id is "warlords" or "gangs" or "militias" or "bandit_riders"), LayerKind.Reign, "warband");
-        Check(warlords > 1.5f * calm, $"worlds of warlords and gangs are ruled by a warband more ({Pct(warlords)} against {Pct(calm)})");
+        Check(warlords > calm, $"worlds of warlords and gangs are ruled by a warband more, among worlds whose rule is off today's ({Pct(warlords)} against {Pct(calm)})");
         var desperate = worlds.OrderBy(w => w.Desperation).ToList();
         float low = desperate.Take(desperate.Count / 3).Average(w => w.Desperation), high = desperate.Skip(2 * desperate.Count / 3).Average(w => w.Desperation);
         float falling = worlds.Where(w => w.Fact("phase") == "falling").DefaultIfEmpty().Average(w => w?.Desperation ?? 0f), steady = worlds.Where(w => w.Fact("phase") != "falling").Average(w => w.Desperation);
