@@ -177,6 +177,8 @@ public sealed class Creature
     public float CoverIn;
     /// <summary>When a run to cover is given up if it hasn't got there (a spot it can't reach): then it fights from where it is.</summary>
     public float CoverUntil;
+    /// <summary>When it last fired (the sim's clock): one that hasn't lately shoots before it goes for cover.</summary>
+    public float ShotAt = -99f;
     /// <summary>The band's last event this one has taken in (someone seen, a fright), and the last gesture of yours it answered.</summary>
     public int PartySeen, Answered;
 
