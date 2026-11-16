@@ -151,9 +151,9 @@ public sealed partial class ShipForm
     }
 
     /// <summary>
-    /// The monolith, a great lozenge at range: one massive slab from a hammer-faced prow swelling back into the engine
-    /// block, terraces of shorter slabs stacked on its back and its belly alike (never a deck with a tower on it), each to
-    /// one side, armour collars round it, sponsons or none.
+    /// The monolith, a great armoured lozenge at range: one massive slab from a hammer-faced prow swelling back into the
+    /// engine block, long low armour slabs laid along two to four of its faces, each its own length and off to one side
+    /// (never stacked up into a tower on a deck), armour collars round it, sponsons or none.
     /// </summary>
     void Monolith()
     {
@@ -167,19 +167,16 @@ public sealed partial class ShipForm
         float pl = L * R.Float(0.12f, 0.2f);
         BrowPlates(pl, pw, 0, py);
         Blister(pl * R.Float(0.4f, 0.8f), 0, py);
-        // Terraces: shorter slabs stacked one on another, on its back and its belly alike, each stack to its own side.
-        foreach (int up in new[] { 1, -1 })
+        // Long low armour slabs along two to four of its faces, each its own length, off to one side of the face.
+        int[] faces = { 0, 1, 2, 3 };
+        R.Shuffle(faces);
+        foreach (int face in faces.Take(R.Between(2, 4)))
         {
-            float side = R.Chance(0.5f) ? 1 : -1, len = (ve0 - pl) * R.Float(0.5f, 0.85f), mid = R.Float(pl + len / 2, ve0 - len / 2 + M(4f)), u = side * R.Float(0.1f, 0.35f) * bw;
-            for (int k = 0, n = R.Between(1, 3); k < n && len > M(10f); k++)
-            {
-                if (Surface(new NV3(u, 0, mid), up * NV3.UnitY) is not { } top) break;
-                float tw = pw * R.Float(0.35f, 0.7f) * (1f - 0.15f * k), tt = M(2.5f, 5f);
-                Box(k == 0 ? "hull" : "trim", new NV3(u, top.Y + up * (tt - 1f), mid), new NV3(tw, tt, len / 2), 0.3f, hab: true);
-                len *= R.Float(0.5f, 0.8f);
-                mid += R.Float(-0.15f, 0.15f) * len;
-                u += side * R.Float(0f, 0.2f) * tw;
-            }
+            NV3 o = Out(face), across = face < 2 ? NV3.UnitY : NV3.UnitX;
+            float len = (ve0 - pl) * R.Float(0.45f, 0.85f), mid = R.Float(pl + len / 2, ve0 - len / 2 + M(4f)), off = R.Float(-0.35f, 0.35f) * (face < 2 ? bh : bw);
+            if (Surface(across * off + new NV3(0, (py + ey) / 2, mid), o) is not { } at) continue;
+            float wide = (face < 2 ? ph : pw) * R.Float(0.35f, 0.65f), deep = M(2f, 3.5f);
+            Box(R.Chance(0.6f) ? "trim" : "hull", at + o * (deep - 1f), face < 2 ? new NV3(deep, wide, len / 2) : new NV3(wide, deep, len / 2), 0.4f);
         }
         // Collars round the slab where it is wide enough to wear them.
         if (R.Chance(0.6f))

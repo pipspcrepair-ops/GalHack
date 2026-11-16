@@ -20,7 +20,8 @@ namespace Slice.Tests;
 /// The ship forms' gate (docs/ship-forms.md, "Gates" 1): the six factions' forms and a Husk one, five fresh seeds each,
 /// built by the hull builder as vessels of the player's own blocks and drawn at one scale from a three-quarter view off
 /// the bow, a little above: one sheet greyed out (the livery off), one in plain faction colours, a 50 m bar in every
-/// cell. Prints each hull's build time (its form and its blocks, off the main thread).
+/// cell; a row's first three rolls show three of the faction's body plans, the Husk row five factions' ships. Prints each
+/// hull's build time (its form and its blocks, off the main thread), what the builder left out and what floats.
 ///
 /// Run (windowed: it renders): G:\GalHack\.tools\queue\godot-q.ps1 -Console --path &lt;slice&gt; res://tests/ShipFormSheet.tscn
 /// -After --dir=&lt;folder&gt;[,--size=medium|large|huge]
@@ -58,14 +59,23 @@ public partial class ShipFormSheet : Node
         Kit kit = lib.Kits[site.Style];
         TechLevel tech = WorldProfile.Parse(site.Parts[0].Arg("tech", "mid"));
         string[] roles = { "freighter", "warship", "liner", "miner", "carrier" }, six = Rows.Take(6).Select(r => r.Faction).ToArray();
-        // Every cell a fresh seed, built a few at a time off the main thread.
+        // Every cell a fresh seed, built a few at a time off the main thread; a row's first three show three of its faction's
+        // body plans (fresh seeds drawn until one of a plan not yet shown comes up), the Husk row five factions' ships.
         var gate = new System.Threading.SemaphoreSlim(Math.Max(2, System.Environment.ProcessorCount / 2));
         foreach (var (name, faction) in Rows)
+        {
+            var shown = new HashSet<string>();
+            string[] husks = six.OrderBy(_ => Random.Shared.Next()).ToArray();
             for (int c = 0; c < Cols; c++)
             {
-                ulong seed = (ulong)Random.Shared.NextInt64();
-                string role = roles[Random.Shared.Next(roles.Length)], who = faction ?? six[Random.Shared.Next(six.Length)];
+                string role = "", who = faction ?? husks[c];
                 bool husk = faction == null;
+                ulong seed = 0;
+                for (int tries = 0; tries < 40; tries++)
+                {
+                    (seed, role) = ((ulong)Random.Shared.NextInt64(), roles[Random.Shared.Next(roles.Length)]);
+                    if (husk || c >= 3 || shown.Add(CapitalHull.Plan(kit, tech, new CapitalHull.Spec(role, size, "long", who), seed).Form.Plan)) break;
+                }
                 _cells.Add(Task.Run(async () =>
                 {
                     await gate.WaitAsync();
@@ -83,6 +93,7 @@ public partial class ShipFormSheet : Node
                     finally { gate.Release(); }
                 }));
             }
+        }
         Stage();
         _run = Run().GetEnumerator();
     }
