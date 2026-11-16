@@ -152,8 +152,8 @@ public sealed partial class Town
         Creature foe = p.Facing > 0f && p.Threat is { Dead: false, Removed: false } c ? c : null;
         // Unseen a long while, they stand down (the place stays hostile).
         if (_alert && _clock - _seenClock > 40f) _alert = false;
-        // (Frightened enough to run, they run: Feeling.Flees.)
-        if (foe == null && (mood != Mood.Hostile || p.Engaged && !_alert) || !Fighter(p) || p.ScaredFor > 0f)
+        // (Frightened enough to run, they run: Feeling.Flees. You down, they fight only what else is about.)
+        if (foe == null && (mood != Mood.Hostile || p.Engaged && !_alert || YouDown) || !Fighter(p) || p.ScaredFor > 0f)
         {
             if (p.Engaged) Disengage(p);
             return false;

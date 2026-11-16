@@ -611,12 +611,12 @@ public sealed partial class Town
             // Morning, or the fright over, or a fright in the night: up and about.
             if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
             if (p.Indoors || p.Asleep) { Pose(p, who, away, dt); continue; }
-            if (guard && mood != Mood.Hostile && Pursuit(p, player, dt))
+            if (guard && mood != Mood.Hostile && !YouDown && Pursuit(p, player, dt))
             {
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (guard && mood != Mood.Hostile && Checkpoint(p, player, mood, dt))
+            if (guard && mood != Mood.Hostile && !YouDown && Checkpoint(p, player, mood, dt))
             {
                 Pose(p, who, away, dt);
                 continue;
@@ -629,7 +629,7 @@ public sealed partial class Town
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
+            if (guard && mood != Mood.Peaceful && !YouDown && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
                 Pose(p, who, away, dt);

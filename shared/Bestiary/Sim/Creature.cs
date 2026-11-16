@@ -300,6 +300,15 @@ public sealed class Creature
     public float FriskFor, FriskIn;
     public Vector3 FriskDir;
     public Creature FriskAfter;
+    /// <summary>Going through a dead one's things (<see cref="Brain.TargetDied"/>): where the body and its bag lie, and seconds of it left once there (0: not at it).</summary>
+    public Vector3 Rummage;
+    public float RummageFor;
+    /// <summary>Goods tossed down to make you leave (the offer): where they were to land, seconds of it left, and when it last offered.</summary>
+    public Vector3 OfferAt;
+    public float OfferFor, OfferedAt = -1e9f;
+    /// <summary>A Husk at the body of someone it killed, putting its worms into the face (<see cref="Brain.Infest"/>): the body, how long its face has been at theirs, when the next mouthful comes up.</summary>
+    public Creature Infests;
+    public float InfestFor, NextMouthful;
     /// <summary>Whether it could see or hear a player at its last think.</summary>
     public bool Sensing;
     /// <summary>Where it last knew a player, or a loud noise, to be.</summary>

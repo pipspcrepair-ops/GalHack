@@ -139,6 +139,11 @@ public sealed class WildSim
     internal void RaiseSeized(SeizeEvent e) => Seized?.Invoke(e);
     internal void RaiseLetGo(SeizeEvent e) => LetGo?.Invoke(e);
     internal void RaiseTurned(SeizeEvent e) => Turned?.Invoke(e);
+    /// <summary>Someone held at gunpoint tossed a bundle of their goods toward whoever held them (who, at whom, where it is to land, how frightened 0..1): the game throws the bag.</summary>
+    public event Action<Creature, ITarget, Vector3, float> Offered;
+    internal void RaiseOffered(Creature c, ITarget to, Vector3 at, float fear) => Offered?.Invoke(c, to, at, fear);
+    /// <summary>Rummages played over a dead one's things, and offers made (tests).</summary>
+    public int Rummages, Offers;
     /// <summary>A Husk murmured through its worms (a game plays it, low).</summary>
     public event Action<Creature> Murmured;
     internal void RaiseMurmur(Creature c) => Murmured?.Invoke(c);
@@ -786,6 +791,8 @@ public sealed class WildSim
         c.Falling = c.Space != null;
         Died?.Invoke(c, killer);
         if (killer is CreatureTarget predator) RaisePreyed(predator.Creature, c);
+        // A person a Husk killed is not done with: it kneels at the body and puts its worms in.
+        if (killer is CreatureTarget { Creature: { Species.Husk: true } husk }) Brain.Infest(this, husk, c);
     }
 
     internal void RaiseTell(TellEvent e) => Told?.Invoke(e);

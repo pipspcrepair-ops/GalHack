@@ -53,6 +53,8 @@ public static partial class Brain
             Took(w, c, b, c == lead);
         }
         Answer(w, c, b, lead);
+        // Goods given up at gunpoint, or a dead one's things gone through (Brain.Aftermath): each holds them till it's done.
+        if (b.Mood != PartyMood.Fighting && (Offering(w, c, b.Outsider, dt) || b.Mood != PartyMood.Fleeing && Rummaging(w, c, dt))) return;
         // The band's call is each one's default, and each answers it by their own nerve. Badly hurt, in a fight or a fright, they break off and run on their own.
         ITarget danger = b.Mood == PartyMood.Fighting ? b.Foe : b.Threat;
         if (reacted && danger != null && b.Mood is PartyMood.Fighting or PartyMood.Fleeing && c.Health < c.Stats.MaxHealth * HurtRun)
@@ -536,6 +538,7 @@ public static partial class Brain
             c.FacePoint = t.Position;
             c.LookAt = t.Position + Vector3.Up * 1.5f;
             Hold(w, c, f?.Aimed ?? BodyAct.HandsUp, 1f);
+            if (t is not CreatureTarget) Offer(w, c, t); // (goods only to you: another band never takes them up)
             return;
         }
         if (w.Time < b.BackUntil || d < Comfort)
