@@ -243,7 +243,8 @@ public sealed partial class HullVessel
     /// <summary>The structure's pieces, each the cells joined face to face.</summary>
     List<HashSet<Int3>> Pieces()
     {
-        var left = S.Blocks().Select(b => b.pos).ToHashSet();
+        // (Every cell a block takes, a big part's fillers too: it is joined by any face of it.)
+        var left = S.Cells().Select(b => b.pos).ToHashSet();
         var pieces = new List<HashSet<Int3>>();
         var stack = new Stack<Int3>();
         while (left.Count > 0)

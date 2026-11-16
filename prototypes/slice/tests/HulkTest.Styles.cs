@@ -151,7 +151,7 @@ public partial class HulkTest
     /// <summary>A form's outlines: every cell its shell takes (any corner inside it), side on, from above and end on.</summary>
     static (bool[,] Side, bool[,] Top, bool[,] Front) Outlines(ShipForm form)
     {
-        byte[] mask = ShipDecks.Masks(form, out _, out int nu, out int ny, out int nv);
+        byte[] mask = ShipDecks.Masks(form, out int u0, out int nu, out int ny, out int nv);
         var side = new bool[nv, ny];
         var top = new bool[nv, nu];
         var front = new bool[nu, ny];
@@ -159,6 +159,13 @@ public partial class HulkTest
             for (int y = 0; y < ny; y++)
                 for (int u = 0; u < nu; u++)
                     if (mask[u + nu * (y + ny * v)] != 0) side[v, y] = top[v, u] = front[u, y] = true;
+        // Its pipes and struts too, runs of plating the builder lays along the form.
+        foreach (var (from, axis, n, _) in form.Pipes)
+            for (int k = 0; k < n; k++)
+            {
+                int u = from.X + (axis == 0 ? k : 0) - u0, y = from.Y + (axis == 1 ? k : 0), v = from.Z + (axis == 2 ? k : 0);
+                if (u >= 0 && u < nu && y >= 0 && y < ny && v >= 0 && v < nv) side[v, y] = top[v, u] = front[u, y] = true;
+            }
         return (Trim(side), Trim(top), Trim(front));
     }
 
@@ -177,15 +184,17 @@ public partial class HulkTest
 
     readonly Dictionary<string, string> _args = OS.GetCmdlineUserArgs().Where(a => a.StartsWith("--") && a.Contains('=')).ToDictionary(a => a[2..a.IndexOf('=')], a => a[(a.IndexOf('=') + 1)..]);
 
-    /// <summary>A structure's outline side on (v by y), from above (v by u) and end on (u by y): every cell anything stands in.</summary>
+    /// <summary>A structure's outline side on (v by y), from above (v by u) and end on (u by y): every cell its plating takes (the hull itself; its devices, a thruster or a turret, are no part of its silhouette at range).</summary>
     static (bool[,] Side, bool[,] Top, bool[,] Front) Outlines(Structure s)
     {
-        var (lo, hi) = s.Bounds();
+        var plating = s.Blocks().Where(b => s.TypeOf(b.block).IsArmor).Select(b => b.pos).ToList();
+        var lo = new Int3(plating.Min(p => p.X), plating.Min(p => p.Y), plating.Min(p => p.Z));
+        var hi = new Int3(plating.Max(p => p.X), plating.Max(p => p.Y), plating.Max(p => p.Z));
         int nu = hi.X - lo.X + 1, ny = hi.Y - lo.Y + 1, nv = hi.Z - lo.Z + 1;
         var side = new bool[nv, ny];
         var top = new bool[nv, nu];
         var front = new bool[nu, ny];
-        foreach (var (p, _) in s.Blocks())
+        foreach (Int3 p in plating)
         {
             side[p.Z - lo.Z, p.Y - lo.Y] = true;
             top[p.Z - lo.Z, p.X - lo.X] = true;

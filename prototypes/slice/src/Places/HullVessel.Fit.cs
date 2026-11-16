@@ -199,7 +199,8 @@ public sealed partial class HullVessel
     void Manoeuvre()
     {
         int n = Math.Clamp(H.L / 30, 2, 6);
-        foreach (Dir push in new[] { Dir.PosX, Dir.NegX, Dir.NegY, Dir.PosZ })
+        // (Forward too, and lift, wherever this piece's drives or belly gave it none: a piece of a broken hull flies alone.)
+        foreach (Dir push in Dirs.All.Where(d => d is Dir.PosX or Dir.NegX or Dir.NegY or Dir.PosZ || ThrustTo(d) <= 0))
         {
             int set = 0;
             foreach (bool outside in new[] { false, true })
@@ -243,6 +244,11 @@ public sealed partial class HullVessel
                 { Device(gen, u, room.Y, v, rot, room, Paint["machine"]); made += gen.Power; }
             }
         }
+        // (Whatever the rooms leave short, set into the bulk.)
+        if (Best("generator", new Int3(2, 2, 2), 0, t => t.Power) is { } spare)
+            for (int i = 0; i < 6 && made < draw * 1.2 + 4; i++)
+                if (Stow(spare)) made += spare.Power;
+                else break;
     }
 
     // ---- fittings -------------------------------------------------------------------------------------
@@ -351,6 +357,7 @@ public sealed partial class HullVessel
                         Device(warp, u, s.Y, v, 0, s, Paint["machine"]);
                         placed = true;
                     }
+            if (!placed) Stow(warp);
         }
         if (S.Blocks().Any(b => S.TypeOf(b.block).Function == "gyro") || Best("gyro", new Int3(2, 2, 2), 0, t => t.Torque) is not { } gyro) return;
         int n = 0;
@@ -361,6 +368,24 @@ public sealed partial class HullVessel
                     Device(gyro, u, s.Y, v, 0, s, Paint["dark"]);
                     n++;
                 }
+    }
+
+    /// <summary>
+    /// A machine set into the hull's own bulk where no room has space for it: its footprint all the form's void or
+    /// plating, never a room's air, as near the seat for a core as it goes. Whether it went in.
+    /// </summary>
+    bool Stow(BlockType t, ushort paint = 0)
+    {
+        Int3 near = Out.CoreSlot ?? new Int3(0, _ny / 2, (VEnd - Pc.V0) / 2);
+        bool Bare(int x, int y, int v) => Bulk(new Int3(x, y, v - Pc.V0)) && AirOf(new Int3(x, y, v - Pc.V0)) == null && Interior(x, y, v);
+        foreach (Int3 c in S.Blocks().Where(b => S.TypeOf(b.block) == Plating && Interior(b.pos.X, b.pos.Y, b.pos.Z + Pc.V0)).Select(b => b.pos)
+                             .OrderBy(p => Math.Abs(p.X - near.X) + Math.Abs(p.Y - near.Y) + Math.Abs(p.Z - near.Z)).Take(4000))
+            if (Fits(t, c, 0, Bare))
+            {
+                D.Put(t.Id, c, Orientations.Name(0), paint == 0 ? Paint["machine"] : paint);
+                return true;
+            }
+        return false;
     }
 
     /// <summary>
@@ -496,6 +521,13 @@ public sealed partial class HullVessel
     /// </summary>
     void Containers()
     {
+        // (The core's piece at least one, for its fuel: in its bulk if no room takes it.)
+        if (Out.CoreSlot != null && !S.Blocks().Any(b => S.TypeOf(b.block).IsContainer) && Cat.TryGetType("container-t1", out BlockType one))
+        {
+            var spot = Live.Where(s => !s.Corridor).SelectMany(s => WallCells(s, 1).Select(c => (Room: s, c.U, c.V))).FirstOrDefault(x => Fits(one, At(x.U, x.Room.Y, x.V), 0, Free(x.Room)));
+            if (spot.Room != null) Device(one, spot.U, spot.Room.Y, spot.V, 0, spot.Room, Paint["orange"]);
+            else Stow(one, Paint["orange"]);
+        }
         float floor = Out.Spaces.Sum(s => s.Floor.Count - s.Taken.Count(t => s.Floor.Contains(t)));
         int count = S.Blocks().Count(b => !b.block.IsFiller && IsMachine(S.TypeOf(b.block)));
         int Count() => count;

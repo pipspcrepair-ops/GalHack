@@ -149,12 +149,14 @@ public sealed partial class HullVessel
         Step("windows", b.Windows);
         Step("engines", b.Engines);
         Step("fittings", b.Fittings);
+        b.Out.Thrust += "after fitting " + string.Join("/", Dirs.All.Select(d => (b.ThrustTo(d) / 1000).ToString("F0"))) + "; ";
         Step("lights", b.Lights);
         Step("finish", b.Finish);
         if (!intact) Step("damage", b.Damage);
         if (!intact && (state == PoiState.Infested || plan.Husk)) Step("infest", b.Infest);
         Step("hollow", b.Hollow);
         Step("join", b.Join);
+        b.Out.Thrust += "at the end " + string.Join("/", Dirs.All.Select(d => (b.ThrustTo(d) / 1000).ToString("F0"))) + "; ";
         if (dress != null) Step("dress", () => b.Dress(dress));
         b.Out.Took = took.ToString().TrimEnd(',', ' ');
         foreach (var w in plan.Form.Worms)
