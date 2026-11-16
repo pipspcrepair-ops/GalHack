@@ -85,7 +85,7 @@ public partial class CockpitConsole : Node3D
         {
             if (Vessel?.Stats is not HandlingStats st) return Vessel == null ? "none" : $"pod|{Vessel.Structure.Mode}|{Vessel.ModeWarning}";
             VesselController c = Vessel.Controller;
-            return $"{Vessel.Structure.Mode}|{Vessel.ModeWarning}|{st.Mass:F1}|{st.LiftMargin:F0}|{Vessel.Body.Velocity.Length():F0}|{Vessel.Body.Position.Y:F0}|{c?.Gear?.Deployed}|{c?.Frozen}|{Vessel.Flight.State.Cruise}|{c?.ConsoleMessage}";
+            return $"{Vessel.Structure.Mode}|{Vessel.ModeWarning}|{st.Mass:F1}|{st.LiftMargin:F0}|{Vessel.Body.Velocity.Length():F0}|{Vessel.Body.Position.Y:F0}|{Vessel.Flight.Top:F0}|{c?.Gear?.Deployed}|{c?.Frozen}|{Vessel.Flight.State.Cruise}|{c?.ConsoleMessage}";
         }
 
         public override void _Draw()
@@ -121,7 +121,7 @@ public partial class CockpitConsole : Node3D
             Row("ACCEL F / B", $"{st.Accel(Direction.Forward):F1} / {st.Accel(Direction.Back):F1} m/s²", C.Text);
             Row("ACCEL UP / SIDE", $"{st.Accel(Direction.Up):F1} / {st.Accel(Direction.Right):F1} m/s²", C.Text);
             Row("TURN", $"{st.TurnRate:F0} °/s", C.Text);
-            Row("TOP SPEED", $"{st.TopSpeed:F0} m/s", C.Text);
+            Row("TOP SPEED", $"{Vessel.Flight.Top:F0} m/s", C.Text);
             Row("LIFT MARGIN", $"{st.LiftMargin:+0;-0} kN · {st.SpareLift:F1} t SPARE", st.CanLiftOff ? C.Good : C.Danger);
             Row("MASS", $"{st.Mass:F2} t", C.Text);
             y += 6;

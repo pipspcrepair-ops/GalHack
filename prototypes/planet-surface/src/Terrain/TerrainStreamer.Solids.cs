@@ -3,6 +3,7 @@ using System.Linq;
 using GalHack.Plants;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Planets.Gen;
 using Planets.Look;
 using Godot;
@@ -304,6 +305,25 @@ public partial class TerrainStreamer
         return false;
     }
 
+    /// <summary>
+    /// The trunks, boulders and other solids the scatter puts in one far chunk (canonical chunk coordinates), worked out on a
+    /// worker exactly as the chunk's finest level builds them, felled trees and dug ground left out, without streaming it
+    /// in: for anything that must know what stands on ground nobody is near. Their centres are canonical.
+    /// </summary>
+    public Task<List<FloraSolid>> SolidsOfChunk(int fx, int fz)
+    {
+        var source = World.Source;
+        GroundPalette palette = World.Palette;
+        HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
+        var job = new FarJob { Fx = fx, Fz = fz, Lod = 0, SpanX = FarBuilder.Span(fx, World.Terrain.Width), SpanZ = FarBuilder.Span(fz, World.Terrain.Height) };
+        return Task.Run(() =>
+        {
+            FarBuilder.Build(job, source, palette, dug, felled);
+            if (job.Error != null) throw job.Error;
+            return job.Solids ?? new List<FloraSolid>();
+        });
+    }
+
     /// <summary>The loaded solids near a point (frame coordinates, returned in the frame), for tests and stuck-safety.</summary>
     public IEnumerable<(FloraSolid solid, Vector3 offset)> SolidsNear(Vector3 p, float radius, bool canopies = false)
     {
@@ -314,6 +334,9 @@ public partial class TerrainStreamer
             var offset = new Vector3(
                 (float)(NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, p.X, w) - f.Fx * FarBuilder.Size), 0f,
                 (float)(NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, p.Z, h) - f.Fz * FarBuilder.Size));
+            // A chunk wholly out of reach is passed over without reading its solids (their centres lie inside it).
+            float x0 = f.Fx * FarBuilder.Size + offset.X, z0 = f.Fz * FarBuilder.Size + offset.Z;
+            if (p.X + radius < x0 || p.X - radius > x0 + FarBuilder.Size || p.Z + radius < z0 || p.Z - radius > z0 + FarBuilder.Size) continue;
             foreach (FloraSolid s in f.Solids)
             {
                 Vector3 c = s.Center + offset;

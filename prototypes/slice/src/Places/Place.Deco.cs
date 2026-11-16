@@ -67,15 +67,15 @@ public sealed class Decor
         PoiInstance inst = memory.Inst;
         Layout layout = inst.Layout;
         var rooms = new Dictionary<int, PlaceRoom>();
-        var openings = RoomDecor.Openings(inst).ToList();
-        var reserved = RoomDecor.Reserved(inst, openings);
-        NavGrid nav = inst.Nav();
+        var openings = GalHack.Testing.AllocMeter.Measure("    openings", () => RoomDecor.Openings(inst).ToList());
+        var reserved = GalHack.Testing.AllocMeter.Measure("    reserved", () => RoomDecor.Reserved(inst, openings));
+        NavGrid nav = GalHack.Testing.AllocMeter.Measure("    nav", () => inst.Nav());
         foreach (PlacedModule m in layout.Modules)
         {
-            if (RoomDecor.Room(inst, m, nav, reserved) is not { } dressable) continue;
+            if (GalHack.Testing.AllocMeter.Measure("    room shape", () => RoomDecor.Room(inst, m, nav, reserved)) is not { } dressable) continue;
             var (_, room, corner, floor, own) = dressable;
             DecoPlan plan;
-            try { plan = Poi.Dress(room, inst.Kit?.Id); }
+            try { plan = GalHack.Testing.AllocMeter.Measure("    planner", () => Poi.Dress(room, inst.Kit?.Id)); }
             catch (Exception) { continue; }
             var placeRoom = new PlaceRoom { Module = m.Index, Corner = corner, Floor = floor, Room = room, Plan = plan };
             // Pieces on a reserved cell (or standing on one that is), or not standing as they're drawn, are left out.
@@ -120,7 +120,7 @@ public sealed class Decor
                         if (!inst.Blocks.Get(c).IsAir && Clearable(inst.Blocks.Get(c))) inst.Blocks.Set(c, Block.Air);
             rooms[m.Index] = placeRoom;
         }
-        KeepWaysOpen(memory, rooms, openings);
+        GalHack.Testing.AllocMeter.Measure("    ways kept open", () => KeepWaysOpen(memory, rooms, openings));
         return rooms;
     }
 
@@ -402,7 +402,14 @@ public partial class Place
         /// <summary>How far the room's pieces have dissolved in (0..1), and which way they are going (+1 in, -1 out, 0 still).</summary>
         public float Blend;
         public int Way;
+        /// <summary>What it draws, gathered once it is dressed: its dissolve is set on these, not by a walk through every node every frame.</summary>
+        public List<GeometryInstance3D> Drawn;
+        /// <summary>Of <see cref="Drawn"/>, how many have their own materials back since the dissolve in ended (a share a frame).</summary>
+        public int Cleared;
     }
+
+    /// <summary>The most of a room's drawn pieces given their own materials back in a frame, once it has dissolved in.</summary>
+    const int ClearedAFrame = 40;
 
     readonly Dictionary<int, Dressed> _dressed = new();
 
@@ -417,19 +424,24 @@ public partial class Place
         if (_dressFading.Count == 0) return;
         foreach (Dressed d in _dressFading)
         {
-            d.Blend = Mathf.Clamp(d.Blend + d.Way * dt / DressBlendSeconds, 0f, 1f);
+            d.Drawn ??= d.Node.FindChildren("*", "GeometryInstance3D", true, false).Cast<GeometryInstance3D>().ToList();
             if (d.Way > 0 && d.Blend >= 1f)
             {
-                PlanetSurface.Fx.Fade.Clear(d.Node);
-                d.Way = 0;
+                // Dissolved in: its own materials back, a share a frame (all at once held a frame for 9 ms).
+                for (int k = 0; k < ClearedAFrame && d.Cleared < d.Drawn.Count; k++, d.Cleared++)
+                    if (IsInstanceValid(d.Drawn[d.Cleared])) PlanetSurface.Fx.Fade.ClearGeometry(d.Drawn[d.Cleared]);
+                if (d.Cleared >= d.Drawn.Count) { d.Way = 0; d.Drawn = null; d.Cleared = 0; }
+                continue;
             }
-            else if (d.Way < 0 && d.Blend <= 0f)
+            d.Blend = Mathf.Clamp(d.Blend + d.Way * dt / DressBlendSeconds, 0f, 1f);
+            if (d.Way < 0 && d.Blend <= 0f)
             {
-                PlanetSurface.Fx.Fade.Forget(d.Node);
+                foreach (GeometryInstance3D g in d.Drawn) if (IsInstanceValid(g)) PlanetSurface.Fx.Fade.ForgetGeometry(g);
                 d.Node.QueueFree();
                 d.Way = 0;
+                d.Drawn = null;
             }
-            else PlanetSurface.Fx.Fade.Set(d.Node, 0f, d.Blend);
+            else foreach (GeometryInstance3D g in d.Drawn) if (IsInstanceValid(g)) PlanetSurface.Fx.Fade.SetGeometry(g, 0f, d.Blend);
         }
         _dressFading.RemoveAll(d => d.Way == 0);
     }
@@ -455,6 +467,8 @@ public partial class Place
     }
 
     bool _dressByRoom;
+    /// <summary>What the dressing's last step did (the checks' longest-step note).</summary>
+    string _dressStage;
     IEnumerator<int> _dressing;
     int _dressTimer;
 
@@ -476,7 +490,12 @@ public partial class Place
             var clock = System.Diagnostics.Stopwatch.StartNew();
             double budget = PlanetSurface.Fx.LoadBudget.Left(1.5);
             while (clock.Elapsed.TotalMilliseconds < budget)
-                if (!_dressing.MoveNext()) { _dressing = null; break; }
+            {
+                var step = StepClock.Start();
+                bool more = _dressing.MoveNext();
+                step.End(3, _dressStage);
+                if (!more) { _dressing = null; break; }
+            }
             PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
             return;
         }
@@ -523,6 +542,14 @@ public partial class Place
         {
             if (taken != null && taken.Contains(i)) { d.Pieces.Add(null); continue; }
             DecoPlacement pl = room.Plan.Placements[i];
+            // A look new to the game is handed to the engine a surface a step first (a big piece in one go was the long step).
+            while (!decor.Meshes.Warm(pl.Look))
+            {
+                _dressStage = pl.Piece;
+                yield return 0;
+                clock.Restart();
+            }
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
             DecoNode.CollisionLayer = room.Solid.Contains(i) ? Layers.World : SceneryLayer;
             DecoNode n;
@@ -533,8 +560,11 @@ public partial class Place
                 d.Pieces.Add(null);
                 continue;
             }
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
             d.Node.AddChild(n);
+            long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
             PlanetSurface.Fx.Fade.Set(n, 0f, 0f); // the room's pieces dissolve in together once all are in
+            long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
             d.Pieces.Add(n);
             _pieceOf[n.GetInstanceId()] = (room, i);
             if (!d.Bodies.TryGetValue(DecoNode.CollisionLayer, out StaticBody3D body))
@@ -548,8 +578,14 @@ public partial class Place
                 body.ShapeOwnerAddShape(owner, shape);
                 body.ShapeOwnerSetTransform(owner, at * xf);
             }
-            if (clock.Elapsed.TotalMilliseconds > 1.2)
+            // Out after half a millisecond: a step ends with at most one more piece over it.
+            // The longest part of the piece names the step (the checks' longest-step note).
+            long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
+            long most = Math.Max(Math.Max(t1 - t0, t2 - t1), Math.Max(t3 - t2, t4 - t3));
+            string part = most == t1 - t0 ? "made" : most == t2 - t1 ? "added" : most == t3 - t2 ? "dissolve set" : "shapes";
+            if (clock.Elapsed.TotalMilliseconds > 0.5)
             {
+                _dressStage = $"{pl.Piece} ({part} {most * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F1})";
                 yield return 0;
                 clock.Restart();
             }
@@ -557,23 +593,33 @@ public partial class Place
         DecoNode.CollisionLayer = Layers.World;
         if (room.Plan.Cables.Count > 0)
         {
-            // The wires strung between pieces, hung by the library's cable helper (anchored at both ends).
-            var mesh = new DecoMeshData();
-            foreach (DecoPlanCable c in room.Plan.Cables)
-            {
-                if (taken != null && (taken.Contains(c.From) || taken.Contains(c.To))) continue;
-                DecoCable cable = c.AsCable();
-                foreach (DecoPart part in DecoCables.Tubes(DecoCables.Path(cable), cable.Radius, cable.Slot))
-                    DecoEmit.Part(mesh, part, (_, _, _) => DecoRgb.Hex("1e2024"), _ => DecoSurface.Matte);
-            }
+            // The wires strung between pieces: made on the place's worker, made again here only when a piece they hang from was taken.
+            bool cut = taken != null && room.Plan.Cables.Any(c => taken.Contains(c.From) || taken.Contains(c.To));
+            DecoMeshData mesh = cut || room.Wires == null ? WiresOf(room, taken) : room.Wires;
             d.Node.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, decor.Meshes.Materials) });
         }
+        _dressStage = "the room's wires and dissolve";
         PlanetSurface.Fx.PopLog.Note("props", "room dressed", Away(room, FromWorld(Places.EyeAt())), 1.2f, 1f / (60f * DressBlendSeconds));
         d.Blend = 0f;
         d.Way = 1;
         PlanetSurface.Fx.Fade.Set(d.Node, 0f, 0f);
         _dressFading.Add(d);
         yield return 0;
+    }
+
+    /// <summary>A room's wires strung between its pieces, hung by the library's cable helper (anchored at both ends), but those to a taken piece; null with no cables.</summary>
+    internal static DecoMeshData WiresOf(PlaceRoom room, HashSet<int> taken)
+    {
+        if (room.Plan.Cables.Count == 0) return null;
+        var mesh = new DecoMeshData();
+        foreach (DecoPlanCable c in room.Plan.Cables)
+        {
+            if (taken != null && (taken.Contains(c.From) || taken.Contains(c.To))) continue;
+            DecoCable cable = c.AsCable();
+            foreach (DecoPart part in DecoCables.Tubes(DecoCables.Path(cable), cable.Radius, cable.Slot))
+                DecoEmit.Part(mesh, part, (_, _, _) => DecoRgb.Hex("1e2024"), _ => DecoSurface.Matte);
+        }
+        return mesh;
     }
 
     /// <summary>Rooms dressed now, and pieces standing in them (tests).</summary>

@@ -20,6 +20,11 @@ public sealed class ZoneGravity
 
     public bool InAtmosphere(Vector3 position) => position.Y < Ceiling;
 
+    /// <summary>How far over the crossing a point stands, m (under it, less than 0): over the ceiling unless the zone measures it from its bodies (orbit).</summary>
+    public System.Func<Vector3, float> Above;
+
+    public float AboveCrossing(Vector3 position) => Above?.Invoke(position) ?? position.Y - Ceiling;
+
     /// <summary>The acceleration gravity gives a body here, m/s².</summary>
     public Vector3 At(Vector3 position) => InAtmosphere(position) ? Down * Strength : Vector3.Zero;
 }

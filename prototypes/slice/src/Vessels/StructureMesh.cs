@@ -49,6 +49,18 @@ public partial class StructureMesh : Node3D
     readonly Dictionary<Int3, MeshInstance3D> _chunks = new();
     readonly ChunkMeshData _scratch = new();
     readonly List<Light3D> _lights = new();
+
+    /// <summary>Its real lights fade out where far points take over (FarLights' one hand-off): a vessel whose lamps are also far points.</summary>
+    public bool HandOff
+    {
+        get => _handOff;
+        set
+        {
+            _handOff = value;
+            if (value) foreach (Light3D l in _lights) PlanetSurface.Poi.FarLights.HandOff(l);
+        }
+    }
+    bool _handOff;
     /// <summary>Every lit lamp and spotlight, as of the structure's version they were listed at.</summary>
     List<(Int3 pos, Block block)> _lamps, _spots;
     int _lampsVersion = -1;
@@ -114,6 +126,7 @@ public partial class StructureMesh : Node3D
             Rebuild(c, colliders: false);
             done++;
         }
+        if (done > 0) UpdateLights(); // a lamp switched on or off has its real light follow
     }
 
     /// <summary>Its devices' lights and screens dim or light up together: one value per chunk, nothing rebuilt.</summary>
@@ -225,6 +238,7 @@ public partial class StructureMesh : Node3D
                 OmniAttenuation = 1.2f,
             };
             AddChild(light);
+            if (_handOff) PlanetSurface.Poi.FarLights.HandOff(light);
             _lights.Add(light);
             _lightSettings.Add(Structure.LightAt(pos));
         }
@@ -245,6 +259,7 @@ public partial class StructureMesh : Node3D
                 ShadowEnabled = false,
             };
             AddChild(spot);
+            if (_handOff) PlanetSurface.Poi.FarLights.HandOff(spot);
             spot.Position = at;
             spot.Basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.9f ? Vector3.Forward : Vector3.Up);
             _lights.Add(spot);

@@ -91,6 +91,27 @@ public partial class InfraLayer : Node3D
     public static readonly List<Func<PlanetWorld, IEnumerable<Piece>>> Sources = new();
 
     public bool Planned => _pieces != null;
+
+    /// <summary>
+    /// Whether any planned piece (a pole, a wreck site, a ruin, an ore tell) is drawn round a point within a reach of
+    /// this one (canonical x, z), whether or not its tile stands: what a hull setting down keeps clear of. Before the
+    /// plan is ready, everywhere counts as taken.
+    /// </summary>
+    public bool PieceNear(double x, double z, double reach)
+    {
+        if (_pieces == null || _world == null) return true;
+        int i0 = (int)Math.Floor((x - reach) / TileSize), i1 = (int)Math.Floor((x + reach) / TileSize);
+        int j0 = (int)Math.Floor((z - reach) / TileSize), j1 = (int)Math.Floor((z + reach) / TileSize);
+        for (int j = j0; j <= j1; j++)
+        for (int i = i0; i <= i1; i++)
+        {
+            int ii = ((i % _tilesX) + _tilesX) % _tilesX, jj = ((j % _tilesZ) + _tilesZ) % _tilesZ;
+            if (!_pieces.TryGetValue(Key(ii, jj), out var list)) continue;
+            foreach (Piece p in list)
+                if (Math.Abs(Mathx.WrapDelta(p.X - x, _world.Width)) < reach && Math.Abs(Mathx.WrapDelta(p.Z - z, _world.Height)) < reach) return true;
+        }
+        return false;
+    }
     public int TileCount => _tiles.Count;
     public int PieceCount => _pieces?.Values.Sum(l => l.Count) ?? 0;
     public bool Built => _pieces != null && _tiles.Values.All(t => t.Done && !t.SolidsDue);
@@ -142,14 +163,14 @@ public partial class InfraLayer : Node3D
         var tile = new Tile { Ix = ix, Iz = iz };
         double ox = ix * TileSize, oz = iz * TileSize;
         PlanetWorld world = _world;
-        tile.Building = Task.Run(() =>
+        tile.Building = Task.Run(() => GalHack.Testing.AllocMeter.Measure("roads and ruins", () =>
         {
             var b = new TileBuilder(world, ox, oz);
             foreach (Piece p in list) p.Emit(b);
             // What the tile lays on what (markings on roads, plates on pads) stands off it: no two faces fight.
             GalHack.Deco.DecoStandoff.Apply(b.Mesh, new GalHack.Deco.DecoStandoff.Parts(b.Mesh), null, floor: false);
             return b;
-        });
+        }));
         return tile;
     }
 

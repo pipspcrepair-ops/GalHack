@@ -44,6 +44,8 @@ public partial class PlacePerf : Node
     SystemSplit _split;
     AllocCensus _allocs;
     readonly List<double> _script = new();
+    double _townTick, _townPose;
+    int _plainFrames, _plainSites;
     readonly List<string> _hitches = new();
     int _gc0, _gc2;
     bool _failed;
@@ -89,14 +91,25 @@ public partial class PlacePerf : Node
             return;
         }
         JoltWatch.Install();
-        // --minspec=1: the minimum spec's stand-in for the CPU (4 cores, one thread each: logical CPUs 0, 2, 4 and 6; workers sized for 4).
+        // --settings=path: as the owner plays (his settings, vsync on and paced, full screen; --screen=N for which); --minspec=1: the
+        // minimum spec's stand-in as PopRoute's (4 cores, workers for 4, the lowest graphics). Without either, vsync off and no cap.
         if (_args.ContainsKey("minspec"))
         {
             Process.GetCurrentProcess().ProcessorAffinity = 0x55;
             PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
+            _args.TryAdd("settings", "res://tests/minspec.cfg");
         }
-        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
-        Engine.MaxFps = 0;
+        if (_args.ContainsKey("settings"))
+        {
+            if (_args.TryGetValue("screen", out string screen)) DisplayServer.WindowSetCurrentScreen(int.Parse(screen));
+            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+            DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
+        }
+        else
+        {
+            DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
+            Engine.MaxFps = 0;
+        }
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
         if (_args.ContainsKey("audit") || _args.ContainsKey("city")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.TryGetValue("as", out string type)) PoiSiting.ForceType = type;
@@ -118,7 +131,7 @@ public partial class PlacePerf : Node
 
     void NewGame(WorldChoice world)
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world, SettingsPath = _args.GetValueOrDefault("settings") };
         _loading = Stopwatch.StartNew();
         AddChild(_game);
         _drive = new Driver(_game);
@@ -175,6 +188,21 @@ public partial class PlacePerf : Node
         if (_times == null) return;
         _times.Add(ms);
         _script.Add(_probe.LastMs);
+        foreach (Slice.Places.Place pl in _game.Places.Standing)
+            if (pl.Memory.Town is { } town) { _townTick += town.LastTickMs; _townPose += town.LastPoseMs; }
+        // Places drawn as their plain far lump (not yet their merged blocks) in view within 600 m: the stand-ins a player sees.
+        if (_game.Camera is { } cam)
+        {
+            int plain = 0;
+            foreach (PoiSite site in _game.Zone.Planet.Pois)
+            {
+                Vector3 at = _game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y + 4f, site.Origin.Z), cam.GlobalPosition);
+                if (at.DistanceTo(cam.GlobalPosition) > 600f || !cam.IsPositionInFrustum(at)) continue;
+                if (_game.Zone.Pois.Shows(site) == 1 && _game.Places.PlaceOf(site) is not { Ready: true }) plain++;
+            }
+            if (plain > 0) _plainFrames++;
+            _plainSites += plain;
+        }
         int gc = GC.CollectionCount(0), gc2 = GC.CollectionCount(2);
         if (ms > 33.4 && _hitches.Count < 40) _hitches.Add($"{ms:F0}ms script {_probe.LastMs:F0} frame {_times.Count} gc0 +{gc - _gc0} gc2 +{gc2 - _gc2} pause {GC.GetGCMemoryInfo(GCKind.Ephemeral).PauseDurations[0].TotalMilliseconds:F0} promoted {GC.GetGCMemoryInfo(GCKind.Ephemeral).PromotedBytes / 1024 / 1024} MB heap {GC.GetGCMemoryInfo(GCKind.Ephemeral).HeapSizeBytes / 1024 / 1024} MB gen0 {GC.GetGCMemoryInfo(GCKind.Ephemeral).GenerationInfo[0].SizeBeforeBytes / 1024 / 1024} at {_game.Survivor?.WorldFeet.X:F0},{_game.Survivor?.WorldFeet.Z:F0} objs {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}");
         _gc0 = gc;
@@ -194,6 +222,8 @@ public partial class PlacePerf : Node
     void Begin()
     {
         _times = new List<double>();
+        _townTick = _townPose = 0;
+        _plainFrames = _plainSites = 0;
         _script.Clear();
         _cpu.Clear();
         _gpu.Clear();
@@ -212,6 +242,9 @@ public partial class PlacePerf : Node
         List<double> t = _times;
         _times = null;
         if (t.Count == 0) { GD.Print($"PERF {stage}: no frames"); return; }
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} stand-ins: {_plainFrames} of {t.Count} frames with a place drawn as its plain far lump in view within 600 m ({_plainSites} place-frames)"));
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} towns a frame: their last tick {_townTick / t.Count:F2} ms, posing {_townPose / t.Count:F2} ms"));
+        _townTick = _townPose = 0;
         t.Sort();
         double P(double q) => t[Math.Min(t.Count - 1, (int)(t.Count * q))];
         int hitches = t.Count(x => x > 33.4);

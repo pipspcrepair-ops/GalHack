@@ -48,6 +48,10 @@ public sealed class SimArms
 
     /// <summary>Shots fired and blows struck by the sims' people and machines (tests).</summary>
     public int Shots, Drawn;
+    /// <summary>Bursts not fired because the weapon never came onto its mark (tests).</summary>
+    public int Dropped;
+    /// <summary>The last round held for the aim: how far off it was, degrees (tests).</summary>
+    public float LastHeldOff;
 
     public SimArms(ArmsHost host)
     {
@@ -157,7 +161,8 @@ public sealed class SimArms
             if (off > HumanRig.OnMark)
             {
                 // Still coming round: it waits; never on (turned away, on the move): the rest of the burst isn't fired.
-                if ((k.Held += dt) >= HumanRig.AimWait) { k.Pending = 0; k.Held = 0f; }
+                LastHeldOff = off;
+                if ((k.Held += dt) >= HumanRig.AimWait) { k.Pending = 0; k.Held = 0f; Dropped++; }
                 continue;
             }
             k.Held = 0f;
