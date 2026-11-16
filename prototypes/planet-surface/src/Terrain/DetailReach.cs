@@ -47,7 +47,7 @@ public static class DetailReach
 
     /// <summary>
     /// How far a tree's own near mesh draws, m, and the band over which it dissolves into its species' far mesh (fewer
-    /// triangles, no shadow), one screen pattern split between the two, so the tree never shows more or less as it goes.
+    /// triangles; the far mesh casts every tree's shadow), one screen pattern split between the two, so the tree never shows more or less.
     /// </summary>
     public static float Near, NearBand;
 

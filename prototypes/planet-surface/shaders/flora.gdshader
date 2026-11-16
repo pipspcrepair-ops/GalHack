@@ -21,7 +21,8 @@ global uniform vec4 weather_wind;    // direction x, z, speed m/s, distance trav
 global uniform vec4 weather_ground;  // wetness, snow, dust, solar
 
 // 0: large growth; 1: small growth; 2 (anything else that draws with this): whole at every distance; 3 and 4: a tree's
-// near mesh and its far one, the near handing over to the far round flora_near through the same pattern, split.
+// near mesh and its far one, the near handing over to the far round flora_near through the same pattern, split;
+// 5: the far mesh casting a tree's shadow (shadows only) wherever the sun's shadows reach.
 instance uniform float flora_layer = 2.0;
 // A chunk's new drawing dissolving in over its old one (TerrainStreamer.StepSwaps): the part of a
 // second screen pattern, independent of the first, each draws, the new [0, t) and the old [t, 1).
@@ -60,7 +61,7 @@ void vertex() {
 		if (layer != 1) {
 			float s = shown(flora_reach.x * (0.95 + 0.05 * r), flora_bands.x, away);
 			// The far mesh's share: the near draws the pattern's [far, s), the far [0, far), so together they draw [0, s).
-			float far = layer == 0 ? 0.0 : min(1.0 - shown(flora_near.x * (0.9 + 0.1 * r), flora_near.y, away), s);
+			float far = layer == 0 || layer == 5 ? 0.0 : min(1.0 - shown(flora_near.x * (0.9 + 0.1 * r), flora_near.y, away), s);
 			band = layer == 4 ? vec2(0.0, far) : vec2(far, s);
 		} else {
 			float k = thin ? 0.6 : 1.0;

@@ -14,9 +14,9 @@ public partial class TerrainStreamer
 {
     /// <summary>
     /// Flora's drawings, by the layer each is (flora.gdshader's flora_layer): large growth and small growth (a batch's layer),
-    /// and a large plant's near and far meshes where its species has a far one (the two drawings of a large batch).
+    /// and a large plant's near and far meshes where its species has a far one, and that far mesh casting its shadow (unseen).
     /// </summary>
-    public const int LargeLayer = 0, SmallLayer = 1, NearLayer = 3, FarLayer = 4;
+    public const int LargeLayer = 0, SmallLayer = 1, NearLayer = 3, FarLayer = 4, ShadowLayer = 5;
 
     /// <summary>How far from the eye a layer's drawings can show at all, m (each plant's own reach is a little less).</summary>
     public static float FloraLayerReach(int layer) => layer switch { SmallLayer => DetailReach.Small, NearLayer => DetailReach.Near, _ => DetailReach.Large };
@@ -106,7 +106,7 @@ public partial class TerrainStreamer
             float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, eye.X, w), z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, eye.Z, h);
             foreach (Node n in f.Node.GetChildren())
             {
-                if (n is not MultiMeshInstance3D m || m.Name.ToString() is not ['L', var c, ..]) continue;
+                if (n is not MultiMeshInstance3D m || m.Name.ToString() is not ['L', var c, ..] || c - '0' == ShadowLayer) continue; // (a shadow drawing is never seen)
                 FloraBatch b = f.Flora[m.GetMeta(BatchMeta).AsInt32()];
                 float d = (m.GlobalTransform * m.Multimesh.GetAabb().GetCenter()).DistanceTo(eye);
                 if (d >= m.VisibilityRangeBegin && (m.VisibilityRangeEnd <= 0f || d <= m.VisibilityRangeEnd)) continue;
