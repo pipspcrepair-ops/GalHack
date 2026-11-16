@@ -30,6 +30,7 @@ public sealed partial class Staging
         foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in Daylight()) yield return x;
         WildlifePatch patch = _game.Zone.Wildlife;
+        foreach (int x in Settled(patch)) yield return x;
         patch.Frozen = false;
         _game.Visor.Visible = false;
         double max = _game.Suit.Sim.Data.Vitals.Health.Max;
@@ -88,15 +89,22 @@ public sealed partial class Staging
         it.Removed = true;
 
         // A living town's edge: raiders come up to it, and its guards shoot.
-        var site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null && s.Instance.State == PoiState.Active && s.Instance.Mood != Mood.Hostile)
+        var site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null && s.Instance.State == PoiState.Active)
             .OrderBy(s => _game.Places.DistanceTo(s, feet)).FirstOrDefault();
         if (site == null) { GD.Print("(no living town on this world: no town edge to show)"); yield break; }
+        if (site.Instance.Mood == Mood.Hostile)
+        {
+            site.Instance.Mood = Mood.Wary;
+            GD.Print($"(STAGING: {site.Name} was rolled hostile to you: set wary, so its guards have only the raiders to deal with)");
+        }
         Vector3 gate = _game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), feet);
         Int3 f = site.Instance.Layout.EntranceFacing.Vec();
         Vector3 outward = new Vector3(f.X, 0f, f.Z).LengthSquared() > 0.1f ? new Vector3(f.X, 0f, f.Z).Normalized() : Vector3.Right;
         _game.Survivor.PlaceOutside((Ground(gate + outward * 22f + outward.Cross(Vector3.Up) * 16f) + Vector3.Up * 0.3f).ToNumerics());
         for (int i = 0; i < 1800 && _game.Places.PlaceOf(site) is not { Ready: true }; i++) { _game.Suit.Vitals.Health = max; yield return 0; }
         Town town = _game.Places.PlaceOf(site)?.Memory.Town;
+        foreach (int x in Settled(patch)) yield return x;
+        if (town?.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
         bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Ranged(q.Figure.Prop);
         for (int i = 0; i < 900 && town != null && !town.People.Any(Out); i++) { _game.Suit.Vitals.Health = max; yield return 0; }
         Town.Person guard = town?.People.Where(Out).OrderBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
@@ -123,6 +131,17 @@ public sealed partial class Staging
         }
         GD.Print($"(the town's edge at {site.Name}: {guardShots} rounds from its guards, the town fought {town.Fought} times; raiders {gang[0].Herd.Party.Mood}, {Line(patch, gang, _game.Survivor.WorldFeet)})");
         foreach (int x in Shot(_args.GetValueOrDefault("out", "clash-town.png"))) yield return x;
+    }
+
+    /// <summary>A long move swaps the patch's sim: until the one round the sleeper now has stood a few seconds.</summary>
+    IEnumerable<int> Settled(WildlifePatch patch)
+    {
+        for (int i = 0, same = 0; i < 60 * 20 && same < 180; i++)
+        {
+            WildSim was = patch.Sim;
+            yield return 0;
+            same = patch.Sim == was ? same + 1 : 0;
+        }
     }
 
     /// <summary>Facing the openest way from a point: the fewest plants ahead.</summary>

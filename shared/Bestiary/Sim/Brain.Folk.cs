@@ -268,12 +268,12 @@ public static partial class Brain
             }
             default:
                 if (b.Mood == PartyMood.Easy) ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Seen);
-                // Close enough to greet: they do, and a warm leader comes over to meet you (never another band).
+                // Close enough to greet: they do, and a warm leader comes over to meet you.
                 if (!b.Greeted && d < GreetIn)
                 {
                     b.Greeted = true;
                     Event(w, b, lead, PartyEvent.Greet);
-                    if (b.Stance is Stance.Welcoming or Stance.Bargaining && lead.Nerve > 0.45f && t is not CreatureTarget) b.MeetUntil = w.Time + 12f;
+                    if (b.Stance is Stance.Welcoming or Stance.Bargaining && lead.Nerve > 0.45f && t is not CreatureTarget) b.MeetUntil = w.Time + 12f; // (never another band)
                 }
                 if (d > 20f) b.MeetUntil = -999f; // (they don't follow you off)
                 break;
