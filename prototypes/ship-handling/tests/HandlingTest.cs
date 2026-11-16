@@ -262,7 +262,7 @@ public partial class HandlingTest : Node
         {
             bool inAir = y < Crossing;
             float was = state.Velocity.Length();
-            FlightModel.Step(ref state, PilotInput.Hands(Vector3.Forward, boost: true), inAir ? air : st, new FlightConditions(9.8f, inAir, y - Crossing), _t, Dt);
+            FlightModel.Step(ref state, PilotInput.Hands(Vector3.Forward, boost: true), inAir ? air : st, new FlightConditions(9.8f, inAir, y + state.Velocity.Y * Dt - Crossing), _t, Dt);
             worstDrop = Mathf.Max(worstDrop, was - state.Velocity.Length());
             y += state.Velocity.Y * Dt;
             if (inAir && float.IsNaN(atCrossing)) atCrossing = was;

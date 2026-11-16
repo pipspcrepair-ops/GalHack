@@ -217,7 +217,8 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
     public void Drive(PhysicsWorld world, Body body, float dt)
     {
-        Zone = new FlightZone(world.Zone.Strength, world.Zone.InAtmosphere(body.Position), world.Zone.AboveCrossing(body.Position));
+        // (Its height over the crossing where this tick ends: a dive's cap is the crossing's by the time it gets there.)
+        Zone = new FlightZone(world.Zone.Strength, world.Zone.InAtmosphere(body.Position), world.Zone.AboveCrossing(body.Position + body.Velocity * dt));
         Stats = Flight.Stats(body, Zone);
         ConsoleMessageAge += dt;
 
