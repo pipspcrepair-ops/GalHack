@@ -96,7 +96,7 @@ public sealed class PlayerInventory
     /// <summary>
     /// What a death leaves on the body: the bag goes, the toolbar and the Sleeper tool stay with you
     /// (design: the Sleeper tool is never dropped; the owner: nor is anything on the toolbar).
-    /// Takes the rest out of the pack and returns it, for the backpack.
+    /// Takes the rest out of the pack and returns it, for their bag.
     /// </summary>
     public Bill TakeBagForDeath()
     {

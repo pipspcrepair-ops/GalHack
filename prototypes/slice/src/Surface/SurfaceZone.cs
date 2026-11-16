@@ -61,6 +61,10 @@ public partial class SurfaceZone : Node3D
 
     public PlanetWorld Planet { get; private set; }
     public TerrainStreamer Streamer { get; private set; }
+
+    /// <summary>The ground's trees and rocks by chunk, without streaming them in (<see cref="ScatterSolids"/>).</summary>
+    public ScatterSolids Scatter => _scatter ??= new ScatterSolids(this);
+    ScatterSolids _scatter;
     public SkyRig Sky { get; private set; }
     public SurfaceWeather Weather { get; protected set; }
     public WildlifePatch Wildlife { get; protected set; }
@@ -109,7 +113,7 @@ public partial class SurfaceZone : Node3D
     /// <summary>The world's one game-mode setting (shared/Items): placement, every constructor and the tech tree read it.</summary>
     public readonly GalHack.Items.WorldRules WorldRules = new();
 
-    /// <summary>Containers on the ground: creature bodies, backpacks, things set down.</summary>
+    /// <summary>Containers on the ground: creature bodies and bags.</summary>
     public Slice.Items.Lootables Loot { get; protected set; }
 
     public bool IsBuilt => Planet != null;

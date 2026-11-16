@@ -267,9 +267,9 @@ public partial class Visor
                 _hud.DrawRect(new Rect2(P(-0.75f, -0.75f), new Vector2(1.5f, 1f) * r), tone, true);
                 Line(-0.6f, 0.25f, -0.85f, 0.9f); Line(0.6f, 0.25f, 0.85f, 0.9f);
                 break;
-            case "backpack": // a pack with its flap
-                _hud.DrawRect(new Rect2(P(-0.6f, -0.6f), new Vector2(1.2f, 1.5f) * r), tone, false, w);
-                Line(-0.6f, -0.1f, 0.6f, -0.1f); Line(-0.25f, -0.6f, -0.25f, -0.9f); Line(0.25f, -0.6f, 0.25f, -0.9f); Line(-0.25f, -0.9f, 0.25f, -0.9f);
+            case "bag": // a sack tied at its neck
+                _hud.DrawPolyline(new[] { P(-0.2f, -0.55f), P(-0.7f, -0.05f), P(-0.75f, 0.55f), P(-0.45f, 0.9f), P(0.45f, 0.9f), P(0.75f, 0.55f), P(0.7f, -0.05f), P(0.2f, -0.55f), P(-0.2f, -0.55f) }, tone, w);
+                Line(-0.3f, -0.85f, 0f, -0.6f); Line(0.3f, -0.85f, 0f, -0.6f);
                 break;
             case "core": // a core: a diamond round a lit heart
                 _hud.DrawPolyline(new[] { P(0f, -0.95f), P(0.85f, 0f), P(0f, 0.95f), P(-0.85f, 0f), P(0f, -0.95f) }, tone, w);

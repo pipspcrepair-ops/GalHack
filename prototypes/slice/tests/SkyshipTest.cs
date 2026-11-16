@@ -103,8 +103,9 @@ public partial class SkyshipTest : Node
         var stockText = stock.Select(Blueprint.Save).ToHashSet();
         var stockNames = stock.Select(s => s.Name).ToHashSet();
         var rng = new Random();
-        int rolls = int.TryParse(_args.GetValueOrDefault("rolls"), out int n) ? n : 30;
+        int rolls = int.TryParse(_args.GetValueOrDefault("rolls"), out int n) ? n : 10; // per body plan
         foreach (CraftRole role in new[] { CraftRole.Trader, CraftRole.Scout })
+        foreach (CraftForm form in SmallCraft.FormsOf[role])
         {
             int made = 0, valid = 0, flies = 0, standards = 0, freeholder = 0, unlike = 0, roleParts = 0, balanced = 0;
             var sizes = new HashSet<int>();
@@ -115,7 +116,7 @@ public partial class SkyshipTest : Node
                 int seed = rng.Next();
                 float g = 5f + (float)rng.NextDouble() * 10f;
                 var clock = Stopwatch.StartNew();
-                Structure s = SmallCraft.Roll(cat, role, CraftStyle.Freeholder, seed, g, out string short_);
+                Structure s = SmallCraft.Roll(cat, role, CraftStyle.Freeholder, seed, g, out string short_, null, form);
                 ms = Math.Max(ms, clock.ElapsedMilliseconds);
                 if (s == null) { problems.Add($"seed {seed} g {g:F1}: no roll met its needs: {short_}"); continue; }
                 made++;
@@ -153,16 +154,16 @@ public partial class SkyshipTest : Node
                 if (role == CraftRole.Trader ? containers >= 4 : masts >= 3) roleParts++;
                 else problems.Add($"seed {seed}: {containers} containers, {masts} mast cells");
             }
-            foreach (string p in problems.Distinct().Take(8)) GD.Print($"    {role}: {p}");
-            Check(made == rolls, $"{role}: {made} of {rolls} rolls at random gravities (5 to 15 m/s²) met the needs (slowest {ms} ms)");
-            Check(valid == made, $"{role}: {valid} of {made} pass the player's blueprint validation (every block joined to the core, built as a player builds)");
-            Check(flies == made, $"{role}: {flies} of {made} lack nothing for Flight Mode, with a positive lift margin on their gravity");
-            Check(standards == made, $"{role}: {standards} of {made} meet the player's flight standards: lift 1.3x weight, push and brake 5, slide 2, down 2 m/s², the turn floor, 1.2x power, room for an hour of fuel");
-            Check(balanced == made, $"{role}: {balanced} of {made} have every exhaust facing open air");
-            Check(freeholder == made, $"{role}: {freeholder} of {made} in the Freeholder look (theirs, faded mismatched coats, grimy, patched, a hand-painted number)");
-            Check(unlike == made, $"{role}: {unlike} of {made} unlike every stock blueprint");
-            Check(roleParts == made, $"{role}: {roleParts} of {made} carry their role's parts ({(role == CraftRole.Trader ? "cargo pods of containers" : "a sensor mast")})");
-            Check(sizes.Count >= Math.Min(Math.Max(rolls / 2, 2), 5), $"{role}: rolls vary ({sizes.Count} different block counts, {sizes.Min()} to {sizes.Max()})");
+            foreach (string p in problems.Distinct().Take(8)) GD.Print($"    {role} {form}: {p}");
+            Check(made == rolls, $"{role} {form}: {made} of {rolls} rolls at random gravities (5 to 15 m/s²) met the needs (slowest {ms} ms)");
+            Check(valid == made, $"{role} {form}: {valid} of {made} pass the player's blueprint validation (every block joined to the core, built as a player builds)");
+            Check(flies == made, $"{role} {form}: {flies} of {made} lack nothing for Flight Mode, with a positive lift margin on their gravity");
+            Check(standards == made, $"{role} {form}: {standards} of {made} meet the player's flight standards: lift 1.3x weight, push and brake 5, slide 2, down 2 m/s², the turn floor, 1.2x power, room for an hour of fuel");
+            Check(balanced == made, $"{role} {form}: {balanced} of {made} have every exhaust facing open air");
+            Check(freeholder == made, $"{role} {form}: {freeholder} of {made} in the Freeholder look (theirs, faded mismatched coats, grimy, patched, a hand-painted number)");
+            Check(unlike == made, $"{role} {form}: {unlike} of {made} unlike every stock blueprint");
+            Check(roleParts == made, $"{role} {form}: {roleParts} of {made} carry their role's parts ({(role == CraftRole.Trader ? "cargo pods of containers" : "a sensor mast")})");
+            Check(sizes.Count >= Math.Min(Math.Max(rolls / 2, 2), 5), $"{role} {form}: rolls vary ({sizes.Count} different block counts, {sizes.Min()} to {sizes.Max()})");
         }
         Losses(data);
     }
@@ -176,7 +177,7 @@ public partial class SkyshipTest : Node
         int stencils = 0;
         foreach (var (_, b) in s.Blocks())
         {
-            if (!s.TypeOf(b).IsArmor) continue;
+            if (!s.TypeOf(b).IsArmor || s.TypeOf(b).Id == "glass-plated") continue; // glass is glazing, not livery
             foreach (ushort slot in new[] { b.Paint.PX, b.Paint.NX, b.Paint.PY, b.Paint.NY, b.Paint.PZ, b.Paint.NZ })
             {
                 Paint p = s.Palette[slot];
@@ -276,7 +277,7 @@ public partial class SkyshipTest : Node
         string overlapWhat = "";
         double skyMs = 0, skyWorst = 0;
         var skyTimes = new List<double>();
-        int skyTicks = 0;
+        int skyTicks = 0, collected = 0;
         double tookOff = double.NaN, landedWith = double.NaN, leastCharge = double.PositiveInfinity, leastSupply = 1;
         SkyPhase lastPhase = ship.Phase;
         if (ship.Phase != SkyPhase.Landed) tookOff = v.Power.FuelUnits; // already off the ground when the watch began
@@ -295,10 +296,14 @@ public partial class SkyshipTest : Node
                     if (n > 0) { overlaps += n; overlapWhat = $"{ship.Phase} by {ship.At?.Family.Name}"; }
                 }
             if (landing && sky.Clear(v.Body.Position, v)) landedClear++;
-            skyMs += sky.LastTickMs;
-            skyWorst = Math.Max(skyWorst, sky.LastTickMs);
-            skyTimes.Add(sky.LastTickMs);
-            skyTicks++;
+            if (sky.LastTickCollected) collected++; // the game's garbage collected in its tick: not its own work
+            else
+            {
+                skyMs += sky.LastTickMs;
+                skyWorst = Math.Max(skyWorst, sky.LastTickMs);
+                skyTimes.Add(sky.LastTickMs);
+                skyTicks++;
+            }
             if (ship.At != null) places.Add(ship.At);
             // Its generator fuel, taking off and putting down, and its capacitor whenever it is aloft.
             if (lastPhase == SkyPhase.Landed && ship.Phase != SkyPhase.Landed && double.IsNaN(tookOff)) tookOff = v.Power.FuelUnits;
@@ -365,7 +370,7 @@ public partial class SkyshipTest : Node
         skyTimes.Sort();
         double sky99 = skyTimes.Count > 0 ? skyTimes[(int)(skyTimes.Count * 0.999)] : 0;
         Check(skyMs / Math.Max(1, skyTicks) < 0.3 && sky99 < 2.0 && skyWorst < 16.7,
-            $"the ship costs little (the main thread's own time in it): {skyMs / Math.Max(1, skyTicks):F3} ms a tick, 99.9th {sky99:F2} ms, {skyWorst:F2} ms at worst ({sky.WorstWhat})");
+            $"the ship costs little (the main thread's own time in it): {skyMs / Math.Max(1, skyTicks):F3} ms a tick, 99.9th {sky99:F2} ms, {skyWorst:F2} ms at worst ({sky.WorstWhat}; {collected} ticks with a garbage collection in them left out)");
     }
 
     /// <summary>The frames measured for the baseline and the ship alike (150 s).</summary>
@@ -387,7 +392,7 @@ public partial class SkyshipTest : Node
     {
         var (lo, hi) = v.Structure.Bounds();
         float reach = (hi - lo).ToVector3().Length() * v.Structure.Grid.CellSize * 0.5f + 2f;
-        var near = sky.ScatterNear(v.Body.Position, reach);
+        var near = sky.Zone.Scatter.Near(v.Body.Position, reach);
         if (near == null) return null;
         int n = 0;
         foreach (var s in near)

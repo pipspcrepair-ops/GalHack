@@ -40,6 +40,8 @@ public sealed class WildSim
     public readonly List<Herd> Herds = new();
     public readonly List<Pack> Packs = new();
     public readonly List<ITarget> Targets = new();
+    /// <summary>The dangerous and the people of every band, by ground cell: what bands and towns look round for.</summary>
+    public readonly Sightings Sightings = new();
     /// <summary>Player structures on the surface. Bases (core in base mode) keep spawns away; see <see cref="SpawnRules"/>.</summary>
     public readonly List<Structure> Structures = new();
 
@@ -137,6 +139,11 @@ public sealed class WildSim
     internal void RaiseSeized(SeizeEvent e) => Seized?.Invoke(e);
     internal void RaiseLetGo(SeizeEvent e) => LetGo?.Invoke(e);
     internal void RaiseTurned(SeizeEvent e) => Turned?.Invoke(e);
+    /// <summary>Someone held at gunpoint tossed a bundle of their goods toward whoever held them (who, at whom, where it is to land, how frightened 0..1): the game throws the bag.</summary>
+    public event Action<Creature, ITarget, Vector3, float> Offered;
+    internal void RaiseOffered(Creature c, ITarget to, Vector3 at, float fear) => Offered?.Invoke(c, to, at, fear);
+    /// <summary>Rummages played over a dead one's things, and offers made (tests).</summary>
+    public int Rummages, Offers;
     /// <summary>A Husk murmured through its worms (a game plays it, low).</summary>
     public event Action<Creature> Murmured;
     internal void RaiseMurmur(Creature c) => Murmured?.Invoke(c);
@@ -555,9 +562,10 @@ public sealed class WildSim
             Vector3 moved = Space.Bodies[i].Moved;
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
-            Vector3 was = c.Position;
-            c.Position += new Vector3(moved.X, 0f, moved.Z);
-            if (Interpenetration.Inside(this, c)) c.Position = was; // never shoved into a wall
+            Vector3 was = c.Position, to = was + new Vector3(moved.X, 0f, moved.Z);
+            if (Locomotion.IntoTrees(this, c, to)) continue; // never jostled into a trunk or a rock
+            c.Position = to;
+            if (Interpenetration.Inside(this, c)) c.Position = was; // nor a wall
         }
     }
 
@@ -645,6 +653,7 @@ public sealed class WildSim
         if (Masses.Count > 0) WormMasses.Step(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
         if (Frame % 15 == 7) Wrongness.Refresh(this);
+        if (Frame % 15 == 3) Sightings.Refresh(this);
         // Now and then, anything that has ended up inside a wall or a floor is put back in the open.
         if (Time >= _scanAt)
         {
@@ -754,6 +763,7 @@ public sealed class WildSim
         foreach (Creature o in Creatures)
         {
             if (o == c || o.Dead || o.Removed || !Arming.Fights(o.Species) || Arming.Friendly(o.Species) != friendly) continue;
+            if (source is CreatureTarget { Creature.Herd: { } theirs } && o.Herd == theirs) continue; // (nobody turns on their own)
             float d = (o.Position - c.Position).Length();
             if (d > Arming.RallyRadius) continue;
             if (o.ProvokedBy == source && Time - o.ProvokedAt < 4f) continue;
@@ -790,6 +800,8 @@ public sealed class WildSim
         c.Falling = c.Space != null;
         Died?.Invoke(c, killer);
         if (killer is CreatureTarget predator) RaisePreyed(predator.Creature, c);
+        // A person a Husk killed is not done with: it kneels at the body and puts its worms in.
+        if (killer is CreatureTarget { Creature: { Species.Husk: true } husk }) Brain.Infest(this, husk, c);
     }
 
     internal void RaiseTell(TellEvent e) => Told?.Invoke(e);

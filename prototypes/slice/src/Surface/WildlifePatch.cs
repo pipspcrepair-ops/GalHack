@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using GalHack.Physics.Engine;
 using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
@@ -81,6 +82,11 @@ public partial class WildlifePatch : Node3D
     /// <summary>A creature died, and what killed it (the player's target, another creature, or nothing).</summary>
     public event Action<Creature, ITarget> Died;
 
+    /// <summary>One of the open country's people held at gunpoint tossed down goods (who, at whom, where to land in the patch's frame, how frightened); a Husk's body or held one rose a Husk (any sim).</summary>
+    public event Action<Creature, ITarget, Vector3, float> Offered;
+    public event Action<SeizeEvent> Turned;
+    internal void RaiseTurned(SeizeEvent e) => Turned?.Invoke(e);
+
     bool _frozen;
     public bool Frozen
     {
@@ -99,7 +105,7 @@ public partial class WildlifePatch : Node3D
     public float Livable { get; private set; } = 1f;
 
     PlanetWorld _planet;
-    Task<(Terrain terrain, NavGrid nav, Vector3 origin)> _baking;
+    Task<(Terrain terrain, NavGrid nav, Vector3 origin, List<(long, Obstacle)> trunks)> _baking;
     Vector3 _bakingFrom;
 
     public void SetWorld(PlanetWorld planet, Vector3 landing)
@@ -165,14 +171,18 @@ public partial class WildlifePatch : Node3D
         AddChild(Spit);
         Tells = new TellView { Name = "Tells", Audio = Audio };
         AddChild(Tells);
-        var (terrain, nav, origin) = Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize));
-        Swap(terrain, nav, origin, keepClear: landing, clear: rules.SafeRadius);
+        // The first is baked here and now, without its woods: the next is baked with them as soon as it can be.
+        var (terrain, nav, origin, trunks) = Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize), null);
+        Swap(terrain, nav, origin, trunks, keepClear: landing, clear: rules.SafeRadius);
     }
 
     static Vector3 Snapped(Vector3 p) => new(MathF.Round(p.X / Snap) * Snap, 0f, MathF.Round(p.Z / Snap) * Snap);
 
-    /// <summary>The ground and nav grid of a patch of the planet around a point (worker-safe: the generator's heights only).</summary>
-    static (Terrain, NavGrid, Vector3) Bake(PlanetWorld planet, Vector3 origin, float halfSize)
+    /// <summary>
+    /// The ground and nav grid of a patch of the planet around a point, with its woods once their chunks are worked out
+    /// (worker-safe: the generator's heights and the scatter's solids only).
+    /// </summary>
+    static (Terrain, NavGrid, Vector3, List<(long, Obstacle)>) Bake(PlanetWorld planet, Vector3 origin, float halfSize, Task<List<PlanetSurface.Terrain.FloraSolid>> woods)
     {
         float ox = origin.X, oz = origin.Z;
         // Land animals don't sink: over water their ground is the surface, less a body's draught, so at
@@ -190,7 +200,7 @@ public partial class WildlifePatch : Node3D
         for (float x = -terrain.HalfSize + 3f; x < terrain.HalfSize; x += 6f)
             if (terrain.Height(x, z) < 0.5f || planet.Source.WaterSurfaceAt(Mathx.WrapX(ox + x, planet.Width), Mathx.Wrap(oz + z, planet.Height), out _))
                 nav.AddObstacle(new Vector3(x, 0f, z), 3.5f);
-        return (terrain, nav, origin);
+        return (terrain, nav, origin, Wood(planet, nav, origin, terrain.HalfSize, woods?.Result));
     }
 
     /// <summary>How far below the surface a land animal's feet hang when it floats, metres.</summary>
@@ -200,12 +210,13 @@ public partial class WildlifePatch : Node3D
     /// A new patch takes over: creatures standing inside it come across where they stand, and
     /// the rest of it is populated, none within <paramref name="clear"/> of a point.
     /// </summary>
-    void Swap(Terrain terrain, NavGrid nav, Vector3 origin, Vector3 keepClear, float clear)
+    void Swap(Terrain terrain, NavGrid nav, Vector3 origin, List<(long, Obstacle)> trunks, Vector3 keepClear, float clear)
     {
         WildSim old = Sim;
         Vector3 oldOrigin = Origin;
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
+        TakeWoods(trunks, nav);
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         // A band out here is of whoever holds the ground (the nearest living place's people): your standing with them moves its stance.
         sim.StandingAt = p => StandingAt?.Invoke(FromPatch(p)) ?? 0f;
@@ -238,6 +249,8 @@ public partial class WildlifePatch : Node3D
             Quaked?.Invoke(e with { Position = FromPatch(e.Position) });
         };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
+        sim.Offered += (c, to, at, fear) => Offered?.Invoke(c, to, at, fear);
+        sim.Turned += RaiseTurned;
         sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };
         sim.LetGo += e => { if (e.Victim == Player) LetGo?.Invoke(e); };
         sim.Murmured += c => Audio.Murmur(c);
@@ -518,20 +531,21 @@ public partial class WildlifePatch : Node3D
         if (_baking != null)
         {
             if (!_baking.IsCompleted) return;
-            var (terrain, nav, origin) = _baking.Result;
+            var (terrain, nav, origin, trunks) = _baking.Result;
             _baking = null;
-            Swap(terrain, nav, origin, keepClear: _bakingFrom, clear: Zone.Data.Rules.Wildlife.SafeRadius);
+            Swap(terrain, nav, origin, trunks, keepClear: _bakingFrom, clear: Zone.Data.Rules.Wildlife.SafeRadius);
             return;
         }
         if (Sim == null) return;
         // A new spawn distance: the patch is baked again round you at its new size, whatever you are on.
         float half = SpawnReach.PatchHalf(Zone.Data.Rules.Wildlife.PatchHalfSize);
         bool resized = half != Sim.Terrain.HalfSize;
-        if (!resized && (!onFoot || new Vector2(at.X - Origin.X, at.Z - Origin.Z).Length() < Sim.Terrain.HalfSize * 0.5f)) return;
+        if (!resized && (_wooded || NoWoods) && (!onFoot || new Vector2(at.X - Origin.X, at.Z - Origin.Z).Length() < Sim.Terrain.HalfSize * 0.5f)) return;
         PlanetWorld planet = _planet;
         Vector3 next = Snapped(at);
         _bakingFrom = at;
-        _baking = Task.Run(() => Bake(planet, next, half));
+        var woods = NoWoods ? null : Zone.Scatter.Later(next.ToNumerics(), half);
+        _baking = Task.Run(() => GalHack.Testing.AllocMeter.Measure("wildlife bake", () => Bake(planet, next, half, woods)));
     }
 
     /// <summary>Waits for a patch being baked and swaps it in now (tests).</summary>
@@ -554,9 +568,9 @@ public partial class WildlifePatch : Node3D
     }
 
     /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it. Your shot says which way it went: people it passes read it as being shot at.</summary>
-    public void Noise(Vector3 at, float radius, Vector3 shotDir = default)
+    public void Noise(Vector3 at, float radius, Vector3 shotDir = default, object by = null)
     {
-        Sim?.Noise(PatchLocal(at), radius, shotDir, shotDir == default ? null : Player);
+        Sim?.Noise(PatchLocal(at), radius, shotDir, shotDir == default ? null : by == null ? Player : TargetIn(Sim, by));
         foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius);
     }
 
@@ -653,11 +667,19 @@ public partial class WildlifePatch : Node3D
     public const float RetchDb = 4f;
 
     /// <summary>The survivor hurts a creature, in whichever sim it lives (or someone else did: then it doesn't turn on the survivor).</summary>
-    public void Damage(Creature c, float amount, bool byPlayer = true)
+    public void Damage(Creature c, float amount, bool byPlayer = true, object by = null)
     {
         WildSim sim = SimOf(c, out _, out ITarget player);
-        sim?.Damage(c, amount, byPlayer ? player : null);
+        sim?.Damage(c, amount, byPlayer ? player : TargetIn(sim, by));
     }
+
+    /// <summary>Someone else who did something (a creature, a town's person), as the given sim sees them: null if they aren't in it.</summary>
+    ITarget TargetIn(WildSim sim, object by) => by switch
+    {
+        Creature o when sim != null && sim.Creatures.Contains(o) => o.AsTarget,
+        ITarget t when sim == Sim => t,
+        _ => null,
+    };
 
     /// <summary>The survivor's feet in the zone.</summary>
     public Vector3 PlayerWorld() => Player == null ? Origin : FromPatch(Player.Position);

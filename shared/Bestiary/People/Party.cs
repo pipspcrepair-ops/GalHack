@@ -14,9 +14,10 @@ public enum PartyEvent { None, Seen, Greet, Warn, Fight, Flee, Calm }
 /// together round a leader and take to an outsider as people do, by the stance their makeup and
 /// their world rolled (<see cref="Temper"/>), moved by your standing with their people and by what
 /// you do. Friendly, they carry on and keep a comfortable distance; wary, they stop and watch, back
-/// off, and warn you before anything else; hostile, they fight as one. Nobody runs from less than a
-/// real threat. The leader reacts first, and the rest take it from them. Plain state: the brain
-/// (<see cref="Brain"/>) runs it.
+/// off, and warn you before anything else; hostile, they fight. Another band they take by what each
+/// is (<see cref="CrossReactions.Regard"/>), and a danger they've seen they keep wide of. Nobody runs
+/// from less than a real threat. The leader reacts first, and the rest take it from them, each by
+/// their own nerve. Plain state: the brain (<see cref="Brain"/>) runs it.
 /// </summary>
 public sealed class Party
 {
@@ -53,17 +54,38 @@ public sealed class Party
     public float HeardAt, HoldUntil = -999f, BackUntil = -999f, LookUntil = -999f;
     public Vector3 HeardFrom, LookAt;
     public float UpdatedAt = -999f;
+    /// <summary>Who they are (the kind they were drawn from: their own people pass each other), and whether there is a raider among them.</summary>
+    public Species Kind;
+    public bool Raids;
+    /// <summary>
+    /// What they made of the open round them at their last look (twice a second, <see cref="Sightings"/>): the nearest
+    /// danger they can see (a predator, a Husk, a feral, people who'd do them harm) and the nearest people of another band;
+    /// when they look next, and when they last saw that danger.
+    /// </summary>
+    public ITarget Threat, Stranger;
+    public float ScanAt, ThreatSeen = -999f;
+    /// <summary>Their way bent round a danger: to where (the herd's goal for now), where they were going before it, and which way round (1 or -1; 0 not chosen).</summary>
+    public bool Bending;
+    public Vector3 BentTo, Bound;
+    public float BendSide;
     /// <summary>Tests: members who took in an event after their leader had, and before.</summary>
     public int AfterLeader, BeforeLeader;
 
     public Leaning Leaning => Temper.LeaningOf(Stance);
+    /// <summary>How they take outsiders by their own temper, unmoved by your standing: what other groups go by.</summary>
+    public Leaning Nature => Temper.LeaningOf(Temper.Stance);
+
+    /// <summary>How this band takes another (<see cref="CrossReactions.Regard"/>); their own kind always pass.</summary>
+    public Leaning Toward(Party them) => them.Kind == Kind ? Leaning.Friendly : CrossReactions.Regard(Nature, Raids, them.Nature, them.Raids);
 
     /// <summary>A band's temper, from who they are (their world's tech and collapse, and their own makeup) and its own seed.</summary>
     public static Party Roll(Species s, ulong seed)
     {
         float lean = Lean(s, out float caution);
         Temper t = Temper.Roll(s.Tech, s.Collapse, seed, lean, caution);
-        return new Party { Temper = t, Stance = t.Stance };
+        bool raids = false;
+        foreach (Species b in s.Hosts ?? new System.Collections.Generic.List<Species> { s }) raids |= b.Figure?.Occupancy == Occupancy.Raider;
+        return new Party { Temper = t, Stance = t.Stance, Kind = s, Raids = raids, ScanAt = (float)(seed % 500) / 1000f };
     }
 
     /// <summary>

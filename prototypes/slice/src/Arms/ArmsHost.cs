@@ -277,9 +277,9 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     /// unsteadiness (degrees). The shooter is looked past until the shot has struck something. Ammo is
     /// theirs to count. A strike row is a blow instead. Seen from the sleeper: the flash is sized for
     /// how far off it is, the gun in their hands (<paramref name="model"/>) kicks, and the report is
-    /// loud. A <paramref name="look"/> shot harms nothing (a guard seeing off a stray).
+    /// loud. What it hits turns on the shooter.
     /// </summary>
-    public void FireFrom(WeaponDef d, Vector3 muzzle, Vector3 dir, float unsteady, object shooter, bool moving = false, GunModel.Built model = null, bool look = false)
+    public void FireFrom(WeaponDef d, Vector3 muzzle, Vector3 dir, float unsteady, object shooter, bool moving = false, GunModel.Built model = null)
     {
         if (d.Delivery == Delivery.Strike) { Swing(d, muzzle, dir, shooter, Hostile); return; }
         dir = dir.LengthSquared() > 1e-6f ? dir.Normalized() : Vector3.Forward;
@@ -290,7 +290,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         if (d.Cone != null)
         {
             ConeTick(d, muzzle, dir, Hostile, shooter);
-            Zone.Wildlife.Noise(muzzle, d.Noise);
+            Zone.Wildlife.Noise(muzzle, d.Noise, dir, shooter);
             return;
         }
         for (int p = 0; p < count; p++)
@@ -298,14 +298,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             Vector3 v = Jitter(dir, spread + wide) * d.Speed;
             int slot = Pool.Spawn(d, Hostile, muzzle.ToNumerics(), v.ToNumerics(), d.Damage);
             if (slot < 0) continue;
-            Pool.Shots[slot].LastHit = shooter;
-            Pool.Shots[slot].Visual = look;
+            Pool.Shots[slot].LastHit = Pool.Shots[slot].By = shooter;
         }
         float far = Game.Camera != null ? Game.Camera.GlobalPosition.DistanceTo(muzzle) : 0f;
         Game.Shots.Muzzle(d.Feel, muzzle, dir, GunModel.ColourOf(d.Tracer.Colour), ShotFx.SeenScale(far));
         if (model != null) GunModel.Kick(model, d);
         Sounds.Play(d, VoiceKind.Report, muzzle, 0.94f + 0.12f * (float)_rng.NextDouble());
-        Zone.Wildlife.Noise(muzzle, d.Noise);
+        Zone.Wildlife.Noise(muzzle, d.Noise, dir, shooter);
     }
 
     /// <summary>Shots a structure's guns fired (tests).</summary>
@@ -343,7 +342,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         // Every swing whooshes, heavier and lower for a longer reach; one that lands thuds (Strike).
         Sounds.Play(CombatSound.Whoosh, from + dir * reach * 0.5f, (1.25f - 0.15f * reach) * (0.92f + 0.16f * (float)_rng.NextDouble()), -2f);
         if (!Sweep(from.ToNumerics(), (from + dir * reach).ToNumerics(), attacker, owner, 1f, out ShotHit hit)) return;
-        var blow = new Shot { Live = true, Def = d, Owner = owner, Pos = from.ToNumerics(), Vel = (dir * 6f).ToNumerics(), Damage = d.Damage, State = ShotState.Flying };
+        var blow = new Shot { Live = true, Def = d, Owner = owner, By = attacker, Pos = from.ToNumerics(), Vel = (dir * 6f).ToNumerics(), Damage = d.Damage, State = ShotState.Flying };
         Strike(ref blow, hit, d.Damage);
         Zone.Wildlife.Noise(from, d.Noise);
     }
@@ -808,14 +807,14 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         {
             case HitKind.Creature:
                 var c = (Creature)hit.Thing;
-                Harm(c, damage * Zone.Wildlife.HitScale(c, at), at, dir, quiet: tick, byPlayer: s.Owner == 0, kill: d.Kill);
+                Harm(c, damage * Zone.Wildlife.HitScale(c, at), at, dir, quiet: tick, byPlayer: s.Owner == 0, kill: d.Kill, by: s.By);
                 if (!tick && d.Dot != null && d.Stick == null) Effects.Add(c, d.Dot.PerSecond, d.Dot.Seconds, d.Class, d.Tags, s.Owner);
                 if (!tick && s.Owner == 0) Confirm(c.Dead);
                 break;
             case HitKind.Person:
                 var p = (Town.Person)hit.Thing;
                 p.Town.Hit(p, at, dir, 0.3f, Slice.Game.Game.EndOf(d.Kill));
-                p.Town.Struck(p, damage, d.Class, byPlayer: s.Owner == 0);
+                p.Town.Struck(p, damage, d.Class, byPlayer: s.Owner == 0, by: s.By);
                 PersonHits++;
                 Dealt?.Invoke(HitKind.Person, p, damage);
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Creature);
@@ -920,12 +919,12 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             if (s.Sim.Masses.Contains(m)) { WormMasses.Damage(s.Sim, m, amount); MassHits++; return; }
     }
 
-    /// <summary>Harm to a creature, in whichever sim it lives: wildlife's damage (it turns on who did it), its blood and its cry.</summary>
-    void Harm(Creature c, float amount, Vector3 at, Vector3 dir, bool quiet = false, bool byPlayer = true, KillEffect kill = KillEffect.Normal)
+    /// <summary>Harm to a creature, in whichever sim it lives: wildlife's damage (it turns on who did it: you, or <paramref name="by"/>), its blood and its cry.</summary>
+    void Harm(Creature c, float amount, Vector3 at, Vector3 dir, bool quiet = false, bool byPlayer = true, KillEffect kill = KillEffect.Normal, object by = null)
     {
         if (amount <= 0f) return;
         c.End = Slice.Game.Game.EndOf(kill);
-        Zone.Wildlife.Damage(c, amount, byPlayer);
+        Zone.Wildlife.Damage(c, amount, byPlayer, by);
         CreatureHits++;
         Dealt?.Invoke(HitKind.Creature, c, amount);
         if (!quiet) Game.CreatureStruck(c, at, dir);

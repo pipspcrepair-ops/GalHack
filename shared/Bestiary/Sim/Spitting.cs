@@ -57,12 +57,18 @@ public static class Spitting
     {
         Vector3 from = Mouth(c), to = c.AimPoint + Vector3.Up * 1.1f;
         Vector3 flat = WildSim.Flat(to - from);
-        float d = flat.Length();
-        float time = Math.Clamp(d / Speed, 0.12f, 1.2f);
-        Vector3 v = flat / time;
-        v.Y = (to.Y - from.Y) / time + 0.5f * Gravity * time;
         c.Yaw = MathF.Atan2(-flat.X, -flat.Z);
-        var gob = new Gob { Position = from, Velocity = v, From = c, Target = c.AttackTarget, Colour = ColourOf(c.Species) };
+        Throw(w, c, from, to, c.AttackTarget, Math.Clamp(flat.Length() / Speed, 0.12f, 1.2f));
+    }
+
+    /// <summary>A mouthful brought up onto something just below the mouth (a Husk's worms into a face): a short drop, at no one.</summary>
+    public static void Dribble(WildSim w, Creature c, Vector3 from, Vector3 to) => Throw(w, c, from, to, null, 0.25f);
+
+    static void Throw(WildSim w, Creature c, Vector3 from, Vector3 to, ITarget target, float time)
+    {
+        Vector3 v = WildSim.Flat(to - from) / time;
+        v.Y = (to.Y - from.Y) / time + 0.5f * Gravity * time;
+        var gob = new Gob { Position = from, Velocity = v, From = c, Target = target, Colour = ColourOf(c.Species) };
         w.Gobs.Add(gob);
         w.RaiseSpat(gob);
     }

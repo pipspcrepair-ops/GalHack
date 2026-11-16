@@ -46,6 +46,7 @@ public partial class SurfaceZone : IFloraField
     bool Fell(long id, Vector3 at, bool broken)
     {
         if (!Planet.Felled.Add(id)) return false;
+        Wildlife?.Felled(id);
         _goneIds.Add(id);
         _goneAt.Add(at);
         if (!broken) TakeBroken();

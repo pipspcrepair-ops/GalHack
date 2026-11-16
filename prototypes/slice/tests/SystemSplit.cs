@@ -53,6 +53,10 @@ public sealed partial class SystemSplit
         var end = new Mark { Split = this, End = true, Index = EndIndex, Name = "Split end", ProcessPriority = 2_000_000, ProcessPhysicsPriority = 2_000_000 };
         parents[0].GetTree().Root.AddChild(end);
         _marks.Add(end);
+        // And its start: what runs before the first system's marker (a node of a priority under theirs, anywhere) is counted too.
+        var first = new Mark { Split = this, Index = Add("(before the systems)"), Name = "Split start", ProcessPriority = -2_000_000, ProcessPhysicsPriority = -2_000_000 };
+        parents[0].GetTree().Root.AddChild(first);
+        _marks.Add(first);
         Refresh();
     }
 
@@ -116,6 +120,7 @@ public sealed partial class SystemSplit
         }
         _at = now;
         _allocAt = alloc;
+        StallWatch.Stamp(_names[index]);
         // The end marker closes the pass: nothing is open until the next pass's first marker.
         _open = index == EndIndex ? -1 : index;
     }

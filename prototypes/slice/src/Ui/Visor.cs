@@ -398,7 +398,7 @@ public partial class Visor : CanvasLayer
     /// <summary>
     /// What is marked in the world: your bunker and the place in view from its way out (both known from the
     /// first moment, at any distance); then only what you have found by going near it (places,
-    /// deposits: the nearest few of each), your own map marks, vessels, bases and backpack, and the
+    /// deposits: the nearest few of each), your own map marks, vessels, bases and your bag, and the
     /// scanner's pings for as long as they last. Each marks the thing itself: a place and a deposit at
     /// the ground there, a little above it.
     /// </summary>
@@ -432,7 +432,7 @@ public partial class Visor : CanvasLayer
         }
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && v.Structure.Owner == GalHack.Structures.Building.DefaultOwner && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
-        if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        if (Game.DeathBag != null) marks.Add(new("BAG", Game.DeathBag.Position, C.Danger, 1f, "bag"));
         // The scan's marks: an ore by name, a place by its icon and distance alone (a found place's own marker stands for it).
         var named = marks.Where(m => m.Kind == "place").Select(m => new Vector2(m.At.X, m.At.Z)).ToList();
         foreach (Game.Game.Ping p in Game.Pings)
@@ -524,7 +524,7 @@ public partial class Visor : CanvasLayer
         GalHack.Arms.Gun gun = Game.Arms?.InHand;
         if (gun == null) return "";
         if (gun.Reloading) return "RELOADING";
-        if (gun.Loaded == 0) return gun.Reserve > 0 ? $"{Bound("rotate")} RELOAD" : "NO AMMO";
+        if (gun.Loaded == 0) return gun.Reserve > 0 ? "RELOAD" : "NO AMMO";
         if (gun.Charging) return gun.Stage == 0 ? "CHARGING" : $"STAGE {gun.Stage}";
         return "";
     }
@@ -588,27 +588,8 @@ public partial class Visor : CanvasLayer
         }
     }
 
-    /// <summary>The key hints, all on one quiet line, each the key it is bound to now.</summary>
-    public string HintLine()
-    {
-        HandKind hand = Game.Pack.Hand;
-        string keys = hand switch
-        {
-            HandKind.Tool => $"{Bound("tool-mode")} MODE   ",
-            HandKind.Plater => "[WHEEL] PLATE  [LMB] SPRAY  [RMB] STRIP   ",
-            HandKind.Weapon => Game.Zone.Data.Arms.OfItem(Game.Pack.HandItem)?.Modes.Count > 1 ? $"{Bound("rotate")} RELOAD  {Bound("tool-mode")} MODE   " : $"{Bound("rotate")} RELOAD   ",
-            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => $"[WHEEL] PIECE  {Bound("style")} THEME  {Bound("rotate")} TURN  [RMB] TAKE DOWN   ",
-            HandKind.Block => $"[WHEEL] SHAPE  {Bound("rotate", "tilt")} TURN  {Bound("mirror")} MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
-            HandKind.Device when Game.Zone.Data.Rules.ForceFields.TierOf(Game.Pack.HandItem) != null => "[LMB] DRAG  [RMB] CANCEL   ",
-            _ => "",
-        };
-        string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} BAG   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
-        string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE · FREE BUILD" : "";
-        return $"{keys}{bar}{Bound("torch")} TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   {Bound("terminal")} MENU   LVL {Game.Progress.Level}{creative}";
-    }
-
-    /// <summary>A hint's key, as bound now: "[Q]", or "[R/T]" for two.</summary>
-    string Bound(params string[] actions) => $"[{string.Join("/", actions.Select(a => KeyBindings.Name(Game.Settings.Keys[a])))}]";
+    /// <summary>The quiet line under the toolbar: level and game mode only. No key hints (owner, 16 Nov: the keys are in the controls settings).</summary>
+    public string HintLine() => $"LVL {Game.Progress.Level}{(Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE · FREE BUILD" : "")}";
 
     /// <summary>The toolbar, the selected item's line, the key hints and, with a block family in hand, the shape strip.</summary>
     void DrawHand()
@@ -652,7 +633,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? $"REMOTE {Bound("switch-bar")}" : $"BAG {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? "REMOTE" : "BAG", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
@@ -687,7 +668,7 @@ public partial class Visor : CanvasLayer
         var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
         string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
         _hud.Block(chip, new Color(C.Holo, 0.85f));
-        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), $"THEME {Bound("style")}", C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME", C.Glass, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
         if (cur == null)
         {

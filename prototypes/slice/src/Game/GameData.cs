@@ -162,6 +162,16 @@ public sealed class SliceRules
     public BarRules StructureBar { get; set; } = new();
     /// <summary>How far a structure's scan marks places, m, by scanner block id.</summary>
     public Dictionary<string, float> Scanners { get; set; } = new();
+    /// <summary>What a person of each trade carries besides their weapon (by role, lower case), each good by chance: what their bag holds when they fall, and what a frightened one gives up.</summary>
+    public Dictionary<string, CarriedGood[]> Carried { get; set; } = new();
+
+    public sealed class CarriedGood
+    {
+        public string Item { get; set; } = "";
+        public float Chance { get; set; } = 0.5f;
+        /// <summary>The most of it, from one.</summary>
+        public int Most { get; set; } = 1;
+    }
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -390,8 +400,8 @@ public sealed class SliceRules
     public sealed class ContainerRules
     {
         public int[] Corpse { get; set; } = { 4, 4 };
-        public int[] Backpack { get; set; } = { 8, 8 };
-        public int[] Drop { get; set; } = { 8, 8 };
+        /// <summary>The one bag, whoever's it is.</summary>
+        public int[] Bag { get; set; } = { 8, 8 };
     }
 
     public sealed class WildlifeRules

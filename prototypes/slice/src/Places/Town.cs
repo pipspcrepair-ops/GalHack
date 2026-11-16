@@ -130,9 +130,9 @@ public sealed partial class Town
         /// <summary>At a checkpoint or a post: how long they've had you halted, and whether their gun is on you (never fired outside a hostile place).</summary>
         public float Halt;
         public bool Holding;
-        /// <summary>A creature they're dealing with, how long until their shot at it, how long they're scared off or waving one away; whether they're working stock.</summary>
+        /// <summary>A creature they're dealing with; how long they keep fighting it once it no longer calls for a fight, how long they're scared off, keeping wide of one or waving one away; whether they're working stock.</summary>
         public Creature Threat;
-        public float Facing, ScaredFor, ShooFor;
+        public float Facing, ScaredFor, AvoidFor, ShooFor;
         public bool Herding;
         /// <summary>Their answer to your gesture (from when, for how long), and where they've been shown to look.</summary>
         /// <summary>You robbed them (they remember); a guard on your trail after a robbery, for how long.</summary>
@@ -263,7 +263,7 @@ public sealed partial class Town
         }
         if (!_searches.TryGetValue((from, spot), out var search))
         {
-            _searches[(from, spot)] = System.Threading.Tasks.Task.Run(() => Route(from, spot));
+            _searches[(from, spot)] = System.Threading.Tasks.Task.Run(() => GalHack.Testing.AllocMeter.Measure("town routes", () => Route(from, spot)));
             return false;
         }
         if (!search.IsCompleted) return false;
@@ -291,6 +291,9 @@ public sealed partial class Town
     /// <summary>What a tick of everyone in the town cost last time, ms.</summary>
     public float LastTickMs { get; private set; }
 
+    /// <summary>The last frame's posing, ms (measurements).</summary>
+    public float LastPoseMs { get; private set; }
+
     public Vector3 World(Vector3 local) => _place != null ? _place.ToWorld(local) : local;
 
     // ---- Standing and sitting ---------------------------------------------------------------------
@@ -307,11 +310,11 @@ public sealed partial class Town
         if (People.Count > 0 && People[0].Looks == null && _rolling == null)
         {
             WorldLife life = places.Zone.Wildlife.Life;
-            _rolling = System.Threading.Tasks.Task.Run(() =>
+            _rolling = System.Threading.Tasks.Task.Run(() => GalHack.Testing.AllocMeter.Measure("town roll", () =>
             {
                 RollPeople(life);
                 foreach (Person p in People) p.Ready = PersonView.Prepare(p.Rig);
-            });
+            }));
         }
         WildlifePatch patch = places.Zone.Wildlife;
         Register(patch.Sim, null, Vector3.Zero);
@@ -398,7 +401,7 @@ public sealed partial class Town
     void OnStray(Creature c, Settlement town)
     {
         if (town != _settlement) return;
-        if (c.Species.Husk) return; // a Husk is met by temper: fought, fled or barricaded against (Town.Reactions)
+        if (c.Species.Husk || CrossReactions.People(c.Species)) return; // a Husk, or people, are met by temper and nerve: fought, fled, barricaded against or let by (Town.Reactions)
         Person guard = People.Where(p => p.Role == "guard" && !p.Dead).OrderBy(p => (p.Position - c.Position).LengthSquared()).FirstOrDefault();
         _places.Zone.Wildlife.Sim.CullStray(c, guard);
         Culled++;
@@ -410,7 +413,7 @@ public sealed partial class Town
     /// <summary>You killed something dangerous at their door: they're glad of it.</summary>
     void OnDied(Creature c, ITarget killer)
     {
-        if (killer == null || killer != _places.Zone.Wildlife.Player || !(c.Species.Husk || CrossReactions.Danger(c.Species))) return;
+        if (killer == null || killer != _places.Zone.Wildlife.Player || !(c.Species.Husk || CrossReactions.Danger(c.Species) || Foe(c))) return;
         if (_place != null && Covers(_places.Zone.Wildlife.WorldOf(c)) || _place != null && (_place.FromWorld(_places.Zone.Wildlife.WorldOf(c)) - Walk(Data.AreaCenter)).Length() < Data.AreaRadius + 25f) Did(Deed.Help);
     }
 
@@ -418,6 +421,7 @@ public sealed partial class Town
     void OnBitten(AttackEvent e)
     {
         if (e.Target is not Person p || p.Town != this || !e.Hit) return;
+        Harmed(e.Creature);
         p.Health.Current -= e.Damage * 0.6f;
         if (p.Dead) Fall(p);
     }
@@ -433,6 +437,13 @@ public sealed partial class Town
             long from = System.Diagnostics.Stopwatch.GetTimestamp();
             Town.Tick((float)delta);
             Town.LastTickMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+        }
+
+        public override void _Process(double delta)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp();
+            Town.PoseFrame();
+            Town.LastPoseMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
         }
     }
 
@@ -571,13 +582,9 @@ public sealed partial class Town
             p.ScaredFor = MathF.Max(0f, p.ScaredFor - dt);
             p.ShovedFor = MathF.Max(0f, p.ShovedFor - dt);
             p.ShooFor = MathF.Max(0f, p.ShooFor - dt);
-            // Something dangerous about: those who answer it with a gun do; the scared run in; a barricaded place keeps everyone in.
-            if (Fight(p, dt))
-            {
-                Pose(p, who, away, dt);
-                continue;
-            }
-            // A hostile place's fighters fight you (Town.Combat); the rest go to their doors.
+            p.AvoidFor = MathF.Max(0f, p.AvoidFor - dt);
+            // Something dangerous about: those who answer it with a gun fight it, as a hostile place's fighters fight you (Town.Combat);
+            // the rest go to their doors (the scared at a run, those keeping wide of it at a walk); a barricaded place keeps everyone in.
             if (Combat(p, player, mood, dt))
             {
                 Pose(p, who, away, dt);
@@ -585,7 +592,7 @@ public sealed partial class Town
             }
             bool scared = p.ScaredFor > 0f || Barricaded;
             bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
-            bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared);
+            bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
             if (hide && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night
             if (p.Away)
             {
@@ -607,12 +614,12 @@ public sealed partial class Town
             // Morning, or the fright over, or a fright in the night: up and about.
             if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
             if (p.Indoors || p.Asleep) { Pose(p, who, away, dt); continue; }
-            if (guard && mood != Mood.Hostile && Pursuit(p, player, dt))
+            if (guard && mood != Mood.Hostile && !YouDown && Pursuit(p, player, dt))
             {
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (guard && mood != Mood.Hostile && Checkpoint(p, player, mood, dt))
+            if (guard && mood != Mood.Hostile && !YouDown && Checkpoint(p, player, mood, dt))
             {
                 Pose(p, who, away, dt);
                 continue;
@@ -625,7 +632,7 @@ public sealed partial class Town
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
+            if (guard && mood != Mood.Peaceful && !YouDown && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
                 Pose(p, who, away, dt);
@@ -1299,7 +1306,8 @@ public sealed partial class Town
     /// <summary>Builds what they're drawn with: a few at a time, so a town coming into view never costs a whole frame.</summary>
     void MakeBody(Person p)
     {
-        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}" };
+        // Posed in the frame, not the tick (PoseFrame): drawn as posed, never eased between ticks.
+        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}", PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off };
         _view.AddChild(p.View);
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
@@ -1311,10 +1319,76 @@ public sealed partial class Town
     int? _style;
     float _clock;
 
-    /// <summary>Their body where they are now, this far from you (dt: the time since they were last posed).</summary>
+    /// <summary>
+    /// Their body where they are now, this far from you (dt: the time since they were last posed): owed, and posed once a drawn
+    /// frame (<see cref="PoseFrame"/>) with all the time since. A slow frame's two or three ticks posed the same bodies over and
+    /// over, and only the last of them was ever drawn. Those due less often far off (<see cref="Due"/>) are owed less often.
+    /// </summary>
     void Pose(Person p, int who, float away, float dt)
     {
-        if (Shown(p, away, dt)) PoseBody(p, who, dt);
+        p.PoseOwed += dt;
+        p.PoseAway = away;
+        p.PoseWho = who;
+    }
+
+    public sealed partial class Person
+    {
+        /// <summary>Time since they were last posed, how far from you they were when it came due, and their index (-1: nothing owed).</summary>
+        internal float PoseOwed, PoseAway;
+        internal int PoseWho = -1;
+    }
+
+    /// <summary>
+    /// Once a drawn frame, before the draw: every body owed a pose, posed. One out of sight (outside the view, with room for its
+    /// size) and whose shadow can't reach into it waits, its time kept for when it comes back: what can't be seen isn't posed.
+    /// </summary>
+    int _frame;
+
+    /// <summary>How many drawn frames apart a body this far off is posed.</summary>
+    static int PoseFrames(float away) => away < 15f ? 1 : away < 30f ? 2 : away < 60f ? 3 : 4;
+
+    void PoseFrame()
+    {
+        if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
+        _frame++;
+        Camera3D eye = _place.GetViewport()?.GetCamera3D();
+        Godot.Collections.Array<Plane> frustum = eye?.GetFrustum();
+        Vector3 toSun = _places.Zone.Sky?.ToSun ?? Vector3.Up;
+        // Where a body's shadow falls, from its top (the sun's way along the ground, as far as a low sun throws it).
+        Vector3 shadow = toSun.Y > 0.05f ? new Vector3(-toSun.X, 0f, -toSun.Z) / toSun.Y * 2f : Vector3.Zero;
+        if (shadow.LengthSquared() > 25f * 25f) shadow = shadow.Normalized() * 25f;
+        for (int i = 0; i < People.Count; i++)
+        {
+            Person p = People[i];
+            if (p.PoseWho < 0) continue;
+            // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed.)
+            bool needed = p.Engaged || p.Dead && !p.Laid;
+            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)) continue;
+            // Further off, posed every few frames with the time between (as their steps already are, Due): a body 40 m off is a
+            // few dozen pixels tall.
+            if (!needed && (_frame + i) % PoseFrames(p.PoseAway) != 0) continue;
+            float dt = p.PoseOwed;
+            int who = p.PoseWho;
+            p.PoseOwed = 0f;
+            p.PoseWho = -1;
+            if (Shown(p, p.PoseAway, dt)) PoseBody(p, who, dt);
+        }
+    }
+
+    /// <summary>A body at these feet (world) in the view, or close to the eye, or its shadow in the view: 2 m round it either way.</summary>
+    static bool InSight(Camera3D eye, Godot.Collections.Array<Plane> frustum, Vector3 feet, Vector3 shadow)
+    {
+        Vector3 middle = feet + Vector3.Up * 0.9f;
+        if (middle.DistanceSquaredTo(eye.GlobalPosition) < 8f * 8f) return true;
+        return Inside(frustum, middle, 2f) || shadow != Vector3.Zero && Inside(frustum, feet + shadow * 0.5f, shadow.Length() * 0.5f + 2f);
+    }
+
+    /// <summary>A sphere touching the view (the planes face out of it).</summary>
+    static bool Inside(Godot.Collections.Array<Plane> frustum, Vector3 at, float radius)
+    {
+        foreach (Plane plane in frustum)
+            if (plane.DistanceTo(at) > radius) return false;
+        return true;
     }
 
     /// <summary>Whether their body shows at all (not indoors, not away on a run, not beyond the far range), faded in and out at its edges.</summary>
@@ -1326,10 +1400,10 @@ public sealed partial class Town
         return shows;
     }
 
-    /// <summary>What someone's raised weapon is aimed at, in the place's frame: a stray they're seeing off, else you once they're in a fight; null otherwise.</summary>
+    /// <summary>What someone's raised weapon is aimed at, in the place's frame: what they fight (a danger, else you: Town.Combat), else a stray they're seeing off; null otherwise.</summary>
     Vector3? AimedAt(Person p)
     {
-        if (p.Threat is { Dead: false, Removed: false } c) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * 0.6f);
+        if (p.Threat is { Dead: false, Removed: false } c && (p.Facing > 0f || !p.Engaged)) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * Arming.Chest(c));
         return p.Engaged ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) + Vector3.Up * 1.15f : null;
     }
 
@@ -1373,6 +1447,7 @@ public sealed partial class Town
             ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,
             Clock = t,
             Style = _style ??= Gestures.FriendlyStyle(_places.Zone.Wildlife.Life.World.Seed),
+            Far = p.PoseAway >= 30f && !p.Engaged,
         });
         p.LookFor = MathF.Max(0f, p.LookFor - dt);
         p.View.Sync();

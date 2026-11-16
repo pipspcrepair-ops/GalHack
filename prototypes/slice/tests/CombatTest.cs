@@ -10,6 +10,7 @@ using PoiGenerator.Gen;
 using Slice.Arms;
 using Slice.Game;
 using Slice.Places;
+using Slice.Surface;
 using Wildlife;
 
 namespace Slice.Tests;
@@ -22,9 +23,10 @@ namespace Slice.Tests;
 /// - A gang's place: each armed one holds the player's own model of their weapon item; when they
 ///   fire it's that row from that model's muzzle (never the chest), the player takes that row's
 ///   damage, rounds are used up, the group goes in together (one pinning, others flanking), each
-///   burst is aimed first; one killed leaves their weapon and its ammo in a body to search.
+///   burst is aimed first; one killed drops their weapon and its ammo in their bag.
 /// - Out in the wild: a raider with a rifle shoots from its muzzle and drops the rifle; a band set on
 ///   rallies as one; a machine fires its mount; a club strikes for the club's damage.
+/// - A town's edge: raiders who come near draw fire from its guards, the sleeper of no account to either.
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/CombatTest.tscn
 /// </summary>
@@ -92,6 +94,78 @@ public partial class CombatTest : Node
         foreach (int x in Wild(game, drive)) yield return x;
         game.QueueFree();
         yield return 0;
+        foreach (int x in TownEdge()) yield return x;
+    }
+
+    /// <summary>
+    /// Raiders at a town's edge (the owner, 16 Nov 2026, of people: "they should attack people as well"): a
+    /// band of armed raiders put down outside a survivor town near one of its guards, the sleeper off to one
+    /// side and of no account to either. The town fires on them, its guards and whoever else has the nerve,
+    /// with their own weapons (the aim and shots they'd use on you), and none of it is at you.
+    /// </summary>
+    IEnumerable<int> TownEdge()
+    {
+        PlanetSurface.Poi.PoiSiting.ForceFamily = "survivor_town";
+        WorldChoice world = WorldChoice.Fresh("temperate");
+        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
+        AddChild(game);
+        var drive = new Driver(game);
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        PlanetSurface.Poi.PoiSiting.ForceFamily = null;
+        GD.Print($"-- raiders at a town's edge, {world} --");
+        game.Zone.Weather.Bridge.Calm = true;
+        double max = game.Suit.Sim.Data.Vitals.Health.Max;
+        var site = game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "survivor_town" && s.Instance?.Townsfolk != null);
+        if (site == null) { Check(false, "a survivor town stands on this world"); game.QueueFree(); yield break; }
+        if (site.Instance.Mood == Mood.Hostile)
+        {
+            site.Instance.Mood = Mood.Wary;
+            GD.Print("  (TEST: this town was rolled hostile to you: set wary, so its guards have only the raiders to deal with)");
+        }
+        Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * 0.3f;
+        Vector3 gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet);
+        Int3 f = site.Instance.Layout.EntranceFacing.Vec();
+        Vector3 outward = new Vector3(f.X, 0f, f.Z).LengthSquared() > 0.1f ? new Vector3(f.X, 0f, f.Z).Normalized() : Vector3.Right, side = outward.Cross(Vector3.Up);
+        game.Survivor.PlaceOutside(Ground(gate + outward * 24f + side * 18f).ToNumerics());
+        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        Town town = game.Places.PlaceOf(site)?.Memory.Town;
+        WildlifePatch patch = game.Zone.Wildlife;
+        // A long move swaps the patch's sim: wait for the one round you now to settle.
+        for (int i = 0, same = 0; i < 60 * 20 && same < 180; i++)
+        {
+            WildSim was = patch.Sim;
+            game.Suit.Vitals.Health = max;
+            yield return 0;
+            same = patch.Sim == was ? same + 1 : 0;
+        }
+        if (town?.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
+        for (int i = 0; i < 600 && town != null && !town.People.Any(Out); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Armed(q.Figure.Prop);
+        Town.Person guard = town?.People.Where(Out).OrderByDescending(q => Weapons.Ranged(q.Figure.Prop)).ThenBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
+        Check(guard != null, $"the town stands with an armed guard out ({town?.People.Count(q => q.Role == "guard")} guards, {town?.People.Count} people)");
+        if (guard == null) { game.QueueFree(); yield break; }
+        Vector3 post = patch.FromPatch(guard.Position), middle = town.World(new Vector3(town.Data.AreaCenter.X, 0f, town.Data.AreaCenter.Z));
+        Vector3 away = new Vector3(post.X - middle.X, 0f, post.Z - middle.Z);
+        away = away.LengthSquared() > 1f ? away.Normalized() : outward;
+        Species raider = patch.Life.People.Person((ulong)_rng.NextInt64(), PersonRole.Raider, Occupancy.Raider);
+        raider.Figure.Prop = "rifle";
+        List<Creature> band = Staging.PutBand(patch.Sim, raider, patch.PatchLocal(Ground(post + away * 20f)), 3); // (in reach of a fight from the guard, and of the town's look round from its edge)
+        Check(band.Count > 0, $"a band of raiders put down 20 m out from the guard ({band.Count})");
+        if (band.Count == 0) { game.QueueFree(); yield break; }
+        band[0].Herd.Party.Temper.Stance = Stance.Hostile;
+        // (They stay about where they were put: a new herd's first update counts its time from long ago, so its timer is long.)
+        band[0].Herd.Home = band[0].Herd.Goal = band[0].Position;
+        band[0].Herd.GoalTimer = 1e9f;
+        int fire = 0, guardShots = 0, atYou = 0, bandShots = game.Arms.People.Shots;
+        Mood mood = town.Memory.Mood;
+        town.ShotFired += (who, _, _, _, _) => { fire++; if (who.Role == "guard") guardShots++; };
+        town.Aimed += _ => atYou++; // (every burst at you is aimed where you can see it first)
+        for (int i = 0; i < 60 * 40 && guardShots < 3; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        GD.Print($"  (the raiders: {string.Join(", ", band.Select(c => $"{c.State} {(c.Dead ? "down" : $"{c.Health:F0}")} {(patch.FromPatch(c.Position) - post).Length():F0} m"))}; {game.Arms.People.Shots - bandShots} shots of theirs; the town fought {town.Fought}, {town.Shots} shots)");
+        Check(fire > 0, $"raiders near a town draw its fire: {fire} rounds, {guardShots} of them its guards', in {(guardShots >= 3 ? "under " : "")}40 s");
+        Check(atYou == 0 && town.Memory.Mood == mood, $"none of it at you, and the town still {town.Memory.Mood} with you ({atYou} aimed at you)");
+        game.QueueFree();
+        yield return 0;
     }
 
     /// <summary>The weapon rows people's weapons are, as data.</summary>
@@ -141,6 +215,8 @@ public partial class CombatTest : Node
         // Each one's weapon is the item for what they carry, held as the player's own model.
         foreach (Town.Person p in armed) if (p.Kit == null) { town.Provoked(); break; }
         yield return 0;
+        // (A weapon is hung in the hand a frame after its body is made: a moment for the last body's.)
+        for (int i = 0; i < 120 && armed.Any(p => p.View != null && p.Figure.Prop != "bow" && p.Model == null); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         bool items = armed.All(p => p.Kit != null && p.Kit.Def.Item == Weapons.ItemOf(p.Figure.Prop));
         Check(items, $"each carries the item for their weapon ({string.Join(", ", armed.Take(4).Select(p => $"{p.Figure.Prop}: {p.Kit?.Def.Id}"))})");
         var drawn = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
@@ -154,14 +230,14 @@ public partial class CombatTest : Node
         for (int i = 0; i < 1200 && game.Places.PlaceOf(site) != null; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         bool dropped = game.Places.PlaceOf(site) == null;
         game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
-        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        for (int i = 0; i < 3600 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; } // (a minute, as at first)
         place = game.Places.PlaceOf(site);
         for (int i = 0; i < 600 && armed.Any(p => !p.Dead && p.View == null && !p.Indoors && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         for (int i = 0; i < 120; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         AppDomain.CurrentDomain.FirstChanceException -= count;
         var again = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
         Check(dropped && place?.Memory.Town == town && thrown == 0 && again.All(p => p.Model != null && p.Holder?.GetParent() == p.View),
-            $"taken down and stood again: {(dropped ? "dropped" : "never dropped")}, {thrown} exceptions, guns in the new hands {again.Count(p => p.Holder?.GetParent() == p.View)} of {again.Count}");
+            $"taken down and stood again: {(dropped ? "dropped" : "never dropped")}, {(place?.Memory.Town == town ? "stood again" : "never stood again")}, {thrown} exceptions, guns in the new hands {again.Count(p => p.Holder?.GetParent() == p.View)} of {again.Count}");
         drawn = again;
         // (--shots=<folder>: a picture of each of a few of them, close, with what they hold.)
         string shots0 = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?.Substring(8);
@@ -217,16 +293,16 @@ public partial class CombatTest : Node
         int fighting = armed.Count(p => p.Engaged && !p.Dead);
         Check(fighting >= Math.Min(2, armed.Count(p => !p.Dead && p.Figure.Stage is not (LifeStage.Child or LifeStage.Elder))), $"they go in together: {fighting} of {armed.Count} armed in the fight; parts {string.Join(", ", town.People.Where(p => p.Engaged).GroupBy(p => p.Part).Select(g => $"{g.Count()} {g.Key}"))}");
         if (armed.Count(p => p.Engaged && p.Kit is { Strike: false }) >= 3) Check(town.Flanks >= 1, $"one pins you while others go wide ({town.Flanks} flanking)");
-        // One of them killed: what they carried is left in their body.
+        // One of them killed: what they carried is in the bag that drops from them.
         Town.Person victim = armed.FirstOrDefault(p => !p.Dead && p.Kit != null);
         if (victim != null)
         {
             string item = victim.Kit.Def.Item;
-            int bodies = game.PeopleBodies;
+            int bags = game.PeopleBags;
             town.Struck(victim, 9999f, DamageClass.Kinetic, byPlayer: true);
             yield return 0;
-            var body = game.Zone.Loot.All.Where(l => l.Kind == Items.LootKind.Corpse).OrderBy(l => l.Position.DistanceTo(town.World(victim.Pos))).FirstOrDefault();
-            Check(game.PeopleBodies >= bodies + 1 && body != null && body.Storage.Count(item) == 1, $"one killed leaves a body holding their {item} ({body?.Storage.Count(item)}) and its ammo ({(victim.Kit.Def.Ammo == "" ? "none needed" : $"{body?.Storage.Count(victim.Kit.Def.Ammo)} {victim.Kit.Def.Ammo}")})");
+            var body = game.Zone.Loot.All.FirstOrDefault(l => l.Kind == Items.LootKind.Bag && l.Owner == victim);
+            Check(game.PeopleBags >= bags + 1 && body != null && body.Storage.Count(item) == 1, $"one killed drops a bag holding their {item} ({body?.Storage.Count(item)}) and its ammo ({(victim.Kit.Def.Ammo == "" ? "none needed" : $"{body?.Storage.Count(victim.Kit.Def.Ammo)} {victim.Kit.Def.Ammo}")})");
             Check(victim.LastHarm == DamageClass.Kinetic, "and how they were killed reaches the body (its damage class)");
         }
         // Unarmed and hurt: they run.
@@ -237,7 +313,19 @@ public partial class CombatTest : Node
             for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             Check(unarmed.Fleeing || unarmed.Indoors || unarmed.Engaged, $"an unarmed one hit runs for it, or (a raider with the nerve) goes in with their fists ({(unarmed.Engaged ? $"fists, {unarmed.Part}" : unarmed.Fleeing ? "fleeing" : unarmed.Indoors ? "indoors" : "stood")})");
         }
+        // Hand to hand: one of them with a blade, a club or fists (or a gunman whose rounds run out, nerve up, so fists), and
+        // you at their side, out of their line: within 20 s a blow lands, and every blow faces you.
+        string brawler = "none";
+        if (town.People.Where(p => p.Engaged && !p.Dead && p.Kit != null).OrderBy(p => p.Kit.Strike ? 0 : 1).FirstOrDefault() is { } fighter)
+        {
+            brawler = fighter.Kit.Strike ? fighter.Kit.Def.Id : $"a {fighter.Kit.Def.Id} run dry";
+            if (!fighter.Kit.Strike) fighter.Kit.Loaded = fighter.Kit.Loose = fighter.Kit.Items = 0;
+            fighter.Nerve = 1f;
+            game.Survivor.PlaceOutside(town.World(fighter.Pos + fighter.Forward.Cross(Vector3.Up).Normalized() * 1.2f + Vector3.Up * 0.1f).ToNumerics());
+        }
+        for (int i = 0; i < 60 * 20 && town.Blows == 0; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
+        Check(town.Blows > 0 && town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows ({brawler}, you at their side), the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
     }
 
     /// <summary>Out in the wild: a raider's rifle, a band's rally, a machine's mount, a club's blow.</summary>
@@ -276,6 +364,7 @@ public partial class CombatTest : Node
         }
         int shotsBefore = game.Arms.People.Shots, fired = game.Arms.OthersFired;
         var rifle = sim.Spawn(Raider("rifle"), patch.PatchLocal(Ground(feet + new Vector3(14f, 0f, 0f))));
+        rifle.Nerve = 1f; // (one with the nerve to fight you: hurt, a timid one runs)
         sim.Damage(rifle, 1f, patch.Player);
         var muzzles = new List<float>();
         for (int i = 0; i < 60 * 20 && game.Arms.People.Shots - shotsBefore < 3; i++)
@@ -292,10 +381,10 @@ public partial class CombatTest : Node
         Check(kit?.Model != null, $"its rifle is drawn in its hands ({game.Arms.People.Drawn} weapons drawn on the wild's people)");
         Check(muzzles.Count == 0 || muzzles.Max() < 0.05f, $"from the muzzle of the model ({(muzzles.Count > 0 ? muzzles.Max() : 0f):F2} m off)");
         Check(kit != null && kit.Clip.Fired > 0, $"using up its rounds ({kit?.Clip.Fired} fired, {kit?.Clip.Rounds} left)");
-        // Killed: the rifle and what's left of its rounds in the body.
+        // Killed: the rifle and what's left of its rounds in the bag that drops from it.
         sim.Damage(rifle, 9999f, patch.Player);
         for (int i = 0; i < 10; i++) yield return 0;
-        var corpse = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == rifle);
+        var corpse = game.Zone.Loot.All.FirstOrDefault(l => l.Owner == rifle);
         Check(corpse != null && corpse.Storage.Count("line-rifle") == 1, $"it dies and leaves the rifle ({corpse?.Storage.Count("line-rifle")}) and its rounds ({corpse?.Storage.Count("rifle-rounds")})");
 
         // A band set on as one.

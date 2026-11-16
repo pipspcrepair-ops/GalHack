@@ -25,6 +25,9 @@ public partial class PopRoute
     void SplitStart()
     {
         if (!_args.ContainsKey("split")) return;
+        Slice.Places.PoiPlaces.TakenDown.Clear();
+        Array.Clear(Slice.Places.Place.PartMs);
+        Array.Clear(Slice.Places.Place.PartWorst);
         _frameSplit ??= new FrameSplit(GetTree().Root, GetViewport().GetViewportRid());
         if (_args.TryGetValue("hitch", out string hitch)) _frameSplit.HitchMs = double.Parse(hitch, CultureInfo.InvariantCulture);
         // --deeper=1: each place split into its children by class too (heavy: a marker a child).
@@ -33,7 +36,13 @@ public partial class PopRoute
         _frameSplit.Doing = Doing;
         _frameSplit.Reset();
         // --allocs=1: the main thread's allocations by type; --allocs=all: every thread's (the main thread's marked).
-        if (_args.TryGetValue("allocs", out string allocs)) (_allocTypes ??= new AllocCensus { On = true, MainOnly = allocs != "all" }).Take();
+        if (_args.TryGetValue("allocs", out string allocs))
+        {
+            (_allocTypes ??= new AllocCensus { On = true, MainOnly = allocs != "all" }).Take();
+            GalHack.Testing.AllocMeter.On = true;
+            GalHack.Testing.AllocMeter.Take(1);
+            _allocClock.Restart();
+        }
         _systemSplit.Reset();
         var zone = _game.Zone;
         _sections0 = (double[])zone.Streamer.SectionTotals.Clone();
@@ -87,6 +96,7 @@ public partial class PopRoute
     }
 
     AllocCensus _allocTypes;
+    readonly System.Diagnostics.Stopwatch _allocClock = new();
 
     /// <summary>
     /// What stands drawn at the route's end, by where it hangs (the zone's or the game's child, a level further for the
@@ -142,6 +152,16 @@ public partial class PopRoute
         GD.Print($"SPLIT {name} by system (cpu ms a frame): {_systemSplit.Report(18)}");
         GD.Print($"SPLIT {name} drawn at the end: {DrawnCensus()}");
         if (_allocTypes != null) GD.Print($"SPLIT {name} {(_allocTypes.MainOnly ? "the main thread" : "every thread")} allocated, by type: {_allocTypes.Take(24)}");
+        GD.Print($"SPLIT {name} places' frame work, ms a frame (worst one): {string.Join(", ", Slice.Places.Place.PartNames.Select((p, i) => string.Create(CultureInfo.InvariantCulture, $"{p} {Slice.Places.Place.PartMs[i] / Math.Max(1, _frameSplit.Frames.Count):F2} ({Slice.Places.Place.PartWorst[i]:F1})")))}");
+        GD.Print($"SPLIT {name} places' longest single steps: {string.Join(", ", Slice.Places.Place.PartNames.Select((p, i) => string.Create(CultureInfo.InvariantCulture, $"{p} {Slice.Places.Place.StepWorst[i]:F1} ({Slice.Places.Place.StepWhat[i] ?? "-"})")))}");
+        var down = Slice.Places.PoiPlaces.TakenDown;
+        if (down.Count > 0) GD.Print(string.Create(CultureInfo.InvariantCulture, $"SPLIT {name} places taken down: {down.Count}, ms each mean {down.Average(d => d.Ms):F1} (most {down.Max(d => d.Ms):F1}), pieces each mean {down.Average(d => d.Pieces):F0}, longest piece {down.Max(d => d.Worst):F2} ms ({down.MaxBy(d => d.Worst).Name})"));
+        down.Clear();
+        Array.Clear(Slice.Places.Place.PartMs);
+        Array.Clear(Slice.Places.Place.PartWorst);
+        Array.Clear(Slice.Places.Place.StepWorst);
+        Array.Clear(Slice.Places.Place.StepWhat);
+        if (GalHack.Testing.AllocMeter.On) GD.Print($"SPLIT {name} workers allocated, MB a second by job: {GalHack.Testing.AllocMeter.Take(_allocClock.Elapsed.TotalSeconds)}");
         GD.Print(string.Create(CultureInfo.InvariantCulture,
             $"SPLIT {name} live (means): creatures in the patch {_creatures / n:F0}, stepped {_stepped / n:F0}, drawn {_creaturesDrawn / n:F0}; in {w.Sites.Count} places and caves {_siteCreatures / n:F0}, stepped {_siteStepped / n:F0}, drawn {_siteDrawn / n:F0}; " +
             $"people {_people / n:F0}, drawn {_peopleDrawn / n:F0}, their towns' ticks {_townMs / n:F2} ms; sight rays {(w.SightRays - _rays0) / t:F1} a tick, path searches {paths / t:F2} a tick; " +

@@ -424,6 +424,8 @@ public partial class Place
         }
     }
 
+    int[] _nearest = Array.Empty<int>();
+
     void TickLights(float dt)
     {
         _time += dt;
@@ -432,12 +434,33 @@ public partial class Place
         {
             _poolTimer = 15;
             Vector3 at = FromWorld(Places.Focus());
-            var nearest = _spots.Select((s, i) => (s, i)).OrderBy(t => SpotPos(t.s.Spot).DistanceSquaredTo(at)).Take(_pool.Count).ToList();
+            // The pool's worth of nearest spots, nearest first, picked without sorting them all (a place can have hundreds),
+            // and a lamp moved only when its spot changes.
+            int k = Math.Min(_pool.Count, _spots.Count);
+            if (_nearest.Length < k) _nearest = new int[k];
+            Span<float> near = stackalloc float[k];
+            int found = 0;
+            for (int i = 0; i < _spots.Count; i++)
+            {
+                float d = SpotPos(_spots[i].Spot).DistanceSquaredTo(at);
+                if (found == k && d >= near[k - 1]) continue;
+                int j = found < k ? found++ : k - 1;
+                while (j > 0 && near[j - 1] > d) { near[j] = near[j - 1]; _nearest[j] = _nearest[j - 1]; j--; }
+                near[j] = d;
+                _nearest[j] = i;
+            }
             for (int i = 0; i < _pool.Count; i++)
             {
                 OmniLight3D l = _pool[i];
-                if (i >= nearest.Count || SpotPos(nearest[i].s.Spot).DistanceTo(at) > 60f) { l.Visible = false; _poolSpot[l] = -1; continue; }
-                var (s, index) = nearest[i];
+                if (i >= found || near[i] > 60f * 60f)
+                {
+                    if (l.Visible) l.Visible = false;
+                    _poolSpot[l] = -1;
+                    continue;
+                }
+                int index = _nearest[i];
+                if (_poolSpot.TryGetValue(l, out int was) && was == index && l.Visible) continue;
+                var s = _spots[index];
                 l.Visible = true;
                 l.Position = SpotPos(s.Spot);
                 l.LightColor = new Color(s.Spot.Color.R / 255f, s.Spot.Color.G / 255f, s.Spot.Color.B / 255f);

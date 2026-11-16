@@ -96,6 +96,7 @@ public partial class Game
     {
         SinceGesture += (float)delta;
         if (Figure == null || Survivor == null) return;
+        Figure.Visible = !Suit.Dead; // (dead, the body lies where it fell: Game.Aftermath)
         Slice.Player.Survivor s = Survivor;
         var legs = s.Legs;
         System.Numerics.Vector3 v = s.Body.Velocity, up = System.Numerics.Vector3.Normalize(s.Body.Up);

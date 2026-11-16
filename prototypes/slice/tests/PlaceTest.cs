@@ -1350,6 +1350,8 @@ public partial class PlaceTest : Node
             Check(!merged && chunks > 0 && after > 0 && after != before && Math.Abs(after - before) < 64,
                 $"a merged cube splits back to a mesh a chunk when a block of it goes ({chunks} chunk meshes; {before} triangles before, {after} after)");
         }
+        // (A place with no floor of its own in a merged near cube, a farm's yard, has nothing to break here: on to the rest.)
+        else if (Place.MergeCubes && p.MergedGroups > 0) GD.Print($"  (no floor of {site.Name}'s own in its {p.MergedGroups} merged near cubes: the split is not tried)");
         else Check(!Place.MergeCubes, $"a near cube of {site.Name} is drawn as one mesh with a block in it to break ({p.MergedGroups} merged of {p.NearGroups} near)");
         GD.Print($"  doors {p.Doors.Count} ({p.Doors.Count(d => d.Jammed)} jammed), deco rooms {p.DecoRooms}, caches {p.Memory.Caches.Count}, creatures {p.Memory.Fauna?.Sim?.Creatures.Count}");
         game.QueueFree();

@@ -180,6 +180,8 @@ public static class Attacks
                 c.Desired = Vector3.Zero;
                 if (!c.Committed) c.AimPoint = t.Position;
                 c.FacePoint = c.AimPoint;
+                // What will be a blow squares up to them; a shot or a spit comes round its own way (the aim pose, the throat).
+                if (!(Arming.Fire != null && Shooting(c, t)) && !Spitting.Wants(c)) FaceStrike(w, c, c.AimPoint, dt);
                 WindupPose(c, Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f));
                 if (c.Move == AttackMove.Swipe) Sweep(c, -0.3f * Math.Clamp(c.PhaseTime / c.PhaseLength * 2f, 0f, 1f)); // it turns a little away: the tail cocks
                 CommitIfDue(w, c, t);
@@ -214,6 +216,10 @@ public static class Attacks
                 c.Lunge = c.Move is AttackMove.Bite or AttackMove.Charge ? 1f : 0f;
                 c.Desired = Vector3.Zero;
                 c.LookAt = c.StrikeAt;
+                // A stomp turns onto where they stood as the foot comes down, and so does a fist or a blade as it swings; an
+                // animal's bite set its yaw on them from where it lands (round to their front), a charge holds the line it set
+                // off on, a swipe sweeps.
+                if (c.Space == null && (c.Move == AttackMove.Stomp || c.Move == AttackMove.Bite && c.Species.Figure != null)) FaceStrike(w, c, c.AimPoint, dt);
                 float k = Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f);
                 if (c.Move == AttackMove.Swipe) Sweep(c, Mathf.Lerp(-0.3f, 1.25f, k * k * (3f - 2f * k)));
                 if (c.Move == AttackMove.Charge && c.Rig.Steps != c.StrikeSteps)
@@ -230,7 +236,7 @@ public static class Attacks
                 else if (c.Move is AttackMove.Bite or AttackMove.Charge && (c.LungeTo - c.LungeFrom).Dot(t.Position - c.Position) > 0f && Strikes.Bumped(c, t))
                     c.LungeFrom = c.LungeTo = c.Position; // its body met them first: it stops there (nothing passes through anyone), and its head still comes on
                 if (c.Phase != AttackPhase.Lunge || c.Space != null || c.Species.Rig == RigKind.Swarm) break;
-                if (c.Move == AttackMove.Charge && c.PhaseTime < c.PhaseLength * 0.9f && c.LungeTo == c.Position && c.LungeFrom != c.LungeTo && c.PhaseTime > 0.05f)
+                if (c.Move == AttackMove.Charge && c.LungeBlocked)
                 {
                     // Ran into something solid: it stops hard and stands dazed.
                     Strikes.Quake(w, c, c.Position, false, false);
@@ -307,6 +313,18 @@ public static class Attacks
         }
     }
 
+    /// <summary>
+    /// Its whole body (feet, hips, chest and head) turns to face what it is striking, quickly:
+    /// nothing hits you while looking past you. A swipe turns into its sweep instead.
+    /// </summary>
+    static void FaceStrike(WildSim w, Creature c, Vector3 at, float dt)
+    {
+        if (c.Move == AttackMove.Swipe) return;
+        Vector3 to = WildSim.Flat(at - c.Position);
+        if (to.LengthSquared() < 1e-4f) return;
+        c.Yaw = Mathf.RotateToward(c.Yaw, MathF.Atan2(-to.X, -to.Z), MathF.Max(w.Combat.StrikeTurn, Heft.TurnRate(c, 0f)) * dt);
+    }
+
     /// <summary>Whether it bites with a mouth of some kind (jaws, beak, pincers, a round maw), not only a head.</summary>
     static bool Mouthed(Creature c) => c.Species.Part("head") != "none" && c.Species.Figure == null;
 
@@ -338,6 +356,7 @@ public static class Attacks
         c.Rear = 0f;
         c.Brace = 0f;
         c.LungeFrom = c.LungeTo = c.Position;
+        c.LungeBlocked = false;
         c.StrikeSteps = c.Rig.Steps;
         // Where on the victim the striking part goes: the nearest of their body to it (a giant's head comes down to the chest, a small hunter's goes for the legs).
         Vector4 part = c.Rig.Striker(c);
@@ -383,7 +402,7 @@ public static class Attacks
         Vector3 at = WildSim.Flat(aim - c.LungeTo);
         Vector3 dir = at.LengthSquared() > 1e-4f ? at.Normalized() : c.Forward;
         c.StrikePoint = c.LungeTo + dir * Math.Clamp(stop, 0f, at.Length()); // someone already inside its reach is bitten where they stand
-        c.Yaw = MathF.Atan2(-dir.X, -dir.Z);
+        if (c.Species.Figure == null) c.Yaw = MathF.Atan2(-dir.X, -dir.Z); // (a person stays squared up to them through the swing instead)
         c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / (c.Species.Flight == FlightKind.Hover ? MostLungeSpeed : MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f)));
     }
 

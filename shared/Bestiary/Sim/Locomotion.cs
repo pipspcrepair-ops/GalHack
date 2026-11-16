@@ -256,10 +256,11 @@ public static class Locomotion
         else if (c.Species.Flies) p.Y = Mathf.Lerp(c.LungeFrom.Y, ground + 1f, eased);
         else p.Y = ground;
         c.Velocity = (c.LungeTo - c.LungeFrom) / MathF.Max(0.01f, c.PhaseLength);
-        // A lunge into a wall stops at the wall.
-        if (!c.Species.Flies && Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species))
+        // A lunge into a wall, a trunk or a rock stops there.
+        if (!c.Species.Flies && Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species) || IntoTrees(w, c, p))
         {
-            c.LungeTo = c.Position;
+            c.LungeFrom = c.LungeTo = c.Position; // held where it met it, not drawn back along the way it came
+            c.LungeBlocked = true;
             c.Velocity = Vector3.Zero;
             return;
         }
@@ -337,8 +338,9 @@ public static class Locomotion
             {
                 moved = Bound(w, moved, ref c.Velocity);
                 if (!c.Species.Flies && c.Hop == HopPhase.Ground) moved.Y = w.Terrain.Height(moved.X, moved.Z);
-                // Never shoved into a wall.
+                // Never shoved into a wall, a trunk or a rock.
                 if (Interpenetration.SolidSurface(w, moved, c.Species) && !c.Species.Flies) continue;
+                if (IntoTrees(w, c, moved)) continue;
             }
             float closing = c.Velocity.Dot(push);
             if (closing < 0f) c.Velocity -= push * closing;
@@ -347,21 +349,52 @@ public static class Locomotion
         }
     }
 
-    /// <summary>Push out of rocks and trunks, and stop pushing into them.</summary>
+    /// <summary>How wide a body is round its feet where trunks and rocks are concerned, m: a person's shoulders, an animal's flanks.</summary>
+    public static float Footprint(Species s) => s.Figure != null ? 0.3f : MathF.Max(0.12f, s.Body.Width * 0.5f);
+
+    /// <summary>How far a body standing at p would be into the nearest trunk or rock, m (0 or less: clear of them all).</summary>
+    public static float IntoObstacles(WildSim w, Creature c, Vector3 p)
+    {
+        float r = Footprint(c.Species), worst = 0f;
+        foreach (Obstacle o in w.Nav.Around(p, r))
+            if (o.Active) worst = MathF.Max(worst, o.Radius + r - WildSim.Flat(p - o.Position).Length());
+        return worst;
+    }
+
+    /// <summary>Whether a walker moved to p would be further into a trunk or a rock than it is now (a lunge, a shove or a jostle that may not happen).</summary>
+    public static bool IntoTrees(WildSim w, Creature c, Vector3 p) =>
+        !c.Species.Flies && IntoObstacles(w, c, p) > MathF.Max(0.01f, IntoObstacles(w, c, c.Position));
+
+    /// <summary>
+    /// Push out of rocks and trunks, and stop pushing into them: it slides round them. Squeezed between two closer
+    /// than it is wide, it stays where it was rather than pass into either (a giant keeps out of a tight wood).
+    /// </summary>
     internal static void Avoid(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
     {
-        var near = w.Nav.Near(p);
-        if (near == null) return;
-        foreach (Obstacle o in near)
+        float r = Footprint(c.Species);
+        var near = w.Nav.Around(p, r);
+        if (near.Count == 0) return;
+        for (int pass = 0; pass < 2; pass++)
+            foreach (Obstacle o in near)
+            {
+                if (!o.Active) continue;
+                Vector3 away = WildSim.Flat(p - o.Position);
+                float d = away.Length(), min = o.Radius + r;
+                if (d >= min) continue;
+                Vector3 n = d > 1e-3f ? away / d : Vector3.Right;
+                p += n * (min - d);
+                float into = v.Dot(n), speed = v.Length();
+                if (into >= 0f) continue;
+                // Round it at the pace it came: what went into the trunk goes along its side (only dead on does it stop).
+                v -= n * into;
+                float along = v.Length();
+                if (along > 1e-3f) v *= speed / along;
+            }
+        float now = IntoObstacles(w, c, p);
+        if (now > 0.01f && now >= IntoObstacles(w, c, c.Position) - 1e-4f)
         {
-            if (!o.Active) continue;
-            Vector3 away = WildSim.Flat(p - o.Position);
-            float d = away.Length(), min = o.Radius + c.Radius * 0.5f;
-            if (d >= min) continue;
-            Vector3 n = d > 1e-3f ? away / d : Vector3.Right;
-            p += n * (min - d);
-            float into = v.Dot(n);
-            if (into < 0f) v -= n * into;
+            p = new Vector3(c.Position.X, p.Y, c.Position.Z);
+            v = Vector3.Zero;
         }
     }
 

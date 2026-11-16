@@ -467,6 +467,8 @@ public sealed class LeggedRig : Rig
     /// <summary>How far, as a share of its standing hip, it folds its legs so its head can reach down to this height in a bite (at most 75%: a tall body splays and drops like a giraffe drinking).</summary>
     float Dip(Creature c, float y) => Math.Clamp((NeckBase(c) - y - NeckReach * 0.8f) / MathF.Max(0.1f, _hipRest), 0f, 0.75f);
 
+    public override Vector3 Chest(Creature c) => WildSim.Flat(-Pose[_body].Basis.Z).Normalized();
+
     /// <summary>What it strikes with now: a stomping foot, its tail's tip, or its head (horns and jaws).</summary>
     public override Vector4 Striker(Creature c)
     {

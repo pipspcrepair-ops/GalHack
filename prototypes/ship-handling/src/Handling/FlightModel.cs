@@ -182,7 +182,7 @@ public static class FlightModel
         bool hover = stats.IsHover;
         Basis frame = Frame(s.Control, hover);
         Vector3 local = frame.Inverse() * s.Velocity;
-        float top = stats.TopSpeed;
+        float top = stats.TopAt(where);
         Vector3 move = input.Move.Clamp(-Vector3.One, Vector3.One).LimitLength(1f);
 
         bool holds = Holds(s, input, stats);
@@ -241,11 +241,12 @@ public static class FlightModel
 
         // Each axis stays within top speed on its own, but mid-turn the old sideways drift and the
         // new forward push could add up past it. Thrust may never raise total speed above top
-        // speed (above it, as after dropping out of space, it can only fall). Hover vessels
-        // count horizontal speed only; climbing a hill is the hover controller's business.
+        // speed; over it (diving through a crossing, the cap falling) it is taken off at the brake,
+        // like strong drag, never all at once. Hover vessels count horizontal speed only; climbing
+        // a hill is the hover controller's business.
         var moving = new Vector3(local.X, hover ? 0f : local.Y, local.Z);
         var was = new Vector3(before.X, hover ? 0f : before.Y, before.Z);
-        float cap = Mathf.Max(top, was.Length());
+        float cap = Mathf.Max(top, was.Length() - stats.Brake * dt);
         if (moving.Length() > cap)
         {
             moving = moving.Normalized() * cap;

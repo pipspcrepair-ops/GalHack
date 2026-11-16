@@ -4,7 +4,7 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>What a body says without words. Each is only where the hands, the back and the head go.</summary>
-public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play, Thanks }
+public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play, Thanks, Rummage }
 
 /// <summary>A blow with the body: a straight punch, an overhand swat, a Husk's two-handed seize, or its retch and spew.</summary>
 public enum StrikeKind { None, Punch, Swat, Seize, Spew }
@@ -44,6 +44,11 @@ public struct Gesture
     /// at it, the head comes round behind the sights and the upper body turns to it.
     /// </summary>
     public Vector3? AimAt;
+    /// <summary>
+    /// Far enough off that the hands' fine fitting can't show (30 m and more: a centimetre is under a pixel): the fists aren't
+    /// kept clear of the coat and a grip is settled in one pass, not two. The arms, the weapon and the body go where they always do.
+    /// </summary>
+    public bool Far;
 }
 
 /// <summary>
@@ -202,17 +207,22 @@ public sealed partial class HumanRig : Rig
             stalk = low;
             low = Hidden;
         }
+        // Going through someone's things: down on the haunches, hands at work in them.
+        float rummage = _act == BodyAct.Rummage ? _actAmount : 0f;
+        // A Husk at a body's face: knelt and bent right down to it, hands on it, heaving its worms up into it.
+        float infest = c.Infests != null && c.InfestFor > 0f ? 1f : 0f;
         Drive(new Gesture
         {
             Feet = c.Position,
             Yaw = c.Yaw,
             Speed = speed,
             Walked = _walked,
-            Crouch = low,
+            Crouch = MathF.Max(low, MathF.Max(rummage * 0.9f, infest)),
+            Work = MathF.Max(rummage, infest),
             Stalk = stalk,
             // A Husk holding a head keeps its hands on it; anyone held by one struggles.
             Reach = c.Phase == AttackPhase.Hold ? 1f : c.HeldBy != null ? 0.6f * Rearing : 0f,
-            Retch = c.Attacking && !spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
+            Retch = infest > 0f ? 0.35f + 0.3f * MathF.Sin(c.Age * 7f) : c.Attacking && !spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
             Strike = strike,
             Blow = spew ? StrikeKind.Spew : StrikeKind.None,
             Look = LookYaw,
@@ -221,8 +231,8 @@ public sealed partial class HumanRig : Rig
             Clock = c.Age,
             Aim = _raised = Mathf.MoveToward(_raised, shooting ? 1f : Aiming, dt * 4f), // (all the way up to shoot: a weapon part raised points part way)
             // Aiming at what it's after (the middle of it, not its feet), else at what it looks at.
-            AimAt = Aiming > 0.05f || shooting ? (c.AttackTarget is { } at ? at.Position + Vector3.Up * 1.15f : c.LookAt) : null,
-            Act = shooting ? BodyAct.None : _act, // (a gesture never takes a hand off a weapon being fired)
+            AimAt = Aiming > 0.05f || shooting ? (c.AttackTarget is { } at ? at.Position + Vector3.Up * Arming.Chest(at) : c.LookAt) : null,
+            Act = shooting || rummage > 0f ? BodyAct.None : _act, // (a gesture never takes a hand off a weapon being fired)
             ActAmount = _actAmount,
             ActAt = c.LookAt ?? c.Position + c.Forward * 6f + Vector3.Up * 1.4f,
             Style = w?.GreetStyle ?? 0,
@@ -247,6 +257,8 @@ public sealed partial class HumanRig : Rig
         SetHit(4, Pose[_body].Origin + Pose[_body].Basis.Y * _f.Torso * 0.2f, 0.26f);
         SetBounds(chest, _f.Height * 0.65f);
     }
+
+    public override Vector3 Chest(Creature c) => WildSim.Flat(Facing).Normalized();
 
     /// <summary>A person strikes with the fist of their leading arm, or the blade or club swung in it.</summary>
     public override Vector4 Striker(Creature c)
@@ -475,7 +487,7 @@ public sealed partial class HumanRig : Rig
         // Arms: each hand has a place to be, and the elbow follows it.
         Hold hold = Grips(g, kind, aimW, busy, turn, torso, hip, chest, neck, headBasis);
         (WeaponLine, WeaponGrip) = (hold.Line, hold.Prop.Origin);
-        if (kind != HoldKind.None) KeepFistsClear(ref hold, kind, torso);
+        if (kind != HoldKind.None && !g.Far) KeepFistsClear(ref hold, kind, torso);
         GripRight = hold.R;
         GripLeft = hold.L;
         GripRightOn = hold.RW;
@@ -594,7 +606,7 @@ public sealed partial class HumanRig : Rig
                 // The fist closes on the grip, not the wrist: the wrist goes back from it by the length of the hand (twice round, as the forearm moves with it;
                 // the hand keeps the frame it was placed by, the wrist bending to make up the rest).
                 Vector3 want = hand;
-                for (int pass = 0; pass < 2; pass++)
+                for (int pass = 0, passes = g.Far ? 1 : 2; pass < passes; pass++)
                 {
                     (Vector3 e0, Vector3 w0) = LeggedRig.SolveIK(shoulder, want, upperArm, forearm, pole);
                     gripFore = (w0 - e0).Normalized();

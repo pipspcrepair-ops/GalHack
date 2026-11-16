@@ -77,7 +77,6 @@ public sealed class SharedStorage
     /// <summary>Adds as many as fit and returns how many went in.</summary>
     public int Add(string id, int count)
     {
-        id = _items.Current(id);
         int added = Math.Min(count, RoomFor(id));
         if (added <= 0) return 0;
         Change(id, added);
@@ -150,8 +149,10 @@ public sealed class SharedStorage
         return overflow;
     }
 
+    /// <summary>Every change goes in under the item's id today, so an old id never makes a second stack.</summary>
     void Change(string id, int delta)
     {
+        id = _items.Current(id);
         ItemDef item = _items.Item(id);
         int n = Count(id) + delta;
         if (n < 0) throw new InvalidOperationException($"{Name}: {id} would go below zero");

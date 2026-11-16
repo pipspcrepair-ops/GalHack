@@ -116,6 +116,24 @@ public sealed class NavGrid
         return InGrid(x, z) ? _buckets[z * Size + x] : null;
     }
 
+    readonly List<Obstacle> _around = new();
+
+    /// <summary>
+    /// Obstacles that may come within a reach of a point, for pushing a body of that reach out of trunks and rocks:
+    /// the buckets of the cells round it (one cell for anything up to a person's size). A list reused by every call.
+    /// </summary>
+    public List<Obstacle> Around(Vector3 p, float reach)
+    {
+        _around.Clear();
+        float r = MathF.Max(0f, reach - CellSize * 0.3f);
+        (int x0, int z0) = Cell(p - new Vector3(r, 0f, r));
+        (int x1, int z1) = Cell(p + new Vector3(r, 0f, r));
+        for (int z = Math.Max(0, z0); z <= Math.Min(Size - 1, z1); z++)
+        for (int x = Math.Max(0, x0); x <= Math.Min(Size - 1, x1); x++)
+            if (_buckets[z * Size + x] is { } b) _around.AddRange(b);
+        return _around;
+    }
+
     /// <summary>True when no blocked cell lies on the straight line (a supercover walk).</summary>
     public bool LineClear(Vector3 a, Vector3 b)
     {
@@ -132,7 +150,7 @@ public sealed class NavGrid
         {
             if (!first && Blocked(x, z)) return false; // a creature may start inside a blocked cell
             first = false;
-            if (x == x1 && z == z1) return true;
+            if (x == x1 && z == z1 || MathF.Min(tx, tz) > 1f) return true; // (the line ends in this cell: a walk that rounding carried past its last cell would run on to the grid's edge)
             if (tx < tz) { tx += stepX; x += sx; }
             else { tz += stepZ; z += sz; }
         }

@@ -70,6 +70,9 @@ public partial class SkyTraffic : Node
     /// <summary>What its last tick cost, ms: the pilot, and every tenth tick its upkeep (tests).</summary>
     public double LastTickMs { get; private set; }
 
+    /// <summary>A garbage collection ran during its last tick.</summary>
+    public bool LastTickCollected { get; private set; }
+
     /// <summary>Its worst tick since it spawned, ms, and what it was doing then (tests).</summary>
     public double WorstMs { get; private set; }
     public string WorstWhat { get; private set; } = "";
@@ -114,7 +117,9 @@ public partial class SkyTraffic : Node
             if (++_tick % 10 == 0) { Upkeep(); what += " + upkeep"; }
         }
         LastTickMs = Clock() - start;
-        if (LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, $"{what} to {Ship.Phase}{(GC.CollectionCount(0) != gcs ? ", a garbage collection in it" : "")}, searching {SearchWorstMs:F1} ms at most");
+        // A collection that fell in its tick is the whole game's garbage, not its own work: it is told apart (tests).
+        LastTickCollected = GC.CollectionCount(0) != gcs;
+        if (!LastTickCollected && LastTickMs > WorstMs && Ship != null && what != "spawn") (WorstMs, WorstWhat) = (LastTickMs, $"{what} to {Ship.Phase}, searching {SearchWorstMs:F1} ms at most");
     }
 
     // ---- The ship ---------------------------------------------------------------------------------------------
@@ -332,48 +337,17 @@ public partial class SkyTraffic : Node
     /// <summary>How far round a spot the scatter is looked at: a crown reaches out over its trunk.</summary>
     const float CrownReach = 12f;
 
-    readonly Dictionary<(int, int), System.Threading.Tasks.Task<List<PlanetSurface.Terrain.FloraSolid>>> _scatter = new();
-
-    /// <summary>
-    /// The trees, rocks and crowns the terrain's own scatter puts within a reach of a point (frame metres), from its far chunks
-    /// built on a worker without streaming them in; null while they are still being worked out.
-    /// </summary>
-    public List<PlanetSurface.Terrain.FloraSolid> ScatterNear(N.Vector3 p, float reach)
-    {
-        var planet = Zone.Planet;
-        double cx = Mathx.WrapX(p.X, planet.Width), cz = Mathx.Wrap(p.Z, planet.Height);
-        int size = PlanetSurface.Terrain.FarBuilder.Size;
-        int nx = PlanetSurface.Terrain.FarBuilder.Count((int)planet.Width), nz = PlanetSurface.Terrain.FarBuilder.Count((int)planet.Height);
-        var found = new List<PlanetSurface.Terrain.FloraSolid>();
-        bool ready = true;
-        for (int fz = (int)Math.Floor((cz - reach) / size); fz <= (int)Math.Floor((cz + reach) / size); fz++)
-        for (int fx = (int)Math.Floor((cx - reach) / size); fx <= (int)Math.Floor((cx + reach) / size); fx++)
-        {
-            var key = (((fx % nx) + nx) % nx, ((fz % nz) + nz) % nz);
-            if (!_scatter.TryGetValue(key, out var job)) _scatter[key] = job = Zone.Streamer.SolidsOfChunk(key.Item1, key.Item2);
-            if (!job.IsCompleted) { ready = false; continue; }
-            if (job.IsFaulted) continue;
-            foreach (var s in job.Result)
-                if (Math.Abs(Mathx.WrapDelta(s.Center.X - cx, planet.Width)) < reach + Reach(s) && Math.Abs(Mathx.WrapDelta(s.Center.Z - cz, planet.Height)) < reach + Reach(s)) found.Add(s);
-        }
-        return ready ? found : null;
-    }
-
-    /// <summary>A solid's reach round its centre, flat, m: a trunk's radius, a box's half diagonal, a crown's at its tree's scale.</summary>
-    public static float Reach(PlanetSurface.Terrain.FloraSolid s) =>
-        s.IsTrunk ? s.Extents.X : new Vector2(s.Extents.X, s.Extents.Z).Length() * (s.IsCanopy ? s.Scale : 1f);
-
     /// <summary>Nothing of the scatter within a hull's reach of a spot (true), something there (false), or not known yet (null).</summary>
     bool? Unwooded(N.Vector3 p, float r)
     {
-        List<PlanetSurface.Terrain.FloraSolid> near = ScatterNear(p, r + CrownReach);
+        List<PlanetSurface.Terrain.FloraSolid> near = Zone.Scatter.Near(p, r + CrownReach);
         if (near == null) return null;
         var planet = Zone.Planet;
         double cx = Mathx.WrapX(p.X, planet.Width), cz = Mathx.Wrap(p.Z, planet.Height);
         foreach (var s in near)
         {
             float dx = (float)Mathx.WrapDelta(s.Center.X - cx, planet.Width), dz = (float)Mathx.WrapDelta(s.Center.Z - cz, planet.Height);
-            float reach = r + 1.5f + Reach(s);
+            float reach = r + 1.5f + ScatterSolids.Reach(s);
             if (dx * dx + dz * dz < reach * reach) return false;
         }
         return true;

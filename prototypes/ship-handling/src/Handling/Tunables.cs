@@ -44,6 +44,8 @@ public sealed class Tunables
     public sealed class SpeedsData
     {
         public SpeedData Hover { get; set; } = new();
+        public SpeedData Flight { get; set; } = new();
+        public float Brake { get; set; }
         public List<BandData> Bands { get; set; } = new();
     }
 
@@ -53,8 +55,8 @@ public sealed class Tunables
         public float TopSpeedSpace { get; set; }
     }
 
-    /// <summary>One mass band, tonnes: its top speeds and its turn cap (°/s).</summary>
-    public sealed class BandData : SpeedData
+    /// <summary>One mass band, tonnes: its turn cap (°/s).</summary>
+    public sealed class BandData
     {
         public float Below { get; set; }
         public float MaxTurn { get; set; }

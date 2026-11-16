@@ -1575,9 +1575,9 @@ public partial class BestiaryTest : Node
         WorldLife life = Bestiary.Roll(_data, World(15f));
         PeopleGenerator g = life.People;
         Species husk = g.Person(Seed(), PersonRole.Worker, husk: true);
-        Figure guard = g.Person(Seed(), PersonRole.Guard).Figure, worker = g.Person(Seed(), PersonRole.Worker).Figure, farmer = g.Person(Seed(), PersonRole.Farmer).Figure;
-        guard.Prop = "rifle";
-        worker.Prop = "";
+        Species guard = g.Person(Seed(), PersonRole.Guard), worker = g.Person(Seed(), PersonRole.Worker), farmer = g.Person(Seed(), PersonRole.Farmer);
+        guard.Figure.Prop = "rifle";
+        worker.Figure.Prop = "";
         var wary = new Temper { Stance = Stance.Wary, Wariness = 0.8f };
         var open = new Temper { Stance = Stance.Welcoming, Wariness = 0.2f };
         Check(CrossReactions.Respond(husk, guard, open, 0.3f, 15f) == Response.Fight && CrossReactions.Respond(husk, worker, wary, 0.5f, 15f) == Response.Barricade && CrossReactions.Respond(husk, worker, open, 0.5f, 15f) == Response.Flee,

@@ -28,8 +28,19 @@ public struct SleeperMotion
 /// </summary>
 public static class CharacterModel
 {
-    /// <summary>The sleeper's proportions, as a person's: a grown man 1.8 m tall in a suit.</summary>
-    static readonly Lazy<Species> Sleeper = new(() =>
+    /// <summary>The sleeper as a person of the world: a grown man 1.8 m tall in the orange suit (its proportions here, its body when it lies dead, and whatever a Husk makes of it).</summary>
+    public static Species Sleeper => _sleeper.Value;
+
+    /// <summary>The sleeper's body left lying where it died, as wildlife keeps a body: the same person, the helmet on it or not as it was.</summary>
+    public static Species Corpse(bool helmet)
+    {
+        Species s = Sleeper.Copy();
+        s.Figure = Sleeper.Figure.Clone();
+        if (helmet) s.Figure.Wear.Add("suit_helmet");
+        return s;
+    }
+
+    static readonly Lazy<Species> _sleeper = new(() =>
     {
         var f = new Figure
         {
@@ -50,6 +61,9 @@ public static class CharacterModel
         s.Body.Legs = 2;
         s.Colors.Base = f.Skin;
         s.Colors.Accent = f.Cloth;
+        s.Stats.MaxHealth = 100f;
+        s.Stats.Radius = 0.35f;
+        s.Drops.Meat = (int)MathF.Round(f.Mass / 14f); // a body, to whatever eats the dead
         return s;
     });
 
@@ -70,7 +84,7 @@ public static class CharacterModel
     public static Node3D Build()
     {
         var root = new Node3D { Name = "Sleeper" };
-        Species sp = Sleeper.Value;
+        Species sp = Sleeper;
         Figure f = sp.Figure;
         var rig = new HumanRig(sp);
         var b = new Body { Rig = rig, Pieces = new Node3D[rig.Layout.Pieces.Count] };

@@ -102,7 +102,7 @@ public partial class PoiLayer : Node3D
         {
             var place = new Place { Site = site };
             _places.Add(place);
-            _building.Add(Task.Run(() => (place, Mesh(site))));
+            _building.Add(Task.Run(() => GalHack.Testing.AllocMeter.Measure("far places", () => (place, Mesh(site)))));
         }
     }
 

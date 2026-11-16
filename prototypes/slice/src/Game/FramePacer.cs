@@ -5,9 +5,10 @@ using Godot;
 namespace Slice.Game;
 
 /// <summary>
-/// Even frames. With vsync on and no frame cap asked for, a frame is drawn every whole number of the screen's
-/// refreshes: every refresh while a frame's work fits in one, else every second, third or fourth (a 240 Hz screen
-/// at 240, 120, 80 or 60 frames a second, never under 50). Frames that take one refresh and then two (a 240 Hz
+/// Even frames, at 60 a second on any screen (owner, 16 Nov: "It's fine if the game runs at a flat 60hz regardless of
+/// screen"). With vsync on and no frame cap asked for, a frame is drawn every whole number of the screen's refreshes, the
+/// most that still gives 60 (<see cref="Least"/>: every 4th at 240 Hz, 2nd at 120, every one at 60; on a screen 60 doesn't
+/// divide the next rate over it: 72 at 144 Hz, 82.5 at 165), and more only while a frame's work doesn't fit (never under 50). Frames that take one refresh and then two (a 240 Hz
 /// screen at 150 a second) stay up unevenly, and the picture judders however smoothly it moves.
 /// The pace is set by the work every frame must do: the main thread's (a frame with a physics tick in it, once the
 /// pace puts one in most frames) and the GPU's, without the waits. What can wait (the streamer's uploads) is given the
@@ -104,8 +105,9 @@ public partial class FramePacer : Node
         double must = P80(_cpu, _frames, window), gpu = P80(_gpu, _frames, window);
         double refresh = 1000.0 / hz;
         bool Fits(int n, double margin) => Math.Max(must + LeastRoom, gpu) <= n * refresh - margin;
-        int most = Math.Max(1, (int)(hz / 50.0));
-        int need = 1;
+        int least = Least(hz), most = Math.Max(least, (int)(hz / 50.0));
+        if (Refreshes < least) Set(least);
+        int need = least;
         while (need < most && !Fits(need, Margin)) need++;
         // Fewer frames once they have missed for a second (not for a hitch, which the frames queued for the screen take up); more
         // again once they have fitted with room to spare for three seconds: every change of pace is itself a jolt.
@@ -115,7 +117,7 @@ public partial class FramePacer : Node
             _missFor += delta;
             if (_missFor > 1.0) Set(need);
         }
-        else if (need < Refreshes && Fits(Refreshes - 1, Margin + 0.5))
+        else if (need < Refreshes && Refreshes - 1 >= least && Fits(Refreshes - 1, Margin + 0.5))
         {
             _missFor = 0;
             _fitFor += delta;
@@ -136,6 +138,9 @@ public partial class FramePacer : Node
     }
 
     int _capped = -1;
+
+    /// <summary>The most refreshes a frame that still makes 60 frames a second (a 59.94 Hz screen counts as 60).</summary>
+    public static int Least(double hz) => Math.Max(1, (int)(hz / 60.0 + 0.05));
 
     void Set(int refreshes)
     {

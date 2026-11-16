@@ -21,8 +21,9 @@ public sealed record Planet(string Name, float Gravity, float AtmosphereCeiling)
 /// <summary>
 /// Where a vessel is flying. <see cref="PlanetGravity"/> is always the planet's, because the
 /// lift margin is about taking off from it; <see cref="Gravity"/> is what actually pulls.
+/// <see cref="Above"/>: how far over the crossing of the body whose reach it is in, m.
 /// </summary>
-public readonly record struct FlightConditions(float PlanetGravity, bool InAtmosphere)
+public readonly record struct FlightConditions(float PlanetGravity, bool InAtmosphere, float Above = float.PositiveInfinity)
 {
     public float Gravity => InAtmosphere ? PlanetGravity : 0f;
 }
@@ -56,6 +57,16 @@ public sealed class HandlingStats
     public float TopSpeedAir { get; init; }
     public float TopSpeedSpace { get; init; }
     public bool InAtmosphere { get; init; }
+
+    /// <summary>How hard speed over the cap is taken off, m/s², and how the cap over a crossing rises from the air's to space's with height.</summary>
+    public float Brake { get; init; }
+
+    /// <summary>
+    /// The cap here, m/s: the air's under the crossing (whatever the air); over it, what braking at <see cref="Brake"/>
+    /// brings down to the air's by the crossing, up to space's. One rule for every craft over every body.
+    /// </summary>
+    public float TopAt(FlightConditions where) => where.InAtmosphere ? TopSpeedAir
+        : Mathf.Min(TopSpeedSpace, Mathf.Sqrt(TopSpeedAir * TopSpeedAir + 2f * Brake * Mathf.Max(0f, where.Above)));
 
     /// <summary>What holds it up, kN: hover lift on a hover vessel, upward thrust on anything else.</summary>
     public float UpwardThrust { get; init; }
@@ -145,9 +156,9 @@ public static class HandlingModel
         }
         if (s.HoverEngines.Count > 0) ride /= s.HoverEngines.Count;
 
-        // Top speeds and the turn cap come from what the structure is: its mass band, or Hover Mode's speeds.
+        // The turn cap by mass band; top speeds by mode (Flight or Hover), never by size or mass.
         Tunables.BandData band = t.Band(mass);
-        Tunables.SpeedData speeds = s.HoverMode ? t.Speeds.Hover : band;
+        Tunables.SpeedData speeds = s.HoverMode ? t.Speeds.Hover : t.Speeds.Flight;
         return new HandlingStats
         {
             IsHover = s.HoverMode,
@@ -160,6 +171,7 @@ public static class HandlingModel
             TopSpeedAir = speeds.TopSpeedAir,
             TopSpeedSpace = speeds.TopSpeedSpace,
             TopSpeed = where.InAtmosphere ? speeds.TopSpeedAir : speeds.TopSpeedSpace,
+            Brake = t.Speeds.Brake,
             InAtmosphere = where.InAtmosphere,
             // One mode lifts on plates, the other on thrusters: in Hover Mode thrusters only push the craft along.
             UpwardThrust = s.HoverMode ? hoverLift : thrust[(int)Direction.Up],

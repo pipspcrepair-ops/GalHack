@@ -150,6 +150,7 @@ public partial class PoiPlaces : Node3D
             Scan(focus);
         }
         if (_job != null) Work();
+        TakeDown();
         BurnFuses(delta);
     }
 
@@ -228,12 +229,13 @@ public partial class PoiPlaces : Node3D
     {
         Decor decor = Decor.Shared; // loaded on the main thread the first time
         PlaceFauna.Deep deep = Fauna;
-        return Task.Run(() =>
+        return Task.Run(() => GalHack.Testing.AllocMeter.Measure("place build", () =>
         {
+            GalHack.Testing.AllocMeter.Measure("  its instance", () => memory.Inst);
             Prepare(memory, decor, deep);
             BlockGrid g = memory.Inst.Blocks;
-            return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min));
-        });
+            return GalHack.Testing.AllocMeter.Measure("  its collision mesh", () => Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min)));
+        }));
     }
 
     void Begin(PoiSite site)
@@ -252,14 +254,21 @@ public partial class PoiPlaces : Node3D
     static void Prepare(PlaceMemory memory, Decor decor, PlaceFauna.Deep deep)
     {
         if (memory.Prepared) return;
-        memory.Rooms = decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>();
+        memory.Rooms = GalHack.Testing.AllocMeter.Measure("  its rooms' plans", () => decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>());
         // Every look its rooms are dressed with, as far as a worker can take it: on the main thread a piece is only handed over.
         if (decor?.Meshes is { } meshes)
             foreach (PlaceRoom room in memory.Rooms.Values)
-                foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
-        if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
-        memory.Fauna?.Populate(memory, deep);
-        memory.Town = Town.For(memory, deep?.Planet);
+                GalHack.Testing.AllocMeter.Measure("  its dressing's meshes", () =>
+                {
+                    foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
+                    room.Wires = Place.WiresOf(room, null);
+                });
+        GalHack.Testing.AllocMeter.Measure("  its creatures", () =>
+        {
+            if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
+            memory.Fauna?.Populate(memory, deep);
+        });
+        memory.Town = GalHack.Testing.AllocMeter.Measure("  its town", () => Town.For(memory, deep?.Planet));
         memory.Prepared = true;
     }
 
@@ -274,9 +283,10 @@ public partial class PoiPlaces : Node3D
         {
             var step = Stopwatch.StartNew();
             int collections = GC.CollectionCount(0);
-            string stage = j.Stage;
             bool more = Step(j);
             double ms = step.Elapsed.TotalMilliseconds;
+            // Named by where the step ended: a stage's first piece runs in the step that leaves the one before.
+            string stage = j.Stage;
             if (ms > 3.0) SlowSteps.Add((j.Place.Site.Name, stage, ms, GC.CollectionCount(0) > collections));
             // A garbage collection landing in a step is the runtime's, not the build's: counted apart.
             if (GC.CollectionCount(0) > collections) { frame.Restart(); continue; }
@@ -353,9 +363,52 @@ public partial class PoiPlaces : Node3D
         p.Memory.Town?.Sit(p);
         Standing.Remove(p);
         _placeOf.Remove(p.Site);
-        ShowFar(p.Site, true);
         p.GiveBack();
-        p.QueueFree();
+        // Taken down a piece a frame (TakeDown): freed whole, a city block's thousands of nodes were one frame's 100 ms and more.
+        // Its cubes go from sight now (the far drawing's are back), and nothing of it collides or runs from here.
+        p.Ready = false;
+        p.HideCubes();
+        p.ProcessMode = ProcessModeEnum.Disabled;
+        _goingDown.Add((p, 0, 0, 0));
+    }
+
+    readonly List<(Place Place, double Ms, int Pieces, double Worst)> _goingDown = new();
+    /// <summary>Places taken down: their main-thread ms in all, the pieces, the longest piece (checks read and clear it).</summary>
+    public static readonly List<(string Name, double Ms, int Pieces, double Worst)> TakenDown = new();
+
+    /// <summary>
+    /// Frees dropped places within the frame's loading allowance, a node at a time from the last child down (one holding many
+    /// is opened up first), so no frame frees more than a small subtree. A place's far dressing shows again once it is gone.
+    /// </summary>
+    void TakeDown()
+    {
+        if (_goingDown.Count == 0) return;
+        var clock = Stopwatch.StartNew();
+        double budget = Math.Max(PlanetSurface.Fx.LoadBudget.Left(1.0), 0.001);
+        while (_goingDown.Count > 0 && clock.Elapsed.TotalMilliseconds < budget)
+        {
+            var (p, ms, pieces, worst) = _goingDown[0];
+            double began = clock.Elapsed.TotalMilliseconds;
+            Node n = p;
+            while (n.GetChildCount() > 0 && n.GetChild(n.GetChildCount() - 1) is Node last && last.GetChildCount() > 16) n = last;
+            bool done = n == p && p.GetChildCount() == 0;
+            Node next = done ? p : n.GetChild(n.GetChildCount() - 1);
+            // A body holding a room's worth of shapes (as shape owners, not nodes) gives them up 16 at a time first.
+            var owners = next is CollisionObject3D body ? body.GetShapeOwners() : null;
+            if (owners is { Length: > 16 })
+            {
+                done = false;
+                for (int i = 0; i < 16; i++) ((CollisionObject3D)next).RemoveShapeOwner((uint)owners[owners.Length - 1 - i]);
+            }
+            else next.Free();
+            double step = clock.Elapsed.TotalMilliseconds - began;
+            (ms, pieces, worst) = (ms + step, pieces + 1, Math.Max(worst, step));
+            if (!done) { _goingDown[0] = (p, ms, pieces, worst); continue; }
+            _goingDown.RemoveAt(0);
+            TakenDown.Add((p.Site.Name, ms, pieces, worst));
+            if (!_placeOf.ContainsKey(p.Site)) ShowFar(p.Site, true);
+        }
+        PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
     }
 
     /// <summary>The far drawing's own dressing shown or hidden (its blocks give way cube by cube; its lamps, glows and smoke always stay).</summary>
