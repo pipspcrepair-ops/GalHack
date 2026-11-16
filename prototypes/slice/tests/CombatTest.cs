@@ -149,8 +149,8 @@ public partial class CombatTest : Node
         away = away.LengthSquared() > 1f ? away.Normalized() : outward;
         Species raider = patch.Life.People.Person((ulong)_rng.NextInt64(), PersonRole.Raider, Occupancy.Raider);
         raider.Figure.Prop = "rifle";
-        List<Creature> band = Staging.PutBand(patch.Sim, raider, patch.PatchLocal(Ground(post + away * 30f)), 3);
-        Check(band.Count > 0, $"a band of raiders put down 30 m out from the guard ({band.Count})");
+        List<Creature> band = Staging.PutBand(patch.Sim, raider, patch.PatchLocal(Ground(post + away * 20f)), 3); // (in reach of a fight from the guard, and of the town's look round from its edge)
+        Check(band.Count > 0, $"a band of raiders put down 20 m out from the guard ({band.Count})");
         if (band.Count == 0) { game.QueueFree(); yield break; }
         band[0].Herd.Party.Temper.Stance = Stance.Hostile;
         // (They stay about where they were put: a new herd's first update counts its time from long ago, so its timer is long.)
