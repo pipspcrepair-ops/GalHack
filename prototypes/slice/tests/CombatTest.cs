@@ -10,6 +10,7 @@ using PoiGenerator.Gen;
 using Slice.Arms;
 using Slice.Game;
 using Slice.Places;
+using Slice.Surface;
 using Wildlife;
 
 namespace Slice.Tests;
@@ -25,6 +26,7 @@ namespace Slice.Tests;
 ///   burst is aimed first; one killed leaves their weapon and its ammo in a body to search.
 /// - Out in the wild: a raider with a rifle shoots from its muzzle and drops the rifle; a band set on
 ///   rallies as one; a machine fires its mount; a club strikes for the club's damage.
+/// - A town's edge: raiders who come near draw fire from its guards, the sleeper of no account to either.
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/CombatTest.tscn
 /// </summary>
@@ -90,6 +92,74 @@ public partial class CombatTest : Node
         Rows(game.Zone.Data.Arms, game.Zone.Data.Items);
         foreach (int x in Gang(game, drive, world)) yield return x;
         foreach (int x in Wild(game, drive)) yield return x;
+        game.QueueFree();
+        yield return 0;
+        foreach (int x in TownEdge()) yield return x;
+    }
+
+    /// <summary>
+    /// Raiders at a town's edge (the owner, 16 Nov 2026, of people: "they should attack people as well"): a
+    /// band of armed raiders put down outside a survivor town near one of its guards, the sleeper off to one
+    /// side and of no account to either. The guards fire on them with their own weapons (the aim and shots
+    /// they'd use on you), and none of it is at you.
+    /// </summary>
+    IEnumerable<int> TownEdge()
+    {
+        PlanetSurface.Poi.PoiSiting.ForceFamily = "survivor_town";
+        WorldChoice world = WorldChoice.Fresh("temperate");
+        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
+        AddChild(game);
+        var drive = new Driver(game);
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        PlanetSurface.Poi.PoiSiting.ForceFamily = null;
+        GD.Print($"-- raiders at a town's edge, {world} --");
+        game.Zone.Weather.Bridge.Calm = true;
+        double max = game.Suit.Sim.Data.Vitals.Health.Max;
+        var site = game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "survivor_town" && s.Instance?.Townsfolk != null);
+        if (site == null) { Check(false, "a survivor town stands on this world"); game.QueueFree(); yield break; }
+        if (site.Instance.Mood == Mood.Hostile)
+        {
+            site.Instance.Mood = Mood.Wary;
+            GD.Print("  (TEST: this town was rolled hostile to you: set wary, so its guards have only the raiders to deal with)");
+        }
+        Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * 0.3f;
+        Vector3 gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet);
+        Int3 f = site.Instance.Layout.EntranceFacing.Vec();
+        Vector3 outward = new Vector3(f.X, 0f, f.Z).LengthSquared() > 0.1f ? new Vector3(f.X, 0f, f.Z).Normalized() : Vector3.Right, side = outward.Cross(Vector3.Up);
+        game.Survivor.PlaceOutside(Ground(gate + outward * 24f + side * 18f).ToNumerics());
+        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        Town town = game.Places.PlaceOf(site)?.Memory.Town;
+        WildlifePatch patch = game.Zone.Wildlife;
+        // A long move swaps the patch's sim: wait for the one round you now to settle.
+        for (int i = 0, same = 0; i < 60 * 20 && same < 180; i++)
+        {
+            WildSim was = patch.Sim;
+            game.Suit.Vitals.Health = max;
+            yield return 0;
+            same = patch.Sim == was ? same + 1 : 0;
+        }
+        if (town?.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
+        for (int i = 0; i < 600 && town != null && !town.People.Any(Out); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Ranged(q.Figure.Prop);
+        Town.Person guard = town?.People.Where(Out).OrderBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
+        Check(guard != null, $"the town stands with an armed guard out ({town?.People.Count(q => q.Role == "guard")} guards, {town?.People.Count} people)");
+        if (guard == null) { game.QueueFree(); yield break; }
+        Vector3 post = patch.FromPatch(guard.Position), middle = town.World(new Vector3(town.Data.AreaCenter.X, 0f, town.Data.AreaCenter.Z));
+        Vector3 away = new Vector3(post.X - middle.X, 0f, post.Z - middle.Z);
+        away = away.LengthSquared() > 1f ? away.Normalized() : outward;
+        Species raider = patch.Life.People.Person((ulong)_rng.NextInt64(), PersonRole.Raider, Occupancy.Raider);
+        raider.Figure.Prop = "rifle";
+        List<Creature> band = patch.Sim.SpawnGroup(raider, patch.PatchLocal(Ground(post + away * 30f)), 3);
+        Check(band.Count > 0, $"a band of raiders put down 30 m out from the guard ({band.Count})");
+        if (band.Count == 0) { game.QueueFree(); yield break; }
+        band[0].Herd.Party.Temper.Stance = Stance.Hostile;
+        int guardShots = 0, shotsAtYou = town.GuardShots, bandShots = game.Arms.People.Shots;
+        Mood mood = town.Memory.Mood;
+        town.ShotFired += (who, _, _, _, _) => { if (who.Role == "guard") guardShots++; };
+        for (int i = 0; i < 60 * 40 && guardShots < 3; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        GD.Print($"  (the raiders: {string.Join(", ", band.Select(c => $"{c.State} {(c.Dead ? "down" : $"{c.Health:F0}")} {(patch.FromPatch(c.Position) - post).Length():F0} m"))}; {game.Arms.People.Shots - bandShots} shots of theirs; the town fought {town.Fought}, {town.Shots} shots)");
+        Check(guardShots > 0, $"raiders near a town draw fire from its guards: {guardShots} rounds from them in {(guardShots > 0 ? "under " : "")}40 s");
+        Check(town.GuardShots == shotsAtYou && town.Memory.Mood == mood, $"none of it at you, and the town still {town.Memory.Mood} with you ({town.GuardShots - shotsAtYou} at you)");
         game.QueueFree();
         yield return 0;
     }

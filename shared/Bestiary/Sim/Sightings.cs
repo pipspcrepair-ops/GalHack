@@ -19,6 +19,9 @@ public sealed class Sightings
 
     static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
 
+    /// <summary>Off, nobody sees anyone: the cells stay empty (measurements of what looking round costs).</summary>
+    public static bool On = true;
+
     /// <summary>Whether people take note of it: one of a band, or something that could kill them.</summary>
     public static bool Matters(Creature c) => c.Herd?.Party != null || c.Species.Husk || CrossReactions.Danger(c.Species);
 
@@ -26,6 +29,7 @@ public sealed class Sightings
     {
         foreach (List<Creature> list in _cells.Values) { list.Clear(); _spare.Push(list); }
         _cells.Clear();
+        if (!On) return;
         foreach (Creature c in w.Creatures)
         {
             if (c.Dead || c.Removed || c.InWalls || c.Space != null || !Matters(c)) continue;

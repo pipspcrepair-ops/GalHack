@@ -89,6 +89,12 @@ public partial class PlacePerf : Node
             return;
         }
         JoltWatch.Install();
+        // --minspec=1: the minimum spec's stand-in for the CPU (4 cores, one thread each: logical CPUs 0, 2, 4 and 6; workers sized for 4).
+        if (_args.ContainsKey("minspec"))
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
+        }
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
@@ -121,7 +127,7 @@ public partial class PlacePerf : Node
     IEnumerable<int> Runs()
     {
         GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}");
-        foreach (int x in _args.ContainsKey("standing") ? Standing() : Scenario()) yield return x;
+        foreach (int x in _args.ContainsKey("bands") ? BandScene() : _args.ContainsKey("standing") ? Standing() : Scenario()) yield return x;
         if (_args.ContainsKey("compare-force") && _flyTo != Vector3.Zero)
         {
             // The same world without the forced place, over the same routes.
@@ -226,6 +232,18 @@ public partial class PlacePerf : Node
         Begin();
         while (_times.Count < frames) yield return 0;
         End(stage);
+        // --reactions=ab: the same frame again with nobody looking round for others (Sightings off), then on again: what people's reactions to each other cost.
+        if (_args.GetValueOrDefault("reactions") == "ab" && !stage.StartsWith("far") && stage != "start")
+        {
+            foreach (bool on in new[] { false, true })
+            {
+                Wildlife.Sightings.On = on;
+                foreach (int x in _drive.Wait(30)) yield return x;
+                Begin();
+                while (_times.Count < frames) yield return 0;
+                End($"{stage} reactions {(on ? "on" : "off")}");
+            }
+        }
         // --ab: the same frame again with places' surfaces left as plain colour, then back: their cost, on one world.
         if (!_args.ContainsKey("ab") || stage.EndsWith(" plain") || stage.StartsWith("far") || stage == "start") yield break;
         PoiGenerator.BlockMaterials.Detail(false);

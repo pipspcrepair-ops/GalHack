@@ -17,6 +17,8 @@ public static partial class Brain
     const float CoverRun = 4f;
     /// <summary>How far a band sees others in the open by day (half by night), m; how often it looks round, s; below this share of health a body runs on its own; within this the brave stand against what the band runs from, m.</summary>
     const float SeeFar = 60f, ScanEvery = 0.5f, HurtRun = 0.3f, StandIn = 25f;
+    /// <summary>How far round a danger a band's way steps at a time, radians.</summary>
+    const float RoundStep = 0.8f;
     static readonly float AimCone = MathF.Cos(Mathf.DegToRad(7f));
 
     /// <summary>
@@ -321,33 +323,37 @@ public static partial class Brain
 
     /// <summary>
     /// Keeping away from a danger they've seen: while the way they mean to go would take them within their
-    /// berth of it, it bends round it, a berth out on the side they're already on; inside it, they make off
-    /// from it at a walk. Clear of it, they go on where they were going.
+    /// berth of it, they go round it instead, a step at a time round a ring a little wider than the berth,
+    /// on the side they're already on (inside it, outward and round at once). Where they were going is too
+    /// near it: they go only as near as the berth. Clear of it, they go on where they were going.
     /// </summary>
     static void Bend(WildSim w, Herd h, Party b, Vector3 danger, float berth)
     {
         Vector3 bound = b.Bending && h.Goal == b.BentTo ? b.Bound : h.Goal; // (the herd picks a new goal now and then)
-        Vector3 off = WildSim.Flat(danger - h.Center), way = WildSim.Flat(bound - h.Center);
+        Vector3 off = WildSim.Flat(h.Center - danger), to = WildSim.Flat(bound - danger), way = to - off;
         float d = off.Length(), len = way.Length();
-        Vector3 to;
-        if (d < berth) to = h.Center - off / MathF.Max(d, 0.1f) * (berth - d + 8f);
+        // The nearest the way comes to it.
+        float along = len > 0.5f ? Math.Clamp(-off.Dot(way) / len, 0f, len) : 0f;
+        if ((off + (len > 0.5f ? way / len * along : Vector3.Zero)).Length() >= berth)
+        {
+            if (b.Bending) h.Goal = bound;
+            b.Bending = false;
+            return;
+        }
+        float ring = berth + 4f;
+        Vector3 at;
+        if (to.Length() < berth) at = (to.LengthSquared() > 0.01f ? to.Normalized() : off / MathF.Max(d, 0.1f)) * ring;
         else
         {
-            Vector3 dir = len > 0.5f ? way / len : Vector3.Zero;
-            float along = off.Dot(dir);
-            Vector3 across = off - dir * along;
-            if (len <= 0.5f || along <= 0f || along > len + berth || across.Length() >= berth && WildSim.Flat(bound - danger).Length() >= berth)
-            {
-                if (b.Bending) h.Goal = bound;
-                b.Bending = false;
-                return;
-            }
-            Vector3 side = across.LengthSquared() > 0.01f ? -across.Normalized() : new Vector3(-dir.Z, 0f, dir.X);
-            to = danger + side * (berth + 4f);
+            // A step round from where they are, toward where they're going, whichever way round is shorter.
+            Vector3 radial = d > 0.1f ? off / d : Vector3.Right, toward = to.Normalized();
+            float step = MathF.Min(RoundStep, MathF.Acos(Math.Clamp(radial.Dot(toward), -1f, 1f)));
+            Vector3 left = radial.Rotated(Vector3.Up, step), right = radial.Rotated(Vector3.Up, -step);
+            at = (left.Dot(toward) >= right.Dot(toward) ? left : right) * ring;
         }
         b.Bound = bound;
         b.Bending = true;
-        h.Goal = b.BentTo = w.Terrain.Clamp(to, 20f);
+        h.Goal = b.BentTo = w.Terrain.Clamp(danger + at, 20f);
     }
 
     static bool AimedAtAny(Herd h, ITarget t, float reach)
