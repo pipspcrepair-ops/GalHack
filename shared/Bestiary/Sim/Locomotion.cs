@@ -257,8 +257,7 @@ public static class Locomotion
         else p.Y = ground;
         c.Velocity = (c.LungeTo - c.LungeFrom) / MathF.Max(0.01f, c.PhaseLength);
         // A lunge into a wall, a trunk or a rock stops there.
-        if (!c.Species.Flies && (Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species)
-                                 || IntoObstacles(w, c, p) > 0.01f && IntoObstacles(w, c, p) > IntoObstacles(w, c, c.Position)))
+        if (!c.Species.Flies && Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species) || IntoTrees(w, c, p))
         {
             c.LungeFrom = c.LungeTo = c.Position; // held where it met it, not drawn back along the way it came
             c.LungeBlocked = true;
@@ -341,7 +340,7 @@ public static class Locomotion
                 if (!c.Species.Flies && c.Hop == HopPhase.Ground) moved.Y = w.Terrain.Height(moved.X, moved.Z);
                 // Never shoved into a wall, a trunk or a rock.
                 if (Interpenetration.SolidSurface(w, moved, c.Species) && !c.Species.Flies) continue;
-                if (!c.Species.Flies && IntoObstacles(w, c, moved) > MathF.Max(0.01f, IntoObstacles(w, c, c.Position))) continue;
+                if (IntoTrees(w, c, moved)) continue;
             }
             float closing = c.Velocity.Dot(push);
             if (closing < 0f) c.Velocity -= push * closing;
@@ -361,6 +360,10 @@ public static class Locomotion
             if (o.Active) worst = MathF.Max(worst, o.Radius + r - WildSim.Flat(p - o.Position).Length());
         return worst;
     }
+
+    /// <summary>Whether a walker moved to p would be further into a trunk or a rock than it is now (a lunge, a shove or a jostle that may not happen).</summary>
+    public static bool IntoTrees(WildSim w, Creature c, Vector3 p) =>
+        !c.Species.Flies && IntoObstacles(w, c, p) > MathF.Max(0.01f, IntoObstacles(w, c, c.Position));
 
     /// <summary>
     /// Push out of rocks and trunks, and stop pushing into them: it slides round them. Squeezed between two closer
