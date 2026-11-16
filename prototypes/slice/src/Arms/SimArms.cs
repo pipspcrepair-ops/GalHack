@@ -90,7 +90,7 @@ public sealed class SimArms
         Kit k = KitOf(c);
         if (k == null || k.Clip.Strike || k.Clip.Spent) return 0f;
         Vector3 at = WorldOf(c, out Vector3 origin);
-        Vector3 aim = t.Position + origin + Vector3.Up * 1.1f;
+        Vector3 aim = t.Position + origin + Vector3.Up * Arming.Chest(t);
         float range = k.Clip.Range;
         if ((aim - at).Length() > range) return 0f;
         // A clear line from where its gun is (looked at a few times a second, not every think).
@@ -152,7 +152,7 @@ public sealed class SimArms
             if (c.Dead || c.Removed || k.Pending <= 0 || k.Target == null || !k.Target.Attackable) { k.Pending = 0; _firing.RemoveAt(i); continue; }
             if ((k.Next -= dt) > 0f) continue;
             // Not until the weapon is on them: the round leaves along the barrel (or the arrow's line).
-            Vector3 mark = k.Target.Position + Vector3.Up * 1.15f;
+            Vector3 mark = k.Target.Position + Vector3.Up * Arming.Chest(k.Target);
             float off = c.Rig is HumanRig hr ? hr.AimError(mark) : 0f;
             if (off > HumanRig.OnMark)
             {

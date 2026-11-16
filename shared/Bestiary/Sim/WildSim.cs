@@ -40,6 +40,8 @@ public sealed class WildSim
     public readonly List<Herd> Herds = new();
     public readonly List<Pack> Packs = new();
     public readonly List<ITarget> Targets = new();
+    /// <summary>The dangerous and the people of every band, by ground cell: what bands and towns look round for.</summary>
+    public readonly Sightings Sightings = new();
     /// <summary>Player structures on the surface. Bases (core in base mode) keep spawns away; see <see cref="SpawnRules"/>.</summary>
     public readonly List<Structure> Structures = new();
 
@@ -637,6 +639,7 @@ public sealed class WildSim
         if (Masses.Count > 0) WormMasses.Step(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
         if (Frame % 15 == 7) Wrongness.Refresh(this);
+        if (Frame % 15 == 3) Sightings.Refresh(this);
         // Now and then, anything that has ended up inside a wall or a floor is put back in the open.
         if (Time >= _scanAt)
         {
@@ -746,6 +749,7 @@ public sealed class WildSim
         foreach (Creature o in Creatures)
         {
             if (o == c || o.Dead || o.Removed || !Arming.Fights(o.Species) || Arming.Friendly(o.Species) != friendly) continue;
+            if (source is CreatureTarget { Creature.Herd: { } theirs } && o.Herd == theirs) continue; // (nobody turns on their own)
             float d = (o.Position - c.Position).Length();
             if (d > Arming.RallyRadius) continue;
             if (o.ProvokedBy == source && Time - o.ProvokedAt < 4f) continue;

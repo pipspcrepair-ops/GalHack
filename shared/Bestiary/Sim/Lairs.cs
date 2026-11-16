@@ -96,7 +96,8 @@ public struct TellEvent
 
 /// <summary>
 /// A creature as something another creature hunts: a place's predators take its subsisters
-/// through the same telegraphed attacks they use on players.
+/// through the same telegraphed attacks they use on players; one band of people fights another
+/// through the same aim, cover and shots. A person's gun raised reads as drawn, as yours does.
 /// </summary>
 public sealed class CreatureTarget : ITarget
 {
@@ -122,4 +123,5 @@ public sealed class CreatureTarget : ITarget
     }
     public bool Attackable => Creature.Alive && !Creature.Removed && !Creature.InWalls;
     public float ThreatScale => 1f;
+    public bool Drawn => Creature.WantAim > 0.5f && Weapons.Ranged(Creature.Species.Figure?.Prop ?? "");
 }

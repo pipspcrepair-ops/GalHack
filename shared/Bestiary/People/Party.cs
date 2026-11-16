@@ -53,17 +53,37 @@ public sealed class Party
     public float HeardAt, HoldUntil = -999f, BackUntil = -999f, LookUntil = -999f;
     public Vector3 HeardFrom, LookAt;
     public float UpdatedAt = -999f;
-    /// <summary>Tests: members who took in an event after their leader had, and before.</summary>
+    /// <summary>Who they are (the kind they were drawn from: their own people pass each other), and whether there is a raider among them.</summary>
+    public Species Kind;
+    public bool Raids;
+    /// <summary>
+    /// What they made of the open round them at their last look (twice a second, <see cref="Sightings"/>): the nearest
+    /// danger they can see (a predator, a Husk, a feral, people who'd do them harm) and the nearest people of another band;
+    /// when they look next.
+    /// </summary>
+    public ITarget Threat, Stranger;
+    public float ScanAt;
+    /// <summary>Their way bent round a danger: to where (the herd's goal for now), and where they were going before it.</summary>
+    public bool Bending;
+    public Vector3 BentTo, Bound;
+    /// <summary>Tests: members who took in an event after their leader had, and before.</summary> who took in an event after their leader had, and before.</summary>
     public int AfterLeader, BeforeLeader;
 
     public Leaning Leaning => Temper.LeaningOf(Stance);
+    /// <summary>How they take outsiders by their own temper, unmoved by your standing: what other groups go by.</summary>
+    public Leaning Nature => Temper.LeaningOf(Temper.Stance);
+
+    /// <summary>How this band takes another (<see cref="CrossReactions.Regard"/>); their own kind always pass.</summary>
+    public Leaning Toward(Party them) => them.Kind == Kind ? Leaning.Friendly : CrossReactions.Regard(Nature, Raids, them.Nature, them.Raids);
 
     /// <summary>A band's temper, from who they are (their world's tech and collapse, and their own makeup) and its own seed.</summary>
     public static Party Roll(Species s, ulong seed)
     {
         float lean = Lean(s, out float caution);
         Temper t = Temper.Roll(s.Tech, s.Collapse, seed, lean, caution);
-        return new Party { Temper = t, Stance = t.Stance };
+        bool raids = false;
+        foreach (Species b in s.Hosts ?? new System.Collections.Generic.List<Species> { s }) raids |= b.Figure?.Occupancy == Occupancy.Raider;
+        return new Party { Temper = t, Stance = t.Stance, Kind = s, Raids = raids, ScanAt = (float)(seed % 500) / 1000f };
     }
 
     /// <summary>
