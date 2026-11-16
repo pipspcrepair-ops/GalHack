@@ -260,7 +260,8 @@ public static class Locomotion
         if (!c.Species.Flies && (Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species)
                                  || IntoObstacles(w, c, p) > 0.01f && IntoObstacles(w, c, p) > IntoObstacles(w, c, c.Position)))
         {
-            c.LungeTo = c.Position;
+            c.LungeFrom = c.LungeTo = c.Position; // held where it met it, not drawn back along the way it came
+            c.LungeBlocked = true;
             c.Velocity = Vector3.Zero;
             return;
         }

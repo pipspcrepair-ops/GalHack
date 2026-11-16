@@ -137,6 +137,8 @@ public sealed class Creature
     public bool FirstAttack, Committed;
     public ITarget AttackTarget;
     public Vector3 AimPoint, LungeFrom, LungeTo;
+    /// <summary>A lunge or charge that met a wall, a trunk or a rock on the way, and stopped there.</summary>
+    public bool LungeBlocked;
     /// <summary>From its middle to the tip of its jaws, standing (see <see cref="Attacks.Jaws"/>); 0 until measured.</summary>
     public float JawsAtRest;
     /// <summary>Where its jaws end up when the lunge lands.</summary>

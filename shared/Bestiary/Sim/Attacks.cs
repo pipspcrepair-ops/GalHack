@@ -231,7 +231,7 @@ public static class Attacks
                 else if (c.Move is AttackMove.Bite or AttackMove.Charge && (c.LungeTo - c.LungeFrom).Dot(t.Position - c.Position) > 0f && Strikes.Bumped(c, t))
                     c.LungeFrom = c.LungeTo = c.Position; // its body met them first: it stops there (nothing passes through anyone), and its head still comes on
                 if (c.Phase != AttackPhase.Lunge || c.Space != null || c.Species.Rig == RigKind.Swarm) break;
-                if (c.Move == AttackMove.Charge && c.PhaseTime < c.PhaseLength * 0.9f && c.LungeTo == c.Position && c.LungeFrom != c.LungeTo && c.PhaseTime > 0.05f)
+                if (c.Move == AttackMove.Charge && c.LungeBlocked)
                 {
                     // Ran into something solid: it stops hard and stands dazed.
                     Strikes.Quake(w, c, c.Position, false, false);
@@ -352,6 +352,7 @@ public static class Attacks
         c.Rear = 0f;
         c.Brace = 0f;
         c.LungeFrom = c.LungeTo = c.Position;
+        c.LungeBlocked = false;
         c.StrikeSteps = c.Rig.Steps;
         // Where on the victim the striking part goes: the nearest of their body to it (a giant's head comes down to the chest, a small hunter's goes for the legs).
         Vector4 part = c.Rig.Striker(c);
