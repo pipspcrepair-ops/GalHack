@@ -17,6 +17,8 @@ namespace Slice.Tests;
 /// <summary>
 /// After the sleeper dies, and the one bag (owner, 16 Nov), on a fresh world every run:
 ///
+/// 0. A gang kills the sleeper in its place: within 5 s every one of them is out of the fight, and none
+///    fires again.
 /// 1. A band of raiders kills the sleeper out in the open. Every one of them is out of the fight within
 ///    5 s; nothing attacks the sleeper or the body for a minute; the band goes back to its day and one of
 ///    them walks over and rummages at the body and its bag, which holds just what it did (everything the
@@ -87,23 +89,64 @@ public partial class AftermathTest : Node
 
     IEnumerable<int> Scenario()
     {
+        // A gang's place on the world (as CombatTest seats one), to be killed in.
+        PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
+        PlanetSurface.Poi.PoiSiting.ForceState = PoiGenerator.Gen.PoiState.Abandoned;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = new PoiGenerator.Gen.OccupancyRoll(PoiGenerator.Gen.Occupant.Gang);
         WorldChoice world = WorldChoice.Fresh("temperate");
         GD.Print($"-- {world} --");
         _game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(_game);
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;
+        PlanetSurface.Poi.PoiSiting.ForceFamily = null;
+        PlanetSurface.Poi.PoiSiting.ForceState = null;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = null;
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Sky.TimeOfDay = 0.42;
         _max = _game.Suit.Sim.Data.Vitals.Health.Max;
         _game.Zone.Loot.Landed += l => { if (!_bags.Contains(l)) _bags.Add(l); };
+        foreach (int x in Gang()) yield return x;
         foreach (int x in Band()) yield return x;
         foreach (int x in Toss()) yield return x;
         foreach (int x in Husk()) yield return x;
         Rests();
         _game.QueueFree();
         yield return 0;
+    }
+
+    // ---- 0: killed by a gang in its place ---------------------------------------------------------
+
+    /// <summary>A gang's place, its fighters on the sleeper: killed, every one of them stands down within 5 s and none fires again.</summary>
+    IEnumerable<int> Gang()
+    {
+        GD.Print("-- killed by a gang in its place: every one of them stands down --");
+        var site = _game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "sewage_works" && s.Instance.Occupancy?.Main == PoiGenerator.Gen.Occupant.Gang);
+        if (site?.Instance.Townsfolk == null) { GD.Print("  (no gang's works could be seated on this world)"); yield break; }
+        var cell = site.Instance.Townsfolk.Spots.First().Cell;
+        Vector3 camp = _game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X + cell.X + 0.5f, site.Origin.Y + cell.Y, site.Origin.Z + cell.Z + 0.5f), _game.Survivor.WorldFeet);
+        _game.Survivor.PlaceOutside(camp.ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
+        for (int i = 0; i < 3600 && _game.Places.PlaceOf(site) is not { Ready: true }; i++) { TopUp(); yield return 0; }
+        Slice.Places.Town town = _game.Places.PlaceOf(site)?.Memory.Town;
+        if (town == null) { Check(false, "the gang's place stands with its people"); yield break; }
+        for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null && !p.Indoors && !p.Away); i++) { TopUp(); yield return 0; }
+        int shots = 0;
+        town.ShotFired += (_, _, _, _, _) => shots++;
+        town.Provoked();
+        for (int i = 0; i < 60 * 40 && !(town.People.Count(p => p.Engaged && !p.Dead) >= 2 && shots >= 2); i++) { TopUp(); yield return 0; }
+        var fighting = town.People.Where(p => p.Engaged && !p.Dead).ToList();
+        Check(fighting.Count >= 1, $"the gang is on the sleeper ({fighting.Count} in the fight, {shots} shots and blows)");
+        if (fighting.Count == 0) yield break;
+        _game.Suit.Hit(_max * 3.0, DamageKind.Hit);
+        for (int i = 0; i < 5 * 60; i++) yield return 0;
+        var still = town.People.Where(p => p.Engaged || p.Holding).ToList();
+        Check(_game.Suit.Dead && still.Count == 0, $"killed, every one of them stands down within 5 s ({string.Join(", ", still.Select(p => $"{p.Job} {p.Part}"))})");
+        int after = shots;
+        for (int i = 0; i < 40 * 60 && !town.People.Any(p => p.Engaged); i++) yield return 0;
+        Check(shots == after && !town.People.Any(p => p.Engaged), $"and none fires on the body or takes it up again ({shots - after} shots after)");
+        foreach (int x in _drive.Tap(Key.R)) yield return x;
+        for (int i = 0; i < 120; i++) yield return 0;
     }
 
     // ---- 1 to 3: killed by a band -----------------------------------------------------------------
