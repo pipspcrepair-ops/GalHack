@@ -386,15 +386,15 @@ public partial class PoiPlaces
     /// <summary>The town whose ground a world point is on, out to a reach beyond its edge (the people met on its roads are its own), if any place standing has people.</summary>
     public Town TownHolding(Vector3 world, float reach) => Standing.Select(p => p.Memory.Town).Where(t => t != null && t.Beyond(world) < reach).OrderBy(t => t.Beyond(world)).FirstOrDefault();
 
-    /// <summary>The townsperson nearest along a ray, in any standing place.</summary>
-    public Town.Person PersonAlong(Vector3 eye, Vector3 dir, float reach, out float distance)
+    /// <summary>The townsperson nearest along a ray, in any standing place (with <paramref name="dead"/>, the body).</summary>
+    public Town.Person PersonAlong(Vector3 eye, Vector3 dir, float reach, out float distance, bool dead = false)
     {
         distance = reach;
         Town.Person best = null;
         foreach (Place p in Standing)
         {
             if (p.Memory.Town is not Town t) continue;
-            Town.Person q = t.Along(eye, dir, distance, out float d);
+            Town.Person q = t.Along(eye, dir, distance, out float d, dead);
             if (q == null) continue;
             best = q;
             distance = d;

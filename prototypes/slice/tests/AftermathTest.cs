@@ -233,15 +233,16 @@ public partial class AftermathTest : Node
         Check(rummaged && sim.Rummages > 0, $"one of them goes to the body and its bag and rummages ({sim.Rummages} rummages, nearest {nearest:F1} m)");
         Check(same && bag.Storage.Contents.Equals(expect), $"and takes nothing: the bag is as it was ({Describe(bag.Storage.Contents)})");
 
-        // 2. One of them killed: their bag drops from them, their rifle and rounds in it.
+        // 2. They're killed: their goods stay on their bodies, their rifle and rounds with them (owner).
         Creature one = band.Members.First(m => m.Alive);
-        int bags = _game.PeopleBags;
-        foreach (Creature m in band.Members.Where(m => m.Alive).ToList()) sim.Damage(m, 9999f, null);
+        var killed = band.Members.Where(m => m.Alive).ToList();
+        foreach (Creature m in killed) sim.Damage(m, 9999f, null);
         for (int i = 0; i < 90; i++) yield return 0;
         Lootable theirs = _game.Zone.Loot.All.FirstOrDefault(l => l.Owner == one);
-        Check(_game.PeopleBags >= bags + 3 && theirs is { Kind: LootKind.Bag, Flying: null } && theirs.Storage.Count("line-rifle") == 1,
-            $"a person killed drops a bag of their goods ({Describe(theirs?.Storage.Contents)}), resting {(theirs?.Flying == null ? "on the ground" : "in the air")}");
-        Check(_game.Zone.Loot.All.All(l => l.Creature == null || !band.Members.Contains(l.Creature)), "and their bodies are no containers: the bag is what's searched");
+        int bodies = killed.Count(m => _game.Zone.Loot.All.Any(l => l.Kind == LootKind.Corpse && l.Creature == m));
+        Check(bodies == killed.Count && theirs is { Kind: LootKind.Corpse } && theirs.Storage.Count("line-rifle") == 1,
+            $"a person killed keeps their goods on the body, searched there ({bodies} of {killed.Count} bodies; {Describe(theirs?.Storage.Contents)})");
+        Check(!_game.Zone.Loot.All.Any(l => l.Kind == LootKind.Bag && l.Owner is Creature o && killed.Contains(o)), "and no bag drops beside them");
 
         // 3. A hungry predator near the body eats it.
         // (A predator if the world has one that walks, else a scavenger: both eat what they find.)

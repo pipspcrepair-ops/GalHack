@@ -22,11 +22,11 @@ using Layers = GalHack.Physics.Layers;
 
 namespace Slice.Player;
 
-/// <summary>The Sleeper tool's two modes (Q switches): attack/gather (blue) and repair (green).</summary>
+/// <summary>The Sleeper tool's two modes (Q switches): gather (blue) and repair (green).</summary>
 public enum ToolMode { Gather, Repair }
 
 /// <summary>
-/// The Sleeper tool, an item on the toolbar (design: the Sleeper tool). Attack/gather is one mode:
+/// The Sleeper tool, an item on the toolbar (design: the Sleeper tool). Gather is one mode:
 /// every pulse is a short blast of lightning from the barrel tip, with a crackle, a thunderclap, a
 /// flash that lights the surroundings and a kick. What it meets decides what it does (the shot
 /// pipeline's own hit test, <see cref="Slice.Arms.ArmsHost.Sweep"/>): a person gets a short arc that
@@ -62,7 +62,7 @@ public sealed class SleeperTool
     /// <summary>Every bolt the tool throws, on the tick it is drawn: a sharper jolt on top of the tool's shake (a gathering pulse's lighter, by this share of a blast's).</summary>
     public event Action<float> Shook;
 
-    /// <summary>Fire held in attack/gather on the last tick: the tool shakes in the hand all the while.</summary>
+    /// <summary>Fire held in gather on the last tick: the tool shakes in the hand all the while.</summary>
     public bool Firing { get; private set; }
 
     /// <summary>The held tool's barrel tip in the world, when the hands show it (set by <see cref="Hands"/>); null otherwise.</summary>
@@ -448,7 +448,7 @@ public sealed class SleeperTool
         else
         {
             _suit.Kit.Organics += _yields.OrganicsPerPlant * size * scaleUp * share;
-            Earn("biomass", Math.Max(1.0, Math.Round(_yields.BiomassPerPlant * size)) * scaleUp * share, got);
+            Earn(Biomass, Math.Max(1.0, Math.Round(_yields.BiomassPerPlant * size)) * scaleUp * share, got);
         }
         Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, species == null ? 2.2f * size + 1f : species.Height * scale * 0.5f) : 0.6f * size);
         Color leaf = TreeFx.LeafOf(kind, species);
@@ -478,7 +478,7 @@ public sealed class SleeperTool
     /// <summary>The plating gun's beam from the barrel tip to the block it plates (call each frame it works).</summary>
     public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle, to);
 
-    // ---- Attack/gather: the blast ----------------------------------------------------------------
+    // ---- Gather: the blast -----------------------------------------------------------------------
 
     /// <summary>Where the blast leaves the tool: the held tool's barrel tip, else low and to the right of the eye, out along the look.</summary>
     public Vector3 Muzzle()
@@ -510,7 +510,7 @@ public sealed class SleeperTool
         {
             // A Husk's face against yours can't be missed: straight into it, at the head. Enough and it lets go.
             Vector3 face = _zone.Wildlife.WorldOf(husk) + Vector3.Up * husk.Species.Figure.Height * 0.88f;
-            _zone.Wildlife.Damage(husk, damage * 1.5f);
+            Hurt(husk, damage * 1.5f);
             SeizerHit?.Invoke(husk);
             CreatureHit?.Invoke(husk);
             CreatureStruck?.Invoke(husk, face, (face - eye).Normalized());
@@ -520,6 +520,7 @@ public sealed class SleeperTool
         ShotHit hit = default;
         bool met = Arms != null && Arms.Sweep(eye.ToNumerics(), (eye + dir * Bolt.Range).ToNumerics(), Slice.Arms.ArmsHost.PlayerThing, 0, 0f, out hit);
         Vector3 at = met ? hit.Point.ToGodot() : eye + dir * Bolt.Range;
+        if (Harvest(eye, dir, met ? hit.Distance : Bolt.Range)) return;
         switch (met ? hit.Kind : HitKind.Ground)
         {
             case HitKind.Person:
@@ -530,7 +531,7 @@ public sealed class SleeperTool
                 return;
             case HitKind.Creature:
                 var c = (Creature)hit.Thing;
-                _zone.Wildlife.Damage(c, damage * _zone.Wildlife.HitScale(c, at));
+                Hurt(c, damage * _zone.Wildlife.HitScale(c, at));
                 CreatureHit?.Invoke(c);
                 CreatureStruck?.Invoke(c, at, dir);
                 Fx?.Impact(at, -dir, ImpactKind.Creature, lit: false);
@@ -597,7 +598,9 @@ public sealed class SleeperTool
         Town t = p.Town;
         Zapped++;
         t.Hit(p, at, dir, 0.7f, BodyEnd.Fall);
+        float was = p.Health.Current;
         t.Struck(p, Bolt.PersonDamage, GalHack.Arms.DamageClass.Energy, byPlayer: true);
+        if (p.Health.Current < was) Bio();
         if (t.Stun(p, Bolt.StunSeconds, Bolt.RestunSeconds)) Stunned++;
         Arms?.Confirm(p.Dead);
         Arms?.Sounds?.Play(CombatSound.Flesh, at, 1.1f, -4f);
@@ -609,7 +612,7 @@ public sealed class SleeperTool
     void Zap(Creature c, Vector3 at, Vector3 dir)
     {
         Zapped++;
-        _zone.Wildlife.Damage(c, Bolt.PersonDamage);
+        Hurt(c, Bolt.PersonDamage);
         c.HitHeavy = 0.7f;
         if (c.Stun(Bolt.StunSeconds, Bolt.RestunSeconds)) Stunned++;
         CreatureHit?.Invoke(c);
@@ -617,6 +620,58 @@ public sealed class SleeperTool
         Fx?.Impact(at, -dir, ImpactKind.Creature, lit: false);
         Strike(at, new Vector3(0.22f, 0.45f, 0.22f), 4, attack: true);
     }
+
+    /// <summary>
+    /// A dead body in the blast's way (anyone's but the sleeper's own, which the aftermath keeps): it's gone,
+    /// for one biomass, and what it had comes into the bag; what can't fit stays on it, so it's in a bag
+    /// where the body lay (owner).
+    /// </summary>
+    bool Harvest(Vector3 eye, Vector3 dir, float reach)
+    {
+        Creature body = null;
+        float from = 0f;
+        for (int k = 0; k < 4 && body == null && from < reach; k++)
+        {
+            Creature c = _zone.Wildlife.Raycast(eye + dir * from, dir, reach - from, out float d, out _);
+            if (c == null) break;
+            if (c.Dead && c.Species.Id != CharacterModel.Sleeper.Id) { body = c; reach = from + d; }
+            else from += d + 0.5f; // on past the living
+        }
+        Town.Person person = Places?.PersonAlong(eye, dir, reach, out _, dead: true);
+        object owner = (object)person ?? body;
+        if (owner == null) return false;
+        Vector3 at = person != null ? person.Town.World(person.Pos) : _zone.Wildlife.WorldOf(body);
+        if (_zone.Loot.All.FirstOrDefault(l => l.Kind == LootKind.Corpse && l.Owner == owner) is Lootable loot)
+        {
+            var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (id, n) in loot.Storage.Contents)
+                if (n - _pack.Add(id, n)[id] is int put and > 0) { loot.Storage.Remove(id, put); got[id] = put; }
+            loot.Grid.Reconcile();
+            Announce(got, quietStone: false);
+        }
+        if (person != null) person.Town.Unbody(person);
+        else body.Removed = true;
+        Strike(at + Vector3.Up * 0.3f, new Vector3(0.5f, 0.3f, 0.5f), 4, attack: true);
+        Bio();
+        return true;
+    }
+
+    /// <summary>A blast into a creature, wild person or Husk: one biomass if it took any harm.</summary>
+    void Hurt(Creature c, float amount)
+    {
+        float was = c.Health;
+        _zone.Wildlife.Damage(c, amount);
+        if (c.Health < was) Bio();
+    }
+
+    /// <summary>A blast that hurt a person or an animal gives one biomass, whole (owner).</summary>
+    void Bio()
+    {
+        Give(Biomass, 1);
+        Said?.Invoke($"+1 {_zone.Data.Items.Item(Biomass).Name}", Tones.Good);
+    }
+
+    public const string Biomass = "biomass";
 
     /// <summary>A sleeper's structure, or one with no core: its blocks are ours to take back whole.</summary>
     public static bool Ours(Slice.Vessels.Vessel v) => v.Structure.Core == null || v.Structure.Owner == GalHack.Structures.Building.DefaultOwner;

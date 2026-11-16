@@ -10,6 +10,7 @@ using Godot;
 using PhysicsSandbox.Bridges;
 using Planets.Gen;
 using Slice.Game;
+using Slice.Items;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Vessels;
@@ -22,7 +23,7 @@ namespace Slice.Tests;
 /// <summary>
 /// The Sleeper tool (owner, 15 Nov), on a fresh world every run, through the game's own keys:
 ///
-/// - Two modes only, Q between them: attack/gather (blue) and repair (green).
+/// - Two modes only, Q between them: gather (blue) and repair (green).
 /// - A blast is lightning: a bolt, a flash that lights the surroundings, a crackle and a thunderclap
 ///   from the shot pipeline's sound pool, and the tool kicks.
 /// - A block on a core the sleeper owns, or on no core, comes back whole to the bag at once.
@@ -108,6 +109,7 @@ public partial class SleeperToolTest : Node
         foreach (int x in Blocks()) yield return x;
         foreach (int x in Person()) yield return x;
         foreach (int x in Repair()) yield return x;
+        foreach (int x in Bodies()) yield return x;
         foreach (int x in Ore()) yield return x;
         foreach (int x in ShakeSync()) yield return x;
         foreach (int x in NoBuildUp()) yield return x;
@@ -166,12 +168,12 @@ public partial class SleeperToolTest : Node
     {
         GD.Print("-- two modes, and a blast of lightning --");
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
-        Check(Enum.GetValues<ToolMode>().Length == 2 && Tool.Mode == ToolMode.Gather, $"the Sleeper tool has two modes ({string.Join(", ", Enum.GetValues<ToolMode>())}), attack/gather first");
+        Check(Enum.GetValues<ToolMode>().Length == 2 && Tool.Mode == ToolMode.Gather, $"the Sleeper tool has two modes ({string.Join(", ", Enum.GetValues<ToolMode>())}), gather first");
         foreach (int x in _drive.Tap(Key.Q)) yield return x;
         bool repair = Tool.Mode == ToolMode.Repair;
         string caption = _game.Visor.ItemLine();
         foreach (int x in _drive.Tap(Key.Q)) yield return x;
-        Check(repair && Tool.Mode == ToolMode.Gather && caption.Contains("REPAIR") && _game.Visor.ItemLine().Contains("ATTACK/GATHER"),
+        Check(repair && Tool.Mode == ToolMode.Gather && caption.Contains("REPAIR") && _game.Visor.ItemLine().Contains("GATHER"),
             $"Q switches to repair and back ({caption} / {_game.Visor.ItemLine()})");
 
         // Into the sky: nothing to meet, all lightning.
@@ -343,10 +345,11 @@ public partial class SleeperToolTest : Node
         Creature c = Bystander(4f);
         foreach (int x in _drive.Wait(40)) yield return x;
         float health = c.Health;
-        int zapped = Tool.Zapped, confirms = _game.Arms.Confirms;
+        int zapped = Tool.Zapped, confirms = _game.Arms.Confirms, bio = Bio;
         foreach (int x in _drive.LookAt(Chest(c), 6)) yield return x;
         _drive.Face(Chest(c));
         foreach (int x in _drive.Click()) yield return x;
+        int personBio = Bio - bio;
         Vector3 held = _game.Zone.Wildlife.WorldOf(c);
         bool stunned = c.StunFor > 0f && c.Rig is HumanRig { HoldFlinch: > 0f };
         float moved = 0f, shown = 0f;
@@ -374,8 +377,93 @@ public partial class SleeperToolTest : Node
             foreach (int x in _drive.Click()) yield return x;
             foreach (int x in Freeze("sleeper-person.png")) yield return x;
         }
+        // An animal in front: the blast hurts it, and that too gives one biomass.
+        Species kind = _game.Zone.Wildlife.Fauna.Species.Where(s => !s.Flies && s.Figure == null && !s.Husk).MinBy(s => MathF.Abs(s.Body.Size - 1f));
+        if (kind == null) GD.Print("  (no walking animal on this world: the animal's biomass is not tried)");
+        else
+        {
+            WildlifePatch patch = _game.Zone.Wildlife;
+            Creature a = patch.Sim.Spawn(kind, patch.PatchLocal(_game.Zone.GroundAt(Chest(c).X, Chest(c).Z)));
+            foreach (int x in _drive.Wait(20)) yield return x;
+            Vector3 Body() => patch.WorldOf(a) + Vector3.Up * a.Species.BodyHeight * 0.5f;
+            float was = a.Health;
+            bio = Bio;
+            foreach (int x in _drive.LookAt(Body(), 6)) yield return x;
+            _drive.Face(Body());
+            foreach (int x in _drive.Click()) yield return x;
+            Check(personBio == 1 && a.Health < was && Bio - bio == 1,
+                $"one biomass a blast that hurts: the person +{personBio}, a {kind.Name} +{Bio - bio} ({was:F0} to {a.Health:F0} health)");
+            patch.Sim.Remove(a);
+        }
         _repairWitness = Bystander(3f);
     }
+
+    // ---- Bodies: gone for a biomass, what they had into the bag -------------------------------------
+
+    /// <summary>
+    /// A person killed keeps their things on the body; a gather blast on it takes the body for one biomass and
+    /// what it had into the bag. With the bag full, what doesn't fit is in one bag where the body lay (owner).
+    /// </summary>
+    IEnumerable<int> Bodies()
+    {
+        GD.Print("-- a body: gone for one biomass, what it had into the bag, the rest in a bag where it lay --");
+        foreach (int x in MoveOn()) yield return x;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        WildlifePatch patch = _game.Zone.Wildlife;
+        foreach (bool full in new[] { false, true })
+        {
+            Creature c = Bystander(3f);
+            foreach (int x in _drive.Wait(20)) yield return x;
+            patch.Damage(c, 9999f);
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Vector3 spot = patch.WorldOf(c);
+            // What they carried stays on the body; for the count, known goods in its place (someone empty-handed has no body to search: one is made).
+            Lootable corpse = _game.Zone.Loot.All.FirstOrDefault(l => l.Owner == c);
+            bool lying = corpse is null or { Kind: LootKind.Corpse } && !_game.Zone.Loot.All.Any(l => l.Kind == LootKind.Bag && l.Owner == c);
+            var goods = new Bill().Add("stone", 10);
+            if (corpse == null) corpse = _game.Corpse(c.Species, goods, spot, c, () => c.Removed);
+            else
+            {
+                corpse.Storage.TryTake(corpse.Storage.Contents);
+                corpse.Storage.AddAll(goods);
+                corpse.Grid.Reconcile();
+            }
+            Bill on = corpse.Storage.Contents, before = new(_game.Pack.Storage.Contents);
+            // Full: only 4 more stone fit.
+            int room = 4;
+            if (full)
+            {
+                _game.Pack.Add("stone", int.MaxValue / 2);
+                _game.Pack.Remove("stone", room);
+                before = new(_game.Pack.Storage.Contents);
+            }
+            int bio = Bio;
+            patch.SimOf(c, out Vector3 origin, out _);
+            Vector3 mid = c.Rig.BoundsCenter + origin;
+            foreach (int x in _drive.LookAt(mid, 6)) yield return x;
+            _drive.Face(mid);
+            foreach (int x in _drive.Click()) yield return x;
+            foreach (int x in _drive.Wait(10)) yield return x;
+            var bags = _game.Zone.Loot.All.Where(l => l.Kind == LootKind.Bag && l.Owner == c).ToList();
+            Bill gained = new();
+            foreach (var (id, n) in _game.Pack.Storage.Contents) if (n > before[id]) gained.Add(id, n - before[id]);
+            if (!full)
+                Check(lying && c.Removed && Bio - bio == 1 && gained.Equals(new Bill(on).Add(SleeperTool.Biomass, 1)) && bags.Count == 0 && !_game.Zone.Loot.All.Contains(corpse),
+                    $"a person killed keeps their things on the body ({lying}); a blast on it: gone ({c.Removed}), +{Bio - bio} biomass, into the bag {Describe(gained)} of {Describe(on)}, {bags.Count} bags left");
+            else
+            {
+                Lootable sack = bags.FirstOrDefault();
+                Check(c.Removed && Bio - bio == 1 && gained["stone"] == room && bags.Count == 1 && sack.Storage.Count("stone") == on["stone"] - room && sack.Position.DistanceTo(spot) < 1.5f,
+                    $"with the bag full: {gained["stone"]} of {on["stone"]} stone in, the rest in {bags.Count} bag {sack?.Position.DistanceTo(spot):F1} m from where the body lay ({Describe(sack?.Storage.Contents)})");
+                _game.Pack.Remove("stone", _game.Pack["stone"]);
+            }
+        }
+    }
+
+    string Describe(Bill b) => b == null ? "nothing" : _game.Zone.Data.Items.Describe(b, 6);
+
+    /// <summary>Biomass the tool has given.</summary>
+    int Bio => Tool.Gathered.GetValueOrDefault(SleeperTool.Biomass);
 
     Creature _repairWitness;
 
