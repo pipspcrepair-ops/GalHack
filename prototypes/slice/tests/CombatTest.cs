@@ -153,6 +153,9 @@ public partial class CombatTest : Node
         Check(band.Count > 0, $"a band of raiders put down 30 m out from the guard ({band.Count})");
         if (band.Count == 0) { game.QueueFree(); yield break; }
         band[0].Herd.Party.Temper.Stance = Stance.Hostile;
+        // (They stay about where they were put: a new herd's first update counts its time from long ago, so its timer is long.)
+        band[0].Herd.Home = band[0].Herd.Goal = band[0].Position;
+        band[0].Herd.GoalTimer = 1e9f;
         int guardShots = 0, shotsAtYou = town.GuardShots, bandShots = game.Arms.People.Shots;
         Mood mood = town.Memory.Mood;
         town.ShotFired += (who, _, _, _, _) => { if (who.Role == "guard") guardShots++; };

@@ -263,6 +263,8 @@ public sealed partial class Town
         p.Rethink = ThinkEvery * (0.8f + 0.4f * (float)_rng.NextDouble());
         if (p.Part == FightPart.Rush) return;
         int spot = Position(p, you);
+        // Nowhere in reach with a line, and none from here a while (walls between, it beyond the edge): up to the spot nearest it.
+        if (spot < 0 && p.Unseen > 1.5f) spot = NearestSpot(you);
         if (spot >= 0 && spot != p.Post)
         {
             p.Post = spot;
@@ -441,16 +443,22 @@ public sealed partial class Town
         else if (p.Rethink <= 0f || p.Path == null || p.Step >= p.Path.Count)
         {
             p.Rethink = 1.2f;
-            int near = -1;
-            float best = float.MaxValue;
-            for (int i = 0; i < Spots.Count; i++)
-            {
-                float d2 = (At(i) - foe).LengthSquared();
-                if (d2 < best) { best = d2; near = i; }
-            }
-            if (near >= 0) GoTo(p, near);
+            if (NearestSpot(foe) is var near and >= 0) GoTo(p, near);
         }
         Move(p, dt);
+    }
+
+    /// <summary>The town's spot nearest a point (local), -1 if it has none.</summary>
+    int NearestSpot(Vector3 to)
+    {
+        int near = -1;
+        float best = float.MaxValue;
+        for (int i = 0; i < Spots.Count; i++)
+        {
+            float d2 = (At(i) - to).LengthSquared();
+            if (d2 < best) { best = d2; near = i; }
+        }
+        return near;
     }
 
     /// <summary>Where they look from (local).</summary>
