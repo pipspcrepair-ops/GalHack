@@ -52,7 +52,7 @@ public partial class HulkTest
         });
         // The thirty under test, built of blocks as the game builds them.
         const int each = 5;
-        var samples = new List<(string Faction, float[] Measure, bool[,] Side, bool[,] Top, string Plan)>();
+        var samples = new List<(string Faction, float[] Measure, bool[,] Side, bool[,] Top, string Plan, float[] Form)>();
         foreach (string faction in Styled)
             for (int i = 0; i < each; i++)
             {
@@ -60,7 +60,8 @@ public partial class HulkTest
                 CapitalHull.HullPlan plan = CapitalHull.Plan(kit, tech, Roll(faction), seed);
                 Structure s = HullVessel.Build(plan, plan.Pieces[0], cat, PoiState.Abandoned, seed, intact: true, plain: true).Structure;
                 var (side, top, front) = Outlines(s);
-                samples.Add((faction, Measure(side, top, front, plan), side, top, plan.Form.Plan));
+                var (fs, ft, ff) = Outlines(plan.Form);
+                samples.Add((faction, Measure(side, top, front, plan), side, top, plan.Form.Plan, Measure(fs, ft, ff, plan)));
                 yield return 0;
             }
         while (!reference.IsCompleted) yield return 0;
@@ -73,7 +74,7 @@ public partial class HulkTest
             if (best == x.Faction) right++;
             else wrong.Add($"a {x.Faction} {x.Plan} read as {best}");
         }
-        GD.Print($"      the reference: {reference.Result.Count} forms, {model.Fits:P0} of them read as their own faction by the model they taught");
+        GD.Print($"      the reference: {reference.Result.Count} forms, {model.Fits:P0} of them read as their own faction by the model they taught; the thirty's own forms read right {samples.Count(x => model.Judge(x.Form) == x.Faction)} of {samples.Count}");
         if (_args.TryGetValue("dir", out string dir)) SaveOutlines(samples.Select(x => (x.Faction, x.Side, x.Top)).ToList(), $"{dir}/silhouettes.png");
         Check(right == samples.Count, $"each faction told by its outline alone, livery off, each hull judged by a reference that never saw it: {right} of {samples.Count} hulls read as their own faction{(wrong.Count > 0 ? " (" + string.Join(", ", wrong) + ")" : "")}");
     }

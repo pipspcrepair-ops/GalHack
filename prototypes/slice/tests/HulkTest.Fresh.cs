@@ -99,7 +99,7 @@ public partial class HulkTest
                 var types = r.Structure.Blocks().Where(b => !b.block.IsFiller).Select(b => r.Structure.TypeOf(b.block)).ToList();
                 bool chair = types.Any(t => t.IsCommandChair), gyros = types.Any(t => t.Function == "gyro"), fuel = types.Any(t => t.IsContainer);
                 Bad(up > st.Mass * StructureStats.G * 1.3 && push.All(p => p > 0) && chair && gyros && fuel && st.PowerOut >= st.PowerUse,
-                    $"{name}{r.Piece.Name}: lift {up / 1000:F0} MN for {st.Mass * StructureStats.G * 1.3 / 1000:F0} MN, thrust by axis {string.Join("/", push.Select(p => (p / 1000).ToString("F0")))} MN, chair {chair}, gyros {gyros}, containers {fuel}, power {st.PowerOut:F0} of {st.PowerUse:F0} MW");
+                    $"{name}{r.Piece.Name}: lift {up / 1000:F0} MN for {st.Mass * StructureStats.G * 1.3 / 1000:F0} MN, thrust by axis {string.Join("/", push.Select(p => (p / 1000).ToString("F1")))} MN, chair {chair}, gyros {gyros}, containers {fuel}, power {st.PowerOut:F0} of {st.PowerUse:F0} MW; as built: {r.Thrust}");
             }
             // The wreck as found: measured from its blocks.
             foreach (HullVessel.Result r in wrecks)

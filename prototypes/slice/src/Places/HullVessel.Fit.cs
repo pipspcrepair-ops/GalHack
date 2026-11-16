@@ -90,6 +90,8 @@ public sealed partial class HullVessel
                             {
                                 float a = u + du - face.X, b = y + dy - face.Y;
                                 fits = a * a + b * b <= radius * radius && Face(u + du, y + dy) && !packed.Contains((u + du, y + dy, vf));
+                                // (Its length into the housing: never into a room behind it.)
+                                for (int dz = 0; dz < size.Z && fits; dz++) fits = Bulk(At(u + du, y + dy, v + dz));
                             }
                         if (!fits) continue;
                         Device(t, u, y, v, rot, null, Paint["dark"]);
@@ -114,19 +116,6 @@ public sealed partial class HullVessel
         int axis = push.Axis(), depth = axis == 0 ? size.X : axis == 1 ? size.Y : size.Z;
         // (Outside: nothing built there, and no more than the form's skin passing through it.)
         bool Air(Int3 q) => !S.Has(q) && Mask(q.X, q.Y, q.Z + Pc.V0) != 255;
-        // What a cell holds that a thruster may take: plating, or the form's own void, or the floor of a hall.
-        Space Room(Int3 q)
-        {
-            for (int d = 0; d < Levels; d++)
-                if (ZoneAt(d, q.X, q.Z + Pc.V0) is int z && z >= 0 && q.Y >= Walk(d) && q.Y < Walk(d) + Out.Spaces[z].Height) return Out.Spaces[z];
-            return null;
-        }
-        bool Takes(Int3 q)
-        {
-            if (S.TryGet(q, out Block b)) return !b.IsFiller && S.TypeOf(b) == Plating;
-            if (Mask(q.X, q.Y, q.Z + Pc.V0) == 0) return false;
-            return Room(q) is not { } s || s.Purpose is "hold" or "ore-hold" or "hangar" or "engine-room" or "refinery";
-        }
         var faces = S.Blocks().Where(b => !b.block.IsFiller && S.TypeOf(b.block) == Plating && Air(b.pos + e)).Select(b => b.pos).OrderBy(p => p.Z).ThenBy(p => Math.Abs(p.X)).ToList();
         var used = new HashSet<Int3>();
         int placed = 0;
@@ -143,7 +132,7 @@ public sealed partial class HullVessel
                     {
                         Int3 q = corner + new Int3(a, b, c);
                         int k = Int3.Dot(x - q, e);
-                        ok = InPiece(q.Z + Pc.V0) && !used.Contains(q) && (outside ? Air(q) : Takes(q)) && (k != 0 || Air(q + e))
+                        ok = InPiece(q.Z + Pc.V0) && !used.Contains(q) && (outside ? Air(q) : Bulk(q)) && (k != 0 || Air(q + e))
                              && (!outside || k != depth - 1 || S.TryGet(q - e, out Block back) && S.TypeOf(back) == Plating);
                         cells.Add(q);
                     }
@@ -152,11 +141,27 @@ public sealed partial class HullVessel
                 for (int du = -1; du <= 1; du++)
                     for (int dv = -1; dv <= 1; dv++) used.Add(q + new Int3(du, 0, dv));
             foreach (Int3 q in cells)
-                if (!outside && Room(q) is { } s) s.Taken.Add((q.X, q.Z + Pc.V0));
+                if (!outside && AirOf(q) is { } s) s.Taken.Add((q.X, q.Z + Pc.V0));
             D.Thruster(t.Id, corner, push);
             placed++;
         }
         return placed;
+    }
+
+    /// <summary>The space whose air a cell (structure frame) is, or null.</summary>
+    Space AirOf(Int3 q)
+    {
+        for (int d = 0; d < Levels; d++)
+            if (ZoneAt(d, q.X, q.Z + Pc.V0) is int z && z >= 0 && q.Y >= Walk(d) && q.Y < Walk(d) + Out.Spaces[z].Height) return Out.Spaces[z];
+        return null;
+    }
+
+    /// <summary>A cell a machine may take: plating, the form's own void, or the floor of a hold, hangar or engine room (never a room people use, a corridor or a doorway).</summary>
+    bool Bulk(Int3 q)
+    {
+        if (S.TryGet(q, out Block b)) return !b.IsFiller && S.TypeOf(b) == Plating;
+        if (Mask(q.X, q.Y, q.Z + Pc.V0) == 0) return false;
+        return AirOf(q) is not { } s || s.Purpose is "hold" or "ore-hold" or "hangar" or "engine-room" or "refinery";
     }
 
     /// <summary>The biggest thrusters of each class that fit a box (its width across, its depth along the push) when turned to push that way, largest first.</summary>
@@ -274,27 +279,19 @@ public sealed partial class HullVessel
         // containers) is allowed for in their sum.
         Lift();
         Manoeuvre();
-        foreach (Space s in Live.Where(s => s.Purpose is "hold" or "ore-hold")) Rows(s, 3, 6, cargo: true);
-        foreach (Space s in Live.Where(s => s.Purpose is "stores" or "armoury" or "magazine")) Rows(s, 1, 6, cargo: false);
-        if (Best("generator", new Int3(1, 1, 3), Turn(Dir.PosY, Dir.PosX), t => t.Power) is { } bank)
-            foreach (Space s in Live.Where(s => s.Purpose == "generator-room")) Rows(s, 1, 9, cargo: false, bank);
-        foreach (Space s in Live.Where(s => s.Purpose == "engine-room")) EngineRoom(s);
-        foreach (Space s in Live.Where(s => s.Purpose == "bridge")) Bridge(s);
-        foreach (Space s in Live.Where(s => s.Purpose == "workshop"))
-            foreach (string id in new[] { "fabricator-t2", "decon" })
-                if (Cat.TryGetType(id, out BlockType t))
-                    foreach (var (u, v) in WallCells(s, 3))
-                        if (Fits(t, At(u, s.Y, v), 0, Free(s)))
-                        {
-                            Device(t, u, s.Y, v, 0, s, Paint["machine"]);
-                            break;
-                        }
+        // The seat for a core first (the room's own middle, away from its doors: one cell of the plan, so one piece has it).
         if (_vault >= 0)
         {
             Space core = Out.Spaces[_vault];
-            var mid = core.Floor.Where(c => !core.Taken.Contains(c) && !core.Doors.Any(d => d.Inside == c)).OrderBy(c => Math.Abs(c.U - (core.U0 + core.U1) / 2.0) + Math.Abs(c.V - (core.V0 + core.V1) / 2.0)).First();
-            Out.CoreSlot = At(mid.U, core.Y, mid.V);
-            core.Taken.Add(mid);
+            ShipDecks.Room whole = I.Rooms[I.CoreRoom];
+            float cu = whole.Uc, cv = whole.Vc;
+            var seat = whole.Floor.Where(c => !whole.Stair.Contains(c) && !whole.Doors.Any(d => Math.Abs(d.Inside.U - c.U) + Math.Abs(d.Inside.V - c.V) < 2))
+                                  .OrderBy(c => MathF.Abs(c.U - cu) + MathF.Abs(c.V - cv)).ThenBy(c => c.U).ThenBy(c => c.V).DefaultIfEmpty(whole.Floor.First()).First();
+            if (InPiece(seat.V))
+            {
+                Out.CoreSlot = At(seat.U, core.Y, seat.V);
+                core.Taken.Add(seat);
+            }
             // An engineer's chair at its wall: the piece the core claims can be flown from it whichever piece the bridge came down in.
             BlockType chair = Cat.Type("command-chair");
             int rot = Turn(Dir.PosY, Dir.NegZ);
@@ -310,10 +307,25 @@ public sealed partial class HullVessel
                         }
                 return false;
             }
-            if (!Seat(core))
+            if (!Seat(core) && Out.CoreSlot != null)
                 foreach (Space room in Live.Where(x => !x.Corridor && x != core).OrderBy(x => Math.Abs(x.Deck - core.Deck) * 10 + Math.Abs(x.V0 - core.V0)))
                     if (Seat(room)) break;
         }
+        foreach (Space s in Live.Where(s => s.Purpose is "hold" or "ore-hold")) Rows(s, 3, 6, cargo: true);
+        foreach (Space s in Live.Where(s => s.Purpose is "stores" or "armoury" or "magazine")) Rows(s, 1, 6, cargo: false);
+        if (Best("generator", new Int3(1, 1, 3), Turn(Dir.PosY, Dir.PosX), t => t.Power) is { } bank)
+            foreach (Space s in Live.Where(s => s.Purpose == "generator-room")) Rows(s, 1, 9, cargo: false, bank);
+        foreach (Space s in Live.Where(s => s.Purpose == "engine-room")) EngineRoom(s);
+        foreach (Space s in Live.Where(s => s.Purpose == "bridge")) Bridge(s);
+        foreach (Space s in Live.Where(s => s.Purpose == "workshop"))
+            foreach (string id in new[] { "fabricator-t2", "decon" })
+                if (Cat.TryGetType(id, out BlockType t))
+                    foreach (var (u, v) in WallCells(s, 3))
+                        if (Fits(t, At(u, s.Y, v), 0, Free(s)))
+                        {
+                            Device(t, u, s.Y, v, 0, s, Paint["machine"]);
+                            break;
+                        }
         Turrets();
         Power();
         Gyros();
@@ -453,12 +465,13 @@ public sealed partial class HullVessel
                     }
         // (A bridge too cramped for that: one chair anywhere but in a doorway itself.)
         if (chairs == 0)
-            foreach (var (u, v) in s.Floor.Where(c => !s.Doors.Any(d => d.Inside == c)).OrderBy(c => c.V))
-                if (Fits(chair, At(u, s.Y, v), rot, Free(s)))
-                {
-                    Device(chair, u, s.Y, v, rot, s);
-                    break;
-                }
+            foreach (int turn in new[] { rot, Turn(Dir.PosY, Dir.PosX), Turn(Dir.PosY, Dir.NegX), Turn(Dir.PosY, Dir.PosZ) })
+                foreach (var (u, v) in s.Floor.Where(c => !s.Doors.Any(d => d.Inside == c)).OrderBy(c => c.V))
+                    if (chairs == 0 && Fits(chair, At(u, s.Y, v), turn, Free(s)))
+                    {
+                        Device(chair, u, s.Y, v, turn, s);
+                        chairs++;
+                    }
     }
 
     /// <summary>Turrets where the form mounts them, each on the first free cell out from its plating, looking out of that face.</summary>

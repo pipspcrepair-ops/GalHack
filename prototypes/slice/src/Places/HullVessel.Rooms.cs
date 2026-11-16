@@ -193,6 +193,14 @@ public sealed partial class HullVessel
                     u += w;
                 }
         }
+        // A room whose every way in lay in the other piece: a door in its end where it meets the break.
+        foreach (Space s in Live.Where(s => !s.Hall && s.Doors.All(x => !InPiece(x.Wall.V)) && !I.Flights.Any(f => InPiece(f.V) && s.Floor.Contains((f.U, f.V)))))
+            foreach (int v in new[] { Pc.V0 > 0 ? Pc.V0 : -1, !Pc.Last ? VEnd - 1 : -1 })
+                if (v >= 0 && s.Floor.Where(c => c.V == v).Select(c => c.U).DefaultIfEmpty(int.MinValue).Min() is int u && u != int.MinValue)
+                {
+                    Device(Cat.Type("door-1x2x1"), u, s.Y, v, Turn(Dir.PosY, Dir.PosZ));
+                    break;
+                }
     }
 
     /// <summary>A way's cell cut open to its height, a sill under it.</summary>
