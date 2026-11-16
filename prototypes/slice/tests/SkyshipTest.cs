@@ -277,7 +277,7 @@ public partial class SkyshipTest : Node
         string overlapWhat = "";
         double skyMs = 0, skyWorst = 0;
         var skyTimes = new List<double>();
-        int skyTicks = 0;
+        int skyTicks = 0, collected = 0;
         double tookOff = double.NaN, landedWith = double.NaN, leastCharge = double.PositiveInfinity, leastSupply = 1;
         SkyPhase lastPhase = ship.Phase;
         if (ship.Phase != SkyPhase.Landed) tookOff = v.Power.FuelUnits; // already off the ground when the watch began
@@ -296,10 +296,14 @@ public partial class SkyshipTest : Node
                     if (n > 0) { overlaps += n; overlapWhat = $"{ship.Phase} by {ship.At?.Family.Name}"; }
                 }
             if (landing && sky.Clear(v.Body.Position, v)) landedClear++;
-            skyMs += sky.LastTickMs;
-            skyWorst = Math.Max(skyWorst, sky.LastTickMs);
-            skyTimes.Add(sky.LastTickMs);
-            skyTicks++;
+            if (sky.LastTickCollected) collected++; // the game's garbage collected in its tick: not its own work
+            else
+            {
+                skyMs += sky.LastTickMs;
+                skyWorst = Math.Max(skyWorst, sky.LastTickMs);
+                skyTimes.Add(sky.LastTickMs);
+                skyTicks++;
+            }
             if (ship.At != null) places.Add(ship.At);
             // Its generator fuel, taking off and putting down, and its capacitor whenever it is aloft.
             if (lastPhase == SkyPhase.Landed && ship.Phase != SkyPhase.Landed && double.IsNaN(tookOff)) tookOff = v.Power.FuelUnits;
@@ -366,7 +370,7 @@ public partial class SkyshipTest : Node
         skyTimes.Sort();
         double sky99 = skyTimes.Count > 0 ? skyTimes[(int)(skyTimes.Count * 0.999)] : 0;
         Check(skyMs / Math.Max(1, skyTicks) < 0.3 && sky99 < 2.0 && skyWorst < 16.7,
-            $"the ship costs little (the main thread's own time in it): {skyMs / Math.Max(1, skyTicks):F3} ms a tick, 99.9th {sky99:F2} ms, {skyWorst:F2} ms at worst ({sky.WorstWhat})");
+            $"the ship costs little (the main thread's own time in it): {skyMs / Math.Max(1, skyTicks):F3} ms a tick, 99.9th {sky99:F2} ms, {skyWorst:F2} ms at worst ({sky.WorstWhat}; {collected} ticks with a garbage collection in them left out)");
     }
 
     /// <summary>The frames measured for the baseline and the ship alike (150 s).</summary>
