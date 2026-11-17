@@ -27,7 +27,7 @@ public sealed class DepositFinder
 
     readonly List<(string kind, Vector3 at)> _near = new();
     ulong _lastFrame;
-    static readonly Dictionary<(int, int, int), (int edits, int left)> Remaining = new();
+    static readonly Dictionary<(int, int, int), (ulong[][] masks, int left)> Remaining = new();
 
     /// <summary>The ground <see cref="Remaining"/> was counted in: another world's (a NEW GAME, a test's next world) starts it afresh, and it never holds the last one.</summary>
     static readonly System.WeakReference<object> CountedIn = new(null);
@@ -69,7 +69,8 @@ public sealed class DepositFinder
 
     /// <summary>
     /// True once a deposit's ore body has been dug out: no ore cell of its kind left round its
-    /// centre. Counted from the voxel store, and only again after the ground has been edited.
+    /// centre. Counted from the voxel store, and only again after the ground round it has been edited
+    /// (a dig or a blast elsewhere leaves its count be: recounting every body near was tens of ms).
     /// </summary>
     public static bool Depleted(SurfaceZone zone, DepositKind kind, double ox, double oy, double oz)
     {
@@ -81,8 +82,8 @@ public sealed class DepositFinder
         }
         int cx = (int)System.Math.Floor(ox), cy = (int)System.Math.Floor(oy), cz = (int)System.Math.Floor(oz);
         var key = (cx, cy, cz);
-        int edits = store.RemovedCount;
-        if (Remaining.TryGetValue(key, out var seen) && (seen.edits == edits || seen.left == 0)) return seen.left == 0;
+        ulong[][] masks = MasksRound(store, cx, cy, cz);
+        if (Remaining.TryGetValue(key, out var seen) && (seen.left == 0 || Same(seen.masks, masks))) return seen.left == 0;
         int left = 0;
         for (int y = -BodyReach; y <= BodyReach; y++)
         for (int z = -BodyReach; z <= BodyReach; z++)
@@ -91,7 +92,29 @@ public sealed class DepositFinder
             var cell = new Int3(cx + x, cy + y, cz + z);
             if (store.MaterialAt(cell) == CellMaterial.Ore && zone.Planet.Source.OreKindAt(cell) == kind) left++;
         }
-        Remaining[key] = (edits, left);
+        Remaining[key] = (masks, left);
         return left == 0;
+    }
+
+    /// <summary>The dug-cell masks of the chunks an ore body lies in: a chunk's mask is a new one whenever a cell in it is dug (copied on write), so the same masks mean the same ore.</summary>
+    static ulong[][] MasksRound(ChunkStore store, int cx, int cy, int cz)
+    {
+        int x0 = (cx - BodyReach) >> ChunkStore.Shift, x1 = (cx + BodyReach) >> ChunkStore.Shift;
+        int y0 = (cy - BodyReach) >> ChunkStore.Shift, y1 = (cy + BodyReach) >> ChunkStore.Shift;
+        int z0 = (cz - BodyReach) >> ChunkStore.Shift, z1 = (cz + BodyReach) >> ChunkStore.Shift;
+        var masks = new ulong[(x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1)][];
+        int i = 0;
+        for (int y = y0; y <= y1; y++)
+        for (int z = z0; z <= z1; z++)
+        for (int x = x0; x <= x1; x++)
+            masks[i++] = store.RemovedMask(new Int3(x, y, z));
+        return masks;
+    }
+
+    static bool Same(ulong[][] a, ulong[][] b)
+    {
+        for (int i = 0; i < a.Length; i++)
+            if (!ReferenceEquals(a[i], b[i])) return false;
+        return true;
     }
 }

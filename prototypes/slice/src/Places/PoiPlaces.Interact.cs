@@ -192,7 +192,7 @@ public partial class PoiPlaces
         }
         m.BlockDamage.Remove(h.Cell);
         h.Place.Inst.Blocks.Set(h.Cell, Block.Air);
-        h.Place.Remesh(new[] { h.Cell });
+        Removed(h.Place, new List<Int3> { h.Cell });
         Salvaged++;
         return (Pay(m, yield.Select(kv => (kv.Key, kv.Value))), $"Salvaged: {b.Material.ToString().ToLowerInvariant()} {b.Type.ToString().ToLowerInvariant()}");
     }
@@ -323,7 +323,7 @@ public partial class PoiPlaces
             if (done >= BlockInfo.HitPoints(b))
             {
                 h.Place.Inst.Blocks.Set(h.Cell, Block.Air);
-                h.Place.Remesh(new[] { h.Cell });
+                Removed(h.Place, new List<Int3> { h.Cell });
                 CoreDestroyed?.Invoke(h.Place);
             }
             return false;
@@ -351,9 +351,8 @@ public partial class PoiPlaces
     public int Explosions { get; private set; }
 
     /// <summary>
-    /// A hazard goes up: it's gone from the room, the place's blocks within its reach take its damage
-    /// (falling off with distance as a structure's do, so the nearest go first), and every other hazard
-    /// within its reach, in any standing place, is set to follow after <see cref="ChainDelay"/>.
+    /// A hazard goes up: it's gone from the room, and its blast (<see cref="Blast"/>) hurts every standing place's blocks, doors and
+    /// dressing within its reach by how near they are, and sets every other hazard there to follow after <see cref="ChainDelay"/>.
     /// </summary>
     public void Detonate(Place p, DecoHit hit)
     {
@@ -363,42 +362,8 @@ public partial class PoiPlaces
         p.Memory.DecoDamage.Remove((hit.Room.Module, hit.Index));
         p.TakePiece(hit);
         Explosions++;
-        BlastBlocks(p, at, blast);
-        foreach (Place q in Standing)
-            foreach (DecoHit other in q.Pieces().ToList())
-            {
-                if (other.Piece.Blast == null || other.Node.GlobalPosition.DistanceTo(at) > blast.Radius) continue;
-                if (_fuses.Any(f => f.Place == q && f.Module == other.Room.Module && f.Index == other.Index)) continue;
-                _fuses.Add((q, other.Room.Module, other.Index, _now + ChainDelay * (1f + 0.3f * (_fuses.Count % 3))));
-            }
+        Blast(at, blast.Radius, blast.Damage);
         Exploded?.Invoke(at, blast.Radius, blast.Damage);
-    }
-
-    /// <summary>The place's blocks within a blast's reach, hurt by how near they are; those worked through go. Caches, terminals, cores and doors ride it out.</summary>
-    void BlastBlocks(Place p, Vector3 at, DecoBlast blast)
-    {
-        PlaceMemory m = p.Memory;
-        Vector3 local = p.FromWorld(at);
-        int r = (int)MathF.Ceiling(blast.Radius);
-        var gone = new List<Int3>();
-        for (int y = -r; y <= r; y++)
-            for (int z = -r; z <= r; z++)
-                for (int x = -r; x <= r; x++)
-                {
-                    var c = new Int3((int)MathF.Floor(local.X) + x, (int)MathF.Floor(local.Y) + y, (int)MathF.Floor(local.Z) + z);
-                    float d = new Vector3(c.X + 0.5f, c.Y + 0.5f, c.Z + 0.5f).DistanceTo(local);
-                    if (d > blast.Radius) continue;
-                    Block b = p.Inst.Blocks.Get(c);
-                    if (b.IsAir || b.Role is Role.Loot or Role.Terminal or Role.Core || b.Type is BlockType.Door or BlockType.Core) continue;
-                    float done = m.BlockDamage.GetValueOrDefault(c) + blast.Damage * (1f - d / blast.Radius * 0.75f);
-                    if (done < BlockInfo.HitPoints(b)) { m.BlockDamage[c] = done; continue; }
-                    m.BlockDamage.Remove(c);
-                    p.Inst.Blocks.Set(c, Block.Air);
-                    gone.Add(c);
-                }
-        if (gone.Count == 0) return;
-        m.Modified = true;
-        p.Remesh(gone);
     }
 
     /// <summary>Lights the fuses whose time has come (each frame).</summary>

@@ -47,6 +47,12 @@ public partial class CombatTest : Node
             System.Environment.Exit(1);
         }) { IsBackground = true };
         thread.Start();
+        // --minspec=1: the minimum spec's CPU stand-in for the firefight's frames (4 cores, one thread each, workers sized for 4), as PopRoute's.
+        if (OS.GetCmdlineUserArgs().Contains("--minspec=1"))
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
+        }
         ProcessPhysicsPriority = 100;
         _run = Scenario().GetEnumerator();
     }
@@ -101,6 +107,7 @@ public partial class CombatTest : Node
         Rows(game.Zone.Data.Arms, game.Zone.Data.Items);
         foreach (int x in Gang(game, drive, world)) yield return x;
         foreach (int x in Wild(game, drive)) yield return x;
+        foreach (int x in World(game)) yield return x;
         game.QueueFree();
         yield return 0;
         foreach (int x in Squatters()) yield return x;

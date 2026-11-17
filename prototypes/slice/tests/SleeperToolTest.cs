@@ -113,6 +113,7 @@ public partial class SleeperToolTest : Node
         foreach (int x in Repair()) yield return x;
         foreach (int x in Bodies()) yield return x;
         foreach (int x in Ore()) yield return x;
+        foreach (int x in Tree()) yield return x;
         foreach (int x in ShakeSync()) yield return x;
         foreach (int x in NoBuildUp()) yield return x;
         if (_shots != null) foreach (int x in BlockPicture()) yield return x;

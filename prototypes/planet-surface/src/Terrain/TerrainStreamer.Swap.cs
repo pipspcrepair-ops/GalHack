@@ -17,6 +17,8 @@ public partial class TerrainStreamer
     sealed class Swap
     {
         public Node3D Old, New;
+        /// <summary>Their flora batches, gathered once (asked of the nodes every frame of every fade, they cost a few ms on a weak machine).</summary>
+        public List<MultiMeshInstance3D> OldFlora, NewFlora;
         public float T;
     }
 
@@ -30,7 +32,7 @@ public partial class TerrainStreamer
         {
             // Replaced again mid-fade: the one before goes now, and the fade starts over from the last.
             was.Old?.QueueFree();
-            SwapBands(was.New, 0f, 1f);
+            SwapBands(was.NewFlora, 0f, 1f);
         }
         if (old != null)
         {
@@ -44,22 +46,29 @@ public partial class TerrainStreamer
                 old = null;
             }
         }
-        var swap = new Swap { Old = old, New = neu };
+        var swap = new Swap { Old = old, New = neu, OldFlora = Flora(old), NewFlora = Flora(neu) };
         _swaps[(fx, fz)] = swap;
         Bands(swap);
     }
 
-    static void SwapBands(Node3D node, float from, float to)
+    static List<MultiMeshInstance3D> Flora(Node3D node)
     {
-        if (node == null) return;
-        foreach (Node n in node.GetChildren())
-            if (n is MultiMeshInstance3D m) m.SetInstanceShaderParameter(PlanetSurface.Fx.Names.Of("flora_swap"), new Vector2(from, to));
+        var flora = new List<MultiMeshInstance3D>();
+        if (node != null)
+            foreach (Node n in node.GetChildren())
+                if (n is MultiMeshInstance3D m) flora.Add(m);
+        return flora;
+    }
+
+    static void SwapBands(List<MultiMeshInstance3D> flora, float from, float to)
+    {
+        foreach (MultiMeshInstance3D m in flora) m.SetInstanceShaderParameter(PlanetSurface.Fx.Names.Of("flora_swap"), new Vector2(from, to));
     }
 
     static void Bands(Swap s)
     {
-        SwapBands(s.New, 0f, s.T);
-        SwapBands(s.Old, s.T, 1f);
+        SwapBands(s.NewFlora, 0f, s.T);
+        SwapBands(s.OldFlora, s.T, 1f);
     }
 
     void StepSwaps(float dt)

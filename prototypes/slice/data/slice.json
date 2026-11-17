@@ -117,13 +117,13 @@
     // A destroyed block in it comes back at restoreShare of its hit points and fills from there. Its
     // sound pulses (and tries at restoring) every interval s.
     "repair": { "range": 6, "angle": 14, "interval": 0.35, "rate": 50, "restoreShare": 0.1 },
-    // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
-    // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
-    // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
-    // store has no partial density), so it sinks in cell-sized stages, the beam's ball of cells
-    // wearing down from the centre out.
+    // Gathering chips: each pulse of the beam does rate x interval damage to the cell under it (less
+    // to the cells around it), and resources trickle in as it goes. A cell is gone when its
+    // durability is worked through. Ground is held a cell at a time (the terrain store has no partial
+    // density), so it sinks in cell-sized stages, the beam's ball of cells wearing down from the
+    // centre out. (Plants have hit points: see "plants".)
     "gatherRate": 3,
-    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 1.5, "boulderStone": 3 },
+    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3 },
     // The hand tools: each a faster Sleeper tool (the tech tree unlocks them by level).
     "tiers": {
       "sleeper-tool": { "name": "Sleeper tool", "rate": 1, "radius": 1.42, "shot": 1 },
@@ -131,6 +131,14 @@
       "plasma-drill":  { "name": "Plasma drill",  "rate": 5,   "radius": 1.9, "shot": 2 }
     }
   },
+
+  // Plants' hit points at scale 1 (they grow with the plant's size, a tree's by its species' trunk
+  // against trunk m of radius, half to twice): the Sleeper tool's blast wears them as it does a block
+  // (tool.lightning.blockPerSecond, 5 a second at the Sleeper tool's tier), and weapons wear the same.
+  // At that rate a tree of scale 1 falls in 3 s, a plant in 0.5 s, a boulder in 1.7 s, as when they
+  // had durabilities. What a plant gives comes by the share of its hit points taken: a plant's
+  // biomass and organics (a tree treeYield times them), a boulder's boulderStone stone.
+  "plants": { "plant": 2.5, "tree": 15, "boulder": 8.3, "trunk": 0.3, "treeYield": 1.5, "boulderStone": 3 },
 
   "build": {
     "reach": 9,
