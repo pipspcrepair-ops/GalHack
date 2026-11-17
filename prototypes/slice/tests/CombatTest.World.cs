@@ -149,13 +149,6 @@ public partial class CombatTest
         if (tree.Id == 0) GD.Print("  (no tree within 250 m on this world: the tree's checks wait for another)");
         else foreach (int x in Tree(tree)) yield return x;
         // A firefight's cost: rounds and rockets into the place, then into open ground, without the harm and with it.
-        var split = new FrameSplit(GetTree().Root, GetViewport().GetViewportRid()) { HitchMs = 11 };
-        split.Systems = new SystemSplit(game, game.Zone, game.Places);
-        split.Doing = () => { ulong f = Engine.GetProcessFrames(); return $"prof [{PlanetSurface.Prof.Of(f - 1)}] [{PlanetSurface.Prof.Of(f)}]"; };
-        PlanetSurface.Prof.On = true;
-        GalHack.Testing.AllocMeter.On = true;
-        var pacings = new List<string>();
-        game.GetNode<Slice.Game.GcPacer>("GC pacer").Collected = (mb, ms) => pacings.Add($"{mb:F0}MB {ms:F1}ms (gen1 #{GC.CollectionCount(1)})");
         foreach (var (where, at, from) in new[] { ("at the place", face, outward), ("in the open", spot + shift, new Vector3(0f, 0.5f, 1f).Normalized()) })
         {
             game.Survivor.PlaceOutside((at + from * 16f + from.Cross(Vector3.Up) * 8f + Vector3.Up).ToNumerics());
@@ -165,15 +158,6 @@ public partial class CombatTest
             {
                 ArmsHost.HarmsWorld = pass == 1;
                 ArmsHost.PlacesMs = ArmsHost.PlantsMs = ArmsHost.CraterMs = 0;
-                split.Systems.Reset();
-                split.Reset();
-                PlanetSurface.Prof.TakeWorst();
-                GalHack.Testing.AllocMeter.Take(1);
-                int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
-                TimeSpan paused = GC.GetTotalPauseDuration();
-                long all = GC.GetTotalAllocatedBytes(false);
-                var seconds = new List<string>();
-                double lastP = -1, lastPh = -1;
                 cost[pass] = new List<double>();
                 for (int i = 0; i < 240; i++)
                 {
@@ -182,27 +166,8 @@ public partial class CombatTest
                     if (i % 30 == 0) WorldFire.Fire(game, rocket, at + from * 9f + jitter, at + jitter * 0.6f);
                     game.Suit.Vitals.Health = max;
                     yield return 0;
-                    double pr = Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000.0, ph = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
-                    if (pr != lastP || ph != lastPh) seconds.Add($"{pr:F1}+{ph:F1}@{i}");
-                    (lastP, lastPh) = (pr, ph);
-                    cost[pass].Add(pr + ph);
+                    cost[pass].Add((Performance.GetMonitor(Performance.Monitor.TimeProcess) + Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess)) * 1000.0);
                 }
-                GD.Print($"  PROF {where} harm={pass}: seconds (process+physics worst) {string.Join(" ", seconds)}; GC {GC.CollectionCount(0) - g0}/{GC.CollectionCount(1) - g1}/{GC.CollectionCount(2) - g2} pause {(GC.GetTotalPauseDuration() - paused).TotalMilliseconds:F1} ms, all threads {(GC.GetTotalAllocatedBytes(false) - all) / 1048576.0:F1} MB in 4 s; workers MB/s: {GalHack.Testing.AllocMeter.Take(4)}");
-                foreach (GCKind kind in new[] { GCKind.Ephemeral, GCKind.FullBlocking, GCKind.Background })
-                {
-                    GCMemoryInfo gi = GC.GetGCMemoryInfo(kind);
-                    if (gi.Index == 0) continue;
-                    var gens = gi.GenerationInfo.ToArray();
-                    GD.Print($"  PROF last {kind} GC #{gi.Index} gen {gi.Generation}: pause {(gi.PauseDurations.Length > 0 ? gi.PauseDurations[0].TotalMilliseconds : 0):F1} ms, promoted {gi.PromotedBytes / 1048576.0:F1} MB, heap {gi.HeapSizeBytes / 1048576.0:F0} MB, gens before/after MB {string.Join(" ", Enumerable.Range(0, gens.Length).Select(g => $"{gens[g].SizeBeforeBytes / 1048576.0:F1}/{gens[g].SizeAfterBytes / 1048576.0:F1}"))}, pinned {gi.PinnedObjectsCount}, handles?");
-                }
-                GD.Print($"  PROF live shots {arms.Pool.Live}: {string.Join(", ", arms.Pool.Shots.Where(s => s.Live).GroupBy(s => $"{s.Def.Id} {s.State}").Select(g => $"{g.Key} x{g.Count()} age {g.Average(s => s.Age):F1} off {g.Average(s => s.Pos.ToGodot().DistanceTo(at)):F0} m, {g.Count(s => s.Pos.Y < game.Zone.GroundAt(s.Pos.X, s.Pos.Z).Y)} under the ground, {g.Count(s => game.Places.PlaceAt(s.Pos.ToGodot()) != null)} in a place, height over ground {g.Average(s => s.Pos.Y - game.Zone.GroundAt(s.Pos.X, s.Pos.Z).Y):F1}"))}; solid paths air/novox/graze/voxhit/all {string.Join("/", ArmsHost.SolidPaths)}");
-                Array.Clear(ArmsHost.SolidPaths);
-                GD.Print($"  PROF pacer: {string.Join(", ", pacings)}");
-                pacings.Clear();
-                GD.Print($"  PROF frames: {split.Report()}");
-                GD.Print($"  PROF systems: {split.Systems.Report()}");
-                foreach (string h in split.Hitches.OrderByDescending(h => double.Parse(h.Split(' ')[0], System.Globalization.CultureInfo.InvariantCulture)).Take(8)) GD.Print($"  PROF hitch {h}");
-                GD.Print($"  PROF worst spans a frame: {PlanetSurface.Prof.TakeWorst()}");
                 foreach (int x in Hold(60)) yield return x;
             }
             ArmsHost.HarmsWorld = true;

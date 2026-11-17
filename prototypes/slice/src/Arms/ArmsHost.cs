@@ -93,17 +93,12 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         SyncExceptions(); // before the step: the step itself touches nothing but the shots and the world
         long bytes = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        long pq = start;
         Pool.Step(dt, this);
-        PlanetSurface.Prof.Lap("arms pool", ref pq);
         Passing(dt);
-        PlanetSurface.Prof.Lap("arms passing", ref pq);
         Effects.Tick(dt, this);
-        PlanetSurface.Prof.Lap("arms effects", ref pq);
         LastStepMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
         LastStepBytes = GC.GetAllocatedBytesForCurrentThread() - bytes;
         People?.Tick(dt); // (not the shots' own step: a body first seen gets its kit and model made)
-        PlanetSurface.Prof.Lap("arms people", ref pq);
     }
 
     // ---- The gun in hand -------------------------------------------------------------------------
@@ -476,10 +471,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         if (len < 1e-5f) return false;
         Vector3 dir = seg / len;
         float best = len;
-        long sq = PlanetSurface.Prof.Now();
         bool found = SolidHit(a, dir, len, owner, age, ref hit, skip: ignore as Vessel);
         if (found) best = hit.Distance;
-        PlanetSurface.Prof.Lap("sw solid", ref sq);
         // A field emitter has no collider (it is passed through): met by its parts.
         if (ForceFields.EmitterAlong(Zone, a, dir, best, out Vessel ev, out Int3 ec, out float ed, out Vector3 en))
         {
@@ -495,7 +488,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             hit = new ShotHit { Kind = HitKind.Field, Thing = met, Point = (a + dir * fd).ToNumerics(), Normal = fn.ToNumerics(), Distance = fd };
         }
 
-        PlanetSurface.Prof.Lap("sw fields", ref sq);
         // A creature: the one a pierce just went through, or a corpse, is looked past.
         Creature c = null;
         float cd = 0f, offset = 0f;
@@ -515,7 +507,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             found = true;
             hit = new ShotHit { Kind = HitKind.Creature, Thing = c, Point = cp.ToNumerics(), Normal = (-dir).ToNumerics(), Distance = cd, Through = 0.2f };
         }
-        PlanetSurface.Prof.Lap("sw creatures", ref sq);
         // A den's worm mass in the way takes it (and catches alight).
         if (Zone.Wildlife.RaycastMass(a, dir, best, out float massAt, out _) is { } mass && massAt < best)
         {
@@ -523,7 +514,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             found = true;
             hit = new ShotHit { Kind = HitKind.Ground, Thing = mass, Point = (a + dir * massAt).ToNumerics(), Normal = (-dir).ToNumerics(), Distance = massAt };
         }
-        PlanetSurface.Prof.Lap("sw mass", ref sq);
         PoiPlaces places = Game.Places;
         if (places != null && places.Standing.Count > 0)
         {
@@ -535,7 +525,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 hit = new ShotHit { Kind = HitKind.Person, Thing = p, Point = (a + dir * pd).ToNumerics(), Normal = (-dir).ToNumerics(), Distance = pd, Through = 0.3f };
             }
         }
-        PlanetSurface.Prof.Lap("sw people", ref sq);
         if ((owner != 0 || age > 0.12f) && ignore != PlayerThing && PlayerAlong(a, dir, best, out float md))
         {
             found = true;
@@ -567,11 +556,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     }
 
     /// <summary>The solid part of a sweep: colliders first, then the voxel ground where colliders aren't loaded.</summary>
-    public static readonly int[] SolidPaths = new int[5];
-
     bool SolidHit(Vector3 a, Vector3 dir, float len, int owner, float age, ref ShotHit hit, int ghosts = 0, Vessel skip = null)
     {
-        SolidPaths[4]++;
         // A structure's own gun's shot passes its structure, so it meets the world rather than the cabin it was fired from.
         Vessel aboard = owner == 0 && skip == null ? Game.Survivor.Aboard : null;
         bool solid;
@@ -623,17 +609,14 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         // cube's corner stands proud of the drawn ground, so where the drawn ground has its collider
         // under that point, the collider has had the say and the cube is only a corner.
         Vector3 end = a + dir * len;
-        long vq = PlanetSurface.Prof.Now();
-        if (MathF.Min(a.Y, end.Y) > MathF.Max(Zone.GroundAt(a.X, a.Z).Y, Zone.GroundAt(end.X, end.Z).Y) + 4f) { SolidPaths[0]++; PlanetSurface.Prof.Add("sw air", vq); return false; } // well up in the air: no ground to meet
+        if (MathF.Min(a.Y, end.Y) > MathF.Max(Zone.GroundAt(a.X, a.Z).Y, Zone.GroundAt(end.X, end.Z).Y) + 4f) return false; // well up in the air: no ground to meet
         var store = Zone.Planet.Terrain.Store;
-        if (!store.Raycast(a.ToNumerics(), dir.ToNumerics(), len, out _, out TerrainDigging.Terrain.Int3 face, out float vd)) { SolidPaths[1]++; PlanetSurface.Prof.Add("sw novox", vq); return false; }
+        if (!store.Raycast(a.ToNumerics(), dir.ToNumerics(), len, out _, out TerrainDigging.Terrain.Int3 face, out float vd)) return false;
         float graze = Table.Rules.GroundGraze;
         _ray.GlobalPosition = a + dir * vd + Vector3.Up * graze;
         _ray.TargetPosition = Vector3.Down * (graze * 2f + 1f);
         _ray.ForceRaycastUpdate();
-        PlanetSurface.Prof.Add("sw vox", vq);
-        if (_ray.IsColliding()) { SolidPaths[2]++; return false; }
-        SolidPaths[3]++;
+        if (_ray.IsColliding()) return false;
         var n = new Vector3(face.X, face.Y, face.Z);
         hit = new ShotHit { Kind = HitKind.Ground, Point = (a + dir * vd).ToNumerics(), Normal = (n.LengthSquared() > 0.5f ? n.Normalized() : -dir).ToNumerics(), Distance = vd };
         return true;
@@ -996,7 +979,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     public void Blast(ref Shot s, N.Vector3 at, N.Vector3 normal, BlastPart blast)
     {
         Blasts++;
-        long pt0 = PlanetSurface.Prof.Now();
         int caught = 0, killed = 0;
         if (s.State == ShotState.Armed) Trips++;
         Vector3 p = at.ToGodot(), n = normal.ToGodot();
@@ -1056,7 +1038,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Zone.Dust?.Puff(p, Zone.Planet.Grit(p), 1.4f);
         Sounds.Play(s.Def, VoiceKind.Impact, p);
         Zone.Wildlife.Noise(p, 150f, default, s.Owner == 0 ? null : s.By);
-        PlanetSurface.Prof.Add("blast all", pt0);
         Game.Hands?.Shake(Mathf.Clamp(1f - Game.Survivor.WorldEye().DistanceTo(p) / 40f, 0f, 0.8f));
     }
 

@@ -8,7 +8,7 @@ namespace Slice.Game;
 /// of megabytes of young objects pile up on this kind of machine and then stops every thread to copy the half still
 /// alive: 40 to 60 ms, a visible hitch every couple of seconds on a road. So the young objects are collected before
 /// that, in the first frame with room left for its pause (<see cref="Room"/>, the frame pacer's), or at once once far past it.
-/// A pause grows more slowly than the bytes since the last (6 MB about 2 ms, 64 MB about 6), so collecting as late as the room allows costs least.
+/// In a firefight's breakages a pause by 8 to 20 MB was 2 to 9 ms; the runtime's own at 48 to 64 MB, 12 to 36 ms.
 /// </summary>
 public partial class GcPacer : Node
 {
@@ -72,8 +72,5 @@ public partial class GcPacer : Node
         PausePerMb += ((GC.GetTotalPauseDuration() - before).TotalMilliseconds / mb - PausePerMb) * 0.3;
         _count = GC.CollectionCount(0);
         _last = GC.GetTotalAllocatedBytes(false);
-        Collected?.Invoke(mb, (GC.GetTotalPauseDuration() - before).TotalMilliseconds);
     }
-
-    public Action<double, double> Collected;
 }

@@ -482,16 +482,11 @@ public partial class TerrainStreamer : Node3D
         PopMs = 0;
 
         StreamVoxels();
-        Prof.Add("voxels", start);
         _sections[0] = Stopwatch.GetElapsedTime(start).TotalMilliseconds - _sections[4];
         long t = Stopwatch.GetTimestamp();
         StreamFar();
-        Prof.Add("far", t);
-        long pt = Prof.Now();
         StepSwaps((float)Math.Min(delta, 0.1));
-        Prof.Add("swaps", pt); pt = Prof.Now();
         StreamCover();
-        Prof.Add("cover", pt);
         _sections[1] = Stopwatch.GetElapsedTime(t).TotalMilliseconds - _sections[2] - PopMs;
         t = Stopwatch.GetTimestamp();
         if (++_evictTimer >= 30)
@@ -840,17 +835,14 @@ public partial class TerrainStreamer : Node3D
         if (_floraDirty.Count > 0)
         {
             // Dug ground changes flora: rebuild those chunks with a fresh snapshot of the dug set.
-            long pt = Prof.Now();
             _dugSnapshot = new HashSet<long>(_dug);
             _felledSnapshot = new HashSet<long>(World.Felled);
-            Prof.Add("flora snapshot", pt); pt = Prof.Now();
             foreach (var (fx, fz) in _floraDirty)
             {
                 if (_far.TryGetValue((fx, fz), out FarChunk f)) { f.Lod = -1; f.Version++; }
                 CoverDug(fx, fz);
             }
             _floraDirty.Clear();
-            Prof.Add("cover dug", pt);
         }
 
         List<(int fx, int fz, int lod, int d, float rank)> wanted = _farWanted;
@@ -944,16 +936,12 @@ public partial class TerrainStreamer : Node3D
                 foreach (var (_, _, count) in job.Flora) flora += count;
                 WorstFarNode = $"lod {job.Lod}, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
             }
-            Prof.Add("far node", nodeStart);
-            long pt = Prof.Now();
             f.Lod = job.Lod;
             f.Solids = job.Solids;
             if (job.Lod == 0) SolidsChanged(job.Fx, job.Fz);
-            Prof.Add("far solids", pt); pt = Prof.Now();
             AddChild(f.Node);
             BeginSwap(job.Fx, job.Fz, old, f.Node);
             FarApplied?.Invoke(job.Fx, job.Fz, job.Lod, f.Node);
-            Prof.Add("far applied", pt);
         }
 
         // Drop far chunks out of range; place the rest at their copy nearest the focus.

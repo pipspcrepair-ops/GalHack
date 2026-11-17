@@ -302,7 +302,7 @@ public partial class Place : Node3D
             var (g, built) = job.Cubes[0];
             for (; job.CubeNext < built.Count && g.Near && g.Merged.Count > 0; job.CubeNext++)
             {
-                if (job.CubeNext > 0 && Spent()) { PlanetSurface.Prof.Add("cube in", start); return; }
+                if (job.CubeNext > 0 && Spent()) return;
                 SetChunkMesh(built[job.CubeNext]);
                 if (_chunks[built[job.CubeNext].Chunk].Mesh is { } hidden) hidden.Visible = false;
                 job.Drawn.Add(built[job.CubeNext].Chunk);
@@ -314,8 +314,6 @@ public partial class Place : Node3D
             job.Cubes.RemoveAt(0);
             job.CubeNext = 0;
         }
-        long pt = PlanetSurface.Prof.Now();
-        PlanetSurface.Prof.Add("cube in", start);
         // Each chunk's drawing, then its collision a piece a step (a dense chunk's all in one frame was 7 ms), its old pieces kept
         // until the last new one is in: never a gap to fall or shoot through.
         while (job.Next < job.Chunks.Count)
@@ -325,7 +323,6 @@ public partial class Place : Node3D
             if (current && job.Shapes == null)
             {
                 if (GroupAt(GroupOf(m.Chunk)).Near && !job.Drawn.Contains(m.Chunk)) SetChunkMesh(m);
-                PlanetSurface.Prof.Lap("chunk mesh", ref pt);
                 job.Shapes = new List<CollisionShape3D>();
                 if (Spent()) return;
             }
@@ -333,7 +330,6 @@ public partial class Place : Node3D
             {
                 if (first > 0 && Spent()) return;
                 job.Shapes.Add(AddPiece(m, first));
-                PlanetSurface.Prof.Lap("chunk shape", ref pt);
             }
             // (Meshed here and now meanwhile: what was put in of this one goes.)
             if (current) SwapShapes(m.Chunk, job.Shapes);
