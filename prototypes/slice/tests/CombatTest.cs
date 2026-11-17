@@ -96,6 +96,7 @@ public partial class CombatTest : Node
         Rows(game.Zone.Data.Arms, game.Zone.Data.Items);
         foreach (int x in Gang(game, drive, world)) yield return x;
         foreach (int x in Wild(game, drive)) yield return x;
+        foreach (int x in World(game)) yield return x;
         game.QueueFree();
         yield return 0;
         // NPCs' rounds that hit an ally or a bystander (owner: "they should try not to shoot each other"; a round into one of

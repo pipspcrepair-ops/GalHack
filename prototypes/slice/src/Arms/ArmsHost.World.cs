@@ -21,10 +21,13 @@ public partial class ArmsHost
     /// <summary>Shots into places, wrecks and plants; craters blasted and plants a blast took (tests).</summary>
     public int PlaceHits, WreckHits, PlantHits, Craters, PlantsBlasted;
 
+    /// <summary>Off, shots and blasts only mark the world (tests: a fight's cost without it).</summary>
+    public static bool HarmsWorld = true;
+
     /// <summary>A shot into something solid that is no structure: a place, a wreck or a tree takes <paramref name="amount"/>; the ground only its mark.</summary>
     void HarmWorld(in ShotHit hit, Vector3 at, Vector3 n, Vector3 dir, float amount)
     {
-        if (amount <= 0f) return;
+        if (amount <= 0f || !HarmsWorld) return;
         if (hit.Thing is GodotObject collider && Game.Places is { } places)
         {
             if (places.Resolve(collider, at, n, out PoiPlaces.Hit h, hit.CellX)) { places.Struck(h, amount); PlaceHits++; }
@@ -47,7 +50,7 @@ public partial class ArmsHost
     void BlastWorld(Vector3 p, Vector3 n, BlastPart blast, bool hulls)
     {
         float r = blast.Radius, damage = blast.Damage * blast.Blocks;
-        if (damage <= 0f || r <= 0f) return;
+        if (damage <= 0f || r <= 0f || !HarmsWorld) return;
         PoiPlaces places = Game.Places;
         places?.Blast(p, r, damage);
         _blasted.Clear();

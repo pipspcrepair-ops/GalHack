@@ -49,6 +49,7 @@ public sealed partial class Staging
             "skysweep" => SkySweep(),
             "climb" => Climb(),
             "dig" => Dig(),
+            "shotdamage" => ShotDamage(),
             "build" => Build(half: true),
             "liftoff" => Liftoff(),
             "flying" => Flying(),
