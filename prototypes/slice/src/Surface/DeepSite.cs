@@ -152,7 +152,7 @@ public partial class DeepSite : Node3D
     {
         null => Player,
         Creature c => Sim.Creatures.Contains(c) ? c.AsTarget : null,
-        Slice.Places.Town.Person p => FrameOf(p),
+        Slice.Places.Town.Person p when p.Town == Town => FrameOf(p),
         _ => who == Patch.Player ? Player : null,
     };
 

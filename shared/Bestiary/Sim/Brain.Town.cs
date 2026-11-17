@@ -114,6 +114,9 @@ public static partial class Brain
         IKeeper k = c.Keeper;
         ITarget master = k.Master(w, c);
         if (master == null) { c.Keeper = null; return; }
+        // A shot heard: it starts and looks to it (its people's reading of it is what it acts on).
+        Senses.Hear(w, c);
+        if (w.Time - c.HeardAt < 1.5f) c.LookAt = c.LastSeen + Vector3.Up;
         ITarget foe = k.Foe(w);
         if (foe is not { Attackable: true } || k.Kin(foe)) foe = Provoked(w, c) is { } by && !k.Kin(by) ? by : null;
         if (foe != null)

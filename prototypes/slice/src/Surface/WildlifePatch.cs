@@ -570,12 +570,20 @@ public partial class WildlifePatch : Node3D
         return GetWorld3D().DirectSpaceState.IntersectRay(ray).Count == 0;
     }
 
-    /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it. Your shot says which way it went: people it passes read it as being shot at.</summary>
+    /// <summary>
+    /// A loud sound (zone frame), a shot, a blow, a blast or where one landed, heard as far as it is loud: whatever is in earshot,
+    /// in any sim and any town standing (<see cref="Loud"/>), turns to it. Who made it (null: you, by hand or by a structure's guns;
+    /// a creature; a town's person) and which way it went: those it passes or lands by read it as being shot at.
+    /// </summary>
     public void Noise(Vector3 at, float radius, Vector3 shotDir = default, object by = null)
     {
-        Sim?.Noise(PatchLocal(at), radius, shotDir, shotDir == default ? null : by == null ? Player : TargetIn(Sim, by));
-        foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius);
+        Sim?.Noise(PatchLocal(at), radius, shotDir, by == null ? Player : TargetIn(Sim, by));
+        foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius, shotDir, s.Frame(by));
+        Loud?.Invoke(at, radius, shotDir, by);
     }
+
+    /// <summary>A loud sound made (zone frame, how far it carries, which way, who made it): the towns standing hear it (the game passes it on).</summary>
+    public event Action<Vector3, float, Vector3, object> Loud;
 
     /// <summary>A gesture of yours (zone frame), read by every band of people out here near enough to see it.</summary>
     public void Heard(PlayerGesture g, Vector3 eye, Vector3 look)

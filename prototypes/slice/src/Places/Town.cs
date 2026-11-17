@@ -1445,8 +1445,10 @@ public sealed partial class Town : IKeeper
         p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding || p.Pending > 0 ? 1f : 0f, 3f * dt); // (up through the burst too)
         // Looks at you if you're close and in front of them; otherwise glances about now and then.
         float look = MathF.Sin(t * 0.31f) > 0.55f ? MathF.Sin(t * 1.1f) * 0.9f : 0f;
-        Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos;
-        if (toPlayer.LengthSquared() < 100f)
+        Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos, toShown = p.LookAt - p.Pos;
+        // Shown somewhere (a shot heard, where you pointed): there.
+        if (p.LookFor > 0f) look = Mathf.Clamp(Mathf.AngleDifference(p.Yaw, MathF.Atan2(-toShown.X, -toShown.Z)), -1.25f, 1.25f);
+        else if (toPlayer.LengthSquared() < 100f)
         {
             float off = Mathf.AngleDifference(p.Yaw, MathF.Atan2(-toPlayer.X, -toPlayer.Z));
             if (MathF.Abs(off) < 1.25f) look = off;
