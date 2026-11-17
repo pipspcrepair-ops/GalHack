@@ -221,6 +221,8 @@ public sealed class WildSim
                 if (to.Length() < c.Radius + mate.Radius + 0.4f) { c.Lunge = 1f; c.FriskFor = 0f; mate.FriskFor = MathF.Max(mate.FriskFor, 0.8f); mate.FriskDir = to.LengthSquared() > 1e-4f ? to.Normalized() : mate.Forward; }
                 else c.FriskDir = to.Normalized();
             }
+            // Only where there is room to dash: never into a rock, a trunk or a wall.
+            if (!Brain.Clear(this, c, c.Position, c.Position + c.FriskDir * 2f)) { c.FriskFor = 0f; return; }
             c.Desired = c.FriskDir * c.Stats.RunSpeed * 0.8f;
             return;
         }
@@ -285,6 +287,7 @@ public sealed class WildSim
         Data = data;
         Terrain = terrain;
         Nav = nav;
+        nav.Ground(terrain); // (one height a cell: every gait's moves are judged by it)
         Clock = new DayClock(data.World);
         TurnHost = (host, seed) => Husks.Turn(host, seed, Data.Husks);
     }
@@ -409,7 +412,7 @@ public sealed class WildSim
         }
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Nerve = species.Mechanical ? 1f : Rng.For(species.Seed, "nerve", c.Id).Float(); // its own stream: nothing else it rolls changes
-        c.Position = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
+        c.Position = c.GoodAt = c.Behind = c.ProgressAt = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
         c.SwarmAlive = species.Body.Members;
         c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)
@@ -500,9 +503,16 @@ public sealed class WildSim
     /// <summary>Nudges a spawn point off rocks and trunks.</summary>
     public Vector3 FreeSpot(Vector3 p, Rng rng)
     {
-        for (int i = 0; i < 12 && Nav.Blocked(p); i++)
+        for (int i = 0; i < 12 && (Nav.Blocked(p) || Steep(p)); i++)
             p += new Vector3(rng.Range(-4f, 4f), 0f, rng.Range(-4f, 4f));
         return Terrain.Clamp(p, 8f);
+    }
+
+    /// <summary>Ground at a point steeper than a slope (by default the least any walker takes: a face, a cliff): no spot to be put or to make for.</summary>
+    public bool Steep(Vector3 p, float slope = 0.7f)
+    {
+        Vector3 n = Terrain.Normal(p.X, p.Z);
+        return new Vector2(n.X, n.Z).Length() > n.Y * slope;
     }
 
     public void Remove(Creature c) => c.Removed = true;
@@ -520,9 +530,33 @@ public sealed class WildSim
         Crawl.Place(this, c, near, up);
         // A spot inside a wall, a pillar or a stair is no spot: the nearest open floor near it, or nowhere.
         if (Interpenetration.Inside(this, c) && !Interpenetration.Free(this, c, near)) c.Removed = true;
+        // Nor in another body: a walker put down where one stands already goes to open floor a step or two off.
+        if (!c.Removed && !species.Climbs && Crowded(c, c.Position)) Spread(c);
         c.Home = c.Position;
         c.Rig.Reset(this, c);
         return c;
+    }
+
+    /// <summary>Whether another body on a floor of the same place (asleep or not) stands within reach of one at a point.</summary>
+    bool Crowded(Creature c, Vector3 at)
+    {
+        foreach (Creature o in Creatures)
+            if (o != c && o.Space == c.Space && !o.Removed && !o.Dead && !o.InWalls && !o.Species.Climbs && MathF.Abs(o.Position.Y - at.Y) < 1.5f && Flat(o.Position - at).Length() < c.Radius + o.Radius) return true;
+        return false;
+    }
+
+    /// <summary>Onto the nearest floor round it, in the open and in sight of where it was, that no other body stands on (left where it was if none within three metres).</summary>
+    void Spread(Creature c)
+    {
+        Vector3 from = Crawl.Center(c);
+        for (float r = c.Radius * 2f; r <= 3f; r += 0.5f)
+            for (int k = 0; k < 8; k++)
+            {
+                Vector3 p = c.Position + new Vector3(MathF.Cos(k * MathF.Tau / 8f), 0f, MathF.Sin(k * MathF.Tau / 8f)) * r;
+                if (Crawl.Stands(c, p) is not Vector3 at || Crowded(c, at) || !SpaceMath.Clear(c.Space, from, at + Vector3.Up * c.Clearance, 0f)) continue;
+                c.Position = at;
+                return;
+            }
     }
 
     /// <summary>Gives creatures put down by hand a rest site (a group shares one), as natural spawns get.</summary>
@@ -541,15 +575,26 @@ public sealed class WildSim
     public readonly PersonalSpace Space = new();
     readonly List<Creature> _spaced = new();
 
+    /// <summary>
+    /// Whether a body keeps its personal space: one on the ground or a floor (not one closing to strike or seize: an attack
+    /// needs its reach; in a cave or a place, not a climber holding its walls; not a swarm, a cloud, nor a gas bag, which floats).
+    /// </summary>
+    public static bool Spaced(Creature c) =>
+        !(c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
+          || c.Space != null && (c.Species.Climbs || c.Falling)
+          || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed && c.Space == null);
+
     void KeepApart(float dt)
     {
         Space.Bodies.Clear();
         _spaced.Clear();
+        ISolidSpace inside = null;
         foreach (Creature c in Creatures)
         {
-            // (Not one closing to strike or seize: an attack needs its reach.)
-            if (c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Space != null || c.Thrown || c.InWalls
-                || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed) continue; // (a swarm is a cloud, a gas bag floats)
+            c.Spaced = -1;
+            if (!Spaced(c)) continue;
+            c.Spaced = _spaced.Count;
+            inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
             Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
             _spaced.Add(c);
@@ -558,17 +603,93 @@ public sealed class WildSim
         // Whoever the creatures meet on foot (you, a town's people) gives nothing here: they are stepped round.
         foreach (ITarget t in Targets)
             if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
-        Space.Resolve(dt, SolidAt == null ? null : p => !SolidAt(p + Vector3.Up * 0.4f), 4);
+        // Where each body can be put (its own say, so that of two the one that can't be moved, the other takes the whole push).
+        Space.Resolve(dt, _stands ??= (i, p) => i >= _spaced.Count || Stands(_spaced[i], p), 4);
         for (int i = 0; i < _spaced.Count; i++)
         {
             Vector3 moved = Space.Bodies[i].Moved;
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
             Vector3 was = c.Position, to = was + new Vector3(moved.X, 0f, moved.Z);
-            if (Locomotion.IntoTrees(this, c, to)) continue; // never jostled into a trunk or a rock
+            if (c.Space != null)
+            {
+                if (Crawl.Stands(c, to) is Vector3 at) c.Position = at;
+                continue;
+            }
+            if (!Stands(c, to)) continue;
             c.Position = to;
-            if (Interpenetration.Inside(this, c)) c.Position = was; // nor a wall
+            if (Interpenetration.Inside(this, c)) c.Position = was;
         }
+    }
+
+    Func<int, Vector3, bool> _stands;
+    readonly List<int> _near = new();
+
+    /// <summary>
+    /// Whether a body pushed (by another) to a point would stand there: in a cave or a place, on its floor, clear of the walls and
+    /// no further into the furniture; out on the ground, never into a trunk or a rock, onto a face its legs don't take, nor into anything built.
+    /// </summary>
+    bool Stands(Creature c, Vector3 p) =>
+        c.Space != null ? Crawl.Stands(c, p) != null
+        : !Locomotion.IntoTrees(this, c, p) && !Locomotion.Face(this, c.Position, p, Brain.GaitOf(c.Species)) && !Interpenetration.SolidSurface(this, p, c.Species);
+
+    /// <summary>Whether a striking body moved to a point would be further into anyone but whom it strikes at than it is (a lunge or a charge stops at an ally or a bystander, never goes through).</summary>
+    public bool IntoBody(Creature c, Vector3 to, ITarget at)
+    {
+        Space.Near(to, _near);
+        foreach (int j in _near)
+        {
+            Vector3 o;
+            float r;
+            if (j < _spaced.Count)
+            {
+                Creature b = _spaced[j];
+                if (b == c || !Spaced(b) || at is CreatureTarget ct && ct.Creature == b) continue;
+                (o, r) = (b.Position, b.Radius);
+            }
+            else if (at != null && Flat(Space.Bodies[j].Pos - at.Position).LengthSquared() < 0.04f) continue;
+            else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);
+            float d = Flat(to - o).Length();
+            if (MathF.Abs(o.Y - to.Y) < 1.5f && d < c.Radius + r && d < Flat(c.Position - o).Length()) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// A body's own step, held from going any further into anyone else than it already is (owner: "NPCs should path around
+    /// each other, too"): what would take it into another goes along its side instead, and dead on not at all. Nobody walks
+    /// through anybody, whatever its way says; personal space parts what is left.
+    /// </summary>
+    public Vector3 Unpressed(Creature c, Vector3 from, Vector3 to)
+    {
+        if (c.Spaced < 0 || c.Spaced >= _spaced.Count || _spaced[c.Spaced] != c) return to;
+        Space.Near(to, _near);
+        foreach (int j in _near)
+        {
+            if (j == c.Spaced) continue;
+            Vector3 o;
+            float r;
+            if (j < _spaced.Count)
+            {
+                // (Not one walking off away from it: that gap opens by itself.)
+                Creature b = _spaced[j];
+                Vector3 off = Flat(b.Position - from);
+                if (!Spaced(b) || off.LengthSquared() > 1e-4f && Flat(b.Velocity).Dot(off.Normalized()) > 0.3f) continue;
+                (o, r) = (b.Position, b.Radius);
+            }
+            else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);
+            if (MathF.Abs(o.Y - from.Y) > 1.5f) continue;
+            Vector3 now = Flat(from - o), next = Flat(to - o);
+            float want = c.Radius + r, d = next.Length();
+            if (d >= want || d >= now.Length()) continue; // (clear of it, or no further in)
+            // The part of the step toward it goes; what is left goes along its side.
+            Vector3 n = now.LengthSquared() > 1e-6f ? now.Normalized() : next.LengthSquared() > 1e-6f ? next.Normalized() : Vector3.Right;
+            Vector3 step = Flat(to - from);
+            float into = step.Dot(n);
+            if (into < 0f) step -= n * into;
+            to = new Vector3(from.X + step.X, to.Y, from.Z + step.Z);
+        }
+        return to;
     }
 
     public void Step(float dt)
@@ -631,6 +752,9 @@ public sealed class WildSim
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }
             Locomotion.Move(this, c, dt);
             Locomotion.KeepOff(this, c);
+            if (!c.Dead && !Frozen) Brain.Headway(this, c, dt);
+            // In a cave or a place nothing ends its step in a wall or a piece of furniture (a landing, a spawn): out at once.
+            if (c.Space != null && !c.Dead && Interpenetration.Inside(this, c)) Interpenetration.Out(this, c);
             if (Profile) { long t = Stopwatch.GetTimestamp(); moveTicks += t - t0; t0 = t; }
 
             // Far creatures re-pose less often; the rig catches up with the summed time.
@@ -707,13 +831,28 @@ public sealed class WildSim
     /// <summary>Gives back this step's path searches (for driving creatures outside <see cref="Step"/>).</summary>
     public void RefillPathBudget() => _pathBudget = PathBudgetPerStep;
 
-    public bool TakePathBudget()
+    /// <summary>A search (or a flight's two floods: <paramref name="cost"/> 2) out of this step's budget, if it has that much left.</summary>
+    public bool TakePathBudget(int cost = 1)
     {
-        if (_pathBudget <= 0) return false;
-        _pathBudget--;
+        if (_pathBudget < cost) return false;
+        _pathBudget -= cost;
         Paths++;
         return true;
     }
+
+    /// <summary>Bodies that made no headway for a second and looked for another way, and those still stuck that were put back where they last went well (<see cref="Brain.Headway"/>).</summary>
+    public int Repaths, Unstuck;
+
+    /// <summary>Chasers that lost interest in someone they couldn't get to (<see cref="Brain"/>'s GiveUp; tests).</summary>
+    public int GaveUp;
+
+    /// <summary>A way worked out for a group (a herd's or a pack's flight), reused.</summary>
+    public readonly List<Vector3> Way = new();
+
+    Func<Vector3, bool> _builtGround;
+
+    /// <summary>Whether a point of the ground has something built on it at a body's middle (<see cref="SolidAt"/> there): what the fine window round buildings is blocked by.</summary>
+    public Func<Vector3, bool> BuiltGround => _builtGround ??= p => SolidAt != null && SolidAt(new Vector3(p.X, Terrain.Height(p.X, p.Z) + 0.4f, p.Z));
 
     // ---- Damage -----------------------------------------------------------------------
 

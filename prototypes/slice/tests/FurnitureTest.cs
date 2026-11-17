@@ -423,7 +423,7 @@ public partial class FurnitureTest : Node
         {
             Vector3 was = c.Position;
             sim.RefillPathBudget();
-            Brain.Toward(sim, c, to + Vector3.Up * 0.3f, MathF.Max(1f, c.Stats.WalkSpeed));
+            Brain.Go(sim, c, to + Vector3.Up * 0.3f, MathF.Max(1f, c.Stats.WalkSpeed));
             Locomotion.Move(sim, c, Dt);
             sim.Time += Dt;
             walked += new Vector2(c.Position.X - was.X, c.Position.Z - was.Z).Length();
@@ -444,7 +444,7 @@ public partial class FurnitureTest : Node
             else if ((since += Dt) > 5f) break;
         }
         if (under && !through) t.Under++;
-        if (!there && !PlaceParts.Legacy && c.SpacePath.Count <= 1 && t.Notes.Count < 3)
+        if (!there && !PlaceParts.Legacy && c.Path.Count <= 1 && t.Notes.Count < 3)
         {
             // Why there was no way: the cells round where it stood, as its paths see them.
             SpaceNav.Body body = SpaceNav.BodyOf(b.Species);
@@ -459,7 +459,7 @@ public partial class FurnitureTest : Node
                 }
             t.Notes.Add($"{room.Name}: stuck at cell {at} (body r {body.Radius:F2} h {body.Height:F2} walls {body.WallRadius:F2}): {string.Join(" ", cells)}");
         }
-        Score(t, there, through, walked, room, $"{b.Species.CommonName} (from {from.X:F2},{from.Y:F2},{from.Z:F2} to {to.X:F2},{to.Z:F2}; way {c.SpacePath.Count} points, at {c.SpacePathIndex}{(c.SpacePath.Count > 0 ? $", next {c.SpacePath[Math.Min(c.SpacePathIndex, c.SpacePath.Count - 1)]}" : "")})", c.Position);
+        Score(t, there, through, walked, room, $"{b.Species.CommonName} (from {from.X:F2},{from.Y:F2},{from.Z:F2} to {to.X:F2},{to.Z:F2}; way {c.Path.Count} points, at {c.PathIndex}{(c.Path.Count > 0 ? $", next {c.Path[Math.Min(c.PathIndex, c.Path.Count - 1)]}" : "")})", c.Position);
     }
 
     /// <summary>
@@ -531,7 +531,7 @@ public partial class FurnitureTest : Node
                     for (float time = 0f; time < 12f; time += Dt)
                     {
                         sim.RefillPathBudget();
-                        Brain.Toward(sim, c, b + Vector3.Up * 0.3f, MathF.Max(1f, c.Stats.WalkSpeed));
+                        Brain.Go(sim, c, b + Vector3.Up * 0.3f, MathF.Max(1f, c.Stats.WalkSpeed));
                         Locomotion.Move(sim, c, Dt);
                         sim.Time += Dt;
                         if (!c.Falling && parts.Gap(c.Position, r, h) < -0.01f) inLeaf++;
@@ -608,9 +608,9 @@ public partial class FurnitureTest : Node
                     int tick = 0;
                     for (float time = 0f; time < 30f && !there; time += Dt)
                     {
-                        if (tick++ % 30 == 0) { Vector3 q = Crawl.Center(c); trail.Add($"{q.X:F2},{q.Y:F2},{q.Z:F2} n{c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1} v{c.CrawlSpeed:F2} way {c.SpacePath.Count}/{c.SpacePathIndex}"); }
+                        if (tick++ % 30 == 0) { Vector3 q = Crawl.Center(c); trail.Add($"{q.X:F2},{q.Y:F2},{q.Z:F2} n{c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1} v{c.CrawlSpeed:F2} way {c.Path.Count}/{c.PathIndex}"); }
                         sim.RefillPathBudget();
-                        Brain.Toward(sim, c, to, MathF.Max(0.8f, c.Stats.WalkSpeed));
+                        Brain.Go(sim, c, to, MathF.Max(0.8f, c.Stats.WalkSpeed));
                         Locomotion.Move(sim, c, Dt);
                         sim.Time += Dt;
                         if (!c.Falling && parts.Distance(Crawl.Center(c)) < -0.01f) inPiece = true;
@@ -678,9 +678,9 @@ public partial class FurnitureTest : Node
         int tick = 0;
         for (float time = 0f; time < 30f; time += Dt)
         {
-            if (tick++ % 45 == 0) { Vector3 q = Crawl.Center(c); trail.Add($"{q.X:F2},{q.Y:F2},{q.Z:F2}{(c.Falling ? " falling" : "")} n{c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1} way {c.SpacePath.Count}/{c.SpacePathIndex}"); }
+            if (tick++ % 45 == 0) { Vector3 q = Crawl.Center(c); trail.Add($"{q.X:F2},{q.Y:F2},{q.Z:F2}{(c.Falling ? " falling" : "")} n{c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1} way {c.Path.Count}/{c.PathIndex}"); }
             sim.RefillPathBudget();
-            Brain.Toward(sim, c, to, MathF.Max(0.8f, c.Stats.WalkSpeed));
+            Brain.Go(sim, c, to, MathF.Max(0.8f, c.Stats.WalkSpeed));
             Locomotion.Move(sim, c, Dt);
             sim.Time += Dt;
             if (c.Falling) continue;

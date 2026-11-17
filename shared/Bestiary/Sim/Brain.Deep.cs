@@ -152,65 +152,6 @@ public static partial class Brain
 
     // ---- Moving through the place --------------------------------------------------------
 
-    /// <summary>Heads for a point through a cave or a place along its surfaces, round corners, as the brain does.</summary>
-    public static void Toward(WildSim w, Creature c, Vector3 goal, float speed) => GoTo(w, c, goal, speed);
-
-    /// <summary>Heads for a point along the place's surfaces, on a path when the way isn't straight.</summary>
-    static void GoTo(WildSim w, Creature c, Vector3 goal, float speed)
-    {
-        Vector3 center = Crawl.Center(c);
-        float d = (goal - center).Length();
-        bool climbs = c.Species.Climbs;
-        SpaceNav.Body body = SpaceNav.BodyOf(c.Species);
-        // Straight there when it is near and in the open: for a walker among furniture, only if its body gets by all the way.
-        if (d < 2.5f && SpaceMath.Clear(c.Space, center, goal, 0f)
-            && (climbs || c.Space.Parts is not { } parts || parts.Sweep(c.Position, goal with { Y = c.Position.Y }, body.Radius, body.Height)))
-        {
-            c.SpacePath.Clear();
-            Vector3 straight = goal - center;
-            float ease = MathF.Max(1.2f, Heft.StoppingDistance(c, c.CrawlSpeed) * 1.3f);
-            c.Desired = straight.LengthSquared() > 1e-4f ? straight.Normalized() * speed * Math.Clamp(d / ease, 0.3f, 1f) : Vector3.Zero;
-            return;
-        }
-        c.SpacePathAge += c.ThinkDt;
-        bool stale = c.SpacePath.Count == 0 || c.SpacePathIndex >= c.SpacePath.Count || c.SpacePathGoal.DistanceTo(goal) > 1.5f || c.SpacePathAge > 4f;
-        if (stale && w.TakePathBudget())
-        {
-            SpaceNav.FindPath(c.Space, center, goal, body, c.SpacePath, 2500);
-            c.SpacePathIndex = 0;
-            c.SpacePathGoal = goal;
-            c.SpacePathAge = 0f;
-        }
-        WaypointsPassed(c, center);
-        // Stuck (no headway for a while): look for another way.
-        if (c.Velocity.LengthSquared() < 0.0025f && speed > 0.1f) c.SpacePathAge += c.ThinkDt * 2f;
-        Vector3 next = c.SpacePathIndex < c.SpacePath.Count ? c.SpacePath[c.SpacePathIndex] : goal;
-        Vector3 dir = next - center;
-        c.Desired = dir.LengthSquared() > 1e-4f ? dir.Normalized() * speed : Vector3.Zero;
-    }
-
-    /// <summary>
-    /// A waypoint is passed once it is close, or (for a climber) once it lies straight out from
-    /// the surface it holds: in a corner the next cell can sit along the normal, with nothing
-    /// left to walk towards on this face; or (for a walker) once it is over or under it, as on a flight.
-    /// </summary>
-    static void WaypointsPassed(Creature c, Vector3 center)
-    {
-        Vector3 up = c.Facing.Y;
-        PartSet parts = c.Species.Climbs ? null : c.Space.Parts;
-        while (c.SpacePathIndex < c.SpacePath.Count - 1)
-        {
-            Vector3 to = c.SpacePath[c.SpacePathIndex] - center;
-            float along = (to - up * to.Dot(up)).Length();
-            // Among furniture a walker keeps to its way's points (the gaps it fits through), cutting no corner round a leg.
-            bool close = parts != null && parts.Any(c.SpacePath[c.SpacePathIndex]) ? along < 0.3f && MathF.Abs(to.Dot(up)) < 1.6f : to.Length() < 0.9f;
-            // A walker on a flight passes a cell's middle under or over it: its body stands a metre or so off it.
-            if (close || (c.Species.Climbs && along < 0.4f && to.Length() < 1.8f)
-                || (!c.Species.Climbs && along < 0.45f && MathF.Abs(to.Dot(up)) < 1.6f)) c.SpacePathIndex++;
-            else break;
-        }
-    }
-
     static float Dist3(Creature c, Vector3 p) => (p - c.Position).Length();
 
     // ---- Cracks: in at one, out at another (or gone) --------------------------------------
@@ -268,9 +209,11 @@ public static partial class Brain
         c.InCrack = null;
         c.CrackExit = null;
         Crawl.Place(w, c, at.Position + at.Normal * 0.3f, at.Normal);
+        // (A mouth in a corner can set it down in the wall beside it: out onto the open surface nearest, never in the wall.)
+        if (Interpenetration.Inside(w, c)) Interpenetration.Free(w, c, at.Position + at.Normal * 0.3f);
         c.SetState(CState.Wander);
         c.HasGoal = false;
-        c.SpacePath.Clear();
+        c.Path.Clear();
         w.RaiseSlipped(c, at, false);
     }
 
@@ -309,17 +252,15 @@ public static partial class Brain
         else if (c.Noticed != null) threat = c.Noticed.Position;
         if (threat is { } from)
         {
-            c.SetState(CState.Flee);
             Crack hole = s.FleesIntoCracks ? NearestCrack(w, c, 14f, from) : null;
             if (hole != null)
             {
+                c.SetState(CState.Flee);
                 if (Dist3(c, hole.Position) < 0.7f + c.Clearance) EnterCrack(w, c, hole);
-                else GoTo(w, c, hole.Position, c.Stats.RunSpeed);
+                else Go(w, c, hole.Position, c.Stats.RunSpeed);
                 return;
             }
-            Vector3 away = c.Position - from;
-            away -= c.Facing.Y * away.Dot(c.Facing.Y);
-            c.Desired = (away.LengthSquared() > 1e-4f ? away.Normalized() : -c.Facing.Z) * c.Stats.RunSpeed;
+            Flee(w, c, from);
             return;
         }
 
@@ -358,7 +299,7 @@ public static partial class Brain
             if (c.StateTime > 2f) c.HasGoal = false;
             return;
         }
-        GoTo(w, c, c.Goal, c.Stats.WalkSpeed * 0.8f);
+        Go(w, c, c.Goal, c.Stats.WalkSpeed * 0.8f);
     }
 
     /// <summary>A hunter closing on it fast, or already winding up at it.</summary>
@@ -451,7 +392,7 @@ public static partial class Brain
         {
             // Its kill: go and feed.
             if (Dist3(c, c.Prey.Position) < c.Radius + 0.9f) c.SetState(CState.Eat);
-            else GoTo(w, c, c.Prey.Position, c.Stats.WalkSpeed);
+            else Go(w, c, c.Prey.Position, c.Stats.WalkSpeed);
             return true;
         }
         if (c.Prey == null || c.Prey.Removed || c.Prey.InWalls || c.StateTime > 40f && c.State == CState.Stalk)
@@ -475,7 +416,7 @@ public static partial class Brain
         // Low and slow, all the way in: an ambush hunter creeps up and pounces from close.
         c.SetState(CState.Stalk);
         c.WantCrouch = 1f;
-        GoTo(w, c, prey.Position, c.Stats.WalkSpeed * 0.6f);
+        Go(w, c, prey.Position, c.Stats.WalkSpeed * 0.6f);
         return true;
     }
 
@@ -507,7 +448,7 @@ public static partial class Brain
             return;
         }
         c.SetState(CState.Chase);
-        GoTo(w, c, Senses.Aim(c, p), c.Stats.RunSpeed);
+        Chase(w, c, p, Senses.Aim(c, p), c.Stats.RunSpeed);
     }
 
     // ---- Prowlers: a beat through the corridors ------------------------------------------
@@ -524,7 +465,7 @@ public static partial class Brain
         {
             c.SetState(CState.Idle);
             c.FacePoint = c.LastSeen;
-            if (w.Time - c.HeardAt < 8f && Dist3(c, c.LastSeen) > 2.5f) GoTo(w, c, c.LastSeen, c.Stats.WalkSpeed);
+            if (w.Time - c.HeardAt < 8f && Dist3(c, c.LastSeen) > 2.5f) Go(w, c, c.LastSeen, c.Stats.WalkSpeed);
             else c.Desired = Vector3.Zero;
             return;
         }
@@ -549,7 +490,7 @@ public static partial class Brain
             if (c.RouteIndex + c.RouteStep < 0 || c.RouteIndex + c.RouteStep >= route.Count) c.RouteStep = -c.RouteStep;
             c.RouteIndex = Math.Clamp(c.RouteIndex + c.RouteStep, 0, route.Count - 1);
         }
-        GoTo(w, c, wp, c.Stats.WalkSpeed);
+        Go(w, c, wp, c.Stats.WalkSpeed);
     }
 
     static void WanderIn(WildSim w, Creature c, float radius)
@@ -565,7 +506,7 @@ public static partial class Brain
             c.HasGoal = true;
             c.SetState(CState.Wander);
         }
-        GoTo(w, c, c.Goal, c.Stats.WalkSpeed * 0.7f);
+        Go(w, c, c.Goal, c.Stats.WalkSpeed * 0.7f);
     }
 
     // ---- Lurkers: still in the dark until you come close ------------------------------------
@@ -593,10 +534,10 @@ public static partial class Brain
                 if (HuntPrey(w, c, dt)) return;
             }
         }
-        if (Dist3(c, c.Home) > 1.2f && c.State != CState.Lurk)
+        if (Dist3(c, c.Home) > 1.2f && c.State != CState.Lurk && !Taken(w, c, c.Home))
         {
             c.SetState(CState.ReturnHome);
-            GoTo(w, c, c.Home, c.Stats.WalkSpeed);
+            Go(w, c, c.Home, c.Stats.WalkSpeed);
             return;
         }
         // Waiting: low, still, eyes shut. It watches, eyes half open, if you're in the room.
@@ -679,7 +620,7 @@ public static partial class Brain
                 if (up < 6.9f)
                 {
                     c.SetState(CState.Stalk);
-                    GoTo(w, c, head + Vector3.Up * MathF.Max(0f, up - c.Clearance), c.Stats.RunSpeed * 0.8f);
+                    Go(w, c, head + Vector3.Up * MathF.Max(0f, up - c.Clearance), c.Stats.RunSpeed * 0.8f);
                     return;
                 }
             }
@@ -700,14 +641,14 @@ public static partial class Brain
             else
             {
                 c.SetState(CState.ReturnHome);
-                GoTo(w, c, a.Hole.Position, c.Stats.WalkSpeed);
+                Go(w, c, a.Hole.Position, c.Stats.WalkSpeed);
             }
             return;
         }
         if (Dist3(c, a.Position) > 0.8f)
         {
             c.SetState(CState.ReturnHome);
-            GoTo(w, c, a.Position, c.Stats.WalkSpeed);
+            Go(w, c, a.Position, c.Stats.WalkSpeed);
             return;
         }
         c.SetState(CState.Hidden);
@@ -745,7 +686,7 @@ public static partial class Brain
             Vector3 toward = p.Position - at;
             toward.Y = 0f;
             Vector3 stand = at + (toward.LengthSquared() > 0.01f ? toward.Normalized() : Vector3.Forward) * (nest?.Radius ?? 2f) * 0.9f;
-            GoTo(w, c, stand, c.Stats.WalkSpeed);
+            Go(w, c, stand, c.Stats.WalkSpeed);
             if (Dist3(c, stand) < 0.8f) c.Desired = Vector3.Zero;
             return;
         }
@@ -778,14 +719,14 @@ public static partial class Brain
                     nest.Size = MathF.Min(1f, nest.Size + 0.08f);
                     c.HasGoal = false;
                 }
-                else GoTo(w, c, at, c.Stats.WalkSpeed);
+                else Go(w, c, at, c.Stats.WalkSpeed);
                 return;
             }
             FoodPatch scrap = NearestScrap(w, c, at);
             if (scrap != null)
             {
                 if (Dist3(c, scrap.Position) < 1f + c.Clearance) c.SetState(CState.Scavenge);
-                else GoTo(w, c, scrap.Position, c.Stats.WalkSpeed);
+                else Go(w, c, scrap.Position, c.Stats.WalkSpeed);
                 return;
             }
         }
@@ -806,7 +747,7 @@ public static partial class Brain
             c.WantCrouch = 0.6f;
             return;
         }
-        GoTo(w, c, c.Goal, c.Stats.WalkSpeed * 0.5f);
+        Go(w, c, c.Goal, c.Stats.WalkSpeed * 0.5f);
     }
 
     static FoodPatch NearestScrap(WildSim w, Creature c, Vector3 nest)

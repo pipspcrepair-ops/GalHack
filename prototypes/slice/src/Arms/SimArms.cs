@@ -37,6 +37,8 @@ public sealed class SimArms
         /// <summary>The last look along the line to a target: when, and whether it was clear.</summary>
         public float LookedAt = -9f;
         public bool Clear;
+        /// <summary>That line had someone in it (a friend, a bystander, you when it isn't at you): it steps for a clear one rather than fire.</summary>
+        public bool Masked;
         /// <summary>The model drawn in its hand or on its mount, and the view it hangs on.</summary>
         public GunModel.Built Model;
         public Node3D On;
@@ -59,6 +61,7 @@ public sealed class SimArms
         Arming.Reach = Reach;
         Arming.Fire = Fire;
         Arming.BlowDamage = Blow;
+        Arming.Masked = (c, t) => KitOf(c)?.Masked ?? false;
     }
 
     SurfaceZone Zone => _host.Game.Zone;
@@ -104,9 +107,16 @@ public sealed class SimArms
             Vector3 from = Muzzle(c, k, origin);
             var q = PhysicsRayQueryParameters3D.Create(from, aim, Layers.World | Layers.Hull | Layers.Flora); // (what stops a shot: a trunk it took cover by too)
             k.Clear = _host.GetWorld3D().DirectSpaceState.IntersectRay(q).Count == 0;
+            // And no body in it but its target's: it never fires through a friend (FireLine).
+            k.Masked = k.Clear && FireLine.Masked(Patch, _host.Game.Places, from, aim, c, MeantOf(t), AtYou(t));
+            k.Clear &= !k.Masked;
         }
         return k.Clear ? range : 0f;
     }
+
+    /// <summary>What a shot at a target is meant for, as a hit names it: the creature itself, a town's person; and whether it is you.</summary>
+    static object MeantOf(ITarget t) => t is CreatureTarget ct ? ct.Creature : t;
+    bool AtYou(ITarget t) => t == Patch.Player || t is FrameTarget;
 
     float Fire(WildSim w, Creature c, ITarget t)
     {
@@ -165,18 +175,19 @@ public sealed class SimArms
                 if ((k.Held += dt) >= HumanRig.AimWait) { k.Pending = 0; k.Held = 0f; Dropped++; }
                 continue;
             }
+            WorldOf(c, out Vector3 origin);
+            Vector3 muzzle = Muzzle(c, k, origin);
+            Vector3 aim = mark + origin;
+            // Someone in the line by now (a friend, a bystander, you when it isn't at you): the round isn't fired, and the burst is over.
+            if (FireLine.Masked(Patch, _host.Game.Places, muzzle, aim, c, MeantOf(k.Target), AtYou(k.Target))) { k.Pending = 0; k.Masked = true; FireLine.Held++; continue; }
             k.Held = 0f;
             k.LastOff = off;
             k.Next = k.Clip.Def.SecondsPerShot;
             if (!k.Clip.Shot()) { k.Pending = 0; continue; }
             k.Pending--;
-            Vector3 origin;
-            Vector3 body = WorldOf(c, out origin);
-            Vector3 muzzle = Muzzle(c, k, origin);
-            Vector3 aim = mark + origin;
             // A person's hands aren't a mount: a little less steady, and less again on the move.
             float unsteady = (k.Mounted ? 0.8f : 1.6f) + (c.Velocity.Length() > 0.8f ? 1.5f : 0f);
-            _host.FireFrom(k.Clip.Def, muzzle, aim - muzzle, unsteady, c, model: k.Model);
+            _host.FireFrom(k.Clip.Def, muzzle, aim - muzzle, unsteady, c, model: k.Model, meant: AtYou(k.Target) ? ArmsHost.You : MeantOf(k.Target));
             Shots++;
         }
         if ((_drawIn -= dt) > 0f) return;

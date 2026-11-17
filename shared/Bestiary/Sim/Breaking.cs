@@ -60,7 +60,7 @@ public static class Breaking
         {
             // Up to the block first, and only then the warning.
             c.BreakWind = 0f;
-            c.Desired = WildSim.Flat(block.Point - c.Position).Normalized() * c.Stats.WalkSpeed;
+            Brain.Go(w, c, block.Point, c.Stats.WalkSpeed);
             return true;
         }
         c.Desired = Vector3.Zero;

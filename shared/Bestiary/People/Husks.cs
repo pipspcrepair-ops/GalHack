@@ -103,6 +103,7 @@ public static class Husks
             Damage = 13f,
             AttackRange = 1.4f,
             Perception = 44f,
+            GiveUp = 40f, // (a puppet doesn't tire of you)
             FleeRadius = 0f,
             Radius = 0.35f,
             Telegraph = rules.Telegraph,

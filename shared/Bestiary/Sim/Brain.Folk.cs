@@ -540,7 +540,7 @@ public static partial class Brain
         }
         if (w.Time < b.BackUntil || d < Comfort)
         {
-            Aside(c, t, to, d);
+            Aside(w, c, t);
             return;
         }
         if (c == lead && w.Time < b.MeetUntil)
@@ -549,7 +549,7 @@ public static partial class Brain
             if (d > MeetAt)
             {
                 c.SetState(CState.Follow);
-                Steer(w, c, t.Position, c.Stats.WalkSpeed);
+                Go(w, c, t.Position, c.Stats.WalkSpeed);
                 return;
             }
             c.SetState(CState.Idle);
@@ -563,37 +563,26 @@ public static partial class Brain
         if (w.Time >= b.LookUntil) c.LookAt = t.Position + Vector3.Up * 1.5f;
     }
 
-    /// <summary>Out of your way: a step to the side you aren't going, and back, eyes on you.</summary>
-    static void Aside(Creature c, ITarget t, Vector3 to, float d)
+    /// <summary>Out of your way: a step or two off the way you're going, to where it can get (never into a wall), eyes on you.</summary>
+    static void Aside(WildSim w, Creature c, ITarget t)
     {
-        Vector3 away = d > 0.01f ? -to / d : c.Forward;
-        Vector3 side = new(-away.Z, 0f, away.X);
-        if (side.Dot(WildSim.Flat(t.Forward)) > 0f) side = -side;
         c.SetState(CState.Wander);
-        c.Backing = true;
-        c.Path.Clear();
         c.FacePoint = t.Position;
         c.LookAt = t.Position + Vector3.Up * 1.5f;
-        c.Desired = (away * 0.6f + side * 0.8f).Normalized() * c.Stats.WalkSpeed * 0.7f;
+        Back(w, c, t.Position + WildSim.Flat(t.Forward) * 1.2f, c.Stats.WalkSpeed * 0.7f, 2.5f);
     }
 
     /// <summary>A wary band with you about: stopped, facing you, hands to their weapons (up, once warned); too close and they back off with their eyes on you; the leader holds its warning up.</summary>
     static void Watch(WildSim w, Creature c, Party b, Creature lead)
     {
         ITarget t = b.Outsider;
-        Vector3 to = WildSim.Flat(t.Position - c.Position);
-        float d = to.Length();
+        float d = WildSim.Flat(t.Position - c.Position).Length();
         bool warning = b.Mood == PartyMood.Warning;
         c.SetState(warning && c == lead ? CState.Warn : CState.Guard);
         c.FacePoint = t.Position;
         c.LookAt = t.Position + Vector3.Up * 1.5f;
         if (Weapons.Armed(c.Species.Figure?.Prop ?? "")) c.WantAim = warning ? 0.55f : 0.3f;
-        if (d < KeepOff && d > 0.01f)
-        {
-            c.Backing = true;
-            c.Path.Clear();
-            c.Desired = -to / d * c.Stats.WalkSpeed * 0.7f;
-        }
+        if (d < KeepOff) Back(w, c, t.Position, c.Stats.WalkSpeed * 0.7f);
         else c.Desired = Vector3.Zero;
         if (warning && c == lead && c.Act == BodyAct.None && w.Time - b.WarnedAt < 5f) Hold(w, c, BodyAct.Warn, 1.2f);
     }
@@ -627,6 +616,8 @@ public static partial class Brain
             if (Cover(w, c, foe, reach)) return;
             if (!c.Attacking && c.Phase == AttackPhase.None && c.HasGoal) c.WantCrouch = 0.5f; // low at its cover between shots
         }
+        // Someone in its line (one of its own, a bystander): a step or two to the side for a clear one, never a shot through them.
+        else if (f != null && Weapons.Ranged(f.Prop) && Arming.Masked?.Invoke(c, foe) == true && ClearLine(w, c, foe)) return;
         else if (b.Leaning != Leaning.Hostile && foe == b.Outsider && d > PushIn + 1f)
         {
             c.SetState(CState.Guard);
@@ -636,6 +627,21 @@ public static partial class Brain
             return;
         }
         Hunt(w, c, foe, d);
+    }
+
+    /// <summary>A side step for a clear line to a foe (each first its own way, so two side by side don't step into each other): to whichever side its grid lets it; false if neither.</summary>
+    static bool ClearLine(WildSim w, Creature c, ITarget foe)
+    {
+        Vector3 to = WildSim.Flat(foe.Position - c.Position);
+        if (to.LengthSquared() < 0.01f) return false;
+        Vector3 side = new Vector3(-to.Z, 0f, to.X).Normalized() * (c.Id % 2 == 0 ? 2.5f : -2.5f);
+        Vector3 spot = c.Position + side;
+        if (!Clear(w, c, c.Position, spot) && !Clear(w, c, c.Position, spot = c.Position - side)) return false;
+        c.SetState(CState.Chase);
+        c.FacePoint = foe.Position;
+        c.WantAim = 0.6f;
+        Go(w, c, spot, c.Stats.WalkSpeed * 1.5f);
+        return true;
     }
 
     /// <summary>To cover, if there is some within a few strides on this side of the foe and in reach of it: true while getting there.</summary>
@@ -661,7 +667,7 @@ public static partial class Brain
             c.CoverIn = w.Time + 6f;
             return false;
         }
-        Steer(w, c, c.Goal, c.Stats.RunSpeed);
+        Go(w, c, c.Goal, c.Stats.RunSpeed);
         c.FacePoint = foe.Position;
         return true;
     }
@@ -688,7 +694,7 @@ public static partial class Brain
                 if (side.Dot(WildSim.Flat(c.Position - o.Position)) < 0f) side = -side;
                 Vector3 at = o.Position + (away * 0.65f + side * 0.76f).Normalized() * (o.Radius + c.Radius + 0.3f);
                 float k = WildSim.Flat(at - c.Position).Length(), fromThreat = WildSim.Flat(at - threat).Length();
-                if (k >= best || fromThreat > reach * 0.9f || fromThreat < 6f) continue;
+                if (k >= best || fromThreat > reach * 0.9f || fromThreat < 6f || Interpenetration.SolidSurface(w, at, c.Species)) continue;
                 best = k;
                 spot = new Vector3(at.X, c.Position.Y, at.Z);
             }

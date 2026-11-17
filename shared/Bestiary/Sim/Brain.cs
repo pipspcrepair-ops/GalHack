@@ -21,29 +21,6 @@ public static partial class Brain
         return busy ? 0.2f + jitter : (0.44f + jitter) * c.ThinkScale;
     }
 
-    /// <summary>
-    /// Between thinks: keeps to the path the brain chose, round its corners, at the speed it chose.
-    /// Nothing is looked for here, so it costs next to nothing.
-    /// </summary>
-    public static void Follow(Creature c)
-    {
-        float speed = c.Desired.Length();
-        if (speed < 0.01f) return;
-        if (c.Space != null)
-        {
-            if (c.SpacePathIndex >= c.SpacePath.Count) return;
-            Vector3 center = Crawl.Center(c);
-            WaypointsPassed(c, center);
-            Vector3 dir = c.SpacePath[c.SpacePathIndex] - center;
-            if (dir.LengthSquared() > 1e-4f) c.Desired = dir.Normalized() * speed;
-            return;
-        }
-        if (c.PathIndex >= c.Path.Count) return;
-        while (c.PathIndex < c.Path.Count - 1 && WildSim.Flat(c.Path[c.PathIndex] - c.Position).Length() < 1.6f) c.PathIndex++;
-        Vector3 to = WildSim.Flat(c.Path[c.PathIndex] - c.Position);
-        if (to.LengthSquared() > 1e-4f) c.Desired = to.Normalized() * speed;
-    }
-
     public static void Update(WildSim w, Creature c, float dt)
     {
         c.StateTime += dt;
@@ -60,6 +37,13 @@ public static partial class Brain
             // Mid-attack the attack owns the body; just keep looking at the target.
             c.LookAt = c.AttackTarget?.Position;
             if (c.Noticed != null) c.NoticedAt = w.Time;
+            return;
+        }
+
+        // Giving way to one met face to face in a narrow way (Unstick): it backs off out of their way a moment, then goes on.
+        if (w.Time < c.GiveWayUntil && c.GiveWayTo is { Dead: false, Removed: false } other)
+        {
+            Back(w, c, other.Position, c.Stats.WalkSpeed);
             return;
         }
 
@@ -91,6 +75,8 @@ public static partial class Brain
         // noticed isn't there. (A living boulder is the exception: it goes by being looked at.)
         ITarget near = w.NearestTarget(c.Position, out float dist);
         Senses.Surface(w, c, near, dist, dt);
+        // Someone it gave up on, still out of its reach, it doesn't go after however it was put on to them.
+        if (c.Noticed != null && Remembers(w, c, c.Noticed)) (c.Noticed, c.Awareness) = (null, 0f);
         if (c.Noticed == null && !c.Species.Tumbles)
         {
             near = null;
@@ -190,10 +176,11 @@ public static partial class Brain
         float angle = c.HerdSlot * 2.39996f;
         float r = h.Spread * MathF.Sqrt((c.HerdSlot + 0.5f) / n);
         Vector3 slot = h.Goal + new Vector3(MathF.Cos(angle) * r, 0f, MathF.Sin(angle) * r);
-        Vector3 toSlot = WildSim.Flat(slot - c.Position);
-        float speed = alarmed ? c.Stats.RunSpeed : toSlot.Length() > 2.5f ? c.Stats.WalkSpeed : 0f;
-
-        Vector3 steer = speed > 0f ? SteerDir(w, c, slot) * speed : Vector3.Zero;
+        // Strayed far from the middle: back to it first (by its way, as to anywhere).
+        if (WildSim.Flat(h.Center - c.Position).Length() > h.Spread * 1.4f) slot = h.Center;
+        float speed = alarmed ? c.Stats.RunSpeed : WildSim.Flat(slot - c.Position).Length() > 2.5f ? c.Stats.WalkSpeed : 0f;
+        if (speed > 0f) Go(w, c, slot, speed);
+        else c.Desired = Vector3.Zero;
         Vector3 separation = Vector3.Zero;
         foreach (Creature m in h.Members)
         {
@@ -202,9 +189,7 @@ public static partial class Brain
             float d = away.Length(), keep = (c.Radius + m.Radius) * 1.3f;
             if (d < keep && d > 0.001f) separation += away / d * (keep - d) / keep;
         }
-        Vector3 toCenter = WildSim.Flat(h.Center - c.Position);
-        Vector3 cohesion = toCenter.Length() > h.Spread * 1.4f ? toCenter.Normalized() * c.Stats.WalkSpeed * 0.8f : Vector3.Zero;
-        c.Desired = steer + separation * c.Stats.WalkSpeed * 1.5f + cohesion;
+        c.Desired += separation * c.Stats.WalkSpeed * 1.5f;
         if (alarmed) c.Desired += WildSim.Flat(h.Velocity) * 0.3f; // alignment: run with the herd
 
         // Two edges, not one, so a member on the line between grazing and moving doesn't flicker.
@@ -247,9 +232,13 @@ public static partial class Brain
                 h.ThreatPos = near.Position;
                 h.AlarmedAt = w.Time;
             }
-            Vector3 away = WildSim.Flat(h.Center - h.ThreatPos);
-            away = away.LengthSquared() > 0.01f ? away.Normalized() : Vector3.Right;
-            h.Goal = w.Terrain.Clamp(h.Center + away * 20f, 20f);
+            // Where they run to: a spot farther from it by the way round (picked again as it comes on), never into a pocket.
+            if ((w.Time - h.GoalAt > 1.5f || h.GoalFrom.DistanceTo(h.ThreatPos) > 3f) && w.TakePathBudget(AwayCost))
+            {
+                h.GoalAt = w.Time;
+                h.GoalFrom = h.ThreatPos;
+                if (w.Nav.Away(h.Center, h.ThreatPos, 24f, w.Way, gait: GaitOf(s))) h.Goal = w.Way[^1];
+            }
             if (w.Time - h.AlarmedAt > 6f)
             {
                 h.Alarmed = false;
@@ -294,11 +283,13 @@ public static partial class Brain
                 // Someone of a town in company is watched from cover, not taken: it waits for a straggler.
                 if (near is IHost && !CrossReactions.Alone(w.Targets, near, 9f))
                 {
-                    c.Desired = dist < 16f ? WildSim.Flat(c.Position - near.Position).Normalized() * c.Stats.WalkSpeed * 0.4f : dist > 24f ? SteerDir(w, c, near.Position) * c.Stats.WalkSpeed * 0.5f : Vector3.Zero;
+                    if (dist < 16f) Back(w, c, near.Position, c.Stats.WalkSpeed * 0.4f);
+                    else if (dist > 24f) Go(w, c, near.Position, c.Stats.WalkSpeed * 0.5f);
+                    else c.Desired = Vector3.Zero;
                     if (c.StateTime > 9f) c.StateTime = 2f; // still stalking
                     break;
                 }
-                Steer(w, c, near.Position, c.Stats.WalkSpeed * 0.55f);
+                Go(w, c, near.Position, c.Stats.WalkSpeed * 0.55f);
                 if (dist < Math.Max(8f, c.Stats.AttackRange * 3f) || c.StateTime > 10f) c.SetState(CState.Chase);
                 break;
             case CState.Chase:
@@ -336,7 +327,7 @@ public static partial class Brain
         {
             case PackPhase.Retreat:
                 c.SetState(CState.Flee);
-                Steer(w, c, p.RetreatGoal + FormationOffset(c, p.Leader, r.Spacing), c.Stats.RunSpeed);
+                Go(w, c, p.RetreatGoal + FormationOffset(c, p.Leader, r.Spacing), c.Stats.RunSpeed);
                 c.Desired += Separation(c, p, r.Spacing) * c.Stats.RunSpeed;
                 break;
 
@@ -346,10 +337,9 @@ public static partial class Brain
                 c.SetState(CState.Stalk);
                 c.WantCrouch = 1f;
                 c.FacePoint = prey.Position;
-                Vector3 to = WildSim.Flat(prey.Position - p.Center);
-                to = to.LengthSquared() > 0.01f ? to.Normalized() : c.Forward;
-                Vector3 together = WildSim.Flat(p.Center - c.Position) * 0.3f;
-                c.Desired = to * c.Stats.WalkSpeed * 0.7f + together.LimitLength(c.Stats.WalkSpeed) + Separation(c, p, r.Spacing) * c.Stats.WalkSpeed;
+                // Each in on the prey from its own side of the pack, by its way.
+                Go(w, c, prey.Position + WildSim.Flat(c.Position - p.Center).LimitLength(r.Spacing * 2f), c.Stats.WalkSpeed * 0.7f);
+                c.Desired += Separation(c, p, r.Spacing) * c.Stats.WalkSpeed;
                 break;
             }
 
@@ -479,7 +469,8 @@ public static partial class Brain
         Vector3 from = p.Prey?.Position ?? p.Center + p.Leader.Forward * 5f;
         Vector3 away = WildSim.Flat(p.Center - from);
         away = away.LengthSquared() > 0.01f ? away.Normalized() : -p.Leader.Forward;
-        p.RetreatGoal = w.Terrain.Clamp(p.Center + away * 35f, 20f);
+        // Off to a spot farther from it by the way round (straight off only where nowhere is: they run by their ways all the same).
+        p.RetreatGoal = w.Nav.Away(p.Center, from, 35f, w.Way, gait: GaitOf(p.Leader.Species)) ? w.Way[^1] : w.Terrain.Clamp(p.Center + away * 35f, 20f);
         foreach (Creature m in p.Members)
             if (m.Alive && m.Phase == AttackPhase.Windup && !m.Committed) Attacks.Cancel(m);
         p.Prey = null;
@@ -556,7 +547,7 @@ public static partial class Brain
         float d = WildSim.Flat(c.Position - center).Length();
         // From far out, head straight for the place; near the ring, swing round it a step at a time.
         float next = d > radius + 6f ? angle : now + Math.Clamp(Geo.WrapAngle(angle - now), -0.6f, 0.6f);
-        Steer(w, c, center + AngleDir(next) * radius, speed);
+        Go(w, c, center + AngleDir(next) * radius, speed);
     }
 
     /// <summary>The front member's job: hold its place, dart in snarling, back off. No bite.</summary>
@@ -587,7 +578,7 @@ public static partial class Brain
         }
         float angle = SlotAngle(p, c);
         if (d > RingRadius(c, r) + 3f) CircleTo(w, c, prey.Position, angle, RingRadius(c, r), c.Stats.RunSpeed);
-        else Steer(w, c, prey.Position + AngleDir(angle) * Attacks.Range(c) * 0.7f, c.Stats.RunSpeed);
+        else Chase(w, c, prey, prey.Position + AngleDir(angle) * Attacks.Range(c) * 0.7f, c.Stats.RunSpeed);
         c.Desired += Separation(c, p, r.Spacing) * c.Stats.WalkSpeed;
     }
 
@@ -605,7 +596,7 @@ public static partial class Brain
             return;
         }
         c.SetState(CState.Wander);
-        Steer(w, c, goal, d > 8f ? c.Stats.RunSpeed : c.Stats.WalkSpeed);
+        Go(w, c, goal, d > 8f ? c.Stats.RunSpeed : c.Stats.WalkSpeed);
         c.Desired += Separation(c, p, r.Spacing) * c.Stats.WalkSpeed;
     }
 
@@ -650,7 +641,7 @@ public static partial class Brain
                 break;
             case CState.ReturnHome:
                 if (WildSim.Flat(c.Home - c.Position).Length() < 1.5f) c.SetState(night ? CState.Lurk : CState.Hidden);
-                else Steer(w, c, c.Home, c.Stats.WalkSpeed);
+                else Go(w, c, c.Home, c.Stats.WalkSpeed);
                 break;
             case CState.Lurk:
                 c.WantHidden = 1f;
@@ -722,7 +713,7 @@ public static partial class Brain
         else
         {
             c.State = CState.Scavenge;
-            Steer(w, c, body.Position, c.Stats.WalkSpeed * 1.3f);
+            Go(w, c, body.Position, c.Stats.WalkSpeed * 1.3f);
         }
         return true;
     }
@@ -765,7 +756,7 @@ public static partial class Brain
                 break;
             case CState.ReturnHome:
                 if (WildSim.Flat(c.Home - c.Position).Length() < 3f) c.SetState(CState.Wander);
-                else Steer(w, c, c.Home, c.Stats.WalkSpeed);
+                else Go(w, c, c.Home, c.Stats.WalkSpeed);
                 break;
             default:
                 if (intruder && near.Attackable && c.Stats.Damage > 0f)
@@ -818,7 +809,7 @@ public static partial class Brain
             else if (near != null && dist < 45f && dist > 4f)
             {
                 c.SetState(CState.Follow);
-                Steer(w, c, near.Position, c.Stats.WalkSpeed);
+                Go(w, c, near.Position, c.Stats.WalkSpeed);
             }
             else if (near != null && dist <= 4f)
             {
@@ -837,8 +828,8 @@ public static partial class Brain
         {
             c.SetState(CState.Follow);
             c.FacePoint = near.Position;
-            if (dist > 7f) Steer(w, c, near.Position, c.Stats.WalkSpeed);
-            else if (dist < 4f) c.Desired = WildSim.Flat(c.Position - near.Position).Normalized() * c.Stats.WalkSpeed * 0.5f;
+            if (dist > 7f) Go(w, c, near.Position, c.Stats.WalkSpeed);
+            else if (dist < 4f) Back(w, c, near.Position, c.Stats.WalkSpeed * 0.5f);
             else c.Desired = Vector3.Zero;
             return;
         }
@@ -857,7 +848,7 @@ public static partial class Brain
     }
 
     static ITarget Provoked(WildSim w, Creature c) =>
-        c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable && c.Stats.Retaliates ? c.ProvokedBy : null;
+        c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable && c.Stats.Retaliates && !Remembers(w, c, c.ProvokedBy) ? c.ProvokedBy : null;
 
     static bool Huntable(Creature c, ITarget t, float dist) => t != null && t.Attackable && dist < c.Stats.Perception && c.Stats.Damage > 0f;
 
@@ -867,17 +858,6 @@ public static partial class Brain
         Vector3 to = c.Position - t.Position;
         float len = to.Length();
         return len > 0.01f && t.Forward.Dot(to / len) > cone;
-    }
-
-    static void Flee(WildSim w, Creature c, Vector3 from)
-    {
-        c.SetState(CState.Flee);
-        Vector3 away = WildSim.Flat(c.Position - from);
-        away = away.LengthSquared() > 0.01f ? away.Normalized() : c.Forward;
-        // Near the edge of the map, run along it rather than into it.
-        Vector3 inward = WildSim.Flat(-c.Position).Normalized();
-        if (!w.Terrain.Inside(c.Position + away * 15f, 10f)) away = (away + inward * 1.5f).Normalized();
-        Steer(w, c, c.Position + away * 12f, c.Stats.RunSpeed);
     }
 
     /// <summary>Close in and attack. The attack itself always opens with the telegraph.</summary>
@@ -903,7 +883,7 @@ public static partial class Brain
                 c.Desired = dist < hold - 0.7f ? back * c.Stats.WalkSpeed : Vector3.Zero;
                 if (dist >= hold - 0.7f) Attacks.Start(w, c, t);
             }
-            else Steer(w, c, t.Position + back * hold, c.Stats.RunSpeed * 0.7f);
+            else Go(w, c, t.Position + back * hold, c.Stats.RunSpeed * 0.7f);
             return;
         }
         if (dist <= Attacks.Range(w, c, t))
@@ -911,7 +891,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             Attacks.Start(w, c, t);
         }
-        else Steer(w, c, Senses.Aim(c, t), c.Stats.RunSpeed);
+        else Chase(w, c, t, Senses.Aim(c, t), c.Stats.RunSpeed);
     }
 
     static void WanderAndGraze(WildSim w, Creature c, float radius, float dt)
@@ -964,42 +944,6 @@ public static partial class Brain
             return;
         }
         // A hoverer darts from one place to the next and holds; everything else ambles.
-        Steer(w, c, c.Goal, c.Species.Flight == FlightKind.Hover ? c.Stats.RunSpeed * 0.8f : c.Stats.WalkSpeed);
-    }
-
-    static void Steer(WildSim w, Creature c, Vector3 goal, float speed)
-    {
-        Vector3 dir = SteerDir(w, c, goal);
-        float d = WildSim.Flat(goal - c.Position).Length();
-        // Eases in from as far out as it takes this body to stop.
-        float ease = MathF.Max(1.5f, Heft.StoppingDistance(c, WildSim.Flat(c.Velocity).Length()) * 1.3f);
-        c.Desired = dir * speed * Math.Clamp(d / ease, 0.25f, 1f);
-    }
-
-    /// <summary>
-    /// Straight at the goal when the line is clear on the nav grid; otherwise along an A* path,
-    /// re-planned only when the goal has moved or the path is stale.
-    /// </summary>
-    static Vector3 SteerDir(WildSim w, Creature c, Vector3 goal)
-    {
-        Vector3 to = WildSim.Flat(goal - c.Position);
-        bool flies = c.Species.Flies && !c.Landed;
-        if (flies || w.Nav.LineClear(c.Position, goal))
-        {
-            c.Path.Clear();
-            return to.LengthSquared() > 1e-4f ? to.Normalized() : Vector3.Zero;
-        }
-        bool stale = c.Path.Count == 0 || c.PathIndex >= c.Path.Count || c.PathGoal.DistanceTo(goal) > 4f || c.PathAge > 4f;
-        if (stale && w.TakePathBudget())
-        {
-            w.Nav.FindPath(c.Position, goal, c.Path);
-            c.PathIndex = 0;
-            c.PathGoal = goal;
-            c.PathAge = 0f;
-        }
-        while (c.PathIndex < c.Path.Count && WildSim.Flat(c.Path[c.PathIndex] - c.Position).Length() < 1.6f) c.PathIndex++;
-        Vector3 next = c.PathIndex < c.Path.Count ? c.Path[c.PathIndex] : goal;
-        Vector3 dir = WildSim.Flat(next - c.Position);
-        return dir.LengthSquared() > 1e-4f ? dir.Normalized() : Vector3.Zero;
+        Go(w, c, c.Goal, c.Species.Flight == FlightKind.Hover ? c.Stats.RunSpeed * 0.8f : c.Stats.WalkSpeed);
     }
 }

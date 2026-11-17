@@ -32,7 +32,7 @@ namespace Slice.Tests;
 /// </summary>
 public partial class CombatTest : Node
 {
-    const int WatchdogMinutes = 9;
+    const int WatchdogMinutes = 12;
     IEnumerator<int> _run;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -66,8 +66,12 @@ public partial class CombatTest : Node
         Shutdown.Quit(this, _failures == 0 ? 0 : 1);
     }
 
+    /// <summary>Whether checks count (off: a run as it was, printed only).</summary>
+    bool _counting = true;
+
     void Check(bool ok, string what)
     {
+        if (!_counting) { GD.Print($"  (as it was) {what}"); return; }
         if (ok) _passes++;
         else _failures++;
         GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
@@ -94,7 +98,22 @@ public partial class CombatTest : Node
         foreach (int x in Wild(game, drive)) yield return x;
         game.QueueFree();
         yield return 0;
-        foreach (int x in TownEdge()) yield return x;
+        // NPCs' rounds that hit an ally or a bystander (owner: "they should try not to shoot each other"; a round into one of
+        // the target's own side is no stray): the town's edge fought out first with the line of fire not looked along for
+        // bodies (how it was: counted, not checked), then as it is, on the same world.
+        WorldChoice edge = WorldChoice.Fresh("temperate");
+        Slice.Arms.FireLine.On = false;
+        _counting = false;
+        int strays = Slice.Arms.ArmsHost.Strays, rounds = Slice.Arms.ArmsHost.NpcRounds;
+        foreach (int x in TownEdge(edge)) yield return x;
+        int offStrays = Slice.Arms.ArmsHost.Strays - strays, offRounds = Slice.Arms.ArmsHost.NpcRounds - rounds;
+        Slice.Arms.FireLine.On = true;
+        _counting = true;
+        (strays, rounds) = (Slice.Arms.ArmsHost.Strays, Slice.Arms.ArmsHost.NpcRounds);
+        int held = Slice.Arms.FireLine.Held;
+        foreach (int x in TownEdge(edge)) yield return x;
+        int onStrays = Slice.Arms.ArmsHost.Strays - strays, onRounds = Slice.Arms.ArmsHost.NpcRounds - rounds;
+        Check(onStrays <= Math.Max(1, onRounds / 50) && onRounds >= offRounds / 2, $"NPCs' rounds into allies and bystanders, raiders against a town's guards: {offStrays} of {offRounds} with the line of fire not looked along for bodies, {onStrays} of {onRounds} with it ({Slice.Arms.FireLine.Held - held} rounds held for someone in the line); they still fire");
     }
 
     /// <summary>
@@ -103,10 +122,9 @@ public partial class CombatTest : Node
     /// side and of no account to either. The town fires on them, its guards and whoever else has the nerve,
     /// with their own weapons (the aim and shots they'd use on you), and none of it is at you.
     /// </summary>
-    IEnumerable<int> TownEdge()
+    IEnumerable<int> TownEdge(WorldChoice world)
     {
         PlanetSurface.Poi.PoiSiting.ForceFamily = "survivor_town";
-        WorldChoice world = WorldChoice.Fresh("temperate");
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
@@ -158,7 +176,7 @@ public partial class CombatTest : Node
         band[0].Herd.GoalTimer = 1e9f;
         int fire = 0, guardShots = 0, atYou = 0, bandShots = game.Arms.People.Shots;
         Mood mood = town.Memory.Mood;
-        town.ShotFired += (who, _, _, _, _) => { fire++; if (who.Role == "guard") guardShots++; };
+        town.ShotFired += (who, _, _, _, _, _) => { fire++; if (who.Role == "guard") guardShots++; };
         town.Aimed += _ => atYou++; // (every burst at you is aimed where you can see it first)
         for (int i = 0; i < 60 * 40 && guardShots < 3; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         GD.Print($"  (the raiders: {string.Join(", ", band.Select(c => $"{c.State} {(c.Dead ? "down" : $"{c.Health:F0}")} {(patch.FromPatch(c.Position) - post).Length():F0} m"))}; {game.Arms.People.Shots - bandShots} shots of theirs; the town fought {town.Fought}, {town.Shots} shots)");
@@ -260,7 +278,7 @@ public partial class CombatTest : Node
         // Their shots, as they go.
         var shots = new List<(Town.Person Who, WeaponDef Def, Vector3 Muzzle, Vector3 Model, Vector3 Chest)>();
         var dealt = new List<float>();
-        town.ShotFired += (who, def, muzzle, dir, _) =>
+        town.ShotFired += (who, def, muzzle, dir, _, _) =>
         {
             if (aimsBeforeFirst < 0 && def.Delivery != Delivery.Strike) aimsBeforeFirst = aims;
             Vector3 model = who.Model?.Muzzle is { } m && who.View is { Visible: true } ? m.GlobalPosition : muzzle;
@@ -322,7 +340,9 @@ public partial class CombatTest : Node
             fighter.Nerve = 1f;
             game.Survivor.PlaceOutside(town.World(fighter.Pos + fighter.Forward.Cross(Vector3.Up).Normalized() * 1.2f + Vector3.Up * 0.1f).ToNumerics());
         }
+        Town.Person brawl = town.People.Where(p => p.Engaged && !p.Dead && p.Kit != null).OrderBy(p => p.Kit.Strike ? 0 : 1).FirstOrDefault();
         for (int i = 0; i < 60 * 20 && town.Blows == 0; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        if (town.Blows == 0 && brawl != null) GD.Print($"  (the brawler: engaged {brawl.Engaged}, part {brawl.Part}, kit {brawl.Kit?.Def.Id} strike {brawl.Kit?.Strike}, {(town.World(brawl.Pos) - game.Survivor.WorldFeet).Length():F1} m from you, way {brawl.Step}/{brawl.Path?.Count ?? -1}, sees {brawl.Sees}, winding {brawl.Winding:F2}, swing in {brawl.SwingIn:F2}, indoors {brawl.Indoors}, fleeing {brawl.Fleeing}, scared {brawl.ScaredFor:F1}, dead {brawl.Dead})");
         GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
         Check(town.Blows > 0 && town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows ({brawler}, you at their side), the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
     }

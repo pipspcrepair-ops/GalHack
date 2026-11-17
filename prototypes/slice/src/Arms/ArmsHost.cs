@@ -279,7 +279,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     /// how far off it is, the gun in their hands (<paramref name="model"/>) kicks, and the report is
     /// loud. What it hits turns on the shooter.
     /// </summary>
-    public void FireFrom(WeaponDef d, Vector3 muzzle, Vector3 dir, float unsteady, object shooter, bool moving = false, GunModel.Built model = null)
+    public void FireFrom(WeaponDef d, Vector3 muzzle, Vector3 dir, float unsteady, object shooter, bool moving = false, GunModel.Built model = null, object meant = null)
     {
         if (d.Delivery == Delivery.Strike) { Swing(d, muzzle, dir, shooter, Hostile); return; }
         dir = dir.LengthSquared() > 1e-6f ? dir.Normalized() : Vector3.Forward;
@@ -287,6 +287,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         int count = d.Pellets?.Count ?? d.Swarm?.Count ?? 1;
         float wide = count > 1 ? d.Pellets?.Spread ?? 0f : 0f;
         OthersFired++;
+        NpcRounds++;
         if (d.Cone != null)
         {
             ConeTick(d, muzzle, dir, Hostile, shooter);
@@ -299,6 +300,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             int slot = Pool.Spawn(d, Hostile, muzzle.ToNumerics(), v.ToNumerics(), d.Damage);
             if (slot < 0) continue;
             Pool.Shots[slot].LastHit = Pool.Shots[slot].By = shooter;
+            Pool.Shots[slot].Meant = meant;
         }
         float far = Game.Camera != null ? Game.Camera.GlobalPosition.DistanceTo(muzzle) : 0f;
         Game.Shots.Muzzle(d.Feel, muzzle, dir, GunModel.ColourOf(d.Tracer.Colour), ShotFx.SeenScale(far));
@@ -790,6 +792,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         return string.Join("; ", parts);
     }
 
+    /// <summary>The token an NPC's shot at you is meant for (<see cref="Shot.Meant"/>).</summary>
+    public static readonly object You = new();
+
+    /// <summary>NPCs' rounds fired, and those of them that hit an ally or a bystander: anyone not of the side they were fired at (tests; owner: "they should try not to shoot each other").</summary>
+    public static int NpcRounds, Strays;
+
+
     public void Strike(ref Shot s, in ShotHit hit, float damage)
     {
         WeaponDef d = s.Def;
@@ -803,6 +812,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         bool tick = s.State == ShotState.Stuck;
         if (tick) DotTicks++;
         else Hits++;
+        if (!tick && s.Owner != 0 && s.Meant != null && hit.Kind is HitKind.Creature or HitKind.Person or HitKind.Player && !FireLine.SameSide(s.Meant, hit.Kind == HitKind.Player ? You : hit.Thing))
+            Strays++;
         switch (hit.Kind)
         {
             case HitKind.Creature:

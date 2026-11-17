@@ -18,6 +18,9 @@ public static class Arming
     /// <summary>A blow's damage: its hand weapon's, or bare hands' for anyone carrying nothing; below 0, its body's own attack.</summary>
     public static Func<Creature, float> BlowDamage;
 
+    /// <summary>Whether its line to the target was last found to have someone in it (a friend, a bystander): it steps aside for a clear one rather than fire through them.</summary>
+    public static Func<Creature, ITarget, bool> Masked;
+
     /// <summary>Whether it would shoot at this target rather than close in (and how far from).</summary>
     public static float ShootReach(Creature c, ITarget t) => Reach == null || t == null ? 0f : Reach(c, t);
 

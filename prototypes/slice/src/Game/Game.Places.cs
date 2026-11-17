@@ -132,7 +132,7 @@ public partial class Game
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, from, 0.5f, -4f);
         };
         // Their own weapon, fired (or swung) from their own hands at you or at whatever they're fighting: the same shots and blows as the player's.
-        t.ShotFired += (who, def, muzzle, dir, unsteady) => Arms?.FireFrom(def, muzzle, dir, unsteady, who, who.Now > 0.6f, who.Model);
+        t.ShotFired += (who, def, muzzle, dir, unsteady, meant) => Arms?.FireFrom(def, muzzle, dir, unsteady, who, who.Now > 0.6f, who.Model, meant);
         // Where one falls, what they carried: their weapon and what's left of its ammo, and a little besides.
         t.Fell += who => PersonFell(t, who);
     }

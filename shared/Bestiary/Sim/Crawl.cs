@@ -53,8 +53,8 @@ public static class Crawl
         Vector3 f = c.Forward;
         c.Facing = SpaceMath.Frame(f, n);
         c.Position = p - n * clr;
-        c.LastFirm = c.Position;
-        c.LastFirmNormal = n;
+        c.LastFirm = c.GoodAt = c.Behind = c.ProgressAt = c.Position;
+        c.LastFirmNormal = c.GoodUp = c.BehindUp = n;
         c.Falling = false;
         c.Velocity = Vector3.Zero;
         SyncYaw(c);
@@ -237,8 +237,8 @@ public static class Crawl
             }
             feet = next;
         }
-        // Whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
-        feet = HoldOffWalls(s, feet, clr);
+        // Never into another body (it goes along its side); and whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
+        feet = HoldOffWalls(s, w.Unpressed(c, start, feet), clr);
         if (parts != null && !parts.Fits(feet, pr, ph))
         {
             feet = HoldOffWalls(s, parts.PushOut(feet, pr, ph), clr);
@@ -351,6 +351,13 @@ public static class Crawl
         Vector3 next = center + v * dt;
         // Turn right way up while falling, like a cat.
         Vector3 up = SpaceMath.TurnToward(n, Vector3.Up, MathF.Min(1f, dt * 8f));
+        // A walker carried on by its lunge flies no further into a piece of furniture than it is: it drops beside it.
+        if (!c.Species.Climbs && c.Space.Parts is { } parts)
+        {
+            float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+            Vector3 feet = next - up * clr;
+            if (!parts.Fits(feet, pr, ph) && parts.Gap(feet, pr, ph) < parts.Gap(c.Position, pr, ph)) (next.X, next.Z, v.X, v.Z) = (center.X, center.Z, 0f, 0f);
+        }
         float d = SpaceMath.Distance(s, next, out Vector3 normal);
         bool needFloor = c.Dead || !c.Species.Climbs || c.Dropping;
         if (d > -clr && normal != Vector3.Zero)
@@ -455,9 +462,30 @@ public static class Crawl
         // In flight it turns to face where it is going, feet towards the ground.
         Vector3 up = SpaceMath.TurnToward(c.Facing.Y, Vector3.Up, MathF.Min(1f, t * 1.5f));
         Vector3 f = travel.LengthSquared() > 1e-4f ? travel.Normalized() : -c.Facing.Z;
-        c.Facing = SpaceMath.Frame(f, up);
+        Basis facing = SpaceMath.Frame(f, up);
+        Vector3 feet = center - facing.Y * c.Clearance;
+        // A walker's lunge stops at anyone but whom it strikes at, never through them.
+        if (!c.Species.Climbs && w.IntoBody(c, feet, c.AttackTarget))
+        {
+            c.LungeFrom = c.LungeTo = Center(c);
+            c.Velocity = Vector3.Zero;
+            return;
+        }
+        // A walker's lunge into a piece of furniture stops there, as one into a wall does: held where it met it, never in it.
+        if (!c.Species.Climbs && c.Space.Parts is { } parts)
+        {
+            float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+            if (!parts.Fits(feet, pr, ph) && parts.Gap(feet, pr, ph) < MathF.Min(0f, parts.Gap(c.Position, pr, ph)) + 0.002f)
+            {
+                c.LungeFrom = c.LungeTo = Center(c);
+                c.LungeBlocked = true;
+                c.Velocity = Vector3.Zero;
+                return;
+            }
+        }
+        c.Facing = facing;
         c.Velocity = travel / MathF.Max(0.01f, c.PhaseLength);
-        c.Position = center - c.Facing.Y * c.Clearance;
+        c.Position = feet;
         SyncYaw(c);
     }
 
@@ -466,6 +494,35 @@ public static class Crawl
     {
         Vector3 f = -c.Facing.Z;
         if (MathF.Abs(f.Y) < 0.95f) c.Yaw = MathF.Atan2(-f.X, -f.Z);
+    }
+
+    /// <summary>Where a walker pushed to a point (by another body) would stand: on its floor there, clear of the walls and never further into the furniture; null where it can't.</summary>
+    public static Vector3? Stands(Creature c, Vector3 to)
+    {
+        ISolidSpace s = c.Space.Bare;
+        if (SpaceMath.FloorBelow(s, to.X, c.Position.Y + 0.45f, to.Z, 1f) is not float y || MathF.Abs(y - c.Position.Y) > 0.45f) return null;
+        to.Y = y;
+        if (s.Density(to + Vector3.Up * c.Clearance) > 0f) return null;
+        if (c.Space.Parts is { } parts)
+        {
+            float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+            if (!parts.Fits(to, pr, ph) && parts.Gap(to, pr, ph) < parts.Gap(c.Position, pr, ph)) return null;
+        }
+        return to;
+    }
+
+    /// <summary>A walker in a piece of furniture: pushed off it sideways onto its floor, clear of the walls; false (left where it was) where that leaves it no better.</summary>
+    public static bool OffParts(Creature c)
+    {
+        if (c.Species.Climbs || c.Space.Parts is not { } parts) return false;
+        ISolidSpace s = c.Space.Bare;
+        float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+        Vector3 feet = HoldOffWalls(s, parts.PushOut(c.Position, pr, ph), c.Clearance);
+        if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is not float y) return false;
+        feet.Y = y;
+        if (parts.Gap(feet, pr, ph) <= parts.Gap(c.Position, pr, ph)) return false;
+        (c.Position, c.LastFirm) = (feet, feet);
+        return true;
     }
 
     /// <summary>Whether a body centre is clear of solid (the test of "never inside the rock").</summary>

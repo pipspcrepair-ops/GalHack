@@ -326,14 +326,25 @@ public static class SpaceMath
             return null;
         }
         const float step = 0.25f;
+        float? found = null;
         for (float t = step; t <= reach; t += step)
         {
             Vector3 q = p + Vector3.Down * t;
             float d = s.Density(q);
-            if (d > 0f) return Bisect(s, q, q + Vector3.Up * step);
+            if (d > 0f) { found = Bisect(s, q, q + Vector3.Up * step); break; }
             prev = d;
         }
-        return null;
+        // A flight's foot is a wedge thinner than a step at its lip (one over open space below has nothing else under it):
+        // its surface, worked out, where it lies higher than what the steps found.
+        int cx = (int)MathF.Floor(x), cz = (int)MathF.Floor(z);
+        for (int cy = (int)MathF.Floor(fromY); cy >= (int)MathF.Floor(fromY - reach); cy--)
+        {
+            if (found is float f && cy + 1 <= f) break;
+            if (s.SlopeCell(cx, cy, cz) is not (int k and >= 0) || !s.SolidCell(cx, cy, cz)) continue;
+            float h = cy + Slopes.Height(k, x - cx, z - cz);
+            if (h <= fromY && h >= fromY - reach && (found == null || h > found)) found = h;
+        }
+        return found;
     }
 
     /// <summary>Between a solid point and an open one above it: the height of the surface.</summary>

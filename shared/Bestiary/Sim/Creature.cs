@@ -63,6 +63,8 @@ public sealed class Creature
     public Herd Herd;
     public Pack Pack;
     public int HerdSlot;
+    /// <summary>Its place among the bodies kept apart this step (<see cref="WildSim.Spaced"/>), -1 for none.</summary>
+    public int Spaced = -1;
     public Rng Rng;
 
     // Motion. Position is the ground point under the body (or the body itself for fliers).
@@ -114,6 +116,12 @@ public sealed class Creature
     }
     public ITarget ProvokedBy;
     public float ProvokedAt = -999f;
+    /// <summary>A chase (<see cref="Brain"/>'s Chase): whom it is after and how long it has had no whole way to them; whom it last gave up on, when, and when it next looks whether they are back within reach.</summary>
+    public ITarget Chased, GaveUpOn;
+    public float Unreached, GaveUpAt = -999f, ReachCheck, ChaseNearest = float.MaxValue;
+    /// <summary>Giving way to another body met face to face in a narrow way (<see cref="Brain"/>'s Unstick): whom, and until when.</summary>
+    public Creature GiveWayTo;
+    public float GiveWayUntil;
 
     /// <summary>Seconds left held in the flinch of a stun, and until another stun can take it.</summary>
     public float StunFor, StunReady;
@@ -239,11 +247,30 @@ public sealed class Creature
     public bool Clinging => ClingHull != null;
     public List<SpaceDrops.Loot> Loot;
 
-    // Paths (only when the straight line is blocked).
+    // Its way (Brain.Go), on whichever grid it moves on (the ground's, or its cave's or place's cells): only when the straight line is blocked.
     public readonly List<Vector3> Path = new();
     public int PathIndex;
     public Vector3 PathGoal;
     public float PathAge;
+    /// <summary>How near a waypoint on the ground counts as passed: less on a fine way among walls, whose corners are doorways.</summary>
+    public float PathReach = 1.6f;
+    /// <summary>Whether its last way found reached its goal (else it ends at the nearest it could get).</summary>
+    public bool PathWhole = true;
+    /// <summary>Its way is to be found again at its next think (it made no headway on this one).</summary>
+    public bool Repath;
+    /// <summary>Until when it keeps to a found way, never the straight line (it made no headway on the straight line).</summary>
+    public float PathOnly = -999f;
+    /// <summary>Making headway (Brain.Headway): where it last got a quarter metre on from, for how long it hasn't since while wanting to go, and whether that has had it look for another way yet.</summary>
+    public Vector3 ProgressAt;
+    public float StuckFor;
+    public bool Repathed;
+    /// <summary>Where it last stood in the open with its way going well, and a metre or more before that (what a body still stuck is put back on), with the surface's up at each.</summary>
+    public Vector3 GoodAt, Behind;
+    public Vector3 GoodUp = Vector3.Up, BehindUp = Vector3.Up;
+    /// <summary>A flight's spot (Brain.Away): where it runs to, what from, when it was picked, and whether it has one.</summary>
+    public Vector3 AwayGoal, AwayFrom;
+    public float AwayAt = -999f;
+    public bool HasAway;
 
     /// <summary>Rig update interval in frames, set by the view by distance (1 near, more far away).</summary>
     public int RigInterval = 1;
@@ -275,10 +302,6 @@ public sealed class Creature
     /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
     public Vector3 LastFirm;
     public Vector3 LastFirmNormal = Vector3.Up;
-    public readonly List<Vector3> SpacePath = new();
-    public int SpacePathIndex;
-    public Vector3 SpacePathGoal;
-    public float SpacePathAge;
 
     /// <summary>Hidden in the walls: in at <see cref="InCrack"/>, out at <see cref="CrackExit"/> after <see cref="WallLength"/> seconds.</summary>
     public Crack InCrack, CrackExit;
@@ -394,6 +417,9 @@ public sealed class Herd
     public int UpdatedFrame = -1; // space shoals
     public float UpdatedAt = -999f;
     public float Spread;
+    /// <summary>Alarmed: when its goal (a spot away from the threat, Brain.UpdateHerd) was last picked, and where the threat was then.</summary>
+    public float GoalAt = -999f;
+    public Vector3 GoalFrom;
     /// <summary>People: the band they are, round a leader, and how they take to an outsider (null for animals).</summary>
     public Party Party;
 
@@ -415,6 +441,7 @@ public sealed class Herd
         if (!Alarmed)
         {
             Alarms++;
+            GoalAt = -999f; // (where to run is picked afresh)
             // Every member takes it in on its next step; how soon it acts is its own (Reaction).
             foreach (Creature m in Members) m.ThinkEvery = 0f;
         }

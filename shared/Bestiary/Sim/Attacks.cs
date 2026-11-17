@@ -251,7 +251,7 @@ public static class Attacks
                 c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * (c.StrikeLanded ? 8f : 3f)); // a blow that met someone rebounds off them
                 c.Swipe = Mathf.MoveToward(c.Swipe, 0f, dt * 2f);
                 if (c.PhaseTime > 0.15f) c.Gape = Mathf.MoveToward(c.Gape, 0f, dt * 4f);
-                c.Desired = c.PhaseTime < 0.5f ? -c.Forward * c.Stats.WalkSpeed * 0.6f : Vector3.Zero;
+                c.Desired = c.PhaseTime < 0.5f && Brain.Clear(w, c, c.Position, c.Position - c.Forward * 0.8f) ? -c.Forward * c.Stats.WalkSpeed * 0.6f : Vector3.Zero; // (a step back, where there is room behind)
                 if (c.PhaseTime >= c.PhaseLength)
                 {
                     c.Phase = AttackPhase.None;

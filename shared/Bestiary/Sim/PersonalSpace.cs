@@ -12,7 +12,7 @@ namespace Wildlife;
 /// (never through), and the player, who gives nothing, is stepped round. Moving bodies coming up
 /// on someone ahead bear to their own right, so two on a path pass on one side; where there is no
 /// room to bear off (a doorway) the one who gives more waits a moment. A move that would put a
-/// body somewhere it can't stand is not made.
+/// body somewhere it can't stand (each body's own say) is not made: the other takes the whole push.
 /// </summary>
 public sealed class PersonalSpace
 {
@@ -39,8 +39,8 @@ public sealed class PersonalSpace
 
     static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
 
-    /// <summary>Separates the bodies: a few passes of pushing pairs apart, then a nudge to the right for those coming face to face.</summary>
-    public void Resolve(float dt, Func<Vector3, bool> open = null, int passes = 3)
+    /// <summary>Separates the bodies: a few passes of pushing pairs apart, then a nudge to the right for those coming face to face. <paramref name="open"/>: whether body i can stand at a point.</summary>
+    public void Resolve(float dt, Func<int, Vector3, bool> open = null, int passes = 3)
     {
         int n = Bodies.Count;
         for (int pass = 0; pass < passes; pass++)
@@ -68,15 +68,15 @@ public sealed class PersonalSpace
                             float overlap = want - dist;
                             Vector3 pa = -dir * overlap * a.Give / total, pb = dir * overlap * b.Give / total;
                             // One against a wall: the other takes the whole of it, if it can.
-                            bool aOk = open == null || open(a.Pos + pa), bOk = open == null || open(b.Pos + pb);
-                            if (!aOk && b.Give > 0f) { pb = dir * overlap; bOk = open == null || open(b.Pos + pb); }
-                            else if (!bOk && a.Give > 0f) { pa = -dir * overlap; aOk = open == null || open(a.Pos + pa); }
+                            bool aOk = open == null || open(i, a.Pos + pa), bOk = open == null || open(j, b.Pos + pb);
+                            if (!aOk && b.Give > 0f) { pb = dir * overlap; bOk = open == null || open(j, b.Pos + pb); }
+                            else if (!bOk && a.Give > 0f) { pa = -dir * overlap; aOk = open == null || open(i, a.Pos + pa); }
                             // Both against something: the one who gives more steps off to the side instead.
                             if (!aOk && !bOk)
                             {
                                 Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * overlap * ((i + j) % 2 == 0 ? 1f : -1f);
-                                if (a.Give >= b.Give && (open == null || open(a.Pos + side))) { pa = side; aOk = true; }
-                                else if (open == null || open(b.Pos - side)) { pb = -side; bOk = true; }
+                                if (a.Give >= b.Give && (open == null || open(i, a.Pos + side))) { pa = side; aOk = true; }
+                                else if (open == null || open(j, b.Pos - side)) { pb = -side; bOk = true; }
                                 // No room to part at all (a one-wide way): whoever is walking stops there and waits, never walks on through.
                                 if (!aOk && !bOk)
                                 {
@@ -119,7 +119,7 @@ public sealed class PersonalSpace
                         float dist = d.Length();
                         if (dist > a.Radius + Bodies[j].Radius + 1.2f || dist < 1e-3f || a.Heading.Dot(d / dist) < 0.7f) continue;
                         Vector3 step = right * 0.5f * dt;
-                        if (open == null || open(a.Pos + step)) { a.Pos += step; a.Moved += step; }
+                        if (open == null || open(i, a.Pos + step)) { a.Pos += step; a.Moved += step; }
                     }
                 }
             Bodies[i] = a;
@@ -142,6 +142,18 @@ public sealed class PersonalSpace
                             }
         }
         WorstOverlap = worst;
+    }
+
+    /// <summary>The bodies near a point (within a cell or two), as the last <see cref="Resolve"/> left them (none it no longer holds).</summary>
+    public void Near(Vector3 p, List<int> into)
+    {
+        into.Clear();
+        int cx = (int)MathF.Floor(p.X / Cell), cz = (int)MathF.Floor(p.Z / Cell);
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+                if (_grid.TryGetValue(Key(cx + dx, cz + dz), out List<int> near))
+                    foreach (int i in near)
+                        if (i < Bodies.Count) into.Add(i);
     }
 
     void Index()

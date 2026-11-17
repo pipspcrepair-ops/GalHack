@@ -48,8 +48,7 @@ public static partial class Brain
         {
             // Over to it, in its lurching way.
             if (c.State != CState.Follow) c.SetState(CState.Follow);
-            if (c.Space != null) c.Desired = (spot - c.Position).Normalized() * c.Stats.WalkSpeed;
-            else Steer(w, c, spot, c.Stats.WalkSpeed * (0.6f + 0.6f * Seizing.Gait(c, w.Time)));
+            Go(w, c, spot, c.Stats.WalkSpeed * (c.Space != null ? 1f : 0.6f + 0.6f * Seizing.Gait(c, w.Time)));
             return true;
         }
         // Down at the face, hands on it, heaving.

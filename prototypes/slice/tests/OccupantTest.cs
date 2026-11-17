@@ -50,6 +50,8 @@ public partial class OccupantTest : Node
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--spawns") >= 0) { PlacementChecks(); Finish(); return; }
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--unseen") >= 0) { Unseen(); Finish(); return; }
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--inside") >= 0) { Inside(); Finish(); return; }
+            // -- --paths: NPCs on their paths in every state, in cramped places and round buildings (OccupantTest.Paths).
+            if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--paths") >= 0) { Paths(); Finish(); return; }
             bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0, dark = Array.IndexOf(OS.GetCmdlineUserArgs(), "--dark") >= 0;
             if (!own && !dark && Array.IndexOf(OS.GetCmdlineUserArgs(), "--queued") < 0)
             {

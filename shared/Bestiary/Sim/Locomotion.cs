@@ -126,11 +126,63 @@ public static class Locomotion
         }
         Vector3 p = c.Position + v * dt;
         Avoid(w, c, ref p, ref v);
+        // Never into another body: along its side instead.
+        Vector3 held = w.Unpressed(c, c.Position, p);
+        if (held != p) (p, v) = (held, WildSim.Flat(held - c.Position) / MathF.Max(dt, 1e-4f));
         p = Bound(w, p, ref v);
         p.Y = w.Terrain.Height(p.X, p.Z);
+        KeepOffFaces(w, c, ref p, ref v);
         if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
         c.Velocity = v;
         c.Position = p;
+    }
+
+    /// <summary>
+    /// Ground its legs can't take is a wall to it (<see cref="Brain.GaitOf"/>): a step up a face steeper than its limit, or
+    /// off an edge higher than it drops, goes along it instead, the nearest way round to the one it wanted that is still
+    /// walkable (along the foot of a face as along a wall), or doesn't happen. (Its way goes round such ground; this is the
+    /// body's own say, whatever pushed it.)
+    /// </summary>
+    static void KeepOffFaces(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
+    {
+        NavGrid.Gait g = Brain.GaitOf(c.Species);
+        if (g.Any || !Face(w, c.Position, p, g)) return;
+        Vector3 step = WildSim.Flat(p - c.Position);
+        foreach (float a in Along)
+        {
+            float k = MathF.Cos(a);
+            Vector3 q = c.Position + step.Rotated(Vector3.Up, a) * k;
+            if (Face(w, c.Position, q, g)) continue;
+            (p, v) = (q with { Y = w.Terrain.Height(q.X, q.Z) }, WildSim.Flat(v).Rotated(Vector3.Up, a) * k);
+            return;
+        }
+        (p, v) = (c.Position, Vector3.Zero);
+    }
+
+    /// <summary>The turns off a step it tries, nearest first, radians.</summary>
+    static readonly float[] Along = { 0.45f, -0.45f, 0.9f, -0.9f, 1.3f, -1.3f };
+
+    /// <summary>
+    /// Whether a step from one point to another puts its feet on ground steeper than a gait takes (up it, across it or along
+    /// it): from ground it walks never; from a face it is on already, only across it (the step itself rising or falling no
+    /// more than its legs take) or down off it by an edge it drops from (the ground three metres on no lower than it drops).
+    /// </summary>
+    public static bool Face(WildSim w, Vector3 a, Vector3 b, NavGrid.Gait g)
+    {
+        Vector3 d = WildSim.Flat(b - a);
+        float run = d.Length();
+        if (g.Any || run < 1e-4f) return false;
+        Vector3 n = w.Terrain.Normal(b.X, b.Z);
+        float steep = new Vector2(n.X, n.Z).Length() / MathF.Max(n.Y, 1e-3f);
+        if (steep <= g.Slope) return false;
+        // Never onto a face from ground it walks; one already on a face (a spawn, a landing) only across or down off it, by an edge it drops from.
+        Vector3 m = w.Terrain.Normal(a.X, a.Z);
+        if (new Vector2(m.X, m.Z).Length() <= g.Slope * m.Y) return true;
+        float h = w.Terrain.Height(a.X, a.Z), hb = w.Terrain.Height(b.X, b.Z);
+        if (MathF.Abs(hb - h) <= run * g.Slope) return false;
+        d /= run;
+        if (hb < h && h - w.Terrain.Height(a.X + d.X * 3f, a.Z + d.Z * 3f) > g.Drop) return true;
+        return hb >= h;
     }
 
     /// <summary>
@@ -257,10 +309,17 @@ public static class Locomotion
         else p.Y = ground;
         c.Velocity = (c.LungeTo - c.LungeFrom) / MathF.Max(0.01f, c.PhaseLength);
         // A lunge into a wall, a trunk or a rock stops there.
-        if (!c.Species.Flies && Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species) || IntoTrees(w, c, p))
+        if (!c.Species.Flies && Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species) || IntoTrees(w, c, p) || Face(w, c.Position, p, Brain.GaitOf(c.Species)))
         {
             c.LungeFrom = c.LungeTo = c.Position; // held where it met it, not drawn back along the way it came
             c.LungeBlocked = true;
+            c.Velocity = Vector3.Zero;
+            return;
+        }
+        // Nor through anyone but whom it strikes at (owner: melee, swings and charges never through an ally): it stops at them.
+        if (!c.Species.Flies && w.IntoBody(c, p, c.AttackTarget))
+        {
+            c.LungeFrom = c.LungeTo = c.Position;
             c.Velocity = Vector3.Zero;
             return;
         }
@@ -333,6 +392,9 @@ public static class Locomotion
                 if (!SpaceMath.Project(c.Space, ref center, c.Clearance, out Vector3 n)) continue;
                 if (c.Species.Climbs) moved = center - c.Facing.Y * c.Clearance;
                 else if (c.Space.Density(center) > -0.02f) continue;
+                // Nor a walker pushed into a piece of furniture (its body as it really stands).
+                if (!c.Species.Climbs && c.Space.Parts is { } parts && !parts.Fits(moved, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species))
+                    && parts.Gap(moved, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) < parts.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species))) continue;
             }
             else
             {
@@ -340,7 +402,7 @@ public static class Locomotion
                 if (!c.Species.Flies && c.Hop == HopPhase.Ground) moved.Y = w.Terrain.Height(moved.X, moved.Z);
                 // Never shoved into a wall, a trunk or a rock.
                 if (Interpenetration.SolidSurface(w, moved, c.Species) && !c.Species.Flies) continue;
-                if (IntoTrees(w, c, moved)) continue;
+                if (IntoTrees(w, c, moved) || Face(w, c.Position, moved, Brain.GaitOf(c.Species))) continue;
             }
             float closing = c.Velocity.Dot(push);
             if (closing < 0f) c.Velocity -= push * closing;

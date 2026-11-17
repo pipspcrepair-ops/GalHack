@@ -301,11 +301,12 @@ public sealed partial class Town
     /// <summary>On the way home: there, into bed (asleep, for the night), shut in (from a fright), or in at the door where there are no beds.</summary>
     void Arrive(Person p, float dt, bool sleep)
     {
-        if (!Move(p, dt) || p.Spot != p.Home) return;
-        if (p.Home < _lie.Count && _lie[p.Home] != null)
+        int home = p.Refuge >= 0 ? p.Refuge : p.Home;
+        if (!Move(p, dt) || p.Spot != home) return;
+        if (home < _lie.Count && _lie[home] != null)
         {
             // Asleep counts as in for everything else (out of reach, not about the place); only their body shows, in bed.
-            if (sleep) { p.Asleep = true; p.Indoors = true; p.Yaw = _face[p.Home]; p.Path = null; }
+            if (sleep && home == p.Home) { p.Asleep = true; p.Indoors = true; p.Yaw = _face[p.Home]; p.Path = null; }
             else p.Indoors = true; // in from a fright: shut in their room, out of sight, as anyone else's door
         }
         else p.Indoors = _homes.Length > 0;

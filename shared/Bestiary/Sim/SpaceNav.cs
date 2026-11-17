@@ -141,7 +141,6 @@ public static class SpaceNav
     {
         path.Clear();
         Searches++;
-        bool climbs = body.Climbs;
         Vector3I? a = Nearest(s, from, body, 2) ?? Nearest(s, from, body with { Shoulders = 0 }), b = Nearest(s, to, body, 3);
         if (a == null || b == null) return false;
         Vector3I start = a.Value, goal = b.Value;
@@ -150,19 +149,17 @@ public static class SpaceNav
             path.Add(to);
             return true;
         }
-        var open = new PriorityQueue<Vector3I, float>();
-        var came = new Dictionary<Vector3I, Vector3I>();
-        var cost = new Dictionary<Vector3I, float> { [start] = 0f };
-        var walk = new Dictionary<Vector3I, bool>();
-        open.Enqueue(start, H(start, goal));
+        Scratch k = Take();
+        k.Cost[start] = 0f;
+        k.Open.Enqueue(start, H(start, goal));
         Vector3I closest = start;
         float closestH = H(start, goal);
-        Vector3I[] around = climbs ? Around26 : Around8;
         bool found = false;
         int expanded = 0;
-        while (open.Count > 0 && expanded < budget)
+        while (k.Open.Count > 0 && expanded < budget)
         {
-            Vector3I cur = open.Dequeue();
+            Vector3I cur = k.Open.Dequeue();
+            if (!k.Closed.Add(cur)) continue;
             expanded++;
             if (cur == goal)
             {
@@ -172,64 +169,166 @@ public static class SpaceNav
             }
             float h = H(cur, goal);
             if (h < closestH) { closestH = h; closest = cur; }
-            float g = cost[cur];
-            foreach (Vector3I d in around)
+            float g = k.Cost[cur];
+            Moves(s, cur, body, k);
+            foreach (var (n, step) in k.Next)
             {
-                var n = new Vector3I(cur.X + d.X, cur.Y + d.Y, cur.Z + d.Z);
-                if (!walk.TryGetValue(n, out bool ok))
-                {
-                    ok = Walkable(s, n, body);
-                    walk[n] = ok;
-                }
-                if (!ok) continue;
-                // No cutting a corner through solid on a diagonal, nor a step that takes the body through a part.
-                if (!climbs && d.X != 0 && d.Z != 0 && (s.SolidCell(cur.X + d.X, cur.Y, cur.Z) || s.SolidCell(cur.X, cur.Y, cur.Z + d.Z))) continue;
-                if (!Steps(s, cur, n, body)) continue;
-                float step = MathF.Sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
                 float ng = g + step;
-                if (cost.TryGetValue(n, out float old) && old <= ng) continue;
-                cost[n] = ng;
-                came[n] = cur;
-                open.Enqueue(n, ng + H(n, goal));
-            }
-            // A walker goes up and down a flight (a ramp or stair rising a cell a cell) as people do:
-            // up onto the cell over a ramp rising ahead, down onto one over a ramp falling ahead.
-            if (climbs) continue;
-            foreach (Vector3I r in Slopes.Rise)
-            {
-                Vector3I n;
-                if (s.SlopeCell(cur.X + r.X, cur.Y, cur.Z + r.Z) == Slopes.Of(r.X, r.Z)) n = new Vector3I(cur.X + r.X, cur.Y + 1, cur.Z + r.Z);
-                else if (s.SlopeCell(cur.X + r.X, cur.Y - 2, cur.Z + r.Z) == Slopes.Of(-r.X, -r.Z)) n = new Vector3I(cur.X + r.X, cur.Y - 1, cur.Z + r.Z);
-                else continue;
-                if (!walk.TryGetValue(n, out bool ok))
-                {
-                    ok = Walkable(s, n, body);
-                    walk[n] = ok;
-                }
-                if (!ok || !Steps(s, cur, n, body)) continue;
-                float ng = g + 1.4142f;
-                if (cost.TryGetValue(n, out float old) && old <= ng) continue;
-                cost[n] = ng;
-                came[n] = cur;
-                open.Enqueue(n, ng + H(n, goal));
+                if (k.Cost.TryGetValue(n, out float old) && old <= ng) continue;
+                k.Cost[n] = ng;
+                k.Came[n] = cur;
+                k.Open.Enqueue(n, ng + H(n, goal));
             }
         }
         Expanded += expanded;
-        var cells = new List<Vector3I>();
-        for (Vector3I c = closest; ; c = came[c])
-        {
-            cells.Add(c);
-            if (c == start || !came.ContainsKey(c)) break;
-        }
-        cells.Reverse();
-        for (int i = 0; i < cells.Count; i++)
-        {
-            if (i > 0 && Steps(s, cells[i - 1], cells[i], body, out Vector3[] vias) && vias != null)
-                foreach (Vector3 v in vias) path.Add(v + Vector3.Up * 0.5f);
-            path.Add(Point(s, cells[i], body));
-        }
+        Points(s, start, closest, body, k, path);
         if (found) path[^1] = to;
         return found;
+    }
+
+    /// <summary>
+    /// A flight through a cave or a place: from near <paramref name="from"/> to the cell within <paramref name="reach"/> m
+    /// of the way round that is farthest from <paramref name="threat"/> by the way round (the threat's own flood over the
+    /// same cells), so out of a room by its door and down the corridor beyond rather than into the wall behind; never
+    /// past the threat (a step nearer it costs four times over). The way there into <paramref name="path"/>; false
+    /// where nowhere it can reach is farther (cornered).
+    /// </summary>
+    public static bool Away(ISolidSpace s, Vector3 from, Vector3 threat, Body body, float reach, List<Vector3> path, int budget = 700)
+    {
+        path.Clear();
+        Searches++;
+        Vector3I? a = Nearest(s, from, body, 2) ?? Nearest(s, from, body with { Shoulders = 0 });
+        if (a is not { } start) return false;
+        Scratch k = Take();
+        // The threat's flood: how far each cell near is from it by the way round; past it, at least as far as it went.
+        float far = 0f;
+        if (Nearest(s, threat, body, 2) is { } t)
+        {
+            k.Threat[t] = 0f;
+            k.Open.Enqueue(t, 0f);
+            for (int done = 0; k.Open.Count > 0 && done < budget;)
+            {
+                Vector3I cur = k.Open.Dequeue();
+                if (!k.Closed.Add(cur)) continue;
+                done++;
+                float g = k.Threat[cur];
+                far = MathF.Max(far, g);
+                Moves(s, cur, body, k);
+                foreach (var (n, step) in k.Next)
+                {
+                    if (k.Threat.TryGetValue(n, out float old) && old <= g + step) continue;
+                    k.Threat[n] = g + step;
+                    k.Open.Enqueue(n, g + step);
+                }
+            }
+            k.Open.Clear();
+            k.Closed.Clear();
+        }
+        float T(Vector3I c) => k.Threat.TryGetValue(c, out float d) ? d : MathF.Max(far, (SpaceMath.Center(c) - threat).Length());
+        float t0 = T(start), bestScore = float.MinValue;
+        Vector3I? best = null;
+        k.Cost[start] = 0f;
+        k.Open.Enqueue(start, 0f);
+        for (int expanded = 0; k.Open.Count > 0 && expanded < budget;)
+        {
+            Vector3I cur = k.Open.Dequeue();
+            if (!k.Closed.Add(cur)) continue;
+            expanded++;
+            float g = k.Cost[cur], tc = T(cur), score = tc - 0.35f * g;
+            if (cur != start && tc > t0 + 1f && score > bestScore) { bestScore = score; best = cur; }
+            if (g >= reach) continue;
+            Moves(s, cur, body, k);
+            foreach (var (n, step) in k.Next)
+            {
+                float ng = g + step * (T(n) < tc ? 4f : 1f);
+                if (k.Cost.TryGetValue(n, out float old) && old <= ng) continue;
+                k.Cost[n] = ng;
+                k.Came[n] = cur;
+                k.Open.Enqueue(n, ng);
+            }
+        }
+        if (best == null) return false;
+        Points(s, start, best.Value, body, k, path);
+        return true;
+    }
+
+    /// <summary>What a search reuses (one set a thread), so a search allocates nothing once warm.</summary>
+    sealed class Scratch
+    {
+        public readonly PriorityQueue<Vector3I, float> Open = new();
+        public readonly Dictionary<Vector3I, Vector3I> Came = new();
+        public readonly Dictionary<Vector3I, float> Cost = new(), Threat = new();
+        public readonly Dictionary<Vector3I, bool> Walk = new();
+        public readonly HashSet<Vector3I> Closed = new();
+        public readonly List<Vector3I> Cells = new();
+        public readonly List<(Vector3I Cell, float Step)> Next = new();
+    }
+
+    [ThreadStatic] static Scratch _scratch;
+
+    static Scratch Take()
+    {
+        Scratch k = _scratch ??= new Scratch();
+        k.Open.Clear();
+        k.Came.Clear();
+        k.Cost.Clear();
+        k.Threat.Clear();
+        k.Walk.Clear();
+        k.Closed.Clear();
+        return k;
+    }
+
+    static bool Walk(ISolidSpace s, Vector3I c, Body body, Scratch k)
+    {
+        if (!k.Walk.TryGetValue(c, out bool ok)) k.Walk[c] = ok = Walkable(s, c, body);
+        return ok;
+    }
+
+    /// <summary>
+    /// The moves a body makes from a cell, into <see cref="Scratch.Next"/>: to each walkable neighbour round no solid
+    /// corner (a walker on a diagonal) with its body clear of the parts on the way; and a walker's up or down a flight
+    /// (a ramp or stair rising a cell a cell), as people go: onto the cell over a ramp rising ahead, down onto one over a ramp falling ahead.
+    /// </summary>
+    static void Moves(ISolidSpace s, Vector3I cur, Body body, Scratch k)
+    {
+        k.Next.Clear();
+        bool climbs = body.Climbs;
+        foreach (Vector3I d in climbs ? Around26 : Around8)
+        {
+            var n = new Vector3I(cur.X + d.X, cur.Y + d.Y, cur.Z + d.Z);
+            if (k.Closed.Contains(n) || !Walk(s, n, body, k)) continue;
+            if (!climbs && d.X != 0 && d.Z != 0 && (s.SolidCell(cur.X + d.X, cur.Y, cur.Z) || s.SolidCell(cur.X, cur.Y, cur.Z + d.Z))) continue;
+            if (!Steps(s, cur, n, body)) continue;
+            k.Next.Add((n, MathF.Sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z)));
+        }
+        if (climbs) return;
+        foreach (Vector3I r in Slopes.Rise)
+        {
+            Vector3I n;
+            if (s.SlopeCell(cur.X + r.X, cur.Y, cur.Z + r.Z) == Slopes.Of(r.X, r.Z)) n = new Vector3I(cur.X + r.X, cur.Y + 1, cur.Z + r.Z);
+            else if (s.SlopeCell(cur.X + r.X, cur.Y - 2, cur.Z + r.Z) == Slopes.Of(-r.X, -r.Z)) n = new Vector3I(cur.X + r.X, cur.Y - 1, cur.Z + r.Z);
+            else continue;
+            if (k.Closed.Contains(n) || !Walk(s, n, body, k) || !Steps(s, cur, n, body)) continue;
+            k.Next.Add((n, 1.4142f));
+        }
+    }
+
+    /// <summary>The way from the start to a cell a search reached, as the points a body goes by (and the gaps among the parts between them).</summary>
+    static void Points(ISolidSpace s, Vector3I start, Vector3I end, Body body, Scratch k, List<Vector3> path)
+    {
+        k.Cells.Clear();
+        for (Vector3I c = end; ; c = k.Came[c])
+        {
+            k.Cells.Add(c);
+            if (c == start || !k.Came.ContainsKey(c)) break;
+        }
+        k.Cells.Reverse();
+        for (int i = 0; i < k.Cells.Count; i++)
+        {
+            if (i > 0 && Steps(s, k.Cells[i - 1], k.Cells[i], body, out Vector3[] vias) && vias != null)
+                foreach (Vector3 v in vias) path.Add(v + Vector3.Up * 0.5f);
+            path.Add(Point(s, k.Cells[i], body));
+        }
     }
 
     static float H(Vector3I a, Vector3I b)

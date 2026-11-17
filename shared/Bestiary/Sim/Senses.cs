@@ -90,7 +90,7 @@ public static class Senses
             c.LastSeen = t.Position;
             float near = sight > 0f ? Math.Clamp(1f - d / MathF.Max(sight, 0.1f), 0f, 1f) : 0.5f;
             c.Awareness = MathF.Min(1f, c.Awareness + dt / notice * strength * (0.6f + 1.4f * near));
-            if (c.Awareness >= 1f || c.Noticed == t)
+            if ((c.Awareness >= 1f || c.Noticed == t) && !Brain.Remembers(w, c, t))
             {
                 c.Noticed = t;
                 c.NoticedAt = w.Time;
@@ -99,7 +99,7 @@ public static class Senses
         else c.Awareness = MathF.Max(0f, c.Awareness - dt / (notice * 2.5f));
 
         // Shot by someone: it knows where they are.
-        if (c.ProvokedBy != null && w.Time - c.ProvokedAt < 1f && c.ProvokedBy.Attackable)
+        if (c.ProvokedBy != null && w.Time - c.ProvokedAt < 1f && c.ProvokedBy.Attackable && !Brain.Remembers(w, c, c.ProvokedBy))
         {
             c.Noticed = c.ProvokedBy;
             c.NoticedAt = w.Time;
