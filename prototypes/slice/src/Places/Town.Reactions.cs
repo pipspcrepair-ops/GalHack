@@ -89,7 +89,7 @@ public sealed partial class Town
             Vector3 origin = si < 0 ? patch.Origin : patch.Sites[si].GlobalPosition;
             foreach (Creature c in sim.Creatures)
             {
-                if (c.Removed || c.Dead || c.Dormant || c.InWalls || c.Keeper == this) continue;
+                if (c.Removed || c.Dead || c.InWalls || c.Keeper == this) continue;
                 Vector3 at = c.Position + origin;
                 if (c == harmer || WildSim.Flat(at - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c))) _round.Add((c, at));
             }
