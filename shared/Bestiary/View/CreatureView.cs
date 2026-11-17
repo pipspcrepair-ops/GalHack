@@ -192,6 +192,7 @@ public partial class CreatureView : Node3D
                 skin.AddBind(i, Transform3D.Identity);
             }
             AddChild(_skeleton);
+            _skeleton.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // eased by Glide
             foreach (var (mesh, shadow, blur) in Bodies.GetValue(c.Species, s => BodyMeshes(s, pieces)))
             {
                 var mi = new MeshInstance3D
@@ -299,6 +300,8 @@ public partial class CreatureView : Node3D
         // and its meshes on this rig would leave gaps at every joint.
         if (_swarm != null || !SameBody(Creature, c) || c.Rig.Layout.Pieces.Count != (_skeleton?.GetBoneCount() ?? _parts.Count)) return false;
         Creature = c;
+        _smooth.Cut();
+        _blend.Reset();
         Sync();
         ResetPhysicsInterpolation();
         foreach (var p in _parts) p.ResetPhysicsInterpolation();
@@ -322,7 +325,7 @@ public partial class CreatureView : Node3D
             return;
         }
 
-        Transform3D[] pose = c.Rig.Pose;
+        Transform3D[] live = c.Rig.Pose;
         Transform3D jolt = Jolt(c);
         if (!c.Tumble.IsEqualApprox(Quaternion.Identity))
         {
@@ -330,10 +333,23 @@ public partial class CreatureView : Node3D
             Vector3 middle = c.Position + Vector3.Up * c.Species.Body.Height * 0.5f;
             jolt = new Transform3D(new Basis(c.Tumble), middle) * new Transform3D(Basis.Identity, -middle) * jolt;
         }
+        _jolt = jolt;
+        // Root and pose eased from the last one drawn (DrawSmoother, PoseBlend): the rig's steps never show as jumps.
+        double now = DrawSmoother.Clock();
+        _smooth.Note(c.Position, c.Yaw, c.Velocity.Length(), now);
+        float span = c.RigInterval >= 4 && now - _synced < 0.4 ? (float)(now - _synced) : 0f;
+        _synced = now;
+        _root = new Transform3D(new Basis(Vector3.Up, c.Yaw), c.Position);
+        Transform3D[] pose = _blend.Frame(live, _root, PoseKey(c), span, MathF.Max(0.3f, c.Species.Body.Size), now);
         if (_skeleton != null)
         {
-            if (_skeleton.Transform != jolt) _skeleton.Transform = jolt;
-            for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+            // A body posed every frame has the easing in its bones (no move of the whole skeleton node, which costs far more);
+            // one posed less often has it on the node, which moves every frame between its poses (Glide).
+            bool bake = _baked = c.RigInterval <= 1;
+            Place(now, bake);
+            Transform3D ease = bake ? _smooth.Placement(now) : Transform3D.Identity;
+            if (ease == Transform3D.Identity) for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+            else for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, ease * pose[i]);
         }
         else for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = jolt * pose[i];
 
@@ -358,6 +374,58 @@ public partial class CreatureView : Node3D
             _stirShown = stir;
             foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("worm_stir", stir);
         }
+    }
+
+    readonly DrawSmoother _smooth = new();
+    readonly PoseBlend _blend = new();
+    Transform3D _jolt, _root, _put = Transform3D.Identity;
+    double _synced, _wrote;
+    bool _baked;
+
+    /// <summary>What it is doing, as far as its pose is concerned: a change of this blends the pose over <see cref="PoseBlend.Switch"/>.</summary>
+    static int PoseKey(Creature c) =>
+        (int)c.State | (int)c.Phase << 5 | (c.Dead ? 1 : 0) << 8 | (c.Landed ? 1 : 0) << 9 | (c.Flapping ? 1 : 0) << 10 | (c.Thrown ? 1 : 0) << 11
+        | (c.Downed > 0f ? 1 : 0) << 12 | (int)c.Act << 13 | (c.Climbing ? 1 : 0) << 20 | (c.Falling ? 1 : 0) << 21;
+
+    void Place(double now, bool bake)
+    {
+        Transform3D put = bake ? _jolt : _smooth.Placement(now) * _jolt;
+        if (put == _put) return;
+        _put = put;
+        _skeleton.Transform = put;
+    }
+
+    /// <summary>Where it is drawn now, with the easing of its root (tests); the sim's position when nothing is easing.</summary>
+    public Vector3 DrawnRoot => _skeleton == null ? DrawnAt : _smooth.Placement(DrawSmoother.Clock()) * DrawnAt;
+
+    /// <summary>How far the drawn root is from the sim's (tests).</summary>
+    public Vector4 Eased => _smooth.Offset(DrawSmoother.Clock());
+
+    /// <summary>The root its pose was last made about: position and heading as of the rig's last update (tests).</summary>
+    public Transform3D PoseRoot => _root;
+
+    /// <summary>The same, as drawn: eased from the sim's (tests).</summary>
+    public Transform3D DrawnPoseRoot => _baked ? _smooth.Placement(DrawSmoother.Clock()) * _root : _root;
+
+    /// <summary>A piece's pose as drawn (tests).</summary>
+    public Transform3D DrawnBone(int i) => _skeleton.GetBonePose(i);
+
+    /// <summary>The heading it is drawn at, rad (tests).</summary>
+    public float DrawnYaw => _smooth.Yaw + _smooth.Offset(DrawSmoother.Clock()).W;
+
+    /// <summary>Every frame: the root eases on towards the sim's, and a pose still blending is posed again a step on.</summary>
+    public void Glide()
+    {
+        if (_skeleton == null) return;
+        double now = DrawSmoother.Clock();
+        // (A blend between a far rig's updates is posed 30 times a second: it is small and far.)
+        if (_blend.Active(now) && now - _wrote >= 1.0 / 30.0)
+        {
+            _wrote = now;
+            Transform3D[] pose = _blend.Apply(Creature.Rig.Pose, _root, now);
+            for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+        }
+        if (_smooth.Easing(now) || _put != _jolt) Place(now, false);
     }
 
     float _stirShown;
@@ -557,6 +625,7 @@ public partial class WildlifeView : Node3D
                 float lift = Lift != null && d > LiftFrom ? Lift(c) : 0f;
                 if (MathF.Abs(view.Position.Y - lift) > 0.01f) view.Position = new Vector3(0f, lift, 0f);
             }
+            else if (visible) view.Glide();
             view.Listen(d);
             view.ShadowsAt(d);
             if (Audio != null && d < StepHeard && c.Rig.Steps != c.StepsHeard)

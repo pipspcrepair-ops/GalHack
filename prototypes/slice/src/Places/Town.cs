@@ -1361,6 +1361,7 @@ public sealed partial class Town
         for (int i = 0; i < People.Count; i++)
         {
             Person p = People[i];
+            if (p.View is { Visible: true }) p.View.Glide();
             if (p.PoseWho < 0) continue;
             // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed.)
             bool needed = p.Engaged || p.Dead && !p.Laid;
@@ -1408,6 +1409,11 @@ public sealed partial class Town
         return p.Engaged ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) + Vector3.Up * 1.15f : null;
     }
 
+    /// <summary>What a body is doing as far as its pose goes: a change of it blends the pose (<see cref="PersonView.Sync(Vector3, float, float, int)"/>).</summary>
+    static int PoseKey(Person p) =>
+        (int)p.Act | (p.Now > 0.05f ? 1 : 0) << 8 | (p.Sitting ? 1 : 0) << 9 | (p.Dead ? 1 : 0) << 10 | (p.Asleep ? 1 : 0) << 11
+        | (p.Fleeing ? 1 : 0) << 12 | (p.StunFor > 0f ? 1 : 0) << 13 | (p.Working ? 1 : 0) << 14 | (p.Aim >= 0f || p.Holding ? 1 : 0) << 15;
+
     void PoseBody(Person p, int who, float dt)
     {
         p.View.SyncFar(p.Pos, p.Yaw);
@@ -1451,7 +1457,7 @@ public sealed partial class Town
             Far = p.PoseAway >= 30f && !p.Engaged,
         });
         p.LookFor = MathF.Max(0f, p.LookFor - dt);
-        p.View.Sync();
+        p.View.Sync(p.Pos, p.Yaw, p.Now, PoseKey(p));
         PoseWeapon(p);
         p.View.Hurt(p.Hurt / 0.4f);
     }
