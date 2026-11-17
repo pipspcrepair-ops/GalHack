@@ -28,7 +28,7 @@ namespace Slice.Tests;
 ///   rallies as one; a machine fires its mount; a club strikes for the club's damage.
 /// - A town's edge: raiders who come near draw fire from its guards, the sleeper of no account to either.
 ///
-/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/CombatTest.tscn
+/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/CombatTest.tscn [-Extra --squatters (that check alone)]
 /// </summary>
 public partial class CombatTest : Node
 {
@@ -81,6 +81,11 @@ public partial class CombatTest : Node
 
     IEnumerable<int> Scenario()
     {
+        if (OS.GetCmdlineUserArgs().Contains("--squatters"))
+        {
+            foreach (int x in Squatters()) yield return x;
+            yield break;
+        }
         PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
         PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Gang);
@@ -99,6 +104,7 @@ public partial class CombatTest : Node
         foreach (int x in World(game)) yield return x;
         game.QueueFree();
         yield return 0;
+        foreach (int x in Squatters()) yield return x;
         // NPCs' rounds that hit an ally or a bystander (owner: "they should try not to shoot each other"; a round into one of
         // the target's own side is no stray): the town's edge fought out first with the line of fire not looked along for
         // bodies (how it was: counted, not checked), then as it is, on the same world.
@@ -183,6 +189,84 @@ public partial class CombatTest : Node
         GD.Print($"  (the raiders: {string.Join(", ", band.Select(c => $"{c.State} {(c.Dead ? "down" : $"{c.Health:F0}")} {(patch.FromPatch(c.Position) - post).Length():F0} m"))}; {game.Arms.People.Shots - bandShots} shots of theirs; the town fought {town.Fought}, {town.Shots} shots)");
         Check(fire > 0, $"raiders near a town draw its fire: {fire} rounds, {guardShots} of them its guards', in {(guardShots >= 3 ? "under " : "")}40 s");
         Check(atYou == 0 && town.Memory.Mood == mood, $"none of it at you, and the town still {town.Memory.Mood} with you ({atYou} aimed at you)");
+        game.QueueFree();
+        yield return 0;
+    }
+
+    /// <summary>
+    /// Squatters and their place's beasts (owner, 17 Nov 2026: in a mine "there were people with guns squatting, with aggressive
+    /// animals next to them, getting along"): squatters' works stand, three of the world's dangers are put down in its rooms
+    /// near its people (in the place's own creatures' sim), the sleeper well off; they fight: the beasts go for the people, and
+    /// those with a weapon and the nerve fight them. Any beast the squatters keep (collared) never goes for one of them.
+    /// </summary>
+    IEnumerable<int> Squatters()
+    {
+        PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
+        PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Squatters);
+        WorldChoice world = WorldChoice.Fresh("temperate");
+        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
+        AddChild(game);
+        var drive = new Driver(game);
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        PlanetSurface.Poi.PoiSiting.ForceFamily = null;
+        PlanetSurface.Poi.PoiSiting.ForceState = null;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = null;
+        game.Zone.Weather.Bridge.Calm = true;
+        GD.Print($"-- squatters and their place's beasts, {world} --");
+        var site = game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "sewage_works" && s.Instance.Occupancy?.Main == Occupant.Squatters);
+        if (site?.Instance.Townsfolk == null) { GD.Print("  (no squatters' works could be seated on this world)"); game.QueueFree(); yield break; }
+        double max = game.Suit.Sim.Data.Vitals.Health.Max;
+        Vector3 camp = game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X + site.Instance.Townsfolk.Spots[0].Cell.X + 0.5f, site.Origin.Y + site.Instance.Townsfolk.Spots[0].Cell.Y, site.Origin.Z + site.Instance.Townsfolk.Spots[0].Cell.Z + 0.5f), game.Survivor.WorldFeet);
+        game.Survivor.PlaceOutside((camp + Vector3.Up * 0.2f).ToNumerics());
+        for (int i = 0; i < 3600 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        Place place = game.Places.PlaceOf(site);
+        Town town = place?.Memory.Town;
+        for (int i = 0; i < 600 && town != null && town.People.Any(p => p.Looks == null); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        var outs = town?.People.Where(p => !p.Dead && !p.Indoors && !p.Away && p.Looks != null).ToList();
+        Check(outs is { Count: > 0 }, $"the squatters' works stand with its people out ({outs?.Count} of {town?.People.Count})");
+        if (outs is not { Count: > 0 }) { game.QueueFree(); yield break; }
+        // Its own creatures' sim, or one made for it as the game makes them, its blocks for their space.
+        WildlifePatch patch = game.Zone.Wildlife;
+        DeepSite deep = place.Memory.Fauna?.Site;
+        ISolidSpace space = place.Memory.Fauna?.Space ?? PlaceFauna.SpaceOf(place.Memory);
+        if (deep == null)
+        {
+            var sim = new WildSim(game.Zone.Data.Wildlife, new Wildlife.Terrain((x, z) => -1000f, 300f), new Wildlife.NavGrid(300f, 3f));
+            deep = DeepSite.Create(patch, sim, "Beasts");
+            deep.Town = town;
+            place.AddChild(deep);
+        }
+        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Hunts(s) && !s.Husk && !s.Mechanical && !s.Flies && s.Rig == RigKind.Legged && s.Body.Size < 2f).OrderBy(_ => _rng.Next()).FirstOrDefault();
+        if (beast == null) { GD.Print("  (no walking hunter on this world)"); game.QueueFree(); yield break; }
+        var beasts = new List<Creature>();
+        for (int i = 0; i < 3; i++)
+        {
+            Town.Person near = outs[i % outs.Count];
+            Creature c = deep.Sim.SpawnIn(beast, space, deep.Local(town.World(near.Pos)) + new Vector3(i - 1, 0f, 1f) * 2.5f);
+            if (!c.Removed) beasts.Add(c);
+        }
+        Check(beasts.Count > 0, $"{beasts.Count} {beast.CommonName} put down in its rooms near its people");
+        if (beasts.Count == 0) { game.QueueFree(); yield break; }
+        // The sleeper well off (still near enough for the place to stand).
+        game.Survivor.PlaceOutside((camp + Vector3.Up * 0.2f + new Vector3(30f, 0f, 30f)).ToNumerics());
+        int Met() => town.Fought + town.FledFrom + town.Avoided + town.Barricades;
+        int met = Met(), fought = town.Fought, onPeople = 0, byKept = 0, shots = 0;
+        void Bitten(AttackEvent e)
+        {
+            if (Town.Of(e.Target)?.Town != town) return;
+            if (e.Creature.Keeper == town) byKept++;
+            else onPeople++;
+        }
+        patch.Bitten += Bitten;
+        town.ShotFired += (_, _, _, _, _, meant) => { if (meant is Creature) shots++; };
+        for (int i = 0; i < 60 * 45 && (Met() == met || onPeople == 0); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        patch.Bitten -= Bitten;
+        int kept = deep.Sim.Creatures.Count(c => c.Keeper == town) + patch.Sim.Creatures.Count(c => c.Keeper == town);
+        GD.Print($"  (the beasts: {string.Join(", ", beasts.Select(c => $"{c.State} {(c.Dead ? "down" : $"{c.Health:F0}")} after {c.Noticed?.Name ?? "nobody"} {(c.Noticed != null ? (c.Noticed.Position - c.Position).Length() : 0f):F1} m{(c.AttackTarget != null ? $", attacking {c.AttackTarget.Name}" : "")}"))}; {kept} kept by the squatters; {outs.Count(p => p.Kit is { Strike: false } || Weapons.Armed(p.Figure.Prop))} armed)");
+        Check(Met() > met, $"the squatters meet the beasts in their rooms as dangers: {town.Fought - fought} fights started ({shots} rounds at them), {Met() - met - (town.Fought - fought)} fled, kept wide of or barricaded");
+        Check(onPeople > 0, $"the beasts go for the squatters: {onPeople} attacks on them");
+        Check(byKept == 0, $"none of the squatters' own beasts ({kept}) goes for one of them ({byKept} attacks)");
         game.QueueFree();
         yield return 0;
     }

@@ -84,8 +84,13 @@ public sealed class Species
     public float Collapse;
     /// <summary>Mutation has gone past growths: the body itself has changed shape.</summary>
     public bool Monstrous;
-    /// <summary>A person taken by the worms (see <see cref="Husks"/>).</summary>
-    public bool Husk => Figure?.Husk == true;
+    /// <summary>A person taken by the worms (see <see cref="Husks"/>), or a beast (<see cref="Wormed"/>).</summary>
+    public bool Husk => Figure?.Husk == true || Wormed;
+    /// <summary>A beast the worms took (owner: "animals turning too would be pretty dangerous"): a Husk in its own body, worms out of its openings (<see cref="Husks.Decorate"/>).</summary>
+    public bool Wormed;
+    /// <summary>This beast as a Husk (<see cref="Husks.Beast"/>), made once, as <see cref="Kept"/> is.</summary>
+    public Species Husked => _husked ??= Husks.Beast(this);
+    Species _husked;
     /// <summary>Bodies one of these may be instead (each spawned is one of them): a world's Husks were many different people.</summary>
     public List<Species> Hosts;
     /// <summary>What covers it: fur on the cold worlds, scale and thin skin on the hot ones.</summary>
@@ -98,6 +103,19 @@ public sealed class Species
     public Species Young, Adult;
     /// <summary>The other sex, where a species shows one. Both are this species.</summary>
     public Species Mate;
+    /// <summary>A wild kind's body as people keep it (owner: "use the pet collars we already have to indicate that they're pets"): the same beast with a collar on (<see cref="Tack"/>), made once.</summary>
+    public bool Collared;
+    public Species Kept
+    {
+        get
+        {
+            if (Collared || _kept != null) return _kept ?? this;
+            var kept = (Species)MemberwiseClone();
+            kept.Collared = true;
+            return _kept = kept;
+        }
+    }
+    Species _kept;
     /// <summary>How big its ears stand, 0 to 1: how well it hears, and how much heat it sheds.</summary>
     public float EarSize;
     /// <summary>No lungs and no blood: it runs on what it was built with.</summary>

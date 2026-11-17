@@ -23,7 +23,7 @@ namespace Slice.Places;
 /// its people. Bodies come from the bestiary: each person is rolled for this world, this place and
 /// their job, walks on real legs, and from a distance is one cheap mesh.
 /// </summary>
-public sealed partial class Town
+public sealed partial class Town : IKeeper
 {
     public PlaceMemory Memory;
     public Townsfolk Data;
@@ -170,6 +170,9 @@ public sealed partial class Town
         public bool Attackable => !Dead && !Indoors && !Away;
         public float ThreatScale => 1f;
     }
+
+    /// <summary>One of a town's people a sim's creature has hold of or goes for: as the patch sees them, or as a place's own sim does (<see cref="HostFrame"/>).</summary>
+    public static Person Of(ITarget t) => t switch { Person p => p, FrameTarget { Inner: Person p } => p, _ => null };
 
     /// <summary>A place's town (worker-safe), or null where nobody lives: walking routes worked out once round the room dressing.</summary>
     public static Town For(PlaceMemory m, PlanetSurface.World.PlanetWorld planet = null)
@@ -347,6 +350,8 @@ public sealed partial class Town
             patch.Sim.Settlements.Remove(_settlement);
             foreach (Person p in People) patch.Sim.Targets.Remove(p);
             foreach (var a in _animals) patch.Sim.Remove(a.Creature);
+            // Beasts kept out in the open go with the town and come back with it (those of the place's own sim stay there with it).
+            foreach (Creature c in patch.Sim.Creatures) if (c.Keeper == this) { patch.Sim.Remove(c); _kennelled = false; }
             patch.Sim.StrayEntered -= OnStray;
         }
         _animals.Clear();
@@ -412,7 +417,7 @@ public sealed partial class Town
     void OnStray(Creature c, Settlement town)
     {
         if (town != _settlement) return;
-        if (c.Species.Husk || CrossReactions.People(c.Species)) return; // a Husk, or people, are met by temper and nerve: fought, fled, barricaded against or let by (Town.Reactions)
+        if (c.Species.Husk || CrossReactions.People(c.Species) || c.Keeper != null) return; // a Husk, or people, are met by temper and nerve: fought, fled, barricaded against or let by (Town.Reactions); a kept beast is its people's
         Person guard = People.Where(p => p.Role == "guard" && !p.Dead).OrderBy(p => (p.Position - c.Position).LengthSquared()).FirstOrDefault();
         _places.Zone.Wildlife.Sim.CullStray(c, guard);
         Culled++;
@@ -528,11 +533,13 @@ public sealed partial class Town
         Sense(tickDt);
         Word(tickDt);
         MoodTick(tickDt);
-        // Whoever a Husk has by the head stays where they are taken.
+        // Whoever a Husk has by the head (out in the open, or in a place's rooms) stays where they are taken.
         _held.Clear();
-        if (_places.Zone.Wildlife.Sim is { } wild)
-            foreach (Creature c in wild.Creatures)
-                if (c.Phase == AttackPhase.Hold && c.Holding is Person h && h.Town == this) _held.Add(h);
+        WildlifePatch patch = _places.Zone.Wildlife;
+        for (int si = -1; si < patch.Sites.Count; si++)
+            if ((si < 0 ? patch.Sim : patch.Sites[si].Sim) is { } wild)
+                foreach (Creature c in wild.Creatures)
+                    if (c.Phase == AttackPhase.Hold && Of(c.Holding) is { } h && h.Town == this) _held.Add(h);
         for (int who = 0; who < People.Count; who++)
         {
             Person p = People[who];
@@ -1448,8 +1455,10 @@ public sealed partial class Town
         p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding || p.Pending > 0 ? 1f : 0f, 3f * dt); // (up through the burst too)
         // Looks at you if you're close and in front of them; otherwise glances about now and then.
         float look = MathF.Sin(t * 0.31f) > 0.55f ? MathF.Sin(t * 1.1f) * 0.9f : 0f;
-        Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos;
-        if (toPlayer.LengthSquared() < 100f)
+        Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos, toShown = p.LookAt - p.Pos;
+        // Shown somewhere (a shot heard, where you pointed): there.
+        if (p.LookFor > 0f) look = Mathf.Clamp(Mathf.AngleDifference(p.Yaw, MathF.Atan2(-toShown.X, -toShown.Z)), -1.25f, 1.25f);
+        else if (toPlayer.LengthSquared() < 100f)
         {
             float off = Mathf.AngleDifference(p.Yaw, MathF.Atan2(-toPlayer.X, -toPlayer.Z));
             if (MathF.Abs(off) < 1.25f) look = off;

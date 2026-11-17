@@ -30,12 +30,12 @@ public static class CreatureMaterials
         m.SetShaderParameter("detail_freq", 48f / MathF.Sqrt(MathF.Max(0.3f, sp.Body.Size)));
         m.SetShaderParameter("detail_strength", sp.Rig == RigKind.Swarm ? 0f : 0.1f);
         // A Husk's worms reach about a third of their own length either way.
-        if (sp.Husk) m.SetShaderParameter("worm_scale", WormSway(sp.Figure));
+        if (sp.Husk) m.SetShaderParameter("worm_scale", WormSway(sp));
         return m;
     });
 
-    /// <summary>How far a Husk's worm tips sway, m, by the size of its head.</summary>
-    public static float WormSway(Figure f) => f.HeadRadius * 0.55f;
+    /// <summary>How far a Husk's worm tips sway, m, by the size of its head (a beast's by its width, as its worms are, <see cref="Husks.Decorate"/>).</summary>
+    public static float WormSway(Species s) => (s.Figure?.HeadRadius ?? s.Body.Width * 0.25f) * 0.55f;
 
     /// <summary>The soft see-through fan of a wing beating too fast to see. Its colour and strength come from the mesh's vertices.</summary>
     public static StandardMaterial3D Blur => _blur ??= new StandardMaterial3D

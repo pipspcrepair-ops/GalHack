@@ -145,8 +145,12 @@ public partial class ProceduralAudio : Node3D
         Play(clip, c.Position + Vector3.Up, Heft.Pitch(c.Species), Heft.Loudness(c.Species));
     }
 
-    /// <summary>A Husk's murmur: its host's own voice, low and wet, heard only close to.</summary>
-    public void Murmur(Creature c) => Say(c.Species, VoiceMood.Whisper, c.Position + Vector3.Up * c.Species.Figure.Height * 0.9f, -15f);
+    /// <summary>A Husk's murmur: its host's own voice, low and wet, heard only close to (a beast's, its own throat's growl, as low).</summary>
+    public void Murmur(Creature c)
+    {
+        if (c.Species.Figure is { } f) Say(c.Species, VoiceMood.Whisper, c.Position + Vector3.Up * f.Height * 0.9f, -15f);
+        else Play("growl", c.Position + Vector3.Up * c.Species.BodyHeight, Heft.Pitch(c.Species) * 0.75f, Heft.Loudness(c.Species) - 15f);
+    }
 
     /// <summary>The dry click of something that hunts by its voice.</summary>
     public void Click(Creature c) => Play("click", c.Position + Vector3.Up * c.Species.BodyHeight * 0.8f, Heft.Pitch(c.Species), -6f);

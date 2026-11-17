@@ -33,6 +33,34 @@ public sealed partial class Town
     /// <summary>A shot was fired in or near the town.</summary>
     public void Gunshot() { if (_place != null) Stir(MoodEvent.Shot, _places.Zone.Wildlife.PlayerWorld(), 70f); }
 
+    /// <summary>
+    /// A shot (a blow, a blast, where one landed) heard in or near the town (owner: "startled or trigger aggression [or] fleeing
+    /// depending on their temperament", structure guns and turrets too): everyone out in earshot starts and looks to it, and it
+    /// frightens them by their nerve (the timid run: <see cref="Feeling"/>). Fired in the town, or at any of them (passing or
+    /// landing close), it is a threat: yours (by hand or a structure's guns) turns the place on you (<see cref="Provoked"/>), a
+    /// creature's is met as a danger. Their own fire and their beasts' they take in their stride.
+    /// </summary>
+    public void Gunfire(Vector3 world, float radius, Vector3 dir, object by)
+    {
+        if (_place == null || Beyond(world) > radius || by is Person { Town: var own } && own == this || by is Creature { Keeper: var k } && k == this) return;
+        var shot = new WorldNoise { Position = _place.FromWorld(world), Radius = radius, Dir = dir };
+        bool at = Covers(world);
+        foreach (Person p in People)
+        {
+            if (p.Dead || p.Gone || p.Away || p.Indoors) continue;
+            float d = (p.Pos - shot.Position).Length();
+            if (d > radius) continue;
+            at |= shot.At(p.Pos + Vector3.Up * 1.2f);
+            Bind(p);
+            p.Feel.Hit(MoodEvent.Shot, 1f - d / radius);
+            p.StartleFor = MathF.Max(p.StartleFor, 0.7f);
+            (p.LookAt, p.LookFor) = (shot.Position + Vector3.Up, 2.5f);
+        }
+        if (!at) return;
+        if (by is Creature c) Harmed(c);
+        else if (by is null or Slice.Vessels.Vessel) Provoked();
+    }
+
     static void Bind(Person p)
     {
         if (p.Feel.Bound) return;

@@ -412,9 +412,10 @@ public partial class PlayerTest : Node
         int hide = body.Storage.Count("hide");
         foreach (int x in _drive.DoubleClickWidget($"box:{body.Grid.IndexOf("hide")}")) yield return x;
         Check(_game.Pack["hide"] == hide && body.Storage.Count("hide") == 0, "double-click sends the hide across (it was shift-click before shift-click became range selection)");
-        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
+        // Take the rest; a body emptied by the hide already went, its panel with it (owner: an emptied bag goes at once).
+        if (!body.Storage.IsEmpty) foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(body.Storage.IsEmpty, "take all empties the body");
+        Check(body.Storage.IsEmpty && _game.Opened?.Loot != body && !_game.Zone.Loot.All.Contains(body), "take all empties the body, and the emptied body goes at once with its panel");
 
         // Split a stack, and fill the toolbar by dragging.
         int biomassSlot = _play.BagSlotOf("biomass");

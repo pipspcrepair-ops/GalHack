@@ -78,6 +78,8 @@ public partial class Game
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);
         Places.Stood += OnPlaceStood;
+        // Every shot, blow and blast (yours, a structure's guns, anyone's) is heard by the towns standing in earshot.
+        Zone.Wildlife.Loud += (at, radius, dir, by) => { foreach (Town t in _towns) t.Gunfire(at, radius, dir, by); };
         Places.Exploded += OnExploded;
         Places.WarmUp(); // still loading: the first build's one-off costs are paid now
     }

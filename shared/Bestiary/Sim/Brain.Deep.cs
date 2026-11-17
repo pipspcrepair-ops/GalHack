@@ -80,6 +80,7 @@ public static partial class Brain
                 best = t;
             }
         }
+        w.NearestPerson(c, c.Species.NoticeRadius * 2f, false, ref best, ref distance);
         return best;
     }
 
