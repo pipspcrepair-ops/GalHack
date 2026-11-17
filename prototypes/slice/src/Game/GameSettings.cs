@@ -38,7 +38,7 @@ public sealed class GameSettings
     /// <summary>MSAA 4x by default, the game's look before this was a setting.</summary>
     public AntiAliasing Aa = AntiAliasing.Msaa4x;
     /// <summary>How far the diggable ground streams round you, in 16 m columns each way; past it, the far land.</summary>
-    public int GroundDetail = 12;
+    public int GroundDetail = 5;
     /// <summary>How far land, flora, places and ruins draw in detail, m: from the default out to the horizon (DetailReach).</summary>
     public float DetailDistance = DetailReach.Default;
     /// <summary>How far trees and large plants draw, m: from <see cref="DetailReach.LeastTrees"/> up to the detail distance, which it follows down (the default is the most, so it follows the detail distance).</summary>
@@ -65,7 +65,7 @@ public sealed class GameSettings
     public readonly KeyBindings Keys = new();
 
     public const float MinScale = 0.5f, MinFov = 55f, MaxFov = 110f, MinGamma = 0.6f, MaxGamma = 1.6f, MinSense = 0.2f, MaxSense = 3f;
-    public const int MinGround = 3, MaxGround = 12;
+    public const int MinGround = 3, MaxGround = 7;
     public static readonly int[] FpsCaps = { 30, 60, 90, 120, 144, 240, 0 };
     public static readonly Vector2I[] Resolutions = { new(1280, 720), new(1366, 768), new(1600, 900), new(1920, 1080), new(2560, 1440), new(3840, 2160) };
 
