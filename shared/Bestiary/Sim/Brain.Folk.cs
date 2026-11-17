@@ -569,7 +569,7 @@ public static partial class Brain
         c.SetState(CState.Wander);
         c.FacePoint = t.Position;
         c.LookAt = t.Position + Vector3.Up * 1.5f;
-        Back(w, c, t.Position + WildSim.Flat(t.Forward) * 1.2f, c.Stats.WalkSpeed * 0.7f);
+        Back(w, c, t.Position + WildSim.Flat(t.Forward) * 1.2f, c.Stats.WalkSpeed * 0.7f, 2.5f);
     }
 
     /// <summary>A wary band with you about: stopped, facing you, hands to their weapons (up, once warned); too close and they back off with their eyes on you; the leader holds its warning up.</summary>

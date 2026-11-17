@@ -252,11 +252,11 @@ public static partial class Brain
     }
 
     /// <summary>Backs off from a point with its eyes on it, or steps out of its way: a short flight, facing it.</summary>
-    static void Back(WildSim w, Creature c, Vector3 from, float speed)
+    static void Back(WildSim w, Creature c, Vector3 from, float speed, float reach = BackReach)
     {
         c.Backing = c.Space == null;
         c.FacePoint ??= from;
-        Away(w, c, from, BackReach, speed);
+        Away(w, c, from, reach, speed);
     }
 
     /// <summary>
@@ -317,7 +317,7 @@ public static partial class Brain
     public static void Headway(WildSim w, Creature c, float dt)
     {
         float want = c.Desired.Length();
-        bool going = want > 0.3f && !c.Attacking && c.HeldBy == null && c.Holding == null && !c.InWalls && !c.Falling && !c.Thrown && c.Downed <= 0f && c.StunFor <= 0f
+        bool going = want > 0.3f && c.State is not (CState.Graze or CState.Idle or CState.Rest) && !c.Attacking && c.HeldBy == null && c.Holding == null && !c.InWalls && !c.Falling && !c.Thrown && c.Downed <= 0f && c.StunFor <= 0f
             && !(c.Space == null && c.Species.Flies && !c.Landed) && c.Species.Rig is not (RigKind.Swarm or RigKind.GasBag);
         float need = Math.Clamp(want * 0.4f, 0.08f, 0.25f);
         if (!going || (c.Position - c.ProgressAt).LengthSquared() > need * need)
@@ -353,17 +353,12 @@ public static partial class Brain
     /// </summary>
     static void Unstick(WildSim w, Creature c)
     {
-        // Pressed up against someone in its way (you, one of a town's people): nothing it is stuck on; it tries again in a while.
+        // Pressed up against another body in its way (you, a town's person, another creature): nothing it is stuck on (they keep
+        // apart); it tries again in a while. Of two creatures face to face (a one-wide way), the later one waits and the other backs out.
         foreach (ITarget t in w.Targets)
-        {
-            Vector3 to = t.Position - c.Position;
-            if (t.Attackable && to.Length() < c.Radius + 0.6f && to.Dot(c.Desired) > 0f)
-            {
-                c.StuckFor = 0f;
-                c.Repathed = false;
-                return;
-            }
-        }
+            if (t.Attackable && Pressed(c, t.Position, 0.35f)) { c.StuckFor = 0f; c.Repathed = false; return; }
+        foreach (Creature o in w.Creatures)
+            if (o.Id < c.Id && !o.Dead && !o.Removed && !o.InWalls && Pressed(c, o.Position, o.Radius)) { c.StuckFor = 0f; c.Repathed = false; return; }
         bool back = (c.Behind - c.Position).LengthSquared() is > 1f and < 25f;
         (Vector3 was, Basis facing) = (c.Position, c.Facing);
         if (back && c.Space != null) Crawl.Place(w, c, c.Behind + c.BehindUp * 0.05f, c.Species.Climbs ? c.BehindUp : null);
@@ -384,6 +379,13 @@ public static partial class Brain
         c.HasAway = false;
         c.StuckFor = 0f;
         c.Repathed = false;
+    }
+
+    /// <summary>Whether a body is up against another of this radius at a point, wanting to go its way.</summary>
+    static bool Pressed(Creature c, Vector3 at, float radius)
+    {
+        Vector3 to = at - c.Position;
+        return MathF.Abs(to.Y) < 1.5f && WildSim.Flat(to).Length() < c.Radius + radius + 0.3f && to.Dot(c.Desired) > 0f;
     }
 
     /// <summary>The nearest open spot a metre or two round a body that its own grid lets it stand on and go from (false, and left where it was, if none).</summary>
