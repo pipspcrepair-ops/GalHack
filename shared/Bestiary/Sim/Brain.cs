@@ -305,6 +305,7 @@ public static partial class Brain
     /// </summary>
     static void PackHunter(WildSim w, Creature c, ITarget near, float dist, float dt)
     {
+        c.Hunger = MathF.Min(1f, c.Hunger + dt * Hungers);
         Pack p = c.Pack;
         if (p == null)
         {
@@ -840,6 +841,24 @@ public static partial class Brain
 
     static ITarget Provoked(WildSim w, Creature c) =>
         c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable && c.Stats.Retaliates && !Remembers(w, c, c.ProvokedBy) ? c.ProvokedBy : null;
+
+    /// <summary>A hunter that takes other animals for food (<see cref="WildSim.Quarry"/>): a lone predator or a pack's.</summary>
+    public static bool Preys(Species s) => s.Behaviour is Behaviour.Predator or Behaviour.PackHunter && s.Stats.Damage > 0f && s.Figure == null && !s.Mechanical && s.Domestic == DomesticKind.None;
+
+    /// <summary>
+    /// Whether a hunter would take another animal: one that grazes or picks (never another hunter, a giant, people, a machine or
+    /// what people keep), where it lives, on the ground unless the hunter flies too, no bigger than it brings down (a pack much
+    /// bigger than any one of it) and not so small it isn't worth the chase.
+    /// </summary>
+    public static bool Takes(Creature c, Creature o)
+    {
+        Species s = c.Species, p = o.Species;
+        if (o == c || o.Dead || o.Removed || o.InWalls || o.Space != c.Space || p == s || p.Domestic != DomesticKind.None || p.Figure != null || p.Mechanical) return false;
+        if (p.Behaviour is not (Behaviour.Grazer or Behaviour.Herd or Behaviour.Scavenger or Behaviour.HarmlessOddity) || p.Rooted || p.Tumbles || p.Rig is RigKind.Swarm or RigKind.GasBag || p.Plan == BodyPlan.Giant) return false;
+        if (p.Flies && !s.Flies) return false;
+        float size = p.Body.Size / MathF.Max(0.1f, s.Body.Size);
+        return size >= 0.15f && size <= (c.Pack != null ? 2.5f : 1.2f);
+    }
 
     static bool Huntable(Creature c, ITarget t, float dist) => t != null && t.Attackable && dist < c.Stats.Perception && c.Stats.Damage > 0f;
 

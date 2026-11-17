@@ -937,7 +937,13 @@ public sealed class WildSim
         c.Flapping = false;
         c.Falling = c.Space != null;
         Died?.Invoke(c, killer);
-        if (killer is CreatureTarget predator) RaisePreyed(predator.Creature, c);
+        if (killer is CreatureTarget { Creature: var predator })
+        {
+            RaisePreyed(predator, c);
+            // Fed: a pack shares its kill and is done hunting a while; a lone hunter eats it (Brain's Carrion), and hunts again once hungry.
+            if (predator.Pack != null) foreach (Creature m in predator.Pack.Members) m.Hunger = 0f;
+            else predator.Hunger = MathF.Min(predator.Hunger, PreyHunger - 0.05f);
+        }
         // A person a Husk killed is not done with: it kneels at the body and puts its worms in.
         if (killer is CreatureTarget { Creature: { Species.Husk: true } husk }) Brain.Infest(this, husk, c);
     }
@@ -985,7 +991,42 @@ public sealed class WildSim
     {
         ITarget best = NearestTarget(c.Position, out distance);
         NearestPerson(c, c.Stats.Perception, true, ref best, ref distance);
+        if (Brain.Preys(c.Species)) PreyOn(c, ref best, ref distance);
         return best;
+    }
+
+    /// <summary>How hungry a hunter gets before it goes after another animal (0..1: it eats what it finds dead sooner), and how often it looks round for one, s.</summary>
+    public const float PreyHunger = 0.5f, PreyLook = 3f;
+
+    /// <summary>
+    /// A hungry hunter's quarry among the animals (owner: predators hunt prey by size and diet, a pack bringing down a
+    /// grazer): every few seconds, each on its own beat, the nearest it would take (<see cref="Brain.Takes"/>) within its
+    /// senses is picked again; nearer than anyone else, it is what the hunter goes for.
+    /// </summary>
+    void PreyOn(Creature c, ref ITarget best, ref float distance)
+    {
+        if (c.PreyLookAt <= 0f)
+        {
+            // Hungry or not from the start, by its own stream (nothing else it rolls changes).
+            c.Hunger = Rng.For(c.Species.Seed, "hunger", c.Id).Float();
+            c.PreyLookAt = Time + 0.1f + c.Id % 9 * 0.35f;
+        }
+        if (c.Hunger < PreyHunger) { c.Prey = null; return; }
+        if (Time >= c.PreyLookAt)
+        {
+            c.PreyLookAt = Time + PreyLook;
+            c.Prey = null;
+            float near = c.Stats.Perception;
+            foreach (Creature o in Creatures)
+            {
+                if (!Brain.Takes(c, o)) continue;
+                float d = Flat(o.Position - c.Position).Length();
+                if (d < near) { near = d; c.Prey = o; }
+            }
+        }
+        if (c.Prey is not { Dead: false, Removed: false } prey) return;
+        float at = Flat(prey.Position - c.Position).Length();
+        if (at < distance) { distance = at; best = prey.AsTarget; }
     }
 
     /// <summary>A band's person nearer than <paramref name="distance"/> (and within reach) for a creature that goes for people (none of its own band), flat or straight.</summary>
