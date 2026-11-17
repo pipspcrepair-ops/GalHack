@@ -171,6 +171,8 @@ public sealed partial class Town
     /// </summary>
     void Headway(Person p, float dt)
     {
+        // (A fighter's way is its fight's to pick, a few times a second: closing on you, held off you by your body, is no stuck walk.)
+        if (p.Engaged) { p.ProgressAt = p.Pos; p.StuckFor = 0f; return; }
         if ((p.Pos - p.ProgressAt).LengthSquared() > 0.0625f)
         {
             p.ProgressAt = p.Pos;
@@ -226,14 +228,14 @@ public sealed partial class Town
         return best;
     }
 
-    /// <summary>Whether a body gets straight from where they stand to a point (local) by the walking grid: floor all the way, clear of the furniture and the walls.</summary>
+    /// <summary>Whether a body gets straight from where they stand to a point (local) by the walking grid: floor all the way (no wall, no gap between).</summary>
     bool Straight(Person p, Vector3 to)
     {
         Vector3 d = (to - p.Pos) with { Y = 0f };
         float len = d.Length();
         for (float s = 0.5f; s < len; s += 0.5f)
             if (!OnGrid(p.Pos + d * (s / len))) return false;
-        return OnGrid(to with { Y = p.Pos.Y }) && (_parts == null || _parts.Sweep(p.Pos, to with { Y = p.Pos.Y }, BodyRadius(p), Height(p), 0, Place.WallsOf(_nav), PlaceParts.PersonRadius));
+        return true; // (floor all the way to where it stops: the furniture its body goes round as it walks, OffParts)
     }
 
     /// <summary>Whether a person can be stood at a point by the walking grid.</summary>
