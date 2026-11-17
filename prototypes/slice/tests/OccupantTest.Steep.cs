@@ -210,9 +210,6 @@ public partial class OccupantTest
                 if (f.Drop == 0f) f.Fell = false;
                 (f.Prev, f.PrevH) = (c.Position, c.Position.Y);
             }
-            if (step % 150 == 149 && form != "mountains" && world < 2)
-                foreach (Creature h in hunters)
-                    GD.Print($"      HUNTER {form} {sim.Time:F0}s #{h.Id}: {h.State} {h.Phase}, {WildSim.Flat(h.Position - you.Position).Length():F1} m off, at {h.Position.X:F1},{h.Position.Y:F1},{h.Position.Z:F1}, wants {h.Desired.Length():F1}, way {h.PathIndex}/{h.Path.Count}{(h.PathWhole ? "" : " short")}, provoked {h.ProvokedBy != null && sim.Time - h.ProvokedAt < 12f}, noticed {h.Noticed?.Name}, herd {h.Herd != null}, pack {h.Pack != null}, rest {h.Rest != null}, beh {h.Species.Behaviour}, husk {h.Species.Husk}, stuck {h.StuckFor:F1}, next {(h.PathIndex < h.Path.Count ? h.Path[h.PathIndex] : h.Position)}, speed {WildSim.Flat(h.Velocity).Length():F1}, goal {h.PathGoal}");
             foreach (Creature h in hunters)
                 if (!h.Removed) closest[h] = MathF.Min(closest[h], WildSim.Flat(h.Position - you.Position).Length());
         }
@@ -261,7 +258,7 @@ public partial class OccupantTest
         var walkers = life.Fauna.Species.Where(k => k.Rig == RigKind.Legged && !k.Flies && !k.Mechanical && !k.Climbs && k.Domestic == DomesticKind.None && k.Body.Size < 2.5f).ToList();
         if (walkers.Count == 0) return;
         // A wall climber: the world's own, or (a world without one) one of its walkers made a climber, so this is always looked at.
-        Species climber = life.Fauna.Species.FirstOrDefault(k => k.Climbs && !k.Flies && !k.Mechanical && k.Domestic == DomesticKind.None);
+        Species climber = life.Fauna.Species.FirstOrDefault(k => k.Climbs && k.Rig == RigKind.Legged && !k.Flies && !k.Mechanical && k.Domestic == DomesticKind.None);
         if (climber == null) (climber = walkers[rng.Int(0, walkers.Count - 1)].Resized(1f)).Climbs = true;
         var you = new DummyTarget { Name = "intruder", Position = new Vector3(0f, h, 0f) };
         sim.Targets.Add(you);

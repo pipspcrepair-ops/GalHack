@@ -75,12 +75,11 @@ public partial class OccupantTest
             WorldLife life = Bestiary.Roll(_data, cond);
             var deep = new PlaceFauna.Deep(life, null, 1f);
             int done = 0;
-            bool steepOnly = System.Environment.GetEnvironmentVariable("GH_STEEPONLY") != null; // TEMP
             foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
-                if (!steepOnly && done < 5 && InsideWalk(f, deep, decor, inside)) done++;
+                if (done < 5 && InsideWalk(f, deep, decor, inside)) done++;
             done = 0;
             foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
-                if (!steepOnly && done < 2 && OutsideWalk(f, life, outside)) done++;
+                if (done < 2 && OutsideWalk(f, life, outside)) done++;
             SteepWalk(life, steep, faces, w);
             if (w == 0) Ledge(life);
             // And the game's own steep ground, on a world built as a new game builds it.
@@ -91,8 +90,6 @@ public partial class OccupantTest
         PathChecks("on steep ground", steep, 3);
         SteepChecks(faces);
     }
-
-    static int _abPrints;
 
     void PathChecks(string where, PathTally t, int places)
     {
@@ -348,13 +345,6 @@ public partial class OccupantTest
             {
                 k.Still += PathDt;
                 if (k.Still >= 1f) t.Stuck += PathDt;
-                if (k.Still >= 3f && k.Still - PathDt < 3f && System.Environment.GetEnvironmentVariable("GH_SEED") != null && _abPrints++ < 14) // TEMP
-                {
-                    float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
-                    Vector3 nx = c.PathIndex < c.Path.Count ? c.Path[c.PathIndex] : c.Position;
-                    Creature near = sim.Creatures.Where(o => o != c && !o.Dead && !o.Removed).OrderBy(o => (o.Position - c.Position).LengthSquared()).FirstOrDefault();
-                    GD.Print($"   STUCK3 {who}: {c.Species.Role} {c.Species.Rig} r {c.Radius:F2} pr {pr:F2} ph {ph:F2} clr {c.Clearance:F2}, wants {c.Desired.X:F1},{c.Desired.Z:F1}, phase {c.Phase}, way {c.PathIndex}/{c.Path.Count} whole {c.PathWhole}, next {nx.X:F1},{nx.Y:F1},{nx.Z:F1} ({(nx - Crawl.Center(c)).Length():F2} m), gap here {(c.Space?.Parts?.Gap(c.Position, pr, ph) ?? 9f):F2} at next {(c.Space?.Parts?.Gap(nx - Vector3.Up * c.Clearance, pr, ph) ?? 9f):F2}, stuckFor {c.StuckFor:F1} repathed {c.Repathed}, spaced {c.Spaced}, nearest {near?.Species.CommonName} {(near == null ? 0f : (near.Position - c.Position).Length()):F2} m ({near?.State}, r {near?.Radius:F2}, spaced {near?.Spaced}), target {(you.Position - c.Position).Length():F1} m, vel {c.Velocity.Length():F2}, crawl {c.CrawlSpeed:F2}");
-                }
                 if (k.Still > t.Longest) { t.Longest = k.Still; t.LongestAt = $"; e.g. {who}, wanting {c.Desired.Length():F1} m/s, {c.Species.Role}, way {c.PathIndex}/{c.Path.Count}, goal {(c.HasGoal ? $"{c.Goal.X:F1},{c.Goal.Y:F1},{c.Goal.Z:F1}" : "none")}, put back on {(c.Behind - c.Position).Length():F1} m off, stuck {c.StuckFor:F1} s, {k.Jumps} jumps, crawling {c.CrawlSpeed:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1}, next {(c.PathIndex < c.Path.Count ? (c.Path[c.PathIndex] - Crawl.Center(c)).Length() : -1f):F1} m off"; }
             }
             // A flight: from where what it ran from was as it set off, by the way round, at the start and at its end (six seconds on at most; at least 1.5 s).
@@ -414,7 +404,6 @@ public partial class OccupantTest
             if (into > -0.6f && watch.TryGetValue(a, out Watch ka) && watch.TryGetValue(b, out Watch kb) && ka.Still > 3f && kb.Still > 3f && t.Locked.Add((a.Id, b.Id)))
             {
                 t.Deadlocks++;
-                if (System.Environment.GetEnvironmentVariable("GH_SEED") != null) GD.Print($"   LOCK {place}: {a.Species.CommonName} ({a.State} {a.Phase}, wants {a.Desired.X:F1},{a.Desired.Z:F1}, way {a.PathIndex}/{a.Path.Count}, r {a.Radius:F2}, id {a.Id}, spaced {a.Spaced}) and {b.Species.CommonName} ({b.State} {b.Phase}, wants {b.Desired.X:F1},{b.Desired.Z:F1}, way {b.PathIndex}/{b.Path.Count}, r {b.Radius:F2}, id {b.Id}, spaced {b.Spaced}) {d:F2} m apart, at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1} / {b.Position.X:F1},{b.Position.Y:F1},{b.Position.Z:F1}"); // TEMP
                 if (t.LockedAt == "") t.LockedAt = $"; e.g. {place}: {a.Species.CommonName} ({a.State}) and {b.Species.CommonName} ({b.State}) at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1}";
             }
         }

@@ -712,8 +712,10 @@ public sealed partial class Town
         {
             if (last)
             {
+                Vector3 from = p.Pos;
                 p.Pos = to;
                 if (p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) { p.Seat = p.Spot; p.GettingUp = true; }
+                else OffParts(p, from); // (at a bench or a counter, never in it)
             }
             p.Step++;
             return p.Step >= p.Path.Count;

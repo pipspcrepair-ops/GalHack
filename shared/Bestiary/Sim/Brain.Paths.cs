@@ -316,8 +316,9 @@ public static partial class Brain
     /// "what happens if the player moves to a position a chasing enemy can't reach? Does the enemy stop their pursuit and then give
     /// up?"). It goes by its own grid and gait (a climber or a leaper anywhere it can); with no whole way there it goes to the nearest
     /// spot it can get to and waits there (<see cref="Short"/>; one with a ranged attack uses it from there, by its brain's reach).
-    /// After its give-up time with no whole way (<see cref="Stats.GiveUp"/>) it loses interest and goes back to what it does
-    /// (<see cref="GiveUp"/>); it remembers them a minute, and takes the chase up again only once there is a whole way to them.
+    /// After its give-up time with no whole way, nor any nearer straight at them (<see cref="Stats.GiveUp"/>; a foot of a cliff
+    /// it only goes round), it loses interest and goes back to what it does (<see cref="GiveUp"/>); it remembers them a minute,
+    /// and takes the chase up again only once there is a whole way to them.
     /// </summary>
     static void Chase(WildSim w, Creature c, ITarget t, Vector3 goal, float speed)
     {
@@ -326,9 +327,10 @@ public static partial class Brain
             GiveUp(w, c, t);
             return;
         }
-        if (c.Chased != t) (c.Chased, c.Unreached) = (t, 0f);
+        if (c.Chased != t) (c.Chased, c.Unreached, c.ChaseNearest) = (t, 0f, float.MaxValue);
         Go(w, c, goal, speed);
-        if (c.PathWhole || c.Path.Count == 0 && c.Desired.LengthSquared() > 0.01f) c.Unreached = 0f;
+        float d = WildSim.Flat(t.Position - c.Position).Length();
+        if (c.Path.Count > 0 ? c.PathWhole : c.Desired.LengthSquared() > 0.01f && (d < c.ChaseNearest - 0.5f || d < Attacks.Range(c) + 1.5f)) (c.Unreached, c.ChaseNearest) = (0f, MathF.Min(d, c.ChaseNearest));
         else if ((c.Unreached += c.ThinkDt) > c.Stats.GiveUp) GiveUp(w, c, t);
     }
 

@@ -125,23 +125,13 @@ public static class Locomotion
             v = v.MoveToward(f * speed, Heft.Accel(c) * 2f * dt);
         }
         Vector3 p = c.Position + v * dt;
-        bool trace = c.StuckFor >= 1.5f && c.StuckFor < 1.534f && System.Environment.GetEnvironmentVariable("GH_STEEPONLY") != null; // TEMP
-        Vector3 p0 = p;
         Avoid(w, c, ref p, ref v);
-        Vector3 p1 = p;
         // Never into another body: along its side instead.
         Vector3 held = w.Unpressed(c, c.Position, p);
         if (held != p) (p, v) = (held, WildSim.Flat(held - c.Position) / MathF.Max(dt, 1e-4f));
         p = Bound(w, p, ref v);
         p.Y = w.Terrain.Height(p.X, p.Z);
-        Vector3 p2 = p;
         KeepOffFaces(w, c, ref p, ref v);
-        if (trace)
-        {
-            NavGrid.Gait g = Brain.GaitOf(c.Species);
-            Vector3 m = w.Terrain.Normal(c.Position.X, c.Position.Z), nb = w.Terrain.Normal(p2.X, p2.Z);
-            GD.Print($"     GROUND#{c.Id} at {c.Position} want {want} v {v} step {WildSim.Flat(p0 - c.Position).Length():F3} avoid {WildSim.Flat(p1 - p0)} unpressed {WildSim.Flat(held - p1)} faces {WildSim.Flat(p - p2)}; slope here {new Vector2(m.X, m.Z).Length() / m.Y:F2} there {new Vector2(nb.X, nb.Z).Length() / nb.Y:F2} gait {g.Slope:F2} drop {g.Drop:F1}, face {Face(w, c.Position, p2, g)}");
-        }
         if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
         c.Velocity = v;
         c.Position = p;

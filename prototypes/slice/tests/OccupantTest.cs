@@ -28,7 +28,7 @@ public partial class OccupantTest : Node
     const int WatchdogMinutes = 10;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
-    System.Random _rng = System.Environment.GetEnvironmentVariable("GH_SEED") is string ghs ? new(int.Parse(ghs)) : new(); // TEMP
+    readonly System.Random _rng = new();
     PoiLibrary _lib;
     WildlifeData _data;
 
@@ -36,7 +36,7 @@ public partial class OccupantTest : Node
     {
         var thread = new System.Threading.Thread(() =>
         {
-            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(System.Environment.GetEnvironmentVariable("GH_WATCH") is string ghw ? int.Parse(ghw) : WatchdogMinutes));
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
             Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
             System.Environment.Exit(1);
         }) { IsBackground = true };
