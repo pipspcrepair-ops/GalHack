@@ -21,8 +21,19 @@ public static class Prof
         ulong f = Engine.GetProcessFrames();
         int i = (int)(f % 8);
         if (FrameOf[i] != f) { Ring[i].Clear(); FrameOf[i] = f; }
-        Ring[i][what] = Ring[i].GetValueOrDefault(what) + ms;
+        double v = Ring[i][what] = Ring[i].GetValueOrDefault(what) + ms;
+        if (v > Worst.GetValueOrDefault(what)) Worst[what] = v;
     }
+
+    public static readonly Dictionary<string, double> Worst = new();
+    public static string TakeWorst()
+    {
+        string s = string.Join(", ", Worst.Where(kv => kv.Value >= 0.3).OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value:F1}"));
+        Worst.Clear();
+        return s;
+    }
+
+    public static void Lap(string what, ref long since) { Add(what, since); since = Now(); }
 
     public static string Of(ulong f)
     {

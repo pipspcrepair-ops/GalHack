@@ -115,13 +115,14 @@ public partial class CombatTest
 
         // Open ground: a crater, there after its chunks go and come back.
         Vector3 feet = game.Survivor.WorldFeet, spot = default;
-        for (int k = 0; k < 24 && spot == default; k++)
+        // (Rings out from 45 m: a big place round the wall leaves no open ground that near on some worlds.)
+        for (int k = 0; k < 96 && spot == default; k++)
         {
-            float a = k * MathF.Tau / 24f;
-            Vector3 p = game.Zone.GroundAt(feet.X + MathF.Cos(a) * 45f, feet.Z + MathF.Sin(a) * 45f);
+            float a = k * MathF.Tau / 24f, ring = 45f + 30f * (k / 24);
+            Vector3 p = game.Zone.GroundAt(feet.X + MathF.Cos(a) * ring, feet.Z + MathF.Sin(a) * ring);
             if (game.Places.PlaceAt(p) == null && game.Places.PlaceAt(p + Vector3.Up * 3f) == null && game.Zone.Vessels.All(v => v.Body.Position.ToGodot().DistanceTo(p) > 20f)) spot = p;
         }
-        Check(spot != default, "open ground 45 m off, clear of places and structures");
+        Check(spot != default, $"open ground {(spot == default ? 0f : spot.DistanceTo(feet)):F0} m off, clear of places and structures");
         if (spot == default) yield break;
         game.Survivor.PlaceOutside((spot + new Vector3(12f, 1f, 0f)).ToNumerics());
         foreach (int x in Hold(120)) yield return x;
@@ -163,6 +164,7 @@ public partial class CombatTest
                 ArmsHost.PlacesMs = ArmsHost.PlantsMs = ArmsHost.CraterMs = 0;
                 split.Systems.Reset();
                 split.Reset();
+                PlanetSurface.Prof.TakeWorst();
                 cost[pass] = new List<double>();
                 for (int i = 0; i < 240; i++)
                 {
@@ -177,6 +179,7 @@ public partial class CombatTest
                 GD.Print($"  PROF systems: {split.Systems.Report()}");
                 foreach (string h in split.Hitches.OrderByDescending(h => double.Parse(h.Split(' ')[0], System.Globalization.CultureInfo.InvariantCulture)).Take(8)) GD.Print($"  PROF hitch {h}");
                 foreach (int x in Hold(60)) yield return x;
+                GD.Print($"  PROF worst spans a frame: {PlanetSurface.Prof.TakeWorst()}");
             }
             ArmsHost.HarmsWorld = true;
             double P95(List<double> l) => l.OrderBy(v => v).ElementAt((int)(l.Count * 0.95));

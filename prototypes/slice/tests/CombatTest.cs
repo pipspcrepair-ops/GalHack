@@ -47,6 +47,12 @@ public partial class CombatTest : Node
             System.Environment.Exit(1);
         }) { IsBackground = true };
         thread.Start();
+        // --minspec=1: the minimum spec's CPU stand-in for the firefight's frames (4 cores, one thread each, workers sized for 4), as PopRoute's.
+        if (OS.GetCmdlineUserArgs().Contains("--minspec=1"))
+        {
+            Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
+        }
         ProcessPhysicsPriority = 100;
         _run = Scenario().GetEnumerator();
     }
