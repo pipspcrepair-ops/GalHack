@@ -673,12 +673,13 @@ public partial class WildlifePatch : Node3D
         sim?.Damage(c, amount, byPlayer ? player : TargetIn(sim, by));
     }
 
-    /// <summary>Someone else who did something (a creature, a town's person), as the given sim sees them: null if they aren't in it.</summary>
+    /// <summary>Someone else who did something (a creature, a town's person), as the given sim sees them (a place's: <see cref="DeepSite.Frame"/>): null if they aren't in it.</summary>
     ITarget TargetIn(WildSim sim, object by) => by switch
     {
+        null => null,
         Creature o when sim != null && sim.Creatures.Contains(o) => o.AsTarget,
         ITarget t when sim == Sim => t,
-        _ => null,
+        _ => sim == Sim ? null : Sites.Find(s => s.Sim == sim)?.Frame(by),
     };
 
     /// <summary>The survivor's feet in the zone.</summary>

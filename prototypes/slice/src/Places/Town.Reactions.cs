@@ -6,7 +6,8 @@ namespace Slice.Places;
 
 /// <summary>
 /// The town's people and what's round them (<see cref="CrossReactions"/>): a few times a second each
-/// person out and about sizes up what is near and answers by job, nerve and the group's temper.
+/// person out and about sizes up what is near, out in the open or in their place's rooms (its own creatures'
+/// sim), and answers by job, nerve and the group's temper.
 /// Husks: the armed and the bold fight, a wary group barricades itself in, the rest run for their
 /// doors. Predators, and people who'd do the town harm (raiders, a band that preys, a band the town
 /// would turn on itself, whoever last hurt one of its own): whoever has the nerve and a weapon fights
@@ -17,7 +18,8 @@ public sealed partial class Town
 {
     float _senseIn;
     bool _handlers;
-    readonly List<Creature> _round = new();
+    /// <summary>What is round the town at its last look, and where each is (world).</summary>
+    readonly List<(Creature C, Vector3 At)> _round = new();
     /// <summary>The last creature to hurt one of them, and when: met as a danger wherever it is, a while after.</summary>
     Creature _harmedBy;
     float _harmedAt = -99f;
@@ -61,8 +63,8 @@ public sealed partial class Town
         _barricadeFor = Mathf.Max(0f, _barricadeFor - dt);
         if ((_senseIn -= dt) > 0f) return;
         _senseIn = SenseEvery;
-        WildSim sim = _places.Zone.Wildlife.Sim;
-        if (sim == null) return;
+        Slice.Surface.WildlifePatch patch = _places.Zone.Wildlife;
+        if (patch.Sim == null) return;
         // Stock are worked by the place's farmers, once there are any.
         if (!_handlers)
         {
@@ -73,12 +75,22 @@ public sealed partial class Town
                 foreach (var a in _animals)
                     if (a.Kind == DomesticKind.Stock) a.Creature.Owner = farmer;
         }
-        Vector3 centre = _places.Zone.Wildlife.PatchLocal(World(Walk(Data.AreaCenter) with { Y = 0 }));
+        Vector3 centre = World(Walk(Data.AreaCenter) with { Y = 0 });
         float reach = Data.AreaRadius + 30f;
-        Creature harmer = _harmedBy is { Dead: false, Removed: false } && _clock - _harmedAt < HarmMemory && sim.Creatures.Contains(_harmedBy) ? _harmedBy : null;
+        Creature harmer = _harmedBy is { Dead: false, Removed: false } && _clock - _harmedAt < HarmMemory ? _harmedBy : null;
         _round.Clear();
-        foreach (Creature c in sim.Creatures)
-            if (!c.Removed && !c.Dead && (c == harmer || WildSim.Flat(c.Position - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c)))) _round.Add(c);
+        // The open country's creatures and those of every place standing (their own place's among them): where each is in the world.
+        for (int si = -1; si < patch.Sites.Count; si++)
+        {
+            WildSim sim = si < 0 ? patch.Sim : patch.Sites[si].Sim;
+            Vector3 origin = si < 0 ? patch.Origin : patch.Sites[si].GlobalPosition;
+            foreach (Creature c in sim.Creatures)
+            {
+                if (c.Removed || c.Dead || c.Dormant || c.InWalls) continue;
+                Vector3 at = c.Position + origin;
+                if (c == harmer || WildSim.Flat(at - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c))) _round.Add((c, at));
+            }
+        }
         Sensed = _round.Count;
         Senses++;
         // (Each is looked at even with nothing round: what they dealt with that went off, or is no longer in this sim, is let go.)
@@ -88,10 +100,11 @@ public sealed partial class Town
             Response best = Response.None;
             Creature what = null;
             float near = float.MaxValue;
-            Vector3 at = p.Position;
-            foreach (Creature c in _round)
+            Vector3 at = World(p.Pos);
+            foreach (var (c, there) in _round)
             {
-                float d = WildSim.Flat(c.Position - at).Length();
+                // (Straight, not flat: a storey up or down in a place is further than it looks from above.)
+                float d = (there - at).Length();
                 // (Whoever hurt one of them is in reach of a fight wherever they are.)
                 Response r = CrossReactions.Respond(c.Species, p.Looks, _temper, p.Nerve, c == harmer ? Mathf.Min(d, 20f) : d);
                 if (r > best || r == best && d < near) { best = r; what = c; near = d; }
