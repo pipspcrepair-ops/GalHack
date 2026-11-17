@@ -698,9 +698,10 @@ public sealed class WildSim
             float r;
             if (j < _spaced.Count)
             {
-                // (Only one standing: two on the move part by personal space, each bearing to its right.)
+                // (Not one walking off away from it: that gap opens by itself.)
                 Creature b = _spaced[j];
-                if (!Spaced(b) || Flat(b.Velocity).LengthSquared() > 0.09f) continue;
+                Vector3 off = Flat(b.Position - from);
+                if (!Spaced(b) || off.LengthSquared() > 1e-4f && Flat(b.Velocity).Dot(off.Normalized()) > 0.3f) continue;
                 (o, r) = (b.Position, b.Radius);
             }
             else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);
@@ -779,6 +780,8 @@ public sealed class WildSim
             Locomotion.Move(this, c, dt);
             Locomotion.KeepOff(this, c);
             if (!c.Dead && !Frozen) Brain.Headway(this, c, dt);
+            // In a cave or a place nothing ends its step in a wall or a piece of furniture (a landing, a spawn): out at once.
+            if (c.Space != null && !c.Dead && Interpenetration.Inside(this, c)) Interpenetration.Out(this, c);
             if (Profile) { long t = Stopwatch.GetTimestamp(); moveTicks += t - t0; t0 = t; }
 
             // Far creatures re-pose less often; the rig catches up with the summed time.

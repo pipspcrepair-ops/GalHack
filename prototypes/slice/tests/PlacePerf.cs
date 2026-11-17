@@ -138,6 +138,7 @@ public partial class PlacePerf : Node
         if (_args.ContainsKey("audit") || _args.ContainsKey("city")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.TryGetValue("as", out string type)) PoiSiting.ForceType = type;
         if (_args.ContainsKey("fly")) PoiBuilds.Withhold = s => s.Whole != null;
+        if (_args.ContainsKey("noease")) Wildlife.DrawSmoother.Off = true; // --noease=1: bodies drawn as the sim has them (the A side of an A/B)
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);

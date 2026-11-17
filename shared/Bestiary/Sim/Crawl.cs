@@ -511,6 +511,20 @@ public static class Crawl
         return to;
     }
 
+    /// <summary>A walker in a piece of furniture: pushed off it sideways onto its floor, clear of the walls; false (left where it was) where that leaves it no better.</summary>
+    public static bool OffParts(Creature c)
+    {
+        if (c.Species.Climbs || c.Space.Parts is not { } parts) return false;
+        ISolidSpace s = c.Space.Bare;
+        float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+        Vector3 feet = HoldOffWalls(s, parts.PushOut(c.Position, pr, ph), c.Clearance);
+        if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is not float y) return false;
+        feet.Y = y;
+        if (parts.Gap(feet, pr, ph) <= parts.Gap(c.Position, pr, ph)) return false;
+        (c.Position, c.LastFirm) = (feet, feet);
+        return true;
+    }
+
     /// <summary>Whether a body centre is clear of solid (the test of "never inside the rock").</summary>
     public static bool BodyClear(ISolidSpace s, Vector3 p) => s.Density(p) < 0f;
 }

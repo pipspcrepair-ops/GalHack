@@ -82,6 +82,8 @@ public partial class OccupantTest
                 if (done < 2 && OutsideWalk(f, life, outside)) done++;
             SteepWalk(life, steep, faces, w);
             if (w == 0) Ledge(life);
+            // And the game's own steep ground, on a world built as a new game builds it.
+            if (w == 2) SteepWalk(life, steep, faces, 3);
         }
         PathChecks("in cramped places", inside, 10);
         PathChecks("on open ground round buildings", outside, 4);
@@ -397,7 +399,6 @@ public partial class OccupantTest
             if (into > 0.05f)
             {
                 t.Overlaps++;
-                if (into > 0.3f && t.Locked.Count < 900 && t.Locked.Add((-a.Id - 1, b.Id))) GD.Print($"      DEEP {place}: {a.Species.CommonName} ({a.State}, {(a.Space?.Parts != null ? "furnished" : "")} wants {a.Desired.Length():F1}, spaced {WildSim.Spaced(a)}, home {(a.Home - a.Position).Length():F1}) and {b.Species.CommonName} ({b.State}, wants {b.Desired.Length():F1}, spaced {WildSim.Spaced(b)}, home {(b.Home - b.Position).Length():F1}) {into:F2} m, radii {a.Radius:F2}+{b.Radius:F2}, ages {a.Age:F1}/{b.Age:F1}");
                 if (into > t.Deepest) { t.Deepest = into; t.OverlapAt = $"; e.g. {place}: {a.Species.CommonName} ({a.State}) and {b.Species.CommonName} ({b.State}) {into:F2} m into each other at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1}"; }
             }
             if (into > -0.6f && watch.TryGetValue(a, out Watch ka) && watch.TryGetValue(b, out Watch kb) && ka.Still > 3f && kb.Still > 3f && t.Locked.Add((a.Id, b.Id)))

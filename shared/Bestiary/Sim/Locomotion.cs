@@ -139,24 +139,33 @@ public static class Locomotion
 
     /// <summary>
     /// Ground its legs can't take is a wall to it (<see cref="Brain.GaitOf"/>): a step up a face steeper than its limit, or
-    /// off an edge higher than it drops, goes along whichever way is still walkable, or doesn't happen. (Its way goes round
-    /// such ground; this is the body's own say, whatever pushed it.)
+    /// off an edge higher than it drops, goes along it instead, the nearest way round to the one it wanted that is still
+    /// walkable (along the foot of a face as along a wall), or doesn't happen. (Its way goes round such ground; this is the
+    /// body's own say, whatever pushed it.)
     /// </summary>
     static void KeepOffFaces(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
     {
         NavGrid.Gait g = Brain.GaitOf(c.Species);
         if (g.Any || !Face(w, c.Position, p, g)) return;
-        var alongX = new Vector3(p.X, 0f, c.Position.Z);
-        var alongZ = new Vector3(c.Position.X, 0f, p.Z);
-        if (!Face(w, c.Position, alongX, g)) { p = alongX; v.Z = 0f; }
-        else if (!Face(w, c.Position, alongZ, g)) { p = alongZ; v.X = 0f; }
-        else { p = c.Position; v = Vector3.Zero; return; }
-        p.Y = w.Terrain.Height(p.X, p.Z);
+        Vector3 step = WildSim.Flat(p - c.Position);
+        foreach (float a in Along)
+        {
+            float k = MathF.Cos(a);
+            Vector3 q = c.Position + step.Rotated(Vector3.Up, a) * k;
+            if (Face(w, c.Position, q, g)) continue;
+            (p, v) = (q with { Y = w.Terrain.Height(q.X, q.Z) }, WildSim.Flat(v).Rotated(Vector3.Up, a) * k);
+            return;
+        }
+        (p, v) = (c.Position, Vector3.Zero);
     }
+
+    /// <summary>The turns off a step it tries, nearest first, radians.</summary>
+    static readonly float[] Along = { 0.45f, -0.45f, 0.9f, -0.9f, 1.3f, -1.3f };
 
     /// <summary>
     /// Whether a step from one point to another puts its feet on ground steeper than a gait takes (up it, across it or along
-    /// it): from ground it walks never; from a face it is on already, only down off it by an edge it drops from (the ground three metres on no lower than it drops).
+    /// it): from ground it walks never; from a face it is on already, only across it (the step itself rising or falling no
+    /// more than its legs take) or down off it by an edge it drops from (the ground three metres on no lower than it drops).
     /// </summary>
     public static bool Face(WildSim w, Vector3 a, Vector3 b, NavGrid.Gait g)
     {
@@ -166,10 +175,11 @@ public static class Locomotion
         Vector3 n = w.Terrain.Normal(b.X, b.Z);
         float steep = new Vector2(n.X, n.Z).Length() / MathF.Max(n.Y, 1e-3f);
         if (steep <= g.Slope) return false;
-        // Never onto a face from ground it walks; one already on a face (a spawn, a landing) only down off it, by an edge it drops from.
+        // Never onto a face from ground it walks; one already on a face (a spawn, a landing) only across or down off it, by an edge it drops from.
         Vector3 m = w.Terrain.Normal(a.X, a.Z);
         if (new Vector2(m.X, m.Z).Length() <= g.Slope * m.Y) return true;
         float h = w.Terrain.Height(a.X, a.Z), hb = w.Terrain.Height(b.X, b.Z);
+        if (MathF.Abs(hb - h) <= run * g.Slope) return false;
         d /= run;
         if (hb < h && h - w.Terrain.Height(a.X + d.X * 3f, a.Z + d.Z * 3f) > g.Drop) return true;
         return hb >= h;

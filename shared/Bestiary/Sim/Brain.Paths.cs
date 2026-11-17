@@ -316,8 +316,9 @@ public static partial class Brain
     /// "what happens if the player moves to a position a chasing enemy can't reach? Does the enemy stop their pursuit and then give
     /// up?"). It goes by its own grid and gait (a climber or a leaper anywhere it can); with no whole way there it goes to the nearest
     /// spot it can get to and waits there (<see cref="Short"/>; one with a ranged attack uses it from there, by its brain's reach).
-    /// After its give-up time with no whole way (<see cref="Stats.GiveUp"/>) it loses interest and goes back to what it does
-    /// (<see cref="GiveUp"/>); it remembers them a minute, and takes the chase up again only once there is a whole way to them.
+    /// After its give-up time with no whole way, nor any nearer straight at them (<see cref="Stats.GiveUp"/>; a foot of a cliff
+    /// it only goes round), it loses interest and goes back to what it does (<see cref="GiveUp"/>); it remembers them a minute,
+    /// and takes the chase up again only once there is a whole way to them.
     /// </summary>
     static void Chase(WildSim w, Creature c, ITarget t, Vector3 goal, float speed)
     {
@@ -326,9 +327,10 @@ public static partial class Brain
             GiveUp(w, c, t);
             return;
         }
-        if (c.Chased != t) (c.Chased, c.Unreached) = (t, 0f);
+        if (c.Chased != t) (c.Chased, c.Unreached, c.ChaseNearest) = (t, 0f, float.MaxValue);
         Go(w, c, goal, speed);
-        if (c.PathWhole || c.Path.Count == 0 && c.Desired.LengthSquared() > 0.01f) c.Unreached = 0f;
+        float d = WildSim.Flat(t.Position - c.Position).Length();
+        if (c.Path.Count > 0 ? c.PathWhole : c.Desired.LengthSquared() > 0.01f && (d < c.ChaseNearest - 0.5f || d < Attacks.Range(c) + 1.5f)) (c.Unreached, c.ChaseNearest) = (0f, MathF.Min(d, c.ChaseNearest));
         else if ((c.Unreached += c.ThinkDt) > c.Stats.GiveUp) GiveUp(w, c, t);
     }
 
@@ -350,8 +352,9 @@ public static partial class Brain
 
     /// <summary>
     /// Loses interest in someone it can't get to: drops all it held of them and goes back to what it does: a place's creature to
-    /// its lair or home spot, an animal back toward its own ground, a band's fighter to its band (a band with no gun to reach them
-    /// with lets the fight go).
+    /// its lair or home spot, an animal back toward its own ground (with none away from them, its ground where it stands by
+    /// them: off away from them, out of their reach), a band's fighter to its band (a band with no gun to reach them with lets
+    /// the fight go).
     /// </summary>
     static void GiveUp(WildSim w, Creature c, ITarget t)
     {
@@ -368,8 +371,17 @@ public static partial class Brain
         c.HasAway = false;
         c.Desired = Vector3.Zero;
         if (c.Species.IsDeep) c.SetState(CState.ReturnHome);
-        else if (c.Herd == null && c.Pack == null && WildSim.Flat(c.Home - c.Position).Length() > 8f) (c.Goal, c.HasGoal) = (w.FreeSpot(c.Home, c.Rng), true);
+        else if (c.Herd == null && c.Pack == null)
+        {
+            Vector3 away = WildSim.Flat(c.Position - t.Position);
+            float off = away.Length();
+            Vector3 to = WildSim.Flat(c.Home - t.Position).Length() > off + 8f ? c.Home : c.Position + (off > 0.1f ? away / off : -c.Forward) * GoneOff;
+            (c.Goal, c.HasGoal) = (w.FreeSpot(to, c.Rng), true);
+        }
     }
+
+    /// <summary>How far off from someone it gave up on a creature with no ground of its own away from them goes, m.</summary>
+    const float GoneOff = 18f;
 
     /// <summary>Drops someone from all it holds of them: its attack or grip, its notice, a grudge, its quarry, prey or warning; out of a chase.</summary>
     static void Forget(WildSim w, Creature c, ITarget t)
@@ -397,7 +409,7 @@ public static partial class Brain
     public static void Headway(WildSim w, Creature c, float dt)
     {
         float want = c.Desired.Length();
-        bool going = want > 0.3f && c.State is not (CState.Graze or CState.Idle or CState.Rest) && !c.Attacking && c.HeldBy == null && c.Holding == null && !c.InWalls && !c.Falling && !c.Thrown && c.Downed <= 0f && c.StunFor <= 0f
+        bool going = want > 0.3f && (c.State is not (CState.Graze or CState.Idle or CState.Rest) || c.Path.Count > 0) && !c.Attacking && c.HeldBy == null && c.Holding == null && !c.InWalls && !c.Falling && !c.Thrown && c.Downed <= 0f && c.StunFor <= 0f
             && !(c.Space == null && c.Species.Flies && !c.Landed) && c.Species.Rig is not (RigKind.Swarm or RigKind.GasBag);
         float need = Math.Clamp(want * 0.4f, 0.08f, 0.25f);
         if (!going || (c.Position - c.ProgressAt).LengthSquared() > need * need)
@@ -435,10 +447,13 @@ public static partial class Brain
     {
         // Pressed up against another body in its way (you, a town's person, another creature on its floor): nothing it is stuck on
         // (bodies keep apart); it gives up where it was going and tries again in a while. Of two creatures face to face (a one-wide
-        // way), the later one waits and the other backs out. (A climber in a place passes anyone on its walls: never held by them.)
-        if (WildSim.Spaced(c) && Blocked(w, c))
+        // way), the later one gives way: it backs off out of the other's way a moment (unless the other is already giving way to
+        // it), and the other waits for it; one held up by a body standing about backs off from it too and finds another way.
+        // (A climber in a place passes anyone on its walls: never held by them.)
+        if (WildSim.Spaced(c) && Blocked(w, c, out Creature by))
         {
             (c.StuckFor, c.Repathed, c.HasGoal, c.HasAway) = (0f, false, false, false);
+            if (by != null && (by.Id < c.Id || by.Desired.LengthSquared() < 0.09f) && !(by.GiveWayTo == c && w.Time < by.GiveWayUntil)) (c.GiveWayTo, c.GiveWayUntil, c.ThinkEvery) = (by, w.Time + GiveWay, 0f);
             return;
         }
         bool back = (c.Behind - c.Position).LengthSquared() is > 1f and < 25f;
@@ -463,13 +478,17 @@ public static partial class Brain
         c.Repathed = false;
     }
 
-    /// <summary>Whether a body is held up by another in its way: you, a town's person, or a creature before it on its floor.</summary>
-    static bool Blocked(WildSim w, Creature c)
+    /// <summary>How long one gives way to another met face to face, s.</summary>
+    const float GiveWay = 2.5f;
+
+    /// <summary>Whether a body is held up by another in its way: you, a town's person (<paramref name="by"/> null), or a creature before it on its floor.</summary>
+    static bool Blocked(WildSim w, Creature c, out Creature by)
     {
+        by = null;
         foreach (ITarget t in w.Targets)
             if (t.Attackable && Pressed(c, t.Position, 0.35f)) return true;
         foreach (Creature o in w.Creatures)
-            if (o.Id < c.Id && WildSim.Spaced(o) && Pressed(c, o.Position, o.Radius)) return true;
+            if (o != c && WildSim.Spaced(o) && Pressed(c, o.Position, o.Radius)) { by = o; return true; }
         return false;
     }
 

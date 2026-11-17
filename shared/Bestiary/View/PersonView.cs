@@ -129,16 +129,63 @@ public partial class PersonView : Node3D
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Species, ArrayMesh> Bodies = new();
 
-    /// <summary>Every piece where the rig has it. Physics interpolation smooths it on fast screens.</summary>
-    public void Sync()
+    /// <summary>Every piece where the rig has it (no easing: a stage or a test).</summary>
+    public void Sync() => Write(_rig.Pose);
+
+    /// <summary>The pose as it is drawn (a held weapon follows the hand drawn, not the rig's).</summary>
+    public Transform3D[] Drawn { get; private set; }
+
+    void Write(Transform3D[] pose)
     {
-        Transform3D[] pose = _rig.Pose;
+        Drawn = pose;
         if (_skeleton != null)
         {
             for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
             return;
         }
         for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = pose[i];
+    }
+
+    readonly DrawSmoother _smooth = new();
+    readonly PoseBlend _blend = new();
+    Transform3D _root;
+
+    /// <summary>
+    /// Every piece where the rig has it, eased: the body glides from where it was drawn to where the sim has it now, and a
+    /// change of what they are doing (<paramref name="key"/>) blends the pose, as a creature's does.
+    /// </summary>
+    public void Sync(Vector3 feet, float yaw, float speed, int key)
+    {
+        double now = DrawSmoother.Clock();
+        _smooth.Note(feet, yaw, speed, now);
+        _root = new Transform3D(new Basis(Vector3.Up, yaw), feet);
+        Write(_blend.Frame(_rig.Pose, _root, key, 0f, _rig.Species.Figure?.Height ?? 1.8f, now));
+        Glide();
+    }
+
+    bool _placed;
+
+    /// <summary>Every frame: the body eases on towards where the sim has it (a pose blends as they are posed).</summary>
+    public void Glide()
+    {
+        double now = DrawSmoother.Clock();
+        if (_smooth.Easing(now))
+        {
+            Transform = _smooth.Placement(now);
+            _placed = true;
+        }
+        else if (_placed)
+        {
+            Transform = Transform3D.Identity;
+            _placed = false;
+        }
+    }
+
+    /// <summary>Where the sim has them and where they are drawn, flat, m, and the heading difference, rad (tests).</summary>
+    public (float Apart, float Turn) Easing()
+    {
+        Vector4 o = _smooth.Offset(DrawSmoother.Clock());
+        return (new Vector3(o.X, o.Y, o.Z).Length(), o.W);
     }
 
     /// <summary>Where they stand: the shadow under their feet. (The body is wherever <see cref="Sync"/> last put it; the name is from when a far mesh stood in for it.)</summary>

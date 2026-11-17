@@ -99,21 +99,22 @@ public partial class CombatTest : Node
         game.QueueFree();
         yield return 0;
         foreach (int x in Squatters()) yield return x;
-        // NPCs' rounds that hit anyone but whom they were fired at (owner: "they should try not to shoot each other"): the
-        // town's edge fought out first with the line of fire not looked along for bodies (how it was: counted, not checked),
-        // then as it is.
+        // NPCs' rounds that hit an ally or a bystander (owner: "they should try not to shoot each other"; a round into one of
+        // the target's own side is no stray): the town's edge fought out first with the line of fire not looked along for
+        // bodies (how it was: counted, not checked), then as it is, on the same world.
+        WorldChoice edge = WorldChoice.Fresh("temperate");
         Slice.Arms.FireLine.On = false;
         _counting = false;
         int strays = Slice.Arms.ArmsHost.Strays, rounds = Slice.Arms.ArmsHost.NpcRounds;
-        foreach (int x in TownEdge()) yield return x;
+        foreach (int x in TownEdge(edge)) yield return x;
         int offStrays = Slice.Arms.ArmsHost.Strays - strays, offRounds = Slice.Arms.ArmsHost.NpcRounds - rounds;
         Slice.Arms.FireLine.On = true;
         _counting = true;
         (strays, rounds) = (Slice.Arms.ArmsHost.Strays, Slice.Arms.ArmsHost.NpcRounds);
         int held = Slice.Arms.FireLine.Held;
-        foreach (int x in TownEdge()) yield return x;
+        foreach (int x in TownEdge(edge)) yield return x;
         int onStrays = Slice.Arms.ArmsHost.Strays - strays, onRounds = Slice.Arms.ArmsHost.NpcRounds - rounds;
-        Check(onStrays <= Math.Max(1, onRounds / 50) && onRounds >= offRounds / 2, $"NPCs' rounds into anyone but whom they fire at, raiders against a town's guards: {offStrays} of {offRounds} with the line of fire not looked along for bodies, {onStrays} of {onRounds} with it ({Slice.Arms.FireLine.Held - held} rounds held for someone in the line); they still fire");
+        Check(onStrays <= Math.Max(1, onRounds / 50) && onRounds >= offRounds / 2, $"NPCs' rounds into allies and bystanders, raiders against a town's guards: {offStrays} of {offRounds} with the line of fire not looked along for bodies, {onStrays} of {onRounds} with it ({Slice.Arms.FireLine.Held - held} rounds held for someone in the line); they still fire");
     }
 
     /// <summary>
@@ -122,10 +123,9 @@ public partial class CombatTest : Node
     /// side and of no account to either. The town fires on them, its guards and whoever else has the nerve,
     /// with their own weapons (the aim and shots they'd use on you), and none of it is at you.
     /// </summary>
-    IEnumerable<int> TownEdge()
+    IEnumerable<int> TownEdge(WorldChoice world)
     {
         PlanetSurface.Poi.PoiSiting.ForceFamily = "survivor_town";
-        WorldChoice world = WorldChoice.Fresh("temperate");
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);

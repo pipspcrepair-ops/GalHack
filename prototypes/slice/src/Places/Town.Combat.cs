@@ -358,7 +358,8 @@ public sealed partial class Town
         p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-to.X, -to.Z), MathF.Min(1f, dt * 7f));
         if (p.Kit.Loaded <= 0)
         {
-            // Empty: a reload from what they carry (the rounds go in at the end of it).
+            // Empty: the burst is over; a reload from what they carry (the rounds go in at the end of it), or with none, fists (Choose).
+            p.Pending = 0;
             if (!p.Kit.Spent) p.Reloading = d.Reload;
             return;
         }
@@ -536,7 +537,7 @@ public sealed partial class Town
     void PoseWeapon(Person p)
     {
         if (p.Holder == null || p.Rig == null || PropIndex(p) is not (int i and >= 0)) return;
-        p.Holder.Transform = p.Rig.Pose[i] * new Transform3D(Clip.GunInProp.Scaled(Vector3.One * HumanBody.ArmScale(p.Figure)), Vector3.Zero);
+        p.Holder.Transform = (p.View?.Drawn ?? p.Rig.Pose)[i] * new Transform3D(Clip.GunInProp.Scaled(Vector3.One * HumanBody.ArmScale(p.Figure)), Vector3.Zero);
     }
 
     /// <summary>What a fallen person leaves: their weapon (the one they emptied too) and the ammo they had left for it.</summary>

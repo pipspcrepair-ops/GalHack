@@ -40,6 +40,13 @@ public static partial class Brain
             return;
         }
 
+        // Giving way to one met face to face in a narrow way (Unstick): it backs off out of their way a moment, then goes on.
+        if (w.Time < c.GiveWayUntil && c.GiveWayTo is { Dead: false, Removed: false } other)
+        {
+            Back(w, c, other.Position, c.Stats.WalkSpeed);
+            return;
+        }
+
         // Fire: whatever it is and whatever it wanted, it runs until the fright wears off.
         if (w.Time < c.ScaredUntil && c.Space == null)
         {
@@ -75,6 +82,8 @@ public static partial class Brain
         // noticed isn't there. (A living boulder is the exception: it goes by being looked at.)
         ITarget near = w.Quarry(c, out float dist);
         Senses.Surface(w, c, near, dist, dt);
+        // Someone it gave up on, still out of its reach, it doesn't go after however it was put on to them.
+        if (c.Noticed != null && Remembers(w, c, c.Noticed)) (c.Noticed, c.Awareness) = (null, 0f);
         if (c.Noticed == null && !c.Species.Tumbles)
         {
             near = null;

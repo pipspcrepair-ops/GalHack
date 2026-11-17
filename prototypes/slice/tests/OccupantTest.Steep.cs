@@ -35,7 +35,7 @@ public partial class OccupantTest
     {
         const float half = 90f;
         var rng = Wildlife.Rng.For((ulong)_rng.NextInt64(), "steep");
-        string form = new[] { "mesa", "canyon", "mountains" }[world % 3]; // (each form every run, its own shape rolled fresh)
+        string form = new[] { "mesa", "canyon", "mountains", "generated" }[world % 4]; // (each form every run, its own shape rolled fresh)
         Func<float, float, float> height;
         Vector3 top, foot;
         static float Smooth(float x) { x = Math.Clamp(x, 0f, 1f); return x * x * (3f - 2f * x); }
@@ -73,6 +73,39 @@ public partial class OccupantTest
                 };
                 top = across * 22f + along * (at + 30f);
                 foot = -across * 22f + along * (at + 30f);
+                break;
+            }
+            case "generated":
+            {
+                // The game's own ground: a world of a fresh type built as a new game builds it, round the steepest stretch
+                // within a kilometre of its landing (the most rise and fall over 80 m); top its highest point there, foot its lowest.
+                var wc = Slice.Game.WorldChoice.Fresh(Slice.Game.WorldChoice.Types[rng.Int(0, Slice.Game.WorldChoice.Types.Count - 1)].Key, (ulong)_rng.NextInt64(1, long.MaxValue));
+                var pw = PlanetSurface.World.PlanetWorld.Build(wc.Spec(), Slice.Surface.SurfaceZone.PoiCatalog);
+                double lx = pw.Landing.X, lz = pw.Landing.Y, bx = lx, bz = lz;
+                float most = -1f;
+                for (int i = -16; i <= 16; i++)
+                    for (int j = -16; j <= 16; j++)
+                    {
+                        double x = lx + i * 60.0, z = lz + j * 60.0;
+                        float lo = float.MaxValue, hi = float.MinValue;
+                        for (int k = 0; k < 9; k++)
+                        {
+                            float g = pw.GroundHeight(x + (k % 3 - 1) * 40.0, z + (k / 3 - 1) * 40.0);
+                            (lo, hi) = (MathF.Min(lo, g), MathF.Max(hi, g));
+                        }
+                        if (hi - lo > most) (most, bx, bz) = (hi - lo, x, z);
+                    }
+                float baseH = pw.GroundHeight(bx, bz);
+                height = (x, z) => pw.GroundHeight(bx + x, bz + z) - baseH;
+                (top, foot) = (Vector3.Zero, Vector3.Zero);
+                for (int i = -8; i <= 8; i++)
+                    for (int j = -8; j <= 8; j++)
+                    {
+                        var p = new Vector3(i * 8f, 0f, j * 8f);
+                        if (height(p.X, p.Z) > height(top.X, top.Z)) top = p;
+                        if (height(p.X, p.Z) < height(foot.X, foot.Z)) foot = p;
+                    }
+                form = $"generated {wc.Archetype} {most:F0} m";
                 break;
             }
             default:
@@ -177,16 +210,15 @@ public partial class OccupantTest
                 if (f.Drop == 0f) f.Fell = false;
                 (f.Prev, f.PrevH) = (c.Position, c.Position.Y);
             }
-            if (step % 150 == 149 && form != "mountains" && world < 2)
-                foreach (Creature h in hunters)
-                    GD.Print($"      HUNTER {form} {sim.Time:F0}s #{h.Id}: {h.State} {h.Phase}, {WildSim.Flat(h.Position - you.Position).Length():F1} m off, at {h.Position.X:F1},{h.Position.Y:F1},{h.Position.Z:F1}, wants {h.Desired.Length():F1}, way {h.PathIndex}/{h.Path.Count}{(h.PathWhole ? "" : " short")}, provoked {h.ProvokedBy != null && sim.Time - h.ProvokedAt < 12f}, noticed {h.Noticed?.Name}, herd {h.Herd != null}, pack {h.Pack != null}, rest {h.Rest != null}, beh {h.Species.Behaviour}, husk {h.Species.Husk}, stuck {h.StuckFor:F1}, next {(h.PathIndex < h.Path.Count ? h.Path[h.PathIndex] : h.Position)}, speed {WildSim.Flat(h.Velocity).Length():F1}, goal {h.PathGoal}");
             foreach (Creature h in hunters)
                 if (!h.Removed) closest[h] = MathF.Min(closest[h], WildSim.Flat(h.Position - you.Position).Length());
         }
         s.Walkers += footing.Count;
+        // (A chase across a cliff band: the mesa's and the canyon's, each with its one way round; the game's own ground where its legs have a way up at all.)
+        bool chase = form is "mesa" or "canyon" || form.StartsWith("generated") && nav.FindPath(Near(foot, 4f), you.Position, new List<Vector3>(), 4000, Brain.GaitOf(hunter));
         foreach (Creature h in hunters)
         {
-            if (h.Removed || form == "mountains") continue; // (a chase across a cliff band: the mesa's and the canyon's, each with its one way round)
+            if (h.Removed || !chase) continue;
             s.Hunters++;
             // Round by the easy way to the intruder, or held at the edge of what it can't climb (never up the face).
             if (closest[h] < Attacks.Range(h) + 2.5f) s.Round++;
@@ -224,8 +256,10 @@ public partial class OccupantTest
             return s;
         }
         var walkers = life.Fauna.Species.Where(k => k.Rig == RigKind.Legged && !k.Flies && !k.Mechanical && !k.Climbs && k.Domestic == DomesticKind.None && k.Body.Size < 2.5f).ToList();
-        Species climber = life.Fauna.Species.FirstOrDefault(k => k.Climbs && !k.Flies && !k.Mechanical && k.Domestic == DomesticKind.None);
         if (walkers.Count == 0) return;
+        // A wall climber: the world's own, or (a world without one) one of its walkers made a climber, so this is always looked at.
+        Species climber = life.Fauna.Species.FirstOrDefault(k => k.Climbs && k.Rig == RigKind.Legged && !k.Flies && !k.Mechanical && k.Domestic == DomesticKind.None);
+        if (climber == null) (climber = walkers[rng.Int(0, walkers.Count - 1)].Resized(1f)).Climbs = true;
         var you = new DummyTarget { Name = "intruder", Position = new Vector3(0f, h, 0f) };
         sim.Targets.Add(you);
         var hunters = new List<Creature>();
