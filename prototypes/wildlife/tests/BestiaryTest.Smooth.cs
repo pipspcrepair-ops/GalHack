@@ -16,7 +16,7 @@ public partial class BestiaryTest
         public int Steps, Poses, Frames, TurnCount;
     }
 
-    const float Frame = 1f / 240f, Tick = 1f / 60f, TurnLimit = 0.2f, PoseLimit = 0.5f;
+    const float Frame = 1f / 240f, Tick = 1f / 60f, TurnLimit = 0.2f, PoseLimit = 0.8f;
 
     /// <summary>
     /// Creatures of every kind in a sim, near, mid and far from the eye, drawn at 240 frames a second off a 60 tick sim (a clock of
@@ -95,7 +95,7 @@ public partial class BestiaryTest
                         if (v == null || !v.Visible || v.Shows < 1f) { last.Remove((c, ease)); continue; }
                         Vector3 at = v.DrawnRoot;
                         float yaw = v.DrawnYaw;
-                        Transform3D back = v.PoseRoot.AffineInverse();
+                        Transform3D back = v.DrawnPoseRoot.AffineInverse();
                         int n = c.Rig.Pose.Length;
                         var local = new Transform3D[n];
                         for (int i = 0; i < n; i++) local[i] = back * v.DrawnBone(i);

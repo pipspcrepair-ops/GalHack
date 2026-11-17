@@ -132,7 +132,7 @@ public sealed class PoseBlend
     /// <summary>
     /// The pose to draw for the rig's, made at this root. A change of <paramref name="key"/> blends over <see cref="Switch"/>;
     /// <paramref name="span"/> above 0 (the seconds since the rig was last updated) blends over that. A piece that has leapt over
-    /// half the body's <paramref name="size"/> since the rig's last pose (a rig's own jump from one stride or stance to another) blends too.
+    /// four fifths of the body's <paramref name="size"/> since the rig's last pose (a rig's own jump from one stride or stance to another) blends too.
     /// </summary>
     public Transform3D[] Frame(Transform3D[] live, Transform3D root, int key, float span, float size, double now)
     {
@@ -148,7 +148,7 @@ public sealed class PoseBlend
         if (DrawSmoother.Off) _has = false;
         float dur = key != _key ? Switch : span;
         _key = key;
-        if (_has && Leapt(live, root, size * 0.5f)) dur = MathF.Max(dur, Leap);
+        if (_has && Leapt(live, root, size * 0.8f)) dur = MathF.Max(dur, Leap);
         if (_has && dur > 0.02f)
         {
             Transform3D back = _lastRoot.AffineInverse();

@@ -345,7 +345,7 @@ public partial class CreatureView : Node3D
         {
             // A body posed every frame has the easing in its bones (no move of the whole skeleton node, which costs far more);
             // one posed less often has it on the node, which moves every frame between its poses (Glide).
-            bool bake = c.RigInterval <= 1;
+            bool bake = _baked = c.RigInterval <= 1;
             Place(now, bake);
             Transform3D ease = bake ? _smooth.Placement(now) : Transform3D.Identity;
             if (ease == Transform3D.Identity) for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
@@ -380,6 +380,7 @@ public partial class CreatureView : Node3D
     readonly PoseBlend _blend = new();
     Transform3D _jolt, _root, _put = Transform3D.Identity;
     double _synced, _wrote;
+    bool _baked;
 
     /// <summary>What it is doing, as far as its pose is concerned: a change of this blends the pose over <see cref="PoseBlend.Switch"/>.</summary>
     static int PoseKey(Creature c) =>
@@ -402,6 +403,9 @@ public partial class CreatureView : Node3D
 
     /// <summary>The root its pose was last made about: position and heading as of the rig's last update (tests).</summary>
     public Transform3D PoseRoot => _root;
+
+    /// <summary>The same, as drawn: eased from the sim's (tests).</summary>
+    public Transform3D DrawnPoseRoot => _baked ? _smooth.Placement(DrawSmoother.Clock()) * _root : _root;
 
     /// <summary>A piece's pose as drawn (tests).</summary>
     public Transform3D DrawnBone(int i) => _skeleton.GetBonePose(i);
