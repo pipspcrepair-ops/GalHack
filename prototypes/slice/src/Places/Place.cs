@@ -232,19 +232,55 @@ public partial class Place : Node3D
         cells = cells as ICollection<Int3> ?? new List<Int3>(cells);
         Memory.Fauna?.Forget(cells);
         PlaceParts.Refresh(Memory, cells);
-        foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize))
-        {
-            Group g = GroupAt(GroupOf(ch));
-            if (!g.Modified) Places.Zone.Pois.Unocclude(Site, g.Key);
-            g.Modified = true;
-            if (g.Near) Unmerge(g);
-            ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
-            if (g.Near) SetChunkMesh(mesh);
-            SetChunkShape(mesh);
-            ChunkMesh.Return(mesh);
-        }
+        foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize)) Mesh(ch);
         Memory.Modified = true;
         Places.Zone.Light.Touch();
+    }
+
+    /// <summary>
+    /// As <see cref="Remesh"/>, the chunks rebuilt a few a frame from the next (<see cref="RebuildStale"/>): a fight's breakages never
+    /// land in one frame. The grid has changed already; only the drawing and the colliders follow a moment later.
+    /// </summary>
+    public void Rebuild(ICollection<Int3> cells)
+    {
+        Memory.Fauna?.Forget(cells);
+        PlaceParts.Refresh(Memory, cells);
+        foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize)) _stale.Add(ch);
+        Memory.Modified = true;
+    }
+
+    readonly HashSet<Int3> _stale = new();
+
+    /// <summary>Chunks waiting on <see cref="Rebuild"/> (tests).</summary>
+    public int Stale => _stale.Count;
+
+    /// <summary>The most a frame spends on rebuilding broken chunks, ms (one always goes).</summary>
+    const double StaleMs = 1.5;
+
+    void RebuildStale()
+    {
+        if (_stale.Count == 0) return;
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (Int3 ch in _stale.ToList())
+        {
+            Mesh(ch);
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds > StaleMs) break;
+        }
+        Places.Zone.Light.Touch();
+    }
+
+    /// <summary>One chunk meshed again from the grid, its drawing (when near) and its colliders.</summary>
+    void Mesh(Int3 ch)
+    {
+        _stale.Remove(ch);
+        Group g = GroupAt(GroupOf(ch));
+        if (!g.Modified) Places.Zone.Pois.Unocclude(Site, g.Key);
+        g.Modified = true;
+        if (g.Near) Unmerge(g);
+        ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
+        if (g.Near) SetChunkMesh(mesh);
+        SetChunkShape(mesh);
+        ChunkMesh.Return(mesh);
     }
 
     // ---- Near and far -----------------------------------------------------------------------------
@@ -608,6 +644,7 @@ public partial class Place : Node3D
     {
         if (!Ready) return;
         long t = System.Diagnostics.Stopwatch.GetTimestamp();
+        RebuildStale();
         TickTiers();
         t = Part(0, t);
         var step = StepClock.Start();
