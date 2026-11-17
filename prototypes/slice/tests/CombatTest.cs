@@ -340,7 +340,9 @@ public partial class CombatTest : Node
             fighter.Nerve = 1f;
             game.Survivor.PlaceOutside(town.World(fighter.Pos + fighter.Forward.Cross(Vector3.Up).Normalized() * 1.2f + Vector3.Up * 0.1f).ToNumerics());
         }
+        Town.Person brawl = town.People.Where(p => p.Engaged && !p.Dead && p.Kit != null).OrderBy(p => p.Kit.Strike ? 0 : 1).FirstOrDefault();
         for (int i = 0; i < 60 * 20 && town.Blows == 0; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        if (town.Blows == 0 && brawl != null) GD.Print($"  (the brawler: engaged {brawl.Engaged}, part {brawl.Part}, kit {brawl.Kit?.Def.Id} strike {brawl.Kit?.Strike}, {(town.World(brawl.Pos) - game.Survivor.WorldFeet).Length():F1} m from you, way {brawl.Step}/{brawl.Path?.Count ?? -1}, sees {brawl.Sees}, winding {brawl.Winding:F2}, swing in {brawl.SwingIn:F2}, indoors {brawl.Indoors}, fleeing {brawl.Fleeing}, scared {brawl.ScaredFor:F1}, dead {brawl.Dead})");
         GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
         Check(town.Blows > 0 && town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows ({brawler}, you at their side), the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
     }

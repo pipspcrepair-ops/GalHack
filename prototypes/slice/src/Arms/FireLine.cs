@@ -15,8 +15,8 @@ namespace Slice.Arms;
 /// </summary>
 public static class FireLine
 {
-    /// <summary>How far round a body a line must pass to be clear of it, m.</summary>
-    const float Margin = 0.2f;
+    /// <summary>How far round a body a line must pass to be clear of it, m, and more for every metre out from the muzzle (a round strays a little from its line: a gun's spread, unsteady hands).</summary>
+    const float Margin = 0.2f, Spread = 0.04f;
 
     /// <summary>Rounds held because someone stood in the line (tests); and whether the line is looked along at all (tests: off, how it was).</summary>
     public static int Held;
@@ -58,6 +58,7 @@ public static class FireLine
         if (t <= 0.02f || t >= 0.98f) return false;
         Vector3 at = from + d * t;
         float side = new Vector2(at.X - feet.X, at.Z - feet.Z).Length();
-        return side < radius + Margin && at.Y > feet.Y - Margin && at.Y < feet.Y + height + Margin;
+        float margin = Margin + Spread * t * d.Length();
+        return side < radius + margin && at.Y > feet.Y - margin && at.Y < feet.Y + height + margin;
     }
 }
