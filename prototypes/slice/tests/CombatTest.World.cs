@@ -154,6 +154,7 @@ public partial class CombatTest
             for (int pass = 0; pass < 2; pass++)
             {
                 ArmsHost.HarmsWorld = pass == 1;
+                ArmsHost.PlacesMs = ArmsHost.PlantsMs = ArmsHost.CraterMs = 0;
                 cost[pass] = new List<double>();
                 for (int i = 0; i < 240; i++)
                 {
@@ -168,7 +169,7 @@ public partial class CombatTest
             }
             ArmsHost.HarmsWorld = true;
             double P95(List<double> l) => l.OrderBy(v => v).ElementAt((int)(l.Count * 0.95));
-            Check(P95(cost[1]) <= 16.7, $"a firefight {where} (a round a frame, a rocket every half second, 4 s): frame cost p95 {P95(cost[0]):F1} ms and worst {cost[0].Max():F1} without harm to the world, {P95(cost[1]):F1} and {cost[1].Max():F1} with it (budget 16.7)");
+            Check(P95(cost[1]) <= 16.7, $"a firefight {where} (a round a frame, a rocket every half second, 4 s): the worst frame a second, p95 {P95(cost[0]):F1} ms and worst {cost[0].Max():F1} without harm to the world, {P95(cost[1]):F1} and {cost[1].Max():F1} with it (budget 16.7; a blast's harm at most {ArmsHost.PlacesMs:F1} ms to places, {ArmsHost.PlantsMs:F1} to plants, {ArmsHost.CraterMs:F1} to the ground)");
         }
     }
 }

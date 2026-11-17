@@ -21,6 +21,9 @@ public partial class ArmsHost
     /// <summary>Shots into places, wrecks and plants; craters blasted and plants a blast took (tests).</summary>
     public int PlaceHits, WreckHits, PlantHits, Craters, PlantsBlasted;
 
+    /// <summary>The most one blast's harm to places, to plants and to the ground has taken, ms (tests).</summary>
+    public static double PlacesMs, PlantsMs, CraterMs;
+
     /// <summary>Off, shots and blasts only mark the world (tests: a fight's cost without it).</summary>
     public static bool HarmsWorld = true;
 
@@ -52,7 +55,10 @@ public partial class ArmsHost
         float r = blast.Radius, damage = blast.Damage * blast.Blocks;
         if (damage <= 0f || r <= 0f || !HarmsWorld) return;
         PoiPlaces places = Game.Places;
+        long t = System.Diagnostics.Stopwatch.GetTimestamp();
         places?.Blast(p, r, damage);
+        PlacesMs = Math.Max(PlacesMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
+        t = System.Diagnostics.Stopwatch.GetTimestamp();
         _blasted.Clear();
         foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(p, r))
         {
@@ -64,8 +70,11 @@ public partial class ArmsHost
             Zone.WearPlant(s, damage * (1f - d / r * 0.75f), away.LengthSquared() > 1e-4f ? away : Vector3.Right, batch: true);
             if (Zone.Planet.Felled.Contains(s.Id)) PlantsBlasted++;
         }
+        PlantsMs = Math.Max(PlantsMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
         if (hulls || places?.PlaceAt(p) != null) return;
+        t = System.Diagnostics.Stopwatch.GetTimestamp();
         float crater = Table.Rules.Crater * MathF.Cbrt(damage);
         if (Zone.Edits.Blast(p.ToNumerics(), crater).Removed.Count > 0) Craters++;
+        CraterMs = Math.Max(CraterMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
     }
 }

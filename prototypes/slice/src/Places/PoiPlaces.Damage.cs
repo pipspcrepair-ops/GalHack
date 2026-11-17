@@ -106,7 +106,7 @@ public partial class PoiPlaces
     {
         if (gone.Count == 0) return;
         BlocksBroken += gone.Count;
-        List<Int3> loose = Loose(p.Inst, gone);
+        List<Int3> loose = Loose(p, gone);
         foreach (Int3 c in loose)
         {
             p.Inst.Blocks.Set(c, Block.Air);
@@ -149,16 +149,24 @@ public partial class PoiPlaces
     /// <summary>
     /// What no longer reaches the ground once some blocks went: every part joined (face to face, through other blocks) to the
     /// gaps' sides, walked downward first, that meets neither the lowest storey nor the rock round the place (a station's anchors
-    /// in space) — the rule a ruin's collapse has (<see cref="Structure.Floating"/>), from the change only, so a chip costs a few cells' walk.
+    /// in space) — the rule a ruin's collapse has (<see cref="Structure.Floating"/>), or the terrain under it, from the change only, so a chip costs a few cells' walk.
     /// </summary>
-    static List<Int3> Loose(PoiInstance inst, List<Int3> gone)
+    List<Int3> Loose(Place p, List<Int3> gone)
     {
+        PoiInstance inst = p.Inst;
         BlockGrid g = inst.Blocks;
+        var store = Zone.Planet.Terrain.Store;
         CellMask occupied = inst.Layout.Occupied;
         bool space = inst.Layout.Extras.InSpace;
         HashSet<Int3> anchors = space ? new HashSet<Int3>(LayoutCheck.StationAnchors(inst.Layout)) : null;
         bool Rock(Int3 q) => !space && q.Y <= Assembler.GroundY && !occupied[q];
-        bool Grounded(Int3 q) => space ? anchors.Contains(q) : q.Y == g.Min.Y || Dirs.All.Any(d => Rock(q + d.Vec()));
+        // (and what stands on the real ground under it: a place on a slope stands on the terrain above its own rock line)
+        bool Grounded(Int3 q) => space ? anchors.Contains(q) : q.Y == g.Min.Y || Dirs.All.Any(d => Rock(q + d.Vec())) || OnGround(q);
+        bool OnGround(Int3 q)
+        {
+            Vector3 under = p.WorldOf(q, -0.5f);
+            return store.MaterialAt(new TerrainDigging.Terrain.Int3((int)MathF.Floor(under.X), (int)MathF.Floor(under.Y), (int)MathF.Floor(under.Z))) != TerrainDigging.Terrain.CellMaterial.Air;
+        }
         bool Solid(Int3 q) => g.InBounds(q) && !g.Get(q).IsAir;
         var held = new HashSet<Int3>();
         var seen = new HashSet<Int3>();

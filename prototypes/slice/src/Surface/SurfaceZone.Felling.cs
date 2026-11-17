@@ -123,10 +123,9 @@ public partial class SurfaceZone : IFloraField
     {
         Slice.Game.SliceRules.PlantRules r = Data.Rules.Plants;
         float size = Mathf.Clamp(s.Scale, 0.5f, 3f);
-        if (IsBoulder(s.Kind)) return r.Boulder * size;
-        if (!TreeFx.IsTree(s.Kind)) return r.Plant * size;
         float trunk = SpeciesOf(s.Plant) is { TrunkRadius: > 0f } sp ? Mathf.Clamp(sp.TrunkRadius / r.Trunk, 0.5f, 2f) : 1f;
-        return r.Tree * size * trunk;
+        float hp = IsBoulder(s.Kind) ? r.Boulder * size : TreeFx.IsTree(s.Kind) ? r.Tree * size * trunk : r.Plant * size;
+        return Mathf.Max(1f, Mathf.Round(hp)); // (whole, as a block's are)
     }
 
     /// <summary>A standing plant's hit points left and whole (the reticle's readout).</summary>
