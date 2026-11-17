@@ -321,7 +321,6 @@ public static partial class Brain
     /// </summary>
     static void Chase(WildSim w, Creature c, ITarget t, Vector3 goal, float speed)
     {
-        if ((WildSim.Ab & 128) != 0) { Go(w, c, goal, speed); return; }
         if (Remembers(w, c, t))
         {
             GiveUp(w, c, t);
@@ -339,7 +338,7 @@ public static partial class Brain
     /// </summary>
     public static bool Remembers(WildSim w, Creature c, ITarget t)
     {
-        if ((WildSim.Ab & 128) != 0 || t == null || c.GaveUpOn != t) return false;
+        if (t == null || c.GaveUpOn != t) return false;
         if (w.Time - c.GaveUpAt > ChaseMemory) { c.GaveUpOn = null; return false; }
         if (w.Time < c.ReachCheck || !w.TakePathBudget()) return true;
         c.ReachCheck = w.Time + ReachLook;
@@ -408,7 +407,7 @@ public static partial class Brain
     public static void Headway(WildSim w, Creature c, float dt)
     {
         float want = c.Desired.Length();
-        bool going = want > 0.3f && c.State is not (CState.Graze or CState.Idle or CState.Rest) && !c.Attacking && c.HeldBy == null && c.Holding == null && !c.InWalls && !c.Falling && !c.Thrown && c.Downed <= 0f && c.StunFor <= 0f
+        bool going = want > 0.3f && (c.State is not (CState.Graze or CState.Idle or CState.Rest) || c.Path.Count > 0) && !c.Attacking && c.HeldBy == null && c.Holding == null && !c.InWalls && !c.Falling && !c.Thrown && c.Downed <= 0f && c.StunFor <= 0f
             && !(c.Space == null && c.Species.Flies && !c.Landed) && c.Species.Rig is not (RigKind.Swarm or RigKind.GasBag);
         float need = Math.Clamp(want * 0.4f, 0.08f, 0.25f);
         if (!going || (c.Position - c.ProgressAt).LengthSquared() > need * need)

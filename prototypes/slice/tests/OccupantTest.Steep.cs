@@ -35,7 +35,7 @@ public partial class OccupantTest
     {
         const float half = 90f;
         var rng = Wildlife.Rng.For((ulong)_rng.NextInt64(), "steep");
-        string form = new[] { "mesa", "canyon", "mountains" }[world % 3]; // (each form every run, its own shape rolled fresh)
+        string form = new[] { "mesa", "canyon", "mountains", "generated" }[world % 4]; // (each form every run, its own shape rolled fresh)
         Func<float, float, float> height;
         Vector3 top, foot;
         static float Smooth(float x) { x = Math.Clamp(x, 0f, 1f); return x * x * (3f - 2f * x); }
@@ -73,6 +73,39 @@ public partial class OccupantTest
                 };
                 top = across * 22f + along * (at + 30f);
                 foot = -across * 22f + along * (at + 30f);
+                break;
+            }
+            case "generated":
+            {
+                // The game's own ground: a world of a fresh type built as a new game builds it, round the steepest stretch
+                // within a kilometre of its landing (the most rise and fall over 80 m); top its highest point there, foot its lowest.
+                var wc = Slice.Game.WorldChoice.Fresh(Slice.Game.WorldChoice.Types[rng.Int(0, Slice.Game.WorldChoice.Types.Count - 1)].Key, (ulong)_rng.NextInt64(1, long.MaxValue));
+                var pw = PlanetSurface.World.PlanetWorld.Build(wc.Spec(), Slice.Surface.SurfaceZone.PoiCatalog);
+                double lx = pw.Landing.X, lz = pw.Landing.Y, bx = lx, bz = lz;
+                float most = -1f;
+                for (int i = -16; i <= 16; i++)
+                    for (int j = -16; j <= 16; j++)
+                    {
+                        double x = lx + i * 60.0, z = lz + j * 60.0;
+                        float lo = float.MaxValue, hi = float.MinValue;
+                        for (int k = 0; k < 9; k++)
+                        {
+                            float g = pw.GroundHeight(x + (k % 3 - 1) * 40.0, z + (k / 3 - 1) * 40.0);
+                            (lo, hi) = (MathF.Min(lo, g), MathF.Max(hi, g));
+                        }
+                        if (hi - lo > most) (most, bx, bz) = (hi - lo, x, z);
+                    }
+                float baseH = pw.GroundHeight(bx, bz);
+                height = (x, z) => pw.GroundHeight(bx + x, bz + z) - baseH;
+                (top, foot) = (Vector3.Zero, Vector3.Zero);
+                for (int i = -8; i <= 8; i++)
+                    for (int j = -8; j <= 8; j++)
+                    {
+                        var p = new Vector3(i * 8f, 0f, j * 8f);
+                        if (height(p.X, p.Z) > height(top.X, top.Z)) top = p;
+                        if (height(p.X, p.Z) < height(foot.X, foot.Z)) foot = p;
+                    }
+                form = $"generated {wc.Archetype} {most:F0} m";
                 break;
             }
             default:
@@ -184,9 +217,11 @@ public partial class OccupantTest
                 if (!h.Removed) closest[h] = MathF.Min(closest[h], WildSim.Flat(h.Position - you.Position).Length());
         }
         s.Walkers += footing.Count;
+        // (A chase across a cliff band: the mesa's and the canyon's, each with its one way round; the game's own ground where its legs have a way up at all.)
+        bool chase = form is "mesa" or "canyon" || form.StartsWith("generated") && nav.FindPath(Near(foot, 4f), you.Position, new List<Vector3>(), 4000, Brain.GaitOf(hunter));
         foreach (Creature h in hunters)
         {
-            if (h.Removed || form == "mountains") continue; // (a chase across a cliff band: the mesa's and the canyon's, each with its one way round)
+            if (h.Removed || !chase) continue;
             s.Hunters++;
             // Round by the easy way to the intruder, or held at the edge of what it can't climb (never up the face).
             if (closest[h] < Attacks.Range(h) + 2.5f) s.Round++;

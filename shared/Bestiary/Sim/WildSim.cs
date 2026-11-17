@@ -531,7 +531,7 @@ public sealed class WildSim
         // A spot inside a wall, a pillar or a stair is no spot: the nearest open floor near it, or nowhere.
         if (Interpenetration.Inside(this, c) && !Interpenetration.Free(this, c, near)) c.Removed = true;
         // Nor in another body: a walker put down where one stands already goes to open floor a step or two off.
-        if ((Ab & 16) == 0 && !c.Removed && !species.Climbs && Crowded(c, c.Position)) Spread(c);
+        if (!c.Removed && !species.Climbs && Crowded(c, c.Position)) Spread(c);
         c.Home = c.Position;
         c.Rig.Reset(this, c);
         return c;
@@ -579,7 +579,6 @@ public sealed class WildSim
     /// Whether a body keeps its personal space: one on the ground or a floor (not one closing to strike or seize: an attack
     /// needs its reach; in a cave or a place, not a climber holding its walls; not a swarm, a cloud, nor a gas bag, which floats).
     /// </summary>
-    public static int Ab; // TEMP A/B
     public static bool Spaced(Creature c) =>
         !(c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
           || c.Space != null && (c.Species.Climbs || c.Falling)
@@ -605,8 +604,6 @@ public sealed class WildSim
         foreach (ITarget t in Targets)
             if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
         // Where each body can be put (its own say, so that of two the one that can't be moved, the other takes the whole push).
-        _apartIn = inside;
-        if ((Ab & 32) != 0) Space.Resolve(dt, inside != null ? (i, p) => AbFloor(_apartIn, p) : SolidAt == null ? null : (i, p) => !SolidAt(p + Vector3.Up * 0.4f), 4); else
         Space.Resolve(dt, _stands ??= (i, p) => i >= _spaced.Count || Stands(_spaced[i], p), 4);
         for (int i = 0; i < _spaced.Count; i++)
         {
@@ -626,9 +623,6 @@ public sealed class WildSim
     }
 
     Func<int, Vector3, bool> _stands;
-    ISolidSpace _apartIn;
-    static bool AbFloor(ISolidSpace s, Vector3 p) =>
-        SpaceMath.FloorBelow(s.Bare, p.X, p.Y + 0.45f, p.Z, 1f) is float y && MathF.Abs(y - p.Y) < 0.45f && s.Bare.Density(new Vector3(p.X, y + 0.5f, p.Z)) < 0f;
     readonly List<int> _near = new();
 
     /// <summary>
@@ -642,7 +636,6 @@ public sealed class WildSim
     /// <summary>Whether a striking body moved to a point would be further into anyone but whom it strikes at than it is (a lunge or a charge stops at an ally or a bystander, never goes through).</summary>
     public bool IntoBody(Creature c, Vector3 to, ITarget at)
     {
-        if ((Ab & 4) != 0) return false;
         Space.Near(to, _near);
         foreach (int j in _near)
         {
@@ -678,9 +671,10 @@ public sealed class WildSim
             float r;
             if (j < _spaced.Count)
             {
-                // (Only one standing: two on the move part by personal space, each bearing to its right.)
+                // (Not one walking off away from it: that gap opens by itself.)
                 Creature b = _spaced[j];
-                if (!Spaced(b) || Flat(b.Velocity).LengthSquared() > 0.09f) continue;
+                Vector3 off = Flat(b.Position - from);
+                if (!Spaced(b) || off.LengthSquared() > 1e-4f && Flat(b.Velocity).Dot(off.Normalized()) > 0.3f) continue;
                 (o, r) = (b.Position, b.Radius);
             }
             else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);
@@ -758,9 +752,9 @@ public sealed class WildSim
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }
             Locomotion.Move(this, c, dt);
             Locomotion.KeepOff(this, c);
+            if (!c.Dead && !Frozen) Brain.Headway(this, c, dt);
             // In a cave or a place nothing ends its step in a wall or a piece of furniture (a landing, a spawn): out at once.
             if (c.Space != null && !c.Dead && Interpenetration.Inside(this, c)) Interpenetration.Out(this, c);
-            if (!c.Dead && !Frozen) Brain.Headway(this, c, dt);
             if (Profile) { long t = Stopwatch.GetTimestamp(); moveTicks += t - t0; t0 = t; }
 
             // Far creatures re-pose less often; the rig catches up with the summed time.

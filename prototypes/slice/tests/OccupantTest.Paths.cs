@@ -58,7 +58,6 @@ public partial class OccupantTest
     void Paths()
     {
         GD.Print("-- NPCs on their paths: cramped places and open ground --");
-        if (System.Environment.GetEnvironmentVariable("GH_AB") is string abs) { AbRuns(abs); return; }
         Decor decor = Decor.Shared;
         var inside = new PathTally();
         var outside = new PathTally();
@@ -76,13 +75,16 @@ public partial class OccupantTest
             WorldLife life = Bestiary.Roll(_data, cond);
             var deep = new PlaceFauna.Deep(life, null, 1f);
             int done = 0;
+            bool steepOnly = System.Environment.GetEnvironmentVariable("GH_STEEPONLY") != null; // TEMP
             foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
-                if (done < 5 && InsideWalk(f, deep, decor, inside)) done++;
+                if (!steepOnly && done < 5 && InsideWalk(f, deep, decor, inside)) done++;
             done = 0;
             foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
-                if (done < 2 && OutsideWalk(f, life, outside)) done++;
+                if (!steepOnly && done < 2 && OutsideWalk(f, life, outside)) done++;
             SteepWalk(life, steep, faces, w);
             if (w == 0) Ledge(life);
+            // And the game's own steep ground, on a world built as a new game builds it.
+            if (w == 2) SteepWalk(life, steep, faces, 3);
         }
         PathChecks("in cramped places", inside, 10);
         PathChecks("on open ground round buildings", outside, 4);
@@ -91,39 +93,6 @@ public partial class OccupantTest
     }
 
     static int _abPrints;
-
-    // TEMP A/B: the same seeded inside walks under each mask of WildSim.Ab.
-    void AbRuns(string masks)
-    {
-        int seed = int.Parse(System.Environment.GetEnvironmentVariable("GH_SEED") ?? "1");
-        foreach (string ms in masks.Split('_'))
-        {
-            WildSim.Ab = int.Parse(ms);
-            _rng = new System.Random(seed);
-            var inside = new PathTally();
-            var families = _lib.Families.Where(f => f.Types.Count == 0 && !f.Space && f.StateWeights.Any(w => w > 0f)).ToList();
-            var per = new List<string>();
-            for (int w = 0; w < 3; w++)
-            {
-                string arch = Archetypes[_rng.Next(Archetypes.Length)];
-                ulong seedw = Seed();
-                WorldRoll roll = Roll(seedw, arch);
-                WorldProfile profile = WorldProfile.Roll(seedw, arch, false);
-                WorldConditions cond = Conditions(roll, seedw);
-                Slice.Surface.WildlifePatch.Story(cond, roll, profile, WorldReading.Of(roll));
-                WorldLife life = Bestiary.Roll(_data, cond);
-                var deep = new PlaceFauna.Deep(life, null, 1f);
-                int done = 0;
-                foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
-                {
-                    if (done >= 5) continue;
-                    (int iw, int ip) = (inside.InWall, inside.InParts);
-                    if (InsideWalk(f, deep, Decor.Shared, inside)) { done++; per.Add($"{f.Id} {inside.InWall - iw}/{inside.InParts - ip}"); }
-                }
-            }
-            GD.Print($"AB {WildSim.Ab}: walls {inside.InWall} parts {inside.InParts} entries {inside.Entries} of {inside.Steps}; stuck {inside.Stuck / Math.Max(1f, inside.NpcSeconds):P2} longest {inside.Longest:F1}; overlaps {inside.Overlaps} deadlocks {inside.Deadlocks}; {string.Join(", ", per)}{inside.WallAt}{inside.LongestAt}");
-        }
-    }
 
     void PathChecks(string where, PathTally t, int places)
     {

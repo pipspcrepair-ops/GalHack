@@ -764,6 +764,8 @@ public sealed partial class Town
             return;
         }
         p.Asked = -1;
+        // Called away on the last step into a seat (in its cells, not yet sat): out of it as from a seat, the way they came in.
+        if (p.Seat < 0 && InSeat(p, p.Spot)) p.Seat = p.Spot;
         if (path == null)
         {
             // No way there from here: they stay where they are a while rather than walk through anything.

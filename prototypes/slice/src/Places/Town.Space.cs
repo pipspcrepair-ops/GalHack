@@ -88,7 +88,7 @@ public sealed partial class Town
         Vector3 best = p.Pos;
         float most = gap;
         if (after > most && OnGrid(to)) { best = to; most = after; }
-        p.Pos = most >= _parts.Gap(was, r, h) - 0.005f ? best : was;
+        p.Pos = most >= _parts.Gap(was, r, h) ? best : was;
     }
 
     /// <summary>Once a tick, after everyone has moved: bodies apart, you stepped round, pushes answered.</summary>
