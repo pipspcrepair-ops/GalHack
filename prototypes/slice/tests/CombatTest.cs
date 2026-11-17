@@ -28,7 +28,7 @@ namespace Slice.Tests;
 ///   rallies as one; a machine fires its mount; a club strikes for the club's damage.
 /// - A town's edge: raiders who come near draw fire from its guards, the sleeper of no account to either.
 ///
-/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/CombatTest.tscn
+/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/CombatTest.tscn [-Extra --squatters (that check alone)]
 /// </summary>
 public partial class CombatTest : Node
 {
@@ -81,6 +81,11 @@ public partial class CombatTest : Node
 
     IEnumerable<int> Scenario()
     {
+        if (OS.GetCmdlineUserArgs().Contains("--squatters"))
+        {
+            foreach (int x in Squatters()) yield return x;
+            yield break;
+        }
         PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
         PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Gang);
@@ -231,8 +236,8 @@ public partial class CombatTest : Node
             deep.Town = town;
             place.AddChild(deep);
         }
-        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Danger(s) && !s.Flies && s.Rig == RigKind.Legged && s.Body.Size < 2f).OrderBy(_ => _rng.Next()).FirstOrDefault();
-        if (beast == null) { GD.Print("  (no walking danger on this world)"); game.QueueFree(); yield break; }
+        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Hunts(s) && !s.Husk && !s.Flies && s.Rig == RigKind.Legged && s.Body.Size < 2f).OrderBy(_ => _rng.Next()).FirstOrDefault();
+        if (beast == null) { GD.Print("  (no walking hunter on this world)"); game.QueueFree(); yield break; }
         var beasts = new List<Creature>();
         for (int i = 0; i < 3; i++)
         {

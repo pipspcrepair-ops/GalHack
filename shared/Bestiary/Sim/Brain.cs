@@ -287,8 +287,8 @@ public static partial class Brain
                 }
                 c.WantCrouch = 1f;
                 c.FacePoint = near.Position;
-                // Someone of a town in company is watched from cover, not taken: it waits for a straggler.
-                if (near is IHost && !CrossReactions.Alone(w.Targets, near, 9f))
+                // Someone of a town in company is watched from cover, not taken: it waits for a straggler (out in the open; in a place's rooms there is no cover to wait in).
+                if (near is IHost && c.Space == null && !CrossReactions.Alone(w.Targets, near, 9f))
                 {
                     if (dist < 16f) Back(w, c, near.Position, c.Stats.WalkSpeed * 0.4f);
                     else if (dist > 24f) Go(w, c, near.Position, c.Stats.WalkSpeed * 0.5f);
