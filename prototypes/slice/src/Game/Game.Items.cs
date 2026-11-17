@@ -410,10 +410,10 @@ public partial class Game
         foreach (Device d in Zone.Devices) d.Grid?.Reconcile();
         AutoTransmit(dt);
         Zone.Loot.Tick();
-        // A structure's storage stays open while you are in its area; anything else within a few steps.
-        if (Opened != null && (Opened.Vessel != null
+        // A structure's storage stays open while you are in its area; anything else within a few steps; an emptied bag is gone at once.
+        if (Opened != null && (Opened.Loot != null && Zone.Loot.Open == null || (Opened.Vessel != null
                 ? !Slice.Construction.StructureArea.Contains(Opened.Vessel, Survivor.WorldFeet, Zone.Data.Rules.Build.Area)
-                : Opened.Where().DistanceTo(Survivor.WorldFeet) > 6f)) CloseContainer();
+                : Opened.Where().DistanceTo(Survivor.WorldFeet) > 6f))) CloseContainer();
     }
 
     float _transmitTimer;

@@ -230,15 +230,16 @@ public partial class Lootables : Node3D
     /// <summary>The floor under a point that someone on foot can reach (set by the game): a body that came down on a ledge or a ceiling ends on it.</summary>
     public Func<Vector3, Vector3> Settle;
 
-    /// <summary>Empty ones that aren't open go; bags in the air come down; a body goes where its creature's body goes (it falls off a ledge, it lets go of a ceiling), and once the body is gone what's left on it is in a bag where it lay.</summary>
+    /// <summary>Empty ones go the moment they're emptied, open or not (owner, 17 Nov: "it shouldn't wait until we close the menu"); bags in the air come down; a body goes where its creature's body goes (it falls off a ledge, it lets go of a ceiling), and once the body is gone what's left on it is in a bag where it lay.</summary>
     public void Tick()
     {
         float dt = (float)GetPhysicsProcessDeltaTime();
         for (int i = All.Count - 1; i >= 0; i--)
         {
             Lootable l = All[i];
-            if (l.IsEmpty && l != Open && l.Kind != LootKind.Cache)
+            if (l.IsEmpty && l.Kind != LootKind.Cache)
             {
+                if (l == Open) Open = null; // its panel closes with it (the game sees Open gone)
                 l.Node.QueueFree();
                 All.RemoveAt(i);
                 if (l.Creature != null) l.Creature.MeatLeft = 0f; // the wildlife clears the body away
