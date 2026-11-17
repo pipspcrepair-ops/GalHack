@@ -788,6 +788,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 - [ ] Groups of people run slowly [batch: one body per person, built off the main thread; 20 people about 0.3 ms; owner to recheck] [normal]
 - [ ] Hitch at the crossing: hand-over frames 57 to 111 ms, one 288, up from 12 to 15; sky tracking took 72 ms of the worst; measure on a quiet machine after the gate [not started] [normal]
 - [ ] Worst-case stress test after the merge: a dense ruined city, a large capital ship, many creatures and a storm at once, to measure whether the engine holds up [not started] [later]
+- [ ] MEADOW SLOW, DESERT FAST (owner, 17 Nov: "Is it the trees? How many trees draw on a screen? how many polygons on screen? Is it the number of collissions shapes?"). Measured on batch2 63a83139, owner's settings, 1440p: standing on foot, meadow gpu 7.8 ms, 1,429 draw calls, 11.1M triangles against desert 4.8 ms, 639, 4.9M. Trees and plants alone: 2.0 ms, 1,027 draws, 5.3M triangles (desert 0.2 ms, 146, 0.09M); their shadows about 0.9 ms and 3.5M triangles more. Flying high: trees 3.3 of 8.2 ms. Main thread walking 7.6 against 4.7 ms; physics 2.9 against 2.3 ms a tick (491 solid colliders near against 49); streaming 18 against 12 ms a second. So mostly the trees: their triangles, a draw call a batch, and their shadows. The sky itself is 1.5 to 2.1 ms on both. Levers: far trees as cheap meshes (proto/forests 3c2e93a6, paused), fewer flora draw calls (bigger batches), tree shadows only near, fewer triangles a tree [normal]
 
 ## Tests and gate fixes
 
