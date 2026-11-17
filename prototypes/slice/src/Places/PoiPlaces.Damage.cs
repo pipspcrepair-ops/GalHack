@@ -63,7 +63,7 @@ public partial class PoiPlaces
                         if (p.SecretAt(c) is SecretRoom s) { if (secrets.Add(s)) Hurt(p, s, Falloff(d)); }
                         else Hurt(p, c, Falloff(d), gone);
                     }
-            foreach (DecoHit piece in p.Pieces().ToList())
+            foreach (DecoHit piece in p.PiecesNear(local, radius).ToList())
             {
                 float d = piece.Node.GlobalPosition.DistanceTo(at);
                 if (d > radius) continue;
@@ -135,7 +135,9 @@ public partial class PoiPlaces
     {
         var near = new HashSet<Int3>(gone);
         BlockGrid g = p.Inst.Blocks;
-        foreach (DecoHit h in p.Pieces().ToList())
+        Int3 lo = gone.Aggregate(Int3.Min), hi = gone.Aggregate(Int3.Max);
+        var mid = new Vector3((lo.X + hi.X + 1) * 0.5f, (lo.Y + hi.Y + 1) * 0.5f, (lo.Z + hi.Z + 1) * 0.5f);
+        foreach (DecoHit h in p.PiecesNear(mid, new Vector3(hi.X - lo.X + 1, hi.Y - lo.Y + 1, hi.Z - lo.Z + 1).Length() * 0.5f + 2f).ToList())
         {
             if (h.Room.Plan.Placements[h.Index] is not { Support: < 0 } at) continue; // it goes with what it stands on
             Int3 c = p.CellAt(h.Node.GlobalPosition + Vector3.Up * 0.05f);

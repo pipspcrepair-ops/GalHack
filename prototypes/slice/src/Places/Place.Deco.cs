@@ -632,16 +632,25 @@ public partial class Place
     public int DecoRooms => _dressed.Count;
     public int DecoPieces => _dressed.Values.Sum(d => d.Pieces.Count(n => n != null && n.Visible));
 
-    /// <summary>Every dressed piece standing, with its room and placement (tests, screenshots).</summary>
-    public IEnumerable<DecoHit> Pieces()
+    /// <summary>Every dressed piece standing (of the rooms <paramref name="where"/> takes), with its room and placement (tests, screenshots).</summary>
+    public IEnumerable<DecoHit> Pieces(Func<PlaceRoom, bool> where = null)
     {
         foreach (PlaceRoom room in Memory.Rooms?.Values ?? Enumerable.Empty<PlaceRoom>())
         {
-            if (!_dressed.TryGetValue(room.Module, out Dressed d)) continue;
+            if (where != null && !where(room) || !_dressed.TryGetValue(room.Module, out Dressed d)) continue;
             for (int i = 0; i < d.Pieces.Count; i++)
                 if (d.Pieces[i] is DecoNode n && n.Visible) yield return new DecoHit(room, i, Decor.Shared.Catalogue.Piece(n.Look.Piece), n);
         }
     }
+
+    /// <summary>The pieces of the rooms within <paramref name="reach"/> of a point (local): a blast's or a gap's, without walking the whole place's.</summary>
+    public IEnumerable<DecoHit> PiecesNear(Vector3 local, float reach) => Pieces(room =>
+    {
+        if (room.Room is not { } r) return true;
+        float span = MathF.Max(r.Width, r.Depth) + 1f; // (either way round, and a piece hangs a little past its walls)
+        Vector3 lo = new(room.Corner.X - 1f, room.Corner.Y - 1f, room.Corner.Z - 1f), hi = new(room.Corner.X + span, room.Corner.Y + r.Height + 1f, room.Corner.Z + span);
+        return local.Clamp(lo, hi).DistanceTo(local) <= reach;
+    });
 
     /// <summary>The piece a ray met: the body it hit and the shape of that body (-1: none known).</summary>
     public DecoHit PieceOf(GodotObject collider, int shape)

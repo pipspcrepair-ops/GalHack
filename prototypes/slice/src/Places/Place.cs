@@ -238,7 +238,8 @@ public partial class Place : Node3D
     }
 
     /// <summary>
-    /// As <see cref="Remesh"/>, the chunks rebuilt a few a frame from the next (<see cref="RebuildStale"/>): a fight's breakages never
+    /// As <see cref="Remesh"/>, the chunks rebuilt from the next frame (<see cref="RebuildStale"/>): meshed on a worker, a merged cube
+    /// among them taken apart there too, and only their meshes and colliders put in here, a few a frame, so a fight's breakages never
     /// land in one frame. The grid has changed already; only the drawing and the colliders follow a moment later.
     /// </summary>
     public void Rebuild(ICollection<Int3> cells)
@@ -251,40 +252,128 @@ public partial class Place : Node3D
 
     readonly HashSet<Int3> _stale = new();
 
-    /// <summary>Chunks waiting on <see cref="Rebuild"/> (tests).</summary>
-    public int Stale => _stale.Count;
+    /// <summary>A rebuild on its worker: each stale chunk meshed whole, and each merged cube near among them a mesh a chunk to draw (<see cref="Unmerge"/>'s work).</summary>
+    sealed class Rebuilt
+    {
+        public List<Int3> Keys;
+        /// <summary><see cref="_meshSerial"/> when it began: a chunk meshed here and now since keeps that newer mesh.</summary>
+        public int Serial, Next, CubeNext;
+        public readonly List<ChunkMesh> Chunks = new();
+        public readonly List<(Group Group, List<ChunkMesh> Built)> Cubes = new();
+        /// <summary>Chunks whose drawing went in with their cube's.</summary>
+        public readonly HashSet<Int3> Drawn = new();
+    }
 
-    /// <summary>The most a frame spends on rebuilding broken chunks, ms (one always goes).</summary>
+    Rebuilt _rebuilt;
+    Task _rebuilding;
+    readonly Dictionary<Int3, int> _meshedAt = new();
+    int _meshSerial;
+
+    /// <summary>Chunks waiting on <see cref="Rebuild"/>, and one for a rebuild still in hand (tests).</summary>
+    public int Stale => _stale.Count + (_rebuilt != null ? 1 : 0);
+
+    /// <summary>The most a frame spends putting rebuilt chunks in, ms (one always goes, and a cube's chunks all together).</summary>
     const double StaleMs = 1.5;
 
     void RebuildStale()
     {
-        if (_stale.Count == 0) return;
-        long start = System.Diagnostics.Stopwatch.GetTimestamp();
-        foreach (Int3 ch in _stale.ToList())
+        Rebuilt job = _rebuilt;
+        if (job == null)
         {
-            Mesh(ch);
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds > StaleMs) break;
+            if (_stale.Count > 0) StartRebuild();
+            return;
         }
+        if (!_rebuilding.IsCompleted) return;
+        if (_rebuilding.IsFaulted)
+        {
+            // (A block went while the worker read its cell: done again.)
+            GD.PushWarning($"rebuilding {Site.Name} again: {_rebuilding.Exception?.GetBaseException().Message}");
+            _stale.UnionWith(job.Keys);
+            _rebuilt = null;
+            return;
+        }
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool Spent() => System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds > StaleMs;
+        // A merged cube's chunk meshes go in a few a frame hidden behind it, and show in the frame it goes: never a hole.
+        while (job.Cubes.Count > 0)
+        {
+            var (g, built) = job.Cubes[0];
+            for (; job.CubeNext < built.Count && g.Near && g.Merged.Count > 0; job.CubeNext++)
+            {
+                if (job.CubeNext > 0 && Spent()) { PlanetSurface.Prof.Add("cube in", start); return; }
+                SetChunkMesh(built[job.CubeNext]);
+                if (_chunks[built[job.CubeNext].Chunk].Mesh is { } hidden) hidden.Visible = false;
+                job.Drawn.Add(built[job.CubeNext].Chunk);
+            }
+            if (g.Near) FreeMerged(g);
+            foreach (ChunkMesh c in built)
+                if (_chunks.TryGetValue(c.Chunk, out var drawn) && drawn.Mesh != null) drawn.Mesh.Visible = g.Near;
+            ChunkMesh.Return(built);
+            job.Cubes.RemoveAt(0);
+            job.CubeNext = 0;
+        }
+        long pt = PlanetSurface.Prof.Now();
+        PlanetSurface.Prof.Add("cube in", start);
+        while (job.Next < job.Chunks.Count)
+        {
+            ChunkMesh m = job.Chunks[job.Next++];
+            if (_meshedAt.GetValueOrDefault(m.Chunk) <= job.Serial)
+            {
+                if (GroupAt(GroupOf(m.Chunk)).Near && !job.Drawn.Contains(m.Chunk)) SetChunkMesh(m);
+                PlanetSurface.Prof.Lap("chunk mesh", ref pt);
+                SetChunkShape(m);
+                PlanetSurface.Prof.Lap("chunk shape", ref pt);
+            }
+            ChunkMesh.Return(m);
+            if (Spent()) return;
+        }
+        _rebuilt = null;
         Places.Zone.Light.Touch();
     }
 
-    /// <summary>One chunk meshed again from the grid, its drawing (when near) and its colliders.</summary>
-    void Mesh(Int3 ch)
+    /// <summary>The stale chunks handed to a worker to mesh (and the merged cubes near among them, to draw a chunk at a time).</summary>
+    void StartRebuild()
     {
-        _stale.Remove(ch);
+        var job = new Rebuilt { Keys = new List<Int3>(_stale), Serial = _meshSerial };
+        _stale.Clear();
+        foreach (Int3 ch in job.Keys)
+        {
+            Group g = Changed(ch);
+            if (g.Near && g.Merged.Count > 0 && !job.Cubes.Exists(c => c.Group == g)) job.Cubes.Add((g, null));
+        }
+        BlockGrid blocks = Inst.Blocks;
+        CellMask occupied = Inst.Layout.Occupied;
+        _rebuilt = job;
+        _rebuilding = Task.Run(() =>
+        {
+            for (int i = 0; i < job.Cubes.Count; i++)
+            {
+                Int3 min = job.Cubes[i].Group.Key * GroupSize;
+                job.Cubes[i] = (job.Cubes[i].Group, Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false)));
+            }
+            foreach (Int3 ch in job.Keys) job.Chunks.Add(Mesher.BuildChunk(blocks, occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch });
+        });
+    }
+
+    /// <summary>The cube a changed chunk is in, marked so (the planet's far drawing of it gives way for good).</summary>
+    Group Changed(Int3 ch)
+    {
         Group g = GroupAt(GroupOf(ch));
         if (!g.Modified) Places.Zone.Pois.Unocclude(Site, g.Key);
         g.Modified = true;
-        long pt = PlanetSurface.Prof.Now();
+        return g;
+    }
+
+    /// <summary>One chunk meshed again from the grid here and now, its drawing (when near) and its colliders.</summary>
+    void Mesh(Int3 ch)
+    {
+        _stale.Remove(ch);
+        _meshedAt[ch] = ++_meshSerial;
+        Group g = Changed(ch);
         if (g.Near) Unmerge(g);
-        PlanetSurface.Prof.Add("unmerge", pt); pt = PlanetSurface.Prof.Now();
         ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
-        PlanetSurface.Prof.Add("chunk build", pt); pt = PlanetSurface.Prof.Now();
         if (g.Near) SetChunkMesh(mesh);
-        PlanetSurface.Prof.Add("chunk mesh", pt); pt = PlanetSurface.Prof.Now();
         SetChunkShape(mesh);
-        PlanetSurface.Prof.Add("chunk shape", pt);
         ChunkMesh.Return(mesh);
     }
 
