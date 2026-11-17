@@ -98,6 +98,19 @@ public sealed class Species
     public Species Young, Adult;
     /// <summary>The other sex, where a species shows one. Both are this species.</summary>
     public Species Mate;
+    /// <summary>A wild kind's body as people keep it (owner: "use the pet collars we already have to indicate that they're pets"): the same beast with a collar on (<see cref="Tack"/>), made once.</summary>
+    public bool Collared;
+    public Species Kept
+    {
+        get
+        {
+            if (Collared || _kept != null) return _kept ?? this;
+            var kept = (Species)MemberwiseClone();
+            kept.Collared = true;
+            return _kept = kept;
+        }
+    }
+    Species _kept;
     /// <summary>How big its ears stand, 0 to 1: how well it hears, and how much heat it sheds.</summary>
     public float EarSize;
     /// <summary>No lungs and no blood: it runs on what it was built with.</summary>

@@ -304,7 +304,7 @@ public static partial class Brain
         Creature danger = null, other = null;
         foreach (Creature o in w.Sightings.Near(h.Center, see))
         {
-            if (o.Herd == h) continue;
+            if (o.Herd == h || o.Keeper == h) continue; // (nor their own beasts)
             float d = WildSim.Flat(o.Position - h.Center).Length();
             if (o.Herd?.Party is { } them && CrossReactions.People(o.Species))
             {

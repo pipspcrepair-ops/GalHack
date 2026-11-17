@@ -152,9 +152,18 @@ public partial class DeepSite : Node3D
     {
         null => Player,
         Creature c => Sim.Creatures.Contains(c) ? c.AsTarget : null,
-        Slice.Places.Town.Person p => _people.GetValueOrDefault(p),
+        Slice.Places.Town.Person p => FrameOf(p),
         _ => who == Patch.Player ? Player : null,
     };
+
+    /// <summary>One of the place's people as its creatures see them (put in the first time they're asked for).</summary>
+    public HostFrame FrameOf(Slice.Places.Town.Person p)
+    {
+        if (_people.TryGetValue(p, out HostFrame t)) return t;
+        _people[p] = t = new HostFrame(p, () => _at, () => p.Town.World(p.Pos));
+        Sim.Targets.Add(t);
+        return t;
+    }
 
     /// <summary>The place's people as its creatures see them: the living put in, the dead and the taken let go (now and then).</summary>
     void SeePeople()
@@ -162,16 +171,8 @@ public partial class DeepSite : Node3D
         if (Town == null || Sim.Frame % 30 != 0) return;
         foreach (Slice.Places.Town.Person p in Town.People)
         {
-            if (p.Dead || p.Gone)
-            {
-                if (_people.Remove(p, out HostFrame gone)) Sim.Targets.Remove(gone);
-            }
-            else if (!_people.ContainsKey(p))
-            {
-                var t = new HostFrame(p, () => _at, () => p.Town.World(p.Pos));
-                _people[p] = t;
-                Sim.Targets.Add(t);
-            }
+            if (!p.Dead && !p.Gone) FrameOf(p);
+            else if (_people.Remove(p, out HostFrame gone)) Sim.Targets.Remove(gone);
         }
     }
 

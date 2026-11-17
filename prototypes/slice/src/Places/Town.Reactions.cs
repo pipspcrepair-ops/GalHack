@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using Godot;
+using PoiGenerator.Gen;
 using Wildlife;
 
 namespace Slice.Places;
@@ -63,6 +65,7 @@ public sealed partial class Town
         _barricadeFor = Mathf.Max(0f, _barricadeFor - dt);
         if ((_senseIn -= dt) > 0f) return;
         _senseIn = SenseEvery;
+        Kennel();
         Slice.Surface.WildlifePatch patch = _places.Zone.Wildlife;
         if (patch.Sim == null) return;
         // Stock are worked by the place's farmers, once there are any.
@@ -86,7 +89,7 @@ public sealed partial class Town
             Vector3 origin = si < 0 ? patch.Origin : patch.Sites[si].GlobalPosition;
             foreach (Creature c in sim.Creatures)
             {
-                if (c.Removed || c.Dead || c.Dormant || c.InWalls) continue;
+                if (c.Removed || c.Dead || c.Dormant || c.InWalls || c.Keeper == this) continue;
                 Vector3 at = c.Position + origin;
                 if (c == harmer || WildSim.Flat(at - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c))) _round.Add((c, at));
             }
@@ -143,5 +146,55 @@ public sealed partial class Town
             }
             if (best != Response.Herd) p.Herding = false;
         }
+    }
+
+    // ---- Their beasts (IKeeper) -------------------------------------------------------------------
+
+    bool _kennelled;
+
+    /// <summary>
+    /// People that keep beasts (by the data's odds for who holds the place: a gang, squatters, keepers) have one to three of
+    /// the world's own at their side, collared: in their place's own sim where it has one (kept with it), else out in the open's.
+    /// </summary>
+    void Kennel()
+    {
+        if (_kennelled || People.Count == 0) return;
+        _kennelled = true;
+        Slice.Surface.WildlifePatch patch = _places.Zone.Wildlife;
+        var rng = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "kennel");
+        if (patch.Sim.Beasts.Count == 0 || !rng.Chance(patch.Sim.Data.People.Keeps(Memory.Inst.Occupancy?.Main.ToString().ToLowerInvariant()))) return;
+        Species s = patch.Sim.Beasts[rng.Int(0, patch.Sim.Beasts.Count - 1)];
+        Slice.Surface.DeepSite site = Memory.Fauna?.Site;
+        for (int i = Math.Min(3, 1 + People.Count / 6); i > 0; i--)
+        {
+            Vector3 at = World(At(People[rng.Int(0, People.Count - 1)].Spawn.Spot));
+            Creature c = site != null ? site.Sim.SpawnIn(s, Memory.Fauna.Space, site.Local(at)) : patch.Sim.Spawn(s, patch.PatchLocal(at));
+            if (!c.Removed) (site?.Sim ?? patch.Sim).Keep(c, this);
+        }
+    }
+
+    public bool Kin(ITarget t) => Of(t)?.Town == this || t is CreatureTarget { Creature.Keeper: var k } && k == this;
+
+    /// <summary>What they fight now, as a sim sees it: a creature one of them has taken on, or you, in a place turned on you.</summary>
+    public ITarget Foe(WildSim w)
+    {
+        Slice.Surface.WildlifePatch patch = _places?.Zone.Wildlife;
+        if (patch == null) return null;
+        foreach (Person p in People)
+            if (!p.Dead && p.Engaged && p.Facing > 0f && p.Threat is { Dead: false, Removed: false } c && w.Creatures.Contains(c)) return c.AsTarget;
+        return Memory.Mood == Mood.Hostile && _alert && !YouDown ? w == patch.Sim ? patch.Player : patch.SiteOf(w)?.Player : null;
+    }
+
+    /// <summary>The one of them a beast keeps by (each beast its own, while they live), as a sim sees them.</summary>
+    public ITarget Master(WildSim w, Creature beast)
+    {
+        Slice.Surface.WildlifePatch patch = _places?.Zone.Wildlife;
+        if (patch == null) return null;
+        for (int i = 0; i < People.Count; i++)
+        {
+            Person p = People[(beast.Id + i) % People.Count];
+            if (!p.Dead && !p.Gone && !p.Away) return w == patch.Sim ? p : patch.SiteOf(w)?.FrameOf(p);
+        }
+        return null;
     }
 }

@@ -475,7 +475,34 @@ public sealed class WildSim
             list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
+        if (herd?.Party != null && list.Count > 0) Kennel(herd, center, rng, allow);
         return list;
+    }
+
+    /// <summary>Wild kinds people round here may keep on their side (the game sets them from its world's: <see cref="CrossReactions.Keepable"/>).</summary>
+    public readonly List<Species> Beasts = new();
+
+    /// <summary>A beast people keep from now on: its kind's collared body (<see cref="Species.Kept"/>), on their side.</summary>
+    public Creature Keep(Creature c, IKeeper keeper)
+    {
+        c.Keeper = keeper;
+        if (c.Species.Collared) return c;
+        c.Species = c.Species.Kept;
+        c.Rig = Rig.Create(c.Species, c);
+        c.Rig.Reset(this, c);
+        return c;
+    }
+
+    /// <summary>A band that keeps beasts (by the data's odds for its sort: raiders, or any other) has one or two of the world's own at its side.</summary>
+    void Kennel(Herd band, Vector3 at, Rng rng, Func<Vector3, bool> allow)
+    {
+        if (Beasts.Count == 0 || !rng.Chance(Data.People.Keeps(band.Party.Raids ? "raiders" : "band"))) return;
+        Species s = Beasts[rng.Int(0, Beasts.Count - 1)];
+        for (int i = rng.Chance(0.4f) ? 2 : 1; i > 0; i--)
+        {
+            Vector3 p = FreeSpot(at + new Vector3(rng.Range(-4f, 4f), 0f, rng.Range(-4f, 4f)), rng);
+            if (!InBaseZone(p) && (allow == null || allow(p)) && !Interpenetration.SolidSurface(this, p, s)) Keep(Spawn(s, p), band);
+        }
     }
 
     public static float HerdSpread(Species s, int count) => Math.Max(3f, s.Stats.Radius * 2.2f * MathF.Sqrt(count));

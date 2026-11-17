@@ -543,6 +543,9 @@ public sealed class PlaceFauna
     }
 
     public DeepSite Site => _site != null && GodotObject.IsInstanceValid(_site) ? _site : null;
+
+    /// <summary>Its blocks as its creatures live in them (null until populated).</summary>
+    public ISolidSpace Space => _space;
 }
 
 /// <summary>

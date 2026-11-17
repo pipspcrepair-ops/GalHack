@@ -33,6 +33,9 @@ public static class CrossReactions
     /// <summary>A creature that could kill someone (a feral counts, and whatever of a place's own would go for you; people going about as people don't).</summary>
     public static bool Danger(Species s) => s.Domestic == DomesticKind.None && !s.Husk && !People(s) && s.Stats.Damage > 0f && (s.Stats.Hunts || s.Behaviour == Behaviour.Predator || s.Body.Size > 1.2f || s.IsDeep && !s.Passive);
 
+    /// <summary>A wild kind people could keep on their side: a hunter on four feet or so, about their size (never a giant, a flier, a swarm or a Husk).</summary>
+    public static bool Keepable(Species s) => Danger(s) && s.Behaviour is Behaviour.Predator or Behaviour.PackHunter && s.Rig == RigKind.Legged && !s.Flies && s.Plan != BodyPlan.Giant && s.Body.Size is >= 0.4f and <= 2f;
+
     /// <summary>Whether a creature goes for people on sight, whoever and wherever they are (owner: "aggressive animals target every person"): a Husk, or a danger.</summary>
     public static bool Hunts(Species s) => s.Husk || Danger(s);
 

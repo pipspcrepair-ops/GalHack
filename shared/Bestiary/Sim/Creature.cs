@@ -359,6 +359,8 @@ public sealed class Creature
     public Vector3 PenCenter;
     public float PenRadius;
     public ITarget Owner;
+    /// <summary>The people who keep it, a wild beast on their side (<see cref="WildSim.Keep"/>): it never sets on them and fights with them.</summary>
+    public IKeeper Keeper;
     /// <summary>A wild creature inside a settlement (the town has been told).</summary>
     public bool InTown;
     CreatureTarget _asTarget;
@@ -401,8 +403,22 @@ public sealed class Creature
     public override string ToString() => $"#{Id} {Species.Name} {State}{(Dead ? " dead" : "")}";
 }
 
-/// <summary>A herd (or flock, or pack) moving as one: a shared goal, a shared alarm, a shared hunt.</summary>
-public sealed class Herd
+/// <summary>
+/// People who keep aggressive beasts on their side (a band out in the world, a place's people): their beasts never
+/// set on them, go for whom they fight, and keep at heel by one of them otherwise (<see cref="Brain"/>'s Kept).
+/// </summary>
+public interface IKeeper
+{
+    /// <summary>Whether someone is theirs (one of them, or another of their beasts), as a sim sees them.</summary>
+    bool Kin(ITarget t);
+    /// <summary>Whom they are fighting now, as this sim sees them; null if nobody.</summary>
+    ITarget Foe(WildSim w);
+    /// <summary>The one of them a beast keeps by, as this sim sees them; null once none is left (it is wild again).</summary>
+    ITarget Master(WildSim w, Creature beast);
+}
+
+/// <summary>A herd (or flock, or pack) moving as one: a shared goal, a shared alarm, a shared hunt; a band of people keeps its beasts.</summary>
+public sealed class Herd : IKeeper
 {
     public readonly List<Creature> Members = new();
     public Vector3 Home, Goal, Center, Velocity;
@@ -432,6 +448,10 @@ public sealed class Herd
 
     /// <summary>How many times it has taken fright: each member reacts to each fright once, in its own time.</summary>
     public int Alarms;
+
+    public bool Kin(ITarget t) => t is CreatureTarget { Creature: var o } && (o.Herd == this || o.Keeper == this);
+    public ITarget Foe(WildSim w) => Party is { Mood: PartyMood.Fighting, Foe: { } foe } ? foe : null;
+    public ITarget Master(WildSim w, Creature beast) => Brain.Leader(this)?.AsTarget;
 
     public void Alarm(Vector3 threat, float now)
     {

@@ -50,6 +50,13 @@ public static partial class Brain
         // A Husk at the body of someone it killed, putting its worms in.
         if (c.Infests != null && Infesting(w, c, dt)) return;
 
+        // A beast people keep is on their side.
+        if (c.Keeper != null)
+        {
+            Kept(w, c, dt);
+            return;
+        }
+
         // A settlement's own animals keep to their pens and their people.
         if (c.Species.Domestic != DomesticKind.None)
         {

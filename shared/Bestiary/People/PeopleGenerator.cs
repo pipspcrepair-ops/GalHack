@@ -30,6 +30,12 @@ public sealed class PeopleTables
     public Dictionary<string, RoleLook> Roles { get; set; } = new();
     /// <summary>Gone wild: what is left of their clothes.</summary>
     public RoleLook Feral { get; set; } = new();
+    /// <summary>
+    /// The odds that a group keeps aggressive beasts on its side, collared, by its sort: a band out in the world ("raiders",
+    /// any other "band") or the people holding a place by who they are ("gang", "squatters", "keepers"...).
+    /// </summary>
+    public Dictionary<string, float> KeepBeasts { get; set; } = new();
+    public float Keeps(string who) => who != null && KeepBeasts.TryGetValue(who, out float odds) ? odds : 0f;
 }
 
 /// <summary>

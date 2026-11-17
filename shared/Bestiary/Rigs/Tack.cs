@@ -5,14 +5,15 @@ namespace Wildlife;
 
 /// <summary>
 /// What people put on their animals, so a settlement's beasts read as kept, not wild: a working
-/// beast carries a blanket, a girth strap and two packs; a pet wears a collar. Stock go bare.
-/// Added to the body piece after it is built, like <see cref="Mutation"/>; wild species get nothing.
+/// beast carries a blanket, a girth strap and two packs; a pet wears a collar, and so does a wild beast
+/// people keep on their side (<see cref="Species.Collared"/>). Stock go bare. Added to the body piece after
+/// it is built, like <see cref="Mutation"/>; wild species get nothing.
 /// </summary>
 public static class Tack
 {
     public static RigLayout Decorate(RigLayout layout, Species s)
     {
-        if (s.Domestic is DomesticKind.None or DomesticKind.Stock) return layout;
+        if (s.Domestic == DomesticKind.None && !s.Collared || s.Domestic == DomesticKind.Stock) return layout;
         Piece body = layout.Pieces.Find(p => p.Name == "body");
         if (body == null) return layout;
         Proportions b = s.Body;

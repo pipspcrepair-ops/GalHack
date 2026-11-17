@@ -216,6 +216,7 @@ public partial class WildlifePatch : Node3D
         Vector3 oldOrigin = Origin;
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
+        foreach (Species s in Fauna.Species) if (CrossReactions.Keepable(s)) sim.Beasts.Add(s); // (what its people may keep on their side)
         TakeWoods(trunks, nav);
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         // A band out here is of whoever holds the ground (the nearest living place's people): your standing with them moves its stance.
@@ -304,6 +305,8 @@ public partial class WildlifePatch : Node3D
                 carried++;
             }
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
+            // A kept beast comes across with its band (or stays its place's people's).
+            foreach (var (was, now) in across) now.Keeper = was.Keeper is Herd band ? herds.GetValueOrDefault(band) : was.Keeper;
             RemapPatrols(herds);
         }
         Sim = sim;
@@ -372,7 +375,7 @@ public partial class WildlifePatch : Node3D
     }
 
     /// <summary>One of the wild's own numbers: alive, not a town's, not one the world's haunts and homes keep.</summary>
-    bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None && !Kept(c);
+    bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None && c.Keeper == null && !Kept(c);
 
     /// <summary>How far round you the land is kept lively, m (patch frame, flat).</summary>
     public static float AroundYou => SpawnReach.Distance; // the spawn distance setting (SpawnReach)
@@ -679,8 +682,15 @@ public partial class WildlifePatch : Node3D
         null => null,
         Creature o when sim != null && sim.Creatures.Contains(o) => o.AsTarget,
         ITarget t when sim == Sim => t,
-        _ => sim == Sim ? null : Sites.Find(s => s.Sim == sim)?.Frame(by),
+        _ => sim == Sim ? null : SiteOf(sim)?.Frame(by),
     };
+
+    /// <summary>The place or cave a sim is, if it is one of theirs.</summary>
+    public DeepSite SiteOf(WildSim sim)
+    {
+        foreach (DeepSite s in Sites) if (s.Sim == sim) return s;
+        return null;
+    }
 
     /// <summary>The survivor's feet in the zone.</summary>
     public Vector3 PlayerWorld() => Player == null ? Origin : FromPatch(Player.Position);

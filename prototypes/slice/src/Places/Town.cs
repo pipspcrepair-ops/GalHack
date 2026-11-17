@@ -23,7 +23,7 @@ namespace Slice.Places;
 /// its people. Bodies come from the bestiary: each person is rolled for this world, this place and
 /// their job, walks on real legs, and from a distance is one cheap mesh.
 /// </summary>
-public sealed partial class Town
+public sealed partial class Town : IKeeper
 {
     public PlaceMemory Memory;
     public Townsfolk Data;
@@ -350,6 +350,8 @@ public sealed partial class Town
             patch.Sim.Settlements.Remove(_settlement);
             foreach (Person p in People) patch.Sim.Targets.Remove(p);
             foreach (var a in _animals) patch.Sim.Remove(a.Creature);
+            // Beasts kept out in the open go with the town and come back with it (those of the place's own sim stay there with it).
+            foreach (Creature c in patch.Sim.Creatures) if (c.Keeper == this) { patch.Sim.Remove(c); _kennelled = false; }
             patch.Sim.StrayEntered -= OnStray;
         }
         _animals.Clear();
@@ -415,7 +417,7 @@ public sealed partial class Town
     void OnStray(Creature c, Settlement town)
     {
         if (town != _settlement) return;
-        if (c.Species.Husk || CrossReactions.People(c.Species)) return; // a Husk, or people, are met by temper and nerve: fought, fled, barricaded against or let by (Town.Reactions)
+        if (c.Species.Husk || CrossReactions.People(c.Species) || c.Keeper != null) return; // a Husk, or people, are met by temper and nerve: fought, fled, barricaded against or let by (Town.Reactions); a kept beast is its people's
         Person guard = People.Where(p => p.Role == "guard" && !p.Dead).OrderBy(p => (p.Position - c.Position).LengthSquared()).FirstOrDefault();
         _places.Zone.Wildlife.Sim.CullStray(c, guard);
         Culled++;
