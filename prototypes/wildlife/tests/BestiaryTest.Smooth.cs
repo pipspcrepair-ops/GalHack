@@ -67,6 +67,7 @@ public partial class BestiaryTest
 
             var worst = new Dictionary<bool, Worst> { [true] = new Worst(), [false] = new Worst() };
             var last = new Dictionary<(Creature, bool), (Vector3 At, float Yaw, Transform3D[] Local, Vector3 Sim, Vector4 Eased)>();
+            var cost = new Dictionary<bool, double> { [true] = 0, [false] = 0 };
             for (int f = 0; f < 240 * 40; f++)
             {
                 clock += Frame;
@@ -75,10 +76,15 @@ public partial class BestiaryTest
                     you.Position = new Vector3(MathF.Sin(f * 0.0007f) * 12f, 0f, MathF.Cos(f * 0.0005f) * 12f);
                     sim.Step(Tick);
                 }
-                DrawSmoother.Off = false;
-                eased.Sync(camera);
-                DrawSmoother.Off = true;
-                raw.Sync(camera);
+                // Each drawn in turn, timed (the other way round every other frame).
+                for (int k = 0; k < 2; k++)
+                {
+                    bool ease = (k == 0) == (f % 2 == 0);
+                    DrawSmoother.Off = !ease;
+                    long from = System.Diagnostics.Stopwatch.GetTimestamp();
+                    (ease ? eased : raw).Sync(camera);
+                    cost[ease] += System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+                }
                 DrawSmoother.Off = false;
                 foreach (Creature c in sim.Creatures.ToList())
                 {
@@ -124,6 +130,7 @@ public partial class BestiaryTest
                 Worst w = worst[ease];
                 GD.Print($"GLIDE {(ease ? "eased" : "raw  ")}: {w.Frames} body-frames; worst root step {w.Step * 100f:F1} cm over its speed ({w.StepWho}), {w.Steps} over; worst turn {w.Turn:F2} rad ({w.TurnCount} over); worst piece shift {w.Pose:F2} of its size ({w.PoseWho}), {w.Poses} over {PoseLimit}");
             }
+            GD.Print($"GLIDE cost a frame (the view's whole sync, {eased.DrawnCount} bodies): raw {cost[false] / (240 * 40):F3} ms, eased {cost[true] / (240 * 40):F3} ms");
             Worst e = worst[true];
             Check(e.Frames > 2000, $"{e.Frames} body-frames measured");
             Check(e.Steps == 0, $"no drawn root steps over twice its speed in a frame ({e.Steps}; worst {e.Step * 100f:F1} cm: {e.StepWho})");

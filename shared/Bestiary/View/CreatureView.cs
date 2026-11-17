@@ -373,7 +373,7 @@ public partial class CreatureView : Node3D
 
     readonly DrawSmoother _smooth = new();
     readonly PoseBlend _blend = new();
-    Transform3D _jolt, _root;
+    Transform3D _jolt, _root, _put = Transform3D.Identity;
     double _synced;
 
     /// <summary>What it is doing, as far as its pose is concerned: a change of this blends the pose over <see cref="PoseBlend.Switch"/>.</summary>
@@ -384,7 +384,9 @@ public partial class CreatureView : Node3D
     void Place(double now)
     {
         Transform3D put = _smooth.Placement(now) * _jolt;
-        if (_skeleton.Transform != put) _skeleton.Transform = put;
+        if (put == _put) return;
+        _put = put;
+        _skeleton.Transform = put;
     }
 
     /// <summary>Where it is drawn now, with the easing of its root (tests); the sim's position when nothing is easing.</summary>
@@ -407,12 +409,13 @@ public partial class CreatureView : Node3D
     {
         if (_skeleton == null) return;
         double now = DrawSmoother.Clock();
-        if (_blend.Active(now))
+        // (A blend between a far rig's updates is posed every other frame: it is small and far.)
+        if (_blend.Active(now) && ((Engine.GetProcessFrames() + (ulong)Creature.Id) & 1) == 0)
         {
             Transform3D[] pose = _blend.Apply(Creature.Rig.Pose, _root, now);
             for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
         }
-        if (_smooth.Easing(now) || _skeleton.Transform != _jolt) Place(now);
+        if (_smooth.Easing(now) || _put != _jolt) Place(now);
     }
 
     float _stirShown;

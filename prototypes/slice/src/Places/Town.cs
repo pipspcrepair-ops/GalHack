@@ -1361,7 +1361,7 @@ public sealed partial class Town
         for (int i = 0; i < People.Count; i++)
         {
             Person p = People[i];
-            if (p.View is { Visible: true } && p.View.Glide()) PoseWeapon(p);
+            if (p.View is { Visible: true }) p.View.Glide();
             if (p.PoseWho < 0) continue;
             // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed.)
             bool needed = p.Engaged || p.Dead && !p.Laid;

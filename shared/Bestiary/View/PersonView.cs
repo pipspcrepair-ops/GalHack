@@ -149,32 +149,36 @@ public partial class PersonView : Node3D
     readonly DrawSmoother _smooth = new();
     readonly PoseBlend _blend = new();
     Transform3D _root;
-    double _synced;
 
     /// <summary>
     /// Every piece where the rig has it, eased: the body glides from where it was drawn to where the sim has it now, and a
-    /// change of what they are doing (<paramref name="key"/>) or a rig posed less often blends the pose, as a creature's does.
+    /// change of what they are doing (<paramref name="key"/>) blends the pose, as a creature's does.
     /// </summary>
     public void Sync(Vector3 feet, float yaw, float speed, int key)
     {
         double now = DrawSmoother.Clock();
         _smooth.Note(feet, yaw, speed, now);
-        float span = now - _synced is > 0.02 and < 0.4 ? (float)(now - _synced) : 0f;
-        _synced = now;
         _root = new Transform3D(new Basis(Vector3.Up, yaw), feet);
-        Write(_blend.Frame(_rig.Pose, _root, key, span, _rig.Species.Figure?.Height ?? 1.8f, now));
-        Transform = _smooth.Placement(now);
+        Write(_blend.Frame(_rig.Pose, _root, key, 0f, _rig.Species.Figure?.Height ?? 1.8f, now));
+        Glide();
     }
 
-    /// <summary>Every frame: the body eases on towards where the sim has it, and a pose still blending is posed again a step on.</summary>
-    public bool Glide()
+    bool _placed;
+
+    /// <summary>Every frame: the body eases on towards where the sim has it (a pose blends as they are posed).</summary>
+    public void Glide()
     {
         double now = DrawSmoother.Clock();
-        bool blending = _blend.Active(now);
-        if (blending) Write(_blend.Apply(_rig.Pose, _root, now));
-        if (_smooth.Easing(now)) Transform = _smooth.Placement(now);
-        else if (Transform != Transform3D.Identity) Transform = Transform3D.Identity;
-        return blending;
+        if (_smooth.Easing(now))
+        {
+            Transform = _smooth.Placement(now);
+            _placed = true;
+        }
+        else if (_placed)
+        {
+            Transform = Transform3D.Identity;
+            _placed = false;
+        }
     }
 
     /// <summary>Where the sim has them and where they are drawn, flat, m, and the heading difference, rad (tests).</summary>
