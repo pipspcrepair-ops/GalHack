@@ -609,7 +609,17 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         // cube's corner stands proud of the drawn ground, so where the drawn ground has its collider
         // under that point, the collider has had the say and the cube is only a corner.
         Vector3 end = a + dir * len;
-        if (MathF.Min(a.Y, end.Y) > MathF.Max(Zone.GroundAt(a.X, a.Z).Y, Zone.GroundAt(end.X, end.Z).Y) + 4f) return false; // well up in the air: no ground to meet
+        float groundA = Zone.GroundAt(a.X, a.Z).Y, groundEnd = Zone.GroundAt(end.X, end.Z).Y;
+        if (MathF.Min(a.Y, end.Y) > MathF.Max(groundA, groundEnd) + 4f) return false; // well up in the air: no ground to meet
+        // Over the land and out past its collision, the ground is the height map's surface (the voxel ground there is that
+        // surface in cells): walking the voxel grid instead built far chunks every tick for every round flying on (11 ms a tick).
+        if (a.Y > groundA && !Zone.Streamer.CollidesAt(end))
+        {
+            if (end.Y > groundEnd) return false;
+            float t = (a.Y - groundA) / (a.Y - groundA - (end.Y - groundEnd));
+            hit = new ShotHit { Kind = HitKind.Ground, Point = (a + dir * len * t).ToNumerics(), Normal = System.Numerics.Vector3.UnitY, Distance = len * t };
+            return true;
+        }
         var store = Zone.Planet.Terrain.Store;
         if (!store.Raycast(a.ToNumerics(), dir.ToNumerics(), len, out _, out TerrainDigging.Terrain.Int3 face, out float vd)) return false;
         float graze = Table.Rules.GroundGraze;
