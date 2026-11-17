@@ -46,6 +46,7 @@ public sealed partial class Staging
         WorldFire.Fire(_game, rocket, spot + new Vector3(2f, 6f, 1f), spot);
         foreach (int x in _drive.Wait(60)) yield return x;
         GD.Print($"(shotdamage: {site.Name}, wall {place.Inst.Blocks.Get(cell).Material}; {_game.Places.BlocksBroken} blocks broken, {_game.Places.BlocksFallen} fallen; craters {_game.Arms.Craters})");
+        _game.Zone.Sky.TimeOfDay = HighSun(_game); // (by day: the setting-up can run into the night)
         foreach (var (tag, eye, look) in new[] { ("wall", face + outward * 7f + across * 3f + Vector3.Up * 0.8f, face), ("crater", spot + (outward + across * 0.5f).Normalized() * 6f + Vector3.Up * 3.5f, spot) })
         {
             for (int i = 0; i < 600; i++)

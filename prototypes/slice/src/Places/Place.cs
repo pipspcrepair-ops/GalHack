@@ -300,7 +300,7 @@ public partial class Place : Node3D
             var (g, built) = job.Cubes[0];
             for (; job.CubeNext < built.Count && g.Near && g.Merged.Count > 0; job.CubeNext++)
             {
-                if (job.CubeNext > 0 && Spent()) { PlanetSurface.Prof.Add("cube in", start); return; }
+                if (job.CubeNext > 0 && Spent()) return;
                 SetChunkMesh(built[job.CubeNext]);
                 if (_chunks[built[job.CubeNext].Chunk].Mesh is { } hidden) hidden.Visible = false;
                 job.Drawn.Add(built[job.CubeNext].Chunk);
@@ -312,17 +312,13 @@ public partial class Place : Node3D
             job.Cubes.RemoveAt(0);
             job.CubeNext = 0;
         }
-        long pt = PlanetSurface.Prof.Now();
-        PlanetSurface.Prof.Add("cube in", start);
         while (job.Next < job.Chunks.Count)
         {
             ChunkMesh m = job.Chunks[job.Next++];
             if (_meshedAt.GetValueOrDefault(m.Chunk) <= job.Serial)
             {
                 if (GroupAt(GroupOf(m.Chunk)).Near && !job.Drawn.Contains(m.Chunk)) SetChunkMesh(m);
-                PlanetSurface.Prof.Lap("chunk mesh", ref pt);
                 SetChunkShape(m);
-                PlanetSurface.Prof.Lap("chunk shape", ref pt);
             }
             ChunkMesh.Return(m);
             if (Spent()) return;
