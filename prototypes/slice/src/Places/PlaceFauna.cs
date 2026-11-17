@@ -532,6 +532,7 @@ public sealed class PlaceFauna
     {
         if (Silent || Sim == null) return;
         _site = DeepSite.Create(places.Zone.Wildlife, Sim, "Creatures");
+        _site.Town = place.Memory.Town;
         place.AddChild(_site);
     }
 

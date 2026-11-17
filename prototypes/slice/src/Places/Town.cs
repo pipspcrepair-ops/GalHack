@@ -171,6 +171,9 @@ public sealed partial class Town
         public float ThreatScale => 1f;
     }
 
+    /// <summary>One of a town's people a sim's creature has hold of or goes for: as the patch sees them, or as a place's own sim does (<see cref="HostFrame"/>).</summary>
+    public static Person Of(ITarget t) => t switch { Person p => p, FrameTarget { Inner: Person p } => p, _ => null };
+
     /// <summary>A place's town (worker-safe), or null where nobody lives: walking routes worked out once round the room dressing.</summary>
     public static Town For(PlaceMemory m, PlanetSurface.World.PlanetWorld planet = null)
     {
@@ -528,11 +531,13 @@ public sealed partial class Town
         Sense(tickDt);
         Word(tickDt);
         MoodTick(tickDt);
-        // Whoever a Husk has by the head stays where they are taken.
+        // Whoever a Husk has by the head (out in the open, or in a place's rooms) stays where they are taken.
         _held.Clear();
-        if (_places.Zone.Wildlife.Sim is { } wild)
-            foreach (Creature c in wild.Creatures)
-                if (c.Phase == AttackPhase.Hold && c.Holding is Person h && h.Town == this) _held.Add(h);
+        WildlifePatch patch = _places.Zone.Wildlife;
+        for (int si = -1; si < patch.Sites.Count; si++)
+            if ((si < 0 ? patch.Sim : patch.Sites[si].Sim) is { } wild)
+                foreach (Creature c in wild.Creatures)
+                    if (c.Phase == AttackPhase.Hold && Of(c.Holding) is { } h && h.Town == this) _held.Add(h);
         for (int who = 0; who < People.Count; who++)
         {
             Person p = People[who];

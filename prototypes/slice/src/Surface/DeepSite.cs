@@ -24,6 +24,11 @@ public partial class DeepSite : Node3D
     /// <summary>The player in this sim's frame.</summary>
     public FrameTarget Player { get; private set; }
 
+    /// <summary>The place's own people (its town: squatters, a gang, keepers), hunted by its creatures as anyone is: each in this sim's frame.</summary>
+    public Slice.Places.Town Town;
+    readonly Dictionary<Slice.Places.Town.Person, HostFrame> _people = new();
+    Vector3 _at;
+
     /// <summary>Tells shown so far (tests).</summary>
     public int TellsShown { get; private set; }
     public event Action<TellEvent> Told;
@@ -113,6 +118,8 @@ public partial class DeepSite : Node3D
         Sim.LetGo -= OnLetGo;
         Sim.Murmured -= OnMurmured;
         Sim.Targets.Remove(Player);
+        foreach (HostFrame t in _people.Values) Sim.Targets.Remove(t);
+        _people.Clear();
         Sim.SightLine = null;
         Patch.Sites.Remove(this);
     }
@@ -135,9 +142,38 @@ public partial class DeepSite : Node3D
     void OnAttacked(AttackEvent e)
     {
         if (e.Target == Player) Patch.RaiseAttacked(e);
+        else if (e.Target is HostFrame { Inner: var who }) Patch.RaiseBitten(e with { Target = who });
     }
 
-    void OnDied(Creature c, ITarget killer) => Patch.RaiseDied(c, killer == Player ? Patch.Player : killer);
+    void OnDied(Creature c, ITarget killer) => Patch.RaiseDied(c, killer is FrameTarget f ? f.Inner : killer);
+
+    /// <summary>Whoever did something, as this sim sees them: you, one of the place's people, one of its creatures; null if none of those.</summary>
+    public ITarget Frame(object who) => who switch
+    {
+        null => Player,
+        Creature c => Sim.Creatures.Contains(c) ? c.AsTarget : null,
+        Slice.Places.Town.Person p => _people.GetValueOrDefault(p),
+        _ => who == Patch.Player ? Player : null,
+    };
+
+    /// <summary>The place's people as its creatures see them: the living put in, the dead and the taken let go (now and then).</summary>
+    void SeePeople()
+    {
+        if (Town == null || Sim.Frame % 30 != 0) return;
+        foreach (Slice.Places.Town.Person p in Town.People)
+        {
+            if (p.Dead || p.Gone)
+            {
+                if (_people.Remove(p, out HostFrame gone)) Sim.Targets.Remove(gone);
+            }
+            else if (!_people.ContainsKey(p))
+            {
+                var t = new HostFrame(p, () => _at, () => p.Town.World(p.Pos));
+                _people[p] = t;
+                Sim.Targets.Add(t);
+            }
+        }
+    }
 
     // A Husk of this place seizing the player is the game's to settle, as one outside is.
     void OnSeized(SeizeEvent e)
@@ -164,6 +200,8 @@ public partial class DeepSite : Node3D
     {
         Sim.Clock.Time01 = (float)Patch.Zone.Sky.TimeOfDay;
         Sim.Frozen = Patch.Frozen;
+        _at = GlobalPosition;
+        SeePeople();
         long start = Stopwatch.GetTimestamp();
         Sim.Step((float)delta);
         LastStepMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
@@ -388,7 +426,7 @@ public partial class DeepSite : Node3D
 }
 
 /// <summary>A target seen from another sim's frame: the same body, its position moved into that frame.</summary>
-public sealed class FrameTarget : ITarget
+public class FrameTarget : ITarget
 {
     readonly ITarget _inner;
     readonly Func<Vector3> _origin, _world;
@@ -409,4 +447,12 @@ public sealed class FrameTarget : ITarget
     public bool Attackable => _inner is Slice.Game.PlayerTarget p ? p.OnFoot : _inner.Attackable;
     public float ThreatScale => _inner.ThreatScale;
     public bool Crouched => _inner.Crouched;
+}
+
+/// <summary>One of a place's people seen from its creatures' frame: hunted, seized and turned as they would be out in the open.</summary>
+public sealed class HostFrame : FrameTarget, IHost
+{
+    public HostFrame(IHost inner, Func<Vector3> origin, Func<Vector3> world) : base(inner, origin, world) { }
+    public Species Body => ((IHost)Inner).Body;
+    public void Taken() => ((IHost)Inner).Taken();
 }

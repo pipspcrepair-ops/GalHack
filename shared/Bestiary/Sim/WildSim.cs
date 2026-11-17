@@ -976,6 +976,30 @@ public sealed class WildSim
         return best;
     }
 
+    /// <summary>
+    /// Whom a creature would go for, and how far (flat): the nearest of the players and towns' people it may hunt
+    /// (<see cref="NearestTarget"/>), and for one that goes for people (<see cref="CrossReactions.Hunts"/>) the
+    /// nearest person of a band round it too: wild people, raiders, a place's own.
+    /// </summary>
+    public ITarget Quarry(Creature c, out float distance)
+    {
+        ITarget best = NearestTarget(c.Position, out distance);
+        NearestPerson(c, c.Stats.Perception, true, ref best, ref distance);
+        return best;
+    }
+
+    /// <summary>A band's person nearer than <paramref name="distance"/> (and within reach) for a creature that goes for people (none of its own band), flat or straight.</summary>
+    public void NearestPerson(Creature c, float reach, bool flat, ref ITarget best, ref float distance)
+    {
+        if (c.Herd?.Party != null || !CrossReactions.Hunts(c.Species)) return;
+        foreach (Creature o in Sightings.Near(c.Position, MathF.Min(distance, reach)))
+        {
+            if (o.Herd?.Party == null || o.Space != c.Space || !CrossReactions.People(o.Species)) continue;
+            float d = flat ? Flat(o.Position - c.Position).Length() : (o.Position - c.Position).Length();
+            if (d < distance) { distance = d; best = o.AsTarget; }
+        }
+    }
+
     public Creature NearestCorpse(Vector3 from, float radius)
     {
         Creature best = null;

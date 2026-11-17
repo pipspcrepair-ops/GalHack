@@ -30,8 +30,11 @@ public static class CrossReactions
     /// <summary>People going about as people (a band, a town's folk): what they are to others is by how each group takes the other, never their teeth.</summary>
     public static bool People(Species s) => s.Figure != null && !s.Husk && s.Behaviour == Behaviour.Folk;
 
-    /// <summary>A creature that could kill someone (a feral counts; people going about as people don't).</summary>
-    public static bool Danger(Species s) => s.Domestic == DomesticKind.None && !s.Husk && !People(s) && s.Stats.Damage > 0f && (s.Stats.Hunts || s.Behaviour == Behaviour.Predator || s.Body.Size > 1.2f);
+    /// <summary>A creature that could kill someone (a feral counts, and whatever of a place's own would go for you; people going about as people don't).</summary>
+    public static bool Danger(Species s) => s.Domestic == DomesticKind.None && !s.Husk && !People(s) && s.Stats.Damage > 0f && (s.Stats.Hunts || s.Behaviour == Behaviour.Predator || s.Body.Size > 1.2f || s.IsDeep && !s.Passive);
+
+    /// <summary>Whether a creature goes for people on sight, whoever and wherever they are (owner: "aggressive animals target every person"): a Husk, or a danger.</summary>
+    public static bool Hunts(Species s) => s.Husk || Danger(s);
 
     /// <summary>
     /// How one group of people takes another it comes across (a band met on the road; a town and a band

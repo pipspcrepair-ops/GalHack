@@ -726,6 +726,7 @@ public partial class WildlifePatch : Node3D
 
     internal void RaiseTelegraphed(AttackEvent e) => Telegraphed?.Invoke(e);
     internal void RaiseAttacked(AttackEvent e) => Attacked?.Invoke(e);
+    internal void RaiseBitten(AttackEvent e) => Bitten?.Invoke(e);
     internal void RaiseDied(Creature c, ITarget killer) => Died?.Invoke(c, killer);
 
     float _baseSync;

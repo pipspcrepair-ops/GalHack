@@ -5,10 +5,10 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>
-/// What out in the open matters to people at a glance, bucketed by ground cell and refreshed a few
-/// times a second (<see cref="WildSim.Step"/>): the dangerous (a predator, a Husk, a feral) and the
-/// people of every band. A band or a town looks only at the cells round it, never at every creature,
-/// and nothing is allocated once the cells are made.
+/// What matters to people at a glance, out in the open or in a place's rooms, bucketed by ground cell and
+/// refreshed a few times a second (<see cref="WildSim.Step"/>): the dangerous (a predator, a Husk, a feral,
+/// a place's own hunters) and the people of every band. A band, a town or a hunter looks only at the cells
+/// round it, never at every creature, and nothing is allocated once the cells are made.
 /// </summary>
 public sealed class Sightings
 {
@@ -32,7 +32,7 @@ public sealed class Sightings
         if (!On) return;
         foreach (Creature c in w.Creatures)
         {
-            if (c.Dead || c.Removed || c.InWalls || c.Space != null || !Matters(c)) continue;
+            if (c.Dead || c.Removed || c.InWalls || !Matters(c)) continue;
             long k = Key((int)MathF.Floor(c.Position.X / Cell), (int)MathF.Floor(c.Position.Z / Cell));
             if (!_cells.TryGetValue(k, out List<Creature> list)) _cells[k] = list = _spare.Count > 0 ? _spare.Pop() : new List<Creature>();
             list.Add(c);

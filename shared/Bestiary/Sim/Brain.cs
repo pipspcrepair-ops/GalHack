@@ -66,7 +66,7 @@ public static partial class Brain
 
         // Thinking every time is what it can see and hear, never how far off someone is: what it hasn't
         // noticed isn't there. (A living boulder is the exception: it goes by being looked at.)
-        ITarget near = w.NearestTarget(c.Position, out float dist);
+        ITarget near = w.Quarry(c, out float dist);
         Senses.Surface(w, c, near, dist, dt);
         if (c.Noticed == null && !c.Species.Tumbles)
         {
