@@ -31,6 +31,8 @@ public partial class ArmsHost
     void HarmWorld(in ShotHit hit, Vector3 at, Vector3 n, Vector3 dir, float amount)
     {
         if (amount <= 0f || !HarmsWorld) return;
+        long pt = PlanetSurface.Prof.Now();
+        try {
         if (hit.Thing is GodotObject collider && Game.Places is { } places)
         {
             if (places.Resolve(collider, at, n, out PoiPlaces.Hit h, hit.CellX)) { places.Struck(h, amount); PlaceHits++; }
@@ -41,6 +43,7 @@ public partial class ArmsHost
             Zone.WearPlant(plant, amount * Table.Rules.PlantRound, dir with { Y = 0f }, batch: true);
             PlantHits++;
         }
+        } finally { PlanetSurface.Prof.Add("shot harm", pt); }
     }
 
     readonly HashSet<long> _blasted = new();
@@ -58,6 +61,7 @@ public partial class ArmsHost
         long t = System.Diagnostics.Stopwatch.GetTimestamp();
         places?.Blast(p, r, damage);
         PlacesMs = Math.Max(PlacesMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
+        PlanetSurface.Prof.Add("blast places", t);
         t = System.Diagnostics.Stopwatch.GetTimestamp();
         _blasted.Clear();
         foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(p, r))
@@ -71,10 +75,12 @@ public partial class ArmsHost
             if (Zone.Planet.Felled.Contains(s.Id)) PlantsBlasted++;
         }
         PlantsMs = Math.Max(PlantsMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
+        PlanetSurface.Prof.Add("blast plants", t);
         if (hulls || places?.PlaceAt(p) != null) return;
         t = System.Diagnostics.Stopwatch.GetTimestamp();
         float crater = Table.Rules.Crater * MathF.Cbrt(damage);
         if (Zone.Edits.Blast(p.ToNumerics(), crater).Removed.Count > 0) Craters++;
         CraterMs = Math.Max(CraterMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
+        PlanetSurface.Prof.Add("crater", t);
     }
 }

@@ -709,15 +709,22 @@ public partial class Game : Node3D
             Controls.EndTick();
             return;
         }
+        long q = PlanetSurface.Prof.Now();
         Bikes.Tick(dt);
+        PlanetSurface.Prof.Lap("ap bikes", ref q);
         if (Survivor.OnBike is HoverBike ridden) Survivor.Yaw += ridden.LastTurn;
         Survivor.AfterPhysics(dt);
+        PlanetSurface.Prof.Lap("ap survivor", ref q);
         Suit.Tick(dt, Survivor);
         Target.Sync();
+        PlanetSurface.Prof.Lap("ap suit+target", ref q);
         Zone.Wildlife.Follow(Survivor.WorldFeet, onFoot: Survivor.Body.Frame == null);
+        PlanetSurface.Prof.Lap("ap follow", ref q);
         Bodies.KeepOff();
+        PlanetSurface.Prof.Lap("ap keepoff", ref q);
         Pack.Grid.Reconcile();
         LinkStructure();
+        PlanetSurface.Prof.Lap("ap grid+link", ref q);
         HandKind hand = Pack.Hand;
         Pack.Tick(); // an emptied remote toolbar hands back to your own: the bar's name shows it
         // A remote slot out of its origin's range stays in the hand, greyed, and does nothing.
@@ -743,15 +750,22 @@ public partial class Game : Node3D
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
         else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
         else if (hands && hand == HandKind.Scanner && pressed) Scan();
+        PlanetSurface.Prof.Lap("ap hands", ref q);
         TickPings();
         if (!hands || !(building || plating || hand == HandKind.Tool && Tool.OnStructure)) Builder.Hide();
         if (!hands || hand != HandKind.Weapon) Arms.Idle(dt);
+        PlanetSurface.Prof.Lap("ap pings+idle", ref q);
         FireBar(dt);
+        PlanetSurface.Prof.Lap("ap firebar", ref q);
         TickMachines(dt);
+        PlanetSurface.Prof.Lap("ap machines", ref q);
         CheckDeath();
+        PlanetSurface.Prof.Lap("ap death", ref q);
         KeepRisen();
+        PlanetSurface.Prof.Lap("ap risen", ref q);
         Stats.Tick(this, dt);
         TrackProgress();
+        PlanetSurface.Prof.Lap("ap stats", ref q);
         Controls.EndTick();
     }
 

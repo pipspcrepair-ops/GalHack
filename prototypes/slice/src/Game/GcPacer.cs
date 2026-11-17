@@ -15,8 +15,11 @@ public partial class GcPacer : Node
     /// <summary>Allocated at least this many bytes (every thread) since the last collection: the first frame with room for its pause collects.</summary>
     public long LeastBytes = 8L * 1024 * 1024;
 
-    /// <summary>Past this many, it collects whatever the frame.</summary>
-    public long MostBytes = 64L * 1024 * 1024;
+    /// <summary>
+    /// Past this many, it collects whatever the frame: well under the runtime's own young budget (48 MB on the owner's machine),
+    /// which would otherwise collect first, at any moment, and pause 12 to 36 ms (a firefight's breakages).
+    /// </summary>
+    public long MostBytes = 16L * 1024 * 1024;
 
     /// <summary>The room left in this frame for work that can wait, ms (none given: always room).</summary>
     public Func<double> Room;
@@ -25,6 +28,7 @@ public partial class GcPacer : Node
     public double PausePerMb { get; private set; } = 0.1;
 
     long _last;
+    int _count;
 
     int _fullAtDone;
     long _done = -1;
@@ -54,6 +58,8 @@ public partial class GcPacer : Node
 
     public override void _Process(double delta)
     {
+        // Counted from the last collection, the runtime's own too.
+        if (GC.CollectionCount(0) != _count) (_count, _last) = (GC.CollectionCount(0), GC.GetTotalAllocatedBytes(false));
         long since = GC.GetTotalAllocatedBytes(false) - _last;
         if (since < LeastBytes) return;
         double mb = since / 1048576.0;
@@ -64,6 +70,10 @@ public partial class GcPacer : Node
         TimeSpan before = GC.GetTotalPauseDuration();
         GC.Collect(0, GCCollectionMode.Forced, blocking: true, compacting: false);
         PausePerMb += ((GC.GetTotalPauseDuration() - before).TotalMilliseconds / mb - PausePerMb) * 0.3;
+        _count = GC.CollectionCount(0);
         _last = GC.GetTotalAllocatedBytes(false);
+        Collected?.Invoke(mb, (GC.GetTotalPauseDuration() - before).TotalMilliseconds);
     }
+
+    public Action<double, double> Collected;
 }

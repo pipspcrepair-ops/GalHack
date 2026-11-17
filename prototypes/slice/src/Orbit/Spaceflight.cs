@@ -148,13 +148,16 @@ public partial class Spaceflight : Node
     {
         GameNode g = Game;
         if (g.Phase != Phase.Playing || g.Survivor == null) return;
+        long q = PlanetSurface.Prof.Now();
         OrbitComing();
         WeatherAloft(delta);
+        PlanetSurface.Prof.Lap("sf orbit+weather", ref q);
         if (g.Suit.Dead) return;
         if (++_chartTick % 30 == 0) Chart();
         // Afloat in a structure you right yourself with its decks, so a door in a tilted hull fits you.
         Survivor s = g.Survivor;
         if (s.Seated == null && s.Body.Frame != null && s.Legs.Floating) Riding.SetUp(s.Body, N.Vector3.UnitY);
+        PlanetSurface.Prof.Lap("sf chart+riding", ref q);
         JetpackInZeroG(s);
         if (_pending != null)
         {
@@ -163,7 +166,9 @@ public partial class Spaceflight : Node
         }
         else if (g.InOrbit) WatchOrbit();
         else WatchSurface();
+        PlanetSurface.Prof.Lap("sf watch", ref q);
         HoldOthersAtTheEdge();
+        PlanetSurface.Prof.Lap("sf edge", ref q);
     }
 
     /// <summary>The orbit, once made, enters the scene parked and is set up a piece a frame.</summary>

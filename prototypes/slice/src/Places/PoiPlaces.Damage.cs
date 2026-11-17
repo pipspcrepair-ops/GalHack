@@ -106,7 +106,9 @@ public partial class PoiPlaces
     {
         if (gone.Count == 0) return;
         BlocksBroken += gone.Count;
+        long pt = PlanetSurface.Prof.Now();
         List<Int3> loose = Loose(p, gone);
+        PlanetSurface.Prof.Add("loose", pt); pt = PlanetSurface.Prof.Now();
         foreach (Int3 c in loose)
         {
             p.Inst.Blocks.Set(c, Block.Air);
@@ -121,8 +123,11 @@ public partial class PoiPlaces
         }
         foreach (Place.Door door in p.Doors.ToList())
             if (door.Lift < 0 && door.Cells.Any(c => p.Inst.Blocks.Get(c).IsAir)) p.TakeDoor(door);
+        PlanetSurface.Prof.Add("doors+dust", pt); pt = PlanetSurface.Prof.Now();
         Unheld(p, gone);
+        PlanetSurface.Prof.Add("unheld", pt); pt = PlanetSurface.Prof.Now();
         p.Rebuild(gone);
+        PlanetSurface.Prof.Add("rebuild mark", pt);
     }
 
     /// <summary>Dressing by the gaps with nothing left under it (hung up: nothing beside or over it) comes away; a hazard goes up.</summary>

@@ -157,11 +157,8 @@ public partial class Place : Node3D
     /// Puts one cube's collision in, a chunk a step: the physics builds each chunk's shape (its faces' tree) as it joins
     /// the body, so a dense cube's all at once, its body made whole before it joined the world, was a hitch of tens of ms.
     /// </summary>
-    public IEnumerable<int> SetGroupShapes(Int3 key, IEnumerable<ChunkMesh> chunks)
+    public IEnumerable<int> SetGroupShapes(IEnumerable<ChunkMesh> chunks)
     {
-        Group g = GroupAt(key);
-        g.Body = new StaticBody3D { Name = $"Blocks {key}", CollisionLayer = Layers.World, CollisionMask = 0 };
-        AddChild(g.Body);
         foreach (ChunkMesh c in chunks)
         {
             if (c.Collision.Count == 0) continue;
@@ -170,9 +167,7 @@ public partial class Place : Node3D
             // A piece a step: a dense chunk's faces all in one shape were one step of tens of ms.
             for (int first = 0; first < c.Collision.Count; first += ShapePiece)
             {
-                var shape = new CollisionShape3D { Name = $"Chunk {c.Chunk}", Shape = MeshBuild.ToShape(c, first, ShapePiece) };
-                g.Body.AddChild(shape);
-                shapes.Add(shape);
+                shapes.Add(AddPiece(c, first));
                 yield return 0;
             }
         }
@@ -180,6 +175,28 @@ public partial class Place : Node3D
 
     /// <summary>The most of a chunk's collision one shape holds, floats (a triangle is nine): the physics builds a shape's face tree as it joins its body, in one go (1,024 triangles was a step of up to 5.7 ms).</summary>
     const int ShapePiece = 512 * 9;
+
+    /// <summary>A piece of a chunk's collision (<see cref="ShapePiece"/> floats from <paramref name="first"/>) into its cube's body.</summary>
+    CollisionShape3D AddPiece(ChunkMesh chunk, int first)
+    {
+        Group g = GroupAt(GroupOf(chunk.Chunk));
+        if (g.Body == null)
+        {
+            g.Body = new StaticBody3D { Name = $"Blocks {g.Key}", CollisionLayer = Layers.World, CollisionMask = 0 };
+            AddChild(g.Body);
+        }
+        var shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk, first, ShapePiece) };
+        g.Body.AddChild(shape);
+        return shape;
+    }
+
+    /// <summary>A chunk's collision pieces in place of the ones it had (none: null).</summary>
+    void SwapShapes(Int3 ch, List<CollisionShape3D> shapes)
+    {
+        var old = _chunks.GetValueOrDefault(ch);
+        if (old.Shapes != null) foreach (CollisionShape3D s in old.Shapes) s.QueueFree();
+        _chunks[ch] = (old.Mesh, shapes is { Count: > 0 } ? shapes : null);
+    }
 
     void SetChunkMesh(ChunkMesh chunk)
     {
@@ -199,26 +216,9 @@ public partial class Place : Node3D
 
     void SetChunkShape(ChunkMesh chunk)
     {
-        var old = _chunks.GetValueOrDefault(chunk.Chunk);
-        if (old.Shapes != null) foreach (CollisionShape3D s in old.Shapes) s.QueueFree();
-        List<CollisionShape3D> shapes = null;
-        if (chunk.Collision.Count > 0)
-        {
-            Group g = GroupAt(GroupOf(chunk.Chunk));
-            if (g.Body == null)
-            {
-                g.Body = new StaticBody3D { Name = $"Blocks {g.Key}", CollisionLayer = Layers.World, CollisionMask = 0 };
-                AddChild(g.Body);
-            }
-            shapes = new List<CollisionShape3D>();
-            for (int first = 0; first < chunk.Collision.Count; first += ShapePiece)
-            {
-                var shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk, first, ShapePiece) };
-                g.Body.AddChild(shape);
-                shapes.Add(shape);
-            }
-        }
-        _chunks[chunk.Chunk] = (old.Mesh, shapes);
+        var shapes = new List<CollisionShape3D>();
+        for (int first = 0; first < chunk.Collision.Count; first += ShapePiece) shapes.Add(AddPiece(chunk, first));
+        SwapShapes(chunk.Chunk, shapes);
     }
 
     public int ChunkCount => _chunks.Count;
@@ -262,6 +262,8 @@ public partial class Place : Node3D
         public readonly List<(Group Group, List<ChunkMesh> Built)> Cubes = new();
         /// <summary>Chunks whose drawing went in with their cube's.</summary>
         public readonly HashSet<Int3> Drawn = new();
+        /// <summary>The collision pieces put in so far of the chunk at <see cref="Next"/> (null: its drawing not yet in).</summary>
+        public List<CollisionShape3D> Shapes;
     }
 
     Rebuilt _rebuilt;
@@ -300,7 +302,7 @@ public partial class Place : Node3D
             var (g, built) = job.Cubes[0];
             for (; job.CubeNext < built.Count && g.Near && g.Merged.Count > 0; job.CubeNext++)
             {
-                if (job.CubeNext > 0 && Spent()) return;
+                if (job.CubeNext > 0 && Spent()) { PlanetSurface.Prof.Add("cube in", start); return; }
                 SetChunkMesh(built[job.CubeNext]);
                 if (_chunks[built[job.CubeNext].Chunk].Mesh is { } hidden) hidden.Visible = false;
                 job.Drawn.Add(built[job.CubeNext].Chunk);
@@ -312,15 +314,33 @@ public partial class Place : Node3D
             job.Cubes.RemoveAt(0);
             job.CubeNext = 0;
         }
+        long pt = PlanetSurface.Prof.Now();
+        PlanetSurface.Prof.Add("cube in", start);
+        // Each chunk's drawing, then its collision a piece a step (a dense chunk's all in one frame was 7 ms), its old pieces kept
+        // until the last new one is in: never a gap to fall or shoot through.
         while (job.Next < job.Chunks.Count)
         {
-            ChunkMesh m = job.Chunks[job.Next++];
-            if (_meshedAt.GetValueOrDefault(m.Chunk) <= job.Serial)
+            ChunkMesh m = job.Chunks[job.Next];
+            bool current = _meshedAt.GetValueOrDefault(m.Chunk) <= job.Serial;
+            if (current && job.Shapes == null)
             {
                 if (GroupAt(GroupOf(m.Chunk)).Near && !job.Drawn.Contains(m.Chunk)) SetChunkMesh(m);
-                SetChunkShape(m);
+                PlanetSurface.Prof.Lap("chunk mesh", ref pt);
+                job.Shapes = new List<CollisionShape3D>();
+                if (Spent()) return;
             }
+            for (int first = job.Shapes?.Count * ShapePiece ?? 0; current && first < m.Collision.Count; first += ShapePiece)
+            {
+                if (first > 0 && Spent()) return;
+                job.Shapes.Add(AddPiece(m, first));
+                PlanetSurface.Prof.Lap("chunk shape", ref pt);
+            }
+            // (Meshed here and now meanwhile: what was put in of this one goes.)
+            if (current) SwapShapes(m.Chunk, job.Shapes);
+            else if (job.Shapes != null) foreach (CollisionShape3D s in job.Shapes) s.QueueFree();
+            job.Shapes = null;
             ChunkMesh.Return(m);
+            job.Next++;
             if (Spent()) return;
         }
         _rebuilt = null;
@@ -340,7 +360,7 @@ public partial class Place : Node3D
         BlockGrid blocks = Inst.Blocks;
         CellMask occupied = Inst.Layout.Occupied;
         _rebuilt = job;
-        _rebuilding = Task.Run(() =>
+        _rebuilding = Task.Run(() => GalHack.Testing.AllocMeter.Measure("place rebuild", () =>
         {
             for (int i = 0; i < job.Cubes.Count; i++)
             {
@@ -348,7 +368,7 @@ public partial class Place : Node3D
                 job.Cubes[i] = (job.Cubes[i].Group, Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false)));
             }
             foreach (Int3 ch in job.Keys) job.Chunks.Add(Mesher.BuildChunk(blocks, occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch });
-        });
+        }));
     }
 
     /// <summary>The cube a changed chunk is in, marked so (the planet's far drawing of it gives way for good).</summary>

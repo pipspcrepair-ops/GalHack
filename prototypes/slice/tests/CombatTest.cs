@@ -36,7 +36,7 @@ public partial class CombatTest : Node
     IEnumerator<int> _run;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
-    readonly Random _rng = new();
+    readonly Random _rng = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seed=")) is { } sa ? new Random((int)(long.Parse(sa[7..]) & 0x7fffffff)) : new();
 
     public override void _Ready()
     {
@@ -60,12 +60,14 @@ public partial class CombatTest : Node
     public override void _PhysicsProcess(double delta)
     {
         bool more;
+        long pt = PlanetSurface.Prof.Now();
         try { more = _run.MoveNext(); }
         catch (Exception e)
         {
             Check(false, $"scenario threw: {e}");
             more = false;
         }
+        PlanetSurface.Prof.Add("test step", pt);
         if (more) return;
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
@@ -95,7 +97,7 @@ public partial class CombatTest : Node
         PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
         PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Gang);
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Fresh("temperate"));
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
@@ -105,9 +107,16 @@ public partial class CombatTest : Node
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = null;
         game.Zone.Weather.Bridge.Calm = true;
         Rows(game.Zone.Data.Arms, game.Zone.Data.Items);
-        foreach (int x in Gang(game, drive, world)) yield return x;
-        foreach (int x in Wild(game, drive)) yield return x;
+        bool worldOnly = OS.GetCmdlineUserArgs().Contains("--world-only");
+        if (worldOnly && game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "sewage_works") is { } works)
+        {
+            game.Survivor.PlaceOutside(game.Zone.Planet.NearestCopy(new Vector3(works.Origin.X, works.Origin.Y + 2f, works.Origin.Z), game.Survivor.WorldFeet).ToNumerics());
+            for (int i = 0; i < 3600 && game.Places.PlaceOf(works) is not { Ready: true }; i++) yield return 0;
+        }
+        if (!worldOnly) foreach (int x in Gang(game, drive, world)) yield return x;
+        if (!worldOnly) foreach (int x in Wild(game, drive)) yield return x;
         foreach (int x in World(game)) yield return x;
+        if (worldOnly) yield break;
         game.QueueFree();
         yield return 0;
         foreach (int x in Squatters()) yield return x;
@@ -210,7 +219,7 @@ public partial class CombatTest : Node
         PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
         PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Squatters);
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Fresh("temperate"));
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
