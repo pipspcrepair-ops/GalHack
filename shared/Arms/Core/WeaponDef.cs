@@ -170,14 +170,16 @@ public sealed class WeaponDef
 }
 
 /// <summary>The rules every weapon follows (section 11): self-harm on, friendly fire a server setting, effects on a player for seconds.</summary>
-public sealed record ArmsRules(bool SelfHarm, bool FriendlyFire, float PlayerEffectSeconds, float GroundGraze);
+/// <param name="Crater">A blast's crater in the ground, m of radius per cube root of its damage to blocks.</param>
+/// <param name="PlantRound">The share of a shot's damage to blocks a plant takes (a round holes a trunk, it doesn't cut it); a blast takes it whole.</param>
+public sealed record ArmsRules(bool SelfHarm, bool FriendlyFire, float PlayerEffectSeconds, float GroundGraze, float Crater, float PlantRound);
 
 /// <summary>The weapon table: shared/Arms/data/weapons.json.</summary>
 public sealed class Armoury
 {
     public const string Schema = "galhack.weapons";
 
-    public ArmsRules Rules { get; private init; } = new(true, false, 4f, 1.5f);
+    public ArmsRules Rules { get; private init; } = new(true, false, 4f, 1.5f, 0.18f, 0.15f);
     public IReadOnlyList<WeaponDef> All { get; private init; } = Array.Empty<WeaponDef>();
     readonly Dictionary<string, WeaponDef> _byItem = new(StringComparer.Ordinal);
 
@@ -194,7 +196,7 @@ public sealed class Armoury
         JsonObject root = JsonNode.Parse(json, documentOptions: Options)?.AsObject() ?? throw new InvalidDataException("weapons: empty");
         if (root["schema"]?.GetValue<string>() != Schema) throw new InvalidDataException($"weapons: not a {Schema} file");
         JsonObject r = root["rules"]?.AsObject() ?? new JsonObject();
-        var rules = new ArmsRules(Bool(r, "selfHarm", true), Bool(r, "friendlyFire", false), Num(r, "playerEffectSeconds", 4f), Num(r, "groundGraze", 1.5f));
+        var rules = new ArmsRules(Bool(r, "selfHarm", true), Bool(r, "friendlyFire", false), Num(r, "playerEffectSeconds", 4f), Num(r, "groundGraze", 1.5f), Num(r, "crater", 0.18f), Num(r, "plantRound", 0.15f));
         var list = new List<WeaponDef>();
         foreach (JsonNode n in root["weapons"]?.AsArray() ?? new JsonArray())
         {

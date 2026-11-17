@@ -565,6 +565,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         bool solid;
         Vector3 point, normal;
         GodotObject collider;
+        int shape = -1;
         if (aboard != null)
         {
             // Aboard, the cabin answers for the structure you are in (WorldRay's rule).
@@ -572,6 +573,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             point = look.Point;
             normal = look.Normal;
             collider = look.Collider;
+            shape = look.Shape;
         }
         else
         {
@@ -601,7 +603,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 }
                 hit = new ShotHit { Kind = HitKind.Block, Thing = v, CellX = cell.X, CellY = cell.Y, CellZ = cell.Z, Point = point.ToNumerics(), Normal = normal.ToNumerics(), Distance = d, Through = v.Structure.Grid.CellSize };
             }
-            else hit = new ShotHit { Kind = HitKind.Ground, Point = point.ToNumerics(), Normal = normal.ToNumerics(), Distance = d };
+            // (What it is, for its harm: the collider, else the body of a server-side one, a tree's, and the shape met.)
+            else hit = new ShotHit { Kind = HitKind.Ground, Thing = (object)collider ?? (aboard == null ? (object)_ray.GetColliderRid() : null), CellX = aboard == null ? _ray.GetColliderShape() : shape, Point = point.ToNumerics(), Normal = normal.ToNumerics(), Distance = d };
             return true;
         }
         // No collider on the way: the voxel ground, where colliders may not be loaded (far off). A
@@ -860,6 +863,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                     break;
                 }
                 GroundHits++;
+                HarmWorld(hit, at, n, dir, damage * d.Blocks);
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Ground);
                 break;
         }
@@ -1001,11 +1005,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Vector3 chest = Game.Survivor.WorldFeet + Game.Survivor.WorldUp() * 1f;
         float pd = p.DistanceTo(chest);
         if (pd < r) HurtPlayer(new HitInfo(blast.Damage * (1f - pd / r), DamageClass.Explosive, s.Def.Tags | HarmTags.Force, s.Owner), p);
+        bool hulls = false;
         foreach (Vessel v in Zone.Vessels)
         {
             if (!GodotObject.IsInstanceValid(v.Node)) continue;
             ForceFields.Blast(v, at, r, blast.Damage * blast.Blocks);
             if (v.DistanceFromHull(v.Body.ToLocal(at), r) >= r) continue;
+            hulls = true;
             v.Hits.Blast(at, r, blast.Damage * blast.Blocks, DamageType.Explosive);
             BlockHits++;
             Dealt?.Invoke(HitKind.Block, v, blast.Damage * blast.Blocks);
@@ -1022,6 +1028,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                     if (d < r) { t.Hit(person, t.World(person.Pos) + Vector3.Up, (t.World(person.Pos) - p).Normalized(), 1f - d / r, Slice.Game.Game.EndOf(s.Def.Kill)); t.Struck(person, blast.Damage * (1f - d / r), DamageClass.Explosive, byPlayer: s.Owner == 0); PersonHits++; caught++; if (person.Dead) killed++; }
                 }
             }
+        BlastWorld(p, n, blast, hulls);
         if (s.Owner == 0 && caught > 0) Confirm(killed > 0);
         Fx.Blast(p, r * 0.55f);
         Game.Shots.Impact(p, n, ImpactKind.Ground);

@@ -35,7 +35,13 @@
     "playerEffectSeconds": 4,
     // A cube of voxel ground stands a little proud of the drawn surface: how far above and below a
     // voxel hit a shot looks for the drawn ground's collider (if one is there, the collider decides).
-    "groundGraze": 1.5
+    "groundGraze": 1.5,
+    // Weapons on the world (owner: "So they can damage anything, really"): a blast's crater, m of
+    // radius per cube root of its damage to blocks (a rocket's 1080 is 1.85 m, a grenade's 380 is
+    // 1.3 m); and the share of a shot's damage to blocks a plant takes (a round holes a trunk, it
+    // doesn't cut it: a rifle takes a few to fell a tree). A blast takes it whole.
+    "crater": 0.18,
+    "plantRound": 0.15
   },
   "weapons": [
     // ---- SA2: the first crafted gun. Proves hand weapons, magazine and reload. ----

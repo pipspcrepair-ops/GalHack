@@ -1,0 +1,68 @@
+using System;
+using System.Collections.Generic;
+using GalHack.Arms;
+using GalHack.Physics.Engine;
+using Godot;
+using PlanetSurface.Terrain;
+using Slice.Places;
+
+namespace Slice.Arms;
+
+/// <summary>
+/// Weapons on the world (owner, 17 Nov 2026: "So they can damage anything, really"): anyone's shot or blast, by the weapon's own
+/// numbers (a shot's damage times its blocks factor, a blast's damage times its own), harms what it meets through one path each:
+/// a place's blocks, doors and dressing (<see cref="PoiPlaces.Struck"/>, <see cref="PoiPlaces.Blast"/>), a wreck
+/// (<see cref="PoiPlaces.Work(SalvageSite, float)"/>), a plant's hit points (<see cref="Surface.SurfaceZone.WearPlant"/>, the
+/// ones the Sleeper tool wears), and the ground, which a round only marks and a blast craters (<see cref="Surface.PlanetEdits.Blast"/>:
+/// the dig's own edit, kept through streaming and saves; bedrock stays).
+/// </summary>
+public partial class ArmsHost
+{
+    /// <summary>Shots into places, wrecks and plants; craters blasted and plants a blast took (tests).</summary>
+    public int PlaceHits, WreckHits, PlantHits, Craters, PlantsBlasted;
+
+    /// <summary>A shot into something solid that is no structure: a place, a wreck or a tree takes <paramref name="amount"/>; the ground only its mark.</summary>
+    void HarmWorld(in ShotHit hit, Vector3 at, Vector3 n, Vector3 dir, float amount)
+    {
+        if (amount <= 0f) return;
+        if (hit.Thing is GodotObject collider && Game.Places is { } places)
+        {
+            if (places.Resolve(collider, at, n, out PoiPlaces.Hit h, hit.CellX)) { places.Struck(h, amount); PlaceHits++; }
+            else if (places.SalvageOf(collider) is { } wreck) { places.Work(wreck, amount); WreckHits++; }
+        }
+        else if (hit.Thing is Rid body && Zone.TreeAt((body, hit.CellX), out long tree, out _) && Zone.Sighting(tree, at, out TerrainStreamer.PlantSighting plant))
+        {
+            Zone.WearPlant(plant, amount * Table.Rules.PlantRound, dir with { Y = 0f }, batch: true);
+            PlantHits++;
+        }
+    }
+
+    readonly HashSet<long> _blasted = new();
+
+    /// <summary>
+    /// A blast's harm to the world round it, falling off with distance as a structure's blocks take it: the places and wrecks in
+    /// its reach, the plants (a heavy one fells or flattens what's near), and a crater in open ground sized by it (none where a
+    /// place or a structure stands, which have their own ground).
+    /// </summary>
+    void BlastWorld(Vector3 p, Vector3 n, BlastPart blast, bool hulls)
+    {
+        float r = blast.Radius, damage = blast.Damage * blast.Blocks;
+        if (damage <= 0f || r <= 0f) return;
+        PoiPlaces places = Game.Places;
+        places?.Blast(p, r, damage);
+        _blasted.Clear();
+        foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(p, r))
+        {
+            if (!_blasted.Add(s.Id)) continue;
+            Vector3 trunk = s.Root + Vector3.Up * Mathf.Clamp(p.Y - s.Root.Y, 0f, 2f * s.Scale), away = s.Root - p;
+            float d = trunk.DistanceTo(p);
+            if (d >= r) continue;
+            away.Y = 0f;
+            Zone.WearPlant(s, damage * (1f - d / r * 0.75f), away.LengthSquared() > 1e-4f ? away : Vector3.Right, batch: true);
+            if (Zone.Planet.Felled.Contains(s.Id)) PlantsBlasted++;
+        }
+        if (hulls || places?.PlaceAt(p) != null) return;
+        float crater = Table.Rules.Crater * MathF.Cbrt(damage);
+        if (Zone.Edits.Blast(p.ToNumerics(), crater).Removed.Count > 0) Craters++;
+    }
+}
