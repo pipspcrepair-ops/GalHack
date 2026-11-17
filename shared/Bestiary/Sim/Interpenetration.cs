@@ -55,6 +55,17 @@ public static class Interpenetration
         return inside;
     }
 
+    /// <summary>
+    /// A body in a cave or a place found in a wall or a piece of furniture after its step (set down there by a landing, a
+    /// spawn, a wake): out at once, never left there: a walker off the piece sideways onto its floor, else onto the nearest
+    /// open floor (counted freed).
+    /// </summary>
+    public static void Out(WildSim w, Creature c)
+    {
+        if (Crawl.OffParts(c) && !InSpace(c)) return;
+        if (Free(w, c)) w.Freed++;
+    }
+
     /// <summary>Puts a creature on the nearest open ground round a point (its own position if none given). False if there is none within a few metres.</summary>
     public static bool Free(WildSim w, Creature c, Vector3? near = null)
     {

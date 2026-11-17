@@ -58,6 +58,7 @@ public partial class OccupantTest
     void Paths()
     {
         GD.Print("-- NPCs on their paths: cramped places and open ground --");
+        if (System.Environment.GetEnvironmentVariable("GH_AB") is string abs) { AbRuns(abs); return; }
         Decor decor = Decor.Shared;
         var inside = new PathTally();
         var outside = new PathTally();
@@ -87,6 +88,41 @@ public partial class OccupantTest
         PathChecks("on open ground round buildings", outside, 4);
         PathChecks("on steep ground", steep, 3);
         SteepChecks(faces);
+    }
+
+    static int _abPrints;
+
+    // TEMP A/B: the same seeded inside walks under each mask of WildSim.Ab.
+    void AbRuns(string masks)
+    {
+        int seed = int.Parse(System.Environment.GetEnvironmentVariable("GH_SEED") ?? "1");
+        foreach (string ms in masks.Split('_'))
+        {
+            WildSim.Ab = int.Parse(ms);
+            _rng = new System.Random(seed);
+            var inside = new PathTally();
+            var families = _lib.Families.Where(f => f.Types.Count == 0 && !f.Space && f.StateWeights.Any(w => w > 0f)).ToList();
+            var per = new List<string>();
+            for (int w = 0; w < 3; w++)
+            {
+                string arch = Archetypes[_rng.Next(Archetypes.Length)];
+                ulong seedw = Seed();
+                WorldRoll roll = Roll(seedw, arch);
+                WorldProfile profile = WorldProfile.Roll(seedw, arch, false);
+                WorldConditions cond = Conditions(roll, seedw);
+                Slice.Surface.WildlifePatch.Story(cond, roll, profile, WorldReading.Of(roll));
+                WorldLife life = Bestiary.Roll(_data, cond);
+                var deep = new PlaceFauna.Deep(life, null, 1f);
+                int done = 0;
+                foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
+                {
+                    if (done >= 5) continue;
+                    (int iw, int ip) = (inside.InWall, inside.InParts);
+                    if (InsideWalk(f, deep, Decor.Shared, inside)) { done++; per.Add($"{f.Id} {inside.InWall - iw}/{inside.InParts - ip}"); }
+                }
+            }
+            GD.Print($"AB {WildSim.Ab}: walls {inside.InWall} parts {inside.InParts} entries {inside.Entries} of {inside.Steps}; stuck {inside.Stuck / Math.Max(1f, inside.NpcSeconds):P2} longest {inside.Longest:F1}; overlaps {inside.Overlaps} deadlocks {inside.Deadlocks}; {string.Join(", ", per)}{inside.WallAt}{inside.LongestAt}");
+        }
     }
 
     void PathChecks(string where, PathTally t, int places)
@@ -343,6 +379,13 @@ public partial class OccupantTest
             {
                 k.Still += PathDt;
                 if (k.Still >= 1f) t.Stuck += PathDt;
+                if (k.Still >= 3f && k.Still - PathDt < 3f && System.Environment.GetEnvironmentVariable("GH_SEED") != null && _abPrints++ < 14) // TEMP
+                {
+                    float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+                    Vector3 nx = c.PathIndex < c.Path.Count ? c.Path[c.PathIndex] : c.Position;
+                    Creature near = sim.Creatures.Where(o => o != c && !o.Dead && !o.Removed).OrderBy(o => (o.Position - c.Position).LengthSquared()).FirstOrDefault();
+                    GD.Print($"   STUCK3 {who}: {c.Species.Role} {c.Species.Rig} r {c.Radius:F2} pr {pr:F2} ph {ph:F2} clr {c.Clearance:F2}, wants {c.Desired.X:F1},{c.Desired.Z:F1}, phase {c.Phase}, way {c.PathIndex}/{c.Path.Count} whole {c.PathWhole}, next {nx.X:F1},{nx.Y:F1},{nx.Z:F1} ({(nx - Crawl.Center(c)).Length():F2} m), gap here {(c.Space?.Parts?.Gap(c.Position, pr, ph) ?? 9f):F2} at next {(c.Space?.Parts?.Gap(nx - Vector3.Up * c.Clearance, pr, ph) ?? 9f):F2}, stuckFor {c.StuckFor:F1} repathed {c.Repathed}, spaced {c.Spaced}, nearest {near?.Species.CommonName} {(near == null ? 0f : (near.Position - c.Position).Length()):F2} m ({near?.State}, r {near?.Radius:F2}, spaced {near?.Spaced}), target {(you.Position - c.Position).Length():F1} m, vel {c.Velocity.Length():F2}, crawl {c.CrawlSpeed:F2}");
+                }
                 if (k.Still > t.Longest) { t.Longest = k.Still; t.LongestAt = $"; e.g. {who}, wanting {c.Desired.Length():F1} m/s, {c.Species.Role}, way {c.PathIndex}/{c.Path.Count}, goal {(c.HasGoal ? $"{c.Goal.X:F1},{c.Goal.Y:F1},{c.Goal.Z:F1}" : "none")}, put back on {(c.Behind - c.Position).Length():F1} m off, stuck {c.StuckFor:F1} s, {k.Jumps} jumps, crawling {c.CrawlSpeed:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1}, next {(c.PathIndex < c.Path.Count ? (c.Path[c.PathIndex] - Crawl.Center(c)).Length() : -1f):F1} m off"; }
             }
             // A flight: from where what it ran from was as it set off, by the way round, at the start and at its end (six seconds on at most; at least 1.5 s).
@@ -397,12 +440,12 @@ public partial class OccupantTest
             if (into > 0.05f)
             {
                 t.Overlaps++;
-                if (into > 0.3f && t.Locked.Count < 900 && t.Locked.Add((-a.Id - 1, b.Id))) GD.Print($"      DEEP {place}: {a.Species.CommonName} ({a.State}, {(a.Space?.Parts != null ? "furnished" : "")} wants {a.Desired.Length():F1}, spaced {WildSim.Spaced(a)}, home {(a.Home - a.Position).Length():F1}) and {b.Species.CommonName} ({b.State}, wants {b.Desired.Length():F1}, spaced {WildSim.Spaced(b)}, home {(b.Home - b.Position).Length():F1}) {into:F2} m, radii {a.Radius:F2}+{b.Radius:F2}, ages {a.Age:F1}/{b.Age:F1}");
                 if (into > t.Deepest) { t.Deepest = into; t.OverlapAt = $"; e.g. {place}: {a.Species.CommonName} ({a.State}) and {b.Species.CommonName} ({b.State}) {into:F2} m into each other at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1}"; }
             }
             if (into > -0.6f && watch.TryGetValue(a, out Watch ka) && watch.TryGetValue(b, out Watch kb) && ka.Still > 3f && kb.Still > 3f && t.Locked.Add((a.Id, b.Id)))
             {
                 t.Deadlocks++;
+                if (System.Environment.GetEnvironmentVariable("GH_SEED") != null) GD.Print($"   LOCK {place}: {a.Species.CommonName} ({a.State} {a.Phase}, wants {a.Desired.X:F1},{a.Desired.Z:F1}, way {a.PathIndex}/{a.Path.Count}, r {a.Radius:F2}, id {a.Id}, spaced {a.Spaced}) and {b.Species.CommonName} ({b.State} {b.Phase}, wants {b.Desired.X:F1},{b.Desired.Z:F1}, way {b.PathIndex}/{b.Path.Count}, r {b.Radius:F2}, id {b.Id}, spaced {b.Spaced}) {d:F2} m apart, at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1} / {b.Position.X:F1},{b.Position.Y:F1},{b.Position.Z:F1}"); // TEMP
                 if (t.LockedAt == "") t.LockedAt = $"; e.g. {place}: {a.Species.CommonName} ({a.State}) and {b.Species.CommonName} ({b.State}) at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1}";
             }
         }

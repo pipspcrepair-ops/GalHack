@@ -795,11 +795,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     /// <summary>The token an NPC's shot at you is meant for (<see cref="Shot.Meant"/>).</summary>
     public static readonly object You = new();
 
-    /// <summary>NPCs' rounds fired, and those of them that hit someone or something other than what they were fired at (tests; owner: "they should try not to shoot each other").</summary>
+    /// <summary>NPCs' rounds fired, and those of them that hit an ally or a bystander: anyone not of the side they were fired at (tests; owner: "they should try not to shoot each other").</summary>
     public static int NpcRounds, Strays;
-
-    /// <summary>Whether a hit is on whom an NPC's shot was fired at.</summary>
-    static bool Meant(object meant, in ShotHit hit) => hit.Kind == HitKind.Player ? meant == You : meant == hit.Thing;
 
     Vector3? WorldAt(object o) => o switch { Creature c => Zone.Wildlife.WorldOf(c), Town.Person p => p.Town.World(p.Pos), _ => o == You ? Zone.Wildlife.PlayerWorld() : null };
     static string NameOf(object o) => o switch { Creature c => $"{c.Species.CommonName}#{c.Id}({c.State},{(Wildlife.Arming.Friendly(c.Species) ? "friendly" : "hostile")})", Town.Person p => $"townsperson({p.Role})", _ => o == You ? "you" : o?.GetType().Name ?? "none" };
@@ -817,7 +814,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         bool tick = s.State == ShotState.Stuck;
         if (tick) DotTicks++;
         else Hits++;
-        if (!tick && s.Owner != 0 && s.Meant != null && hit.Kind is HitKind.Creature or HitKind.Person or HitKind.Player && !Meant(s.Meant, hit))
+        if (!tick && s.Owner != 0 && s.Meant != null && hit.Kind is HitKind.Creature or HitKind.Person or HitKind.Player && !FireLine.SameSide(s.Meant, hit.Kind == HitKind.Player ? You : hit.Thing))
         {
             Strays++;
             // TEMP stray log (pathing): who fired, at whom, whom it hit, and how far off the shooter-to-target line the one hit stood.

@@ -358,7 +358,8 @@ public sealed partial class Town
         p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-to.X, -to.Z), MathF.Min(1f, dt * 7f));
         if (p.Kit.Loaded <= 0)
         {
-            // Empty: a reload from what they carry (the rounds go in at the end of it).
+            // Empty: the burst is over; a reload from what they carry (the rounds go in at the end of it), or with none, fists (Choose).
+            p.Pending = 0;
             if (!p.Kit.Spent) p.Reloading = d.Reload;
             return;
         }

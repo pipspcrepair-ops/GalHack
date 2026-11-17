@@ -224,8 +224,10 @@ public partial class OccupantTest
             return s;
         }
         var walkers = life.Fauna.Species.Where(k => k.Rig == RigKind.Legged && !k.Flies && !k.Mechanical && !k.Climbs && k.Domestic == DomesticKind.None && k.Body.Size < 2.5f).ToList();
-        Species climber = life.Fauna.Species.FirstOrDefault(k => k.Climbs && !k.Flies && !k.Mechanical && k.Domestic == DomesticKind.None);
         if (walkers.Count == 0) return;
+        // A wall climber: the world's own, or (a world without one) one of its walkers made a climber, so this is always looked at.
+        Species climber = life.Fauna.Species.FirstOrDefault(k => k.Climbs && !k.Flies && !k.Mechanical && k.Domestic == DomesticKind.None);
+        if (climber == null) (climber = walkers[rng.Int(0, walkers.Count - 1)].Resized(1f)).Climbs = true;
         var you = new DummyTarget { Name = "intruder", Position = new Vector3(0f, h, 0f) };
         sim.Targets.Add(you);
         var hunters = new List<Creature>();

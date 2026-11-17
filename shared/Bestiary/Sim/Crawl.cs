@@ -213,10 +213,13 @@ public static class Crawl
         float distance = c.CrawlSpeed * dt;
         int steps = Math.Max(1, (int)MathF.Ceiling(distance / r.Substep));
         float ds = distance / steps;
+        bool trace = c.StuckFor >= 2.5f && c.StuckFor < 2.534f; // TEMP
+        if (trace) GD.Print($"     WALK#{c.Id} feet {feet} f {f} aim {aimDir} want {wantSpeed:F2} crawl {c.CrawlSpeed:F2} steps {steps} ds {ds:F3}");
         for (int i = 0; i < steps && ds > 1e-5f; i++)
         {
             Vector3 next = feet + f * ds;
             float? floor = SpaceMath.FloorBelow(s, next.X, feet.Y + 0.45f, next.Z, 1.4f);
+            if (trace && i == 0) GD.Print($"     WALK#{c.Id} next {next} floor {floor} bare at body {s.Density(next + Vector3.Up * (clr + 0.12f)):F2}, at +0.45 {s.Density(next + Vector3.Up * 0.45f):F2}");
             // No floor (a hole, a shaft), a drop it couldn't climb back, or a step too tall: not that way.
             if (floor is not float fy || fy - feet.Y > 0.4f || feet.Y - fy > 1.2f)
             {
@@ -224,6 +227,7 @@ public static class Crawl
                 break;
             }
             next.Y = fy;
+            if (trace && i == 0) GD.Print($"     WALK#{c.Id} held off walls {HoldOffWalls(s, next, clr) - next}");
             next = HoldOffWalls(s, next, clr);
             if (parts != null)
             {
@@ -237,8 +241,9 @@ public static class Crawl
             }
             feet = next;
         }
+        if (trace) GD.Print($"     WALK#{c.Id} after steps {feet - start}, unpressed {w.Unpressed(c, start, feet) - feet}, then off walls {HoldOffWalls(s, w.Unpressed(c, start, feet), clr) - feet}");
         // Never into another body (it goes along its side); and whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
-        feet = HoldOffWalls(s, w.Unpressed(c, start, feet), clr);
+        feet = HoldOffWalls(s, (WildSim.Ab & 1) != 0 ? feet : w.Unpressed(c, start, feet), clr);
         if (parts != null && !parts.Fits(feet, pr, ph))
         {
             feet = HoldOffWalls(s, parts.PushOut(feet, pr, ph), clr);
@@ -352,7 +357,7 @@ public static class Crawl
         // Turn right way up while falling, like a cat.
         Vector3 up = SpaceMath.TurnToward(n, Vector3.Up, MathF.Min(1f, dt * 8f));
         // A walker carried on by its lunge flies no further into a piece of furniture than it is: it drops beside it.
-        if (!c.Species.Climbs && c.Space.Parts is { } parts)
+        if ((WildSim.Ab & 8) == 0 && !c.Species.Climbs && c.Space.Parts is { } parts)
         {
             float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
             Vector3 feet = next - up * clr;
@@ -509,6 +514,20 @@ public static class Crawl
             if (!parts.Fits(to, pr, ph) && parts.Gap(to, pr, ph) < parts.Gap(c.Position, pr, ph)) return null;
         }
         return to;
+    }
+
+    /// <summary>A walker in a piece of furniture: pushed off it sideways onto its floor, clear of the walls; false (left where it was) where that leaves it no better.</summary>
+    public static bool OffParts(Creature c)
+    {
+        if (c.Species.Climbs || c.Space.Parts is not { } parts) return false;
+        ISolidSpace s = c.Space.Bare;
+        float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+        Vector3 feet = HoldOffWalls(s, parts.PushOut(c.Position, pr, ph), c.Clearance);
+        if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is not float y) return false;
+        feet.Y = y;
+        if (parts.Gap(feet, pr, ph) <= parts.Gap(c.Position, pr, ph)) return false;
+        (c.Position, c.LastFirm) = (feet, feet);
+        return true;
     }
 
     /// <summary>Whether a body centre is clear of solid (the test of "never inside the rock").</summary>
