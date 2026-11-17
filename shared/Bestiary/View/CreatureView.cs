@@ -337,7 +337,7 @@ public partial class CreatureView : Node3D
         // Root and pose eased from the last one drawn (DrawSmoother, PoseBlend): the rig's steps never show as jumps.
         double now = DrawSmoother.Clock();
         _smooth.Note(c.Position, c.Yaw, c.Velocity.Length(), now);
-        float span = c.RigInterval > 1 && now - _synced < 0.4 ? (float)(now - _synced) : 0f;
+        float span = c.RigInterval >= 4 && now - _synced < 0.4 ? (float)(now - _synced) : 0f;
         _synced = now;
         _root = new Transform3D(new Basis(Vector3.Up, c.Yaw), c.Position);
         Transform3D[] pose = _blend.Frame(live, _root, PoseKey(c), span, MathF.Max(0.3f, c.Species.Body.Size), now);
@@ -374,7 +374,7 @@ public partial class CreatureView : Node3D
     readonly DrawSmoother _smooth = new();
     readonly PoseBlend _blend = new();
     Transform3D _jolt, _root, _put = Transform3D.Identity;
-    double _synced;
+    double _synced, _wrote;
 
     /// <summary>What it is doing, as far as its pose is concerned: a change of this blends the pose over <see cref="PoseBlend.Switch"/>.</summary>
     static int PoseKey(Creature c) =>
@@ -409,9 +409,10 @@ public partial class CreatureView : Node3D
     {
         if (_skeleton == null) return;
         double now = DrawSmoother.Clock();
-        // (A blend between a far rig's updates is posed every other frame: it is small and far.)
-        if (_blend.Active(now) && ((Engine.GetProcessFrames() + (ulong)Creature.Id) & 1) == 0)
+        // (A blend between a far rig's updates is posed 30 times a second: it is small and far.)
+        if (_blend.Active(now) && now - _wrote >= 1.0 / 30.0)
         {
+            _wrote = now;
             Transform3D[] pose = _blend.Apply(Creature.Rig.Pose, _root, now);
             for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
         }
