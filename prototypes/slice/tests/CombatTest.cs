@@ -236,7 +236,7 @@ public partial class CombatTest : Node
             deep.Town = town;
             place.AddChild(deep);
         }
-        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Hunts(s) && !s.Husk && !s.Flies && s.Rig == RigKind.Legged && s.Body.Size < 2f).OrderBy(_ => _rng.Next()).FirstOrDefault();
+        Species beast = patch.Life.Fauna.Species.Where(s => CrossReactions.Hunts(s) && !s.Husk && !s.Mechanical && !s.Flies && s.Rig == RigKind.Legged && s.Body.Size < 2f).OrderBy(_ => _rng.Next()).FirstOrDefault();
         if (beast == null) { GD.Print("  (no walking hunter on this world)"); game.QueueFree(); yield break; }
         var beasts = new List<Creature>();
         for (int i = 0; i < 3; i++)
