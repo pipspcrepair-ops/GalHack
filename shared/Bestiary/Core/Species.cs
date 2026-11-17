@@ -84,8 +84,13 @@ public sealed class Species
     public float Collapse;
     /// <summary>Mutation has gone past growths: the body itself has changed shape.</summary>
     public bool Monstrous;
-    /// <summary>A person taken by the worms (see <see cref="Husks"/>).</summary>
-    public bool Husk => Figure?.Husk == true;
+    /// <summary>A person taken by the worms (see <see cref="Husks"/>), or a beast (<see cref="Wormed"/>).</summary>
+    public bool Husk => Figure?.Husk == true || Wormed;
+    /// <summary>A beast the worms took (owner: "animals turning too would be pretty dangerous"): a Husk in its own body, worms out of its openings (<see cref="Husks.Decorate"/>).</summary>
+    public bool Wormed;
+    /// <summary>This beast as a Husk (<see cref="Husks.Beast"/>), made once, as <see cref="Kept"/> is.</summary>
+    public Species Husked => _husked ??= Husks.Beast(this);
+    Species _husked;
     /// <summary>Bodies one of these may be instead (each spawned is one of them): a world's Husks were many different people.</summary>
     public List<Species> Hosts;
     /// <summary>What covers it: fur on the cold worlds, scale and thin skin on the hot ones.</summary>

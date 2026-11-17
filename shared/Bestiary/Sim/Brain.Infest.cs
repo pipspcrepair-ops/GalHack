@@ -9,7 +9,7 @@ public static partial class Brain
     public const float InfestSeconds = 5f, Mouthful = 0.65f, InfestReach = 25f, KneelOff = 0.5f;
 
     /// <summary>
-    /// A Husk killed a person: it isn't done with them. It goes to the body, kneels at the head and bends
+    /// A Husk killed a person or an animal (<see cref="Husks.CanTurn"/>): it isn't done with them. It goes to the body, kneels at the head and bends
     /// to the face with its hands on it, and heaves its worms up into it a mouthful at a time (each a gob
     /// of maggots dropped from its mouth into the face, retched up where you can hear it). Then it goes
     /// its way and the body rises: the same person as a Husk (<see cref="Husks.Turn"/>, as a hold turns

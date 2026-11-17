@@ -449,14 +449,15 @@ public partial class BestiaryTest : Node
         Check(husks.All(s => !s.Corrupted), "and no person carries the fungus");
     }
 
-    /// <summary>A Husk seizes a person and they turn; an animal dies of it; only people turn.</summary>
+    /// <summary>A Husk seizes a person or an animal and they turn (owner: "animals turning too would be pretty dangerous"), and a Husk beast goes for people and animals alike.</summary>
     void SeizedPeopleTurn()
     {
         var w = World(15f);
         w.Coreward = 1f;
         WorldLife life = Bestiary.Roll(_data, w);
         Species husk = TallHusk(life);
-        int turned = 0, killed = 0, seized = 0, tries = 0, outOfReach = 0;
+        int turned = 0, beasts = 0, seized = 0, tries = 0, outOfReach = 0;
+        Species risen = null;
         for (int t = 0; t < 6; t++)
         {
             var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
@@ -481,12 +482,35 @@ public partial class BestiaryTest : Node
                 sim.Step(1f / 30f);
             }
             tries++;
-            if (person && v.Removed) Check(sim.Creatures.Any(c => c.Species.Husk && c != h && c.Species.Figure.Height == prey.Figure.Height), "a seized person turns into a Husk of the same body");
-            if (!person && v.Dead) killed++;
+            if (person && v.Removed) Check(sim.Creatures.Any(c => c.Species.Husk && c != h && c.Species.Figure?.Height == prey.Figure.Height), "a seized person turns into a Husk of the same body");
+            if (!person && v.Removed && sim.Creatures.FirstOrDefault(c => c.Species == prey.Husked) is { } beast) (beasts, risen) = (beasts + 1, beast.Species);
         }
         Check(seized > 0, $"Husks seize the living ({seized} holds)");
-        Check(turned > 0 && turned <= 3, $"{turned} seized people turned");
-        Check(killed > 0 || outOfReach == 3, $"{killed} seized animals died and none turned");
+        Check(turned > 0 && turned <= 6, $"{turned} seized turned");
+        Check(beasts > 0 || outOfReach == 3, $"{beasts} seized animals rose Husks of their own kind");
+        if (risen == null) return;
+        int worms = new LeggedRig(risen).Layout.Pieces.Sum(p => p.Prims.Count(m => m.Material == Mat.Worm));
+        Check(risen.Husk && risen.Figure == null && worms >= 6, $"a Husk beast: its own body, worms out of its openings ({worms} worm joints)");
+        // It goes for all life: a person, then an animal, put down near it.
+        var bit = new List<string>();
+        Species animal = life.Moving.FirstOrDefault(s => s.Figure == null && !s.Husk && !s.Mechanical && !s.Flies && s.Rig == RigKind.Legged);
+        foreach (Species other in new[] { life.People.Person(Seed(), PersonRole.Farmer, founders: TallFolk(life)), animal })
+        {
+            if (other == null) { bit.Add("(no walker on this world)"); continue; }
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+            Creature b = sim.Spawn(risen, Vector3.Zero), v = sim.Spawn(other, new Vector3(5f, 0f, 0f));
+            v.Health = v.Stats.MaxHealth = 10000f;
+            int hits = 0;
+            sim.Attacked += e => { if (e.Creature == b && e.Target == v.AsTarget) hits++; };
+            for (int i = 0; i < 30 * 30 && hits == 0; i++)
+            {
+                v.Position = new Vector3(5f, 0f, 0f);
+                v.Velocity = Vector3.Zero;
+                sim.Step(1f / 30f);
+            }
+            if (hits > 0) bit.Add(other.Figure != null ? "a person" : other.CommonName);
+        }
+        Check(bit.Count == 2, $"a Husk beast goes for people and animals alike (went for {string.Join(", ", bit)})");
     }
 
     /// <summary>A place of the world's tallest folk (a short folk's Husks can't reach a standing head: owner's call, docs/alien-peoples.md 9).</summary>

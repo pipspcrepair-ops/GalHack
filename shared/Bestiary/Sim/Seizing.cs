@@ -20,9 +20,9 @@ public sealed class SeizeEvent
 /// The seize is an attack like any other (a wind-up that is the telegraph, a commit, a lunge
 /// judged where it lands); what happens once it holds depends on who it holds:
 /// - someone the sim keeps (a person or an animal of the wildlife, a townsperson the game hands
-///   it as an <see cref="IHost"/>) is held still; after <see cref="HuskRules.TurnSeconds"/> a
-///   person has turned (a new Husk, the same person, stands where they stood) and an animal is
-///   dead. Only people turn.
+///   it as an <see cref="IHost"/>) is held still; after <see cref="HuskRules.TurnSeconds"/> they
+///   have turned (a new Husk, the same person or beast, stands where they stood); what can't turn
+///   (<see cref="Husks.CanTurn"/>) is dead.
 /// - the player: the sim holds them face to face and leaves the rest to the game (an open helmet
 ///   is a quick death, a sealed one a struggle), which ends it with <see cref="Break"/> or
 ///   <see cref="Finish"/>. The player is never infected: it is death or nothing.
@@ -125,7 +125,7 @@ public static class Seizing
         c.Position = new Vector3(at.X, w.Terrain.Height(at.X, at.Z), at.Z);
     }
 
-    /// <summary>Someone the sim keeps has had the worms long enough: a person turns, an animal dies.</summary>
+    /// <summary>Someone the sim keeps has had the worms long enough: they turn, or die if they can't.</summary>
     static void Turn(WildSim w, Creature c, ITarget t)
     {
         Creature made = null;

@@ -73,7 +73,7 @@ public partial class BestiaryTest
             Species band = bands[_fresh.Int(0, bands.Count - 1)];
             List<Creature> people = sim.SpawnGroup(band, new Vector3(10f, 0f, 0f), 3);
             Stay(people);
-            Creature hunter = sim.Spawn(hunters[0].Hunter, new Vector3(-10f, 0f, 0f));
+            Creature hunter = sim.Spawn(hunters[0].Hunter, new Vector3(10f - MathF.Min(20f, hunters[0].Hunter.Stats.Perception * 0.7f), 0f, 0f)); // (within its senses: a short-sighted one never saw them at 20 m)
             Run(60f, () => hunter.Attacking || hunter.Noticed is CreatureTarget { Creature.Herd: var hh } && hh == people[0].Herd && hunter.State == CState.Chase);
             Check(hunter.Noticed is CreatureTarget { Creature.Herd: var them } && them == people[0].Herd || hunter.AttackTarget is CreatureTarget, $"a {hunter.Species.CommonName} goes for a band's people with no player about ({hunter.State}, after {hunter.Noticed?.Name ?? "nobody"})");
 

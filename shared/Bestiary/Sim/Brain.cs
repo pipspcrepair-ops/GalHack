@@ -858,8 +858,8 @@ public static partial class Brain
     static ITarget Provoked(WildSim w, Creature c) =>
         c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable && c.Stats.Retaliates && !Remembers(w, c, c.ProvokedBy) ? c.ProvokedBy : null;
 
-    /// <summary>A hunter that takes other animals for food (<see cref="WildSim.Quarry"/>): a lone predator or a pack's.</summary>
-    public static bool Preys(Species s) => s.Behaviour is Behaviour.Predator or Behaviour.PackHunter && s.Stats.Damage > 0f && s.Figure == null && !s.Mechanical && s.Domestic == DomesticKind.None;
+    /// <summary>A hunter that takes other animals for food (<see cref="WildSim.Quarry"/>): a lone predator or a pack's (a Husk goes for all life its own way, <see cref="Seizing.PreyFor"/>).</summary>
+    public static bool Preys(Species s) => s.Behaviour is Behaviour.Predator or Behaviour.PackHunter && s.Stats.Damage > 0f && s.Figure == null && !s.Mechanical && s.Domestic == DomesticKind.None && !s.Husk;
 
     /// <summary>
     /// Whether a hunter would take another animal: one that grazes or picks (never another hunter, a giant, people, a machine or
