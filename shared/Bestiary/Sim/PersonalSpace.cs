@@ -144,14 +144,16 @@ public sealed class PersonalSpace
         WorstOverlap = worst;
     }
 
-    /// <summary>The bodies near a point (within a cell or two), as the last <see cref="Resolve"/> left them.</summary>
+    /// <summary>The bodies near a point (within a cell or two), as the last <see cref="Resolve"/> left them (none it no longer holds).</summary>
     public void Near(Vector3 p, List<int> into)
     {
         into.Clear();
         int cx = (int)MathF.Floor(p.X / Cell), cz = (int)MathF.Floor(p.Z / Cell);
         for (int dx = -1; dx <= 1; dx++)
             for (int dz = -1; dz <= 1; dz++)
-                if (_grid.TryGetValue(Key(cx + dx, cz + dz), out List<int> near)) into.AddRange(near);
+                if (_grid.TryGetValue(Key(cx + dx, cz + dz), out List<int> near))
+                    foreach (int i in near)
+                        if (i < Bodies.Count) into.Add(i);
     }
 
     void Index()
