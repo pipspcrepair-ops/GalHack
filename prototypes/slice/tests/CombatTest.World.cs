@@ -148,6 +148,10 @@ public partial class CombatTest
         if (tree.Id == 0) GD.Print("  (no tree within 250 m on this world: the tree's checks wait for another)");
         else foreach (int x in Tree(tree)) yield return x;
         // A firefight's cost: rounds and rockets into the place, then into open ground, without the harm and with it.
+        var split = new FrameSplit(GetTree().Root, GetViewport().GetViewportRid()) { HitchMs = 18 };
+        split.Systems = new SystemSplit(game, game.Zone, game.Places);
+        split.Doing = () => { ulong f = Engine.GetProcessFrames(); return $"prof [{PlanetSurface.Prof.Of(f - 1)}] [{PlanetSurface.Prof.Of(f)}]"; };
+        PlanetSurface.Prof.On = true;
         foreach (var (where, at, from) in new[] { ("at the place", face, outward), ("in the open", spot + shift, new Vector3(0f, 0.5f, 1f).Normalized()) })
         {
             game.Survivor.PlaceOutside((at + from * 16f + from.Cross(Vector3.Up) * 8f + Vector3.Up).ToNumerics());
@@ -157,6 +161,8 @@ public partial class CombatTest
             {
                 ArmsHost.HarmsWorld = pass == 1;
                 ArmsHost.PlacesMs = ArmsHost.PlantsMs = ArmsHost.CraterMs = 0;
+                split.Systems.Reset();
+                split.Reset();
                 cost[pass] = new List<double>();
                 for (int i = 0; i < 240; i++)
                 {
@@ -167,6 +173,9 @@ public partial class CombatTest
                     yield return 0;
                     cost[pass].Add((Performance.GetMonitor(Performance.Monitor.TimeProcess) + Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess)) * 1000.0);
                 }
+                GD.Print($"  PROF {where} harm={pass}: {split.Report()}");
+                GD.Print($"  PROF systems: {split.Systems.Report()}");
+                foreach (string h in split.Hitches.OrderByDescending(h => double.Parse(h.Split(' ')[0], System.Globalization.CultureInfo.InvariantCulture)).Take(8)) GD.Print($"  PROF hitch {h}");
                 foreach (int x in Hold(60)) yield return x;
             }
             ArmsHost.HarmsWorld = true;

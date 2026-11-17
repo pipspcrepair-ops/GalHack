@@ -979,6 +979,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     public void Blast(ref Shot s, N.Vector3 at, N.Vector3 normal, BlastPart blast)
     {
         Blasts++;
+        long pt0 = PlanetSurface.Prof.Now();
         int caught = 0, killed = 0;
         if (s.State == ShotState.Armed) Trips++;
         Vector3 p = at.ToGodot(), n = normal.ToGodot();
@@ -1038,6 +1039,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Zone.Dust?.Puff(p, Zone.Planet.Grit(p), 1.4f);
         Sounds.Play(s.Def, VoiceKind.Impact, p);
         Zone.Wildlife.Noise(p, 150f, default, s.Owner == 0 ? null : s.By);
+        PlanetSurface.Prof.Add("blast all", pt0);
         Game.Hands?.Shake(Mathf.Clamp(1f - Game.Survivor.WorldEye().DistanceTo(p) / 40f, 0f, 0.8f));
     }
 

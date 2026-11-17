@@ -276,10 +276,15 @@ public partial class Place : Node3D
         Group g = GroupAt(GroupOf(ch));
         if (!g.Modified) Places.Zone.Pois.Unocclude(Site, g.Key);
         g.Modified = true;
+        long pt = PlanetSurface.Prof.Now();
         if (g.Near) Unmerge(g);
+        PlanetSurface.Prof.Add("unmerge", pt); pt = PlanetSurface.Prof.Now();
         ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
+        PlanetSurface.Prof.Add("chunk build", pt); pt = PlanetSurface.Prof.Now();
         if (g.Near) SetChunkMesh(mesh);
+        PlanetSurface.Prof.Add("chunk mesh", pt); pt = PlanetSurface.Prof.Now();
         SetChunkShape(mesh);
+        PlanetSurface.Prof.Add("chunk shape", pt);
         ChunkMesh.Return(mesh);
     }
 
