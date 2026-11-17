@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
+using Planets.Look;
 using PlanetSurface.Terrain;
 using Slice.Player;
 using N = System.Numerics;
@@ -108,6 +109,64 @@ public partial class SurfaceZone : IFloraField
         if (broken) _toppling.Enqueue((Engine.GetProcessFrames(), Fall));
         else Fall();
         return true;
+    }
+
+    // ---- Hit points ----------------------------------------------------------------------------------
+
+    /// <summary>Hit points worn off standing plants, by plant id: the Sleeper tool's blast and weapons wear the one count.</summary>
+    readonly Dictionary<long, float> _plantWorn = new();
+
+    public static bool IsBoulder(Flora kind) => kind is Flora.Rock or Flora.LavaRock or Flora.Crystal or Flora.IceShard;
+
+    /// <summary>A plant's hit points whole (data/slice.json plants): by kind and size, a tree's by its species' trunk too.</summary>
+    public float PlantMax(in TerrainStreamer.PlantSighting s)
+    {
+        Slice.Game.SliceRules.PlantRules r = Data.Rules.Plants;
+        float size = Mathf.Clamp(s.Scale, 0.5f, 3f);
+        if (IsBoulder(s.Kind)) return r.Boulder * size;
+        if (!TreeFx.IsTree(s.Kind)) return r.Plant * size;
+        float trunk = SpeciesOf(s.Plant) is { TrunkRadius: > 0f } sp ? Mathf.Clamp(sp.TrunkRadius / r.Trunk, 0.5f, 2f) : 1f;
+        return r.Tree * size * trunk;
+    }
+
+    /// <summary>A standing plant's hit points left and whole (the reticle's readout).</summary>
+    public (float Hp, float Max) PlantHealth(in TerrainStreamer.PlantSighting s)
+    {
+        float max = PlantMax(s);
+        return (Mathf.Max(0f, max - _plantWorn.GetValueOrDefault(s.Id)), max);
+    }
+
+    /// <summary>
+    /// Wears a standing plant (the tool's blast, a shot, a blast): <paramref name="damage"/> hit points off it; gives the share of
+    /// its whole that was (what it yields comes by that share). Spent, it is felled, falling away along <paramref name="away"/>;
+    /// <paramref name="batch"/> fells it with the rest of the tick's (a blast takes many at once).
+    /// </summary>
+    public float WearPlant(in TerrainStreamer.PlantSighting s, float damage, Vector3 away, bool batch = false)
+    {
+        if (damage <= 0f || Planet.Felled.Contains(s.Id)) return 0f;
+        float max = PlantMax(s), done = _plantWorn.GetValueOrDefault(s.Id), dealt = Mathf.Min(damage, max - done);
+        if (done + damage < max) _plantWorn[s.Id] = done + damage;
+        else
+        {
+            _plantWorn.Remove(s.Id);
+            Fell(s, away, broken: batch);
+        }
+        return dealt / max;
+    }
+
+    /// <summary>A standing plant by its id, near a point (its near self over its far stand-in).</summary>
+    public bool Sighting(long id, Vector3 near, out TerrainStreamer.PlantSighting found)
+    {
+        found = default;
+        bool any = false;
+        foreach (TerrainStreamer.PlantSighting s in Streamer.FloraNear(near, TreeReach))
+        {
+            if (s.Id != id) continue;
+            found = s;
+            any = true;
+            if (s.Variant >= 0) break;
+        }
+        return any && !Planet.Felled.Contains(id);
     }
 
     /// <summary>The species a plant is, in the world's herbarium, or null for a rock.</summary>

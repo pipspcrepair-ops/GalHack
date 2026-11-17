@@ -154,6 +154,7 @@ public sealed class SliceRules
     public ClimateRules Climate { get; set; } = new();
     public ClimateNodeRules ClimateNode { get; set; } = new();
     public ToolRules Tool { get; set; } = new();
+    public PlantRules Plants { get; set; } = new();
     public BuildRules Build { get; set; } = new();
     public WildlifeRules Wildlife { get; set; } = new();
     public TorchRules Torch { get; set; } = new();
@@ -322,11 +323,16 @@ public sealed class SliceRules
         public float Rock { get; set; } = 2f;
         public float DeepRock { get; set; } = 3f;
         public float Ore { get; set; } = 3f;
-        /// <summary>A plant, a tree and a boulder, at scale 1 (they grow with the plant's size).</summary>
-        public float Plant { get; set; } = 1.5f;
-        public float Tree { get; set; } = 9f;
-        public float Boulder { get; set; } = 5f;
-        /// <summary>A tree gives this many times a plant's materials.</summary>
+    }
+
+    /// <summary>Plants' hit points at scale 1 (a tree's by its trunk against <see cref="Trunk"/> m), worn by the tool's blast and by weapons alike; and what they give, by the share taken.</summary>
+    public sealed class PlantRules
+    {
+        public float Plant { get; set; } = 2.5f;
+        public float Tree { get; set; } = 15f;
+        public float Boulder { get; set; } = 8.3f;
+        public float Trunk { get; set; } = 0.3f;
+        /// <summary>A tree gives this many times a plant's materials; a boulder this much stone a scale.</summary>
         public float TreeYield { get; set; } = 1.5f;
         public float BoulderStone { get; set; } = 3f;
     }

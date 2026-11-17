@@ -170,16 +170,22 @@ public sealed class SleeperTool
         else if (_cooldown <= 0f) Blast();
     }
 
-    /// <summary>The hit points and the most of the block the tool is on within its range (a structure's, a wreck's or a place's), or null: the visor shows them over the reticle.</summary>
+    /// <summary>The hit points and the most of the block the tool is on within its range (a structure's, a wreck's or a place's), or of the plant it would cut, or null: the visor shows them over the reticle.</summary>
     public (float Hp, float Max)? BlockHealth { get; private set; }
 
     (float, float)? HealthOn(float range)
     {
-        if (!WorldRay.Cast(_zone, _survivor, range, Layers.World | Layers.Hull, out LookHit look)) return null;
+        if (!WorldRay.Cast(_zone, _survivor, range, Layers.World | Layers.Hull, out LookHit look)) return PlantOn();
         if (look.Vessel is Slice.Vessels.Vessel v)
             return v.Structure.TryGetBlock(look.Cell, out _, out GalHack.Structures.Block b) ? (b.Hp, v.Structure.StatsOf(b).MaxHp) : null;
-        return Places != null && Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h, look.Shape) ? Places.Health(h) : null;
+        if (Places != null && Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h, look.Shape)) return Places.Health(h);
+        return PlantOn();
     }
+
+    /// <summary>The plant the gather blast would wear (<see cref="CutPlant"/>'s), as its hit points.</summary>
+    (float, float)? PlantOn() =>
+        Mode == ToolMode.Gather && FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting s)
+        && !_zone.Planet.Felled.Contains(s.Id) ? _zone.PlantHealth(s) : null;
 
     // ---- Aim -----------------------------------------------------------------------------------
 
@@ -409,67 +415,51 @@ public sealed class SleeperTool
     /// <summary>What felled trees leave (the zone's).</summary>
     public TreeFx Trees => _zone.Trees;
 
-    readonly Dictionary<long, float> _plantHurt = new();
-
     /// <summary>Trees that have fallen to the tool (tests).</summary>
     public int TreesFelled { get; private set; }
 
-    static bool IsBoulder(Flora kind) => kind is Flora.Rock or Flora.LavaRock or Flora.Crystal or Flora.IceShard;
-
     /// <summary>
-    /// Chips the plant nearest the crosshair within reach: each pulse wears it down and gives a share
-    /// of its biomass and organics (a boulder's stone), and when it is worked through it is gone from
-    /// the ground for good (<see cref="SurfaceZone.Fell(in TerrainStreamer.PlantSighting, Vector3)"/>), so a
-    /// tree's collider goes in the same frame and the cut is kept through streaming and saves. A tree
-    /// falls over, leaving a stump.
+    /// Wears the plant nearest the crosshair within reach by the blast's wear, as a block is worn (<see cref="SurfaceZone.WearPlant"/>,
+    /// the hit points weapons wear too): what it gives (biomass and organics, a boulder's stone) comes by the share of its hit points
+    /// taken, and once they are gone it is felled for good (<see cref="SurfaceZone.Fell(in TerrainStreamer.PlantSighting, Vector3)"/>),
+    /// its collider gone in the same frame and the cut kept through streaming and saves. A tree falls over, leaving a stump.
     /// </summary>
     public bool CutPlant(out Vector3 struck)
     {
         struck = default;
-        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting sighting))
+        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting sighting)
+            || _zone.Planet.Felled.Contains(sighting.Id))
             return false;
         Vector3 plant = sighting.Root;
-        float scale = sighting.Scale;
-        long id = sighting.Id;
+        float scale = sighting.Scale, size = Math.Clamp(scale, 0.5f, 3f);
         Flora kind = sighting.Kind;
         GalHack.Plants.Plant species = _zone.SpeciesOf(sighting.Plant);
-        if (_zone.Planet.Felled.Contains(id)) return false;
-        bool tree = TreeFx.IsTree(kind), boulder = IsBoulder(kind);
-        float size = Math.Clamp(scale, 0.5f, 3f);
-        float durability = (boulder ? _rules.Durability.Boulder : tree ? _rules.Durability.Tree : _rules.Durability.Plant) * size;
-        float done = _plantHurt.GetValueOrDefault(id);
-        float dealt = MathF.Min(Power, durability - done);
-        done += Power;
-        _cooldown = _rules.DigInterval;
+        bool tree = TreeFx.IsTree(kind), boulder = SurfaceZone.IsBoulder(kind);
         _suit.Worked();
-        double share = dealt / durability, scaleUp = tree ? _rules.Durability.TreeYield : 1f;
+        double share = _zone.WearPlant(sighting, BlastWear, plant - _survivor.WorldEye());
+        SliceRules.PlantRules rules = _zone.Data.Rules.Plants;
         var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        if (boulder) Earn("stone", _rules.Durability.BoulderStone * size * share, got);
+        if (boulder) Earn("stone", rules.BoulderStone * size * share, got);
         else
         {
+            double scaleUp = tree ? rules.TreeYield : 1f;
             _suit.Kit.Organics += _yields.OrganicsPerPlant * size * scaleUp * share;
             Earn(Biomass, Math.Max(1.0, Math.Round(_yields.BiomassPerPlant * size)) * scaleUp * share, got);
         }
         Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, species == null ? 2.2f * size + 1f : species.Height * scale * 0.5f) : 0.6f * size);
-        Color leaf = TreeFx.LeafOf(kind, species);
         struck = boulder ? plant + Vector3.Up * 0.4f : plant.Lerp(crown, 0.5f);
         if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, _zone.Planet.Grit(plant), 0.7f);
-        else Trees.Leaves(crown, leaf, tree ? 14 : 8, tree ? 1.2f : 0.4f);
+        else Trees.Leaves(crown, TreeFx.LeafOf(kind, species), tree ? 14 : 8, tree ? 1.2f : 0.4f);
         Sfx?.Play(Sfx.Sound.Dig, plant, tree ? 0.8f : 1.4f, -9f);
-        if (done < durability)
+        if (_zone.Planet.Felled.Contains(sighting.Id))
         {
-            _plantHurt[id] = done;
-            Announce(got, quietStone: false);
-            return true;
-        }
-        _plantHurt.Remove(id);
-        _zone.Fell(sighting, plant - _survivor.WorldEye());
-        PlantsCut++;
-        PlantCut?.Invoke();
-        if (tree)
-        {
-            TreesFelled++;
-            Sfx?.Play(Sfx.Sound.Dig, plant, 0.6f, -2f);
+            PlantsCut++;
+            PlantCut?.Invoke();
+            if (tree)
+            {
+                TreesFelled++;
+                Sfx?.Play(Sfx.Sound.Dig, plant, 0.6f, -2f);
+            }
         }
         Announce(got, quietStone: false);
         return true;
