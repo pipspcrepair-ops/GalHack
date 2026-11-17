@@ -104,7 +104,7 @@ public static partial class Brain
             // On the way: a walk, eyes on it.
             if (c.State != CState.Follow) c.SetState(CState.Follow);
             if (c.StateTime > RummageWalk) { c.RummageFor = 0f; return false; } // there's no way there
-            Steer(w, c, c.Rummage, c.Stats.WalkSpeed);
+            Go(w, c, c.Rummage, c.Stats.WalkSpeed);
             c.LookAt = c.Rummage + Vector3.Up * 0.3f;
             return true;
         }

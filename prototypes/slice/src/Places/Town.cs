@@ -114,6 +114,14 @@ public sealed partial class Town
         public bool GettingUp;
         /// <summary>How long they have been held where they stood by the furniture.</summary>
         public float Blocked;
+        /// <summary>Making headway on their way (Town.Headway): where they last got a quarter metre on from and how long since; whether that has had them find another way yet; where they last walked well, and a metre or more before.</summary>
+        public Vector3 ProgressAt, GoodAt, Behind;
+        public float StuckFor;
+        public bool Rerouted;
+        /// <summary>Frightened: the spot they make for to get in (their own home unless what frightened them is that way), and where it was, when last seen (local).</summary>
+        public int Refuge = -1;
+        public Vector3 FleeFrom;
+        public float FleeAt = -999f;
         /// <summary>In bed for the night (lying on it), and how far down into it.</summary>
         public bool Asleep;
         public float Slept;
@@ -280,6 +288,7 @@ public sealed partial class Town
         foreach (CitizenSpawn s in Data.People)
         {
             var p = new Person { Town = this, Spawn = s, Pos = At(s.Spot), Spot = s.Spot, Yaw = (float)_rng.NextDouble() * MathF.Tau };
+            p.GoodAt = p.Behind = p.ProgressAt = p.Pos;
             p.Home = _homes.Length > 0 ? _homes.OrderBy(h => Spots[h].Cell.Manhattan(s.Cell)).First() : s.Spot;
             p.Speed = s.Gait switch { "hurry" => 3.0f, "amble" => 1.1f, "patrol" => 1.3f, _ => 1.3f };
             p.Wait = (float)_rng.NextDouble() * 6f;
@@ -603,15 +612,18 @@ public sealed partial class Town
             }
             if (hide && !p.Indoors && !p.Asleep)
             {
-                // Home, wherever they were going: only reaching their own bed or door takes them in.
-                if (p.Spot != p.Home || p.Path == null) GoTo(p, p.Home);
+                // Home, wherever they were going: only reaching their own bed or door (or, from a fright, the nearest that
+                // isn't toward what frightened them: what they saw, else you) takes them in.
                 p.Fleeing = mood == Mood.Hostile || scared;
+                if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : p.Home;
+                if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
                 p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
                 Arrive(p, dt, offDuty && !p.Fleeing);
                 Pose(p, who, away, dt);
                 continue;
             }
             // Morning, or the fright over, or a fright in the night: up and about.
+            if (!hide) p.Refuge = -1;
             if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
             if (p.Indoors || p.Asleep) { Pose(p, who, away, dt); continue; }
             if (guard && mood != Mood.Hostile && !YouDown && Pursuit(p, player, dt))
@@ -719,6 +731,7 @@ public sealed partial class Town
             p.Blocked = 0f;
             if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
         }
+        Headway(p, dt);
         p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
         p.Sitting = false;
         return false;
@@ -728,6 +741,8 @@ public sealed partial class Town
 
     void GoTo(Person p, int spot)
     {
+        p.StuckFor = 0f;
+        p.ProgressAt = p.Pos;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - At(spot)).Length() < 1.5f) return;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)
         {

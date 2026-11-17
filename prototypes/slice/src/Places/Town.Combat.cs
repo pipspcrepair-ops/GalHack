@@ -456,11 +456,11 @@ public sealed partial class Town
             if (SquareUp(p, to, dt) <= SquaredUp * 2f && p.SwingIn <= 0f) p.Winding = 0f;
             return;
         }
-        // On their way in: at a run, straight once there's a clear line, else to the spot nearest you.
+        // On their way in: at a run, straight once there's a clear line and the walking grid has floor all the way, else to the spot nearest you.
         p.Speed = 3.6f;
-        if (p.Sees && flat < 8f && Clear(p.Pos + Vector3.Up * 0.5f, foe + Vector3.Up * 0.5f))
+        Vector3 stop = foe - new Vector3(to.X, 0f, to.Z) / MathF.Max(flat, 0.01f) * reach * 0.8f;
+        if (p.Sees && flat < 8f && Clear(p.Pos + Vector3.Up * 0.5f, foe + Vector3.Up * 0.5f) && Straight(p, stop))
         {
-            Vector3 stop = foe - new Vector3(to.X, 0f, to.Z) / MathF.Max(flat, 0.01f) * reach * 0.8f;
             if (p.Path == null || p.Path.Count != 1 || (p.Path[0] - stop).LengthSquared() > 0.25f) { p.Path = new List<Vector3> { stop with { Y = p.Pos.Y } }; p.Step = 0; }
         }
         else if (p.Rethink <= 0f || p.Path == null || p.Step >= p.Path.Count)

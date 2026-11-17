@@ -112,6 +112,8 @@ public sealed partial class Town
                 case Response.Flee:
                     if (p.ScaredFor <= 0f) FledFrom++;
                     p.ScaredFor = 10f;
+                    p.FleeFrom = _place != null ? _place.FromWorld(_places.Zone.Wildlife.WorldOf(what)) : p.Pos;
+                    p.FleeAt = _clock;
                     break;
                 case Response.Avoid:
                     if (p.AvoidFor <= 0f) Avoided++;

@@ -402,7 +402,7 @@ public partial class CreaturesTest : Node
                 continue;
             }
             sim.RefillPathBudget();
-            Brain.Toward(sim, c, points[i], c.Stats.WalkSpeed);
+            Brain.Go(sim, c, points[i], c.Stats.WalkSpeed);
             Locomotion.Move(sim, c, Dt);
             c.Rig.Update(sim, c, Dt);
             sim.Time += Dt;
@@ -945,7 +945,7 @@ public partial class CreaturesTest : Node
         for (float t = 0f; t < 12f; t += Dt)
         {
             sim.Step(Dt);
-            if ((int)(t / Dt) % 30 == 0) Trace($"t {t:F1} pos {c.Position} state {c.State} phase {c.Phase} noticed {c.Noticed?.Name} desired {c.Desired} path {c.SpacePath.Count}/{c.SpacePathIndex} range {c.Stats.AttackRange:F2} clr {c.Clearance:F2} d {(c.Position - victim.Position).Length():F2}");
+            if ((int)(t / Dt) % 30 == 0) Trace($"t {t:F1} pos {c.Position} state {c.State} phase {c.Phase} noticed {c.Noticed?.Name} desired {c.Desired} path {c.Path.Count}/{c.PathIndex} range {c.Stats.AttackRange:F2} clr {c.Clearance:F2} d {(c.Position - victim.Position).Length():F2}");
         }
     }
 
@@ -1537,7 +1537,7 @@ public partial class CreaturesTest : Node
             for (float t = 0f; t < 40f && best < n - 0.05f; t += Dt)
             {
                 sim.RefillPathBudget();
-                Brain.Toward(sim, c, prey.Position + Vector3.Up * 0.5f, c.Stats.RunSpeed);
+                Brain.Go(sim, c, prey.Position + Vector3.Up * 0.5f, c.Stats.RunSpeed);
                 Locomotion.Move(sim, c, Dt);
                 sim.Time += Dt;
                 best = MathF.Max(best, c.Position.Y);

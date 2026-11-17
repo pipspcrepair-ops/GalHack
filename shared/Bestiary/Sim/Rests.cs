@@ -131,7 +131,7 @@ public static partial class Brain
         if (c.State != CState.Rest && !arrived && d > (flier ? 2.5f : 1.2f))
         {
             c.SetState(CState.ReturnHome);
-            Steer(w, c, spot, d > 20f ? s.Stats.WalkSpeed * 1.3f : s.Stats.WalkSpeed);
+            Go(w, c, spot, d > 20f ? s.Stats.WalkSpeed * 1.3f : s.Stats.WalkSpeed);
             if (glider) c.Altitude = c.Landed || d < Flight.ApproachFrom(c, 6f) ? 0f : 6f;
             else if (flier) c.Altitude = d < 1.5f ? 0f : 3f;
             else if (s.Rig == RigKind.GasBag) c.Altitude = d < 8f ? 1.4f : 6f;

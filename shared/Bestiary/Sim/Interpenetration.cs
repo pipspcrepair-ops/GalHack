@@ -64,8 +64,6 @@ public static class Interpenetration
         c.Velocity = Vector3.Zero;
         c.Path.Clear();
         c.PathIndex = 0;
-        c.SpacePath.Clear();
-        c.SpacePathIndex = 0;
         c.Rig?.Reset(w, c);
         return true;
     }

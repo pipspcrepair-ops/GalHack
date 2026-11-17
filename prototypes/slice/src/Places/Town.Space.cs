@@ -161,6 +161,81 @@ public sealed partial class Town
         return town;
     }
 
+    /// <summary>Walkers put back where they last walked well, still held after finding another way (tests).</summary>
+    public int Unstuck { get; private set; }
+
+    /// <summary>
+    /// After a step along their way: someone who hasn't got a quarter metre on in a second finds another way from where
+    /// they stand (by the walking grid); still held a second later, they are put back where they last walked well, a
+    /// metre or more back, and go on from there. Nobody stands pushing into a wall or a piece of furniture.
+    /// </summary>
+    void Headway(Person p, float dt)
+    {
+        if ((p.Pos - p.ProgressAt).LengthSquared() > 0.0625f)
+        {
+            p.ProgressAt = p.Pos;
+            p.StuckFor = 0f;
+            p.Rerouted = false;
+            if ((p.Pos - p.GoodAt).LengthSquared() > 1f) (p.Behind, p.GoodAt) = (p.GoodAt, p.Pos);
+            return;
+        }
+        p.StuckFor += dt;
+        if (p.StuckFor >= 1f && !p.Rerouted)
+        {
+            p.Rerouted = true;
+            if (p.Spot < 0 || p.Spot >= Spots.Count) return;
+            System.Collections.Generic.List<Vector3> path = PathFromHere(p, p.Spot, out bool pending);
+            if (pending) { p.Path = new System.Collections.Generic.List<Vector3>(); p.Asked = p.Spot; }
+            else if (path is { Count: > 0 }) p.Path = path;
+            p.Step = 0;
+        }
+        else if (p.StuckFor >= 2f)
+        {
+            if ((p.Behind - p.Pos).LengthSquared() is > 0.04f and < 25f && OnGrid(p.Behind) && (_parts == null || _parts.Fits(p.Behind, BodyRadius(p), Height(p))))
+            {
+                p.Pos = p.Behind;
+                Unstuck++;
+            }
+            p.GoodAt = p.Behind = p.ProgressAt = p.Pos;
+            p.StuckFor = 0f;
+            p.Rerouted = false;
+        }
+    }
+
+    /// <summary>
+    /// Where someone frightened by something at a point gets in: their own home if it isn't that way (farther from it than
+    /// they are, and the way there not passing close by it), else whichever of the place's home spots that isn't lies farthest from it.
+    /// </summary>
+    int Refuge(Person p, Vector3 danger)
+    {
+        float mine = (p.Pos - danger).Length();
+        bool Wide(int h)
+        {
+            Vector3 a = p.Pos, ab = At(h) - a;
+            float t = ab.LengthSquared() > 1e-4f ? Math.Clamp((danger - a).Dot(ab) / ab.LengthSquared(), 0f, 1f) : 0f;
+            return (At(h) - danger).Length() > mine && (a + ab * t - danger).Length() > 3f;
+        }
+        if (_homes.Length == 0 || Wide(p.Home)) return p.Home;
+        int best = p.Home;
+        float most = float.MinValue;
+        foreach (int h in _homes)
+        {
+            float score = (At(h) - danger).Length() - 0.3f * (At(h) - p.Pos).Length();
+            if (score > most && Wide(h)) { most = score; best = h; }
+        }
+        return best;
+    }
+
+    /// <summary>Whether a body gets straight from where they stand to a point (local) by the walking grid: floor all the way, clear of the furniture and the walls.</summary>
+    bool Straight(Person p, Vector3 to)
+    {
+        Vector3 d = (to - p.Pos) with { Y = 0f };
+        float len = d.Length();
+        for (float s = 0.5f; s < len; s += 0.5f)
+            if (!OnGrid(p.Pos + d * (s / len))) return false;
+        return OnGrid(to with { Y = p.Pos.Y }) && (_parts == null || _parts.Sweep(p.Pos, to with { Y = p.Pos.Y }, BodyRadius(p), Height(p), 0, Place.WallsOf(_nav), PlaceParts.PersonRadius));
+    }
+
     /// <summary>Whether a person can be stood at a point by the walking grid.</summary>
     public bool CanStand(Vector3 local) => OnGrid(local);
 

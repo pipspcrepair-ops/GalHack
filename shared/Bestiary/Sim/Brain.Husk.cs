@@ -50,6 +50,6 @@ public static partial class Brain
         // A puppet's going: it stalls and lurches by turns; close in, a lurch is a rush.
         float gait = Seizing.Gait(c, w.Time);
         float speed = d < 6f ? c.Stats.RunSpeed * (gait >= 1f ? 1.5f : gait > 0.1f ? 0.55f : 0.1f) : c.Stats.RunSpeed * gait;
-        Steer(w, c, Senses.Aim(c, prey), speed);
+        Go(w, c, Senses.Aim(c, prey), speed);
     }
 }

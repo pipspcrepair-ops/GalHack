@@ -142,7 +142,7 @@ public sealed partial class Staging
                 if (beastGoal is { } bg)
                 {
                     deep.Sim.RefillPathBudget();
-                    Brain.Toward(deep.Sim, beast, bg + Vector3.Up * 0.3f, MathF.Max(1f, beast.Stats.WalkSpeed));
+                    Brain.Go(deep.Sim, beast, bg + Vector3.Up * 0.3f, MathF.Max(1f, beast.Stats.WalkSpeed));
                     Locomotion.Move(deep.Sim, beast, dt);
                 }
                 beastWalked += new Vector2(beast.Position.X - beastAt.X, beast.Position.Z - beastAt.Z).Length();

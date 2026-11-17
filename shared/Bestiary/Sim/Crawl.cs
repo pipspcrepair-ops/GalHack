@@ -53,8 +53,8 @@ public static class Crawl
         Vector3 f = c.Forward;
         c.Facing = SpaceMath.Frame(f, n);
         c.Position = p - n * clr;
-        c.LastFirm = c.Position;
-        c.LastFirmNormal = n;
+        c.LastFirm = c.GoodAt = c.Behind = c.ProgressAt = c.Position;
+        c.LastFirmNormal = c.GoodUp = c.BehindUp = n;
         c.Falling = false;
         c.Velocity = Vector3.Zero;
         SyncYaw(c);

@@ -51,12 +51,7 @@ public static partial class Brain
         if (threat is { } t)
         {
             c.SetState(CState.Flee);
-            Vector3 away = WildSim.Flat(c.Position - t);
-            away = away.LengthSquared() > 0.01f ? away.Normalized() : c.Forward;
-            Vector3 goal = c.Position + away * 6f;
-            Vector3 fromPen = WildSim.Flat(goal - pen);
-            if (fromPen.Length() > radius * 0.9f) goal = pen + fromPen.Normalized() * radius * 0.9f;
-            Steer(w, c, goal, s.Stats.RunSpeed);
+            Away(w, c, t, 8f, s.Stats.RunSpeed, pen, radius * 0.9f);
             return;
         }
 
@@ -64,7 +59,7 @@ public static partial class Brain
         if (WildSim.Flat(c.Position - pen).Length() > radius + (s.Domestic == DomesticKind.Stock && c.Owner != null ? 5f : 0f))
         {
             c.SetState(CState.ReturnHome);
-            Steer(w, c, pen, s.Stats.WalkSpeed);
+            Go(w, c, pen, s.Stats.WalkSpeed);
             return;
         }
 
@@ -88,7 +83,7 @@ public static partial class Brain
                         Vector3 goal = handler.Position - WildSim.Flat(handler.Forward).Normalized() * keep;
                         Vector3 fromPen = WildSim.Flat(goal - pen);
                         if (fromPen.Length() > radius + 4f) goal = pen + fromPen.Normalized() * (radius + 4f);
-                        Steer(w, c, goal, c.Stats.WalkSpeed * 0.8f);
+                        Go(w, c, goal, c.Stats.WalkSpeed * 0.8f);
                         break;
                     }
                 }
@@ -96,7 +91,7 @@ public static partial class Brain
                 break;
             case DomesticKind.Working:
                 // Stood by its cart: a step or two now and then, otherwise still.
-                if (WildSim.Flat(c.Position - c.Home).Length() > 1.2f) { c.SetState(CState.ReturnHome); Steer(w, c, c.Home, s.Stats.WalkSpeed * 0.6f); }
+                if (WildSim.Flat(c.Position - c.Home).Length() > 1.2f) { c.SetState(CState.ReturnHome); Go(w, c, c.Home, s.Stats.WalkSpeed * 0.6f); }
                 else
                 {
                     c.SetState(CState.Idle);
@@ -139,7 +134,7 @@ public static partial class Brain
             c.SetState(CState.Graze);
             return;
         }
-        Steer(w, c, c.Goal, c.Stats.WalkSpeed * 0.6f);
+        Go(w, c, c.Goal, c.Stats.WalkSpeed * 0.6f);
     }
 
     static void Pet(WildSim w, Creature c, Vector3 home, float radius, float dt)
@@ -155,7 +150,7 @@ public static partial class Brain
                 // To heel: beside and a little behind its owner.
                 Vector3 side = new Vector3(-owner.Forward.Z, 0f, owner.Forward.X) * (c.Id % 2 == 0 ? 1f : -1f);
                 Vector3 spot = owner.Position - WildSim.Flat(owner.Forward).Normalized() * 0.6f + side * heel * 0.7f;
-                Steer(w, c, spot, d > 5f ? c.Stats.RunSpeed : c.Stats.WalkSpeed);
+                Go(w, c, spot, d > 5f ? c.Stats.RunSpeed : c.Stats.WalkSpeed);
                 return;
             }
             // Its owner has stopped: it sits, then lies down.

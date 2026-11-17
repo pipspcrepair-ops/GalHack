@@ -221,6 +221,8 @@ public sealed class WildSim
                 if (to.Length() < c.Radius + mate.Radius + 0.4f) { c.Lunge = 1f; c.FriskFor = 0f; mate.FriskFor = MathF.Max(mate.FriskFor, 0.8f); mate.FriskDir = to.LengthSquared() > 1e-4f ? to.Normalized() : mate.Forward; }
                 else c.FriskDir = to.Normalized();
             }
+            // Only where there is room to dash: never into a rock, a trunk or a wall.
+            if (!Brain.Clear(this, c, c.Position, c.Position + c.FriskDir * 2f)) { c.FriskFor = 0f; return; }
             c.Desired = c.FriskDir * c.Stats.RunSpeed * 0.8f;
             return;
         }
@@ -409,7 +411,7 @@ public sealed class WildSim
         }
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Nerve = species.Mechanical ? 1f : Rng.For(species.Seed, "nerve", c.Id).Float(); // its own stream: nothing else it rolls changes
-        c.Position = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
+        c.Position = c.GoodAt = c.Behind = c.ProgressAt = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
         c.SwarmAlive = species.Body.Members;
         c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)
@@ -631,6 +633,7 @@ public sealed class WildSim
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }
             Locomotion.Move(this, c, dt);
             Locomotion.KeepOff(this, c);
+            if (!c.Dead && !Frozen) Brain.Headway(this, c, dt);
             if (Profile) { long t = Stopwatch.GetTimestamp(); moveTicks += t - t0; t0 = t; }
 
             // Far creatures re-pose less often; the rig catches up with the summed time.
@@ -707,13 +710,25 @@ public sealed class WildSim
     /// <summary>Gives back this step's path searches (for driving creatures outside <see cref="Step"/>).</summary>
     public void RefillPathBudget() => _pathBudget = PathBudgetPerStep;
 
-    public bool TakePathBudget()
+    /// <summary>A search (or a flight's two floods: <paramref name="cost"/> 2) out of this step's budget, if it has that much left.</summary>
+    public bool TakePathBudget(int cost = 1)
     {
-        if (_pathBudget <= 0) return false;
-        _pathBudget--;
+        if (_pathBudget < cost) return false;
+        _pathBudget -= cost;
         Paths++;
         return true;
     }
+
+    /// <summary>Bodies that made no headway for a second and looked for another way, and those still stuck that were put back where they last went well (<see cref="Brain.Headway"/>).</summary>
+    public int Repaths, Unstuck;
+
+    /// <summary>A way worked out for a group (a herd's or a pack's flight), reused.</summary>
+    public readonly List<Vector3> Way = new();
+
+    Func<Vector3, bool> _builtGround;
+
+    /// <summary>Whether a point of the ground has something built on it at a body's middle (<see cref="SolidAt"/> there): what the fine window round buildings is blocked by.</summary>
+    public Func<Vector3, bool> BuiltGround => _builtGround ??= p => SolidAt(new Vector3(p.X, Terrain.Height(p.X, p.Z) + 0.4f, p.Z));
 
     // ---- Damage -----------------------------------------------------------------------
 
