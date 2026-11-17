@@ -448,19 +448,6 @@ public static class Crawl
         bool drop = c.Species.Attack.Style == AttackStyle.Drop && c.LungeFrom.Y - c.LungeTo.Y > 0.3f;
         float eased = drop ? t * t : 1f - (1f - t) * (1f - t);
         Vector3 center = c.LungeFrom.Lerp(c.LungeTo, eased);
-        // A walker's lunge into a piece of furniture stops there, as one into a wall does: held where it met it, never in it.
-        if (!c.Species.Climbs && c.Space.Parts is { } parts)
-        {
-            float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
-            Vector3 feet = center - Vector3.Up * c.Clearance;
-            if (!parts.Fits(feet, pr, ph) && parts.Gap(feet, pr, ph) < parts.Gap(c.Position, pr, ph))
-            {
-                c.LungeFrom = c.LungeTo = Center(c);
-                c.LungeBlocked = true;
-                c.Velocity = Vector3.Zero;
-                return;
-            }
-        }
         // A straight flight can skim a bulge in the rock: it rides over it.
         float into = c.Space.Density(center) + 0.03f;
         if (into > 0f) center += SpaceMath.Normal(c.Space, center) * into;
@@ -468,9 +455,23 @@ public static class Crawl
         // In flight it turns to face where it is going, feet towards the ground.
         Vector3 up = SpaceMath.TurnToward(c.Facing.Y, Vector3.Up, MathF.Min(1f, t * 1.5f));
         Vector3 f = travel.LengthSquared() > 1e-4f ? travel.Normalized() : -c.Facing.Z;
-        c.Facing = SpaceMath.Frame(f, up);
+        Basis facing = SpaceMath.Frame(f, up);
+        Vector3 feet = center - facing.Y * c.Clearance;
+        // A walker's lunge into a piece of furniture stops there, as one into a wall does: held where it met it, never in it.
+        if (!c.Species.Climbs && c.Space.Parts is { } parts)
+        {
+            float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+            if (!parts.Fits(feet, pr, ph) && parts.Gap(feet, pr, ph) < MathF.Min(0f, parts.Gap(c.Position, pr, ph)) + 0.002f)
+            {
+                c.LungeFrom = c.LungeTo = Center(c);
+                c.LungeBlocked = true;
+                c.Velocity = Vector3.Zero;
+                return;
+            }
+        }
+        c.Facing = facing;
         c.Velocity = travel / MathF.Max(0.01f, c.PhaseLength);
-        c.Position = center - c.Facing.Y * c.Clearance;
+        c.Position = feet;
         SyncYaw(c);
     }
 

@@ -27,7 +27,7 @@ public partial class OccupantTest
 {
     sealed class PathTally
     {
-        public int Places, Steps, InWall, InParts, InRock, Flees, Farther, Cornered, Cracks, Searches, Repaths, Unstuck;
+        public int Places, Steps, InWall, InParts, InRock, Entries, Flees, Farther, Cornered, Cracks, Searches, Repaths, Unstuck;
         public float NpcSeconds, Stuck, Longest;
         public double StepMs, WorstMs;
         public int SimSteps;
@@ -41,7 +41,11 @@ public partial class OccupantTest
         public float Still, FleeAt = -1f, From;
         public Vector3 Threat;
         public int Steps, Jumps;
-        public bool Out;
+        public bool Out, HadSpot, WasIn;
+        public AttackPhase PrevPhase;
+        public float PrevGap = 9f;
+        public Vector3 PrevAt;
+        public CState PrevState;
         public Vector3 Last;
     }
 
@@ -86,7 +90,7 @@ public partial class OccupantTest
         GD.Print($"    {where}: {t.Places} places, {t.NpcSeconds:F0} NPC-seconds over {t.SimSteps} steps; states {string.Join(" ", t.States.OrderBy(s => s))}; "
             + $"a step {t.StepMs / Math.Max(1, t.SimSteps):F3} ms on average, worst {t.WorstMs:F2} ms, {t.Searches} path searches; {t.Repaths} ways found again for no headway, {t.Unstuck} put back where they last went well");
         Check(t.Places >= places && t.NpcSeconds > 300f, $"{where}: {t.Places} places walked, {t.NpcSeconds:F0} NPC-seconds");
-        Check(t.InWall + t.InParts + t.InRock == 0, $"{where}: no body in a wall, furniture or a rock ({t.InWall} body-steps in walls, {t.InParts} in furniture, {t.InRock} in rocks, of {t.Steps}){t.WallAt}");
+        Check(t.InWall + t.InParts + t.InRock == 0, $"{where}: no body in a wall, furniture or a rock ({t.Entries} times in: {t.InWall} body-steps in walls, {t.InParts} in furniture, {t.InRock} in rocks, of {t.Steps}){t.WallAt}");
         float share = t.Stuck / Math.Max(1f, t.NpcSeconds);
         Check(share < 0.02f && t.Longest <= 3f, $"{where}: stuck {share:P2} of the time (under 2%), longest {t.Longest:F1} s (3 s at most){t.LongestAt}");
         Check(t.Flees >= 5 && t.Farther >= t.Flees * 0.9f, $"{where}: {t.Farther} of {t.Flees} flights end farther from what they fled by the way round (nine in ten at least; {t.Cornered} cornered, with nowhere farther to reach, and {t.Cracks} running for a crack){t.NearerAt}");
@@ -316,7 +320,8 @@ public partial class OccupantTest
             {
                 bool parts = c.Space?.Parts is { } ps && !c.Species.Climbs && ps.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) < -Interpenetration.Tolerance;
                 if (parts) t.InParts++; else t.InWall++;
-                if (t.WallAt == "") t.WallAt = $"; e.g. {who} in {(parts ? "furniture" : "a wall")} ({(out_ ? "just out of a crack" : k.Steps == 0 ? "as first seen" : $"{k.Steps} steps after first seen")}, {c.Phase}, {c.Species.Role}, density {c.Space?.Density(Crawl.Center(c)) ?? 0f:F2}, bare {c.Space?.Bare.Density(Crawl.Center(c)) ?? 0f:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1})";
+                if (!k.WasIn) t.Entries++;
+                if (t.WallAt == "" && !k.WasIn) t.WallAt = $"; e.g. {who} in {(parts ? "furniture" : "a wall")} (the step before {k.PrevPhase}, {k.PrevState}, its body {k.PrevGap:F2} m off the furniture and {(c.Position - k.PrevAt).Length():F2} m from where it is now, {(c.Space?.Parts is { } pp ? pp.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) : 0f):F2} now; {(out_ ? "just out of a crack" : k.Steps == 0 ? "as first seen" : $"{k.Steps} steps after first seen")}, {c.Phase}, {c.Species.Role}, density {c.Space?.Density(Crawl.Center(c)) ?? 0f:F2}, bare {c.Space?.Bare.Density(Crawl.Center(c)) ?? 0f:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1})";
             }
             else if (c.Space == null && Rock(sim.Nav, c.Position, Locomotion.Footprint(c.Species) - 0.05f))
             {
@@ -332,28 +337,34 @@ public partial class OccupantTest
                 if (k.Still >= 1f) t.Stuck += PathDt;
                 if (k.Still > t.Longest) { t.Longest = k.Still; t.LongestAt = $"; e.g. {who}, wanting {c.Desired.Length():F1} m/s, {c.Species.Role}, way {c.PathIndex}/{c.Path.Count}, goal {(c.HasGoal ? $"{c.Goal.X:F1},{c.Goal.Y:F1},{c.Goal.Z:F1}" : "none")}, put back on {(c.Behind - c.Position).Length():F1} m off, stuck {c.StuckFor:F1} s, {k.Jumps} jumps, crawling {c.CrawlSpeed:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1}, next {(c.PathIndex < c.Path.Count ? (c.Path[c.PathIndex] - Crawl.Center(c)).Length() : -1f):F1} m off"; }
             }
-            // A flight: from where what it ran from was as it set off, by the way round, at the start and three seconds on (or its end, if later than 1.5 s).
+            // A flight: from where what it ran from was as it set off, by the way round, at the start and at its end (six seconds on at most; at least 1.5 s).
             bool fleeing = c.State == CState.Flee;
             if (fleeing && k.FleeAt < 0f)
             {
                 k.FleeAt = sim.Time;
                 k.Threat = Threat(sim, c, you);
                 k.From = distance(c, k.Threat);
+                k.HadSpot = false;
             }
-            else if (k.FleeAt >= 0f && (!fleeing || sim.Time - k.FleeAt >= 3f))
+            if (fleeing && k.FleeAt >= 0f && (c.HasAway && sim.Time - c.AwayAt < 6f || c.Herd is { Alarmed: true })) k.HadSpot = true;
+            if (k.FleeAt == float.MaxValue) { if (!fleeing) k.FleeAt = -1f; } // (one count a flight)
+            else if (k.FleeAt >= 0f && (!fleeing || sim.Time - k.FleeAt >= 6f))
             {
+                if (sim.Time - k.FleeAt < 1.5f || float.IsPositiveInfinity(k.From)) { }
                 // (Cornered, with nowhere it can reach farther from it, a flight is no flight: it stands its ground.)
-                if (fleeing && !c.HasAway && c.Herd is not { Alarmed: true }) { if (c.Species.FleesIntoCracks) t.Cracks++; else t.Cornered++; }
-                else if (sim.Time - k.FleeAt >= 1.5f && !float.IsPositiveInfinity(k.From))
+                else if (!k.HadSpot) { if (c.Species.FleesIntoCracks) t.Cracks++; else t.Cornered++; }
+                else
                 {
                     t.Flees++;
                     float now = distance(c, k.Threat);
                     if (now > k.From + 0.5f) t.Farther++;
                     else if (t.NearerAt == "") t.NearerAt = $"; e.g. {who}: {k.From:F1} m by the way round from it at the start, {now:F1} m after {sim.Time - k.FleeAt:F1} s; spot {(c.HasAway ? $"{(c.AwayGoal - c.Position).Length():F1} m off" : "none")}, way {c.PathIndex}/{c.Path.Count}, wanting {c.Desired.Length():F1} m/s, {k.Jumps} jumps";
                 }
-                k.FleeAt = fleeing ? float.MaxValue : -1f; // (one count a flight)
+                k.FleeAt = fleeing ? float.MaxValue : -1f;
             }
             k.Steps++;
+            (k.WasIn, k.PrevPhase, k.PrevState, k.PrevAt) = (Interpenetration.Inside(sim, c), c.Phase, c.State, c.Position);
+            k.PrevGap = c.Space?.Parts is { } gp && !c.Species.Climbs ? gp.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) : 9f;
         }
     }
 

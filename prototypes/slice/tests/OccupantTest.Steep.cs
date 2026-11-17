@@ -113,6 +113,8 @@ public partial class OccupantTest
         hunter.Temperament = Temperament.Aggressive;
         hunter.Stats.Hunts = true;
         hunter.Stats.Damage = 1f;
+        hunter.Stats.Retaliates = true;
+        hunter.Stats.Perception = MathF.Max(hunter.Stats.Perception, 90f);
         Species folk = life.People.Person((ulong)_rng.NextInt64(), PersonRole.Scavenger, Occupancy.Friendly);
         sim.SpawnGroup(grazer, Near(Vector3.Zero, 40f), 6);
         sim.SpawnGroup(folk, Near(Vector3.Zero, 40f), 4);
@@ -135,7 +137,7 @@ public partial class OccupantTest
             // The hunters are set on the intruder; the grazers and the band are frightened off now and then.
             if (step % 150 == 0)
                 foreach (Creature h in hunters)
-                    if (!h.Dead && !h.Removed) { h.Noticed = you; sim.Damage(h, 0.01f, you); }
+                    if (!h.Dead && !h.Removed) { h.Noticed = you; h.LastSeen = you.Position; sim.Damage(h, 0.01f, you); }
             if (step % 210 == 100)
                 foreach (Creature c in sim.Creatures)
                     if (!c.Dead && !c.Removed && !hunters.Contains(c) && WildSim.Flat(c.Position - you.Position).Length() < 40f) sim.Scare(c, you.Position, 5f);
@@ -162,7 +164,8 @@ public partial class OccupantTest
                 else f.Face = 0f;
                 // Off an edge: a run of steps down steeper than its legs take, adding up to more than it drops.
                 float down = f.PrevH - c.Position.Y, run = WildSim.Flat(c.Position - f.Prev).Length();
-                if (down > 0f && down > g.Slope * run * 1.2f) f.Drop += down;
+                if (run > 0.6f) f.Drop = 0f; // (put back where it last went well: no fall)
+                else if (down > 0f && down > g.Slope * run * 1.2f) f.Drop += down;
                 else f.Drop = 0f;
                 if (f.Drop > g.Drop && !f.Fell)
                 {
@@ -186,7 +189,9 @@ public partial class OccupantTest
             else
             {
                 s.Waited++;
-                if (s.HunterAt == "") s.HunterAt = $"; e.g. {form}: a hunter came no nearer than {closest[h]:F1} m, at {h.Position.X:F1},{h.Position.Y:F1},{h.Position.Z:F1} ({h.State}), the intruder at {you.Position.X:F1},{you.Position.Y:F1},{you.Position.Z:F1}";
+                var probe = new List<Vector3>();
+                bool way = nav.FindPath(h.Position, you.Position, probe, 4000, Brain.GaitOf(h.Species));
+                if (s.HunterAt == "") s.HunterAt = $"; e.g. {form}: a hunter came no nearer than {closest[h]:F1} m, at {h.Position.X:F1},{h.Position.Y:F1},{h.Position.Z:F1} ({h.State}, noticed {h.Noticed?.Name ?? "none"}, wanting {h.Desired.Length():F1} m/s, its way {h.PathIndex}/{h.Path.Count}{(h.PathWhole ? "" : " short")}), the intruder at {you.Position.X:F1},{you.Position.Y:F1},{you.Position.Z:F1}; the grid has {(way ? $"a way of {probe.Count} points" : "no way")}";
             }
         }
         t.Places++;

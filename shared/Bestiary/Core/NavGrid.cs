@@ -42,7 +42,7 @@ public sealed class NavGrid
     readonly List<Obstacle>[] _buckets;      // obstacles touching each cell, for local avoidance
     readonly List<Obstacle> _obstacles = new();
     // The ground's height at each cell's middle (a fine window's worked out as it is read), and the gait this search is for.
-    readonly float[] _h;
+    readonly float[] _h, _s; // (and the steepest the ground is within the cell, rise over run)
     Terrain _ground;
     Gait _gait;
 
@@ -75,7 +75,7 @@ public sealed class NavGrid
         int n = Size * Size;
         _blocked = new int[n];
         _buckets = new List<Obstacle>[n];
-        _h = new float[n];
+        (_h, _s) = (new float[n], new float[n]);
         (_g, _t, _from, _visit, _closedAt, _tAt) = (new float[n], new float[n], new int[n], new int[n], new int[n], new int[n]);
     }
 
@@ -87,7 +87,7 @@ public sealed class NavGrid
         int n = Size * Size;
         _blocked = new int[n];
         _known = new int[n];
-        _h = new float[n];
+        (_h, _s) = (new float[n], new float[n]);
         (_g, _t, _from, _visit, _closedAt, _tAt) = (new float[n], new float[n], new int[n], new int[n], new int[n], new int[n]);
     }
 
@@ -99,8 +99,17 @@ public sealed class NavGrid
         for (int x = 0; x < Size; x++)
         {
             Vector3 c = Center(x, z);
-            _h[z * Size + x] = t.Height(c.X, c.Z);
+            (_h[z * Size + x], _s[z * Size + x]) = (t.Height(c.X, c.Z), Steepest(t, c, CellSize * 0.5f));
         }
+    }
+
+    /// <summary>The steepest the ground is round a point, out to a reach each way (rise over run).</summary>
+    static float Steepest(Terrain t, Vector3 p, float reach)
+    {
+        float h = t.Height(p.X, p.Z);
+        float x = MathF.Max(MathF.Abs(t.Height(p.X + reach, p.Z) - h), MathF.Abs(t.Height(p.X - reach, p.Z) - h));
+        float z = MathF.Max(MathF.Abs(t.Height(p.X, p.Z + reach) - h), MathF.Abs(t.Height(p.X, p.Z - reach) - h));
+        return MathF.Max(x, z) / reach;
     }
 
     /// <summary>
@@ -180,7 +189,7 @@ public sealed class NavGrid
         bool built = _built(p);
         k = built ? 3 : _coarse.Rock(p, _body) ? 1 : 0;
         _known[i] = _stamp << 2 | k;
-        _h[i] = _coarse._ground?.Height(p.X, p.Z) ?? 0f;
+        if (_coarse._ground is { } g) (_h[i], _s[i]) = (g.Height(p.X, p.Z), Steepest(g, p, 0.5f));
         return k;
     }
 
@@ -195,6 +204,8 @@ public sealed class NavGrid
         if (_gait.Any || _ground == null && _coarse?._ground == null) return true;
         if (_coarse != null) { Known(from % Size, from / Size); Known(to % Size, to / Size); }
         float rise = _h[to] - _h[from], slope = MathF.Abs(rise) / run;
+        // Never onto a face from ground it walks (only on down off one it is on already); never up too steep a rise, nor off too high an edge.
+        if (_s[to] > _gait.Slope && !(_s[from] > _gait.Slope && rise < 0f)) return false;
         if (slope > _gait.Slope && (rise > 0f || -rise > _gait.Drop)) return false;
         float k = MathF.Min(slope / _gait.Slope, 1f);
         cost = 1f + 2f * k * k;
@@ -247,10 +258,14 @@ public sealed class NavGrid
     public bool LineClear(Vector3 a, Vector3 b, bool built = false, Gait gait = default)
     {
         _gait = built ? default : gait;
-        return Line(a, b, built);
+        return Line(a, b, built ? 1 : 0);
     }
 
-    bool Line(Vector3 a, Vector3 b, bool built)
+    /// <summary>Whether ground steeper than a slope lies anywhere on a straight line, by its cells (too coarse to tell a way across it: the fine window can).</summary>
+    public bool Rough(Vector3 a, Vector3 b, float slope) => !Line(a, b, 2, slope);
+
+    /// <summary>The supercover walk of a line: <paramref name="mode"/> 0 no blocked cell and every move one this search's gait makes, 1 no built-on cell, 2 no cell steeper than <paramref name="slope"/>.</summary>
+    bool Line(Vector3 a, Vector3 b, int mode, float slope = 0f)
     {
         (int x, int z) = Cell(a);
         (int x1, int z1) = Cell(b);
@@ -264,11 +279,14 @@ public sealed class NavGrid
         int was = -1;
         for (int guard = 0; guard < Size * 2; guard++)
         {
-            if (!first && (built ? BuiltAt(x, z) : Blocked(x, z))) return false; // a creature may start inside a blocked cell
+            bool inGrid = InGrid(x, z);
+            if (mode == 2 && inGrid && _coarse == null && _s[z * Size + x] > slope) return false;
+            if (!first && mode == 1 && BuiltAt(x, z)) return false;
+            if (!first && mode == 0 && Blocked(x, z)) return false; // a creature may start inside a blocked cell
             // (Too steep from the cell before, or off too high an edge: not a straight way for these legs.)
-            if (!first && !_gait.Any && InGrid(x, z) && was >= 0 && !Legs(was, z * Size + x, CellSize, out _)) return false;
+            if (!first && mode == 0 && !_gait.Any && inGrid && was >= 0 && !Legs(was, z * Size + x, CellSize, out _)) return false;
             first = false;
-            was = InGrid(x, z) ? z * Size + x : -1;
+            was = inGrid ? z * Size + x : -1;
             if (x == x1 && z == z1 || MathF.Min(tx, tz) > 1f) return true; // (the line ends in this cell: a walk that rounding carried past its last cell would run on to the grid's edge)
             if (tx < tz) { tx += stepX; x += sx; }
             else { tz += stepZ; z += sz; }
@@ -343,7 +361,7 @@ public sealed class NavGrid
         if (!InGrid(sx, sz)) return false;
         int start = sz * Size + sx;
         // How far every cell near is from the threat by the way round; past what that flood reached, at least as far as it went.
-        float tFar = Flood(threat, budget);
+        float tFar = Flood(threat, budget * 3); // (far enough round that a gap's one way across is known)
         float T(int i) => _tAt[i] == _tStamp ? _t[i] : MathF.Max(tFar, Straight(i, threat));
         float t0 = T(start);
         // Then out from the body: stepping nearer the threat costs four times over, and the best is the cell farthest
@@ -462,7 +480,7 @@ public sealed class NavGrid
         {
             Vector3 next = Center(_cells[i] % Size, _cells[i] / Size);
             Vector3 after = i + 1 < _cells.Count ? Center(_cells[i + 1] % Size, _cells[i + 1] / Size) : last;
-            if (!Line(anchor, after, false))
+            if (!Line(anchor, after, 0))
             {
                 path.Add(next);
                 anchor = next;

@@ -508,11 +508,11 @@ public sealed class WildSim
         return Terrain.Clamp(p, 8f);
     }
 
-    /// <summary>Ground at a point too steep to stand on for anything that walks (a face, a cliff): no spot to be put or to make for.</summary>
-    public bool Steep(Vector3 p)
+    /// <summary>Ground at a point steeper than a slope (by default the least any walker takes: a face, a cliff): no spot to be put or to make for.</summary>
+    public bool Steep(Vector3 p, float slope = 0.7f)
     {
         Vector3 n = Terrain.Normal(p.X, p.Z);
-        return new Vector2(n.X, n.Z).Length() > n.Y * 0.9f;
+        return new Vector2(n.X, n.Z).Length() > n.Y * slope;
     }
 
     public void Remove(Creature c) => c.Removed = true;
@@ -575,7 +575,7 @@ public sealed class WildSim
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
             Vector3 was = c.Position, to = was + new Vector3(moved.X, 0f, moved.Z);
-            if (Locomotion.IntoTrees(this, c, to)) continue; // never jostled into a trunk or a rock
+            if (Locomotion.IntoTrees(this, c, to) || Locomotion.Face(this, was, to, Brain.GaitOf(c.Species))) continue; // never jostled into a trunk or a rock, nor onto a face
             c.Position = to;
             if (Interpenetration.Inside(this, c)) c.Position = was; // nor a wall
         }
@@ -736,7 +736,7 @@ public sealed class WildSim
     Func<Vector3, bool> _builtGround;
 
     /// <summary>Whether a point of the ground has something built on it at a body's middle (<see cref="SolidAt"/> there): what the fine window round buildings is blocked by.</summary>
-    public Func<Vector3, bool> BuiltGround => _builtGround ??= p => SolidAt(new Vector3(p.X, Terrain.Height(p.X, p.Z) + 0.4f, p.Z));
+    public Func<Vector3, bool> BuiltGround => _builtGround ??= p => SolidAt != null && SolidAt(new Vector3(p.X, Terrain.Height(p.X, p.Z) + 0.4f, p.Z));
 
     // ---- Damage -----------------------------------------------------------------------
 

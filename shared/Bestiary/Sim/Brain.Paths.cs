@@ -47,19 +47,27 @@ public static partial class Brain
             c.Path.Clear();
             return to.LengthSquared() > 1e-4f ? to.Normalized() : Vector3.Zero;
         }
-        bool walled = c.PathIndex < c.Path.Count && Built(w, c, c.Position, c.Path[c.PathIndex]);
+        bool walled = c.PathIndex < c.Path.Count && Tight(w, c, c.Position, c.Path[c.PathIndex]);
         bool stale = c.Repath || walled || c.Path.Count == 0 || c.PathGoal.DistanceTo(goal) > 4f || c.PathAge > 4f;
         if (stale && w.TakePathBudget())
         {
-            // Among buildings, by the fine window round them; else by the ground's own grid.
+            NavGrid.Gait g = GaitOf(c.Species);
+            bool built = Built(w, c, c.Position, goal) || walled && Built(w, c, c.Position, c.Path[c.PathIndex]);
             Ready(c, goal);
-            if (walled || Built(w, c, c.Position, goal))
+            if (built)
             {
+                // Among buildings, by the fine window round them (a doorway is a metre wide).
                 NavGrid fine = Fine(w, c, c.Position, goal);
-                c.PathWhole = fine.FindPath(c.Position, fine.Inside(goal, 2), c.Path, 3000, GaitOf(c.Species));
+                c.PathWhole = fine.FindPath(c.Position, fine.Inside(goal, 2), c.Path, 3000, g);
                 c.PathReach = 0.5f;
             }
-            else c.PathWhole = w.Nav.FindPath(c.Position, goal, c.Path, gait: GaitOf(c.Species));
+            else
+            {
+                // By the ground's own grid; its first stretch, where that crosses rough ground, on the fine window round
+                // it (a ramp or a pass is narrower than the grid's cells).
+                c.PathWhole = w.Nav.FindPath(c.Position, goal, c.Path, gait: g);
+                if (c.Path.Count > 0 && Tight(w, c, c.Position, c.Path[0])) Refine(w, c, g);
+            }
             if (c.Path.Count == 0) c.HasGoal = false; // nowhere it can get to from here: another goal
         }
         // No way yet (or none): it waits a moment rather than walk into what is in the way.
@@ -68,6 +76,18 @@ public static partial class Brain
         if (Short(c, c.Position, goal)) return Vector3.Zero;
         Vector3 dir = WildSim.Flat(c.Path[c.PathIndex] - c.Position);
         return dir.LengthSquared() > 1e-4f ? dir.Normalized() : Vector3.Zero;
+    }
+
+    /// <summary>A way's first stretch, to its first point, found again on the fine window round it: the cells it goes by put in front of the rest.</summary>
+    static void Refine(WildSim w, Creature c, NavGrid.Gait g)
+    {
+        Vector3 to = c.Path[0];
+        NavGrid fine = Fine(w, c, c.Position, to);
+        fine.FindPath(c.Position, fine.Inside(to, 2), w.Way, 3000, g);
+        if (w.Way.Count == 0) return;
+        c.Path.RemoveAt(0);
+        c.Path.InsertRange(0, w.Way);
+        c.PathReach = 0.5f;
     }
 
     /// <summary>A new way is being laid: from its start, for this goal.</summary>
@@ -180,7 +200,7 @@ public static partial class Brain
     /// <summary>Whether a body gets straight from one point to another on its own grid: rocks, trunks and what is built on the ground; walls, floors and furniture in a place.</summary>
     public static bool Clear(WildSim w, Creature c, Vector3 a, Vector3 b)
     {
-        if (c.Space == null) return w.Nav.LineClear(a, b, gait: GaitOf(c.Species)) && !Built(w, c, a, b);
+        if (c.Space == null) return w.Nav.LineClear(a, b, gait: GaitOf(c.Species)) && !Tight(w, c, a, b);
         Vector3 lift = c.Facing.Y * c.Clearance;
         return SpaceMath.Clear(c.Space, a + lift, b + lift, 0f) && (c.Species.Climbs || c.Space.Parts is not { } parts || parts.Sweep(c.Position, b with { Y = c.Position.Y }, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)));
     }
@@ -196,6 +216,17 @@ public static partial class Brain
         : s.Figure != null ? new(0.84f, 2f)
         : s.Body.Size > 3f ? new(0.7f, Math.Clamp(s.BodyHeight * 0.5f, 1f, 2f))
         : new(1f, Math.Clamp(s.BodyHeight * 1.5f, 1f, 3f));
+
+    /// <summary>
+    /// Whether the ground's 3 m cells are too coarse for a straight line: something built across it (a doorway is a metre
+    /// wide), or rough ground on it where only the fine window's 1 m cells tell whether these legs get across.
+    /// </summary>
+    static bool Tight(WildSim w, Creature c, Vector3 a, Vector3 b)
+    {
+        if (Built(w, c, a, b)) return true;
+        NavGrid.Gait g = GaitOf(c.Species);
+        return !g.Any && w.Nav.Rough(a, b, g.Slope * 0.8f) && !Fine(w, c, a, b).LineClear(a, b, gait: g);
+    }
 
     /// <summary>Whether anything built stands across a straight line on the ground (a place's walls, a house, the bunker): by the fine window's 1 m cells.</summary>
     static bool Built(WildSim w, Creature c, Vector3 a, Vector3 b) => w.SolidAt != null && !Fine(w, c, a, b).LineClear(a, b, built: true);
@@ -245,7 +276,7 @@ public static partial class Brain
                 // Among buildings, on the fine window round it (doorways are a metre wide); else on the ground's own cells.
                 Vector3 off = WildSim.Flat(c.Position - from);
                 Vector3 ahead = c.Position + (off.LengthSquared() > 0.01f ? off.Normalized() : c.Forward) * reach;
-                bool walled = Built(w, c, c.Position, ahead) || Built(w, c, c.Position, from);
+                bool walled = Tight(w, c, c.Position, ahead) || Tight(w, c, c.Position, from);
                 if (walled) c.PathReach = 0.5f;
                 NavGrid grid = walled ? Fine(w, c, c.Position, c.Position) : w.Nav;
                 c.HasAway = grid.Away(c.Position, from, MathF.Min(reach, walled ? 20f : reach), c.Path, walled ? 900 : 500, keep, keepRadius, GaitOf(c.Species));
@@ -362,24 +393,26 @@ public static partial class Brain
                 for (int k = 0; k < 8; k++)
                 {
                     Vector3 p = c.Position + new Vector3(MathF.Cos(k * MathF.Tau / 8f), 0f, MathF.Sin(k * MathF.Tau / 8f)) * r;
-                    if (!w.Terrain.Inside(p, 6f) || w.Nav.Rock(p, Locomotion.Footprint(c.Species)) || Interpenetration.SolidSurface(w, p, c.Species) || !Clear(w, c, c.Position, p)) continue;
+                    if (!w.Terrain.Inside(p, 6f) || w.Steep(p) || w.Nav.Rock(p, Locomotion.Footprint(c.Species)) || Interpenetration.SolidSurface(w, p, c.Species) || !w.Nav.LineClear(c.Position, p)) continue;
                     c.Position = new Vector3(p.X, w.Terrain.Height(p.X, p.Z), p.Z);
                     return true;
                 }
             return false;
         }
-        // In a place: a cell its body can stand in two or three metres off (set down on the floor there: a climber goes back up from it), not where it was.
-        SpaceNav.Body body = SpaceNav.BodyOf(c.Species) with { Climbs = false };
+        // In a place: a cell its body can hold two or three metres off (a walker's floor; any surface for a climber, in a
+        // duct as on a wall), set down on what is under it there, not where it was.
+        bool climbs = c.Species.Climbs;
+        SpaceNav.Body body = climbs ? SpaceNav.BodyOf(c.Species) : SpaceNav.Body.Of(false, SpaceNav.Headroom(c.Species));
         Vector3I at = SpaceMath.Cell(Crawl.Center(c));
         (Vector3 was, Basis facing) = (c.Position, c.Facing);
         for (int r = 2; r <= 3; r++)
-        for (int dy = c.Species.Climbs ? -4 : -1; dy <= 1; dy++) // (a climber high on a wall: the floor under it)
+        for (int dy = climbs ? -r : -1; dy <= (climbs ? r : 1); dy++)
         for (int dz = -r; dz <= r; dz++)
         for (int dx = -r; dx <= r; dx++)
         {
             var cell = new Vector3I(at.X + dx, at.Y + dy, at.Z + dz);
-            if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r || !SpaceNav.Walkable(c.Space, cell, body)) continue;
-            Crawl.Place(w, c, SpaceNav.Point(c.Space, cell, body) - Vector3.Up * 0.4f, null);
+            if (Math.Max(Math.Abs(dx), Math.Max(Math.Abs(dz), climbs ? Math.Abs(dy) : 0)) != r || !SpaceNav.Walkable(c.Space, cell, body)) continue;
+            Crawl.Place(w, c, SpaceNav.Point(c.Space, cell, body) - (climbs ? Vector3.Zero : Vector3.Up * 0.4f), null);
             if (!Interpenetration.Inside(w, c) && (c.Position - was).Length() > 1f) return true;
         }
         (c.Position, c.Facing) = (was, facing);
