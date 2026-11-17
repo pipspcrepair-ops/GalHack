@@ -20,6 +20,7 @@ public partial class BestiaryTest
         BandsMeetYouAsPeople();
         BandsAnswerWhatYouDid();
         BandsMeetEachOther();
+        PeopleAndBeasts();
     }
 
     /// <summary>The people a world has out in the open: its own kinds (by its story), its hunting parties, its ruin roamers and its settlers.</summary>
