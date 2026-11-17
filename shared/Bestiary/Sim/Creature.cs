@@ -246,6 +246,8 @@ public sealed class Creature
     public float PathAge;
     /// <summary>How near a waypoint on the ground counts as passed: less on a fine way among walls, whose corners are doorways.</summary>
     public float PathReach = 1.6f;
+    /// <summary>Whether its last way found reached its goal (else it ends at the nearest it could get).</summary>
+    public bool PathWhole = true;
     /// <summary>Its way is to be found again at its next think (it made no headway on this one).</summary>
     public bool Repath;
     /// <summary>Making headway (Brain.Headway): where it last got a quarter metre on from, for how long it hasn't since while wanting to go, and whether that has had it look for another way yet.</summary>

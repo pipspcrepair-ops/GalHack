@@ -27,7 +27,7 @@ public partial class OccupantTest
 {
     sealed class PathTally
     {
-        public int Places, Steps, InWall, InParts, InRock, Flees, Farther, Searches, Repaths, Unstuck;
+        public int Places, Steps, InWall, InParts, InRock, Flees, Farther, Cornered, Cracks, Searches, Repaths, Unstuck;
         public float NpcSeconds, Stuck, Longest;
         public double StepMs, WorstMs;
         public int SimSteps;
@@ -40,6 +40,7 @@ public partial class OccupantTest
         public Vector3 Anchor;
         public float Still, FleeAt = -1f, From;
         public Vector3 Threat;
+        public int Steps;
     }
 
     const float PathDt = 1f / 30f;
@@ -81,7 +82,7 @@ public partial class OccupantTest
         Check(t.InWall + t.InParts + t.InRock == 0, $"{where}: no body in a wall, furniture or a rock ({t.InWall} body-steps in walls, {t.InParts} in furniture, {t.InRock} in rocks, of {t.Steps}){t.WallAt}");
         float share = t.Stuck / Math.Max(1f, t.NpcSeconds);
         Check(share < 0.02f && t.Longest <= 3f, $"{where}: stuck {share:P2} of the time (under 2%), longest {t.Longest:F1} s (3 s at most){t.LongestAt}");
-        Check(t.Flees >= 5 && t.Farther >= t.Flees * 0.9f, $"{where}: {t.Farther} of {t.Flees} flights end farther from what they fled by the way round (nine in ten at least){t.NearerAt}");
+        Check(t.Flees >= 5 && t.Farther >= t.Flees * 0.9f, $"{where}: {t.Farther} of {t.Flees} flights end farther from what they fled by the way round (nine in ten at least; {t.Cornered} cornered, with nowhere farther to reach, and {t.Cracks} running for a crack){t.NearerAt}");
     }
 
     /// <summary>One place furnished and filled as in play, walked by an intruder for 40 s; false if it holds too little to watch.</summary>
@@ -105,6 +106,8 @@ public partial class OccupantTest
             PoiRoom r = rooms[rng.Int(0, rooms.Count - 1)];
             Species s = deep.Fauna.For(i < 4 ? DeepRole.Subsister : DeepRole.Prowler, fauna.Rooms.Theme, r.Depth);
             s = s == null ? null : deep.Fauna.Fitted(s, MathF.Min(r.Size.X, r.Size.Z), r.Size.Y);
+            // (These vermin run for it through the rooms, never into a crack: the flights watched.)
+            if (s != null && i < 4) { s = s.Resized(s.Body.Size); s.FleesIntoCracks = false; }
             if (s != null && Floor(space, r, SpaceNav.BodyOf(s), rng) is { } at) sim.SpawnIn(s, space, at);
         }
         PlaceFauna.CullUnreached(sim, PlaceFauna.Reach(inst, fauna.Rooms));
@@ -301,7 +304,7 @@ public partial class OccupantTest
             {
                 bool parts = c.Space?.Parts is { } ps && !c.Species.Climbs && ps.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) < -Interpenetration.Tolerance;
                 if (parts) t.InParts++; else t.InWall++;
-                if (t.WallAt == "") t.WallAt = $"; e.g. {who} in {(parts ? "furniture" : "a wall")}";
+                if (t.WallAt == "") t.WallAt = $"; e.g. {who} in {(parts ? "furniture" : "a wall")} ({(k.Steps == 0 ? "as first seen" : $"{k.Steps} steps after first seen")}, {c.Phase}, {c.Species.Role})";
             }
             else if (c.Space == null && Rock(sim.Nav, c.Position, Locomotion.Footprint(c.Species) - 0.05f))
             {
@@ -315,7 +318,7 @@ public partial class OccupantTest
             {
                 k.Still += PathDt;
                 if (k.Still >= 1f) t.Stuck += PathDt;
-                if (k.Still > t.Longest) { t.Longest = k.Still; t.LongestAt = $"; e.g. {who}, wanting {c.Desired.Length():F1} m/s"; }
+                if (k.Still > t.Longest) { t.Longest = k.Still; t.LongestAt = $"; e.g. {who}, wanting {c.Desired.Length():F1} m/s, {c.Species.Role}, way {c.PathIndex}/{c.Path.Count}, goal {(c.HasGoal ? $"{c.Goal.X:F1},{c.Goal.Y:F1},{c.Goal.Z:F1}" : "none")}, put back on {(c.Behind - c.Position).Length():F1} m off, stuck {c.StuckFor:F1} s"; }
             }
             // A flight: from where what it ran from was as it set off, by the way round, at the start and three seconds on (or its end, if later than 1.5 s).
             bool fleeing = c.State == CState.Flee;
@@ -327,7 +330,9 @@ public partial class OccupantTest
             }
             else if (k.FleeAt >= 0f && (!fleeing || sim.Time - k.FleeAt >= 3f))
             {
-                if (sim.Time - k.FleeAt >= 1.5f && !float.IsPositiveInfinity(k.From))
+                // (Cornered, with nowhere it can reach farther from it, a flight is no flight: it stands its ground.)
+                if (fleeing && !c.HasAway && c.Herd is not { Alarmed: true }) { if (c.Species.FleesIntoCracks) t.Cracks++; else t.Cornered++; }
+                else if (sim.Time - k.FleeAt >= 1.5f && !float.IsPositiveInfinity(k.From))
                 {
                     t.Flees++;
                     float now = distance(c, k.Threat);
@@ -336,12 +341,15 @@ public partial class OccupantTest
                 }
                 k.FleeAt = fleeing ? float.MaxValue : -1f; // (one count a flight)
             }
+            k.Steps++;
         }
     }
 
-    /// <summary>What a fleeing creature runs from: a hunter after it, else the intruder.</summary>
+    /// <summary>What a fleeing creature runs from: what its flight was picked from, its herd's fright, a fire, a hunter after it, else the intruder.</summary>
     static Vector3 Threat(WildSim sim, Creature c, DummyTarget you)
     {
+        if (c.HasAway && sim.Time - c.AwayAt < 0.5f) return c.AwayFrom;
+        if (c.Herd is { Alarmed: true } herd) return herd.ThreatPos;
         if (c.Space == null && sim.Time < c.ScaredUntil) return c.ScaredFrom;
         foreach (Creature h in sim.Creatures)
             if (h != c && !h.Dead && !h.Removed && (h.Prey == c || h.AttackTarget == c.AsTarget) && (h.Position - c.Position).Length() < 6f) return h.Position;

@@ -209,6 +209,8 @@ public static partial class Brain
         c.InCrack = null;
         c.CrackExit = null;
         Crawl.Place(w, c, at.Position + at.Normal * 0.3f, at.Normal);
+        // (A mouth in a corner can set it down in the wall beside it: out onto the open surface nearest, never in the wall.)
+        if (Interpenetration.Inside(w, c)) Interpenetration.Free(w, c, at.Position + at.Normal * 0.3f);
         c.SetState(CState.Wander);
         c.HasGoal = false;
         c.Path.Clear();

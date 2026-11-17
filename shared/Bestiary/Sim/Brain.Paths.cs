@@ -48,7 +48,7 @@ public static partial class Brain
             return to.LengthSquared() > 1e-4f ? to.Normalized() : Vector3.Zero;
         }
         bool walled = c.PathIndex < c.Path.Count && Built(w, c, c.Position, c.Path[c.PathIndex]);
-        bool stale = c.Repath || walled || c.Path.Count == 0 || c.PathIndex >= c.Path.Count || c.PathGoal.DistanceTo(goal) > 4f || c.PathAge > 4f;
+        bool stale = c.Repath || walled || c.Path.Count == 0 || c.PathGoal.DistanceTo(goal) > 4f || c.PathAge > 4f;
         if (stale && w.TakePathBudget())
         {
             // Among buildings, by the fine window round them; else by the ground's own grid.
@@ -56,14 +56,17 @@ public static partial class Brain
             if (walled || Built(w, c, c.Position, goal))
             {
                 NavGrid fine = Fine(w, c, c.Position, goal);
-                fine.FindPath(c.Position, fine.Inside(goal, 2), c.Path, 3000);
+                c.PathWhole = fine.FindPath(c.Position, fine.Inside(goal, 2), c.Path, 3000);
                 c.PathReach = 0.5f;
             }
-            else w.Nav.FindPath(c.Position, goal, c.Path);
+            else c.PathWhole = w.Nav.FindPath(c.Position, goal, c.Path);
+            if (c.Path.Count == 0) c.HasGoal = false; // nowhere it can get to from here: another goal
         }
+        // No way yet (or none): it waits a moment rather than walk into what is in the way.
+        if (c.Path.Count == 0) return Vector3.Zero;
         Passed(c, c.Position);
-        Vector3 next = c.PathIndex < c.Path.Count ? c.Path[c.PathIndex] : goal;
-        Vector3 dir = WildSim.Flat(next - c.Position);
+        if (Short(c, c.Position, goal)) return Vector3.Zero;
+        Vector3 dir = WildSim.Flat(c.Path[c.PathIndex] - c.Position);
         return dir.LengthSquared() > 1e-4f ? dir.Normalized() : Vector3.Zero;
     }
 
@@ -75,6 +78,25 @@ public static partial class Brain
         c.PathGoal = goal;
         c.PathAge = 0f;
         c.PathReach = c.Space != null ? 0.9f : 1.6f;
+        c.PathWhole = true;
+    }
+
+    /// <summary>
+    /// At the end of its way short of the goal: a way that couldn't get there gives the goal up (it stands; a wander or a
+    /// forage picks another; a hunter waits at the nearest it can get), one that only ran out (at a fine window's edge) is
+    /// found again on from here. Nothing stands pushing at a wall toward somewhere it can't go.
+    /// </summary>
+    static bool Short(Creature c, Vector3 at, Vector3 goal)
+    {
+        Vector3 end = c.Path[^1];
+        if (c.PathIndex < c.Path.Count - 1 || (end - at).Length() > 0.7f || (end - goal).Length() < 1f) return false;
+        if (c.PathWhole)
+        {
+            c.Repath = true;
+            return false;
+        }
+        c.HasGoal = false;
+        return true;
     }
 
     /// <summary>Through a cave or a place along its surfaces: straight only when near, in the open and (a walker among furniture) its body gets by all the way; else on a path of its cells.</summary>
@@ -91,16 +113,19 @@ public static partial class Brain
             return;
         }
         c.PathAge += c.ThinkDt;
-        bool stale = c.Repath || c.Path.Count == 0 || c.PathIndex >= c.Path.Count || c.PathGoal.DistanceTo(goal) > 1.5f || c.PathAge > 4f;
+        bool stale = c.Repath || c.Path.Count == 0 || c.PathGoal.DistanceTo(goal) > 1.5f || c.PathAge > 4f;
         if (stale && w.TakePathBudget())
         {
             Ready(c, goal);
-            SpaceNav.FindPath(c.Space, center, goal, SpaceNav.BodyOf(c.Species), c.Path, 2500);
+            c.PathWhole = SpaceNav.FindPath(c.Space, center, goal, SpaceNav.BodyOf(c.Species), c.Path, 2500);
+            if (c.Path.Count == 0) c.HasGoal = false;
         }
+        c.Desired = Vector3.Zero;
+        if (c.Path.Count == 0) return;
         WaypointsPassed(c, center);
-        Vector3 next = c.PathIndex < c.Path.Count ? c.Path[c.PathIndex] : goal;
-        Vector3 dir = next - center;
-        c.Desired = dir.LengthSquared() > 1e-4f ? dir.Normalized() * speed : Vector3.Zero;
+        if (Short(c, center, goal)) return;
+        Vector3 dir = c.Path[c.PathIndex] - center;
+        if (dir.LengthSquared() > 1e-4f) c.Desired = dir.Normalized() * speed;
     }
 
     /// <summary>
@@ -215,8 +240,20 @@ public static partial class Brain
             }
             if (c.HasAway) c.PathGoal = c.AwayGoal = c.Path[^1];
         }
+        else if (!c.HasAway)
+        {
+            // No spot picked yet (this step's searches are spent): two metres straight off it, where that line is clear.
+            Vector3 off = WildSim.Flat(c.Position - from);
+            Vector3 step = c.Position + (off.LengthSquared() > 0.01f ? off.Normalized() : c.Forward) * 2f;
+            if (Clear(w, c, c.Position, step))
+            {
+                Go(w, c, step, speed);
+                return;
+            }
+        }
         if (!c.HasAway)
         {
+            // Cornered: it stands its ground, facing it.
             c.Desired = Vector3.Zero;
             c.FacePoint ??= from;
             return;
@@ -263,26 +300,31 @@ public static partial class Brain
         else if (c.StuckFor >= 2f * slow) Unstick(w, c);
     }
 
-    /// <summary>Still stuck after looking for another way: back where it last stood with its way going well (if that is near: a body carried to another sim's ground finds its way afresh), its way to be found again.</summary>
+    /// <summary>
+    /// Still stuck after looking for another way: back where it last stood with its way going well (if that is near: a
+    /// body carried to another sim's ground finds its way afresh), or, stuck where it was put down, onto the nearest open
+    /// spot round it; its way to be found again.
+    /// </summary>
     static void Unstick(WildSim w, Creature c)
     {
-        // Held by someone it is up against (you, one of a town's people): nothing it is stuck on; it tries again in a while.
+        // Pressed up against someone in its way (you, one of a town's people): nothing it is stuck on; it tries again in a while.
         foreach (ITarget t in w.Targets)
-            if (t.Attackable && (t.Position - c.Position).Length() < c.Radius + 0.8f)
+        {
+            Vector3 to = t.Position - c.Position;
+            if (t.Attackable && to.Length() < c.Radius + 0.6f && to.Dot(c.Desired) > 0f)
             {
                 c.StuckFor = 0f;
                 c.Repathed = false;
                 return;
             }
-        Vector3 to = c.Behind;
-        if ((to - c.Position).LengthSquared() is > 0.04f and < 25f)
+        }
+        bool back = (c.Behind - c.Position).LengthSquared() is > 1f and < 25f;
+        Vector3 behind = c.Behind;
+        if (back && c.Space != null) Crawl.Place(w, c, behind + c.BehindUp * 0.05f, c.Species.Climbs ? c.BehindUp : null);
+        else if (back) c.Position = new Vector3(behind.X, w.Terrain.Height(behind.X, behind.Z), behind.Z);
+        if (back || Loose(w, c))
         {
-            if (c.Space != null) Crawl.Place(w, c, to + c.BehindUp * 0.05f, c.Species.Climbs ? c.BehindUp : null);
-            else
-            {
-                c.Position = new Vector3(to.X, w.Terrain.Height(to.X, to.Z), to.Z);
-                c.Velocity = Vector3.Zero;
-            }
+            c.Velocity = Vector3.Zero;
             c.Rig?.Reset(w, c);
             w.Unstuck++;
         }
@@ -293,5 +335,38 @@ public static partial class Brain
         c.HasAway = false;
         c.StuckFor = 0f;
         c.Repathed = false;
+    }
+
+    /// <summary>The nearest open spot a metre or two round a body that its own grid lets it stand on and go from (false, and left where it was, if none).</summary>
+    static bool Loose(WildSim w, Creature c)
+    {
+        if (c.Space == null)
+        {
+            for (float r = 1f; r <= 3f; r += 1f)
+                for (int k = 0; k < 8; k++)
+                {
+                    Vector3 p = c.Position + new Vector3(MathF.Cos(k * MathF.Tau / 8f), 0f, MathF.Sin(k * MathF.Tau / 8f)) * r;
+                    if (!w.Terrain.Inside(p, 6f) || w.Nav.Rock(p, Locomotion.Footprint(c.Species)) || Interpenetration.SolidSurface(w, p, c.Species) || !Clear(w, c, c.Position, p)) continue;
+                    c.Position = new Vector3(p.X, w.Terrain.Height(p.X, p.Z), p.Z);
+                    return true;
+                }
+            return false;
+        }
+        // In a place: a cell its body can stand in two or three metres off (set down on the floor there: a climber goes back up from it), not where it was.
+        SpaceNav.Body body = SpaceNav.BodyOf(c.Species) with { Climbs = false };
+        Vector3I at = SpaceMath.Cell(Crawl.Center(c));
+        (Vector3 was, Basis facing) = (c.Position, c.Facing);
+        for (int r = 2; r <= 3; r++)
+        for (int dy = -1; dy <= 1; dy++)
+        for (int dz = -r; dz <= r; dz++)
+        for (int dx = -r; dx <= r; dx++)
+        {
+            var cell = new Vector3I(at.X + dx, at.Y + dy, at.Z + dz);
+            if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r || !SpaceNav.Walkable(c.Space, cell, body)) continue;
+            Crawl.Place(w, c, SpaceNav.Point(c.Space, cell, body) - Vector3.Up * 0.4f, null);
+            if (!Interpenetration.Inside(w, c) && (c.Position - was).Length() > 1f) return true;
+        }
+        (c.Position, c.Facing) = (was, facing);
+        return false;
     }
 }
