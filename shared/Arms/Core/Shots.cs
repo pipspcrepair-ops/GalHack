@@ -55,6 +55,8 @@ public struct Shot
     /// <summary>Who it's from (a creature, a town's person; null the player's own): whom what it hits turns on.</summary>
     public object By;
     public object Target;
+    /// <summary>Whom an NPC's shot was fired at (the game's token for you, a creature, a person), to tell a stray hit from a meant one.</summary>
+    public object Meant;
     public float Retarget;
     public Anchor Anchor;
     /// <summary>When it stuck or was set down (Age), and the next damage tick.</summary>

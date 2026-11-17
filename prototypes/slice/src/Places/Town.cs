@@ -114,6 +114,8 @@ public sealed partial class Town
         public bool GettingUp;
         /// <summary>How long they have been held where they stood by the furniture.</summary>
         public float Blocked;
+        /// <summary>For how long their line of fire is to be picked clear of bodies too (someone stood in it).</summary>
+        public float Masked;
         /// <summary>Making headway on their way (Town.Headway): where they last got a quarter metre on from and how long since; whether that has had them find another way yet; where they last walked well, and a metre or more before.</summary>
         public Vector3 ProgressAt, GoodAt, Behind;
         public float StuckFor;

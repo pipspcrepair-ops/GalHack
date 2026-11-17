@@ -69,7 +69,7 @@ public sealed partial class Town
     public int FallBacks { get; private set; }
 
     /// <summary>One of them fires (or swings) their weapon: who, the row, from where and which way (world), and how unsteady (degrees).</summary>
-    public event Action<Person, WeaponDef, Vector3, Vector3, float> ShotFired;
+    public event Action<Person, WeaponDef, Vector3, Vector3, float, object> ShotFired;
     /// <summary>One of them is down: what they carried is left where they lie.</summary>
     public event Action<Person> Fell;
 
@@ -151,6 +151,7 @@ public sealed partial class Town
         if (p.Looks == null || _place == null) return false;
         Arm(p);
         p.Facing = MathF.Max(0f, p.Facing - dt);
+        p.Masked = MathF.Max(0f, p.Masked - dt);
         Creature foe = p.Facing > 0f && p.Threat is { Dead: false, Removed: false } c ? c : null;
         // Unseen a long while, they stand down (the place stays hostile).
         if (_alert && _clock - _seenClock > 40f) _alert = false;
@@ -301,7 +302,8 @@ public sealed partial class Town
             if (p.Part == FightPart.FallBack && fromYou < (p.Pos - you).Length() + 4f) continue;
             if (Taken(p, i)) continue;
             looked++;
-            bool line = Clear(at + Vector3.Up * 1.5f, you + Vector3.Up * 1.2f);
+            // (Their line, once someone stood in it: clear of bodies too, theirs and anyone's.)
+            bool line = Clear(at + Vector3.Up * 1.5f, you + Vector3.Up * 1.2f) && (p.Masked <= 0f || !Slice.Arms.FireLine.Masked(_places.Zone.Wildlife, _places, World(at + Vector3.Up * 1.5f), World(you + Vector3.Up * 1.2f), p, p.Threat ?? Slice.Arms.ArmsHost.You, p.Threat == null));
             bool cover = !Clear(at + Vector3.Up * 0.8f, you + Vector3.Up * 1.0f);
             float score = -fromMe * 0.15f;
             switch (p.Part)
@@ -391,14 +393,26 @@ public sealed partial class Town
         }
         p.AimHeld = 0f;
         p.LastOff = off;
+        Vector3 muzzle = Muzzle(p);
+        Vector3 aim = World(foe + Vector3.Up * chest);
+        // Someone in the line (one of their own, a bystander, an animal that isn't the one they shoot at): no round goes, and they
+        // look again where to fight from, a spot with a line clear of bodies too (Position).
+        object meant = you ? Slice.Arms.ArmsHost.You : p.Threat;
+        if (Slice.Arms.FireLine.Masked(_places.Zone.Wildlife, _places, muzzle, aim, p, meant, you))
+        {
+            p.Pending = 0;
+            p.Aim = -1f;
+            p.Masked = 3f;
+            p.Rethink = 0f;
+            Slice.Arms.FireLine.Held++;
+            return;
+        }
         p.NextRound = d.SecondsPerShot;
         if (!p.Kit.Shot()) { p.Pending = 0; return; }
         p.Pending--;
         Shots++;
-        Vector3 muzzle = Muzzle(p);
-        Vector3 aim = World(foe + Vector3.Up * chest);
         float unsteady = 1.2f + (1f - p.Nerve) * 1.5f + (p.Hurt > 0f ? 1.5f : 0f) + (p.Part == FightPart.Pin ? 0.6f : 0f);
-        ShotFired?.Invoke(p, d, muzzle, aim - muzzle, unsteady);
+        ShotFired?.Invoke(p, d, muzzle, aim - muzzle, unsteady, meant);
         if (p.Pending == 0)
         {
             p.Aim = -1f;
@@ -445,7 +459,7 @@ public sealed partial class Town
                 WorstBlowFacing = MathF.Max(WorstBlowFacing, Mathf.RadToDeg(MathF.Acos(Math.Clamp(body.Dot(want), -1f, 1f))));
             }
             Vector3 from = World(p.Pos + Vector3.Up * Height(p) * 0.78f);
-            ShotFired?.Invoke(p, d, from, World(foe + Vector3.Up * MathF.Min(1.1f, chest)) - from, 0f);
+            ShotFired?.Invoke(p, d, from, World(foe + Vector3.Up * MathF.Min(1.1f, chest)) - from, 0f, null);
             return;
         }
         p.Strike = Mathf.MoveToward(p.Strike, 0f, dt * 4f);

@@ -132,7 +132,7 @@ public partial class AftermathTest : Node
         if (town == null) { Check(false, "the gang's place stands with its people"); yield break; }
         for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null && !p.Indoors && !p.Away); i++) { TopUp(); yield return 0; }
         int shots = 0;
-        town.ShotFired += (_, _, _, _, _) => shots++;
+        town.ShotFired += (_, _, _, _, _, _) => shots++;
         town.Provoked();
         for (int i = 0; i < 60 * 40 && !(town.People.Count(p => p.Engaged && !p.Dead) >= 2 && shots >= 2); i++) { TopUp(); yield return 0; }
         var fighting = town.People.Where(p => p.Engaged && !p.Dead).ToList();

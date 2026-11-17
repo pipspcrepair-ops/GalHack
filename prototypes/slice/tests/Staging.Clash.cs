@@ -128,7 +128,7 @@ public sealed partial class Staging
         int shots = 0;
         bool fresh = false;
         var by = new List<string>();
-        town.ShotFired += (who, _, _, _, _) => { shots++; fresh = true; by.Add(who.Role); };
+        town.ShotFired += (who, _, _, _, _, _) => { shots++; fresh = true; by.Add(who.Role); };
         for (int i = 0; i < 60 * 60; i++)
         {
             _game.Suit.Vitals.Health = max;

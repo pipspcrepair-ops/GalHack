@@ -616,6 +616,8 @@ public static partial class Brain
             if (Cover(w, c, foe, reach)) return;
             if (!c.Attacking && c.Phase == AttackPhase.None && c.HasGoal) c.WantCrouch = 0.5f; // low at its cover between shots
         }
+        // Someone in its line (one of its own, a bystander): a step or two to the side for a clear one, never a shot through them.
+        else if (f != null && Weapons.Ranged(f.Prop) && Arming.Masked?.Invoke(c, foe) == true && ClearLine(w, c, foe)) return;
         else if (b.Leaning != Leaning.Hostile && foe == b.Outsider && d > PushIn + 1f)
         {
             c.SetState(CState.Guard);
@@ -625,6 +627,21 @@ public static partial class Brain
             return;
         }
         Hunt(w, c, foe, d);
+    }
+
+    /// <summary>A side step for a clear line to a foe (each first its own way, so two side by side don't step into each other): to whichever side its grid lets it; false if neither.</summary>
+    static bool ClearLine(WildSim w, Creature c, ITarget foe)
+    {
+        Vector3 to = WildSim.Flat(foe.Position - c.Position);
+        if (to.LengthSquared() < 0.01f) return false;
+        Vector3 side = new Vector3(-to.Z, 0f, to.X).Normalized() * (c.Id % 2 == 0 ? 2.5f : -2.5f);
+        Vector3 spot = c.Position + side;
+        if (!Clear(w, c, c.Position, spot) && !Clear(w, c, c.Position, spot = c.Position - side)) return false;
+        c.SetState(CState.Chase);
+        c.FacePoint = foe.Position;
+        c.WantAim = 0.6f;
+        Go(w, c, spot, c.Stats.WalkSpeed * 1.5f);
+        return true;
     }
 
     /// <summary>To cover, if there is some within a few strides on this side of the foe and in reach of it: true while getting there.</summary>
