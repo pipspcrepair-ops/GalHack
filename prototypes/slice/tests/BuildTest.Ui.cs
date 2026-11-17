@@ -326,16 +326,13 @@ public partial class BuildTest
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 
-    /// <summary>At the start, before anything else is found or pinged, the compass holds the bunker and the place in view from its way out, and nothing else.</summary>
+    /// <summary>At the start, before any map mark or scan, only the bunker is marked (owner, 17 Nov: map marks, scans, and your bunker, structures and bag only).</summary>
     void CompassAtStart()
     {
         var marks = _game.Visor.Markers();
-        var kinds = marks.Select(m => m.Kind).ToList();
         var seen = _game.Bunker?.Poi;
         bool landmark = seen != null && _game.Bunker.Landmark != null;
-        string[] want = landmark ? new[] { "bunker", "place" } : new[] { "bunker" };
-        Check(kinds.SequenceEqual(want) && (!landmark || marks[1].Tag == seen.Name.ToUpperInvariant()),
-            $"at the start the markers show the bunker{(landmark ? $" and {seen.Name}, the place in view from its way out" : "")} and nothing else ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
+        Check(marks.Select(m => m.Kind).SequenceEqual(new[] { "bunker" }), $"at the start only the bunker is marked: no found place, no deposit ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
         if (landmark)
             Check(_game.Spaceflight.Charts.Has(_game.Spaceflight.StartPlaceKey ?? "") && _game.Spaceflight.Charts.OfKind("place").Count() == 1,
                 $"it is found from the first moment, on the map too, and it is the only place found ({_game.Spaceflight.Charts.OfKind("place").Count()})");

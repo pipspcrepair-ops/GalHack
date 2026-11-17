@@ -396,11 +396,9 @@ public partial class Visor : CanvasLayer
     public readonly record struct Marker(string Tag, Vector3 At, Color Colour, float Alpha, string Kind);
 
     /// <summary>
-    /// What is marked in the world: your bunker and the place in view from its way out (both known from the
-    /// first moment, at any distance); then only what you have found by going near it (places,
-    /// deposits: the nearest few of each), your own map marks, vessels, bases and your bag, and the
-    /// scanner's pings for as long as they last. Each marks the thing itself: a place and a deposit at
-    /// the ground there, a little above it.
+    /// What is marked in the world (owner, 17 Nov): your bunker on its world, your structures and your bag, your own
+    /// map marks, always; and a scan's results for as long as they last (ores by name, places by their icon, cores
+    /// through the walls). Places and deposits you've found are not marked otherwise (the map shows them).
     /// </summary>
     public List<Marker> Markers()
     {
@@ -413,31 +411,18 @@ public partial class Visor : CanvasLayer
             float g = Game.Zone.GroundAt(at.X, at.Z).Y;
             return float.IsFinite(g) ? new Vector3(at.X, g + lift, at.Z) : at;
         }
-        // Each body's own: the bunker, the start world's finds and your map marks on the start world, a moon's finds on the moon.
+        // Your own: the bunker on its world, your structures, your bag (owner, 17 Nov: "we should always show the bag, our structures and the bunker if it's in the world we're on").
         if (Game.Bunker != null && Game.Zone == Game.Surface) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
-        if (!Game.InOrbit && Game.Zone.Planet != null)
-        {
-            string startPlace = Game.Spaceflight.StartPlaceKey, on = Game.Spaceflight.ChartOf(Game.Zone);
-            // The start place always shows (first in line, whatever its distance); other finds only while within the scanner's reach.
-            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind, on)
-                .Select(m => (m.Label, m.Key, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
-                .Where(x => x.Key == startPlace || new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
-                .OrderBy(x => x.Key == startPlace ? 0 : 1).ThenBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared())
-                .Take(take).Select(x => (x.Label, x.At));
-            foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), Ground(at, PlaceLift), C.Accent, 1f, "place"));
-            if (survivor.Seated == null)
-                foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), Ground(at, 1.5f), C.Holo, 1f, "deposit"));
-            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark", on))
-                marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
-        }
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && v.Structure.Owner == GalHack.Structures.Building.DefaultOwner && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.DeathBag != null) marks.Add(new("BAG", Game.DeathBag.Position, C.Danger, 1f, "bag"));
-        // The scan's marks: an ore by name, a place by its icon and distance alone (a found place's own marker stands for it).
-        var named = marks.Where(m => m.Kind == "place").Select(m => new Vector2(m.At.X, m.At.Z)).ToList();
+        // Your map marks on the body you're on.
+        if (!Game.InOrbit && Game.Zone.Planet != null)
+            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark", Game.Spaceflight.ChartOf(Game.Zone)))
+                marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
+        // The scan's marks: an ore by name, a place by its icon and distance alone.
         foreach (Game.Game.Ping p in Game.Pings)
-            if (p.Place == null) marks.Add(new(p.Label.ToUpperInvariant(), p.At, C.Holo, Game.PingAlpha(p), "ping"));
-            else if (!named.Any(n => n.DistanceTo(new Vector2(p.At.X, p.At.Z)) < 1f)) marks.Add(new("", Ground(p.At, PlaceLift), C.Accent, Game.PingAlpha(p), p.Place));
+            marks.Add(p.Place == null ? new(p.Label.ToUpperInvariant(), p.At, C.Holo, Game.PingAlpha(p), "ping") : new("", Ground(p.At, PlaceLift), C.Accent, Game.PingAlpha(p), p.Place));
         // The handheld scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
         foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
         return marks;
@@ -446,8 +431,6 @@ public partial class Visor : CanvasLayer
     /// <summary>How high over the ground a place's marker stands, m: over its roofs, on the place itself.</summary>
     public const float PlaceLift = 8f;
 
-    /// <summary>How many found deposits are marked (the nearest).</summary>
-    public const int NearestDeposits = 3;
     // ---- Lines, warnings, aim -------------------------------------------------------------------
 
     void DrawLines()
@@ -462,9 +445,6 @@ public partial class Visor : CanvasLayer
             y += 26 * s;
         }
     }
-
-    /// <summary>How many found places are marked (the nearest).</summary>
-    public const int NearestPlaces = 3;
 
     /// <summary>A new level shows in the notices' slot (<see cref="LevelUp"/>); experience itself counts quietly.</summary>
     void DrawProgress() { }

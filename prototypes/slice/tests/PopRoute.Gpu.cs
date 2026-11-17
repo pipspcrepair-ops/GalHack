@@ -145,6 +145,7 @@ public partial class PopRoute
             var cost = new Dictionary<string, double>();
             var renderCpu = new Dictionary<string, double>();
             var drawCalls = new Dictionary<string, double>();
+            var triangles = new Dictionary<string, double>(); // primitives drawn in the frame, shadow passes included
             foreach (string c in cases)
             {
                 foreach (var (name, layer) in GpuLayers) cam.SetCullMaskValue(layer, c != "-" + name);
@@ -169,6 +170,7 @@ public partial class PopRoute
                 var gpu = new List<double>();
                 var cpu = new List<double>();
                 var draws = new List<double>();
+                var tris = new List<double>();
                 for (int i = 0; i < 100; i++)
                 {
                     _game.Survivor.PlaceOutside((eye - way * 6f + Vector3.Down * 1.6f).ToNumerics());
@@ -177,13 +179,16 @@ public partial class PopRoute
                     gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
                     cpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp) + RenderingServer.GetFrameSetupTimeCpu());
                     draws.Add(RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame));
+                    tris.Add(RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalPrimitivesInFrame));
                 }
                 gpu.Sort();
                 cpu.Sort();
                 draws.Sort();
+                tris.Sort();
                 cost[c] = gpu[gpu.Count / 2];
                 renderCpu[c] = cpu[cpu.Count / 2];
                 drawCalls[c] = draws[draws.Count / 2];
+                triangles[c] = tris[tris.Count / 2];
             }
             foreach (var (_, list) in parts)
                 foreach (var (g, cast, shown) in list)
@@ -194,12 +199,12 @@ public partial class PopRoute
             env.GlowEnabled = glow;
             Game.Game.SetAntiAliasing(GetViewport(), aa);
             double all = cost["all"];
-            double allCpu = renderCpu["all"], allDraws = drawCalls["all"];
+            double allCpu = renderCpu["all"], allDraws = drawCalls["all"], allTris = triangles["all"];
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view} by anti-aliasing (gpu ms, median of 80 frames, one scene): {string.Join(", ", cases.Where(c => c.StartsWith("aa ")).Select(c => $"{c[3..]} {cost[c]:F2}"))}"));
-            string costs = string.Join(", ", cases.Skip(1).Where(c => !c.StartsWith("aa ")).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}")));
+            string costs = string.Join(", ", cases.Skip(1).Where(c => !c.StartsWith("aa ")).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}/{(allTris - triangles[c]) / 1000:F0}k")));
             // The whole picture measured again last: what it moved meanwhile (a place still coming in) is the measure's own error.
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: drift over the cases gpu {cost["all again"] - all:F2} ms, render cpu {renderCpu["all again"] - allCpu:F2} ms, draw calls {drawCalls["all again"] - allDraws:F0}"));
-            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); without each (what it costs, gpu/render cpu ms/draw calls): {costs}"));
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls, {allTris / 1000:F0}k triangles ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); physics: {PhysicsServer3D.GetProcessInfo(PhysicsServer3D.ProcessInfo.ActiveObjects)} active bodies, {PhysicsServer3D.GetProcessInfo(PhysicsServer3D.ProcessInfo.CollisionPairs)} collision pairs; without each (what it costs, gpu/render cpu ms/draw calls/triangles): {costs}"));
             _game.FixedCamera = null;
         }
     }
