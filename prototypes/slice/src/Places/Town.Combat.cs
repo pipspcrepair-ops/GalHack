@@ -522,7 +522,7 @@ public sealed partial class Town
     void PoseWeapon(Person p)
     {
         if (p.Holder == null || p.Rig == null || PropIndex(p) is not (int i and >= 0)) return;
-        p.Holder.Transform = p.Rig.Pose[i] * new Transform3D(Clip.GunInProp.Scaled(Vector3.One * HumanBody.ArmScale(p.Figure)), Vector3.Zero);
+        p.Holder.Transform = (p.View?.Drawn ?? p.Rig.Pose)[i] * new Transform3D(Clip.GunInProp.Scaled(Vector3.One * HumanBody.ArmScale(p.Figure)), Vector3.Zero);
     }
 
     /// <summary>What a fallen person leaves: their weapon (the one they emptied too) and the ammo they had left for it.</summary>
