@@ -328,7 +328,7 @@ public partial class OccupantTest
                 bool parts = c.Space?.Parts is { } ps && !c.Species.Climbs && ps.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) < -Interpenetration.Tolerance;
                 if (parts) t.InParts++; else t.InWall++;
                 if (!k.WasIn) t.Entries++;
-                if (t.WallAt == "" && !k.WasIn) t.WallAt = $"; e.g. {who} in {(parts ? "furniture" : "a wall")} (the step before {k.PrevPhase}, {k.PrevState}, its body {k.PrevGap:F2} m off the furniture and {(c.Position - k.PrevAt).Length():F2} m from where it is now, {(c.Space?.Parts is { } pp ? pp.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) : 0f):F2} now; {(out_ ? "just out of a crack" : k.Steps == 0 ? "as first seen" : $"{k.Steps} steps after first seen")}, {c.Phase}, {c.Species.Role}, density {c.Space?.Density(Crawl.Center(c)) ?? 0f:F2}, bare {c.Space?.Bare.Density(Crawl.Center(c)) ?? 0f:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1})";
+                if (!k.WasIn && t.Entries <= 6) t.WallAt += $"; e.g. {who} in {(parts ? "furniture" : "a wall")} (the step before {k.PrevPhase}, {k.PrevState}, its body {k.PrevGap:F2} m off the furniture and {(c.Position - k.PrevAt).Length():F2} m from where it is now, {(c.Space?.Parts is { } pp ? pp.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) : 0f):F2} now; {(out_ ? "just out of a crack" : k.Steps == 0 ? "as first seen" : $"{k.Steps} steps after first seen")}, {c.Phase}, {c.Species.Role}, density {c.Space?.Density(Crawl.Center(c)) ?? 0f:F2}, bare {c.Space?.Bare.Density(Crawl.Center(c)) ?? 0f:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1})";
             }
             else if (c.Space == null && Rock(sim.Nav, c.Position, Locomotion.Footprint(c.Species) - 0.05f))
             {
@@ -396,6 +396,7 @@ public partial class OccupantTest
             if (into > 0.05f)
             {
                 t.Overlaps++;
+                if (into > 0.3f && t.Locked.Count < 900 && t.Locked.Add((-a.Id - 1, b.Id))) GD.Print($"      DEEP {place}: {a.Species.CommonName} ({a.State}, {(a.Space?.Parts != null ? "furnished" : "")} wants {a.Desired.Length():F1}, spaced {WildSim.Spaced(a)}, home {(a.Home - a.Position).Length():F1}) and {b.Species.CommonName} ({b.State}, wants {b.Desired.Length():F1}, spaced {WildSim.Spaced(b)}, home {(b.Home - b.Position).Length():F1}) {into:F2} m, radii {a.Radius:F2}+{b.Radius:F2}, ages {a.Age:F1}/{b.Age:F1}");
                 if (into > t.Deepest) { t.Deepest = into; t.OverlapAt = $"; e.g. {place}: {a.Species.CommonName} ({a.State}) and {b.Species.CommonName} ({b.State}) {into:F2} m into each other at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1}"; }
             }
             if (into > -0.6f && watch.TryGetValue(a, out Watch ka) && watch.TryGetValue(b, out Watch kb) && ka.Still > 3f && kb.Still > 3f && t.Locked.Add((a.Id, b.Id)))

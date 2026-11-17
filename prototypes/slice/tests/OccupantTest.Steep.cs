@@ -177,6 +177,9 @@ public partial class OccupantTest
                 if (f.Drop == 0f) f.Fell = false;
                 (f.Prev, f.PrevH) = (c.Position, c.Position.Y);
             }
+            if (step % 150 == 149 && form != "mountains" && world < 2)
+                foreach (Creature h in hunters)
+                    GD.Print($"      HUNTER {form} {sim.Time:F0}s #{h.Id}: {h.State} {h.Phase}, {WildSim.Flat(h.Position - you.Position).Length():F1} m off, at {h.Position.X:F1},{h.Position.Y:F1},{h.Position.Z:F1}, wants {h.Desired.Length():F1}, way {h.PathIndex}/{h.Path.Count}{(h.PathWhole ? "" : " short")}, provoked {h.ProvokedBy != null && sim.Time - h.ProvokedAt < 12f}, noticed {h.Noticed?.Name}, herd {h.Herd != null}, pack {h.Pack != null}, rest {h.Rest != null}, beh {h.Species.Behaviour}, husk {h.Species.Husk}, stuck {h.StuckFor:F1}, next {(h.PathIndex < h.Path.Count ? h.Path[h.PathIndex] : h.Position)}, speed {WildSim.Flat(h.Velocity).Length():F1}, goal {h.PathGoal}");
             foreach (Creature h in hunters)
                 if (!h.Removed) closest[h] = MathF.Min(closest[h], WildSim.Flat(h.Position - you.Position).Length());
         }

@@ -237,8 +237,8 @@ public static class Crawl
             }
             feet = next;
         }
-        // Whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
-        feet = HoldOffWalls(s, feet, clr);
+        // Never into another body (it goes along its side); and whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
+        feet = HoldOffWalls(s, w.Unpressed(c, start, feet), clr);
         if (parts != null && !parts.Fits(feet, pr, ph))
         {
             feet = HoldOffWalls(s, parts.PushOut(feet, pr, ph), clr);
@@ -351,6 +351,13 @@ public static class Crawl
         Vector3 next = center + v * dt;
         // Turn right way up while falling, like a cat.
         Vector3 up = SpaceMath.TurnToward(n, Vector3.Up, MathF.Min(1f, dt * 8f));
+        // A walker carried on by its lunge flies no further into a piece of furniture than it is: it drops beside it.
+        if (!c.Species.Climbs && c.Space.Parts is { } parts)
+        {
+            float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+            Vector3 feet = next - up * clr;
+            if (!parts.Fits(feet, pr, ph) && parts.Gap(feet, pr, ph) < parts.Gap(c.Position, pr, ph)) (next.X, next.Z, v.X, v.Z) = (center.X, center.Z, 0f, 0f);
+        }
         float d = SpaceMath.Distance(s, next, out Vector3 normal);
         bool needFloor = c.Dead || !c.Species.Climbs || c.Dropping;
         if (d > -clr && normal != Vector3.Zero)
@@ -457,6 +464,13 @@ public static class Crawl
         Vector3 f = travel.LengthSquared() > 1e-4f ? travel.Normalized() : -c.Facing.Z;
         Basis facing = SpaceMath.Frame(f, up);
         Vector3 feet = center - facing.Y * c.Clearance;
+        // A walker's lunge stops at anyone but whom it strikes at, never through them.
+        if (!c.Species.Climbs && w.IntoBody(c, feet, c.AttackTarget))
+        {
+            c.LungeFrom = c.LungeTo = Center(c);
+            c.Velocity = Vector3.Zero;
+            return;
+        }
         // A walker's lunge into a piece of furniture stops there, as one into a wall does: held where it met it, never in it.
         if (!c.Species.Climbs && c.Space.Parts is { } parts)
         {
@@ -481,10 +495,6 @@ public static class Crawl
         Vector3 f = -c.Facing.Z;
         if (MathF.Abs(f.Y) < 0.95f) c.Yaw = MathF.Atan2(-f.X, -f.Z);
     }
-
-    /// <summary>Whether a walker's feet could be at a point of a space: on a floor near that height, open over it (the furniture is each body's own test, <see cref="Stands"/>).</summary>
-    public static bool Floor(ISolidSpace s, Vector3 p) =>
-        SpaceMath.FloorBelow(s.Bare, p.X, p.Y + 0.45f, p.Z, 1f) is float y && MathF.Abs(y - p.Y) < 0.45f && s.Bare.Density(new Vector3(p.X, y + 0.5f, p.Z)) < 0f;
 
     /// <summary>Where a walker pushed to a point (by another body) would stand: on its floor there, clear of the walls and never further into the furniture; null where it can't.</summary>
     public static Vector3? Stands(Creature c, Vector3 to)

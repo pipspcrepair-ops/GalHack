@@ -17,6 +17,7 @@ namespace Slice.Places;
 public sealed partial class Town
 {
     readonly PersonalSpace _space = new();
+    Func<int, Vector3, bool> _openAt;
     readonly System.Collections.Generic.List<Person> _bodies = new();
 
     /// <summary>The deepest two of them (or one of them and you) have been in each other since this was last reset, m (tests); and pushes you've given.</summary>
@@ -109,9 +110,9 @@ public sealed partial class Town
         // You are a body they keep off too (you aren't moved: your share is dropped); walking into them is the push rule's
         // (Town.Colliders). Your share isn't nothing, so one in you is moved off you at their own give: a braced guard least.
         if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = PlayerGive }); // (just inside their capsules' touch)
-        _space.Resolve(dt, Open, 4);
+        _space.Resolve(dt, _openAt ??= (_, p) => Open(p), 4);
         // (Someone who moved a long way at once, far off and updated now and then, can land on another: settle it now.)
-        if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, Open, 6);
+        if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, _openAt, 6);
         if (_space.WorstOverlap > WorstOverlap)
         {
             WorstOverlap = _space.WorstOverlap;

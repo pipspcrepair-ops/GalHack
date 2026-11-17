@@ -801,6 +801,9 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     /// <summary>Whether a hit is on whom an NPC's shot was fired at.</summary>
     static bool Meant(object meant, in ShotHit hit) => hit.Kind == HitKind.Player ? meant == You : meant == hit.Thing;
 
+    Vector3? WorldAt(object o) => o switch { Creature c => Zone.Wildlife.WorldOf(c), Town.Person p => p.Town.World(p.Pos), _ => o == You ? Zone.Wildlife.PlayerWorld() : null };
+    static string NameOf(object o) => o switch { Creature c => $"{c.Species.CommonName}#{c.Id}({c.State},{(Wildlife.Arming.Friendly(c.Species) ? "friendly" : "hostile")})", Town.Person p => $"townsperson({p.Role})", _ => o == You ? "you" : o?.GetType().Name ?? "none" };
+
     public void Strike(ref Shot s, in ShotHit hit, float damage)
     {
         WeaponDef d = s.Def;
@@ -814,7 +817,21 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         bool tick = s.State == ShotState.Stuck;
         if (tick) DotTicks++;
         else Hits++;
-        if (!tick && s.Owner != 0 && s.Meant != null && hit.Kind is HitKind.Creature or HitKind.Person or HitKind.Player && !Meant(s.Meant, hit)) Strays++;
+        if (!tick && s.Owner != 0 && s.Meant != null && hit.Kind is HitKind.Creature or HitKind.Person or HitKind.Player && !Meant(s.Meant, hit))
+        {
+            Strays++;
+            // TEMP stray log (pathing): who fired, at whom, whom it hit, and how far off the shooter-to-target line the one hit stood.
+            object thing = hit.Kind == HitKind.Player ? You : hit.Thing;
+            Vector3? a = WorldAt(s.By), b = WorldAt(s.Meant), h = WorldAt(thing);
+            string off = "?";
+            if (a is { } pa && b is { } pb && h is { } ph)
+            {
+                Vector3 line = pb - pa, q = ph - pa;
+                float t = Math.Clamp(q.Dot(line) / MathF.Max(line.LengthSquared(), 1e-4f), 0f, 9f);
+                off = $"t {t:F2}, {new Vector2(q.X - line.X * t, q.Z - line.Z * t).Length():F2} m off the line, line {line.Length():F1} m, hit {(hit.Point.ToGodot() - pa).Length():F1} m out";
+            }
+            GD.Print($"STRAY {NameOf(s.By)} at {NameOf(s.Meant)} hit {NameOf(thing)}: {off}; {d.Id}");
+        }
         switch (hit.Kind)
         {
             case HitKind.Creature:

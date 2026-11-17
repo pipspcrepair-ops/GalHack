@@ -126,6 +126,9 @@ public static class Locomotion
         }
         Vector3 p = c.Position + v * dt;
         Avoid(w, c, ref p, ref v);
+        // Never into another body: along its side instead.
+        Vector3 held = w.Unpressed(c, c.Position, p);
+        if (held != p) (p, v) = (held, WildSim.Flat(held - c.Position) / MathF.Max(dt, 1e-4f));
         p = Bound(w, p, ref v);
         p.Y = w.Terrain.Height(p.X, p.Z);
         KeepOffFaces(w, c, ref p, ref v);
@@ -300,6 +303,13 @@ public static class Locomotion
         {
             c.LungeFrom = c.LungeTo = c.Position; // held where it met it, not drawn back along the way it came
             c.LungeBlocked = true;
+            c.Velocity = Vector3.Zero;
+            return;
+        }
+        // Nor through anyone but whom it strikes at (owner: melee, swings and charges never through an ally): it stops at them.
+        if (!c.Species.Flies && w.IntoBody(c, p, c.AttackTarget))
+        {
+            c.LungeFrom = c.LungeTo = c.Position;
             c.Velocity = Vector3.Zero;
             return;
         }

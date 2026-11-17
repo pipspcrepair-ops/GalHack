@@ -353,12 +353,14 @@ public static partial class Brain
     /// </summary>
     static void Unstick(WildSim w, Creature c)
     {
-        // Pressed up against another body in its way (you, a town's person, another creature): nothing it is stuck on (they keep
-        // apart); it tries again in a while. Of two creatures face to face (a one-wide way), the later one waits and the other backs out.
-        foreach (ITarget t in w.Targets)
-            if (t.Attackable && Pressed(c, t.Position, 0.35f)) { c.StuckFor = 0f; c.Repathed = false; return; }
-        foreach (Creature o in w.Creatures)
-            if (o.Id < c.Id && !o.Dead && !o.Removed && !o.InWalls && Pressed(c, o.Position, o.Radius)) { c.StuckFor = 0f; c.Repathed = false; return; }
+        // Pressed up against another body in its way (you, a town's person, another creature on its floor): nothing it is stuck on
+        // (bodies keep apart); it gives up where it was going and tries again in a while. Of two creatures face to face (a one-wide
+        // way), the later one waits and the other backs out. (A climber in a place passes anyone on its walls: never held by them.)
+        if (WildSim.Spaced(c) && Blocked(w, c))
+        {
+            (c.StuckFor, c.Repathed, c.HasGoal, c.HasAway) = (0f, false, false, false);
+            return;
+        }
         bool back = (c.Behind - c.Position).LengthSquared() is > 1f and < 25f;
         (Vector3 was, Basis facing) = (c.Position, c.Facing);
         if (back && c.Space != null) Crawl.Place(w, c, c.Behind + c.BehindUp * 0.05f, c.Species.Climbs ? c.BehindUp : null);
@@ -379,6 +381,24 @@ public static partial class Brain
         c.HasAway = false;
         c.StuckFor = 0f;
         c.Repathed = false;
+    }
+
+    /// <summary>Whether a body is held up by another in its way: you, a town's person, or a creature before it on its floor.</summary>
+    static bool Blocked(WildSim w, Creature c)
+    {
+        foreach (ITarget t in w.Targets)
+            if (t.Attackable && Pressed(c, t.Position, 0.35f)) return true;
+        foreach (Creature o in w.Creatures)
+            if (o.Id < c.Id && WildSim.Spaced(o) && Pressed(c, o.Position, o.Radius)) return true;
+        return false;
+    }
+
+    /// <summary>Whether another body stands on a spot (a lurker's home taken: where it is will do).</summary>
+    static bool Taken(WildSim w, Creature c, Vector3 spot)
+    {
+        foreach (Creature o in w.Creatures)
+            if (o != c && WildSim.Spaced(o) && MathF.Abs(o.Position.Y - spot.Y) < 1.5f && WildSim.Flat(o.Position - spot).Length() < c.Radius + o.Radius) return true;
+        return false;
     }
 
     /// <summary>Whether a body is up against another of this radius at a point, wanting to go its way.</summary>

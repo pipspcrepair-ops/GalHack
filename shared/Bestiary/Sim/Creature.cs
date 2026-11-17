@@ -63,6 +63,8 @@ public sealed class Creature
     public Herd Herd;
     public Pack Pack;
     public int HerdSlot;
+    /// <summary>Its place among the bodies kept apart this step (<see cref="WildSim.Spaced"/>), -1 for none.</summary>
+    public int Spaced = -1;
     public Rng Rng;
 
     // Motion. Position is the ground point under the body (or the body itself for fliers).

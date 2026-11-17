@@ -534,7 +534,7 @@ public static partial class Brain
                 if (HuntPrey(w, c, dt)) return;
             }
         }
-        if (Dist3(c, c.Home) > 1.2f && c.State != CState.Lurk)
+        if (Dist3(c, c.Home) > 1.2f && c.State != CState.Lurk && !Taken(w, c, c.Home))
         {
             c.SetState(CState.ReturnHome);
             Go(w, c, c.Home, c.Stats.WalkSpeed);
