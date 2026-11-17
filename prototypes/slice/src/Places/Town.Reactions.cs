@@ -83,21 +83,16 @@ public sealed partial class Town
         Creature harmer = _harmedBy is { Dead: false, Removed: false } && _clock - _harmedAt < HarmMemory ? _harmedBy : null;
         _round.Clear();
         // The open country's creatures and those of every place standing (their own place's among them): where each is in the world.
-        // A place's are looked up by its Sightings cells round the town (what matters to people: its dangers, Husks and bands; a town
-        // in a city has dozens of places standing round it, each of hundreds), whoever last hurt one of them wherever it is.
         for (int si = -1; si < patch.Sites.Count; si++)
         {
             WildSim sim = si < 0 ? patch.Sim : patch.Sites[si].Sim;
             Vector3 origin = si < 0 ? patch.Origin : patch.Sites[si].GlobalPosition;
-            bool far = si >= 0 && harmer?.Space != null && sim.Creatures.Contains(harmer);
-            foreach (Creature c in si < 0 ? sim.Creatures : sim.Sightings.Near(centre - origin, reach))
+            foreach (Creature c in sim.Creatures)
             {
                 if (c.Removed || c.Dead || c.InWalls || c.Keeper == this) continue;
                 Vector3 at = c.Position + origin;
                 if (c == harmer || WildSim.Flat(at - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c))) _round.Add((c, at));
-                if (c == harmer) far = false;
             }
-            if (far && !harmer.Dead) _round.Add((harmer, harmer.Position + origin));
         }
         Sensed = _round.Count;
         Senses++;
