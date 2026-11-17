@@ -514,6 +514,7 @@
   // job, weather, each garment at its chance, and each slot of the body takes only one thing,
   // so a guard in a freezing town keeps the helmet and the fur coat but not a fur hood as well.
   "people": {
+    "keepBeasts": { "raiders": 0.45, "band": 0.06, "gang": 0.6, "squatters": 0.3, "keepers": 0.5, "scavengers": 0.2, "cult": 0.35, "faction": 0.15 },
     "heightMale": [1.76, 0.075],
     "heightFemale": [1.63, 0.07],
     "heightChild": [1.05, 1.45],

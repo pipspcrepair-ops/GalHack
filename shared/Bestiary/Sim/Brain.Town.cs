@@ -105,6 +105,29 @@ public static partial class Brain
         }
     }
 
+    /// <summary>
+    /// A beast people keep (<see cref="IKeeper"/>): it goes for whom they fight, and for whoever sets on it, never one
+    /// of them; otherwise it keeps at heel by one of them as a pet does. Its people all gone, it is wild again.
+    /// </summary>
+    static void Kept(WildSim w, Creature c, float dt)
+    {
+        IKeeper k = c.Keeper;
+        ITarget master = k.Master(w, c);
+        if (master == null) { c.Keeper = null; return; }
+        // A shot heard: it starts and looks to it (its people's reading of it is what it acts on).
+        Senses.Hear(w, c);
+        if (w.Time - c.HeardAt < 1.5f) c.LookAt = c.LastSeen + Vector3.Up;
+        ITarget foe = k.Foe(w);
+        if (foe is not { Attackable: true } || k.Kin(foe)) foe = Provoked(w, c) is { } by && !k.Kin(by) ? by : null;
+        if (foe != null)
+        {
+            Hunt(w, c, foe, 0f);
+            return;
+        }
+        c.Owner = master;
+        Pet(w, c, master.Position, 8f, dt);
+    }
+
     static void Settle(Creature c)
     {
         c.SetState(CState.Rest);

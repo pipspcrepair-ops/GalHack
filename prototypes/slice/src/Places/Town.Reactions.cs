@@ -1,12 +1,15 @@
+using System;
 using System.Collections.Generic;
 using Godot;
+using PoiGenerator.Gen;
 using Wildlife;
 
 namespace Slice.Places;
 
 /// <summary>
 /// The town's people and what's round them (<see cref="CrossReactions"/>): a few times a second each
-/// person out and about sizes up what is near and answers by job, nerve and the group's temper.
+/// person out and about sizes up what is near, out in the open or in their place's rooms (its own creatures'
+/// sim), and answers by job, nerve and the group's temper.
 /// Husks: the armed and the bold fight, a wary group barricades itself in, the rest run for their
 /// doors. Predators, and people who'd do the town harm (raiders, a band that preys, a band the town
 /// would turn on itself, whoever last hurt one of its own): whoever has the nerve and a weapon fights
@@ -17,7 +20,8 @@ public sealed partial class Town
 {
     float _senseIn;
     bool _handlers;
-    readonly List<Creature> _round = new();
+    /// <summary>What is round the town at its last look, and where each is (world).</summary>
+    readonly List<(Creature C, Vector3 At)> _round = new();
     /// <summary>The last creature to hurt one of them, and when: met as a danger wherever it is, a while after.</summary>
     Creature _harmedBy;
     float _harmedAt = -99f;
@@ -61,8 +65,9 @@ public sealed partial class Town
         _barricadeFor = Mathf.Max(0f, _barricadeFor - dt);
         if ((_senseIn -= dt) > 0f) return;
         _senseIn = SenseEvery;
-        WildSim sim = _places.Zone.Wildlife.Sim;
-        if (sim == null) return;
+        Kennel();
+        Slice.Surface.WildlifePatch patch = _places.Zone.Wildlife;
+        if (patch.Sim == null) return;
         // Stock are worked by the place's farmers, once there are any.
         if (!_handlers)
         {
@@ -73,12 +78,22 @@ public sealed partial class Town
                 foreach (var a in _animals)
                     if (a.Kind == DomesticKind.Stock) a.Creature.Owner = farmer;
         }
-        Vector3 centre = _places.Zone.Wildlife.PatchLocal(World(Walk(Data.AreaCenter) with { Y = 0 }));
+        Vector3 centre = World(Walk(Data.AreaCenter) with { Y = 0 });
         float reach = Data.AreaRadius + 30f;
-        Creature harmer = _harmedBy is { Dead: false, Removed: false } && _clock - _harmedAt < HarmMemory && sim.Creatures.Contains(_harmedBy) ? _harmedBy : null;
+        Creature harmer = _harmedBy is { Dead: false, Removed: false } && _clock - _harmedAt < HarmMemory ? _harmedBy : null;
         _round.Clear();
-        foreach (Creature c in sim.Creatures)
-            if (!c.Removed && !c.Dead && (c == harmer || WildSim.Flat(c.Position - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c)))) _round.Add(c);
+        // The open country's creatures and those of every place standing (their own place's among them): where each is in the world.
+        for (int si = -1; si < patch.Sites.Count; si++)
+        {
+            WildSim sim = si < 0 ? patch.Sim : patch.Sites[si].Sim;
+            Vector3 origin = si < 0 ? patch.Origin : patch.Sites[si].GlobalPosition;
+            foreach (Creature c in sim.Creatures)
+            {
+                if (c.Removed || c.Dead || c.InWalls || c.Keeper == this) continue;
+                Vector3 at = c.Position + origin;
+                if (c == harmer || WildSim.Flat(at - centre).Length() < reach && (!CrossReactions.People(c.Species) || Foe(c))) _round.Add((c, at));
+            }
+        }
         Sensed = _round.Count;
         Senses++;
         // (Each is looked at even with nothing round: what they dealt with that went off, or is no longer in this sim, is let go.)
@@ -88,10 +103,11 @@ public sealed partial class Town
             Response best = Response.None;
             Creature what = null;
             float near = float.MaxValue;
-            Vector3 at = p.Position;
-            foreach (Creature c in _round)
+            Vector3 at = World(p.Pos);
+            foreach (var (c, there) in _round)
             {
-                float d = WildSim.Flat(c.Position - at).Length();
+                // (Straight, not flat: a storey up or down in a place is further than it looks from above.)
+                float d = (there - at).Length();
                 // (Whoever hurt one of them is in reach of a fight wherever they are.)
                 Response r = CrossReactions.Respond(c.Species, p.Looks, _temper, p.Nerve, c == harmer ? Mathf.Min(d, 20f) : d);
                 if (r > best || r == best && d < near) { best = r; what = c; near = d; }
@@ -130,5 +146,69 @@ public sealed partial class Town
             }
             if (best != Response.Herd) p.Herding = false;
         }
+    }
+
+    // ---- Their beasts (IKeeper) -------------------------------------------------------------------
+
+    bool _kennelled;
+
+    /// <summary>
+    /// People that keep beasts (by the data's odds for who holds the place: a gang, squatters, keepers) have one to three of
+    /// the world's own at their side, collared: in their place's own sim where it has one (kept with it), else out in the open's.
+    /// </summary>
+    void Kennel()
+    {
+        if (_kennelled || People.Count == 0) return;
+        _kennelled = true;
+        Slice.Surface.WildlifePatch patch = _places.Zone.Wildlife;
+        var rng = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "kennel");
+        if (patch.Sim.Beasts.Count == 0 || !rng.Chance(patch.Sim.Data.People.Keeps(Memory.Inst.Occupancy?.Main.ToString().ToLowerInvariant()))) return;
+        Species s = patch.Sim.Beasts[rng.Int(0, patch.Sim.Beasts.Count - 1)];
+        Slice.Surface.DeepSite site = Memory.Fauna?.Site;
+        for (int i = Math.Min(3, 1 + People.Count / 6); i > 0; i--)
+        {
+            Vector3 at = World(At(People[rng.Int(0, People.Count - 1)].Spawn.Spot));
+            Creature c = site != null ? site.Sim.SpawnIn(s, Memory.Fauna.Space, site.Local(at)) : patch.Sim.Spawn(s, patch.PatchLocal(at));
+            if (!c.Removed) (site?.Sim ?? patch.Sim).Keep(c, this);
+        }
+    }
+
+    public bool Kin(ITarget t) => Of(t)?.Town == this || t is CreatureTarget { Creature.Keeper: var k } && k == this;
+
+    /// <summary>What they fight now, as a sim sees it: a creature one of them has taken on, or you, in a place turned on you.</summary>
+    public ITarget Foe(WildSim w)
+    {
+        Slice.Surface.WildlifePatch patch = _places?.Zone.Wildlife;
+        if (patch == null) return null;
+        foreach (Person p in People)
+            if (!p.Dead && p.Engaged && p.Facing > 0f && p.Threat is { Dead: false, Removed: false } c && w.Creatures.Contains(c)) return c.AsTarget;
+        return Memory.Mood == Mood.Hostile && _alert && !YouDown ? w == patch.Sim ? patch.Player : patch.SiteOf(w)?.Player : null;
+    }
+
+    /// <summary>One of their beasts hurt: by you, as if you had hurt one of them (the place turns on you); by a creature, it is met as a danger.</summary>
+    public void Wronged(WildSim w, Creature beast, ITarget by)
+    {
+        Slice.Surface.WildlifePatch patch = _places?.Zone.Wildlife;
+        if (patch == null || _place == null) return;
+        if (by is CreatureTarget { Creature: var c }) Harmed(c);
+        else if (by == patch.Player || by == patch.SiteOf(w)?.Player)
+        {
+            Did(Deed.Harm);
+            Provoked();
+            Alert(_place.FromWorld(patch.PlayerWorld()));
+        }
+    }
+
+    /// <summary>The one of them a beast keeps by (each beast its own, while they live), as a sim sees them.</summary>
+    public ITarget Master(WildSim w, Creature beast)
+    {
+        Slice.Surface.WildlifePatch patch = _places?.Zone.Wildlife;
+        if (patch == null) return null;
+        for (int i = 0; i < People.Count; i++)
+        {
+            Person p = People[(beast.Id + i) % People.Count];
+            if (!p.Dead && !p.Gone && !p.Away) return w == patch.Sim ? p : patch.SiteOf(w)?.FrameOf(p);
+        }
+        return null;
     }
 }

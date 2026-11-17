@@ -3,13 +3,25 @@ using Godot;
 
 namespace Wildlife;
 
-/// <summary>A loud sound in the world (a shot): whatever is in earshot turns toward it. A shot also says who fired it and which way.</summary>
+/// <summary>A loud sound in the world (a shot, a blow, a blast, where one landed): whatever is in earshot turns toward it. It also says who made it and which way it went.</summary>
 public struct WorldNoise
 {
     public Vector3 Position;
     public float Radius, Time;
     public Vector3 Dir;
     public ITarget By;
+
+    /// <summary>How close its line passes someone, and how close to where it was fired or landed they stand, for it to be at them, m.</summary>
+    public const float PassClose = 3f, NearBy = 6f;
+
+    /// <summary>Whether it was at someone whose middle is at a point: fired or landed close by them, or its line passing close (a shot that isn't is only heard).</summary>
+    public readonly bool At(Vector3 p)
+    {
+        Vector3 v = p - Position;
+        if (v.Length() < NearBy) return true;
+        float along = Dir.LengthSquared() > 0.5f ? v.Dot(Dir) : -1f;
+        return along > 0f && along < Radius && (v - Dir * along).Length() < PassClose;
+    }
 }
 
 /// <summary>
@@ -76,13 +88,7 @@ public static class Senses
 
     static void Update(WildSim w, Creature c, ITarget t, float d, float dt, float sight, float hearing, Vector3 eye, Vector3 facing, float cone, float notice, bool inside, float scent)
     {
-        foreach (WorldNoise n in w.Noises)
-        {
-            if (n.Time <= c.HeardAt || (n.Position - c.Position).Length() > n.Radius) continue;
-            c.HeardAt = n.Time;
-            c.LastSeen = n.Position;
-            c.Awareness = MathF.Max(c.Awareness, 0.6f);
-        }
+        Hear(w, c);
         float strength = t == null ? 0f : Sensed(w, c, t, d, sight, hearing, eye, facing, cone, inside, scent);
         c.Sensing = strength > 0f;
         if (c.Sensing)
@@ -123,6 +129,45 @@ public static class Senses
             w.RaiseClick(c);
         }
         c.LookAt = c.Alert > 0f ? c.LastSeen + Vector3.Up * 1.2f : null;
+    }
+
+    /// <summary>Loud sounds in earshot since it last listened: each turns its head to it (it pricks up), and startles it (<see cref="Startled"/>).</summary>
+    public static void Hear(WildSim w, Creature c)
+    {
+        foreach (WorldNoise n in w.Noises)
+        {
+            if (n.Time <= c.HeardAt || (n.Position - c.Position).Length() > n.Radius) continue;
+            c.HeardAt = n.Time;
+            c.LastSeen = n.Position;
+            c.Awareness = MathF.Max(c.Awareness, 0.6f);
+            Startled(w, c, n);
+        }
+    }
+
+    /// <summary>
+    /// A shot heard (owner: "startled or trigger aggression [or] fleeing depending on their temperament"): it flinches. One at it
+    /// or its herd is a threat: what would fight comes at whoever fired, the rest run; one that isn't startles it, and the timid
+    /// run from it all the same. People and machines go by their band's or town's own reading of it, a kept beast by its people's.
+    /// </summary>
+    static void Startled(WildSim w, Creature c, in WorldNoise n)
+    {
+        if (n.By == null || Arming.Fights(c.Species) || c.Species.Domestic != DomesticKind.None) return;
+        c.Rear = MathF.Max(c.Rear, 0.35f * (1f - 0.7f * Heft.Bulk(c.Species)));
+        if (c.Keeper != null || n.By is CreatureTarget { Creature: var o } && (o == c || o.Herd != null && o.Herd == c.Herd || o.Pack != null && o.Pack == c.Pack)) return;
+        bool at = n.At(Interpenetration.Middle(c)) || c.Herd != null && n.At(c.Herd.Center + Vector3.Up);
+        bool timid = c.Species.Temperament == Temperament.Skittish || c.Nerve < 0.3f && !c.Species.IsHunter;
+        bool fights = c.Stats.Retaliates && c.Stats.Damage > 0f && (c.Species.Temperament is Temperament.Aggressive or Temperament.Bold || c.Species.IsHunter || c.Species.Husk);
+        if (at && fights && n.By.Attackable)
+        {
+            c.ProvokedBy = n.By;
+            c.ProvokedAt = w.Time;
+            c.ThinkEvery = 0f;
+        }
+        else if (at || timid)
+        {
+            if (c.Herd != null) c.Herd.Alarm(n.Position, w.Time);
+            else w.Scare(c, n.Position, at ? 5f : 3f);
+        }
     }
 
     /// <summary>How well a sight range holds up in this light: with good eyes for the dark it hardly matters.</summary>

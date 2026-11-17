@@ -216,6 +216,7 @@ public partial class WildlifePatch : Node3D
         Vector3 oldOrigin = Origin;
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
+        foreach (Species s in Fauna.Species) if (CrossReactions.Keepable(s)) sim.Beasts.Add(s); // (what its people may keep on their side)
         TakeWoods(trunks, nav);
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         // A band out here is of whoever holds the ground (the nearest living place's people): your standing with them moves its stance.
@@ -304,6 +305,8 @@ public partial class WildlifePatch : Node3D
                 carried++;
             }
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
+            // A kept beast comes across with its band (or stays its place's people's).
+            foreach (var (was, now) in across) now.Keeper = was.Keeper is Herd band ? herds.GetValueOrDefault(band) : was.Keeper;
             RemapPatrols(herds);
         }
         Sim = sim;
@@ -372,7 +375,7 @@ public partial class WildlifePatch : Node3D
     }
 
     /// <summary>One of the wild's own numbers: alive, not a town's, not one the world's haunts and homes keep.</summary>
-    bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None && !Kept(c);
+    bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None && c.Keeper == null && !Kept(c);
 
     /// <summary>How far round you the land is kept lively, m (patch frame, flat).</summary>
     public static float AroundYou => SpawnReach.Distance; // the spawn distance setting (SpawnReach)
@@ -567,12 +570,20 @@ public partial class WildlifePatch : Node3D
         return GetWorld3D().DirectSpaceState.IntersectRay(ray).Count == 0;
     }
 
-    /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it. Your shot says which way it went: people it passes read it as being shot at.</summary>
+    /// <summary>
+    /// A loud sound (zone frame), a shot, a blow, a blast or where one landed, heard as far as it is loud: whatever is in earshot,
+    /// in any sim and any town standing (<see cref="Loud"/>), turns to it. Who made it (null: you, by hand or by a structure's guns;
+    /// a creature; a town's person) and which way it went: those it passes or lands by read it as being shot at.
+    /// </summary>
     public void Noise(Vector3 at, float radius, Vector3 shotDir = default, object by = null)
     {
-        Sim?.Noise(PatchLocal(at), radius, shotDir, shotDir == default ? null : by == null ? Player : TargetIn(Sim, by));
-        foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius);
+        Sim?.Noise(PatchLocal(at), radius, shotDir, by == null ? Player : TargetIn(Sim, by));
+        foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius, shotDir, s.Frame(by));
+        Loud?.Invoke(at, radius, shotDir, by);
     }
+
+    /// <summary>A loud sound made (zone frame, how far it carries, which way, who made it): the towns standing hear it (the game passes it on).</summary>
+    public event Action<Vector3, float, Vector3, object> Loud;
 
     /// <summary>A gesture of yours (zone frame), read by every band of people out here near enough to see it.</summary>
     public void Heard(PlayerGesture g, Vector3 eye, Vector3 look)
@@ -673,13 +684,21 @@ public partial class WildlifePatch : Node3D
         sim?.Damage(c, amount, byPlayer ? player : TargetIn(sim, by));
     }
 
-    /// <summary>Someone else who did something (a creature, a town's person), as the given sim sees them: null if they aren't in it.</summary>
+    /// <summary>Someone else who did something (a creature, a town's person), as the given sim sees them (a place's: <see cref="DeepSite.Frame"/>): null if they aren't in it.</summary>
     ITarget TargetIn(WildSim sim, object by) => by switch
     {
+        null => null,
         Creature o when sim != null && sim.Creatures.Contains(o) => o.AsTarget,
         ITarget t when sim == Sim => t,
-        _ => null,
+        _ => sim == Sim ? null : SiteOf(sim)?.Frame(by),
     };
+
+    /// <summary>The place or cave a sim is, if it is one of theirs.</summary>
+    public DeepSite SiteOf(WildSim sim)
+    {
+        foreach (DeepSite s in Sites) if (s.Sim == sim) return s;
+        return null;
+    }
 
     /// <summary>The survivor's feet in the zone.</summary>
     public Vector3 PlayerWorld() => Player == null ? Origin : FromPatch(Player.Position);
@@ -726,6 +745,7 @@ public partial class WildlifePatch : Node3D
 
     internal void RaiseTelegraphed(AttackEvent e) => Telegraphed?.Invoke(e);
     internal void RaiseAttacked(AttackEvent e) => Attacked?.Invoke(e);
+    internal void RaiseBitten(AttackEvent e) => Bitten?.Invoke(e);
     internal void RaiseDied(Creature c, ITarget killer) => Died?.Invoke(c, killer);
 
     float _baseSync;

@@ -475,7 +475,34 @@ public sealed class WildSim
             list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
+        if (herd?.Party != null && list.Count > 0) Kennel(herd, center, rng, allow);
         return list;
+    }
+
+    /// <summary>Wild kinds people round here may keep on their side (the game sets them from its world's: <see cref="CrossReactions.Keepable"/>).</summary>
+    public readonly List<Species> Beasts = new();
+
+    /// <summary>A beast people keep from now on: its kind's collared body (<see cref="Species.Kept"/>), on their side.</summary>
+    public Creature Keep(Creature c, IKeeper keeper)
+    {
+        c.Keeper = keeper;
+        if (c.Species.Collared) return c;
+        c.Species = c.Species.Kept;
+        c.Rig = Rig.Create(c.Species, c);
+        c.Rig.Reset(this, c);
+        return c;
+    }
+
+    /// <summary>A band that keeps beasts (by the data's odds for its sort: raiders, or any other) has one or two of the world's own at its side.</summary>
+    void Kennel(Herd band, Vector3 at, Rng rng, Func<Vector3, bool> allow)
+    {
+        if (Beasts.Count == 0 || !rng.Chance(Data.People.Keeps(band.Party.Raids ? "raiders" : "band"))) return;
+        Species s = Beasts[rng.Int(0, Beasts.Count - 1)];
+        for (int i = rng.Chance(0.4f) ? 2 : 1; i > 0; i--)
+        {
+            Vector3 p = FreeSpot(at + new Vector3(rng.Range(-4f, 4f), 0f, rng.Range(-4f, 4f)), rng);
+            if (!InBaseZone(p) && (allow == null || allow(p)) && !Interpenetration.SolidSurface(this, p, s)) Keep(Spawn(s, p), band);
+        }
     }
 
     public static float HerdSpread(Species s, int count) => Math.Max(3f, s.Stats.Radius * 2.2f * MathF.Sqrt(count));
@@ -883,6 +910,8 @@ public sealed class WildSim
             c.ProvokedAt = Time;
             c.Herd?.Alarm(source.Position, Time);
             if (Arming.Fights(c.Species)) Rally(c, source);
+            // A kept beast set on: its people turn on whoever did it.
+            if (c.Keeper is { } keeper && !keeper.Kin(source)) keeper.Wronged(this, c, source);
         }
         if (c.Species.Rig == RigKind.Swarm)
             c.SwarmAlive = Math.Max(0, (int)MathF.Ceiling(c.Species.Body.Members * MathF.Max(0f, c.Health) / c.Stats.MaxHealth));
@@ -940,7 +969,13 @@ public sealed class WildSim
         c.Flapping = false;
         c.Falling = c.Space != null;
         Died?.Invoke(c, killer);
-        if (killer is CreatureTarget predator) RaisePreyed(predator.Creature, c);
+        if (killer is CreatureTarget { Creature: var predator })
+        {
+            RaisePreyed(predator, c);
+            // Fed: a pack shares its kill and is done hunting a while; a lone hunter eats it (Brain's Carrion), and hunts again once hungry.
+            if (predator.Pack != null) foreach (Creature m in predator.Pack.Members) m.Hunger = 0f;
+            else predator.Hunger = MathF.Min(predator.Hunger, PreyHunger - 0.05f);
+        }
         // A person a Husk killed is not done with: it kneels at the body and puts its worms in.
         if (killer is CreatureTarget { Creature: { Species.Husk: true } husk }) Brain.Infest(this, husk, c);
     }
@@ -977,6 +1012,65 @@ public sealed class WildSim
             }
         }
         return best;
+    }
+
+    /// <summary>
+    /// Whom a creature would go for, and how far (flat): the nearest of the players and towns' people it may hunt
+    /// (<see cref="NearestTarget"/>), and for one that goes for people (<see cref="CrossReactions.Hunts"/>) the
+    /// nearest person of a band round it too: wild people, raiders, a place's own.
+    /// </summary>
+    public ITarget Quarry(Creature c, out float distance)
+    {
+        ITarget best = NearestTarget(c.Position, out distance);
+        NearestPerson(c, c.Stats.Perception, true, ref best, ref distance);
+        if (Brain.Preys(c.Species)) PreyOn(c, ref best, ref distance);
+        return best;
+    }
+
+    /// <summary>How hungry a hunter gets before it goes after another animal (0..1: it eats what it finds dead sooner), and how often it looks round for one, s.</summary>
+    public const float PreyHunger = 0.5f, PreyLook = 3f;
+
+    /// <summary>
+    /// A hungry hunter's quarry among the animals (owner: predators hunt prey by size and diet, a pack bringing down a
+    /// grazer): every few seconds, each on its own beat, the nearest it would take (<see cref="Brain.Takes"/>) within its
+    /// senses is picked again; nearer than anyone else, it is what the hunter goes for.
+    /// </summary>
+    void PreyOn(Creature c, ref ITarget best, ref float distance)
+    {
+        if (c.PreyLookAt <= 0f)
+        {
+            // Hungry or not from the start, by its own stream (nothing else it rolls changes).
+            c.Hunger = Rng.For(c.Species.Seed, "hunger", c.Id).Float();
+            c.PreyLookAt = Time + 0.1f + c.Id % 9 * 0.35f;
+        }
+        if (c.Hunger < PreyHunger) { c.Prey = null; return; }
+        if (Time >= c.PreyLookAt)
+        {
+            c.PreyLookAt = Time + PreyLook;
+            c.Prey = null;
+            float near = c.Stats.Perception;
+            foreach (Creature o in Creatures)
+            {
+                if (!Brain.Takes(c, o)) continue;
+                float d = Flat(o.Position - c.Position).Length();
+                if (d < near) { near = d; c.Prey = o; }
+            }
+        }
+        if (c.Prey is not { Dead: false, Removed: false } prey) return;
+        float at = Flat(prey.Position - c.Position).Length();
+        if (at < distance) { distance = at; best = prey.AsTarget; }
+    }
+
+    /// <summary>A band's person nearer than <paramref name="distance"/> (and within reach) for a creature that goes for people (none of its own band), flat or straight.</summary>
+    public void NearestPerson(Creature c, float reach, bool flat, ref ITarget best, ref float distance)
+    {
+        if (c.Herd?.Party != null || !CrossReactions.Hunts(c.Species)) return;
+        foreach (Creature o in Sightings.Near(c.Position, MathF.Min(distance, reach)))
+        {
+            if (o.Herd?.Party == null || o.Space != c.Space || !CrossReactions.People(o.Species)) continue;
+            float d = flat ? Flat(o.Position - c.Position).Length() : (o.Position - c.Position).Length();
+            if (d < distance) { distance = d; best = o.AsTarget; }
+        }
     }
 
     public Creature NearestCorpse(Vector3 from, float radius)

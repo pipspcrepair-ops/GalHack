@@ -7,8 +7,8 @@ public static partial class Brain
 {
     /// <summary>A band's distances, m: it greets you within this, warns you off within this, keeps you this far off, takes coming on past its warning this close as pushing it, and settles once you are gone this far.</summary>
     const float GreetIn = 14f, WarnIn = 24f, KeepOff = 13f, PushIn = 7f, CalmOut = 38f;
-    /// <summary>A gun on them: this close it is a threat (friendly), within this reach a provocation (wary); a shot passing this close to one of them, or fired this close, is being shot at.</summary>
-    const float AimClose = 12f, AimReach = 32f, ShotPast = 3f, ShotBy = 6f;
+    /// <summary>A gun on them: this close it is a threat (friendly), within this reach a provocation (wary).</summary>
+    const float AimClose = 12f, AimReach = 32f;
     /// <summary>How close a friendly one lets you come before stepping aside; how close its leader comes to meet you; how far off a gesture of yours is seen.</summary>
     const float Comfort = 2.6f, MeetAt = 4f, SeeGesture = 24f;
     /// <summary>How far a band sees others in the open by day (half by night), m; how often it looks round, s; below this share of health a body runs on its own; within this the brave stand against what the band runs from, m.</summary>
@@ -197,7 +197,7 @@ public static partial class Brain
             ToFlight(w, h, b, lead, b.Foe?.Position ?? h.Center);
         }
         // Something real: shot at, a gun held on them up close, a danger seen near enough to fight or run from.
-        Response danger = Danger(w, h, b, lead, t, d, out Vector3 from, out ITarget shooter);
+        Response danger = Danger(w, h, b, lead, t, d, out Vector3 from, out ITarget shooter, out WorldNoise? heard);
         if (shooter != null)
         {
             // Shot at: an armed band shoots back (at you, unless it's friendly to you: then it runs, and won't trust you again); one with no weapons runs.
@@ -211,6 +211,7 @@ public static partial class Brain
         }
         else if (danger == Response.Fight && b.Mood != PartyMood.Fighting) ToFight(w, h, b, lead, b.Threat); // (a fight under way isn't dropped for it)
         else if (danger == Response.Flee) ToFlight(w, h, b, lead, from);
+        else if (heard is { } shot && b.Mood is not (PartyMood.Fighting or PartyMood.Fleeing)) Startle(w, h, b, lead, shot, armed);
 
         switch (b.Mood)
         {
@@ -304,7 +305,7 @@ public static partial class Brain
         Creature danger = null, other = null;
         foreach (Creature o in w.Sightings.Near(h.Center, see))
         {
-            if (o.Herd == h) continue;
+            if (o.Herd == h || o.Keeper == h) continue; // (nor their own beasts)
             float d = WildSim.Flat(o.Position - h.Center).Length();
             if (o.Herd?.Party is { } them && CrossReactions.People(o.Species))
             {
@@ -370,34 +371,47 @@ public static partial class Brain
     }
 
     /// <summary>
-    /// What they can't stand and face: a shot from someone passing close by one of them (or fired close
-    /// to them: not by one of their own); a gun held on them up close (a friendly band, held a moment or
+    /// A shot heard that wasn't at them (owner: "startled or trigger aggression [or] fleeing depending on their temperament"):
+    /// they start and look to it; with nothing to fight with, or a timid lead, they run from it; a band that would prey on
+    /// whoever fired goes at them; the rest keep an eye on them (the wary warn them off as they come).
+    /// </summary>
+    static void Startle(WildSim w, Herd h, Party b, Creature lead, WorldNoise shot, bool armed)
+    {
+        b.LookAt = shot.Position + Vector3.Up;
+        b.LookUntil = w.Time + 3f;
+        if (!armed || lead.Nerve < 0.25f) { ToFlight(w, h, b, lead, shot.Position); return; }
+        ITarget by = shot.By;
+        if (by.Attackable && Toward(b, by) == Leaning.Hostile && w.Time > b.BrokenUntil) { ToFight(w, h, b, lead, by); return; }
+        if (by.Attackable) { b.Outsider = by; b.OutsiderSeen = w.Time; }
+        Event(w, b, lead, PartyEvent.Startle);
+    }
+
+    /// <summary>
+    /// What they can't stand and face: a shot (a blow, a blast) from someone passing close by one of them (or fired or landed
+    /// close to them: not by one of their own or their beasts; one only heard is a start, <paramref name="heard"/>); a gun held on them up close (a friendly band, held a moment or
     /// come close); the danger they last saw, as the leader answers it (<see cref="CrossReactions.Respond"/>):
     /// fought, run from, kept wide of, or watched. People who'd do them harm aren't fought on sight: the
     /// warning comes first; those only warning them off are given way to, never run from. Where it is,
     /// and who shot.
     /// </summary>
-    static Response Danger(WildSim w, Herd h, Party b, Creature lead, ITarget t, float d, out Vector3 from, out ITarget shooter)
+    static Response Danger(WildSim w, Herd h, Party b, Creature lead, ITarget t, float d, out Vector3 from, out ITarget shooter, out WorldNoise? heard)
     {
         from = default;
         shooter = null;
+        heard = null;
         foreach (WorldNoise n in w.Noises)
         {
             if (n.By is null or CreatureTarget { Attackable: false } || n.Time <= b.ShotHeard) continue; // (nor one fired by someone fallen since: a fight with them is over before it starts)
             b.ShotHeard = n.Time;
-            if (n.By is CreatureTarget { Creature.Herd: var by } && by == h) continue;
+            if (h.Kin(n.By)) continue;
             foreach (Creature m in h.Members)
             {
-                if (!m.Alive || m.Removed) continue;
-                Vector3 v = m.Position + Vector3.Up * 1.2f - n.Position;
-                float along = n.Dir.LengthSquared() > 0.5f ? v.Dot(n.Dir) : -1f;
-                if (v.Length() < ShotBy || along > 0f && along < n.Radius && (v - n.Dir * along).Length() < ShotPast)
-                {
-                    from = n.Position;
-                    shooter = n.By;
-                    return Response.Flee;
-                }
+                if (!m.Alive || m.Removed || !n.At(m.Position + Vector3.Up * 1.2f)) continue;
+                from = n.Position;
+                shooter = n.By;
+                return Response.Flee;
             }
+            if (WildSim.Flat(n.Position - h.Center).Length() < n.Radius) heard = n;
         }
         if (t != null && b.Leaning == Leaning.Friendly && b.Mood != PartyMood.Fleeing && AimedAtAny(h, t, AimClose))
         {
@@ -497,6 +511,9 @@ public static partial class Brain
                 break;
             case PartyEvent.Calm:
                 c.Act = BodyAct.None;
+                break;
+            case PartyEvent.Startle:
+                Hold(w, c, BodyAct.Startle, 0.8f);
                 break;
         }
     }

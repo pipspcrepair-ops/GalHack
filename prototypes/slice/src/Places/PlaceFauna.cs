@@ -532,6 +532,7 @@ public sealed class PlaceFauna
     {
         if (Silent || Sim == null) return;
         _site = DeepSite.Create(places.Zone.Wildlife, Sim, "Creatures");
+        _site.Town = place.Memory.Town;
         place.AddChild(_site);
     }
 
@@ -542,6 +543,9 @@ public sealed class PlaceFauna
     }
 
     public DeepSite Site => _site != null && GodotObject.IsInstanceValid(_site) ? _site : null;
+
+    /// <summary>Its blocks as its creatures live in them (null until populated).</summary>
+    public ISolidSpace Space => _space;
 }
 
 /// <summary>

@@ -259,8 +259,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Game.Hands?.Recoil(GunFeel.Get(d.Feel), d.Recoil * (1f + stage * 0.35f));
         Sounds.Play(d, VoiceKind.Report, muzzle, (0.96f + 0.08f * (float)_rng.NextDouble()) * (1f - stage * 0.06f));
         Zone.Wildlife.Noise(muzzle, d.Noise * (1f + stage * 0.25f), dir);
-        PoiPlaces places = Game.Places;
-        if (places != null && d.Noise > 30f) (places.TownAt(muzzle) ?? places.TownAt(muzzle + dir * 30f))?.Provoked();
     }
 
     float _swingIn;
@@ -346,7 +344,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         if (!Sweep(from.ToNumerics(), (from + dir * reach).ToNumerics(), attacker, owner, 1f, out ShotHit hit)) return;
         var blow = new Shot { Live = true, Def = d, Owner = owner, By = attacker, Pos = from.ToNumerics(), Vel = (dir * 6f).ToNumerics(), Damage = d.Damage, State = ShotState.Flying };
         Strike(ref blow, hit, d.Damage);
-        Zone.Wildlife.Noise(from, d.Noise);
+        Zone.Wildlife.Noise(from, d.Noise, dir, attacker == PlayerThing ? null : attacker);
     }
 
     /// <summary>A random direction within so many degrees of another, evenly over the cone.</summary>
@@ -864,6 +862,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 break;
         }
         if (tick) return;
+        // Where it landed is heard too, a little way: those it lands by take it as a shot at them.
+        Zone.Wildlife.Noise(at, MathF.Min(d.Noise, ImpactHeard), default, s.Owner == 0 ? null : s.By);
         // What it struck, heard: a blow thuds, a round into anything living slaps, the rest is the row's own impact.
         float pitch = 0.9f + 0.2f * (float)_rng.NextDouble();
         bool living = hit.Kind is HitKind.Creature or HitKind.Person or HitKind.Player || hit.Thing is WormMass;
@@ -871,6 +871,9 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         else if (living) Sounds.Play(CombatSound.Flesh, at, pitch, 2f);
         else Sounds.Play(d, VoiceKind.Impact, at, pitch, -6f);
     }
+
+    /// <summary>How far where a shot lands is heard at most, m.</summary>
+    const float ImpactHeard = 30f;
 
     /// <summary>The player's own hits and kills confirmed (tests).</summary>
     public int Confirms, Kills;
@@ -1027,7 +1030,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Game.Shots.Impact(p, n, ImpactKind.Ground);
         Zone.Dust?.Puff(p, Zone.Planet.Grit(p), 1.4f);
         Sounds.Play(s.Def, VoiceKind.Impact, p);
-        Zone.Wildlife.Noise(p, 150f);
+        Zone.Wildlife.Noise(p, 150f, default, s.Owner == 0 ? null : s.By);
         Game.Hands?.Shake(Mathf.Clamp(1f - Game.Survivor.WorldEye().DistanceTo(p) / 40f, 0f, 0.8f));
     }
 

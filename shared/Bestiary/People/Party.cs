@@ -7,7 +7,7 @@ namespace Wildlife;
 public enum PartyMood { Easy, Watching, Warning, Fighting, Fleeing }
 
 /// <summary>What a band's members each take in, in their own time, the leader first.</summary>
-public enum PartyEvent { None, Seen, Greet, Warn, Fight, Flee, Calm }
+public enum PartyEvent { None, Seen, Greet, Warn, Fight, Flee, Calm, Startle }
 
 /// <summary>
 /// A band of people out in the world (a hunting party, pilgrims, a patrol, raiders): they go about
