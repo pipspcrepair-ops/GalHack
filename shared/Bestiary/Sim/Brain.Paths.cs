@@ -83,9 +83,11 @@ public static partial class Brain
     {
         Vector3 to = c.Path[0];
         NavGrid fine = Fine(w, c, c.Position, to);
-        fine.FindPath(c.Position, fine.Inside(to, 2), w.Way, 3000, g);
+        bool through = fine.FindPath(c.Position, fine.Inside(to, 2), w.Way, 3000, g);
         if (w.Way.Count == 0) return;
-        c.Path.RemoveAt(0);
+        // (No way through at the finer cells, a ramp too steep for these legs after all: as far as it gets, and it waits there at the edge.)
+        if (through) c.Path.RemoveAt(0);
+        else { c.Path.Clear(); c.PathWhole = false; }
         c.Path.InsertRange(0, w.Way);
         c.PathReach = 0.5f;
     }
