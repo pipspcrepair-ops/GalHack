@@ -907,6 +907,8 @@ public sealed class WildSim
             c.ProvokedAt = Time;
             c.Herd?.Alarm(source.Position, Time);
             if (Arming.Fights(c.Species)) Rally(c, source);
+            // A kept beast set on: its people turn on whoever did it.
+            if (c.Keeper is { } keeper && !keeper.Kin(source)) keeper.Wronged(this, c, source);
         }
         if (c.Species.Rig == RigKind.Swarm)
             c.SwarmAlive = Math.Max(0, (int)MathF.Ceiling(c.Species.Body.Members * MathF.Max(0f, c.Health) / c.Stats.MaxHealth));

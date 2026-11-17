@@ -185,6 +185,20 @@ public sealed partial class Town
         return Memory.Mood == Mood.Hostile && _alert && !YouDown ? w == patch.Sim ? patch.Player : patch.SiteOf(w)?.Player : null;
     }
 
+    /// <summary>One of their beasts hurt: by you, as if you had hurt one of them (the place turns on you); by a creature, it is met as a danger.</summary>
+    public void Wronged(WildSim w, Creature beast, ITarget by)
+    {
+        Slice.Surface.WildlifePatch patch = _places?.Zone.Wildlife;
+        if (patch == null || _place == null) return;
+        if (by is CreatureTarget { Creature: var c }) Harmed(c);
+        else if (by == patch.Player || by == patch.SiteOf(w)?.Player)
+        {
+            Did(Deed.Harm);
+            Provoked();
+            Alert(_place.FromWorld(patch.PlayerWorld()));
+        }
+    }
+
     /// <summary>The one of them a beast keeps by (each beast its own, while they live), as a sim sees them.</summary>
     public ITarget Master(WildSim w, Creature beast)
     {

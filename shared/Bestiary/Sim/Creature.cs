@@ -415,6 +415,8 @@ public interface IKeeper
     ITarget Foe(WildSim w);
     /// <summary>The one of them a beast keeps by, as this sim sees them; null once none is left (it is wild again).</summary>
     ITarget Master(WildSim w, Creature beast);
+    /// <summary>Someone hurt one of their beasts (owner: "if you attack the pet that would draw the anger of their masters in the group"): as good as a hit on one of them.</summary>
+    void Wronged(WildSim w, Creature beast, ITarget by);
 }
 
 /// <summary>A herd (or flock, or pack) moving as one: a shared goal, a shared alarm, a shared hunt; a band of people keeps its beasts.</summary>
@@ -452,6 +454,13 @@ public sealed class Herd : IKeeper
     public bool Kin(ITarget t) => t is CreatureTarget { Creature: var o } && (o.Herd == this || o.Keeper == this);
     public ITarget Foe(WildSim w) => Party is { Mood: PartyMood.Fighting, Foe: { } foe } ? foe : null;
     public ITarget Master(WildSim w, Creature beast) => Brain.Leader(this)?.AsTarget;
+
+    /// <summary>Their beast hurt: each of them takes it as harm done to them (the band turns on whoever did it: <see cref="Brain"/>'s UpdateBand).</summary>
+    public void Wronged(WildSim w, Creature beast, ITarget by)
+    {
+        foreach (Creature m in Members)
+            if (m.Alive && !m.Removed) (m.ProvokedBy, m.ProvokedAt) = (by, w.Time);
+    }
 
     public void Alarm(Vector3 threat, float now)
     {
