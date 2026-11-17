@@ -343,8 +343,13 @@ public partial class CreatureView : Node3D
         Transform3D[] pose = _blend.Frame(live, _root, PoseKey(c), span, MathF.Max(0.3f, c.Species.Body.Size), now);
         if (_skeleton != null)
         {
-            Place(now);
-            for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+            // A body posed every frame has the easing in its bones (no move of the whole skeleton node, which costs far more);
+            // one posed less often has it on the node, which moves every frame between its poses (Glide).
+            bool bake = c.RigInterval <= 1;
+            Place(now, bake);
+            Transform3D ease = bake ? _smooth.Placement(now) : Transform3D.Identity;
+            if (ease == Transform3D.Identity) for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+            else for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, ease * pose[i]);
         }
         else for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = jolt * pose[i];
 
@@ -381,9 +386,9 @@ public partial class CreatureView : Node3D
         (int)c.State | (int)c.Phase << 5 | (c.Dead ? 1 : 0) << 8 | (c.Landed ? 1 : 0) << 9 | (c.Flapping ? 1 : 0) << 10 | (c.Thrown ? 1 : 0) << 11
         | (c.Downed > 0f ? 1 : 0) << 12 | (int)c.Act << 13 | (c.Climbing ? 1 : 0) << 20 | (c.Falling ? 1 : 0) << 21;
 
-    void Place(double now)
+    void Place(double now, bool bake)
     {
-        Transform3D put = _smooth.Placement(now) * _jolt;
+        Transform3D put = bake ? _jolt : _smooth.Placement(now) * _jolt;
         if (put == _put) return;
         _put = put;
         _skeleton.Transform = put;
@@ -416,7 +421,7 @@ public partial class CreatureView : Node3D
             Transform3D[] pose = _blend.Apply(Creature.Rig.Pose, _root, now);
             for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
         }
-        if (_smooth.Easing(now) || _put != _jolt) Place(now);
+        if (_smooth.Easing(now) || _put != _jolt) Place(now, false);
     }
 
     float _stirShown;
