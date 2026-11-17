@@ -569,7 +569,7 @@ public static partial class Brain
         }
         float angle = SlotAngle(p, c);
         if (d > RingRadius(c, r) + 3f) CircleTo(w, c, prey.Position, angle, RingRadius(c, r), c.Stats.RunSpeed);
-        else Go(w, c, prey.Position + AngleDir(angle) * Attacks.Range(c) * 0.7f, c.Stats.RunSpeed);
+        else Chase(w, c, prey, prey.Position + AngleDir(angle) * Attacks.Range(c) * 0.7f, c.Stats.RunSpeed);
         c.Desired += Separation(c, p, r.Spacing) * c.Stats.WalkSpeed;
     }
 
@@ -839,7 +839,7 @@ public static partial class Brain
     }
 
     static ITarget Provoked(WildSim w, Creature c) =>
-        c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable && c.Stats.Retaliates ? c.ProvokedBy : null;
+        c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable && c.Stats.Retaliates && !Remembers(w, c, c.ProvokedBy) ? c.ProvokedBy : null;
 
     static bool Huntable(Creature c, ITarget t, float dist) => t != null && t.Attackable && dist < c.Stats.Perception && c.Stats.Damage > 0f;
 
@@ -882,7 +882,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             Attacks.Start(w, c, t);
         }
-        else Go(w, c, Senses.Aim(c, t), c.Stats.RunSpeed);
+        else Chase(w, c, t, Senses.Aim(c, t), c.Stats.RunSpeed);
     }
 
     static void WanderAndGraze(WildSim w, Creature c, float radius, float dt)

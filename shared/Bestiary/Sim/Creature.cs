@@ -116,6 +116,9 @@ public sealed class Creature
     }
     public ITarget ProvokedBy;
     public float ProvokedAt = -999f;
+    /// <summary>A chase (<see cref="Brain"/>'s Chase): whom it is after and how long it has had no whole way to them; whom it last gave up on, when, and when it next looks whether they are back within reach.</summary>
+    public ITarget Chased, GaveUpOn;
+    public float Unreached, GaveUpAt = -999f, ReachCheck;
 
     /// <summary>Seconds left held in the flinch of a stun, and until another stun can take it.</summary>
     public float StunFor, StunReady;

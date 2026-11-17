@@ -759,6 +759,7 @@ public sealed class FaunaGenerator
         if (st.Damage <= 0f && temper.Retaliates) st.Damage = 5f; // a harmless thing that bites back when cornered
         st.Perception = def.Perception * rng.Range(0.85f, 1.15f) * (s.Plan == BodyPlan.Giant ? 1.3f : 1f);
         st.FleeRadius = temper.Flee;
+        st.GiveUp = def.GiveUp * temper.Persist;
         st.Retaliates = temper.Retaliates;
         st.Hunts = temper.Hunts;
         st.Territory = def.Territory * Math.Clamp(size / 6f, 0.7f, 1.5f);

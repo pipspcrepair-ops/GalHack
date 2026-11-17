@@ -32,16 +32,7 @@ public static partial class Brain
         {
             if (c.Removed || c.Dead) continue;
             bool had = c.AttackTarget == t || c.Noticed == t || c.ProvokedBy == t || c.Quarry == t || c.Holding == t || c.TellTarget == t;
-            if (!had) continue;
-            if (c.Holding == t) Seizing.Release(w, c, false);
-            else if (c.Attacking && c.AttackTarget == t) Attacks.Cancel(c);
-            if (c.AttackTarget == t) c.AttackTarget = null;
-            if (c.Noticed == t) { c.Noticed = null; c.Awareness = 0f; }
-            if (c.ProvokedBy == t) c.ProvokedBy = null;
-            if (c.Quarry == t) c.Quarry = null;
-            if (c.TellTarget == t) c.TellTarget = null;
-            if (c.State is CState.Chase or CState.Stalk or CState.Warn or CState.Tell or CState.Guard) { c.SetState(CState.Wander); c.HasGoal = false; }
-            c.ThinkEvery = 0f;
+            if (had) Forget(w, c, t);
         }
         foreach (Pack p in w.Packs)
             if (p.Prey == t) EndHunt(w, p, 0f);

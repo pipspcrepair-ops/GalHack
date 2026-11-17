@@ -306,6 +306,86 @@ public static partial class Brain
         Go(w, c, c.AwayGoal, speed);
     }
 
+    // ---- Chases -----------------------------------------------------------------------------
+
+    /// <summary>How long a chaser remembers someone it gave up on, s (back within reach in that time, it takes the chase up again); how often it looks.</summary>
+    const float ChaseMemory = 60f, ReachLook = 2f;
+
+    /// <summary>
+    /// The one way every chaser closes on whom it is after: a wild hunter, a pack, a Husk, a band's fighter, a place's creature (owner:
+    /// "what happens if the player moves to a position a chasing enemy can't reach? Does the enemy stop their pursuit and then give
+    /// up?"). It goes by its own grid and gait (a climber or a leaper anywhere it can); with no whole way there it goes to the nearest
+    /// spot it can get to and waits there (<see cref="Short"/>; one with a ranged attack uses it from there, by its brain's reach).
+    /// After its give-up time with no whole way (<see cref="Stats.GiveUp"/>) it loses interest and goes back to what it does
+    /// (<see cref="GiveUp"/>); it remembers them a minute, and takes the chase up again only once there is a whole way to them.
+    /// </summary>
+    static void Chase(WildSim w, Creature c, ITarget t, Vector3 goal, float speed)
+    {
+        if (Remembers(w, c, t))
+        {
+            GiveUp(w, c, t);
+            return;
+        }
+        if (c.Chased != t) (c.Chased, c.Unreached) = (t, 0f);
+        Go(w, c, goal, speed);
+        if (c.PathWhole || c.Path.Count == 0 && c.Desired.LengthSquared() > 0.01f) c.Unreached = 0f;
+        else if ((c.Unreached += c.ThinkDt) > c.Stats.GiveUp) GiveUp(w, c, t);
+    }
+
+    /// <summary>
+    /// Whether it gave up on someone within its memory who is still out of its reach (looked at every two seconds, by a way on its
+    /// own grid): it doesn't notice them, nor go after them for a hurt. Back within reach, it forgets it gave up.
+    /// </summary>
+    public static bool Remembers(WildSim w, Creature c, ITarget t)
+    {
+        if (t == null || c.GaveUpOn != t) return false;
+        if (w.Time - c.GaveUpAt > ChaseMemory) { c.GaveUpOn = null; return false; }
+        if (w.Time < c.ReachCheck || !w.TakePathBudget()) return true;
+        c.ReachCheck = w.Time + ReachLook;
+        bool reach = c.Space != null ? SpaceNav.FindPath(c.Space, Crawl.Center(c), t.Position, SpaceNav.BodyOf(c.Species), w.Way, 2500)
+            : Clear(w, c, c.Position, t.Position) || w.Nav.FindPath(c.Position, t.Position, w.Way, gait: GaitOf(c.Species));
+        if (reach) c.GaveUpOn = null;
+        return !reach;
+    }
+
+    /// <summary>
+    /// Loses interest in someone it can't get to: drops all it held of them and goes back to what it does: a place's creature to
+    /// its lair or home spot, an animal back toward its own ground, a band's fighter to its band (a band with no gun to reach them
+    /// with lets the fight go).
+    /// </summary>
+    static void GiveUp(WildSim w, Creature c, ITarget t)
+    {
+        if (c.GaveUpOn != t) w.GaveUp++;
+        (c.GaveUpOn, c.GaveUpAt, c.ReachCheck, c.Unreached, c.Chased) = (t, w.Time, w.Time + ReachLook, 0f, null);
+        Forget(w, c, t);
+        if (c.Pack is { } p && p.Prey == t) EndHunt(w, p, 0f);
+        if (c.Herd is { } h)
+        {
+            if (h.Hunting == t) h.Hunting = null;
+            if (h.Party is { } b && b.Foe == t && !h.Members.Exists(m => m.Alive && m.Species.Figure is { } f && Weapons.Ranged(f.Prop))) Settle(w, h, b, Leader(h) ?? c, PartyMood.Easy);
+        }
+        c.Path.Clear();
+        c.HasAway = false;
+        c.Desired = Vector3.Zero;
+        if (c.Species.IsDeep) c.SetState(CState.ReturnHome);
+        else if (c.Herd == null && c.Pack == null && WildSim.Flat(c.Home - c.Position).Length() > 8f) (c.Goal, c.HasGoal) = (w.FreeSpot(c.Home, c.Rng), true);
+    }
+
+    /// <summary>Drops someone from all it holds of them: its attack or grip, its notice, a grudge, its quarry, prey or warning; out of a chase.</summary>
+    static void Forget(WildSim w, Creature c, ITarget t)
+    {
+        if (c.Holding == t) Seizing.Release(w, c, false);
+        else if (c.Attacking && c.AttackTarget == t) Attacks.Cancel(c);
+        if (c.AttackTarget == t) c.AttackTarget = null;
+        if (c.Noticed == t) { c.Noticed = null; c.Awareness = 0f; }
+        if (c.ProvokedBy == t) c.ProvokedBy = null;
+        if (c.Quarry == t) c.Quarry = null;
+        if (c.TellTarget == t) c.TellTarget = null;
+        if (c.Prey != null && c.Prey.AsTarget == t) c.Prey = null;
+        if (c.State is CState.Chase or CState.Stalk or CState.Warn or CState.Tell or CState.Guard) { c.SetState(CState.Wander); c.HasGoal = false; }
+        c.ThinkEvery = 0f;
+    }
+
     // ---- Headway ----------------------------------------------------------------------------
 
     /// <summary>

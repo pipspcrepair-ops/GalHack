@@ -81,6 +81,7 @@ public partial class OccupantTest
             foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
                 if (done < 2 && OutsideWalk(f, life, outside)) done++;
             SteepWalk(life, steep, faces, w);
+            if (w == 0) Ledge(life);
         }
         PathChecks("in cramped places", inside, 10);
         PathChecks("on open ground round buildings", outside, 4);

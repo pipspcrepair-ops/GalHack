@@ -448,7 +448,7 @@ public static partial class Brain
             return;
         }
         c.SetState(CState.Chase);
-        Go(w, c, Senses.Aim(c, p), c.Stats.RunSpeed);
+        Chase(w, c, p, Senses.Aim(c, p), c.Stats.RunSpeed);
     }
 
     // ---- Prowlers: a beat through the corridors ------------------------------------------

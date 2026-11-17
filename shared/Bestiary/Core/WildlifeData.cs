@@ -473,6 +473,8 @@ public sealed class BehaviourDef
 {
     public int[] Group { get; set; } = { 1, 1 };
     public float Perception { get; set; } = 24f;
+    /// <summary>How long it keeps after someone it can't get to (no whole way there) before it loses interest, s, before its temper.</summary>
+    public float GiveUp { get; set; } = 15f;
     /// <summary>Damage of a normal hit, against a player with 100 health, before size scaling.</summary>
     public float Damage { get; set; }
     public float Speed { get; set; } = 1f;
@@ -521,6 +523,8 @@ public sealed class TemperamentDef
     public bool Retaliates { get; set; }
     /// <summary>Goes after players unprovoked, even in a herd.</summary>
     public bool Hunts { get; set; }
+    /// <summary>How much longer than its kind it keeps after someone it can't get to (its give-up time times this).</summary>
+    public float Persist { get; set; } = 1f;
 }
 
 public sealed class PaletteRules

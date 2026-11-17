@@ -314,6 +314,8 @@ public sealed class Stats
 {
     public float MaxHealth, WalkSpeed, RunSpeed, Damage, AttackRange, Perception, FleeRadius;
     public float Territory, AmbushRadius;
+    /// <summary>How long it keeps after someone it can't get to before it loses interest, s (<see cref="Wildlife.Brain"/>'s chase).</summary>
+    public float GiveUp = 15f;
     /// <summary>Wind-up of the first attack on a player, from the behaviour's data (0 = combat default).</summary>
     public float Telegraph;
     public bool Retaliates, Hunts;

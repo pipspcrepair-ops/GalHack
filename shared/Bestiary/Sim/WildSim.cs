@@ -840,6 +840,9 @@ public sealed class WildSim
     /// <summary>Bodies that made no headway for a second and looked for another way, and those still stuck that were put back where they last went well (<see cref="Brain.Headway"/>).</summary>
     public int Repaths, Unstuck;
 
+    /// <summary>Chasers that lost interest in someone they couldn't get to (<see cref="Brain"/>'s GiveUp; tests).</summary>
+    public int GaveUp;
+
     /// <summary>A way worked out for a group (a herd's or a pack's flight), reused.</summary>
     public readonly List<Vector3> Way = new();
 

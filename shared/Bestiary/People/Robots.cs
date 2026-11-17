@@ -96,6 +96,7 @@ public static class Robots
         st.Damage = 16f * k;
         st.AttackRange = 1.6f;
         st.Perception = 45f;
+        st.GiveUp = 30f;
         st.FleeRadius = 0f;
         st.Radius = legs == 2 ? 0.4f : 0.7f * k;
         st.Retaliates = true;

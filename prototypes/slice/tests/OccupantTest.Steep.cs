@@ -203,6 +203,79 @@ public partial class OccupantTest
         (t.Repaths, t.Unstuck) = (t.Repaths + sim.Repaths, t.Unstuck + sim.Unstuck);
     }
 
+    /// <summary>
+    /// Out of reach (owner: "what happens if the player moves to a position a chasing enemy can't reach? Does the enemy stop their
+    /// pursuit and then give up?"): an intruder up on a sheer pillar no walker gets up, hunters set on it. The walkers go to the
+    /// nearest spot they can get to, give up within their time (Stats.GiveUp) and leave; then it steps down beside the pillar and
+    /// one comes back within its memory; a climber, if the world has one, gets up to it.
+    /// </summary>
+    void Ledge(WorldLife life)
+    {
+        const float half = 70f, r = 5f, h = 9f;
+        var rng = Wildlife.Rng.For((ulong)_rng.NextInt64(), "ledge");
+        var terrain = new Wildlife.Terrain((x, z) => h * Math.Clamp((r + 1.2f - MathF.Sqrt(x * x + z * z)) / 1.2f, 0f, 1f), half);
+        var sim = new WildSim(_data, terrain, new Wildlife.NavGrid(half, 3f));
+        Species Hunter(Species s)
+        {
+            s = s.Resized(1.1f);
+            (s.Behaviour, s.Temperament, s.Stats.Hunts, s.Stats.Damage, s.Stats.Retaliates) = (Behaviour.Predator, Temperament.Aggressive, true, 1f, true);
+            s.Stats.Perception = MathF.Max(s.Stats.Perception, 90f);
+            s.Stats.GiveUp = 15f * 1.3f; // (an aggressive predator's, by the data)
+            return s;
+        }
+        var walkers = life.Fauna.Species.Where(k => k.Rig == RigKind.Legged && !k.Flies && !k.Mechanical && !k.Climbs && k.Domestic == DomesticKind.None && k.Body.Size < 2.5f).ToList();
+        Species climber = life.Fauna.Species.FirstOrDefault(k => k.Climbs && !k.Flies && !k.Mechanical && k.Domestic == DomesticKind.None);
+        if (walkers.Count == 0) return;
+        var you = new DummyTarget { Name = "intruder", Position = new Vector3(0f, h, 0f) };
+        sim.Targets.Add(you);
+        var hunters = new List<Creature>();
+        for (int i = 0; i < 3; i++)
+        {
+            float a = i * MathF.Tau / 3f + rng.Range(-0.4f, 0.4f);
+            hunters.Add(sim.Spawn(Hunter(walkers[rng.Int(0, walkers.Count - 1)]), new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 22f));
+        }
+        Creature up = climber != null ? sim.Spawn(Hunter(climber), new Vector3(0f, 0f, -20f)) : null;
+        var gaveAt = new Dictionary<Creature, float>();
+        var gaveFrom = new Dictionary<Creature, float>();
+        var after = new Dictionary<Creature, float>();
+        float nearest = float.MaxValue, climbed = float.MaxValue, downAt = -1f;
+        int back = 0;
+        for (int step = 0; step < 110 * 30; step++)
+        {
+            // Shot at now and then all along (a hurt is no reason to keep after someone it can't get to).
+            if (step % 150 == 0)
+                foreach (Creature c in sim.Creatures) { c.Noticed = you; c.LastSeen = you.Position; sim.Damage(c, 0.01f, you); }
+            sim.Step(PathDt);
+            foreach (Creature c in hunters)
+            {
+                if (c.Removed || c.Dead) continue;
+                float d = WildSim.Flat(c.Position - you.Position).Length();
+                if (downAt < 0f) nearest = MathF.Min(nearest, d);
+                if (!gaveAt.ContainsKey(c) && c.GaveUpOn == you) (gaveAt[c], gaveFrom[c]) = (sim.Time, d);
+                if (gaveAt.TryGetValue(c, out float at) && downAt < 0f && sim.Time - at <= 10f) after[c] = d;
+            }
+            if (up != null && !up.Removed && downAt < 0f) climbed = MathF.Min(climbed, (up.Position - you.Position).Length());
+            // Every walker given up a while (or a minute gone): the intruder steps down beside the pillar, within their memory.
+            if (downAt < 0f && (gaveAt.Count == hunters.Count && sim.Time - gaveAt.Values.Max() > 10f || sim.Time > 60f))
+            {
+                downAt = sim.Time;
+                you.Position = new Vector3(0f, 0f, r + 4f);
+            }
+            if (downAt >= 0f && back == 0)
+                foreach (Creature c in hunters)
+                    if (!c.Removed && !c.Dead && (c.State == CState.Chase && c.Noticed == you || WildSim.Flat(c.Position - you.Position).Length() < Attacks.Range(c) + 1.5f)) back++;
+            you.Health.Restore();
+        }
+        int left = hunters.Count(c => gaveAt.ContainsKey(c) && after.TryGetValue(c, out float a) && a > gaveFrom[c] + 3f);
+        string times = string.Join(", ", hunters.Select(c => gaveAt.TryGetValue(c, out float t) ? $"{t:F0} s ({c.Stats.GiveUp:F0} s its time, {gaveFrom[c]:F1} m off, {(after.TryGetValue(c, out float a) ? a : 0f):F1} m 10 s on)" : $"never ({c.State}, {c.Stats.GiveUp:F0} s its time, {WildSim.Flat(c.Position - you.Position).Length():F1} m off, way {c.PathIndex}/{c.Path.Count}{(c.PathWhole ? "" : " short")}, unreached {c.Unreached:F1} s)"));
+        GD.Print($"    out of reach on a pillar {h:F0} m tall: walkers gave up at {times}; nearest any came {nearest:F1} m; {(up != null ? $"the climber came within {climbed:F1} m" : "no climber in this world")}");
+        Check(gaveAt.Count == hunters.Count && hunters.All(c => gaveAt[c] <= c.Stats.GiveUp + 15f), $"out of reach: walkers set on someone up a pillar they can't climb give up within their time ({gaveAt.Count} of {hunters.Count})");
+        Check(nearest < r + 6f && gaveFrom.Values.All(d => d < r + 9f), $"out of reach: they wait at the nearest spot they can get to till then (nearest {nearest:F1} m, the pillar {r:F0} m round)");
+        Check(left >= hunters.Count - 1, $"out of reach: having given up, they leave ({left} of {hunters.Count} 3 m farther off within 10 s)");
+        Check(back >= 1, $"out of reach: stepped down within their memory, one comes back for it ({back})");
+        if (up != null) Check(climbed < Attacks.Range(up) + 2f, $"out of reach: a climber gets up to it ({climbed:F1} m at nearest)");
+    }
+
     void SteepChecks(SteepTally s)
     {
         GD.Print($"    on steep ground ({string.Join(", ", s.Forms)}): {s.Walkers} walkers, {s.WalkerSeconds:F0} walker-seconds, {s.OnFace:F1} s of it on faces steeper than their legs take");
