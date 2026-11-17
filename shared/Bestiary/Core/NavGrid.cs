@@ -19,15 +19,32 @@ public sealed class Obstacle
 /// cells it covers. Among buildings (a place standing on the ground, a house by the road) the cells are too coarse for
 /// a doorway, so the way is found on a fine window of 1 m cells round the body (<see cref="Window"/>), blocked where the
 /// built blocks stand as well as by the rocks and trunks. And a flight is planned on it too (<see cref="Away"/>).
+/// Every move from a cell to the next is also one the body's legs can make (<see cref="Gait"/>, owner: "wall climbers
+/// should be able to go up and down those, but not a person or regular animal"): up or down ground no steeper than its
+/// limit (steep but passable ground costing more, so a way prefers the easy way round), never off an edge higher than
+/// it can drop; climbers, fliers and leapers go where they like. One height a cell (<see cref="Ground"/>) serves every gait.
 /// </summary>
 public sealed class NavGrid
 {
+    /// <summary>
+    /// What a body's legs manage between cells: the steepest ground it walks up or down (rise over run), and the highest
+    /// edge it steps or hops off. The default is anything (a climber, a flier, a leaper).
+    /// </summary>
+    public readonly record struct Gait(float Slope, float Drop)
+    {
+        public bool Any => Slope <= 0f;
+    }
+
     public readonly float CellSize;
     public readonly int Size;
     float _ox, _oz;                          // the grid's corner (a fine window's moves with the body it is for)
     readonly int[] _blocked;                 // how many obstacles cover each cell
     readonly List<Obstacle>[] _buckets;      // obstacles touching each cell, for local avoidance
     readonly List<Obstacle> _obstacles = new();
+    // The ground's height at each cell's middle (a fine window's worked out as it is read), and the gait this search is for.
+    readonly float[] _h;
+    Terrain _ground;
+    Gait _gait;
 
     // A* and flood scratch, reused between searches so pathfinding never allocates per call.
     readonly float[] _g, _t;
@@ -58,6 +75,7 @@ public sealed class NavGrid
         int n = Size * Size;
         _blocked = new int[n];
         _buckets = new List<Obstacle>[n];
+        _h = new float[n];
         (_g, _t, _from, _visit, _closedAt, _tAt) = (new float[n], new float[n], new int[n], new int[n], new int[n], new int[n]);
     }
 
@@ -69,7 +87,20 @@ public sealed class NavGrid
         int n = Size * Size;
         _blocked = new int[n];
         _known = new int[n];
+        _h = new float[n];
         (_g, _t, _from, _visit, _closedAt, _tAt) = (new float[n], new float[n], new int[n], new int[n], new int[n], new int[n]);
+    }
+
+    /// <summary>The ground the grid lies on: each cell's height at its middle, what a gait's moves are judged by.</summary>
+    public void Ground(Terrain t)
+    {
+        _ground = t;
+        for (int z = 0; z < Size; z++)
+        for (int x = 0; x < Size; x++)
+        {
+            Vector3 c = Center(x, z);
+            _h[z * Size + x] = t.Height(c.X, c.Z);
+        }
     }
 
     /// <summary>
@@ -149,7 +180,25 @@ public sealed class NavGrid
         bool built = _built(p);
         k = built ? 3 : _coarse.Rock(p, _body) ? 1 : 0;
         _known[i] = _stamp << 2 | k;
+        _h[i] = _coarse._ground?.Height(p.X, p.Z) ?? 0f;
         return k;
+    }
+
+    /// <summary>
+    /// Whether this search's gait takes a body from one cell to a neighbour this far off (m): up no steeper than its limit,
+    /// down no steeper either unless the drop is one it steps or hops off; and how much more than its length the move costs
+    /// (steep ground is slower going, so a way bends round it where it can).
+    /// </summary>
+    bool Legs(int from, int to, float run, out float cost)
+    {
+        cost = 1f;
+        if (_gait.Any || _ground == null && _coarse?._ground == null) return true;
+        if (_coarse != null) { Known(from % Size, from / Size); Known(to % Size, to / Size); }
+        float rise = _h[to] - _h[from], slope = MathF.Abs(rise) / run;
+        if (slope > _gait.Slope && (rise > 0f || -rise > _gait.Drop)) return false;
+        float k = MathF.Min(slope / _gait.Slope, 1f);
+        cost = 1f + 2f * k * k;
+        return true;
     }
 
     public bool Blocked(Vector3 p)
@@ -191,8 +240,17 @@ public sealed class NavGrid
         return _around;
     }
 
-    /// <summary>True when no blocked cell lies on the straight line (a supercover walk); <paramref name="built"/>: no built-on cell of a fine window.</summary>
-    public bool LineClear(Vector3 a, Vector3 b, bool built = false)
+    /// <summary>
+    /// True when no blocked cell lies on the straight line (a supercover walk) and a body of this gait gets from each cell
+    /// on it to the next; <paramref name="built"/>: only that no built-on cell of a fine window does.
+    /// </summary>
+    public bool LineClear(Vector3 a, Vector3 b, bool built = false, Gait gait = default)
+    {
+        _gait = built ? default : gait;
+        return Line(a, b, built);
+    }
+
+    bool Line(Vector3 a, Vector3 b, bool built)
     {
         (int x, int z) = Cell(a);
         (int x1, int z1) = Cell(b);
@@ -203,10 +261,14 @@ public sealed class NavGrid
         float tz = dz != 0f ? ((sz > 0 ? z + 1 - az : az - z) / MathF.Abs(dz)) : float.MaxValue;
         float stepX = dx != 0f ? 1f / MathF.Abs(dx) : float.MaxValue, stepZ = dz != 0f ? 1f / MathF.Abs(dz) : float.MaxValue;
         bool first = true;
+        int was = -1;
         for (int guard = 0; guard < Size * 2; guard++)
         {
             if (!first && (built ? BuiltAt(x, z) : Blocked(x, z))) return false; // a creature may start inside a blocked cell
+            // (Too steep from the cell before, or off too high an edge: not a straight way for these legs.)
+            if (!first && !_gait.Any && InGrid(x, z) && was >= 0 && !Legs(was, z * Size + x, CellSize, out _)) return false;
             first = false;
+            was = InGrid(x, z) ? z * Size + x : -1;
             if (x == x1 && z == z1 || MathF.Min(tx, tz) > 1f) return true; // (the line ends in this cell: a walk that rounding carried past its last cell would run on to the grid's edge)
             if (tx < tz) { tx += stepX; x += sx; }
             else { tz += stepZ; z += sz; }
@@ -223,9 +285,10 @@ public sealed class NavGrid
     /// waypoints. Bounded: a search that runs out of budget returns the path to the closest
     /// cell it reached, which is still progress.
     /// </summary>
-    public bool FindPath(Vector3 from, Vector3 to, List<Vector3> path, int budget = 2500)
+    public bool FindPath(Vector3 from, Vector3 to, List<Vector3> path, int budget = 2500, Gait gait = default)
     {
         Searches++;
+        _gait = gait;
         path.Clear();
         (int sx, int sz) = Cell(from);
         (int gx, int gz) = Cell(to);
@@ -271,9 +334,10 @@ public sealed class NavGrid
     /// <paramref name="keep"/> if given (a pen). The way there into <paramref name="path"/>; false where nowhere it can
     /// reach is farther (cornered).
     /// </summary>
-    public bool Away(Vector3 from, Vector3 threat, float reach, List<Vector3> path, int budget = 500, Vector3 keep = default, float keepRadius = float.MaxValue)
+    public bool Away(Vector3 from, Vector3 threat, float reach, List<Vector3> path, int budget = 500, Vector3 keep = default, float keepRadius = float.MaxValue, Gait gait = default)
     {
         Searches++;
+        _gait = gait;
         path.Clear();
         (int sx, int sz) = Cell(from);
         if (!InGrid(sx, sz)) return false;
@@ -354,7 +418,7 @@ public sealed class NavGrid
 
     float Straight(int i, Vector3 p) => new Vector2(Center(i % Size, i / Size).X - p.X, Center(i % Size, i / Size).Z - p.Z).Length() / CellSize;
 
-    /// <summary>A move from a cell to a neighbour: in the grid, not blocked, not cutting a blocked corner; its length in cells.</summary>
+    /// <summary>A move from a cell to a neighbour: in the grid, not blocked, not cutting a blocked corner, one this search's gait makes; its cost in cells (its length, more on steep ground).</summary>
     bool Step(int cx, int cz, int dx, int dz, out int next, out float step)
     {
         next = -1;
@@ -366,6 +430,8 @@ public sealed class NavGrid
         next = nz * Size + nx;
         if (_closedAt[next] == _search) return false;
         step = dx != 0 && dz != 0 ? 1.4142f : 1f;
+        if (!Legs(cz * Size + cx, next, step * CellSize, out float steep)) return false;
+        step *= steep;
         return true;
     }
 
@@ -396,7 +462,7 @@ public sealed class NavGrid
         {
             Vector3 next = Center(_cells[i] % Size, _cells[i] / Size);
             Vector3 after = i + 1 < _cells.Count ? Center(_cells[i + 1] % Size, _cells[i + 1] / Size) : last;
-            if (!LineClear(anchor, after))
+            if (!Line(anchor, after, false))
             {
                 path.Add(next);
                 anchor = next;

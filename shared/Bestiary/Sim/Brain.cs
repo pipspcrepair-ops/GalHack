@@ -228,7 +228,7 @@ public static partial class Brain
             {
                 h.GoalAt = w.Time;
                 h.GoalFrom = h.ThreatPos;
-                if (w.Nav.Away(h.Center, h.ThreatPos, 24f, w.Way)) h.Goal = w.Way[^1];
+                if (w.Nav.Away(h.Center, h.ThreatPos, 24f, w.Way, gait: GaitOf(s))) h.Goal = w.Way[^1];
             }
             if (w.Time - h.AlarmedAt > 6f)
             {
@@ -461,7 +461,7 @@ public static partial class Brain
         Vector3 away = WildSim.Flat(p.Center - from);
         away = away.LengthSquared() > 0.01f ? away.Normalized() : -p.Leader.Forward;
         // Off to a spot farther from it by the way round (straight off only where nowhere is: they run by their ways all the same).
-        p.RetreatGoal = w.Nav.Away(p.Center, from, 35f, w.Way) ? w.Way[^1] : w.Terrain.Clamp(p.Center + away * 35f, 20f);
+        p.RetreatGoal = w.Nav.Away(p.Center, from, 35f, w.Way, gait: GaitOf(p.Leader.Species)) ? w.Way[^1] : w.Terrain.Clamp(p.Center + away * 35f, 20f);
         foreach (Creature m in p.Members)
             if (m.Alive && m.Phase == AttackPhase.Windup && !m.Committed) Attacks.Cancel(m);
         p.Prey = null;

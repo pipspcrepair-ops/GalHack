@@ -250,6 +250,8 @@ public sealed class Creature
     public bool PathWhole = true;
     /// <summary>Its way is to be found again at its next think (it made no headway on this one).</summary>
     public bool Repath;
+    /// <summary>Until when it keeps to a found way, never the straight line (it made no headway on the straight line).</summary>
+    public float PathOnly = -999f;
     /// <summary>Making headway (Brain.Headway): where it last got a quarter metre on from, for how long it hasn't since while wanting to go, and whether that has had it look for another way yet.</summary>
     public Vector3 ProgressAt;
     public float StuckFor;

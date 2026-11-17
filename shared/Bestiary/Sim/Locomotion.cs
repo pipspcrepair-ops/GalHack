@@ -128,9 +128,40 @@ public static class Locomotion
         Avoid(w, c, ref p, ref v);
         p = Bound(w, p, ref v);
         p.Y = w.Terrain.Height(p.X, p.Z);
+        KeepOffFaces(w, c, ref p, ref v);
         if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
         c.Velocity = v;
         c.Position = p;
+    }
+
+    /// <summary>
+    /// Ground its legs can't take is a wall to it (<see cref="Brain.GaitOf"/>): a step up a face steeper than its limit, or
+    /// off an edge higher than it drops, goes along whichever way is still walkable, or doesn't happen. (Its way goes round
+    /// such ground; this is the body's own say, whatever pushed it.)
+    /// </summary>
+    static void KeepOffFaces(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
+    {
+        NavGrid.Gait g = Brain.GaitOf(c.Species);
+        if (g.Any || !Face(w, c.Position, p, g)) return;
+        var alongX = new Vector3(p.X, 0f, c.Position.Z);
+        var alongZ = new Vector3(c.Position.X, 0f, p.Z);
+        if (!Face(w, c.Position, alongX, g)) { p = alongX; v.Z = 0f; }
+        else if (!Face(w, c.Position, alongZ, g)) { p = alongZ; v.X = 0f; }
+        else { p = c.Position; v = Vector3.Zero; return; }
+        p.Y = w.Terrain.Height(p.X, p.Z);
+    }
+
+    /// <summary>Whether a step from one point to another goes up ground too steep for a gait, or down it off too high an edge (the ground a metre and a half on lower than it drops).</summary>
+    public static bool Face(WildSim w, Vector3 a, Vector3 b, NavGrid.Gait g)
+    {
+        Vector3 d = WildSim.Flat(b - a);
+        float run = d.Length();
+        if (run < 1e-4f) return false;
+        float h = w.Terrain.Height(a.X, a.Z), rise = w.Terrain.Height(b.X, b.Z) - h;
+        if (MathF.Abs(rise) <= g.Slope * run) return false;
+        if (rise > 0f) return true;
+        d /= run;
+        return h - w.Terrain.Height(a.X + d.X * 1.5f, a.Z + d.Z * 1.5f) > g.Drop;
     }
 
     /// <summary>
@@ -333,6 +364,9 @@ public static class Locomotion
                 if (!SpaceMath.Project(c.Space, ref center, c.Clearance, out Vector3 n)) continue;
                 if (c.Species.Climbs) moved = center - c.Facing.Y * c.Clearance;
                 else if (c.Space.Density(center) > -0.02f) continue;
+                // Nor a walker pushed into a piece of furniture (its body as it really stands).
+                if (!c.Species.Climbs && c.Space.Parts is { } parts && !parts.Fits(moved, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species))
+                    && parts.Gap(moved, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) < parts.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species))) continue;
             }
             else
             {

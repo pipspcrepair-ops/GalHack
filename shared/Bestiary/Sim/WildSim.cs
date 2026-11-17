@@ -287,6 +287,7 @@ public sealed class WildSim
         Data = data;
         Terrain = terrain;
         Nav = nav;
+        nav.Ground(terrain); // (one height a cell: every gait's moves are judged by it)
         Clock = new DayClock(data.World);
         TurnHost = (host, seed) => Husks.Turn(host, seed, Data.Husks);
     }
@@ -502,9 +503,16 @@ public sealed class WildSim
     /// <summary>Nudges a spawn point off rocks and trunks.</summary>
     public Vector3 FreeSpot(Vector3 p, Rng rng)
     {
-        for (int i = 0; i < 12 && Nav.Blocked(p); i++)
+        for (int i = 0; i < 12 && (Nav.Blocked(p) || Steep(p)); i++)
             p += new Vector3(rng.Range(-4f, 4f), 0f, rng.Range(-4f, 4f));
         return Terrain.Clamp(p, 8f);
+    }
+
+    /// <summary>Ground at a point too steep to stand on for anything that walks (a face, a cliff): no spot to be put or to make for.</summary>
+    public bool Steep(Vector3 p)
+    {
+        Vector3 n = Terrain.Normal(p.X, p.Z);
+        return new Vector2(n.X, n.Z).Length() > n.Y * 0.9f;
     }
 
     public void Remove(Creature c) => c.Removed = true;

@@ -42,7 +42,7 @@ public static partial class Brain
     static Vector3 Way(WildSim w, Creature c, Vector3 goal)
     {
         Vector3 to = WildSim.Flat(goal - c.Position);
-        if (c.Species.Flies && !c.Landed || !c.Repath && Clear(w, c, c.Position, goal))
+        if (c.Species.Flies && !c.Landed || !c.Repath && w.Time >= c.PathOnly && Clear(w, c, c.Position, goal))
         {
             c.Path.Clear();
             return to.LengthSquared() > 1e-4f ? to.Normalized() : Vector3.Zero;
@@ -56,10 +56,10 @@ public static partial class Brain
             if (walled || Built(w, c, c.Position, goal))
             {
                 NavGrid fine = Fine(w, c, c.Position, goal);
-                c.PathWhole = fine.FindPath(c.Position, fine.Inside(goal, 2), c.Path, 3000);
+                c.PathWhole = fine.FindPath(c.Position, fine.Inside(goal, 2), c.Path, 3000, GaitOf(c.Species));
                 c.PathReach = 0.5f;
             }
-            else c.PathWhole = w.Nav.FindPath(c.Position, goal, c.Path);
+            else c.PathWhole = w.Nav.FindPath(c.Position, goal, c.Path, gait: GaitOf(c.Species));
             if (c.Path.Count == 0) c.HasGoal = false; // nowhere it can get to from here: another goal
         }
         // No way yet (or none): it waits a moment rather than walk into what is in the way.
@@ -104,7 +104,7 @@ public static partial class Brain
     {
         Vector3 center = Crawl.Center(c);
         float d = (goal - center).Length();
-        if (!c.Repath && d < 2.5f && Clear(w, c, c.Position, goal))
+        if (!c.Repath && w.Time >= c.PathOnly && d < 2.5f && Clear(w, c, c.Position, goal))
         {
             c.Path.Clear();
             Vector3 straight = goal - center;
@@ -180,10 +180,22 @@ public static partial class Brain
     /// <summary>Whether a body gets straight from one point to another on its own grid: rocks, trunks and what is built on the ground; walls, floors and furniture in a place.</summary>
     public static bool Clear(WildSim w, Creature c, Vector3 a, Vector3 b)
     {
-        if (c.Space == null) return w.Nav.LineClear(a, b) && !Built(w, c, a, b);
+        if (c.Space == null) return w.Nav.LineClear(a, b, gait: GaitOf(c.Species)) && !Built(w, c, a, b);
         Vector3 lift = c.Facing.Y * c.Clearance;
         return SpaceMath.Clear(c.Space, a + lift, b + lift, 0f) && (c.Species.Climbs || c.Space.Parts is not { } parts || parts.Sweep(c.Position, b with { Y = c.Position.Y }, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)));
     }
+
+    /// <summary>
+    /// What a body's legs manage on open ground (<see cref="NavGrid.Gait"/>; owner: "wall climbers should be able to go up and
+    /// down those, but not a person or regular animal"): a climber, a flier or a leaper anything; a person 40 degrees up or
+    /// down and off a two-metre edge; a big heavy animal 35 degrees and off a short one; any other walker 45 degrees and off
+    /// an edge half again as high as it stands.
+    /// </summary>
+    public static NavGrid.Gait GaitOf(Species s) =>
+        s.Climbs || s.Flies || s.Rig is RigKind.Hopper or RigKind.Swarm or RigKind.GasBag ? default
+        : s.Figure != null ? new(0.84f, 2f)
+        : s.Body.Size > 3f ? new(0.7f, Math.Clamp(s.BodyHeight * 0.5f, 1f, 2f))
+        : new(1f, Math.Clamp(s.BodyHeight * 1.5f, 1f, 3f));
 
     /// <summary>Whether anything built stands across a straight line on the ground (a place's walls, a house, the bunker): by the fine window's 1 m cells.</summary>
     static bool Built(WildSim w, Creature c, Vector3 a, Vector3 b) => w.SolidAt != null && !Fine(w, c, a, b).LineClear(a, b, built: true);
@@ -236,7 +248,7 @@ public static partial class Brain
                 bool walled = Built(w, c, c.Position, ahead) || Built(w, c, c.Position, from);
                 if (walled) c.PathReach = 0.5f;
                 NavGrid grid = walled ? Fine(w, c, c.Position, c.Position) : w.Nav;
-                c.HasAway = grid.Away(c.Position, from, MathF.Min(reach, walled ? 20f : reach), c.Path, walled ? 900 : 500, keep, keepRadius);
+                c.HasAway = grid.Away(c.Position, from, MathF.Min(reach, walled ? 20f : reach), c.Path, walled ? 900 : 500, keep, keepRadius, GaitOf(c.Species));
             }
             if (c.HasAway) c.PathGoal = c.AwayGoal = c.Path[^1];
         }
@@ -295,6 +307,7 @@ public static partial class Brain
             c.Repathed = true;
             c.Repath = true;
             c.ThinkEvery = 0f;
+            c.PathOnly = w.Time + 3f; // (and keeps to a way a while, not the straight line it was stuck on)
             w.Repaths++;
         }
         else if (c.StuckFor >= 2f * slow) Unstick(w, c);
@@ -319,9 +332,11 @@ public static partial class Brain
             }
         }
         bool back = (c.Behind - c.Position).LengthSquared() is > 1f and < 25f;
-        Vector3 behind = c.Behind;
-        if (back && c.Space != null) Crawl.Place(w, c, behind + c.BehindUp * 0.05f, c.Species.Climbs ? c.BehindUp : null);
-        else if (back) c.Position = new Vector3(behind.X, w.Terrain.Height(behind.X, behind.Z), behind.Z);
+        (Vector3 was, Basis facing) = (c.Position, c.Facing);
+        if (back && c.Space != null) Crawl.Place(w, c, c.Behind + c.BehindUp * 0.05f, c.Species.Climbs ? c.BehindUp : null);
+        else if (back) c.Position = new Vector3(c.Behind.X, w.Terrain.Height(c.Behind.X, c.Behind.Z), c.Behind.Z);
+        // (Never back into a wall: where that set it down in one, the nearest open spot instead.)
+        if (back && Interpenetration.Inside(w, c)) (back, c.Position, c.Facing) = (false, was, facing);
         if (back || Loose(w, c))
         {
             c.Velocity = Vector3.Zero;
@@ -331,6 +346,7 @@ public static partial class Brain
         c.GoodAt = c.Behind = c.ProgressAt = c.Position;
         c.Path.Clear();
         c.Repath = true;
+        c.PathOnly = w.Time + 3f;
         c.HasGoal = false;
         c.HasAway = false;
         c.StuckFor = 0f;
@@ -357,7 +373,7 @@ public static partial class Brain
         Vector3I at = SpaceMath.Cell(Crawl.Center(c));
         (Vector3 was, Basis facing) = (c.Position, c.Facing);
         for (int r = 2; r <= 3; r++)
-        for (int dy = -1; dy <= 1; dy++)
+        for (int dy = c.Species.Climbs ? -4 : -1; dy <= 1; dy++) // (a climber high on a wall: the floor under it)
         for (int dz = -r; dz <= r; dz++)
         for (int dx = -r; dx <= r; dx++)
         {

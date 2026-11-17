@@ -40,7 +40,9 @@ public partial class OccupantTest
         public Vector3 Anchor;
         public float Still, FleeAt = -1f, From;
         public Vector3 Threat;
-        public int Steps;
+        public int Steps, Jumps;
+        public bool Out;
+        public Vector3 Last;
     }
 
     const float PathDt = 1f / 30f;
@@ -52,6 +54,8 @@ public partial class OccupantTest
         Decor decor = Decor.Shared;
         var inside = new PathTally();
         var outside = new PathTally();
+        var steep = new PathTally();
+        var faces = new SteepTally();
         var families = _lib.Families.Where(f => f.Types.Count == 0 && !f.Space && f.StateWeights.Any(w => w > 0f)).ToList();
         for (int w = 0; w < 3; w++)
         {
@@ -69,9 +73,12 @@ public partial class OccupantTest
             done = 0;
             foreach (FamilyDef f in families.OrderBy(_ => _rng.Next()))
                 if (done < 2 && OutsideWalk(f, life, outside)) done++;
+            SteepWalk(life, steep, faces, w);
         }
         PathChecks("in cramped places", inside, 10);
         PathChecks("on open ground round buildings", outside, 4);
+        PathChecks("on steep ground", steep, 3);
+        SteepChecks(faces);
     }
 
     void PathChecks(string where, PathTally t, int places)
@@ -292,19 +299,24 @@ public partial class OccupantTest
         {
             if (c.Removed || c.Dead || c.InWalls || c.Falling || c.Dormant || c.Thrown || c.HeldBy != null || c.Species.Flies && !c.Landed && c.Space == null)
             {
-                if (watch.TryGetValue(c, out Watch gone)) { gone.Still = 0f; gone.FleeAt = -1f; gone.Anchor = c.Position; }
+                if (!watch.TryGetValue(c, out Watch gone)) watch[c] = gone = new Watch();
+                (gone.Still, gone.FleeAt, gone.Anchor, gone.Last, gone.Out) = (0f, -1f, c.Position, c.Position, c.InWalls);
                 continue;
             }
             t.Steps++;
             t.NpcSeconds += PathDt;
             t.States.Add(c.State);
-            if (!watch.TryGetValue(c, out Watch k)) watch[c] = k = new Watch { Anchor = c.Position };
+            if (!watch.TryGetValue(c, out Watch k)) watch[c] = k = new Watch { Anchor = c.Position, Last = c.Position };
+            if ((c.Position - k.Last).Length() > 0.6f) k.Jumps++;
+            k.Last = c.Position;
             string who = $"{place}: {c.Species.CommonName} ({(c.Species.Figure != null ? "person" : c.Species.Climbs ? "climber" : "walker")}, {c.State}) at {c.Position.X:F1},{c.Position.Y:F1},{c.Position.Z:F1}";
+            bool out_ = k.Out;
+            k.Out = false;
             if (Interpenetration.Inside(sim, c))
             {
                 bool parts = c.Space?.Parts is { } ps && !c.Species.Climbs && ps.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) < -Interpenetration.Tolerance;
                 if (parts) t.InParts++; else t.InWall++;
-                if (t.WallAt == "") t.WallAt = $"; e.g. {who} in {(parts ? "furniture" : "a wall")} ({(k.Steps == 0 ? "as first seen" : $"{k.Steps} steps after first seen")}, {c.Phase}, {c.Species.Role})";
+                if (t.WallAt == "") t.WallAt = $"; e.g. {who} in {(parts ? "furniture" : "a wall")} ({(out_ ? "just out of a crack" : k.Steps == 0 ? "as first seen" : $"{k.Steps} steps after first seen")}, {c.Phase}, {c.Species.Role}, density {c.Space?.Density(Crawl.Center(c)) ?? 0f:F2}, bare {c.Space?.Bare.Density(Crawl.Center(c)) ?? 0f:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1})";
             }
             else if (c.Space == null && Rock(sim.Nav, c.Position, Locomotion.Footprint(c.Species) - 0.05f))
             {
@@ -318,7 +330,7 @@ public partial class OccupantTest
             {
                 k.Still += PathDt;
                 if (k.Still >= 1f) t.Stuck += PathDt;
-                if (k.Still > t.Longest) { t.Longest = k.Still; t.LongestAt = $"; e.g. {who}, wanting {c.Desired.Length():F1} m/s, {c.Species.Role}, way {c.PathIndex}/{c.Path.Count}, goal {(c.HasGoal ? $"{c.Goal.X:F1},{c.Goal.Y:F1},{c.Goal.Z:F1}" : "none")}, put back on {(c.Behind - c.Position).Length():F1} m off, stuck {c.StuckFor:F1} s"; }
+                if (k.Still > t.Longest) { t.Longest = k.Still; t.LongestAt = $"; e.g. {who}, wanting {c.Desired.Length():F1} m/s, {c.Species.Role}, way {c.PathIndex}/{c.Path.Count}, goal {(c.HasGoal ? $"{c.Goal.X:F1},{c.Goal.Y:F1},{c.Goal.Z:F1}" : "none")}, put back on {(c.Behind - c.Position).Length():F1} m off, stuck {c.StuckFor:F1} s, {k.Jumps} jumps, crawling {c.CrawlSpeed:F2}, up {c.Facing.Y.X:F1},{c.Facing.Y.Y:F1},{c.Facing.Y.Z:F1}, next {(c.PathIndex < c.Path.Count ? (c.Path[c.PathIndex] - Crawl.Center(c)).Length() : -1f):F1} m off"; }
             }
             // A flight: from where what it ran from was as it set off, by the way round, at the start and three seconds on (or its end, if later than 1.5 s).
             bool fleeing = c.State == CState.Flee;
@@ -337,7 +349,7 @@ public partial class OccupantTest
                     t.Flees++;
                     float now = distance(c, k.Threat);
                     if (now > k.From + 0.5f) t.Farther++;
-                    else if (t.NearerAt == "") t.NearerAt = $"; e.g. {who}: {k.From:F1} m by the way round from it at the start, {now:F1} m after {sim.Time - k.FleeAt:F1} s";
+                    else if (t.NearerAt == "") t.NearerAt = $"; e.g. {who}: {k.From:F1} m by the way round from it at the start, {now:F1} m after {sim.Time - k.FleeAt:F1} s; spot {(c.HasAway ? $"{(c.AwayGoal - c.Position).Length():F1} m off" : "none")}, way {c.PathIndex}/{c.Path.Count}, wanting {c.Desired.Length():F1} m/s, {k.Jumps} jumps";
                 }
                 k.FleeAt = fleeing ? float.MaxValue : -1f; // (one count a flight)
             }
@@ -401,7 +413,7 @@ public partial class OccupantTest
     /// A way over open ground by 1 m cells round what <paramref name="blocked"/> says (walls, rocks), within a reach of the start:
     /// its length (null where there is none), and its points into <paramref name="path"/> if given.
     /// </summary>
-    static float? FlatRoute(Func<int, int, bool> blocked, Vector3 from, Vector3 to, float reach, List<Vector3> path)
+    static float? FlatRoute(Func<int, int, bool> blocked, Vector3 from, Vector3 to, float reach, List<Vector3> path, Func<int, int, int, int, bool> steps = null)
     {
         var a = ((int)MathF.Floor(from.X), (int)MathF.Floor(from.Z));
         var b = ((int)MathF.Floor(to.X), (int)MathF.Floor(to.Z));
@@ -427,7 +439,7 @@ public partial class OccupantTest
             {
                 if (dx == 0 && dz == 0) continue;
                 var n = (cur.X + dx, cur.Z + dz);
-                if (MathF.Abs(n.Item1 - a.Item1) > reach || MathF.Abs(n.Item2 - a.Item2) > reach || blocked(n.Item1, n.Item2)) continue;
+                if (MathF.Abs(n.Item1 - a.Item1) > reach || MathF.Abs(n.Item2 - a.Item2) > reach || blocked(n.Item1, n.Item2) || steps != null && !steps(cur.X, cur.Z, n.Item1, n.Item2)) continue;
                 if (dx != 0 && dz != 0 && (blocked(cur.X + dx, cur.Z) || blocked(cur.X, cur.Z + dz))) continue;
                 float ng = g + (dx != 0 && dz != 0 ? 1.4142f : 1f);
                 if (dist.TryGetValue(n, out float old) && old <= ng) continue;
