@@ -531,17 +531,17 @@ public sealed class WildSim
         // A spot inside a wall, a pillar or a stair is no spot: the nearest open floor near it, or nowhere.
         if (Interpenetration.Inside(this, c) && !Interpenetration.Free(this, c, near)) c.Removed = true;
         // Nor in another body: a walker put down where one stands already goes to open floor a step or two off.
-        if (!c.Removed && Spaced(c) && Crowded(c, c.Position)) Spread(c);
+        if (!c.Removed && !species.Climbs && Crowded(c, c.Position)) Spread(c);
         c.Home = c.Position;
         c.Rig.Reset(this, c);
         return c;
     }
 
-    /// <summary>Whether another body on a floor of the same place stands within reach of one at a point.</summary>
+    /// <summary>Whether another body on a floor of the same place (asleep or not) stands within reach of one at a point.</summary>
     bool Crowded(Creature c, Vector3 at)
     {
         foreach (Creature o in Creatures)
-            if (o != c && o.Space == c.Space && Spaced(o) && MathF.Abs(o.Position.Y - at.Y) < 1.5f && Flat(o.Position - at).Length() < c.Radius + o.Radius) return true;
+            if (o != c && o.Space == c.Space && !o.Removed && !o.Dead && !o.InWalls && !o.Species.Climbs && MathF.Abs(o.Position.Y - at.Y) < 1.5f && Flat(o.Position - at).Length() < c.Radius + o.Radius) return true;
         return false;
     }
 
