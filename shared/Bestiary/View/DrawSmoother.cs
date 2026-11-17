@@ -121,7 +121,7 @@ public sealed class PoseBlend
     Transform3D[] _from, _out, _last, _prev;
     Transform3D _lastRoot, _prevRoot;
     int _key;
-    double _end;
+    double _end, _mixed;
     float _dur;
     bool _has;
 
@@ -155,12 +155,28 @@ public sealed class PoseBlend
             for (int i = 0; i < n; i++) _from[i] = back * _last[i];
             _dur = MathF.Min(dur, 0.4f);
             _end = now + _dur;
+            _mixed = double.MinValue;
         }
         else if (!_has) _dur = 0f;
         _has = true;
         _prevRoot = root;
         Array.Copy(live, _prev, n);
         return Apply(live, root, now);
+    }
+
+    /// <summary>
+    /// One piece's pose between two, by a straight blend of each axis kept at its blended length: a fifth of the cost of
+    /// a rotation's slerp, and for the few tenths of a second it lasts, as good.
+    /// </summary>
+    static Transform3D Mix(in Transform3D a, in Transform3D b, float w)
+    {
+        float v = 1f - w;
+        Vector3 a0 = a.Basis.Column0, a1 = a.Basis.Column1, a2 = a.Basis.Column2, b0 = b.Basis.Column0, b1 = b.Basis.Column1, b2 = b.Basis.Column2;
+        var basis = new Basis(
+            (a0 * v + b0 * w).Normalized() * (a0.Length() * v + b0.Length() * w),
+            (a1 * v + b1 * w).Normalized() * (a1.Length() * v + b1.Length() * w),
+            (a2 * v + b2 * w).Normalized() * (a2.Length() * v + b2.Length() * w));
+        return new Transform3D(basis, a.Origin * v + b.Origin * w);
     }
 
     /// <summary>Whether a piece of the pose has gone further than this since the last, the root's own travel aside.</summary>
@@ -179,9 +195,14 @@ public sealed class PoseBlend
         Transform3D[] drawn = live;
         if (_dur > 0f && now < _end)
         {
-            float w = 1f - (float)((_end - now) / _dur);
-            w = w * w * (3f - 2f * w);
-            for (int i = 0; i < live.Length; i++) _out[i] = (root * _from[i]).InterpolateWith(live[i], w);
+            // (Blended 60 times a second at most: a faster screen has nothing more to see in it.)
+            if (now - _mixed >= 1.0 / 60.0 - 0.001)
+            {
+                _mixed = now;
+                float w = 1f - (float)((_end - now) / _dur);
+                w = w * w * (3f - 2f * w);
+                for (int i = 0; i < live.Length; i++) _out[i] = Mix(root * _from[i], live[i], w);
+            }
             drawn = _out;
         }
         else _dur = 0f;
