@@ -483,7 +483,7 @@ public partial class BestiaryTest : Node
             }
             tries++;
             if (person && v.Removed) Check(sim.Creatures.Any(c => c.Species.Husk && c != h && c.Species.Figure?.Height == prey.Figure.Height), "a seized person turns into a Husk of the same body");
-            if (!person && v.Removed && sim.Creatures.FirstOrDefault(c => c.Species == prey.Husked) is { } beast) (beasts, risen) = (beasts + 1, beast.Species);
+            if (!person && v.Removed && sim.Creatures.FirstOrDefault(c => c.Species == v.Species.Husked) is { } beast) (beasts, risen) = (beasts + 1, beast.Species);
         }
         Check(seized > 0, $"Husks seize the living ({seized} holds)");
         Check(turned > 0 && turned <= 6, $"{turned} seized turned");
