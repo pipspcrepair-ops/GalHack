@@ -27,7 +27,10 @@ public partial class OccupantTest
 {
     sealed class PathTally
     {
-        public int Places, Steps, InWall, InParts, InRock, Entries, Flees, Farther, Cornered, Cracks, Searches, Repaths, Unstuck;
+        public int Places, Steps, InWall, InParts, InRock, Entries, Flees, Farther, Cornered, Cracks, Searches, Repaths, Unstuck, Overlaps, Deadlocks;
+        public float Deepest;
+        public string OverlapAt = "", LockedAt = "";
+        public readonly HashSet<(int, int)> Locked = new();
         public float NpcSeconds, Stuck, Longest;
         public double StepMs, WorstMs;
         public int SimSteps;
@@ -94,6 +97,8 @@ public partial class OccupantTest
         float share = t.Stuck / Math.Max(1f, t.NpcSeconds);
         Check(share < 0.02f && t.Longest <= 3f, $"{where}: stuck {share:P2} of the time (under 2%), longest {t.Longest:F1} s (3 s at most){t.LongestAt}");
         Check(t.Flees >= 5 && t.Farther >= t.Flees * 0.9f, $"{where}: {t.Farther} of {t.Flees} flights end farther from what they fled by the way round (nine in ten at least; {t.Cornered} cornered, with nowhere farther to reach, and {t.Cracks} running for a crack){t.NearerAt}");
+        Check(t.Overlaps == 0, $"{where}: no two bodies on the ground more than a few centimetres into each other ({t.Overlaps} pair-steps, deepest {t.Deepest:F2} m, a step in six watched){t.OverlapAt}");
+        Check(t.Deadlocks == 0, $"{where}: no two stuck face to face over 3 s, in a doorway or anywhere ({t.Deadlocks} pairs){t.LockedAt}");
     }
 
     /// <summary>One place furnished and filled as in play, walked by an intruder for 40 s; false if it holds too little to watch.</summary>
@@ -156,6 +161,7 @@ public partial class OccupantTest
             you.Health.Restore();
             Stepped(sim, t);
             Watched(sim, t, watch, you, f.Id, (c, from) => Through(space, c, from));
+            Apart(sim, t, watch, f.Id);
         }
         t.Searches += SpaceNav.Searches - searches;
         (t.Repaths, t.Unstuck) = (t.Repaths + sim.Repaths, t.Unstuck + sim.Unstuck);
@@ -254,6 +260,7 @@ public partial class OccupantTest
             you.Health.Restore();
             Stepped(sim, t);
             Watched(sim, t, watch, you, f.Id, (c, from) => FlatRoute(blocked, c.Position, from, 70f, null) ?? float.PositiveInfinity);
+            Apart(sim, t, watch, f.Id);
         }
         t.Searches += sim.Nav.Searches - searches;
         (t.Repaths, t.Unstuck) = (t.Repaths + sim.Repaths, t.Unstuck + sim.Unstuck);
@@ -365,6 +372,37 @@ public partial class OccupantTest
             k.Steps++;
             (k.WasIn, k.PrevPhase, k.PrevState, k.PrevAt) = (Interpenetration.Inside(sim, c), c.Phase, c.State, c.Position);
             k.PrevGap = c.Space?.Parts is { } gp && !c.Species.Climbs ? gp.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) : 9f;
+        }
+    }
+
+    /// <summary>
+    /// Bodies on the ground in each other (owner: "NPCs should path around each other, too"): every sixth step, each pair of
+    /// walkers on one floor nearer than their two radii less a few centimetres (neither striking: an attack closes to its
+    /// reach); and a pair both stuck beside each other over 3 s (a doorway neither gives up).
+    /// </summary>
+    static void Apart(WildSim sim, PathTally t, Dictionary<Creature, Watch> watch, string place)
+    {
+        if (t.SimSteps % 6 != 0) return;
+        var ground = new List<Creature>();
+        foreach (Creature c in sim.Creatures)
+            if (!c.Removed && !c.Dead && !c.InWalls && !c.Falling && !c.Dormant && !c.Thrown && c.HeldBy == null && c.Holding == null && !c.Attacking
+                && !(c.Space != null && c.Species.Climbs) && !(c.Space == null && c.Species.Flies && !c.Landed) && c.Species.Rig is not (RigKind.Swarm or RigKind.GasBag)) ground.Add(c);
+        for (int i = 0; i < ground.Count; i++)
+        for (int j = i + 1; j < ground.Count; j++)
+        {
+            Creature a = ground[i], b = ground[j];
+            if (MathF.Abs(a.Position.Y - b.Position.Y) > 1f) continue;
+            float d = WildSim.Flat(a.Position - b.Position).Length(), into = a.Radius + b.Radius - d;
+            if (into > 0.05f)
+            {
+                t.Overlaps++;
+                if (into > t.Deepest) { t.Deepest = into; t.OverlapAt = $"; e.g. {place}: {a.Species.CommonName} ({a.State}) and {b.Species.CommonName} ({b.State}) {into:F2} m into each other at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1}"; }
+            }
+            if (into > -0.6f && watch.TryGetValue(a, out Watch ka) && watch.TryGetValue(b, out Watch kb) && ka.Still > 3f && kb.Still > 3f && t.Locked.Add((a.Id, b.Id)))
+            {
+                t.Deadlocks++;
+                if (t.LockedAt == "") t.LockedAt = $"; e.g. {place}: {a.Species.CommonName} ({a.State}) and {b.Species.CommonName} ({b.State}) at {a.Position.X:F1},{a.Position.Y:F1},{a.Position.Z:F1}";
+            }
         }
     }
 

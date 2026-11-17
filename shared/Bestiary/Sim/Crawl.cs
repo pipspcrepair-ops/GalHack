@@ -482,6 +482,25 @@ public static class Crawl
         if (MathF.Abs(f.Y) < 0.95f) c.Yaw = MathF.Atan2(-f.X, -f.Z);
     }
 
+    /// <summary>Whether a walker's feet could be at a point of a space: on a floor near that height, open over it (the furniture is each body's own test, <see cref="Stands"/>).</summary>
+    public static bool Floor(ISolidSpace s, Vector3 p) =>
+        SpaceMath.FloorBelow(s.Bare, p.X, p.Y + 0.45f, p.Z, 1f) is float y && MathF.Abs(y - p.Y) < 0.45f && s.Bare.Density(new Vector3(p.X, y + 0.5f, p.Z)) < 0f;
+
+    /// <summary>Where a walker pushed to a point (by another body) would stand: on its floor there, clear of the walls and never further into the furniture; null where it can't.</summary>
+    public static Vector3? Stands(Creature c, Vector3 to)
+    {
+        ISolidSpace s = c.Space.Bare;
+        if (SpaceMath.FloorBelow(s, to.X, c.Position.Y + 0.45f, to.Z, 1f) is not float y || MathF.Abs(y - c.Position.Y) > 0.45f) return null;
+        to.Y = y;
+        if (s.Density(to + Vector3.Up * c.Clearance) > 0f) return null;
+        if (c.Space.Parts is { } parts)
+        {
+            float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
+            if (!parts.Fits(to, pr, ph) && parts.Gap(to, pr, ph) < parts.Gap(c.Position, pr, ph)) return null;
+        }
+        return to;
+    }
+
     /// <summary>Whether a body centre is clear of solid (the test of "never inside the rock").</summary>
     public static bool BodyClear(ISolidSpace s, Vector3 p) => s.Density(p) < 0f;
 }

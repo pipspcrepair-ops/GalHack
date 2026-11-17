@@ -144,6 +144,7 @@ public partial class OccupantTest
             you.Health.Restore();
             Stepped(sim, t);
             Watched(sim, t, watch, you, form, (c, from) => FlatRoute((x, z) => false, c.Position, from, 80f, null, legs) ?? float.PositiveInfinity);
+            Apart(sim, t, watch, form);
             foreach (Creature c in sim.Creatures)
             {
                 if (c.Removed || c.Dead || c.Thrown) continue;

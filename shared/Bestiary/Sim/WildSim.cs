@@ -555,11 +555,14 @@ public sealed class WildSim
     {
         Space.Bodies.Clear();
         _spaced.Clear();
+        ISolidSpace inside = null;
         foreach (Creature c in Creatures)
         {
-            // (Not one closing to strike or seize: an attack needs its reach.)
-            if (c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Space != null || c.Thrown || c.InWalls
-                || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed) continue; // (a swarm is a cloud, a gas bag floats)
+            // (Not one closing to strike or seize: an attack needs its reach. In a cave or a place, those on its floors: a climber holds its walls.)
+            if (c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
+                || c.Space != null && (c.Species.Climbs || c.Falling)
+                || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed && c.Space == null) continue; // (a swarm is a cloud, a gas bag floats)
+            inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
             Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
             _spaced.Add(c);
@@ -568,18 +571,28 @@ public sealed class WildSim
         // Whoever the creatures meet on foot (you, a town's people) gives nothing here: they are stepped round.
         foreach (ITarget t in Targets)
             if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
-        Space.Resolve(dt, SolidAt == null ? null : p => !SolidAt(p + Vector3.Up * 0.4f), 4);
+        // Where a body can be put: out on the ground, nowhere built; in a cave or a place, on its floor (a sim's walkers share one).
+        _apartIn = inside;
+        Space.Resolve(dt, inside != null ? _floorOf ??= p => Crawl.Floor(_apartIn, p) : SolidAt == null ? null : _openOf ??= p => !SolidAt(p + Vector3.Up * 0.4f), 4);
         for (int i = 0; i < _spaced.Count; i++)
         {
             Vector3 moved = Space.Bodies[i].Moved;
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
             Vector3 was = c.Position, to = was + new Vector3(moved.X, 0f, moved.Z);
+            if (c.Space != null)
+            {
+                if (Crawl.Stands(c, to) is Vector3 at) c.Position = at; // (never pushed into a wall or a piece of furniture, nor off its floor)
+                continue;
+            }
             if (Locomotion.IntoTrees(this, c, to) || Locomotion.Face(this, was, to, Brain.GaitOf(c.Species))) continue; // never jostled into a trunk or a rock, nor onto a face
             c.Position = to;
             if (Interpenetration.Inside(this, c)) c.Position = was; // nor a wall
         }
     }
+
+    ISolidSpace _apartIn;
+    Func<Vector3, bool> _floorOf, _openOf;
 
     public void Step(float dt)
     {
