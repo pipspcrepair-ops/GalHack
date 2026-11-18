@@ -268,7 +268,8 @@ public partial class PoiPlaces : Node3D
             if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
             memory.Fauna?.Populate(memory, deep);
         });
-        memory.Town = GalHack.Testing.AllocMeter.Measure("  its town", () => Town.For(memory, deep?.Planet));
+        // (Their people are rolled from the world's life, and on an airless world there is none: no town, as no creatures.)
+        memory.Town = deep == null ? null : GalHack.Testing.AllocMeter.Measure("  its town", () => Town.For(memory, deep.Planet));
         memory.Prepared = true;
     }
 
