@@ -16,6 +16,8 @@ public enum ImpactKind { Ground, Block, Creature, Nothing }
 public partial class ShotFx : Node3D
 {
     const float BoltSpeed = 240f, BoltLength = 1.6f, ScorchLife = 30f;
+    /// <summary>Scorches kept at once: held fire lays ten a second, and past this the oldest goes.</summary>
+    const int MostScorches = 64;
 
     sealed class Bolt
     {
@@ -32,6 +34,9 @@ public partial class ShotFx : Node3D
     StandardMaterial3D _boltMaterial;
     CylinderMesh _boltMesh;
     ImageTexture _scorchTexture;
+    /// <summary>The sparks' shape, and their look by kind (blood, hot metal): one each, shared by every impact.</summary>
+    readonly BoxMesh _sparkMesh = new() { Size = new Vector3(0.03f, 0.03f, 0.08f) };
+    readonly Dictionary<Color, StandardMaterial3D> _sparkLooks = new();
 
     /// <summary>For tests and screenshots: bolts fired, impacts shown, and the last impact.</summary>
     public int Bolts { get; private set; }
@@ -368,16 +373,18 @@ public partial class ShotFx : Node3D
         var burst = new CpuParticles3D
         {
             Emitting = true, OneShot = true, Explosiveness = 1f, Amount = kind == ImpactKind.Creature ? 18 : 28, Lifetime = 0.45f,
-            Mesh = new BoxMesh { Size = new Vector3(0.03f, 0.03f, 0.08f) },
+            Mesh = _sparkMesh,
             Direction = normal == Vector3.Zero ? Vector3.Up : normal, Spread = 55f,
             InitialVelocityMin = 3f, InitialVelocityMax = 8f, Gravity = new Vector3(0, -9.8f, 0),
             ScaleAmountMin = 0.6f, ScaleAmountMax = 1.3f, Color = spark,
         };
-        burst.MaterialOverride = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, VertexColorUseAsAlbedo = true,
-            EmissionEnabled = true, Emission = spark, EmissionEnergyMultiplier = 3f,
-        };
+        if (!_sparkLooks.TryGetValue(spark, out StandardMaterial3D look))
+            _sparkLooks[spark] = look = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, VertexColorUseAsAlbedo = true,
+                EmissionEnabled = true, Emission = spark, EmissionEnergyMultiplier = 3f,
+            };
+        burst.MaterialOverride = look;
         AddChild(burst);
         burst.GlobalPosition = at + normal * 0.05f;
         GetTree().CreateTimer(1.2).Timeout += burst.QueueFree;
@@ -396,6 +403,11 @@ public partial class ShotFx : Node3D
         Vector3 side = MathF.Abs(n.Dot(Vector3.Forward)) > 0.9f ? Vector3.Right : Vector3.Forward;
         Vector3 x = side.Cross(n).Normalized();
         scorch.GlobalTransform = new Transform3D(new Basis(x, n, x.Cross(n)), at);
+        if (_scorches.Count >= MostScorches)
+        {
+            if (IsInstanceValid(_scorches[0].decal)) _scorches[0].decal.QueueFree();
+            _scorches.RemoveAt(0);
+        }
         _scorches.Add((scorch, 0f));
     }
 
@@ -458,7 +470,7 @@ public partial class ShotFx : Node3D
                 _scorches.RemoveAt(i);
                 continue;
             }
-            decal.Modulate = new Color(1, 1, 1, 0.95f * Mathf.Clamp((ScorchLife - age) / 6f, 0f, 1f));
+            if (age > ScorchLife - 6f) decal.Modulate = new Color(1, 1, 1, 0.95f * (ScorchLife - age) / 6f);
             _scorches[i] = (decal, age);
         }
     }
