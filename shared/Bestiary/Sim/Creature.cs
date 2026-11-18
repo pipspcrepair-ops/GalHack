@@ -274,6 +274,9 @@ public sealed class Creature
 
     /// <summary>Rig update interval in frames, set by the view by distance (1 near, more far away).</summary>
     public int RigInterval = 1;
+    /// <summary>Stepped once in so many frames, with the time it missed (the view sets it: out of sight and off a way, it needs no more); mid-attack, every frame.</summary>
+    public int StepEvery = 1;
+    public float StepPending;
     /// <summary>How many times less often it thinks while calm, by how far off it is (the view sets it): far off, the same creature, only slower to decide.</summary>
     public float ThinkScale = 1f;
     /// <summary>Asleep where it is: too far from anyone to matter, so it isn't stepped at all (a large place's far rooms).</summary>
@@ -356,6 +359,8 @@ public sealed class Creature
     /// <summary>Where it last knew a player, or a loud noise, to be.</summary>
     public Vector3 LastSeen;
     public float HeardAt = -999f;
+    /// <summary>The last loud sound it has listened for (<see cref="WildSim.NoiseSeq"/>): each is weighed once.</summary>
+    public int Listened;
     /// <summary>0..1: eyes opening, a lurker waking (the view brightens its eyes).</summary>
     public float Wake;
     // Domestic animals: the pen or town area they keep to, and (pets) who they follow.
