@@ -62,6 +62,20 @@ public partial class ShotFx : Node3D
         _coneMesh = new CylinderMesh { TopRadius = 0f, BottomRadius = 0.22f, Height = 1f, RadialSegments = 10, Rings = 1 };
         _quad = new QuadMesh { Size = Vector2.One };
         for (int i = 0; i < PoolSize; i++) _slots.Add(MakeSlot(i));
+        CallDeferred(MethodName.Warm);
+    }
+
+    /// <summary>
+    /// Every kind of impact made once at load, far under the world where nothing sees it, and its scorch taken straight back:
+    /// the sparks', the scorch's and the flash's first making happens here, not in the first shot that lands.
+    /// </summary>
+    void Warm()
+    {
+        foreach (ImpactKind kind in new[] { ImpactKind.Ground, ImpactKind.Creature })
+            Impact(new Vector3(0f, -20000f, 0f), Vector3.Up, kind);
+        foreach (var (decal, _) in _scorches) decal.QueueFree();
+        _scorches.Clear();
+        (Impacts, LastImpact) = (0, default);
     }
 
     // ---- Muzzle flashes ------------------------------------------------------------------------
