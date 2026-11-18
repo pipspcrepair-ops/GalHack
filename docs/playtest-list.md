@@ -620,6 +620,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 - [ ] Mixed cloud types; nicer lightning [main, but every sky shows the same streaky clouds: running, clouds agent; mix to come from the world's air and weather] [normal]
 - [ ] Storm cells: rain, lightning and tornadoes come from clouds [main; funnel top must always meet the tower base: running, clouds agent] [normal]
 - [ ] Storm cloud hidden among other clouds, no lone marshmallow; tornadoes twisty and varied (rope, column, cone, wedge) with a lifecycle (owner's photos) [partly: storm grows from the deck in batch; tornado shapes running: clouds agent] [normal]
+- [ ] PIXEL LATTICE ON STORM CLOUDS (owner, 18 Nov, test build a8c94c33, screenshot flying over a coast at 15 °C): "There's a weird pixel lattice on storm cloud that needs to be smoothed away". The long storm-front cloud shows a fine grid of steps and streaks along its edges and face (likely too few or unjittered march steps, or a low-res cloud pass upscaled without blur); smooth it away with jittered steps blended over frames or a proper upscale, at no extra cost on the minimum spec [high]
 - [ ] Rain and storm clouds a shade darker by severity [running: clouds agent] [normal]
 - [ ] Clouds stay flat until high up [running: clouds agent] [normal]
 - [ ] The tornado's base often doesn't line up with the funnel (owner, 8 Nov): one ground contact point drives the debris whirl, dust, damage path, lift and sound, and the funnel bends up from it to the cloud [running: proto/clouds] [normal]
