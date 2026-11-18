@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Godot;
 using PlanetSurface.Poi;
@@ -164,7 +164,7 @@ public partial class WildlifePatch
     /// </summary>
     void Own(float dt)
     {
-        if (_frozen || Player == null || Life == null || Sim == null) return;
+        if (_frozen || Player == null || Sim == null || Life == null) return;
         if ((_ownClock += dt) < 3f) return;
         _ownClock = 0f;
         StepPatrols();

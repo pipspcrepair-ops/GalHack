@@ -145,11 +145,12 @@ public partial class WildlifePatch : Node3D
 
     public void SetWorld(PlanetWorld planet, Vector3 landing)
     {
-        _planet = planet;
         Airless = planet.Sky.Density < SurfaceWeather.NoAir;
         _life = new Lazy<WorldLife>(() => RollLife(planet));
-        // An airless world has no creatures, so nothing here to bake or show: its life (the people in its sealed places) is rolled when the first place wants it, on that place's worker.
+        // An airless world has no creatures, so nothing here to bake or show (and no patch of it: the per-frame work stands down on _planet and Sim, never touching Life):
+        // its life (the people in its sealed places) is rolled when the first place wants it, on that place's worker.
         if (Airless) return;
+        _planet = planet;
         _ = Life;
         var rules = Zone.Data.Rules.Wildlife;
         // Fish in its waters, where the water is clean.

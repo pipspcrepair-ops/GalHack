@@ -94,7 +94,7 @@ public partial class WildlifePatch
     /// </summary>
     void Haunting(float dt)
     {
-        if (_frozen || Player == null || Life == null || Sim == null) return;
+        if (_frozen || Player == null || Sim == null || Life == null) return;
         if ((_hauntClock += dt) < 4f) return;
         _hauntClock = 0f;
         MakeHaunts();
