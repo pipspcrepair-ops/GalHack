@@ -83,6 +83,10 @@ public partial class CombatTest : Node
         GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
     }
 
+    /// <summary>--seed=N (the first world) and --edge-seed=N (the town's edge): a failure's worlds again, for an A/B.</summary>
+    static ulong? Seeded(string name) =>
+        OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith($"--{name}=")) is { } a && ulong.TryParse(a[(name.Length + 3)..], out ulong v) ? v : null;
+
     static readonly string[] Carried = { "rifle", "shotgun", "pistol", "musket", "crossbow", "bow", "laser_rifle", "energy_pistol", "club", "machete", "spear" };
 
     IEnumerable<int> Scenario()
@@ -95,7 +99,7 @@ public partial class CombatTest : Node
         PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
         PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Gang);
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.Fresh("temperate", Seeded("seed"));
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
@@ -114,7 +118,7 @@ public partial class CombatTest : Node
         // NPCs' rounds that hit an ally or a bystander (owner: "they should try not to shoot each other"; a round into one of
         // the target's own side is no stray): the town's edge fought out first with the line of fire not looked along for
         // bodies (how it was: counted, not checked), then as it is, on the same world.
-        WorldChoice edge = WorldChoice.Fresh("temperate");
+        WorldChoice edge = WorldChoice.Fresh("temperate", Seeded("edge-seed"));
         Slice.Arms.FireLine.On = false;
         _counting = false;
         int strays = Slice.Arms.ArmsHost.Strays, rounds = Slice.Arms.ArmsHost.NpcRounds;
@@ -210,7 +214,7 @@ public partial class CombatTest : Node
         PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
         PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Squatters);
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.Fresh("temperate", Seeded("seed"));
         var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
