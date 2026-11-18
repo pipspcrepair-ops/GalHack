@@ -6,7 +6,7 @@ namespace Wildlife;
 
 /// <summary>
 /// Creatures for a voxel cave or a dug tunnel (the planet's caves): it finds the cave's floors,
-/// walls and ceilings round a point, puts cracks low in its walls and moss on its floors, cave
+/// walls and ceilings round a point, puts moss on its floors, cave
 /// crawlers on its ceilings and subsisters at the moss, so a cave has the same small food chain
 /// as a place. This is what the planet surface calls for a cave mouth near the player.
 /// </summary>
@@ -19,18 +19,15 @@ public static class CaveFauna
         HashSet<Vector3I> cells = SpaceNav.Reach(space, center, true, 1, 6000);
         var floors = new List<Vector3I>();
         var ceilings = new List<Vector3I>();
-        var walls = new List<Vector3I>();
         foreach (Vector3I c in cells)
         {
             if ((SpaceMath.Center(c) - center).Length() > radius) continue;
             bool below = space.SolidCell(c.X, c.Y - 1, c.Z), above = space.SolidCell(c.X, c.Y + 1, c.Z);
             if (below && !space.SolidCell(c.X, c.Y + 1, c.Z) && !space.SolidCell(c.X, c.Y + 2, c.Z)) floors.Add(c);
             else if (above && !below && !space.SolidCell(c.X, c.Y - 1, c.Z) && !space.SolidCell(c.X, c.Y - 2, c.Z)) ceilings.Add(c);
-            else if (!below && !above) walls.Add(c);
         }
         Sort(floors);
         Sort(ceilings);
-        Sort(walls);
         // Filled with someone already near, nothing goes down beside them or where they are looking.
         if (allow != null)
         {
@@ -39,17 +36,7 @@ public static class CaveFauna
         }
         if (floors.Count == 0) return made;
 
-        // Cracks low in the walls (one network: they join up through the rock), moss on the floor.
-        int crackCount = Math.Min(walls.Count, 4);
-        for (int i = 0; i < crackCount; i++)
-        {
-            Vector3I w = walls[rng.Int(0, walls.Count - 1)];
-            Vector3 at = SpaceMath.Center(w);
-            Vector3 n = SpaceMath.Normal(space, at);
-            if (n == Vector3.Zero) continue;
-            SpaceMath.Project(space, ref at, 0.02f, out n);
-            sim.Cracks.Add(new Crack { Id = sim.Cracks.Count, Kind = CrackKind.Crack, Position = at, Normal = n, Network = 10 + (int)(seed % 1000), Size = rng.Range(0.18f, 0.3f) });
-        }
+        // Moss on the floor.
         Species grazer = fauna.For(DeepRole.Subsister, PoiTheme.Natural, depth);
         floors.RemoveAll(f => !Roomy(space, SpaceMath.Center(f), grazer));
         if (floors.Count == 0) return made;

@@ -70,6 +70,7 @@ public partial class CreaturesTest : Node
             AmbushesAreTold();
             WalkThroughThePlace();
             FoodChain();
+            NoCrackNodes();
             WreckNesters();
             Mutations();
             Settlements();
@@ -1097,6 +1098,27 @@ public partial class CreaturesTest : Node
     }
 
     // ---- The food chain ---------------------------------------------------------------------
+
+    /// <summary>No generated place or cave makes a wall crack, and nothing is drawn for one.</summary>
+    void NoCrackNodes()
+    {
+        int cracks = 0, places = 0;
+        for (ulong seed = 1; seed <= 12; seed++)
+        {
+            foreach (BlockPlace place in new[] { BlockPlace.Hold(seed), BlockPlace.Outpost() })
+            {
+                PoiPopulation pop = PoiFauna.Populate(place.Plan, new DeepFauna(_data, seed, 0.5f), Packed(_data));
+                places++;
+                cracks += pop.Cracks.Count(k => k.Kind == CrackKind.Crack);
+            }
+        }
+        var sim = new WildSim(_data, new Terrain(5, 40f), new NavGrid(40f, 3f));
+        sim.Cracks.Add(new Crack { Id = 0, Kind = CrackKind.Crack, Position = new Vector3(28f, 9.3f, 10f), Normal = Vector3.Right, Network = 1 });
+        var view = new LairView();
+        view.Build(sim);
+        Check(cracks == 0 && view.GetChildCount() == 0, $"no generated place has a wall crack ({cracks} in {places} places) and no node is drawn for one ({view.GetChildCount()})");
+        view.Free();
+    }
 
     void FoodChain()
     {

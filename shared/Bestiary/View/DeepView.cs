@@ -171,8 +171,7 @@ public partial class TellView : Node3D
 }
 
 /// <summary>
-/// The marks a place's creatures leave on it: cracks too small to follow (dark slits low in the
-/// walls), moss, fungus and scraps where subsisters feed, and nests: a resin-bound mound with a
+/// The marks a place's creatures leave on it: moss, fungus and scraps where subsisters feed, and nests: a resin-bound mound with a
 /// clutch of pale eggs, or in a wreck a heap of scrap worked together, that grows as it is built.
 /// </summary>
 public partial class LairView : Node3D
@@ -200,37 +199,6 @@ public partial class LairView : Node3D
         _food.Clear();
         _sim = sim;
         var rng = new Rng(17);
-        var crackMat = Look(new Color(0.02f, 0.015f, 0.01f), 1f);
-        var lipMat = Look(new Color(0.16f, 0.13f, 0.1f), 1f);
-        foreach (Crack k in sim.Cracks)
-        {
-            if (k.Kind != CrackKind.Crack) continue;
-            // A jagged slit: a few dark slivers in a crooked line along the wall.
-            var node = new Node3D();
-            AddChild(node);
-            Basis b = SpaceMath.Frame(Mathf.Abs(k.Normal.Y) < 0.8f ? Vector3.Up : Vector3.Forward, k.Normal);
-            node.Transform = new Transform3D(b, k.Position + k.Normal * 0.005f);
-            float len = k.Size * 2.2f;
-            for (int i = 0; i < 4; i++)
-            {
-                float t = (i - 1.5f) / 4f;
-                node.AddChild(new MeshInstance3D
-                {
-                    Mesh = new BoxMesh { Size = new Vector3(k.Size * (0.35f + 0.25f * (i % 2)), 0.02f, len / 3.2f) },
-                    MaterialOverride = crackMat,
-                    Position = new Vector3(rng.Range(-0.04f, 0.04f), 0f, t * len),
-                    Rotation = new Vector3(0f, rng.Range(-0.5f, 0.5f), 0f),
-                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-                });
-            }
-            node.AddChild(new MeshInstance3D
-            {
-                Mesh = new BoxMesh { Size = new Vector3(k.Size * 1.3f, 0.012f, len * 1.1f) },
-                MaterialOverride = lipMat,
-                Position = new Vector3(0f, -0.004f, 0f),
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            });
-        }
         foreach (FoodPatch f in sim.Food) _food.Add((f, Food(f, rng)));
         foreach (Nest n in sim.Nests) _nests.Add((n, NestMound(n, rng)));
     }
