@@ -86,6 +86,18 @@ public partial class GunSounds : Node3D
         Start(p, clip, at, pitch, db + (loud ? LoudDb : kind == VoiceKind.Report ? 0f : -4f));
     }
 
+    /// <summary>A weapon's report started and stopped at once on every player, silent, the counts put back: their first play happens here, not in the first shot.</summary>
+    public void Warm(WeaponDef d, Vector3 at)
+    {
+        if (!_clips.TryGetValue((d.Base.Id, VoiceKind.Report), out AudioStreamWav clip)) return;
+        foreach (List<AudioStreamPlayer3D> players in new[] { _pool, _loud })
+            foreach (AudioStreamPlayer3D p in players)
+            {
+                Start(p, clip, at, 1f, -80f);
+                p.Stop();
+            }
+    }
+
     /// <summary>One of the fight's own sounds at a point; a loud one (a thunderclap) carries as far as a gunshot.</summary>
     public void Play(CombatSound kind, Vector3 at, float pitch = 1f, float db = 0f, bool loud = false)
     {

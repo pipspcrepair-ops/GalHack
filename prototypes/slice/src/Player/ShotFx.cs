@@ -64,6 +64,20 @@ public partial class ShotFx : Node3D
         for (int i = 0; i < PoolSize; i++) _slots.Add(MakeSlot(i));
     }
 
+    /// <summary>
+    /// A muzzle flash of a kind and every kind of impact made once, at a point nothing sees, the scorch taken straight back
+    /// and the counts put back: their first making happens here (<see cref="Slice.Arms.ArmsHost"/>'s warm-up), not in the first shot.
+    /// </summary>
+    public void Warm(string feel, Vector3 at)
+    {
+        Muzzle(feel, at, Vector3.Down);
+        foreach (ImpactKind kind in new[] { ImpactKind.Ground, ImpactKind.Creature })
+            Impact(at, Vector3.Up, kind);
+        foreach (var (decal, _) in _scorches) decal.QueueFree();
+        _scorches.Clear();
+        (Impacts, LastImpact, Flashes, LastFeel) = (0, default, 0, "");
+    }
+
     // ---- Muzzle flashes ------------------------------------------------------------------------
 
     const int PoolSize = 16;
