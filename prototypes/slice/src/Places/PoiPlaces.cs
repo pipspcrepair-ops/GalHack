@@ -230,9 +230,11 @@ public partial class PoiPlaces : Node3D
         Decor decor = Decor.Shared; // loaded on the main thread the first time
         PlaceFauna.Deep deep = Fauna;
         PlanetSurface.World.PlanetWorld planet = Zone.Planet;
+        WildlifePatch wild = Zone.Wildlife;
         return Task.Run(() => GalHack.Testing.AllocMeter.Measure("place build", () =>
         {
             GalHack.Testing.AllocMeter.Measure("  its instance", () => memory.Inst);
+            GalHack.Testing.AllocMeter.Measure("  its world's life", () => wild.Life); // (an airless world rolls it here, on first need, not on arrival)
             Prepare(memory, decor, deep, planet);
             BlockGrid g = memory.Inst.Blocks;
             return GalHack.Testing.AllocMeter.Measure("  its collision mesh", () => Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min)));

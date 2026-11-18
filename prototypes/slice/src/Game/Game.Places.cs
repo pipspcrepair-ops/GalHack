@@ -47,7 +47,7 @@ public partial class Game
         {
             Name = "Places", Zone = Zone, Focus = Focus,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs, AheadSeconds = rules.AheadSeconds,
-            Fauna = Zone.Wildlife.Life == null || Zone.Wildlife.Airless ? null : new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable), // no creatures on an airless world (its people are still planned)
+            Fauna = Zone.Wildlife.Airless || Zone.Wildlife.Life == null ? null : new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable), // no creatures on an airless world (its people are still planned)
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;

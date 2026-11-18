@@ -33,7 +33,7 @@ public partial class WildlifePatch : Node3D
     /// <summary>No air, no wild creatures: the world still has its life (its people, in sealed places) but no sim, ground to bake or fish.</summary>
     public bool Airless { get; private set; }
     /// <summary>Everything that moves on this world, from the bestiary.</summary>
-    public WorldLife Life { get; private set; }
+    public WorldLife Life => _life?.Value;
     public PlanetFauna Fauna => Life?.Fauna;
     public WildlifeView View { get; private set; }
 
@@ -110,10 +110,11 @@ public partial class WildlifePatch : Node3D
     Task<(Terrain terrain, NavGrid nav, Vector3 origin, List<(long, Obstacle)> trunks)> _baking;
     Vector3 _bakingFrom;
 
-    public void SetWorld(PlanetWorld planet, Vector3 landing)
+    Lazy<WorldLife> _life;
+
+    /// <summary>What this world's life is (its conditions, from its layers and story), worked out once; worker-safe.</summary>
+    WorldLife RollLife(PlanetWorld planet)
     {
-        _planet = planet;
-        Airless = planet.Sky.Density < SurfaceWeather.NoAir;
         var rules = Zone.Data.Rules.Wildlife;
         Livable = rules.LivableOn(planet.Spec);
         var world = WorldConditions.Of(planet.Spec, rules.Alienness);
@@ -139,9 +140,20 @@ public partial class WildlifePatch : Node3D
         // barren or poisoned world quiet, a rich one alive); where on it, its land decides (Richness).
         Livable *= Mathf.Lerp(1f, layers.Density, rules.LayerWeight);
         MeasureRichness();
-        Life = Bestiary.Roll(Zone.Data.Wildlife, world);
+        return Bestiary.Roll(Zone.Data.Wildlife, world);
+    }
+
+    public void SetWorld(PlanetWorld planet, Vector3 landing)
+    {
+        _planet = planet;
+        Airless = planet.Sky.Density < SurfaceWeather.NoAir;
+        _life = new Lazy<WorldLife>(() => RollLife(planet));
+        // An airless world has no creatures, so nothing here to bake or show: its life (the people in its sealed places) is rolled when the first place wants it, on that place's worker.
+        if (Airless) return;
+        _ = Life;
+        var rules = Zone.Data.Rules.Wildlife;
         // Fish in its waters, where the water is clean.
-        if (!Airless && Schools.Clean(planet.Spec.Archetype, world, planet.Roll))
+        if (Schools.Clean(planet.Spec.Archetype, Life.World, planet.Roll))
         {
             Fish = new Schools { Name = "Fish", Planet = planet, Seed = Life.Seed, Eye = () => Zone.Camera?.GlobalPosition ?? (Player != null ? FromPatch(Player.Position) : Origin) };
             AddChild(Fish);
@@ -174,7 +186,6 @@ public partial class WildlifePatch : Node3D
         AddChild(Spit);
         Tells = new TellView { Name = "Tells", Audio = Audio };
         AddChild(Tells);
-        if (Airless) return;
         // The first is baked here and now, without its woods: the next is baked with them as soon as it can be.
         var (terrain, nav, origin, trunks) = Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize), null);
         Swap(terrain, nav, origin, trunks, keepClear: landing, clear: rules.SafeRadius);
@@ -710,6 +721,7 @@ public partial class WildlifePatch : Node3D
     /// <summary>Plays one of wildlife's sounds for a sim whose frame starts at another origin.</summary>
     public void Sound(Vector3 origin, Action<ProceduralAudio> play)
     {
+        if (Audio == null) return; // (an airless world has none)
         Vector3 own = Audio.Origin;
         Audio.Origin = origin;
         play(Audio);
