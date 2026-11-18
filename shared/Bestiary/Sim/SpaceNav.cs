@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Godot;
 
 namespace Wildlife;
@@ -31,6 +32,10 @@ public static class SpaceNav
 
     /// <summary>Searches made, and nodes expanded in all of them (for the cost checks).</summary>
     public static int Searches, Expanded;
+
+    /// <summary>The longest path search so far, ms, and what it was (measurements; they clear it).</summary>
+    public static double WorstMs;
+    public static string Worst = "";
 
     /// <summary>
     /// What a path is found for: whether it climbs, the whole cells of headroom it needs, the clear cells
@@ -137,10 +142,11 @@ public static class SpaceNav
     /// <paramref name="from"/> to near <paramref name="to"/>. Returns false if the goal wasn't reached
     /// within the budget; the path then leads to the closest cell found, so a creature still heads the right way.
     /// </summary>
-    public static bool FindPath(ISolidSpace s, Vector3 from, Vector3 to, Body body, List<Vector3> path, int budget = 2500)
+    public static bool FindPath(ISolidSpace s, Vector3 from, Vector3 to, Body body, List<Vector3> path, int budget = 2500, WildSim timed = null)
     {
         path.Clear();
         Searches++;
+        long began = Stopwatch.GetTimestamp(), until = Until(began, timed);
         Vector3I? a = Nearest(s, from, body, 2) ?? Nearest(s, from, body with { Shoulders = 0 }), b = Nearest(s, to, body, 3);
         if (a == null || b == null) return false;
         Vector3I start = a.Value, goal = b.Value;
@@ -156,7 +162,7 @@ public static class SpaceNav
         float closestH = H(start, goal);
         bool found = false;
         int expanded = 0;
-        while (k.Open.Count > 0 && expanded < budget)
+        while (k.Open.Count > 0 && expanded < budget && !Late(until))
         {
             Vector3I cur = k.Open.Dequeue();
             if (!k.Closed.Add(cur)) continue;
@@ -183,6 +189,9 @@ public static class SpaceNav
         Expanded += expanded;
         Points(s, start, closest, body, k, path);
         if (found) path[^1] = to;
+        timed?.PathTook(began);
+        double ms = Stopwatch.GetElapsedTime(began).TotalMilliseconds;
+        if (ms > WorstMs) (WorstMs, Worst) = (ms, $"{expanded} cells, {k.Cost.Count} costed, {(found ? "found" : "not found")}, {(body.Climbs ? "climber" : "walker")}, {(to - from).Length():F0} m ({to.Y - from.Y:F0} up)");
         return found;
     }
 
@@ -193,10 +202,11 @@ public static class SpaceNav
     /// past the threat (a step nearer it costs four times over). The way there into <paramref name="path"/>; false
     /// where nowhere it can reach is farther (cornered).
     /// </summary>
-    public static bool Away(ISolidSpace s, Vector3 from, Vector3 threat, Body body, float reach, List<Vector3> path, int budget = 700)
+    public static bool Away(ISolidSpace s, Vector3 from, Vector3 threat, Body body, float reach, List<Vector3> path, int budget = 700, WildSim timed = null)
     {
         path.Clear();
         Searches++;
+        long began = Stopwatch.GetTimestamp(), until = Until(began, timed);
         Vector3I? a = Nearest(s, from, body, 2) ?? Nearest(s, from, body with { Shoulders = 0 });
         if (a is not { } start) return false;
         Scratch k = Take();
@@ -206,7 +216,7 @@ public static class SpaceNav
         {
             k.Threat[t] = 0f;
             k.Open.Enqueue(t, 0f);
-            for (int done = 0; k.Open.Count > 0 && done < budget;)
+            for (int done = 0; k.Open.Count > 0 && done < budget && !Late(until);)
             {
                 Vector3I cur = k.Open.Dequeue();
                 if (!k.Closed.Add(cur)) continue;
@@ -229,7 +239,7 @@ public static class SpaceNav
         Vector3I? best = null;
         k.Cost[start] = 0f;
         k.Open.Enqueue(start, 0f);
-        for (int expanded = 0; k.Open.Count > 0 && expanded < budget;)
+        for (int expanded = 0; k.Open.Count > 0 && expanded < budget && !Late(until);)
         {
             Vector3I cur = k.Open.Dequeue();
             if (!k.Closed.Add(cur)) continue;
@@ -247,10 +257,16 @@ public static class SpaceNav
                 k.Open.Enqueue(n, ng);
             }
         }
+        timed?.PathTook(began);
         if (best == null) return false;
         Points(s, start, best.Value, body, k, path);
         return true;
     }
+
+    /// <summary>When a search timed by a sim stops: when the step's path time runs out (never, untimed).</summary>
+    static long Until(long began, WildSim timed) => timed == null ? long.MaxValue : began + (long)(Math.Max(0.0, timed.PathMsLeft) * Stopwatch.Frequency / 1000.0);
+
+    static bool Late(long until) => until != long.MaxValue && Stopwatch.GetTimestamp() > until;
 
     /// <summary>What a search reuses (one set a thread), so a search allocates nothing once warm.</summary>
     sealed class Scratch

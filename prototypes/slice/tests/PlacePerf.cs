@@ -28,6 +28,10 @@ namespace Slice.Tests;
 public partial class PlacePerf : Node
 {
     const int Frames = 240;
+    /// <summary>A place whose walkable floors span this many metres or more is timed on its middle and top floors too.</summary>
+    const int ManyStoreys = 12;
+    /// <summary>A frame at 60 fps, ms.</summary>
+    const double Budget = 1000.0 / 60.0;
     Game.Game _game;
     Driver _drive;
     IEnumerator<int> _run;
@@ -139,6 +143,7 @@ public partial class PlacePerf : Node
         if (_args.TryGetValue("as", out string type)) PoiSiting.ForceType = type;
         if (_args.ContainsKey("fly")) PoiBuilds.Withhold = s => s.Whole != null;
         if (_args.ContainsKey("noease")) Wildlife.DrawSmoother.Off = true; // --noease=1: bodies drawn as the sim has them (the A side of an A/B)
+        if (_args.ContainsKey("allawake")) Surface.DeepSite.AllAwake = true; // --allawake=1: places' unseen creatures step wherever they are (the A side)
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
@@ -244,6 +249,20 @@ public partial class PlacePerf : Node
         _shadowPrims += v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.PrimitivesInFrame);
         _shadowDraws += v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.DrawCallsInFrame);
         _physics = Math.Max(_physics, Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0);
+        foreach (Surface.DeepSite s in _game.Zone.Wildlife.Sites)
+        {
+            _stepped += s.Sim.Stepped;
+            _siteCreatures += s.Sim.Creatures.Count;
+            if (_game.Camera == null) continue;
+            Vector3 eye = s.Local(_game.Camera.GlobalPosition);
+            foreach (Wildlife.Creature c in s.Sim.Creatures)
+            {
+                if (c.Removed || c.Dormant) continue;
+                if (Wildlife.Brain.Busy(c) || c.Attacking) _awakeBusy++;
+                else if ((c.Position - eye).Length() < 30f) _awakeNear++;
+                else _awakeSeen++;
+            }
+        }
     }
 
     void Begin()
@@ -263,7 +282,51 @@ public partial class PlacePerf : Node
         _allAlloc = GC.GetTotalAllocatedBytes();
         (_gcAt0, _gcAt1, _gcAt2) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
         _ticksAt = Engine.GetPhysicsFrames();
+        _sites0 = SiteTotals();
+        if (_game?.Zone?.Wildlife is { } patch) foreach (Surface.DeepSite s in patch.Sites) s.Sim.WorstStepMs = 0;
+        Wildlife.SpaceNav.WorstMs = 0;
+        _stepped = _siteCreatures = _awakeBusy = _awakeNear = _awakeSeen = 0;
+        _threads0 = ThreadTimes();
+        _wall.Restart();
     }
+
+    /// <summary>Each of the process's threads' CPU time so far, ms.</summary>
+    static Dictionary<int, double> ThreadTimes()
+    {
+        var t = new Dictionary<int, double>();
+        foreach (ProcessThread th in Process.GetCurrentProcess().Threads)
+            try { t[th.Id] = th.TotalProcessorTime.TotalMilliseconds; }
+            catch (Exception) { } // (one that ended as it was read)
+        return t;
+    }
+
+    Dictionary<int, double> _threads0 = new();
+    readonly Stopwatch _wall = new();
+
+    /// <summary>The busiest threads over the stage, each as a share of one core, and the whole process in cores.</summary>
+    string ThreadUse()
+    {
+        double wall = _wall.Elapsed.TotalMilliseconds;
+        var used = ThreadTimes().Select(kv => (kv.Key, Ms: kv.Value - _threads0.GetValueOrDefault(kv.Key))).OrderByDescending(x => x.Ms).ToList();
+        int main = (int)AppDomain.GetCurrentThreadId();
+        return string.Create(CultureInfo.InvariantCulture, $"{used.Sum(x => x.Ms) / wall:F2} cores in all; busiest threads {string.Join(", ", used.Take(6).Select(x => $"{(x.Key == main ? "main " : "")}{100 * x.Ms / wall:F0}%"))}");
+    }
+
+    /// <summary>Every place's, cave's and underworld's creatures together: their sims' steps (brains, moving, rigs), quiet sounds and bodies, ms so far.</summary>
+    double[] SiteTotals()
+    {
+        var t = new double[6];
+        if (_game?.Zone?.Wildlife is not { } w) return t;
+        foreach (Surface.DeepSite s in w.Sites)
+        {
+            s.Sim.Profile = true;
+            t[0] += s.StepMs; t[1] += s.Sim.ThinkMs; t[2] += s.Sim.MoveMs; t[3] += s.Sim.RigMs; t[4] += s.QuietMs; t[5] += s.ViewMs;
+        }
+        return t;
+    }
+
+    double[] _sites0 = new double[6];
+    long _stepped, _siteCreatures, _awakeBusy, _awakeNear, _awakeSeen;
 
     void End(string stage)
     {
@@ -276,6 +339,14 @@ public partial class PlacePerf : Node
         t.Sort();
         double P(double q) => t[Math.Min(t.Count - 1, (int)(t.Count * q))];
         int hitches = t.Count(x => x > 33.4);
+        // Inside a place, the frame budget (60 fps): on average within it, and no more than one frame in a hundred late by half a frame or more.
+        if (stage.StartsWith("inside") && !stage.EndsWith(" plain"))
+        {
+            int over = t.Count(x => x > Budget * 1.5);
+            bool ok = t.Average() <= Budget * 1.05 && over <= t.Count / 100;
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {(ok ? "ok" : "FAIL")} budget {stage}: avg {t.Average():F1} ms, {over} of {t.Count} frames over {Budget * 1.5:F0} ms"));
+            if (!ok) _failed = true;
+        }
         string line = string.Create(CultureInfo.InvariantCulture,
             $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000 / t.Count,6}k draws {_draws / t.Count,5} objs {_objs / t.Count,5} shadow {_shadowPrims / 1000 / t.Count,6}k/{_shadowDraws / t.Count,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
         GD.Print(line);
@@ -283,6 +354,12 @@ public partial class PlacePerf : Node
         GD.Print($"PERF {stage,-16} live bodies {bodies}, shapes {shapes}, failed to create {JoltWatch.Failed}; physics process {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0:F2} ms; a frame: scripts' physics ticks {_tickMs / t.Count:F2} ms, the engine's steps {_stepMs / t.Count:F2} ms");
         _tickMs = _stepMs = 0;
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics ticks a frame {(Engine.GetPhysicsFrames() - _ticksAt) / (double)t.Count:F2}, their callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
+        double[] sites = SiteTotals();
+        double S(int i) => (sites[i] - _sites0[i]) / t.Count;
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} places' creatures a frame: {_stepped / (double)t.Count:F0} stepped of {_siteCreatures / (double)t.Count:F0} (awake: {_awakeBusy / (double)t.Count:F0} busy, {_awakeNear / (double)t.Count:F0} within 30 m, {_awakeSeen / (double)t.Count:F0} further); sims {S(0):F2} ms (brains {S(1):F2}, moving {S(2):F2}, rigs {S(3):F2}), quiet {S(4):F2}, bodies {S(5):F2}"));
+        GD.Print($"PERF {stage,-16} cpu use: {ThreadUse()}");
+        if (_game.Zone.Wildlife.Sites.MaxBy(s => s.Sim.WorstStepMs) is { } slow) GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} slowest creature step {slow.Sim.WorstStepMs:F1} ms: {slow.Sim.WorstStep}"));
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} slowest path search inside {Wildlife.SpaceNav.WorstMs:F1} ms: {Wildlife.SpaceNav.Worst}"));
         if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
         if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");
         foreach (string h in _hitches) GD.Print($"PERF hitch {h}");
@@ -323,7 +400,7 @@ public partial class PlacePerf : Node
     {
         foreach (int x in _drive.UntilPlaying(300)) yield return x;
         _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => _args.ContainsKey("deeper") && n is Slice.Places.Place };
-        if (_args.ContainsKey("audit")) _allocs = new AllocCensus { On = true };
+        if (_args.ContainsKey("audit") || _args.ContainsKey("allocs")) _allocs = new AllocCensus { On = true }; // --allocs=1: what is allocated, by type, each stage
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
         zone.Sky.TimeOfDay = 0.4;
@@ -475,7 +552,10 @@ public partial class PlacePerf : Node
             return p;
         }
 
-        foreach (float d in new[] { 1000f, 500f })
+        // --quick=1: straight to the gate (no far stages, no ride in).
+        bool quick = _args.ContainsKey("quick");
+        if (quick) _game.Survivor.PlaceOutside(Out(26f).ToNumerics());
+        foreach (float d in quick ? Array.Empty<float>() : new[] { 1000f, 500f })
         {
             _game.Survivor.PlaceOutside(Out(d).ToNumerics());
             foreach (int x in _drive.Wait(60)) yield return x;
@@ -487,7 +567,7 @@ public partial class PlacePerf : Node
 
         // Riding in from a kilometre out at a hover bike's speed: what the streaming costs.
         (_rideFrom, _rideTo) = (Out(1000f), Out(8f));
-        foreach (int x in Ride("ride in", _rideFrom, _rideTo, Centre())) yield return x;
+        if (!quick) foreach (int x in Ride("ride in", _rideFrom, _rideTo, Centre())) yield return x;
         for (int i = 0; i < 1800 && places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
 
         _game.Survivor.PlaceOutside(Out(26f).ToNumerics());
@@ -502,11 +582,8 @@ public partial class PlacePerf : Node
         var reach = place.Nav().Reachable(site.Instance.Layout.EntranceCell);
         var inside = reach.Where(c => place.Roofed(place.WorldOf(c, 0.2f))).OrderBy(c => c.X + c.Z * 3).ToList();
         GD.Print($"PERF reachable {reach.Count}, roofed {inside.Count}");
-        if (inside.Count > 0)
+        IEnumerable<int> Turn(string stage)
         {
-            Int3 cell = inside[inside.Count / 2];
-            _game.Survivor.PlaceOutside(place.WorldOf(cell, 0.1f).ToNumerics());
-            foreach (int x in _drive.Wait(30)) yield return x;
             Begin();
             for (int i = 0; i < 360; i++)
             {
@@ -514,20 +591,30 @@ public partial class PlacePerf : Node
                 yield return 0;
             }
             _game.Controls.Look = Vector2.Zero;
-            End("inside");
-            if (_args.ContainsKey("ab"))
+            End(stage);
+        }
+
+        // Standing well inside on the way in's level, then (a many-storey place) on its middle and top floors: turning on the spot.
+        var levels = inside.Select(c => c.Y).Distinct().OrderBy(y => y).ToList();
+        int entryY = site.Instance.Layout.EntranceCell.Y;
+        var stops = new List<(string Stage, Int3 Cell)>();
+        if (inside.Count > 0) stops.Add(("inside", inside.Where(c => c.Y == entryY).DefaultIfEmpty(inside[inside.Count / 2]).ElementAt(0)));
+        if (levels.Count > 0 && levels[^1] - levels[0] >= ManyStoreys)
+            foreach (var (stage, y) in new[] { ("inside mid", levels[levels.Count / 2]), ("inside top", levels[^1]) })
             {
-                PoiGenerator.BlockMaterials.Detail(false);
-                Begin();
-                for (int i = 0; i < 360; i++)
-                {
-                    _game.Controls.Look = new Vector2(40f, 0f);
-                    yield return 0;
-                }
-                _game.Controls.Look = Vector2.Zero;
-                End("inside plain");
-                PoiGenerator.BlockMaterials.Detail(true);
+                var on = inside.Where(c => c.Y == y).ToList();
+                stops.Add((stage, on[on.Count / 2]));
             }
+        foreach (var (stage, cell) in stops)
+        {
+            _game.Survivor.PlaceOutside(place.WorldOf(cell, 0.1f).ToNumerics());
+            foreach (int x in _drive.Wait(30)) yield return x;
+            GD.Print($"PERF {stage} at {cell.Y - entryY:+0;-0} m from the way in ({levels.Count} levels, {levels.FirstOrDefault() - entryY} to {levels.LastOrDefault() - entryY} m)");
+            foreach (int x in Turn(stage)) yield return x;
+            if (!_args.ContainsKey("ab")) continue;
+            PoiGenerator.BlockMaterials.Detail(false);
+            foreach (int x in Turn(stage + " plain")) yield return x;
+            PoiGenerator.BlockMaterials.Detail(true);
         }
         _game.Survivor.PlaceOutside(Out(-40f).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;

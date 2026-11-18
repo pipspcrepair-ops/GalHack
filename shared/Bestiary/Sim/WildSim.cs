@@ -92,6 +92,20 @@ public sealed class WildSim
     public int PathBudgetPerStep = 6;
     int _pathBudget;
 
+    /// <summary>
+    /// And the time they may take in all a step, ms: in a cave or a place a search's first pass through a furnished room
+    /// works out how a body gets round each piece (remembered after), which over a whole tower took up to 800 ms at once.
+    /// A search cut short leads toward the nearest it got, and the next one, its rooms remembered, goes further.
+    /// </summary>
+    public double PathMsPerStep = 3.0;
+    double _pathMs;
+
+    /// <summary>The path time left this step, ms, for a search to stop at (<see cref="SpaceNav.FindPath"/>).</summary>
+    public double PathMsLeft => _pathMs;
+
+    /// <summary>A search took this long (from <paramref name="since"/>, a timestamp), out of the step's path time.</summary>
+    public void PathTook(long since) => _pathMs -= Stopwatch.GetElapsedTime(since).TotalMilliseconds;
+
     /// <summary>Creatures the last step moved (the dormant and removed left out), and path searches taken so far (measurements).</summary>
     public int Stepped, Paths;
     int _nextId;
@@ -105,6 +119,9 @@ public sealed class WildSim
     /// <summary>When set, Step adds up time spent thinking, moving and posing (for the perf test).</summary>
     public bool Profile;
     public double ThinkMs, MoveMs, RigMs;
+    /// <summary>The longest one creature's step took while profiled, ms, and who it was (measurements).</summary>
+    public double WorstStepMs;
+    public string WorstStep = "";
 
     /// <summary>A wind-up has started: the view plays the growl and the creature rears.</summary>
     public event Action<AttackEvent> Telegraph;
@@ -724,17 +741,19 @@ public sealed class WildSim
         Time += dt;
         Frame++;
         Clock.Advance(dt);
-        _pathBudget = PathBudgetPerStep;
+        (_pathBudget, _pathMs) = (PathBudgetPerStep, PathMsPerStep);
         WatchTargets(dt);
         if (Gobs.Count > 0) Spitting.Step(this, dt);
 
         long t0 = Profile ? Stopwatch.GetTimestamp() : 0, thinkTicks = 0, moveTicks = 0, rigTicks = 0;
+        long thinkWas = 0, moveWas = 0;
         Stepped = 0;
         for (int i = 0; i < Creatures.Count; i++)
         {
             Creature c = Creatures[i];
             if (c.Removed || c.Dormant && !c.Dead) continue;
             Stepped++;
+            long begin = t0;
             c.Age += dt;
             c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
             c.StunReady = MathF.Max(0f, c.StunReady - dt);
@@ -791,7 +810,15 @@ public sealed class WildSim
                 c.Rig.Update(this, c, c.RigPending);
                 c.RigPending = 0f;
             }
-            if (Profile) { long t = Stopwatch.GetTimestamp(); rigTicks += t - t0; t0 = t; }
+            if (Profile)
+            {
+                long t = Stopwatch.GetTimestamp();
+                rigTicks += t - t0;
+                t0 = t;
+                double ms = (t - begin) * 1000.0 / Stopwatch.Frequency;
+                if (ms > WorstStepMs) (WorstStepMs, WorstStep) = (ms, $"{c.Species.CommonName} {c.State} at {c.Position.X:F0},{c.Position.Y:F0},{c.Position.Z:F0}, target {c.Target?.Position}, goal {(c.HasGoal ? c.Goal.ToString() : "none")}, think {(thinkTicks - thinkWas) * 1000.0 / Stopwatch.Frequency:F1} move {(moveTicks - moveWas) * 1000.0 / Stopwatch.Frequency:F1} ms, paths so far {Paths}");
+                (thinkWas, moveWas) = (thinkTicks, moveTicks);
+            }
         }
         if (Profile)
         {
@@ -856,12 +883,12 @@ public sealed class WildSim
     }
 
     /// <summary>Gives back this step's path searches (for driving creatures outside <see cref="Step"/>).</summary>
-    public void RefillPathBudget() => _pathBudget = PathBudgetPerStep;
+    public void RefillPathBudget() => (_pathBudget, _pathMs) = (PathBudgetPerStep, PathMsPerStep);
 
     /// <summary>A search (or a flight's two floods: <paramref name="cost"/> 2) out of this step's budget, if it has that much left.</summary>
     public bool TakePathBudget(int cost = 1)
     {
-        if (_pathBudget < cost) return false;
+        if (_pathBudget < cost || _pathMs <= 0) return false;
         _pathBudget -= cost;
         Paths++;
         return true;

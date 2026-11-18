@@ -53,6 +53,25 @@ public partial class DeepSite : Node3D
     /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
     public float SleepDistance = 100f;
 
+    /// <summary>Unseen, a creature with nothing to deal with steps only within this of the eye, m: a little past where its small sounds carry through a wall (<see cref="Quiet.ThroughWall"/>).</summary>
+    const float WakeReach = Quiet.ThroughWall + 6f;
+
+    /// <summary>Tests: the unseen step wherever they are within <see cref="SleepDistance"/> (the old way, for an A/B).</summary>
+    public static bool AllAwake;
+
+    /// <summary>Whether a loud sound (a shot, a blast) in the last second reached it, or it is within <see cref="WakeReach"/> of one of the place's people (who live on out of your sight, and it with them).</summary>
+    bool Stirring(Creature c)
+    {
+        foreach (WorldNoise n in Sim.Noises)
+            if ((n.Position - c.Position).LengthSquared() <= n.Radius * n.Radius) return true;
+        foreach (Vector3 p in _peopleAt)
+            if ((p - c.Position).LengthSquared() <= WakeReach * WakeReach) return true;
+        return false;
+    }
+
+    /// <summary>Where the place's living people are this frame, in this sim's frame.</summary>
+    readonly List<Vector3> _peopleAt = new();
+
     /// <summary>The harmless (<see cref="Importance.Ambient"/>: a room's insects) are drawn within this of the eye, m, and of them in sight only the nearest few step.</summary>
     public float AmbientReach = 25f;
     const int AmbientBudget = 8;
@@ -205,18 +224,26 @@ public partial class DeepSite : Node3D
         SeePeople();
         long start = Stopwatch.GetTimestamp();
         Sim.Step((float)delta);
-        LastStepMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        long stepped = Stopwatch.GetTimestamp();
+        LastStepMs = (stepped - start) * 1000.0 / Stopwatch.Frequency;
+        StepMs += LastStepMs;
         // What lives here keeps quiet; what it's doing out of sight gives it away.
         _quiet.Clear();
         Quiet.Step(Sim, Player, (float)delta, _quiet);
         foreach (QuietSound q in _quiet) Patch.Sound(GlobalPosition, a => a.Quiet(q));
         QuietSounds += _quiet.Count;
+        QuietMs += Stopwatch.GetElapsedTime(stepped).TotalMilliseconds;
     }
 
     readonly List<QuietSound> _quiet = new();
 
     /// <summary>The last tick's step of this site's sim, ms (measurements).</summary>
     public double LastStepMs { get; private set; }
+
+    /// <summary>This site's sim steps and its quiet sounds (physics ticks), and its bodies' syncing (frames), ms in all so far (measurements).</summary>
+    public double StepMs { get; private set; }
+    public double QuietMs { get; private set; }
+    public double ViewMs { get; private set; }
 
     /// <summary>Small sounds made so far (tests).</summary>
     public int QuietSounds { get; private set; }
@@ -244,6 +271,7 @@ public partial class DeepSite : Node3D
         _pausedAtLastFrame = GC.GetTotalPauseDuration();
         PlanetSurface.Fx.LoadBudget.Spend(lairMs + _buildMs);
         double all = clock.Elapsed.TotalMilliseconds, stopped = (_pausedAtLastFrame - paused).TotalMilliseconds, ms = all - stopped;
+        ViewMs += all;
         if (ms > WorstViewMs)
         {
             WorstViewMs = ms;
@@ -291,6 +319,8 @@ public partial class DeepSite : Node3D
     void SyncViews(Vector3 camera, Stopwatch clock)
     {
         _sightFrame++;
+        _peopleAt.Clear();
+        if (Town != null) foreach (Slice.Places.Town.Person p in Town.People) if (!p.Dead && !p.Gone) _peopleAt.Add(Local(Town.World(p.Pos)));
         DrawnCount = 0;
         _gone.Clear();
         foreach (Creature c in Sim.Creatures)
@@ -313,8 +343,12 @@ public partial class DeepSite : Node3D
             bool seen = !_unseen.Contains(c);
             if (ambient && d < far && seen) _ambient.Add((c, d));
             bool about = !ambient || stirred || MustDraw(c, d) || d < far && seen && _awake.Contains(c);
-            // Out of sight and out of reach, it sleeps where it is: a large place's far rooms cost nothing.
-            c.Dormant = ambient ? !about : d > SleepDistance && !stirred;
+            // Out of sight and out of reach, it sleeps where it is: a large place's far rooms cost nothing. So does one
+            // unseen and past where its small sounds carry (another storey of a tower, the far side of a wall), unless
+            // it has something to deal with (it has sensed someone, is chasing, fleeing or fighting, or just heard a
+            // shot, or one of the place's people is near it): what can't be seen or heard holds still, and what is coming for you keeps coming.
+            bool engaged = stirred || c.Attacking || Brain.Busy(c) || Stirring(c);
+            c.Dormant = ambient ? !about : !engaged && (d > SleepDistance || !seen && !AllAwake && (c.Position - camera).LengthSquared() > WakeReach * WakeReach);
             // Past the near ring nothing casts a line through the world's collision for it.
             c.NoRays = ambient || d > NearDistance;
             if (c.RigInterval < 4 && !seen) c.RigInterval = 4;

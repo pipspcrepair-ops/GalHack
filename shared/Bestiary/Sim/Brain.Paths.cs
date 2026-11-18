@@ -139,7 +139,7 @@ public static partial class Brain
         if (stale && w.TakePathBudget())
         {
             Ready(c, goal);
-            c.PathWhole = SpaceNav.FindPath(c.Space, center, goal, SpaceNav.BodyOf(c.Species), c.Path, 2500);
+            c.PathWhole = SpaceNav.FindPath(c.Space, center, goal, SpaceNav.BodyOf(c.Species), c.Path, 2500, w);
             if (c.Path.Count == 0) c.HasGoal = false;
         }
         c.Desired = Vector3.Zero;
@@ -272,7 +272,7 @@ public static partial class Brain
             c.AwayAt = w.Time;
             c.AwayFrom = from;
             Ready(c, c.Position);
-            if (c.Space != null) c.HasAway = SpaceNav.Away(c.Space, Crawl.Center(c), from + Vector3.Up * 0.5f, SpaceNav.BodyOf(c.Species), reach, c.Path);
+            if (c.Space != null) c.HasAway = SpaceNav.Away(c.Space, Crawl.Center(c), from + Vector3.Up * 0.5f, SpaceNav.BodyOf(c.Species), reach, c.Path, timed: w);
             else
             {
                 // Among buildings, on the fine window round it (doorways are a metre wide); else on the ground's own cells.
@@ -344,7 +344,7 @@ public static partial class Brain
         if (w.Time - c.GaveUpAt > ChaseMemory) { c.GaveUpOn = null; return false; }
         if (w.Time < c.ReachCheck || !w.TakePathBudget()) return true;
         c.ReachCheck = w.Time + ReachLook;
-        bool reach = c.Space != null ? SpaceNav.FindPath(c.Space, Crawl.Center(c), t.Position, SpaceNav.BodyOf(c.Species), w.Way, 2500)
+        bool reach = c.Space != null ? SpaceNav.FindPath(c.Space, Crawl.Center(c), t.Position, SpaceNav.BodyOf(c.Species), w.Way, 2500, w)
             : Clear(w, c, c.Position, t.Position) || w.Nav.FindPath(c.Position, t.Position, w.Way, gait: GaitOf(c.Species));
         if (reach) c.GaveUpOn = null;
         return !reach;
