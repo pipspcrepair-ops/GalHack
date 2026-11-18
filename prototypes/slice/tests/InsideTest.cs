@@ -133,15 +133,17 @@ public partial class InsideTest : Node
         (Game.Game game, Driver drive, Place place) = (stood.Game, stood.Drive, stood.Place);
         PlaceFauna fauna = place.Memory.Fauna;
         Town town = place.Memory.Town;
-        if (game.Zone.Wildlife.Life == null)
+        if (game.Zone.Wildlife.Airless)
         {
-            // An airless world has no life to roll its creatures or people from: none planned, and nothing thrown for want of it.
-            Check(fauna == null && town == null, $"an airless world plans no creatures or people ({fauna != null} fauna, {town != null} town)");
+            // An airless world has no wild creatures (no fauna, no sim) but its people live in sealed places: planned, rolled and ticking.
+            Townsfolk folk = place.Inst.Townsfolk;
+            bool peopled = folk != null && folk.People.Count > 0 && folk.Spots.Count >= 2;
+            for (int i = 0; i < 600 && town != null && !town.People.All(q => q.Looks != null); i++) yield return 0;
+            Check(fauna == null && game.Zone.Wildlife.Sim == null, "an airless world plans no creatures and has no wild sim");
+            Check(!peopled || town != null && town.People.Count > 0 && town.People.All(q => q.Looks != null), $"its people are planned and rolled: {town?.People.Count ?? 0} of {folk?.People.Count ?? 0}");
             game.QueueFree();
             yield break;
         }
-        GD.Print($"  ({place.Inst.Layout.Modules.Count} modules, {fauna?.Rooms.Rooms.Count} rooms; population: {fauna?.Population?.Note ?? "none planned"}, {fauna?.Population?.Spawns.Count(PoiFauna.Threat)} threats planned, {fauna?.Population?.Deferred.Count} waiting; {town?.Data.People.Count ?? 0} people)");
-
         // A room on the way in's storey, then up (or down) the stairs a storey at a time: the nearest room by doors on each.
         var walk = new PlaceWalk(game, drive);
         var nav = place.Nav();

@@ -30,6 +30,8 @@ public partial class WildlifePatch : Node3D
     public SurfaceZone Zone;
 
     public WildSim Sim { get; private set; }
+    /// <summary>No air, no wild creatures: the world still has its life (its people, in sealed places) but no sim, ground to bake or fish.</summary>
+    public bool Airless { get; private set; }
     /// <summary>Everything that moves on this world, from the bestiary.</summary>
     public WorldLife Life { get; private set; }
     public PlanetFauna Fauna => Life?.Fauna;
@@ -111,6 +113,7 @@ public partial class WildlifePatch : Node3D
     public void SetWorld(PlanetWorld planet, Vector3 landing)
     {
         _planet = planet;
+        Airless = planet.Sky.Density < SurfaceWeather.NoAir;
         var rules = Zone.Data.Rules.Wildlife;
         Livable = rules.LivableOn(planet.Spec);
         var world = WorldConditions.Of(planet.Spec, rules.Alienness);
@@ -138,7 +141,7 @@ public partial class WildlifePatch : Node3D
         MeasureRichness();
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         // Fish in its waters, where the water is clean.
-        if (Schools.Clean(planet.Spec.Archetype, world, planet.Roll))
+        if (!Airless && Schools.Clean(planet.Spec.Archetype, world, planet.Roll))
         {
             Fish = new Schools { Name = "Fish", Planet = planet, Seed = Life.Seed, Eye = () => Zone.Camera?.GlobalPosition ?? (Player != null ? FromPatch(Player.Position) : Origin) };
             AddChild(Fish);
@@ -171,6 +174,7 @@ public partial class WildlifePatch : Node3D
         AddChild(Spit);
         Tells = new TellView { Name = "Tells", Audio = Audio };
         AddChild(Tells);
+        if (Airless) return;
         // The first is baked here and now, without its woods: the next is baked with them as soon as it can be.
         var (terrain, nav, origin, trunks) = Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize), null);
         Swap(terrain, nav, origin, trunks, keepClear: landing, clear: rules.SafeRadius);
