@@ -229,10 +229,11 @@ public partial class PoiPlaces : Node3D
     {
         Decor decor = Decor.Shared; // loaded on the main thread the first time
         PlaceFauna.Deep deep = Fauna;
+        PlanetSurface.World.PlanetWorld planet = Zone.Planet;
         return Task.Run(() => GalHack.Testing.AllocMeter.Measure("place build", () =>
         {
             GalHack.Testing.AllocMeter.Measure("  its instance", () => memory.Inst);
-            Prepare(memory, decor, deep);
+            Prepare(memory, decor, deep, planet);
             BlockGrid g = memory.Inst.Blocks;
             return GalHack.Testing.AllocMeter.Measure("  its collision mesh", () => Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min)));
         }));
@@ -251,7 +252,7 @@ public partial class PoiPlaces : Node3D
     }
 
     /// <summary>What a place needs worked out once, off the main thread: its rooms' dressing (clearing the generic props there) and its creatures.</summary>
-    static void Prepare(PlaceMemory memory, Decor decor, PlaceFauna.Deep deep)
+    static void Prepare(PlaceMemory memory, Decor decor, PlaceFauna.Deep deep, PlanetSurface.World.PlanetWorld planet)
     {
         if (memory.Prepared) return;
         memory.Rooms = GalHack.Testing.AllocMeter.Measure("  its rooms' plans", () => decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>());
@@ -268,7 +269,7 @@ public partial class PoiPlaces : Node3D
             if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
             memory.Fauna?.Populate(memory, deep);
         });
-        memory.Town = GalHack.Testing.AllocMeter.Measure("  its town", () => Town.For(memory, deep?.Planet));
+        memory.Town = GalHack.Testing.AllocMeter.Measure("  its town", () => Town.For(memory, planet));
         memory.Prepared = true;
     }
 

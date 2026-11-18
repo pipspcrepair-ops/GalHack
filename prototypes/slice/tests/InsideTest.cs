@@ -30,6 +30,7 @@ public partial class InsideTest : Node
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
     readonly Random _rng = new();
+    readonly List<string> _thrown = new();
 
     public override void _Ready()
     {
@@ -42,6 +43,8 @@ public partial class InsideTest : Node
         }) { IsBackground = true };
         thread.Start();
         ProcessPhysicsPriority = 100;
+        // Whatever a town throws while it plans or ticks fails the run (a tower's people once planned nothing, a NullReference in Kennel).
+        AppDomain.CurrentDomain.FirstChanceException += (_, e) => { if (e.Exception.StackTrace?.Contains("Slice.Places.Town.") == true) _thrown.Add($"{e.Exception.GetType().Name} {e.Exception.StackTrace.TrimStart().Split('(')[0]}"); };
         _run = Scenario().GetEnumerator();
     }
 
@@ -55,6 +58,7 @@ public partial class InsideTest : Node
             more = false;
         }
         if (more) return;
+        Check(_thrown.Count == 0, $"no town threw while planning or ticking: {_thrown.Count} thrown{(_thrown.Count > 0 ? $" ({_thrown[0]})" : "")}");
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
         Shutdown.Quit(this, _failures == 0 ? 0 : 1);
@@ -86,7 +90,7 @@ public partial class InsideTest : Node
         PoiSiting.ForceFamily = family;
         PoiSiting.ForceState = PoiState.Abandoned;
         PoiSiting.ForceOccupancy = new OccupancyRoll(occ);
-        WorldChoice world = WorldChoice.Fresh(archetype);
+        WorldChoice world = WorldChoice.Fresh(archetype, ulong.TryParse(Arg("seed"), out ulong seed) ? seed : null);
         Game.Game game = s.Game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(game);
         s.Drive = new Driver(game);
@@ -129,8 +133,17 @@ public partial class InsideTest : Node
         (Game.Game game, Driver drive, Place place) = (stood.Game, stood.Drive, stood.Place);
         PlaceFauna fauna = place.Memory.Fauna;
         Town town = place.Memory.Town;
-        GD.Print($"  ({place.Inst.Layout.Modules.Count} modules, {fauna?.Rooms.Rooms.Count} rooms; population: {fauna?.Population?.Note ?? "none planned"}, {fauna?.Population?.Spawns.Count(PoiFauna.Threat)} threats planned, {fauna?.Population?.Deferred.Count} waiting; {town?.Data.People.Count ?? 0} people)");
-
+        if (game.Zone.Wildlife.Airless)
+        {
+            // An airless world has no wild creatures (no fauna, no sim) but its people live in sealed places: planned, rolled and ticking.
+            Townsfolk folk = place.Inst.Townsfolk;
+            bool peopled = folk != null && folk.People.Count > 0 && folk.Spots.Count >= 2;
+            for (int i = 0; i < 600 && town != null && !town.People.All(q => q.Looks != null); i++) yield return 0;
+            Check(fauna == null && game.Zone.Wildlife.Sim == null, "an airless world plans no creatures and has no wild sim");
+            Check(!peopled || town != null && town.People.Count > 0 && town.People.All(q => q.Looks != null), $"its people are planned and rolled: {town?.People.Count ?? 0} of {folk?.People.Count ?? 0}");
+            game.QueueFree();
+            yield break;
+        }
         // A room on the way in's storey, then up (or down) the stairs a storey at a time: the nearest room by doors on each.
         var walk = new PlaceWalk(game, drive);
         var nav = place.Nav();

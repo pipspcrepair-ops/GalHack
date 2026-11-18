@@ -65,9 +65,9 @@ public sealed partial class Town
         _barricadeFor = Mathf.Max(0f, _barricadeFor - dt);
         if ((_senseIn -= dt) > 0f) return;
         _senseIn = SenseEvery;
-        Kennel();
         Slice.Surface.WildlifePatch patch = _places.Zone.Wildlife;
-        if (patch.Sim == null) return;
+        if (patch.Sim == null) return; // (the open ground's sim is made as its patch streams in: nothing to sense or keep beasts from until then)
+        Kennel();
         // Stock are worked by the place's farmers, once there are any.
         if (!_handlers)
         {

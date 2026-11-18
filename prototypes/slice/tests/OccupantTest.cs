@@ -28,7 +28,7 @@ public partial class OccupantTest : Node
     const int WatchdogMinutes = 10;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
-    readonly System.Random _rng = new();
+    readonly System.Random _rng = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seed=")) is { } sd ? new(int.Parse(sd[7..])) : new();
     PoiLibrary _lib;
     WildlifeData _data;
 
@@ -47,6 +47,8 @@ public partial class OccupantTest : Node
             _data = DataFiles.LoadWildlife();
             // -- --own: only the world's own kinds (the quick part).
             // -- --spawns: only placement by purpose (OccupantTest.Spawns).
+            // -- --sited: only the places sited on real planets; --seed=N: the same rolls every run.
+            if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--sited") >= 0) { Sited(); Finish(); return; }
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--spawns") >= 0) { PlacementChecks(); Finish(); return; }
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--unseen") >= 0) { Unseen(); Finish(); return; }
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--inside") >= 0) { Inside(); Finish(); return; }
