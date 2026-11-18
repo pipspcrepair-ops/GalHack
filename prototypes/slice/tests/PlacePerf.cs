@@ -143,7 +143,6 @@ public partial class PlacePerf : Node
         if (_args.TryGetValue("as", out string type)) PoiSiting.ForceType = type;
         if (_args.ContainsKey("fly")) PoiBuilds.Withhold = s => s.Whole != null;
         if (_args.ContainsKey("noease")) Wildlife.DrawSmoother.Off = true; // --noease=1: bodies drawn as the sim has them (the A side of an A/B)
-        if (_args.ContainsKey("serialrigs")) Wildlife.WildSim.ParallelRigs = false; // --serialrigs=1: every rig posed on the main thread (the A side)
         if (_args.ContainsKey("allawake")) Surface.DeepSite.AllAwake = true; // --allawake=1: places' unseen creatures step wherever they are (the A side)
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
@@ -284,6 +283,8 @@ public partial class PlacePerf : Node
         (_gcAt0, _gcAt1, _gcAt2) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
         _ticksAt = Engine.GetPhysicsFrames();
         _sites0 = SiteTotals();
+        if (_game?.Zone?.Wildlife is { } patch) foreach (Surface.DeepSite s in patch.Sites) s.Sim.WorstStepMs = 0;
+        Wildlife.SpaceNav.WorstMs = 0;
         _stepped = _siteCreatures = _awakeBusy = _awakeNear = _awakeSeen = 0;
         _threads0 = ThreadTimes();
         _wall.Restart();
@@ -338,12 +339,12 @@ public partial class PlacePerf : Node
         t.Sort();
         double P(double q) => t[Math.Min(t.Count - 1, (int)(t.Count * q))];
         int hitches = t.Count(x => x > 33.4);
-        // Inside a place, the frame budget (60 fps): on average within it, and no more than one frame in fifty missing it.
+        // Inside a place, the frame budget (60 fps): on average within it, and no more than one frame in a hundred late by half a frame or more.
         if (stage.StartsWith("inside") && !stage.EndsWith(" plain"))
         {
-            int over = t.Count(x => x > Budget * 1.2);
-            bool ok = t.Average() <= Budget * 1.05 && over <= t.Count / 50;
-            GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {(ok ? "ok" : "FAIL")} budget {stage}: avg {t.Average():F1} ms, {over} of {t.Count} frames over {Budget * 1.2:F0} ms"));
+            int over = t.Count(x => x > Budget * 1.5);
+            bool ok = t.Average() <= Budget * 1.05 && over <= t.Count / 100;
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {(ok ? "ok" : "FAIL")} budget {stage}: avg {t.Average():F1} ms, {over} of {t.Count} frames over {Budget * 1.5:F0} ms"));
             if (!ok) _failed = true;
         }
         string line = string.Create(CultureInfo.InvariantCulture,
@@ -357,6 +358,8 @@ public partial class PlacePerf : Node
         double S(int i) => (sites[i] - _sites0[i]) / t.Count;
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} places' creatures a frame: {_stepped / (double)t.Count:F0} stepped of {_siteCreatures / (double)t.Count:F0} (awake: {_awakeBusy / (double)t.Count:F0} busy, {_awakeNear / (double)t.Count:F0} within 30 m, {_awakeSeen / (double)t.Count:F0} further); sims {S(0):F2} ms (brains {S(1):F2}, moving {S(2):F2}, rigs {S(3):F2}), quiet {S(4):F2}, bodies {S(5):F2}"));
         GD.Print($"PERF {stage,-16} cpu use: {ThreadUse()}");
+        if (_game.Zone.Wildlife.Sites.MaxBy(s => s.Sim.WorstStepMs) is { } slow) GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} slowest creature step {slow.Sim.WorstStepMs:F1} ms: {slow.Sim.WorstStep}"));
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} slowest path search inside {Wildlife.SpaceNav.WorstMs:F1} ms: {Wildlife.SpaceNav.Worst}"));
         if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
         if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");
         foreach (string h in _hitches) GD.Print($"PERF hitch {h}");
