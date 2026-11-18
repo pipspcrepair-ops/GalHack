@@ -54,7 +54,7 @@ public sealed partial class Staging
         Vector3 Near(double x, double z) => world.NearestCopy(new Vector3((float)x, 0f, (float)z), from) with { Y = world.GroundHeight(Mathx.WrapX(x, world.Width), Mathx.Wrap(z, world.Height)) };
         Vector3 Middle(PoiSite s) => Near((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5);
         float Off(Vector3 p) => new Vector2(p.X - from.X, p.Z - from.Z).Length();
-        GD.Print($"(night: {world.Pois.Count} places, {world.Pois.Count(FarLights.Lived)} lived in, {far.Glows.Count} glows, {far.Beaming.Count} beams)");
+        GD.Print($"(night: {world.Pois.Count} places, {world.Pois.Count(FarLights.Lived)} lived in, {far.Glows.Count} glows)");
 
         // The town: the brightest glow within reach of the start; the lone farm: a lived-in place no glow covers.
         FarLights.Glow? town = far.Glows.Where(g => Off(Near(g.X, g.Z)) < 9000f).OrderByDescending(g => g.Strength / (1f + Off(Near(g.X, g.Z)) / 3000f)).Cast<FarLights.Glow?>().FirstOrDefault();

@@ -10,10 +10,10 @@ using PlanetSurface.World;
 namespace PlanetSurface.Poi;
 
 /// <summary>
-/// The lights that carry at night, cheaply (sci-fi-inspirations 17, Night Lights). Three draws for the
+/// The lights that carry at night, cheaply (sci-fi-inspirations 17, Night Lights). Two draws for the
 /// whole planet, none of them a light: every place's outward lamps, windows and beacons as points that
-/// keep a few pixels wide however far off; a soft glow in the air over each cluster of lived-in places;
-/// and a beam straight up from a few old installations. Positions are canonical and wrapped round the
+/// keep a few pixels wide however far off, and a soft glow in the air over each cluster of lived-in places
+/// (no beams straight up: owner, 18 Nov, they read as pillars of light over places). Positions are canonical and wrapped round the
 /// world in the shaders, so nothing moves on the CPU. A place's real lights hand off to its points over
 /// one band (<see cref="HandOff"/>): past it the points are all there is, and only where someone lives.
 /// </summary>
@@ -90,26 +90,17 @@ public partial class FarLights : Node3D
     /// <summary>How far apart places may stand and still glow as one, m.</summary>
     const double Gather = 700.0;
 
-    /// <summary>The installations that throw a beam straight up: grand or landmark high-tech families, one in four rolled, at most <see cref="MostBeams"/>.</summary>
-    public static List<PoiSite> Beams(IReadOnlyList<PoiSite> sites) => sites
-        .Where(s => s.Siting != "city" && s.Siting != "part" && (s.Family.Landmark || s.Family.Tags.Contains("grand")) && s.Family.Techs.Contains("high"))
-        .Select(s => (s, roll: Planets.Gen.Hash.Of(0xBEA4UL, s.Origin.X, s.Origin.Z) % 1000))
-        .Where(t => t.roll < 250).OrderBy(t => t.roll).Take(MostBeams).Select(t => t.s).ToList();
-
-    const int MostBeams = 3;
-
-    MultiMesh _points, _domes, _beams;
-    ShaderMaterial _pointMaterial, _domeMaterial, _beamMaterial;
+    MultiMesh _points, _domes;
+    ShaderMaterial _pointMaterial, _domeMaterial;
     readonly List<float> _pointData = new();
     /// <summary>Points added since the last frame, to put in.</summary>
     readonly List<int> _fresh = new();
     double _clock;
     PlanetWorld _world;
 
-    /// <summary>Points, glows and beams drawn (tests).</summary>
+    /// <summary>Points and glows drawn (tests).</summary>
     public int PointCount => _pointData.Count / Stride;
     public IReadOnlyList<Glow> Glows { get; private set; } = Array.Empty<Glow>();
-    public IReadOnlyList<PoiSite> Beaming { get; private set; } = Array.Empty<PoiSite>();
 
     /// <summary>The canonical points of each place added, by place (tests: which are lit from far off).</summary>
     public readonly Dictionary<PoiSite, (int First, int Count, bool Lived)> Of = new();
@@ -123,15 +114,10 @@ public partial class FarLights : Node3D
         var size = new Vector2((float)world.Width, (float)world.Height);
         _pointMaterial = Shaded(PointSource, size);
         _domeMaterial = Shaded(DomeSource, size);
-        _beamMaterial = Shaded(BeamSource, size);
         _points = Layer("Far points", new QuadMesh { Size = Vector2.One * 2f }, _pointMaterial);
         _domes = Layer("Light glow", new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 24, Rings = 12 }, _domeMaterial);
-        _beams = Layer("Beams", new QuadMesh { Size = new Vector2(2f, 1f), CenterOffset = new Vector3(0f, 0.5f, 0f) }, _beamMaterial);
         Glows = Clusters(world.Pois, world.Width, world.Height);
         Fill(_domes, Glows.Select(g => (new Vector3((float)g.X, g.Y, (float)g.Z), g.Radius, new Color(1f, 0.72f, 0.42f), new Color(g.Strength, 0f, 0f, 0f))).ToList());
-        Beaming = Beams(world.Pois);
-        Fill(_beams, Beaming.Select(s => (new Vector3((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5f, s.Footprint.Max.Y, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5f),
-            1f, new Color(0.72f, 0.86f, 1f), new Color((Planets.Gen.Hash.Of(9UL, s.Origin.X, s.Origin.Z) % 1000) / 1000f, 0f, 0f, 0f))).ToList());
     }
 
     static ShaderMaterial Shaded(string code, Vector2 size)
@@ -275,7 +261,7 @@ public partial class FarLights : Node3D
             cover = Sky.Air.CloudCover;
             cloudBase = Sky.Air.CloudBase;
         }
-        foreach (ShaderMaterial m in new[] { _pointMaterial, _domeMaterial, _beamMaterial })
+        foreach (ShaderMaterial m in new[] { _pointMaterial, _domeMaterial })
         {
             m.SetShaderParameter(Fx.Names.Of("night"), night);
             m.SetShaderParameter(Fx.Names.Of("fog_density"), fog);
@@ -291,12 +277,11 @@ public partial class FarLights : Node3D
     public void Clear()
     {
         foreach (Node n in GetChildren()) n.QueueFree();
-        _points = _domes = _beams = null;
+        _points = _domes = null;
         _pointData.Clear();
         _fresh.Clear();
         Of.Clear();
         Glows = Array.Empty<Glow>();
-        Beaming = Array.Empty<PoiSite>();
         _world = null;
     }
 
@@ -416,30 +401,4 @@ public partial class FarLights : Node3D
         }
         """;
 
-    const string BeamSource = $$"""
-        shader_type spatial;
-        render_mode unshaded, blend_add, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
-        {{PlaceCode}}
-        varying float up;
-        varying float amount;
-        void vertex() {
-            vec3 eye = INV_VIEW_MATRIX[3].xyz;
-            vec3 at = near_copy(MODEL_MATRIX[3].xyz, eye);
-            float d = length(at.xz - eye.xz);
-            // Turned about the upright to face the eye; at least a pixel and a half wide.
-            vec3 side = normalize(cross(vec3(0.0, 1.0, 0.0), at - eye + vec3(0.001, 0.0, 0.0)));
-            float pixel = max(d, 1.0) * 2.0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
-            float width = max(3.0, pixel * 1.5);
-            vec3 p = at + side * VERTEX.x * width + vec3(0.0, VERTEX.y * 1400.0, 0.0);
-            POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(p, 1.0);
-            up = VERTEX.y;
-            // A slow swell, each beam its own; seen only after dark, and through the haze.
-            amount = night * (0.75 + 0.25 * sin(clock * 0.4 + INSTANCE_CUSTOM.x * 6.283)) * haze(d) * clamp(3.0 / width, 0.4, 1.0);
-        }
-        void fragment() {
-            float across = 1.0 - abs(UV.x * 2.0 - 1.0);
-            ALBEDO = COLOR.rgb * amount * across * across * (1.0 - up) * (1.0 - up) * 1.4;
-            ALPHA = 1.0;
-        }
-        """;
 }
