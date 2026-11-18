@@ -400,7 +400,7 @@ public partial class PlacePerf : Node
     {
         foreach (int x in _drive.UntilPlaying(300)) yield return x;
         _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => _args.ContainsKey("deeper") && n is Slice.Places.Place };
-        if (_args.ContainsKey("audit")) _allocs = new AllocCensus { On = true };
+        if (_args.ContainsKey("audit") || _args.ContainsKey("allocs")) _allocs = new AllocCensus { On = true }; // --allocs=1: what is allocated, by type, each stage
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
         zone.Sky.TimeOfDay = 0.4;

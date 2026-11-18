@@ -122,7 +122,6 @@ public sealed class WildSim
     /// <summary>The longest one creature's step took while profiled, ms, and who it was (measurements).</summary>
     public double WorstStepMs;
     public string WorstStep = "";
-    long _thinkWas, _moveWas;
 
     /// <summary>A wind-up has started: the view plays the growl and the creature rears.</summary>
     public event Action<AttackEvent> Telegraph;
@@ -747,7 +746,7 @@ public sealed class WildSim
         if (Gobs.Count > 0) Spitting.Step(this, dt);
 
         long t0 = Profile ? Stopwatch.GetTimestamp() : 0, thinkTicks = 0, moveTicks = 0, rigTicks = 0;
-        _thinkWas = _moveWas = 0;
+        long thinkWas = 0, moveWas = 0;
         Stepped = 0;
         for (int i = 0; i < Creatures.Count; i++)
         {
@@ -817,8 +816,8 @@ public sealed class WildSim
                 rigTicks += t - t0;
                 t0 = t;
                 double ms = (t - begin) * 1000.0 / Stopwatch.Frequency;
-                if (ms > WorstStepMs) (WorstStepMs, WorstStep) = (ms, $"{c.Species.CommonName} {c.State} at {c.Position.X:F0},{c.Position.Y:F0},{c.Position.Z:F0}, target {c.Target?.Position}, goal {(c.HasGoal ? c.Goal.ToString() : "none")}, think {(thinkTicks - _thinkWas) * 1000.0 / Stopwatch.Frequency:F1} move {(moveTicks - _moveWas) * 1000.0 / Stopwatch.Frequency:F1} ms, paths so far {Paths}");
-                (_thinkWas, _moveWas) = (thinkTicks, moveTicks);
+                if (ms > WorstStepMs) (WorstStepMs, WorstStep) = (ms, $"{c.Species.CommonName} {c.State} at {c.Position.X:F0},{c.Position.Y:F0},{c.Position.Z:F0}, target {c.Target?.Position}, goal {(c.HasGoal ? c.Goal.ToString() : "none")}, think {(thinkTicks - thinkWas) * 1000.0 / Stopwatch.Frequency:F1} move {(moveTicks - moveWas) * 1000.0 / Stopwatch.Frequency:F1} ms, paths so far {Paths}");
+                (thinkWas, moveWas) = (thinkTicks, moveTicks);
             }
         }
         if (Profile)
