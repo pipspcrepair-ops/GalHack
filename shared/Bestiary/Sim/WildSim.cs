@@ -719,6 +719,19 @@ public sealed class WildSim
         return to;
     }
 
+    readonly List<Creature> _rigDue = new();
+    Action<int> _pose;
+
+    /// <summary>Rigs posed on the worker threads once this many are due in a step (fewer aren't worth the hand-off); off for an A/B.</summary>
+    public static bool ParallelRigs = true;
+    const int ParallelFrom = 8;
+
+    void Pose(Creature c)
+    {
+        c.Rig.Update(this, c, c.RigPending);
+        c.RigPending = 0f;
+    }
+
     public void Step(float dt)
     {
         Time += dt;
@@ -786,15 +799,17 @@ public sealed class WildSim
 
             // Far creatures re-pose less often; the rig catches up with the summed time.
             c.RigPending += dt;
-            if (c.RigInterval <= 1 || c.Attacking || (Frame + c.Id) % c.RigInterval == 0) // a strike is judged on the pose, so it's posed every step
-            {
-                c.Rig.Update(this, c, c.RigPending);
-                c.RigPending = 0f;
-            }
-            if (Profile) { long t = Stopwatch.GetTimestamp(); rigTicks += t - t0; t0 = t; }
+            if (c.RigInterval <= 1 || c.Attacking || (Frame + c.Id) % c.RigInterval == 0) _rigDue.Add(c); // a strike is judged on the pose, so it's posed every step
         }
+        // The poses, after every body has moved: each rig reads only its own body, the ground and the place's blocks, so
+        // a crowd's are worked out across the cores.
+        if (Profile) t0 = Stopwatch.GetTimestamp();
+        if (ParallelRigs && _rigDue.Count >= ParallelFrom) System.Threading.Tasks.Parallel.For(0, _rigDue.Count, _pose ??= i => Pose(_rigDue[i]));
+        else foreach (Creature c in _rigDue) Pose(c);
+        _rigDue.Clear();
         if (Profile)
         {
+            rigTicks = Stopwatch.GetTimestamp() - t0;
             double ms = 1000.0 / Stopwatch.Frequency;
             ThinkMs += thinkTicks * ms;
             MoveMs += moveTicks * ms;

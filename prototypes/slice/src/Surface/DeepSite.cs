@@ -53,8 +53,11 @@ public partial class DeepSite : Node3D
     /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
     public float SleepDistance = 100f;
 
-    /// <summary>Unseen, a creature with nothing to deal with steps only within this of the eye, m: a little past where its small sounds carry (<see cref="Quiet.Reach"/>).</summary>
-    const float WakeReach = Quiet.Reach + 6f;
+    /// <summary>Unseen, a creature with nothing to deal with steps only within this of the eye, m: a little past where its small sounds carry through a wall (<see cref="Quiet.ThroughWall"/>).</summary>
+    const float WakeReach = Quiet.ThroughWall + 6f;
+
+    /// <summary>Tests: the unseen step wherever they are within <see cref="SleepDistance"/> (the old way, for an A/B).</summary>
+    public static bool AllAwake;
 
     /// <summary>Whether a loud sound (a shot, a blast) in the last second reached it.</summary>
     bool Heard(Creature c)
@@ -338,7 +341,7 @@ public partial class DeepSite : Node3D
             // it has something to deal with (it has sensed someone, is chasing, fleeing or fighting, or just heard a
             // shot): what can't be seen or heard holds still, and what is coming for you keeps coming.
             bool engaged = stirred || c.Attacking || Brain.Busy(c) || Heard(c);
-            c.Dormant = ambient ? !about : !engaged && (d > SleepDistance || !seen && (c.Position - camera).LengthSquared() > WakeReach * WakeReach);
+            c.Dormant = ambient ? !about : !engaged && (d > SleepDistance || !seen && !AllAwake && (c.Position - camera).LengthSquared() > WakeReach * WakeReach);
             // Past the near ring nothing casts a line through the world's collision for it.
             c.NoRays = ambient || d > NearDistance;
             if (c.RigInterval < 4 && !seen) c.RigInterval = 4;

@@ -30,6 +30,8 @@ public partial class PlacePerf : Node
     const int Frames = 240;
     /// <summary>A place whose walkable floors span this many metres or more is timed on its middle and top floors too.</summary>
     const int ManyStoreys = 12;
+    /// <summary>A frame at 60 fps, ms.</summary>
+    const double Budget = 1000.0 / 60.0;
     Game.Game _game;
     Driver _drive;
     IEnumerator<int> _run;
@@ -141,6 +143,8 @@ public partial class PlacePerf : Node
         if (_args.TryGetValue("as", out string type)) PoiSiting.ForceType = type;
         if (_args.ContainsKey("fly")) PoiBuilds.Withhold = s => s.Whole != null;
         if (_args.ContainsKey("noease")) Wildlife.DrawSmoother.Off = true; // --noease=1: bodies drawn as the sim has them (the A side of an A/B)
+        if (_args.ContainsKey("serialrigs")) Wildlife.WildSim.ParallelRigs = false; // --serialrigs=1: every rig posed on the main thread (the A side)
+        if (_args.ContainsKey("allawake")) Surface.DeepSite.AllAwake = true; // --allawake=1: places' unseen creatures step wherever they are (the A side)
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
@@ -250,6 +254,15 @@ public partial class PlacePerf : Node
         {
             _stepped += s.Sim.Stepped;
             _siteCreatures += s.Sim.Creatures.Count;
+            if (_game.Camera == null) continue;
+            Vector3 eye = s.Local(_game.Camera.GlobalPosition);
+            foreach (Wildlife.Creature c in s.Sim.Creatures)
+            {
+                if (c.Removed || c.Dormant) continue;
+                if (Wildlife.Brain.Busy(c) || c.Attacking) _awakeBusy++;
+                else if ((c.Position - eye).Length() < 30f) _awakeNear++;
+                else _awakeSeen++;
+            }
         }
     }
 
@@ -271,7 +284,31 @@ public partial class PlacePerf : Node
         (_gcAt0, _gcAt1, _gcAt2) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
         _ticksAt = Engine.GetPhysicsFrames();
         _sites0 = SiteTotals();
-        _stepped = _siteCreatures = 0;
+        _stepped = _siteCreatures = _awakeBusy = _awakeNear = _awakeSeen = 0;
+        _threads0 = ThreadTimes();
+        _wall.Restart();
+    }
+
+    /// <summary>Each of the process's threads' CPU time so far, ms.</summary>
+    static Dictionary<int, double> ThreadTimes()
+    {
+        var t = new Dictionary<int, double>();
+        foreach (ProcessThread th in Process.GetCurrentProcess().Threads)
+            try { t[th.Id] = th.TotalProcessorTime.TotalMilliseconds; }
+            catch (Exception) { } // (one that ended as it was read)
+        return t;
+    }
+
+    Dictionary<int, double> _threads0 = new();
+    readonly Stopwatch _wall = new();
+
+    /// <summary>The busiest threads over the stage, each as a share of one core, and the whole process in cores.</summary>
+    string ThreadUse()
+    {
+        double wall = _wall.Elapsed.TotalMilliseconds;
+        var used = ThreadTimes().Select(kv => (kv.Key, Ms: kv.Value - _threads0.GetValueOrDefault(kv.Key))).OrderByDescending(x => x.Ms).ToList();
+        int main = (int)AppDomain.GetCurrentThreadId();
+        return string.Create(CultureInfo.InvariantCulture, $"{used.Sum(x => x.Ms) / wall:F2} cores in all; busiest threads {string.Join(", ", used.Take(6).Select(x => $"{(x.Key == main ? "main " : "")}{100 * x.Ms / wall:F0}%"))}");
     }
 
     /// <summary>Every place's, cave's and underworld's creatures together: their sims' steps (brains, moving, rigs), quiet sounds and bodies, ms so far.</summary>
@@ -288,7 +325,7 @@ public partial class PlacePerf : Node
     }
 
     double[] _sites0 = new double[6];
-    long _stepped, _siteCreatures;
+    long _stepped, _siteCreatures, _awakeBusy, _awakeNear, _awakeSeen;
 
     void End(string stage)
     {
@@ -301,6 +338,14 @@ public partial class PlacePerf : Node
         t.Sort();
         double P(double q) => t[Math.Min(t.Count - 1, (int)(t.Count * q))];
         int hitches = t.Count(x => x > 33.4);
+        // Inside a place, the frame budget (60 fps): on average within it, and no more than one frame in fifty missing it.
+        if (stage.StartsWith("inside") && !stage.EndsWith(" plain"))
+        {
+            int over = t.Count(x => x > Budget * 1.2);
+            bool ok = t.Average() <= Budget * 1.05 && over <= t.Count / 50;
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {(ok ? "ok" : "FAIL")} budget {stage}: avg {t.Average():F1} ms, {over} of {t.Count} frames over {Budget * 1.2:F0} ms"));
+            if (!ok) _failed = true;
+        }
         string line = string.Create(CultureInfo.InvariantCulture,
             $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000 / t.Count,6}k draws {_draws / t.Count,5} objs {_objs / t.Count,5} shadow {_shadowPrims / 1000 / t.Count,6}k/{_shadowDraws / t.Count,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
         GD.Print(line);
@@ -310,7 +355,8 @@ public partial class PlacePerf : Node
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics ticks a frame {(Engine.GetPhysicsFrames() - _ticksAt) / (double)t.Count:F2}, their callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
         double[] sites = SiteTotals();
         double S(int i) => (sites[i] - _sites0[i]) / t.Count;
-        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} places' creatures a frame: {_stepped / (double)t.Count:F0} stepped of {_siteCreatures / (double)t.Count:F0}; sims {S(0):F2} ms (brains {S(1):F2}, moving {S(2):F2}, rigs {S(3):F2}), quiet {S(4):F2}, bodies {S(5):F2}"));
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} places' creatures a frame: {_stepped / (double)t.Count:F0} stepped of {_siteCreatures / (double)t.Count:F0} (awake: {_awakeBusy / (double)t.Count:F0} busy, {_awakeNear / (double)t.Count:F0} within 30 m, {_awakeSeen / (double)t.Count:F0} further); sims {S(0):F2} ms (brains {S(1):F2}, moving {S(2):F2}, rigs {S(3):F2}), quiet {S(4):F2}, bodies {S(5):F2}"));
+        GD.Print($"PERF {stage,-16} cpu use: {ThreadUse()}");
         if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
         if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");
         foreach (string h in _hitches) GD.Print($"PERF hitch {h}");
