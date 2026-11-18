@@ -264,6 +264,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 - [ ] Comfortable -10 to 60 C, grace period, chip damage scaled by how extreme it is; bunker stays comfortable [main]
 - [ ] Barren starts cost no health, even at midday (re-measure) [main]
 - [ ] Slowdown near POIs (creatures, re-rigging) [main]
+- [ ] PILLAR OF LIGHT OVER SOME POIS AT NIGHT (owner, 18 Nov): it was the Night Lights beam from high-tech landmark places; owner said remove it. Removed from FarLights (far points and town glow stay) [batch2 aacc76dd, not yet in the test build]
 
 ## In progress
 
