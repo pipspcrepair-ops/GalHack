@@ -16,10 +16,12 @@ public static partial class Brain
     /// <summary>Seconds until a creature next thinks: quickly with something to deal with, slowly otherwise, a little different for each.</summary>
     public static float Interval(Creature c)
     {
-        bool busy = c.Alert > 0f || c.State is CState.Chase or CState.Flee or CState.Stalk or CState.Tell or CState.Warn;
         float jitter = 0.01f * (c.Id % 6);
-        return busy ? 0.2f + jitter : (0.44f + jitter) * c.ThinkScale;
+        return Busy(c) ? 0.2f + jitter : (0.44f + jitter) * c.ThinkScale;
     }
+
+    /// <summary>Something to deal with: it has sensed someone, or is chasing, fleeing, stalking, telling or warning.</summary>
+    public static bool Busy(Creature c) => c.Alert > 0f || c.State is CState.Chase or CState.Flee or CState.Stalk or CState.Tell or CState.Warn;
 
     public static void Update(WildSim w, Creature c, float dt)
     {

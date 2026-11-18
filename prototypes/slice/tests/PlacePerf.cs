@@ -28,6 +28,8 @@ namespace Slice.Tests;
 public partial class PlacePerf : Node
 {
     const int Frames = 240;
+    /// <summary>A place whose walkable floors span this many metres or more is timed on its middle and top floors too.</summary>
+    const int ManyStoreys = 12;
     Game.Game _game;
     Driver _drive;
     IEnumerator<int> _run;
@@ -244,6 +246,11 @@ public partial class PlacePerf : Node
         _shadowPrims += v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.PrimitivesInFrame);
         _shadowDraws += v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.DrawCallsInFrame);
         _physics = Math.Max(_physics, Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0);
+        foreach (Surface.DeepSite s in _game.Zone.Wildlife.Sites)
+        {
+            _stepped += s.Sim.Stepped;
+            _siteCreatures += s.Sim.Creatures.Count;
+        }
     }
 
     void Begin()
@@ -263,7 +270,25 @@ public partial class PlacePerf : Node
         _allAlloc = GC.GetTotalAllocatedBytes();
         (_gcAt0, _gcAt1, _gcAt2) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
         _ticksAt = Engine.GetPhysicsFrames();
+        _sites0 = SiteTotals();
+        _stepped = _siteCreatures = 0;
     }
+
+    /// <summary>Every place's, cave's and underworld's creatures together: their sims' steps (brains, moving, rigs), quiet sounds and bodies, ms so far.</summary>
+    double[] SiteTotals()
+    {
+        var t = new double[6];
+        if (_game?.Zone?.Wildlife is not { } w) return t;
+        foreach (Surface.DeepSite s in w.Sites)
+        {
+            s.Sim.Profile = true;
+            t[0] += s.StepMs; t[1] += s.Sim.ThinkMs; t[2] += s.Sim.MoveMs; t[3] += s.Sim.RigMs; t[4] += s.QuietMs; t[5] += s.ViewMs;
+        }
+        return t;
+    }
+
+    double[] _sites0 = new double[6];
+    long _stepped, _siteCreatures;
 
     void End(string stage)
     {
@@ -283,6 +308,9 @@ public partial class PlacePerf : Node
         GD.Print($"PERF {stage,-16} live bodies {bodies}, shapes {shapes}, failed to create {JoltWatch.Failed}; physics process {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0:F2} ms; a frame: scripts' physics ticks {_tickMs / t.Count:F2} ms, the engine's steps {_stepMs / t.Count:F2} ms");
         _tickMs = _stepMs = 0;
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics ticks a frame {(Engine.GetPhysicsFrames() - _ticksAt) / (double)t.Count:F2}, their callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
+        double[] sites = SiteTotals();
+        double S(int i) => (sites[i] - _sites0[i]) / t.Count;
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} places' creatures a frame: {_stepped / (double)t.Count:F0} stepped of {_siteCreatures / (double)t.Count:F0}; sims {S(0):F2} ms (brains {S(1):F2}, moving {S(2):F2}, rigs {S(3):F2}), quiet {S(4):F2}, bodies {S(5):F2}"));
         if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
         if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");
         foreach (string h in _hitches) GD.Print($"PERF hitch {h}");
@@ -475,7 +503,10 @@ public partial class PlacePerf : Node
             return p;
         }
 
-        foreach (float d in new[] { 1000f, 500f })
+        // --quick=1: straight to the gate (no far stages, no ride in).
+        bool quick = _args.ContainsKey("quick");
+        if (quick) _game.Survivor.PlaceOutside(Out(26f).ToNumerics());
+        foreach (float d in quick ? Array.Empty<float>() : new[] { 1000f, 500f })
         {
             _game.Survivor.PlaceOutside(Out(d).ToNumerics());
             foreach (int x in _drive.Wait(60)) yield return x;
@@ -487,7 +518,7 @@ public partial class PlacePerf : Node
 
         // Riding in from a kilometre out at a hover bike's speed: what the streaming costs.
         (_rideFrom, _rideTo) = (Out(1000f), Out(8f));
-        foreach (int x in Ride("ride in", _rideFrom, _rideTo, Centre())) yield return x;
+        if (!quick) foreach (int x in Ride("ride in", _rideFrom, _rideTo, Centre())) yield return x;
         for (int i = 0; i < 1800 && places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
 
         _game.Survivor.PlaceOutside(Out(26f).ToNumerics());
@@ -502,11 +533,8 @@ public partial class PlacePerf : Node
         var reach = place.Nav().Reachable(site.Instance.Layout.EntranceCell);
         var inside = reach.Where(c => place.Roofed(place.WorldOf(c, 0.2f))).OrderBy(c => c.X + c.Z * 3).ToList();
         GD.Print($"PERF reachable {reach.Count}, roofed {inside.Count}");
-        if (inside.Count > 0)
+        IEnumerable<int> Turn(string stage)
         {
-            Int3 cell = inside[inside.Count / 2];
-            _game.Survivor.PlaceOutside(place.WorldOf(cell, 0.1f).ToNumerics());
-            foreach (int x in _drive.Wait(30)) yield return x;
             Begin();
             for (int i = 0; i < 360; i++)
             {
@@ -514,20 +542,30 @@ public partial class PlacePerf : Node
                 yield return 0;
             }
             _game.Controls.Look = Vector2.Zero;
-            End("inside");
-            if (_args.ContainsKey("ab"))
+            End(stage);
+        }
+
+        // Standing well inside on the way in's level, then (a many-storey place) on its middle and top floors: turning on the spot.
+        var levels = inside.Select(c => c.Y).Distinct().OrderBy(y => y).ToList();
+        int entryY = site.Instance.Layout.EntranceCell.Y;
+        var stops = new List<(string Stage, Int3 Cell)>();
+        if (inside.Count > 0) stops.Add(("inside", inside.Where(c => c.Y == entryY).DefaultIfEmpty(inside[inside.Count / 2]).ElementAt(0)));
+        if (levels.Count > 0 && levels[^1] - levels[0] >= ManyStoreys)
+            foreach (var (stage, y) in new[] { ("inside mid", levels[levels.Count / 2]), ("inside top", levels[^1]) })
             {
-                PoiGenerator.BlockMaterials.Detail(false);
-                Begin();
-                for (int i = 0; i < 360; i++)
-                {
-                    _game.Controls.Look = new Vector2(40f, 0f);
-                    yield return 0;
-                }
-                _game.Controls.Look = Vector2.Zero;
-                End("inside plain");
-                PoiGenerator.BlockMaterials.Detail(true);
+                var on = inside.Where(c => c.Y == y).ToList();
+                stops.Add((stage, on[on.Count / 2]));
             }
+        foreach (var (stage, cell) in stops)
+        {
+            _game.Survivor.PlaceOutside(place.WorldOf(cell, 0.1f).ToNumerics());
+            foreach (int x in _drive.Wait(30)) yield return x;
+            GD.Print($"PERF {stage} at {cell.Y - entryY:+0;-0} m from the way in ({levels.Count} levels, {levels.FirstOrDefault() - entryY} to {levels.LastOrDefault() - entryY} m)");
+            foreach (int x in Turn(stage)) yield return x;
+            if (!_args.ContainsKey("ab")) continue;
+            PoiGenerator.BlockMaterials.Detail(false);
+            foreach (int x in Turn(stage + " plain")) yield return x;
+            PoiGenerator.BlockMaterials.Detail(true);
         }
         _game.Survivor.PlaceOutside(Out(-40f).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;
