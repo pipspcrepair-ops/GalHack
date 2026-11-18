@@ -59,11 +59,13 @@ public partial class DeepSite : Node3D
     /// <summary>Tests: the unseen step wherever they are within <see cref="SleepDistance"/> (the old way, for an A/B).</summary>
     public static bool AllAwake;
 
-    /// <summary>Whether a loud sound (a shot, a blast) in the last second reached it, or it is within <see cref="WakeReach"/> of one of the place's people (who live on out of your sight, and it with them).</summary>
+    /// <summary>
+    /// Whether it heard a loud sound (a shot, a blast) in the last second, through the walls and floors on the way (asleep it still
+    /// listens: <see cref="WildSim.Hears"/>), or it is within <see cref="WakeReach"/> of one of the place's people (who live on out of your sight, and it with them).
+    /// </summary>
     bool Stirring(Creature c)
     {
-        foreach (WorldNoise n in Sim.Noises)
-            if ((n.Position - c.Position).LengthSquared() <= n.Radius * n.Radius) return true;
+        if (Sim.Time - c.HeardAt <= 1f) return true;
         foreach (Vector3 p in _peopleAt)
             if ((p - c.Position).LengthSquared() <= WakeReach * WakeReach) return true;
         return false;
@@ -348,7 +350,11 @@ public partial class DeepSite : Node3D
             // it has something to deal with (it has sensed someone, is chasing, fleeing or fighting, or just heard a
             // shot, or one of the place's people is near it): what can't be seen or heard holds still, and what is coming for you keeps coming.
             bool engaged = stirred || c.Attacking || Brain.Busy(c) || Stirring(c);
-            c.Dormant = ambient ? !about : !engaged && (d > SleepDistance || !seen && !AllAwake && (c.Position - camera).LengthSquared() > WakeReach * WakeReach);
+            bool offAWay = !AllAwake && (c.Position - camera).LengthSquared() > WakeReach * WakeReach;
+            c.Dormant = ambient ? !about : !engaged && (d > SleepDistance || !seen && offAWay);
+            // Awake out of sight and off a way (it heard a shot, it is after one of the place's people), it is stepped
+            // less often with the time it missed: it comes on as fast, for a half or a third of the work.
+            c.StepEvery = seen && d < far || !offAWay || stirred ? 1 : d < NearDistance ? 2 : 3;
             // Past the near ring nothing casts a line through the world's collision for it.
             c.NoRays = ambient || d > NearDistance;
             if (c.RigInterval < 4 && !seen) c.RigInterval = 4;

@@ -32,6 +32,29 @@ public static class Quiet
     /// <summary>How much quieter a wall makes it, dB.</summary>
     public const float WallLoss = 10f;
 
+    /// <summary>What a wall or a floor leaves of a sound's reach: <see cref="WallLoss"/> dB less, so a third as far (inverse square).</summary>
+    static readonly float Through = MathF.Pow(10f, -WallLoss / 20f);
+
+    /// <summary>
+    /// Whether a loud sound with this reach in the open gets from one point to another through solid space: each wall
+    /// or floor on the straight line takes <see cref="WallLoss"/> off it (a storey or two of a tower muffles a shot to nothing).
+    /// </summary>
+    public static bool Reaches(ISolidSpace space, Vector3 from, Vector3 to, float radius)
+    {
+        Vector3 d = to - from;
+        float len = d.Length();
+        if (len > radius) return false;
+        Vector3 step = d / MathF.Max(len, 0.01f) * 0.5f, p = from + step;
+        bool inWall = false;
+        for (float t = 0.5f; t < len - 0.5f; t += 0.5f, p += step)
+        {
+            bool solid = space.SolidCell(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y), Mathf.FloorToInt(p.Z));
+            if (solid && !inWall && len > (radius *= Through)) return false;
+            inWall = solid;
+        }
+        return true;
+    }
+
     /// <summary>The small sounds due this step from what lives in a place, for a listener.</summary>
     public static void Step(WildSim w, ITarget listener, float dt, List<QuietSound> into)
     {
