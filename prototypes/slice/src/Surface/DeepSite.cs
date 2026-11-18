@@ -59,13 +59,18 @@ public partial class DeepSite : Node3D
     /// <summary>Tests: the unseen step wherever they are within <see cref="SleepDistance"/> (the old way, for an A/B).</summary>
     public static bool AllAwake;
 
-    /// <summary>Whether a loud sound (a shot, a blast) in the last second reached it.</summary>
-    bool Heard(Creature c)
+    /// <summary>Whether a loud sound (a shot, a blast) in the last second reached it, or it is within <see cref="WakeReach"/> of one of the place's people (who live on out of your sight, and it with them).</summary>
+    bool Stirring(Creature c)
     {
         foreach (WorldNoise n in Sim.Noises)
             if ((n.Position - c.Position).LengthSquared() <= n.Radius * n.Radius) return true;
+        foreach (Vector3 p in _peopleAt)
+            if ((p - c.Position).LengthSquared() <= WakeReach * WakeReach) return true;
         return false;
     }
+
+    /// <summary>Where the place's living people are this frame, in this sim's frame.</summary>
+    readonly List<Vector3> _peopleAt = new();
 
     /// <summary>The harmless (<see cref="Importance.Ambient"/>: a room's insects) are drawn within this of the eye, m, and of them in sight only the nearest few step.</summary>
     public float AmbientReach = 25f;
@@ -314,6 +319,8 @@ public partial class DeepSite : Node3D
     void SyncViews(Vector3 camera, Stopwatch clock)
     {
         _sightFrame++;
+        _peopleAt.Clear();
+        if (Town != null) foreach (Slice.Places.Town.Person p in Town.People) if (!p.Dead && !p.Gone) _peopleAt.Add(Local(Town.World(p.Pos)));
         DrawnCount = 0;
         _gone.Clear();
         foreach (Creature c in Sim.Creatures)
@@ -339,8 +346,8 @@ public partial class DeepSite : Node3D
             // Out of sight and out of reach, it sleeps where it is: a large place's far rooms cost nothing. So does one
             // unseen and past where its small sounds carry (another storey of a tower, the far side of a wall), unless
             // it has something to deal with (it has sensed someone, is chasing, fleeing or fighting, or just heard a
-            // shot): what can't be seen or heard holds still, and what is coming for you keeps coming.
-            bool engaged = stirred || c.Attacking || Brain.Busy(c) || Heard(c);
+            // shot, or one of the place's people is near it): what can't be seen or heard holds still, and what is coming for you keeps coming.
+            bool engaged = stirred || c.Attacking || Brain.Busy(c) || Stirring(c);
             c.Dormant = ambient ? !about : !engaged && (d > SleepDistance || !seen && !AllAwake && (c.Position - camera).LengthSquared() > WakeReach * WakeReach);
             // Past the near ring nothing casts a line through the world's collision for it.
             c.NoRays = ambient || d > NearDistance;
