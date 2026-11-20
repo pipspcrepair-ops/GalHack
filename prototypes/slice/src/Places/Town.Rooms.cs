@@ -301,18 +301,23 @@ public sealed partial class Town
 
     /// <summary>
     /// Where someone off duty spends the night: their own bed if their spot is one, else a seat close by it nobody else has
-    /// taken for the night, else the spot itself. Everyone stays a body in the world (owner: "Yes, remove it", of people
-    /// blinking out at their home spots).
+    /// taken for the night, else the spot itself if nobody has, else the nearest other spot close by that nobody has (a bed
+    /// aside). Everyone stays a body in the world (owner: "Yes, remove it", of people blinking out at their home spots).
     /// </summary>
     int NightSpot(Person p)
     {
         if (p.Home < _lie.Count && _lie[p.Home] != null) return p.Home;
         Vector3 home = At(p.Home);
-        int best = p.Home;
-        float near = 6f;
+        int seat = -1, other = -1;
+        float seatAt = 6f, otherAt = 8f;
         for (int i = 0; i < Spots.Count; i++)
-            if (Spots[i].Tag == "sit" && (At(i) - home).Length() is var d && d < near && Making(p, i) == 0) (best, near) = (i, d);
-        return best;
+        {
+            if (Spots[i].Tag == "bed" || Making(p, i) > 0) continue;
+            float d = (At(i) - home).Length();
+            if (Spots[i].Tag == "sit" && d < seatAt) (seat, seatAt) = (i, d);
+            else if (i != p.Home && d < otherAt) (other, otherAt) = (i, d);
+        }
+        return seat >= 0 ? seat : Making(p, p.Home) == 0 || other < 0 ? p.Home : other;
     }
 
     /// <summary>In bed, or at the spot they spend the night at (tests).</summary>
