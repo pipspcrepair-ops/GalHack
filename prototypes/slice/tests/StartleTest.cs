@@ -273,11 +273,12 @@ public partial class StartleTest : Node
                 }
                 before[p] = Flags(p);
                 Vector3? d = Drawn(p);
-                // (Flat, and in view before and after: a body out of the view isn't posed till it comes back into it.)
-                if (vis && d is { } now && drawn[p] is { } then && new Vector2(now.X - then.X, now.Z - then.Z).Length() is var flat && flat > DrawnMove && InView(now) && InView(then))
+                // (Flat, and in view before and after: a body out of the view isn't posed till it comes back into it. Not in the half
+                // second after the sleeper is set down somewhere new: what was last drawn there is posed on in the first frames.)
+                if (t >= 30 && vis && d is { } now && drawn[p] is { } then && new Vector2(now.X - then.X, now.Z - then.Z).Length() is var flat && flat > DrawnMove && InView(now) && InView(then))
                 {
                     drawnJumps++;
-                    Note("drawn", $"{p.Job} drawn {flat:F1} m on in a tick ({near:F0} m off, the view's own move {(p.View.GlobalPosition - placed[p]).Length():F1} m, eased {p.View.Easing().Apart:F2} m, the body piece {(now - p.View.GlobalPosition - (then - placed[p])).Length():F1} m within it, sim {town.World(p.Pos).DistanceTo(now):F1} m off it, act {p.Act} {p.ActAmount:F2}, raised {p.Raised:F2}, crouched {p.Crouched:F2}, down {p.Down:F2}, slept {p.Slept:F2}, seated {p.Seated:F2}, bent {p.Bent:F2}, hurt {p.Hurt:F2}, owed {p.PoseOwed:F2}, was {before[p]})");
+                    Note("drawn", $"{p.Job} drawn {flat:F1} m on in a tick at {t / 60f:F1} s ({near:F0} m off, the view's own move {(p.View.GlobalPosition - placed[p]).Length():F1} m, eased {p.View.Easing().Apart:F2} m, the body piece {(now - p.View.GlobalPosition - (then - placed[p])).Length():F1} m within it, sim {town.World(p.Pos).DistanceTo(now):F1} m off it, act {p.Act} {p.ActAmount:F2}, raised {p.Raised:F2}, crouched {p.Crouched:F2}, down {p.Down:F2}, slept {p.Slept:F2}, seated {p.Seated:F2}, bent {p.Bent:F2}, hurt {p.Hurt:F2}, owed {p.PoseOwed:F2}, was {before[p]})");
                 }
                 drawn[p] = d;
                 placed[p] = p.View?.GlobalPosition ?? default;
