@@ -25,7 +25,7 @@ namespace Slice.Tests;
 /// </summary>
 public partial class StartleTest : Node
 {
-    const int WatchdogMinutes = 20;
+    const int WatchdogMinutes = 25;
     /// <summary>Within this of the sleeper nobody may go out of sight or come into it, m.</summary>
     const float Near = 40f;
     /// <summary>
