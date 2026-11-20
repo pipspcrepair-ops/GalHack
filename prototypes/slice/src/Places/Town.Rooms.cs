@@ -330,10 +330,11 @@ public sealed partial class Town
         else { Idle(p, dt); p.Sitting |= p.Seat == home; }
     }
 
-    /// <summary>Down onto the mattress (asleep) and back up off it, at a walk.</summary>
+    /// <summary>Down onto the mattress (asleep) and back up off it, at a walk: off the bed only once at their spot by it.</summary>
     void InBed(Person p, float dt)
     {
-        p.Slept = Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
+        bool rising = !p.Asleep && p.Slept > 0f && p.Spot == p.Home && p.Path is { } way && p.Step < way.Count;
+        p.Slept = rising ? MathF.Max(0.02f, p.Slept - 1.2f * dt) : Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
         if (p.Asleep && p.Home < _lie.Count && _lie[p.Home] is Vector3 lie) p.Pos = p.Pos.MoveToward(lie, 1.5f * dt);
     }
 
