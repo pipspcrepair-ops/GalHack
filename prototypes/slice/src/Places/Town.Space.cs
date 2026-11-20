@@ -167,9 +167,8 @@ public sealed partial class Town
 
     /// <summary>
     /// After a step along their way: someone who hasn't got a quarter metre on in a second finds another way from where
-    /// they stand (by the walking grid); still held a second later, they walk back to where they last walked well, a
-    /// metre or more back, and go on from there (held on the way back as well, they are put there). Nobody stands pushing
-    /// into a wall or a piece of furniture.
+    /// they stand (by the walking grid); still held a second later, they are put back where they last walked well, a
+    /// metre or more back, and go on from there. Nobody stands pushing into a wall or a piece of furniture.
     /// </summary>
     void Headway(Person p, float dt)
     {
@@ -179,7 +178,7 @@ public sealed partial class Town
         {
             p.ProgressAt = p.Pos;
             p.StuckFor = 0f;
-            p.Rerouted = p.WalkedBack = false;
+            p.Rerouted = false;
             if ((p.Pos - p.GoodAt).LengthSquared() > 1f) (p.Behind, p.GoodAt) = (p.GoodAt, p.Pos);
             return;
         }
@@ -197,18 +196,10 @@ public sealed partial class Town
         {
             if ((p.Behind - p.Pos).LengthSquared() is > 0.04f and < 25f && OnGrid(p.Behind) && (_parts == null || _parts.Fits(p.Behind, BodyRadius(p), Height(p))))
             {
-                // Walked back there, then on (nobody moves faster than their legs take them); held on the way back too, put there.
-                if (p.WalkedBack) p.Pos = p.Behind;
-                else
-                {
-                    var back = new System.Collections.Generic.List<Vector3> { p.Behind };
-                    if (p.Path != null && p.Step < p.Path.Count) back.AddRange(p.Path.GetRange(p.Step, p.Path.Count - p.Step));
-                    (p.Path, p.Step, p.WalkedBack) = (back, 0, true);
-                }
+                p.Pos = p.Behind;
                 Unstuck++;
             }
-            if (!p.WalkedBack) p.Behind = p.Pos;
-            p.GoodAt = p.ProgressAt = p.Pos;
+            p.GoodAt = p.Behind = p.ProgressAt = p.Pos;
             p.StuckFor = 0f;
             p.Rerouted = false;
         }

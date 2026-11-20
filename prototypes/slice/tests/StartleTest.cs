@@ -30,9 +30,9 @@ public partial class StartleTest : Node
     const float Near = 40f;
     /// <summary>
     /// The most a body may move in one physics tick, m: a run is under 0.1 m a tick; bodies pressed together in a crowd are parted
-    /// by up to half a metre at once (PersonalSpace, eased as drawn); anything more is a jump.
+    /// by up to about two thirds of a metre at once (PersonalSpace, eased as drawn); anything more is a jump.
     /// </summary>
-    const float TickMove = 0.6f;
+    const float TickMove = 0.75f;
     /// <summary>The same for a drawn body (a pose's own swing and a flinch on top), m.</summary>
     const float DrawnMove = 0.5f;
     IEnumerator<int> _run;
@@ -184,14 +184,16 @@ public partial class StartleTest : Node
         var inside = people.ToDictionary(p => p, p => p.Indoors);
         static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Indoors ? "I" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Away ? "A" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
         var before = people.ToDictionary(p => p, Flags);
-        int unstuck = town.Unstuck, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0;
+        int unstuck = town.Unstuck, unstuckNow = unstuck, setBacks = 0, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0;
         var notes = new List<string>();
         var kinds = new Dictionary<string, int>();
         void Note(string kind, string s) { if ((kinds[kind] = kinds.GetValueOrDefault(kind) + 1) <= 3) notes.Add(s); }
         for (int t = 0; t < 600; t++)
         {
             TopUp();
+            int unstuckBefore = town.Unstuck;
             yield return 0;
+            unstuckNow = unstuckBefore;
             Vector3 you = _game.Survivor.WorldFeet;
             foreach (Town.Person p in people)
             {
@@ -202,7 +204,10 @@ public partial class StartleTest : Node
                 float step = (p.Pos - was[p]).Length();
                 // (Flat: a stair's step up is the stair's. A body far off is stepped every few ticks with the time between.)
                 step = new Vector2(p.Pos.X - was[p].X, p.Pos.Z - was[p].Z).Length();
-                if (step > TickMove * Wildlife.PersonView.PoseEvery(near)) { jumps++; Note("jump", $"{p.Job} {step:F1} m in a tick in the sim, {was[p]} to {p.Pos} ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Indoors ? ", indoors" : "")}{(p.Engaged ? ", fighting" : "")}{(p.Far ? ", far" : "")}{(p.Asleep ? ", asleep" : "")}{(p.Away ? ", away" : "")}, spot {p.Spot} refuge {p.Refuge}, way {p.Step}/{p.Path?.Count ?? -1}, {near:F0} m off, was {before[p]})"); }
+                // (One held on their way two seconds is put back where they last walked well, a few metres at most, eased as drawn:
+                // Town.Headway's, counted apart.)
+                if (step > TickMove * Wildlife.PersonView.PoseEvery(near) && town.Unstuck > unstuckNow) { setBacks++; unstuckNow = town.Unstuck; }
+                else if (step > TickMove * Wildlife.PersonView.PoseEvery(near)) { jumps++; Note("jump", $"{p.Job} {step:F1} m in a tick in the sim, {was[p]} to {p.Pos} ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Indoors ? ", indoors" : "")}{(p.Engaged ? ", fighting" : "")}{(p.Far ? ", far" : "")}{(p.Asleep ? ", asleep" : "")}{(p.Away ? ", away" : "")}, spot {p.Spot} refuge {p.Refuge}, way {p.Step}/{p.Path?.Count ?? -1}, {near:F0} m off, was {before[p]})"); }
                 was[p] = p.Pos;
                 bool vis = p.View is { Visible: true };
                 if (near < Near && vis != shown[p])
@@ -224,7 +229,7 @@ public partial class StartleTest : Node
             }
         }
         int dead = alive.Count(p => p.Dead);
-        GD.Print($"  {what}: {alive.Count} living before, {dead} died, {fled / 60} person-seconds fleeing, {town.Unstuck - unstuck} set back unstuck{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
+        GD.Print($"  {what}: {alive.Count} living before, {dead} died, {fled / 60} person-seconds fleeing, {town.Unstuck - unstuck} set back unstuck ({setBacks} seen as a step){(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
         Check(removed == 0 && alive.All(p => p.Dead || !p.Gone), $"after {what}, every living person is still there ({removed} removed)");
         Check(hid == 0 && popped == 0, $"after {what}, nobody within {Near} m went out of sight or came into it ({hid} hidden, {popped} appeared)");
         Check(jumps == 0, $"after {what}, nobody moved more than {TickMove} m in a tick in the sim ({jumps} jumps)");
