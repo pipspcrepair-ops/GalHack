@@ -611,7 +611,7 @@ public sealed partial class Town : IKeeper
             bool scared = p.ScaredFor > 0f || Barricaded;
             bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
             bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
-            if (hide && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night
+            if (offDuty && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night (a fright in town doesn't reach them out there)
             if (p.Away)
             {
                 // Out of town on a scavenger's run: back after a while, by the way in.
@@ -621,8 +621,8 @@ public sealed partial class Town : IKeeper
             }
             if (hide && !p.Indoors && !p.Asleep)
             {
-                // Home, wherever they were going: only reaching their own bed or door (or, from a fright, the nearest that
-                // isn't toward what frightened them: what they saw, else you) takes them in.
+                // Home, wherever they were going: only reaching their own bed or door takes them in. From a fright they run for
+                // the nearest that isn't toward what frightened them (what they saw, else you) and cower there, in sight.
                 p.Fleeing = mood == Mood.Hostile || scared;
                 if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : p.Home;
                 if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
@@ -1232,7 +1232,7 @@ public sealed partial class Town : IKeeper
         p.Close = away < StartleIn + 1.5f;
         p.StartleFor = MathF.Max(0f, p.StartleFor - dt);
         BodyAct want = BodyAct.None;
-        if (p.Fleeing) want = BodyAct.Panic;
+        if (p.Fleeing) want = p.Spot == p.Refuge && p.Now < 0.3f && (p.Path == null || p.Step >= p.Path.Count) ? BodyAct.Cower : BodyAct.Panic; // (there: cowering)
         else if (p.Halt > 0f && !p.Holding) want = BodyAct.Warn; // stop there
         else if (p.AnswerFor > 0f && _clock >= p.AnswerAt)
         {
