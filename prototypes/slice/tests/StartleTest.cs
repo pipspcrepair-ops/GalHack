@@ -189,11 +189,12 @@ public partial class StartleTest : Node
         Vector3 at = town.SpotAt(gate), outward = new Vector3(f.X, 0f, f.Z).LengthSquared() > 0.1f ? new Vector3(f.X, 0f, f.Z).Normalized() : Vector3.Right, stand = at;
         for (float d = 6f; d >= 2f; d -= 1f)
             if (town.CanStand(at - outward * d)) { stand = at - outward * d; break; }
-        var runners = town.People.Where(p => p.Looks?.Figure.Routine?.Moves == "leave" && !p.Dead).ToList();
+        var runners = town.People.Where(p => (p.Looks?.Figure.Routine?.Moves == "leave" || p.Job == Wildlife.PersonRole.Scavenger) && !p.Dead).ToList();
         foreach (Town.Person p in runners) p.Wait = 0f;
         _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
-        GD.Print($"  ({runners.Count} of {town.People.Count} go on runs out of town; the sleeper {(stand - at).Length():F0} m inside the way in, watching it)");
+        GD.Print($"  ({runners.Count} of {town.People.Count} go on runs out of town ({runners.Count(p => p.Away)} out now; jobs here {string.Join(", ", town.People.GroupBy(p => p.Job).Select(g => $"{g.Count()} {g.Key}"))}); the sleeper {(stand - at).Length():F0} m inside the way in, watching it)");
         foreach (int x in Watch(town, place, "two minutes by the way in", null, 120, at)) yield return x;
+        GD.Print($"  ({runners.Count(p => p.Away)} out of town at the end)");
     }
 
     /// <summary>The sleeper by the home spot most of them share, from evening through midnight to morning.</summary>
