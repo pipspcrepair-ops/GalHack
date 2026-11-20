@@ -166,15 +166,16 @@ public sealed partial class Town
         return town;
     }
 
-    /// <summary>Walkers held a second on their way who stopped where they got to, short of a spot others crowd, and who found another way (tests).</summary>
+    /// <summary>Walkers held a second on their way who stopped where they got to short of a spot others crowd, stepped aside, or found another way (tests).</summary>
     public int Settled { get; private set; }
+    public int SteppedAside { get; private set; }
     public int Rerouted { get; private set; }
 
     /// <summary>
     /// After a step along their way: someone who hasn't got a quarter metre on in a second is never moved for it (owner, of a
     /// set-back: "That nudge seems way too aggressive"). Near the end of their way (others at the one spot, a crowd at a
-    /// refuge), they stop where they got to; else they find another way from where they stand by the walking grid, a second
-    /// at a time, and wait where they are meanwhile (bodies give way to each other: PersonalSpace).
+    /// refuge), they stop where they got to; else, a second at a time, they step aside off what holds them or find another way
+    /// from where they stand by the walking grid, and wait where they are meanwhile (bodies give way to each other: PersonalSpace).
     /// </summary>
     void Headway(Person p, float dt)
     {
@@ -194,12 +195,38 @@ public sealed partial class Town
             Settled++;
             return;
         }
+        // Every other second, a step aside first, off whatever holds them (a table's corner, a bed's foot), toward where they go.
+        if ((p.Held = !p.Held) && Aside(p) is { } aside)
+        {
+            var on = new System.Collections.Generic.List<Vector3> { aside };
+            if (p.Path != null && p.Step < p.Path.Count) on.AddRange(p.Path.GetRange(p.Step, p.Path.Count - p.Step));
+            (p.Path, p.Step) = (on, 0);
+            SteppedAside++;
+            return;
+        }
         if (p.Spot < 0 || p.Spot >= Spots.Count) return;
         System.Collections.Generic.List<Vector3> path = PathFromHere(p, p.Spot, out bool pending);
         if (pending) { p.Path = new System.Collections.Generic.List<Vector3>(); p.Asked = p.Spot; }
         else if (path is { Count: > 0 }) p.Path = path;
         p.Step = 0;
         Rerouted++;
+    }
+
+    /// <summary>A point half a metre or so off where someone stands, clear of the parts and walked to straight, nearest where they go (null: none).</summary>
+    Vector3? Aside(Person p)
+    {
+        Vector3 to = p.Path != null && p.Step < p.Path.Count ? p.Path[p.Step] : p.Spot >= 0 && p.Spot < Spots.Count ? At(p.Spot) : p.Pos;
+        float r = BodyRadius(p), h = Height(p), best = float.MaxValue;
+        Vector3? found = null;
+        for (int k = 0; k < 8; k++)
+            foreach (float d in new[] { 0.5f, 0.9f })
+            {
+                Vector3 c = p.Pos + new Vector3(MathF.Sin(k * MathF.Tau / 8f), 0f, MathF.Cos(k * MathF.Tau / 8f)) * d;
+                if (!OnGrid(c) || !Straight(p, c) || _parts != null && _parts.Gap(c, r, h) < 0.05f) continue;
+                float score = (to - c).Length();
+                if (score < best) (best, found) = (score, c);
+            }
+        return found;
     }
 
     /// <summary>

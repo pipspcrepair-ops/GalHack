@@ -42,7 +42,7 @@ public sealed partial class Town
     public int SolidsMade { get; private set; }
     /// <summary>Whether someone has a capsule now, and whether a Husk holds them (its hold is their body) (tests).</summary>
     public bool HasSolid(Person p) => _solids.ContainsKey(p);
-    public bool Held(Person p) => _held.Contains(p);
+    public bool InHold(Person p) => _held.Contains(p);
     /// <summary>Vessel hits on the town's people (tests).</summary>
     public int VesselHits { get; private set; }
 

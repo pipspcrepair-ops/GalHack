@@ -242,7 +242,7 @@ public partial class StartleTest : Node
                 }
                 shown[p] = vis;
                 // A body to bump into: everyone within the capsules' reach (one a Husk holds is its hold's).
-                if (!p.Away && near < Town.SolidRange - 0.5f && !town.HasSolid(p) && !town.Held(p))
+                if (!p.Away && near < Town.SolidRange - 0.5f && !town.HasSolid(p) && !town.InHold(p))
                 {
                     bare++;
                     Note("bare", $"{p.Job} {near:F0} m off with no capsule ({(p.Asleep ? "asleep" : p.Sitting ? "sitting" : "up")}, was {before[p]})");

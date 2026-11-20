@@ -119,6 +119,8 @@ public sealed partial class Town : IKeeper
         /// <summary>Making headway on their way (Town.Headway): where they last got a quarter metre on from, and how long since.</summary>
         public Vector3 ProgressAt;
         public float StuckFor;
+        /// <summary>Held again: this second's way past it is a step aside, the next's another way (Town.Headway).</summary>
+        public bool Held;
         /// <summary>Frightened: the spot they make for to get in (their own home unless what frightened them is that way), and where it was, when last seen (local).</summary>
         public int Refuge = -1;
         public Vector3 FleeFrom;
