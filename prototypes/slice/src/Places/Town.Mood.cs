@@ -47,7 +47,7 @@ public sealed partial class Town
         bool at = Covers(world);
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Away || p.Indoors) continue;
+            if (p.Dead || p.Gone || p.Away) continue;
             float d = (p.Pos - shot.Position).Length();
             if (d > radius) continue;
             at |= shot.At(p.Pos + Vector3.Up * 1.2f);
@@ -101,7 +101,7 @@ public sealed partial class Town
                 // Those who saw it; a partner takes it hardest.
                 foreach (Person q in People)
                 {
-                    if (q == p || q.Dead || q.Gone || q.Away || q.Indoors) continue;
+                    if (q == p || q.Dead || q.Gone || q.Away || q.Asleep) continue;
                     float d = (q.Pos - p.Pos).Length();
                     if (d > 25f) continue;
                     Bind(q);
@@ -110,9 +110,9 @@ public sealed partial class Town
                 continue;
             }
             bool atFire = false;
-            foreach (Vector3 f in _fires) if (!p.Indoors && (f - p.Pos).Length() < 6f) { atFire = true; break; }
+            foreach (Vector3 f in _fires) if ((f - p.Pos).Length() < 6f) { atFire = true; break; }
             p.Feel.Step(dt, atFire);
-            if (p.Feel.Flees && !p.Indoors) p.ScaredFor = MathF.Max(p.ScaredFor, 2f);
+            if (p.Feel.Flees) p.ScaredFor = MathF.Max(p.ScaredFor, 2f);
         }
     }
 

@@ -14,8 +14,8 @@ namespace Slice.Places;
 /// The town's people are solid near you: each one out and about within <see cref="SolidRange"/>
 /// has a real collision capsule (their height, their folk's width) on the props layer, following
 /// where the town has them, so your capsule, thrown things and vessels meet a body, not air. The
-/// capsules are pooled: taken as someone comes into range, given back as they leave it, go
-/// indoors or fall, never made twice. Rays pass through them to the town's own hit test.
+/// capsules are pooled: taken as someone comes into range, given back as they leave it or
+/// fall, never made twice. Rays pass through them to the town's own hit test.
 /// Walking into someone presses them aside by the push rule (<see cref="Town.Space"/>): a child
 /// at once, a braced guard slowly, so a braced guard stops you dead until they give way, and
 /// someone pinned against a wall stops you for good. A vessel that runs into someone hits them
@@ -79,7 +79,7 @@ public sealed partial class Town
         _hadPlayer = true;
         foreach (Person p in People)
         {
-            bool near = !p.Dead && !p.Gone && !p.Indoors && !p.Away && p.Looks != null && !_held.Contains(p)
+            bool near = !p.Dead && !p.Gone && !p.Away && p.Looks != null && !_held.Contains(p)
                 && (p.Pos - player).Length() < SolidRange;
             _solids.TryGetValue(p, out Solid s);
             if (!near)
@@ -88,7 +88,7 @@ public sealed partial class Town
                 continue;
             }
             if (s == null) _solids[p] = s = TakeSolid();
-            float r = BodyRadius(p), h = MathF.Max(p.Figure.Height * (p.Sitting ? 0.7f : 1f), r * 2f + 0.05f);
+            float r = BodyRadius(p), h = p.Asleep ? r * 2f + 0.05f : MathF.Max(p.Figure.Height * (p.Sitting ? 0.7f : 1f), r * 2f + 0.05f); // (asleep: low on the bed)
             if (MathF.Abs(s.Shape.Radius - r) > 0.01f) s.Shape.Radius = r;
             if (MathF.Abs(s.Shape.Height - h) > 0.02f) s.Shape.Height = h;
             // Come down on you (you stepped into them as they turned, or they were pushed into you): out of you first, if there's room.
@@ -181,7 +181,7 @@ public sealed partial class Town
         Vector3 centre = v.Body.WorldPosition.ToGodot();
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null || _clock - p.StruckAt < 1f) continue;
+            if (p.Dead || p.Gone || p.Away || p.Looks == null || _clock - p.StruckAt < 1f) continue;
             Vector3 at = World(p.Pos + Vector3.Up * p.Figure.Height * 0.5f);
             if (at.DistanceTo(centre) > reach + 1f) continue;
             float r = BodyRadius(p);

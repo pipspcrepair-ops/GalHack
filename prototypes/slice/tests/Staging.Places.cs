@@ -200,7 +200,7 @@ public sealed partial class Staging
         Place p = _game.Places.PlaceOf(site);
         foreach (int x in _drive.Wait(600)) yield return x;
         // A street with people on it: the one with most others near, seen from a few metres off along the way they stand.
-        var people = p.Memory.Town.People.Where(q => !q.Indoors && !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
+        var people = p.Memory.Town.People.Where(q => !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
         var busy = people.Where(q => p.Inst.Layout.Modules.Any(m => m.Kind == ModuleKind.Outdoor) || true).OrderByDescending(q => people.Count(o => o.Pos.DistanceTo(q.Pos) < 12f)).First();
         Vector3 at = p.ToWorld(busy.Pos);
         var space = _game.Zone.GetWorld3D().DirectSpaceState;

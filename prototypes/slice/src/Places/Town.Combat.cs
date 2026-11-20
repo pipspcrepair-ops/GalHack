@@ -168,7 +168,7 @@ public sealed partial class Town
             if (foe == null && !Notices(p, player, dt)) return false;
             Engage(p, foe == null);
         }
-        if (p.Indoors || p.Asleep) { p.Indoors = false; Wake(p); }
+        if (p.Asleep) Wake(p);
         p.Halt = 0f;
         // What they can see of it, a few times a second.
         if ((p.LookIn -= dt) <= 0f)
@@ -191,7 +191,7 @@ public sealed partial class Town
     bool Notices(Person p, Vector3 player, float dt)
     {
         if (_alert && p.EngageAt >= 0f && _clock >= p.EngageAt) return true;
-        if (p.Indoors || p.Asleep) return false;
+        if (p.Asleep) return false;
         if ((p.LookIn -= dt) > 0f) return false;
         p.LookIn = LookEvery + (float)_rng.NextDouble() * 0.2f;
         Vector3 to = player - p.Pos;

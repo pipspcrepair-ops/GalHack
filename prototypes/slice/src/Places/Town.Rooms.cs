@@ -276,20 +276,20 @@ public sealed partial class Town
     }
 
     /// <summary>
-    /// The night and the morning: home to bed (or indoors where there are no beds), asleep there, and
+    /// The night and the morning: home to bed (or a seat by their spot, or the spot itself), asleep there, and
     /// up and out again. True while that is what they are doing.
     /// </summary>
     bool Day(Person p, bool hide, float dt)
     {
-        if (hide && !p.Indoors && !p.Asleep)
+        if (hide && !p.Asleep)
         {
-            // Home, wherever they were going: only reaching their own bed or door takes them in.
-            if (p.Spot != p.Home || p.Path == null) GoTo(p, p.Home);
+            if (p.Refuge < 0) p.Refuge = NightSpot(p);
+            if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
             Arrive(p, dt, true);
             return true;
         }
-        if (!hide) Wake(p);
-        if (p.Indoors || p.Asleep) return true;
+        if (!hide) { p.Refuge = -1; Wake(p); }
+        if (p.Asleep) return true;
         if (Move(p, dt))
         {
             p.Wait -= dt;
@@ -300,29 +300,41 @@ public sealed partial class Town
     }
 
     /// <summary>
-    /// On the way home: there, into bed (asleep, for the night), or in at the door where there are no beds. From a fright they
-    /// stay where they got to, cowering, there to see: a refuge is often a spot in an open room (owner: frightened people
-    /// "phased out of existance").
+    /// Where someone off duty spends the night: their own bed if their spot is one, else a seat close by it nobody else has
+    /// taken for the night, else the spot itself. Everyone stays a body in the world (owner: "Yes, remove it", of people
+    /// blinking out at their home spots).
+    /// </summary>
+    int NightSpot(Person p)
+    {
+        if (p.Home < _lie.Count && _lie[p.Home] != null) return p.Home;
+        Vector3 home = At(p.Home);
+        int best = p.Home;
+        float near = 6f;
+        for (int i = 0; i < Spots.Count; i++)
+            if (Spots[i].Tag == "sit" && (At(i) - home).Length() is var d && d < near && Making(p, i) == 0) (best, near) = (i, d);
+        return best;
+    }
+
+    /// <summary>In bed, or at the spot they spend the night at (tests).</summary>
+    public bool AtNight(Person p) => p.Asleep || p.Refuge >= 0 && !p.Fleeing && p.Spot == p.Refuge && (p.Path == null || p.Step >= p.Path.Count);
+
+    /// <summary>
+    /// On the way home (or to a refuge from a fright): there, into bed for the night if it is their own; else sat or stood at
+    /// it (the frightened cowering).
     /// </summary>
     void Arrive(Person p, float dt, bool sleep)
     {
         int home = p.Refuge >= 0 ? p.Refuge : p.Home;
         if (!Move(p, dt) || p.Spot != home || p.Fleeing) return;
-        if (home < _lie.Count && _lie[home] != null)
-        {
-            // Asleep counts as in for everything else (out of reach, not about the place); only their body shows, in bed.
-            if (sleep && home == p.Home) { p.Asleep = true; p.Indoors = true; p.Yaw = _face[p.Home]; p.Path = null; }
-            else p.Indoors = true;
-        }
-        else p.Indoors = _homes.Length > 0;
+        if (sleep && home == p.Home && home < _lie.Count && _lie[home] != null) { p.Asleep = true; p.Yaw = _face[p.Home]; p.Path = null; }
+        else { Idle(p, dt); p.Sitting |= p.Seat == home; }
     }
 
-    /// <summary>Morning (or the fright over): up out of bed or out of the door, at their usual pace.</summary>
+    /// <summary>Morning (or the fright over, or woken): up out of bed where they lie, at their usual pace.</summary>
     void Wake(Person p)
     {
-        if (!p.Indoors && !p.Asleep && !p.Fleeing) return;
-        p.Indoors = false;
-        if (p.Asleep) { p.Asleep = false; p.Pos = At(p.Home); p.Path = null; p.Step = 0; }
+        if (!p.Asleep && !p.Fleeing) return;
+        if (p.Asleep) { p.Asleep = false; p.Path = null; p.Step = 0; }
         p.Fleeing = false;
         p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
     }

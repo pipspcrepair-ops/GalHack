@@ -30,7 +30,7 @@ public sealed partial class Town
         int heard = 0;
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null) continue;
+            if (p.Dead || p.Gone || p.Asleep || p.Away || p.Looks == null) continue;
             Vector3 d = eye - p.Pos;
             float away = new Vector2(d.X, d.Z).Length();
             if (away > SeeGesture) continue;

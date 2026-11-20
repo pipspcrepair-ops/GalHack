@@ -248,12 +248,12 @@ public sealed partial class Staging
         _game.Visor.Visible = false;
         Look(eye, c + Vector3.Up * 1f);
         foreach (int x in _drive.Wait(30)) yield return x;
-        GD.Print($"  by day: {town.People.Count(q => !q.Indoors)} of {town.People.Count} out");
+        GD.Print($"  by day: {town.People.Count(q => !town.AtNight(q))} of {town.People.Count} out");
         foreach (int x in Shot(Path.Combine(dir, "day.png"))) yield return x;
         _game.Zone.Sky.TimeOfDay = Num("night", 0.86);
         foreach (int x in _drive.Wait(1500)) yield return x;
         Look(eye, c + Vector3.Up * 1f);
-        GD.Print($"  at night: {town.People.Count(q => q.Indoors)} of {town.People.Count} indoors, {town.People.Count(q => !q.Indoors && q.Role == "guard")} guards out");
+        GD.Print($"  at night: {town.People.Count(town.AtNight)} of {town.People.Count} at home for the night, {town.People.Count(q => !town.AtNight(q) && q.Role == "guard")} guards out");
         foreach (int x in Shot(Path.Combine(dir, "night.png"))) yield return x;
     }
 
@@ -302,7 +302,7 @@ public sealed partial class Staging
         Town town = p.Memory.Town;
         foreach (int x in NoonLight()) yield return x;
         Vector3 feet = p.FromWorld(_game.Survivor.WorldFeet);
-        Town.Person who = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && !q.Fleeing && q.Figure.Stage != LifeStage.Child)
+        Town.Person who = town.People.Where(q => !q.Dead && !q.Away && q.Looks != null && !q.Fleeing && q.Figure.Stage != LifeStage.Child)
             .OrderBy(q => q.Pos.DistanceTo(feet)).FirstOrDefault();
         if (who == null) { GD.Print("(nobody out)"); yield break; }
         // They stop where they are; the sleeper is set down in front of them, 4 m off.

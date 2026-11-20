@@ -108,7 +108,7 @@ public sealed partial class Staging
         Town town = _game.Places.PlaceOf(site)?.Memory.Town;
         foreach (int x in Settled(patch)) yield return x;
         if (town?.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
-        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Armed(q.Figure.Prop);
+        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && q.Looks != null && Weapons.Armed(q.Figure.Prop);
         for (int i = 0; i < 900 && town != null && !town.People.Any(Out); i++) { _game.Suit.Vitals.Health = max; yield return 0; }
         Town.Person guard = town?.People.Where(Out).OrderByDescending(q => Weapons.Ranged(q.Figure.Prop)).ThenBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
         if (guard == null) { GD.Print($"(no armed guard out at {site.Name}: no town edge to show)"); yield break; }

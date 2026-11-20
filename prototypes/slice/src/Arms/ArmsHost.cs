@@ -419,7 +419,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 if (pl.Memory.Town is not Town t) continue;
                 foreach (Town.Person p in t.People)
                 {
-                    if (p.Dead || p.Indoors || p == ignore) continue;
+                    if (p.Dead || p == ignore) continue;
                     Vector3 at = t.World(p.Pos) + Vector3.Up;
                     if (!ShotPool.InCone(o, nd, cos, cone.Range, at.ToNumerics()) || SolidBetween(origin, at)) continue;
                     ConeHits++;

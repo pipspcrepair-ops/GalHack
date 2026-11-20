@@ -167,7 +167,7 @@ public partial class OwnSweep : Node
                             for (int i = 0; i < town.People.Count; i++)
                             {
                                 var q = town.People[i];
-                                if (q.Dead || q.Indoors || q.Gone || town.World(q.Pos).DistanceTo(game.Survivor.WorldFeet) > 100f) continue;
+                                if (q.Dead || q.Gone || town.World(q.Pos).DistanceTo(game.Survivor.WorldFeet) > 100f) continue;
                                 if (!r.Met.TryGetValue("townsfolk", out var set)) r.Met["townsfolk"] = set = new HashSet<long>();
                                 set.Add(((long)p.Inst.SpawnSeed & 0xFFFFFFF) * 1000 + i);
                             }

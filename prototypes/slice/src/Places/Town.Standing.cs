@@ -60,7 +60,7 @@ public sealed partial class Town
         if (_place == null) return null;
         Vector3 at = _place.FromWorld(world);
         foreach (Person p in People)
-            if (!p.Dead && !p.Gone && !p.Indoors && !p.Away && !p.Robbed && p.Act is BodyAct.HandsUp or BodyAct.Cower && (p.Pos - at).Length() < reach) return p;
+            if (!p.Dead && !p.Gone && !p.Away && !p.Robbed && p.Act is BodyAct.HandsUp or BodyAct.Cower && (p.Pos - at).Length() < reach) return p;
         return null;
     }
 
@@ -79,7 +79,7 @@ public sealed partial class Town
         Learn(p);
         Vector3 at = p.Pos;
         foreach (Person q in People)
-            if (q != p && !q.Dead && !q.Indoors && !q.Away && ((q.Pos - at).Length() < 14f || q.Role == "guard" && (q.Pos - at).Length() < 40f)) Learn(q); // the guards keep an eye on the streets
+            if (q != p && !q.Dead && !q.Away && ((q.Pos - at).Length() < 14f || q.Role == "guard" && (q.Pos - at).Length() < 40f)) Learn(q); // the guards keep an eye on the streets
     }
 
     void Learn(Person q)
@@ -99,9 +99,9 @@ public sealed partial class Town
         var told = new List<Person>();
         foreach (Person k in _knows)
         {
-            if (k.Dead || k.Indoors || k.Away) continue;
+            if (k.Dead || k.Away) continue;
             foreach (Person q in People)
-                if (!_knows.Contains(q) && !q.Dead && !q.Indoors && !q.Away && (q.Pos - k.Pos).Length() < 6f && _rng.NextDouble() < 0.35) told.Add(q);
+                if (!_knows.Contains(q) && !q.Dead && !q.Away && (q.Pos - k.Pos).Length() < 6f && _rng.NextDouble() < 0.35) told.Add(q);
         }
         foreach (Person q in told) Learn(q);
     }
