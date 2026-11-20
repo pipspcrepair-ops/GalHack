@@ -298,16 +298,20 @@ public sealed partial class Town
         return false;
     }
 
-    /// <summary>On the way home: there, into bed (asleep, for the night), shut in (from a fright), or in at the door where there are no beds.</summary>
+    /// <summary>
+    /// On the way home: there, into bed (asleep, for the night), or in at the door where there are no beds. From a fright they
+    /// stay where they got to, cowering, there to see: a refuge is often a spot in an open room (owner: frightened people
+    /// "phased out of existance").
+    /// </summary>
     void Arrive(Person p, float dt, bool sleep)
     {
         int home = p.Refuge >= 0 ? p.Refuge : p.Home;
-        if (!Move(p, dt) || p.Spot != home) return;
+        if (!Move(p, dt) || p.Spot != home || p.Fleeing) return;
         if (home < _lie.Count && _lie[home] != null)
         {
             // Asleep counts as in for everything else (out of reach, not about the place); only their body shows, in bed.
             if (sleep && home == p.Home) { p.Asleep = true; p.Indoors = true; p.Yaw = _face[p.Home]; p.Path = null; }
-            else p.Indoors = true; // in from a fright: shut in their room, out of sight, as anyone else's door
+            else p.Indoors = true;
         }
         else p.Indoors = _homes.Length > 0;
     }
@@ -315,7 +319,7 @@ public sealed partial class Town
     /// <summary>Morning (or the fright over): up out of bed or out of the door, at their usual pace.</summary>
     void Wake(Person p)
     {
-        if (!p.Indoors && !p.Asleep) return;
+        if (!p.Indoors && !p.Asleep && !p.Fleeing) return;
         p.Indoors = false;
         if (p.Asleep) { p.Asleep = false; p.Pos = At(p.Home); p.Path = null; p.Step = 0; }
         p.Fleeing = false;

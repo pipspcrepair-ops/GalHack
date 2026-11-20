@@ -491,6 +491,8 @@ public sealed partial class Town : IKeeper
     /// <summary>Physics ticks so far, and how many this town step covers (a far town steps every few ticks with the time between).</summary>
     int _tick, _step = 1;
     float _owed;
+    /// <summary>Where you were at the last town step (the place's frame).</summary>
+    Vector3 _you;
 
     /// <summary>Far towns step less often, as their people already pose less often (<see cref="PersonView.PoseEvery"/>): measurements switch it off.</summary>
     public static bool Spaced = true;
@@ -511,7 +513,7 @@ public sealed partial class Town : IKeeper
     {
         if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
         _searchAside = true; // from here on the main thread asks: new routes come from a worker
-        Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
+        Vector3 player = _you = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
         // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
         _owed += tickDt;
         _tick++;
@@ -611,7 +613,7 @@ public sealed partial class Town : IKeeper
             bool scared = p.ScaredFor > 0f || Barricaded;
             bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
             bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
-            if (hide && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night
+            if (offDuty && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night (a fright in town doesn't reach them out there)
             if (p.Away)
             {
                 // Out of town on a scavenger's run: back after a while, by the way in.
@@ -621,8 +623,8 @@ public sealed partial class Town : IKeeper
             }
             if (hide && !p.Indoors && !p.Asleep)
             {
-                // Home, wherever they were going: only reaching their own bed or door (or, from a fright, the nearest that
-                // isn't toward what frightened them: what they saw, else you) takes them in.
+                // Home, wherever they were going: only reaching their own bed or door takes them in. From a fright they run for
+                // the nearest that isn't toward what frightened them (what they saw, else you) and cower there, in sight.
                 p.Fleeing = mood == Mood.Hostile || scared;
                 if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : p.Home;
                 if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
@@ -786,9 +788,10 @@ public sealed partial class Town : IKeeper
         p.Left = p.Spot;
         p.Spot = spot;
         p.Step = 0;
-        if (p.Far)
+        if (p.Far && !p.Fleeing && (path[^1] - _you).Length() > FarSchedule)
         {
-            // Out of your sight: there already, their day kept as a schedule.
+            // Far from you there and back: there already, their day kept as a schedule. (Running from a fright, or coming
+            // nearer you, they go on foot: nobody frightened turns up somewhere new.)
             p.Pos = path[^1];
             p.Path = new List<Vector3>();
             return;
@@ -1232,7 +1235,7 @@ public sealed partial class Town : IKeeper
         p.Close = away < StartleIn + 1.5f;
         p.StartleFor = MathF.Max(0f, p.StartleFor - dt);
         BodyAct want = BodyAct.None;
-        if (p.Fleeing) want = BodyAct.Panic;
+        if (p.Fleeing) want = p.Spot == p.Refuge && p.Now < 0.3f && (p.Path == null || p.Step >= p.Path.Count) ? BodyAct.Cower : BodyAct.Panic; // (there: cowering)
         else if (p.Halt > 0f && !p.Holding) want = BodyAct.Warn; // stop there
         else if (p.AnswerFor > 0f && _clock >= p.AnswerAt)
         {
@@ -1391,8 +1394,9 @@ public sealed partial class Town : IKeeper
             Person p = People[i];
             if (p.View is { Visible: true }) p.View.Glide();
             if (p.PoseWho < 0) continue;
-            // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed.)
-            bool needed = p.Engaged || p.Dead && !p.Laid;
+            // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed. So is a body never yet
+            // posed: built out of sight, it dissolves in there and stands where they are, not first shown as they come into view.)
+            bool needed = p.Engaged || p.Dead && !p.Laid || p.View is { Drawn: null };
             if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)) continue;
             // Further off, posed every few frames with the time between (as their steps already are, Due): a body 40 m off is a
             // few dozen pixels tall.
