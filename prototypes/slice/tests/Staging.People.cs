@@ -229,7 +229,7 @@ public sealed partial class Staging
         _game.Zone.Sky.TimeOfDay = noon - 0.06;
         foreach (int x in _drive.Wait(300)) yield return x;
         Town town = p.Memory.Town;
-        var people = town.People.Where(q => !q.Indoors && !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
+        var people = town.People.Where(q => !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
         if (people.Count == 0) people = town.People.Where(q => !q.Dead).ToList();
         Town.Person busy = people.OrderByDescending(q => people.Count(o => o.Pos.DistanceTo(q.Pos) < 12f)).First();
         Vector3 at = p.ToWorld(busy.Pos);
@@ -263,7 +263,7 @@ public sealed partial class Staging
             for (int i = 0; i < 20; i++) { yield return 0; worst = MathF.Max(worst, town.LastTickMs); }
             foreach (int x in Shot(Path.Combine(dir, $"at-{r:F0}m.png"))) yield return x;
         }
-        Town.Person walker = town.People.Where(q => !q.Dead && !q.Indoors && q.Now > 0.4f).OrderBy(q => q.Pos.DistanceTo(busy.Pos)).FirstOrDefault() ?? busy;
+        Town.Person walker = town.People.Where(q => !q.Dead && q.Now > 0.4f).OrderBy(q => q.Pos.DistanceTo(busy.Pos)).FirstOrDefault() ?? busy;
         string frames = Path.Combine(dir, "walk");
         Directory.CreateDirectory(frames);
         Vector3 eye = p.ToWorld(walker.Pos) + new Vector3(4.5f, 0f, 4.5f);

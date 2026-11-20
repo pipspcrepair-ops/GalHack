@@ -141,7 +141,7 @@ public partial class TownWalkTest : Node
                     },
                     (p, t) =>
                     {
-                        if (p.Indoors || p.Asleep)
+                        if (p.Asleep)
                         {
                             if (p.Asleep && used.Add(p)) slept++;
                             return;

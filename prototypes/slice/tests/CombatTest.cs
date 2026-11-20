@@ -175,7 +175,7 @@ public partial class CombatTest : Node
         }
         if (town?.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
         for (int i = 0; i < 600 && town != null && !town.People.Any(Out); i++) { game.Suit.Vitals.Health = max; yield return 0; }
-        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && !q.Indoors && q.Looks != null && Weapons.Armed(q.Figure.Prop);
+        bool Out(Town.Person q) => q.Role == "guard" && !q.Dead && q.Looks != null && Weapons.Armed(q.Figure.Prop);
         Town.Person guard = town?.People.Where(Out).OrderByDescending(q => Weapons.Ranged(q.Figure.Prop)).ThenBy(q => (patch.FromPatch(q.Position) - gate).Length()).FirstOrDefault();
         Check(guard != null, $"the town stands with an armed guard out ({town?.People.Count(q => q.Role == "guard")} guards, {town?.People.Count} people)");
         if (guard == null) { game.QueueFree(); yield break; }
@@ -233,7 +233,7 @@ public partial class CombatTest : Node
         Place place = game.Places.PlaceOf(site);
         Town town = place?.Memory.Town;
         for (int i = 0; i < 600 && town != null && town.People.Any(p => p.Looks == null); i++) { game.Suit.Vitals.Health = max; yield return 0; }
-        var outs = town?.People.Where(p => !p.Dead && !p.Indoors && !p.Away && p.Looks != null).ToList();
+        var outs = town?.People.Where(p => !p.Dead && !p.Away && p.Looks != null).ToList();
         Check(outs is { Count: > 0 }, $"the squatters' works stand with its people out ({outs?.Count} of {town?.People.Count})");
         if (outs is not { Count: > 0 }) { game.QueueFree(); yield break; }
         // Its own creatures' sim, or one made for it as the game makes them, its blocks for their space.
@@ -321,7 +321,7 @@ public partial class CombatTest : Node
         int aims = 0, aimsBeforeFirst = -1;
         town.Aimed += _ => aims++;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
-        for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null && !p.Indoors && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         var armed = town.People.Where(p => p.Looks != null && Weapons.Armed(p.Figure.Prop)).ToList();
         GD.Print($"  ({armed.Count} of {town.People.Count} armed: {string.Join(", ", armed.Select(p => p.Figure.Prop).GroupBy(x => x).Select(g => $"{g.Count()} {g.Key}"))})");
         if (armed.Count == 0) { GD.Print("  (nobody armed here this time)"); yield break; }
@@ -345,7 +345,7 @@ public partial class CombatTest : Node
         game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
         for (int i = 0; i < 3600 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; } // (a minute, as at first)
         place = game.Places.PlaceOf(site);
-        for (int i = 0; i < 600 && armed.Any(p => !p.Dead && p.View == null && !p.Indoors && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        for (int i = 0; i < 600 && armed.Any(p => !p.Dead && p.View == null && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         for (int i = 0; i < 120; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         AppDomain.CurrentDomain.FirstChanceException -= count;
         var again = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
@@ -355,7 +355,7 @@ public partial class CombatTest : Node
         // (--shots=<folder>: a picture of each of a few of them, close, with what they hold.)
         string shots0 = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?.Substring(8);
         if (shots0 != null)
-            foreach (Town.Person p in drawn.Where(q => !q.Indoors).Take(3))
+            foreach (Town.Person p in drawn.Where(q => !q.Asleep).Take(3))
             {
                 Vector3 front = place.ToWorld(p.Pos + p.Forward * 2.6f + p.Forward.Cross(Vector3.Up) * 0.8f + Vector3.Up * 0.2f);
                 game.Survivor.PlaceOutside(front.ToNumerics());
@@ -423,7 +423,7 @@ public partial class CombatTest : Node
         {
             town.Struck(unarmed, 1f, DamageClass.Kinetic, byPlayer: true);
             for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
-            Check(unarmed.Fleeing || unarmed.Indoors || unarmed.Engaged, $"an unarmed one hit runs for it, or (a raider with the nerve) goes in with their fists ({(unarmed.Engaged ? $"fists, {unarmed.Part}" : unarmed.Fleeing ? "fleeing" : unarmed.Indoors ? "indoors" : "stood")})");
+            Check(unarmed.Fleeing || unarmed.Engaged, $"an unarmed one hit runs for it, or (a raider with the nerve) goes in with their fists ({(unarmed.Engaged ? $"fists, {unarmed.Part}" : unarmed.Fleeing ? "fleeing" : "stood")})");
         }
         // Hand to hand: one of them with a blade, a club or fists (or a gunman whose rounds run out, nerve up, so fists), and
         // you at their side, out of their line: within 20 s a blow lands, and every blow faces you.
@@ -437,7 +437,7 @@ public partial class CombatTest : Node
         }
         Town.Person brawl = town.People.Where(p => p.Engaged && !p.Dead && p.Kit != null).OrderBy(p => p.Kit.Strike ? 0 : 1).FirstOrDefault();
         for (int i = 0; i < 60 * 20 && town.Blows == 0; i++) { game.Suit.Vitals.Health = max; yield return 0; }
-        if (town.Blows == 0 && brawl != null) GD.Print($"  (the brawler: engaged {brawl.Engaged}, part {brawl.Part}, kit {brawl.Kit?.Def.Id} strike {brawl.Kit?.Strike}, {(town.World(brawl.Pos) - game.Survivor.WorldFeet).Length():F1} m from you, way {brawl.Step}/{brawl.Path?.Count ?? -1}, sees {brawl.Sees}, winding {brawl.Winding:F2}, swing in {brawl.SwingIn:F2}, indoors {brawl.Indoors}, fleeing {brawl.Fleeing}, scared {brawl.ScaredFor:F1}, dead {brawl.Dead})");
+        if (town.Blows == 0 && brawl != null) GD.Print($"  (the brawler: engaged {brawl.Engaged}, part {brawl.Part}, kit {brawl.Kit?.Def.Id} strike {brawl.Kit?.Strike}, {(town.World(brawl.Pos) - game.Survivor.WorldFeet).Length():F1} m from you, way {brawl.Step}/{brawl.Path?.Count ?? -1}, sees {brawl.Sees}, winding {brawl.Winding:F2}, swing in {brawl.SwingIn:F2}, fleeing {brawl.Fleeing}, scared {brawl.ScaredFor:F1}, dead {brawl.Dead})");
         GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
         Check(town.Blows > 0 && town.WorstBlowFacing <= 20f, $"anyone who hits you faces you as it lands: {town.Blows} blows ({brawler}, you at their side), the chest at worst {town.WorstBlowFacing:F1} degrees off you (at most 20)");
     }

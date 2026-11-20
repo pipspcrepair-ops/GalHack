@@ -138,7 +138,7 @@ public sealed partial class Town
         GoTo(p, at.Value);
         p.Wait = 20f + (float)_rng.NextDouble() * 25f;
         // Someone else gathered here already: they talk.
-        p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == at && o.Partner == null);
+        p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Asleep && o.Spot == at && o.Partner == null);
         if (p.Partner != null) { p.Partner.Partner = p; p.Partner.Wait = MathF.Max(p.Partner.Wait, p.Wait); }
         return true;
     }

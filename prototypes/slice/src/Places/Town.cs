@@ -15,9 +15,9 @@ namespace Slice.Places;
 /// about doing things"). From the generator's townsfolk data: vendors man their stalls, workers
 /// work, guards hold their posts and walk short beats, rushers hurry between far spots,
 /// wanderers amble to near ones and sit or chat in pairs; at night everyone but the guards goes
-/// indoors. The place's mood decides how they take you: peaceful, wary (the guards watch you) or
+/// home to bed or a seat by their spot. The place's mood decides how they take you: peaceful, wary (the guards watch you) or
 /// hostile (the guards shoot, after taking aim where you can see it). Shooting in a peaceful
-/// place turns it hostile and its people flee indoors. Its animals are wildlife's domestic kinds
+/// place turns it hostile and its people flee to cover. Its animals are wildlife's domestic kinds
 /// (working beasts and stock only where the tech is low, stock on farms, pets anywhere); wildlife
 /// keeps out of the town, the guards cull strays, and outside the town a predator may take one of
 /// its people. Bodies come from the bestiary: each person is rolled for this world, this place and
@@ -109,17 +109,18 @@ public sealed partial class Town : IKeeper
         public float LastChange = -9f;
         public BodyAct Before;
         public float HeadYaw;
-        public bool Indoors, Sitting, Fleeing;
+        public bool Sitting, Fleeing;
         /// <summary>In a seat, or up out of it and not yet clear of it (and of the table it was drawn up to).</summary>
         public bool GettingUp;
         /// <summary>How long they have been held where they stood by the furniture.</summary>
         public float Blocked;
         /// <summary>For how long their line of fire is to be picked clear of bodies too (someone stood in it).</summary>
         public float Masked;
-        /// <summary>Making headway on their way (Town.Headway): where they last got a quarter metre on from and how long since; whether that has had them find another way yet; where they last walked well, and a metre or more before.</summary>
-        public Vector3 ProgressAt, GoodAt, Behind;
+        /// <summary>Making headway on their way (Town.Headway): where they last got a quarter metre on from, and how long since.</summary>
+        public Vector3 ProgressAt;
         public float StuckFor;
-        public bool Rerouted;
+        /// <summary>Held again: this second's way past it is a step aside, the next's another way (Town.Headway).</summary>
+        public bool Held;
         /// <summary>Frightened: the spot they make for to get in (their own home unless what frightened them is that way), and where it was, when last seen (local).</summary>
         public int Refuge = -1;
         public Vector3 FleeFrom;
@@ -136,6 +137,8 @@ public sealed partial class Town : IKeeper
         /// <summary>Their job (from the generator), which sets their day; out of town on it (a scavenger's run); bent to a task where they are.</summary>
         public PersonRole Job;
         public bool Away, Working;
+        /// <summary>On their way out by the way in, to be gone once past the place's ground and out of your sight.</summary>
+        public bool Leaving;
         public float AwayFor;
         /// <summary>At a checkpoint or a post: how long they've had you halted, and whether their gun is on you (never fired outside a hostile place).</summary>
         public float Halt;
@@ -167,7 +170,7 @@ public sealed partial class Town : IKeeper
         public string Name => $"{Spawn.Role}";
         public Vector3 Position => Town._places == null ? Pos : Town._places.Zone.Wildlife.PatchLocal(Town.World(Pos));
         public Vector3 Forward => new(-MathF.Sin(Yaw), 0, -MathF.Cos(Yaw));
-        public bool Attackable => !Dead && !Indoors && !Away;
+        public bool Attackable => !Dead && !Away;
         public float ThreatScale => 1f;
     }
 
@@ -293,7 +296,7 @@ public sealed partial class Town : IKeeper
         foreach (CitizenSpawn s in Data.People)
         {
             var p = new Person { Town = this, Spawn = s, Pos = At(s.Spot), Spot = s.Spot, Yaw = (float)_rng.NextDouble() * MathF.Tau };
-            p.GoodAt = p.Behind = p.ProgressAt = p.Pos;
+            p.ProgressAt = p.Pos;
             p.Home = _homes.Length > 0 ? _homes.OrderBy(h => Spots[h].Cell.Manhattan(s.Cell)).First() : s.Spot;
             p.Speed = s.Gait switch { "hurry" => 3.0f, "amble" => 1.1f, "patrol" => 1.3f, _ => 1.3f };
             p.Wait = (float)_rng.NextDouble() * 6f;
@@ -586,6 +589,7 @@ public sealed partial class Town : IKeeper
             if (!Due(who, away)) continue;
             float dt = p.Saved;
             p.Saved = 0f;
+            InBed(p, dt);
             if (away < ActRange && p.Looks != null && !p.Asleep) Acts(p, player, eye, look, away, dt);
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
@@ -596,7 +600,7 @@ public sealed partial class Town : IKeeper
                 if (_clock < p.ReactAt) mood = _moodBefore;
                 else { p.Reacted = true; p.Path = null; p.Step = 0; p.Partner = null; p.StartleFor = 0.7f; }
             }
-            // Their day over (each job keeps its own hours), or the place turned hostile: indoors.
+            // Their day over (each job keeps its own hours), or the place turned hostile: home, or to cover.
             // The guards and the law keep their posts round the clock, and turn on you.
             bool offDuty = !guard && p.Looks != null ? !p.Figure.OutAt(time) : night;
             p.ScaredFor = MathF.Max(0f, p.ScaredFor - dt);
@@ -613,20 +617,18 @@ public sealed partial class Town : IKeeper
             bool scared = p.ScaredFor > 0f || Barricaded;
             bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
             bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
-            if (offDuty && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night (a fright in town doesn't reach them out there)
-            if (p.Away)
+            if (offDuty && p.Away) p.AwayFor = 0f; // back from a run in time for the night (a fright in town doesn't reach them out there)
+            if (OutOfTown(p, dt))
             {
-                // Out of town on a scavenger's run: back after a while, by the way in.
-                if ((p.AwayFor -= dt) <= 0f) p.Away = false;
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (hide && !p.Indoors && !p.Asleep)
+            if (hide && !p.Asleep)
             {
-                // Home, wherever they were going: only reaching their own bed or door takes them in. From a fright they run for
+                // Home, wherever they were going, to their bed or a seat by their spot (NightSpot). From a fright they run for
                 // the nearest that isn't toward what frightened them (what they saw, else you) and cower there, in sight.
                 p.Fleeing = mood == Mood.Hostile || scared;
-                if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : p.Home;
+                if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : NightSpot(p);
                 if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
                 p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
                 Arrive(p, dt, offDuty && !p.Fleeing);
@@ -636,7 +638,7 @@ public sealed partial class Town : IKeeper
             // Morning, or the fright over, or a fright in the night: up and about.
             if (!hide) p.Refuge = -1;
             if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
-            if (p.Indoors || p.Asleep) { Pose(p, who, away, dt); continue; }
+            if (p.Asleep) { Pose(p, who, away, dt); continue; }
             if (guard && mood != Mood.Hostile && !YouDown && Pursuit(p, player, dt))
             {
                 Pose(p, who, away, dt);
@@ -697,7 +699,7 @@ public sealed partial class Town : IKeeper
             }
             p.Now = 0f;
             // Standing about: still off the furniture (a tall one under a hanging lamp steps out from under it).
-            OffParts(p, p.Pos);
+            OffParts(p, p.Pos, dt);
             return true;
         }
         // The doors ahead opened as they come (a door they may not open: they wait where they are).
@@ -724,7 +726,7 @@ public sealed partial class Town : IKeeper
                 Vector3 from = p.Pos;
                 p.Pos = to;
                 if (p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) { p.Seat = p.Spot; p.GettingUp = true; }
-                else OffParts(p, from); // (at a bench or a counter, never in it)
+                else OffParts(p, from, dt); // (at a bench or a counter, never in it)
             }
             p.Step++;
             return p.Step >= p.Path.Count;
@@ -737,7 +739,7 @@ public sealed partial class Town : IKeeper
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
         if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
         // And never into the furniture or the clutter: held off its real shape.
-        OffParts(p, was);
+        OffParts(p, was, dt);
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
         if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {
@@ -859,7 +861,7 @@ public sealed partial class Town : IKeeper
             case "visit":
             {
                 // To someone out and about, to look them over; between rounds, their own place.
-                Person who = People.Where(o => o != p && !o.Dead && !o.Indoors && !o.Away && o.Job != PersonRole.Guard && o.Job != PersonRole.Lawman).OrderBy(_ => _rng.Next()).FirstOrDefault();
+                Person who = People.Where(o => o != p && !o.Dead && !o.Asleep && !o.Away && o.Job != PersonRole.Guard && o.Job != PersonRole.Lawman).OrderBy(_ => _rng.Next()).FirstOrDefault();
                 if (who != null && _rng.NextDouble() < 0.6)
                 {
                     GoTo(p, who.Spot);
@@ -886,7 +888,7 @@ public sealed partial class Town : IKeeper
                 int gate = Spots.Select((s, i) => (s, i)).OrderBy(t => t.s.Cell.Manhattan(Memory.Inst.Layout.EntranceCell)).First().i;
                 if (p.Spot == gate && _rng.NextDouble() < 0.7)
                 {
-                    p.Away = true;
+                    (p.Path, p.Step, p.Leaving) = (new List<Vector3> { Outside(At(gate)) }, 0, true);
                     p.AwayFor = 30f + (float)_rng.NextDouble() * 60f;
                     p.Wait = 1f;
                     return;
@@ -927,7 +929,7 @@ public sealed partial class Town : IKeeper
                 if (p.Figure?.Playful == true)
                 {
                     // Children run about: after another child, round a grown-up, off somewhere and back, in quick bursts with sudden stops.
-                    Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && o.Pos.DistanceSquaredTo(p.Pos) < 400f).OrderBy(_ => _rng.Next()).FirstOrDefault();
+                    Person other = People.Where(o => o != p && !o.Dead && !o.Asleep && o.Pos.DistanceSquaredTo(p.Pos) < 400f).OrderBy(_ => _rng.Next()).FirstOrDefault();
                     int dash = other != null && _rng.NextDouble() < 0.6 ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
                     GoTo(p, dash);
                     p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
@@ -935,13 +937,13 @@ public sealed partial class Town : IKeeper
                     return;
                 }
                 // A child goes where a grown-up is.
-                Person minder = p.Figure?.Stage == LifeStage.Child ? People.Where(o => o != p && !o.Dead && !o.Indoors && o.Figure?.Stage != LifeStage.Child).OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault() : null;
+                Person minder = p.Figure?.Stage == LifeStage.Child ? People.Where(o => o != p && !o.Dead && !o.Asleep && o.Figure?.Stage != LifeStage.Child).OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault() : null;
                 if (minder != null) GoTo(p, minder.Spot);
                 else if (_rng.NextDouble() < 0.35 && Haunt(p, Seat) is int seat_) GoTo(p, seat_); // a sit down in one of the rooms
                 else if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
                 p.Wait = 4f + (float)_rng.NextDouble() * 9f;
                 // Someone else already at this spot: they stop and chat.
-                p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == p.Spot && o.Partner == null && o.Role is "wanderer" or "rusher");
+                p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Asleep && o.Spot == p.Spot && o.Partner == null && o.Role is "wanderer" or "rusher");
                 if (p.Partner != null) { p.Partner.Partner = p; p.Partner.Wait = p.Wait; }
                 return;
         }
@@ -1055,7 +1057,7 @@ public sealed partial class Town : IKeeper
         Vector3 e = _place.FromWorld(eye);
         foreach (Person p in People)
         {
-            if (p.Dead != dead || p.Gone || p.Indoors || p.Away) continue;
+            if (p.Dead != dead || p.Gone || p.Away) continue;
             float h = p.Looks?.Figure.Height ?? 1.75f;
             // A body is a ball round its middle as it lies.
             Vector3 c = dead ? p.Rig?.BoundsCenter ?? p.Pos : p.Pos + Vector3.Up * h * (p.Sitting ? 0.34f : 0.53f);
@@ -1175,7 +1177,7 @@ public sealed partial class Town : IKeeper
             Person p = People[i];
             Carried c = _carried[i];
             c.At = p.Pos;
-            c.Out = !p.Dead && !p.Gone && !p.Indoors;
+            c.Out = !p.Dead && !p.Gone;
             c.Carrier = p.Carrier && !p.Dead && !p.Gone;
             any |= c.Carrier;
         }
@@ -1321,7 +1323,7 @@ public sealed partial class Town : IKeeper
         float best = 26f * 26f;
         foreach (Person p in People)
         {
-            if (p.Dead || p.Indoors || p.Away || p.Looks == null) continue;
+            if (p.Dead || p.Asleep || p.Away || p.Looks == null) continue;
             float d = (player - p.Pos).LengthSquared() * (0.6f + (float)_rng.NextDouble());
             if (d < best) { best = d; who = p; }
         }
@@ -1339,7 +1341,8 @@ public sealed partial class Town : IKeeper
     void MakeBody(Person p)
     {
         // Posed in the frame, not the tick (PoseFrame): drawn as posed, never eased between ticks.
-        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}", PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off };
+        // (Unseen until first posed: an unposed body would stand at the place's origin.)
+        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}", PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off, Visible = false };
         _view.AddChild(p.View);
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
@@ -1397,7 +1400,9 @@ public sealed partial class Town : IKeeper
             // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed. So is a body never yet
             // posed: built out of sight, it dissolves in there and stands where they are, not first shown as they come into view.)
             bool needed = p.Engaged || p.Dead && !p.Laid || p.View is { Drawn: null };
-            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)) continue;
+            // (Out of sight both where they are and where they were last drawn: a body left drawn in view is posed on from there.)
+            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)
+                && !(p.View.Drawn != null && p.Rig != null && InSight(eye, frustum, p.View.GlobalTransform * p.Rig.ChestPoint, shadow))) continue;
             // Further off, posed every few frames with the time between (as their steps already are, Due): a body 40 m off is a
             // few dozen pixels tall.
             if (!needed && (_frame + i) % PoseFrames(p.PoseAway) != 0) continue;
@@ -1425,11 +1430,11 @@ public sealed partial class Town : IKeeper
         return true;
     }
 
-    /// <summary>Whether their body shows at all (not indoors, not away on a run, not beyond the far range), faded in and out at its edges.</summary>
+    /// <summary>Whether their body shows at all (not away on a run, not beyond the far range), faded in and out at its edges.</summary>
     bool Shown(Person p, float away, float dt)
     {
         if (p.View == null) return false;
-        bool shows = (!p.Indoors || p.Asleep) && !p.Away && p.View.Fade(away, dt);
+        bool shows = !p.Away && p.View.Fade(away, dt);
         if (p.View.Visible != shows) p.View.Visible = shows;
         return shows;
     }
@@ -1452,9 +1457,6 @@ public sealed partial class Town : IKeeper
         bool moving = p.Now > 0.05f;
         float t = _clock + who * 1.7f;
         p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f * dt);
-        // Into bed: onto the mattress at its foot and back down onto it; out again in the morning.
-        p.Slept = Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
-        if (p.Asleep && p.Home < _lie.Count && _lie[p.Home] is Vector3 lie) p.Pos = p.Pos.MoveToward(lie, 1.5f * dt);
         p.Bent = Mathf.MoveToward(p.Bent, !moving && p.Working && !p.Sitting ? (p.Job == PersonRole.Medic ? 0.6f : 1f) : 0f, 2f * dt);
         p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding || p.Pending > 0 ? 1f : 0f, 3f * dt); // (up through the burst too)
         // Looks at you if you're close and in front of them; otherwise glances about now and then.

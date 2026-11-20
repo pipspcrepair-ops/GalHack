@@ -39,7 +39,7 @@ public static class FireLine
             foreach (Place p in places.Standing)
                 if (p.Memory.Town is { } town && town != foe)
                     foreach (Town.Person q in town.People)
-                        if (q != shooter && !q.Dead && !q.Gone && !q.Indoors && !q.Away && Across(from, to, town.World(q.Pos), Town.RadiusOf(q), Town.HeightOf(q))) return true;
+                        if (q != shooter && !q.Dead && !q.Gone && !q.Away && Across(from, to, town.World(q.Pos), Town.RadiusOf(q), Town.HeightOf(q))) return true;
         return !atYou && patch.Player is { Attackable: true } && Across(from, to, patch.PlayerWorld(), 0.35f, 1.8f);
     }
 

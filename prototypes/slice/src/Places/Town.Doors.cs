@@ -69,6 +69,6 @@ public sealed partial class Town
     IEnumerable<(Vector3 Feet, float Radius, float Height)> BodiesNear()
     {
         foreach (Person p in People)
-            if (!p.Dead && !p.Gone && !p.Indoors && !p.Away) yield return (p.Pos, BodyRadius(p), Height(p));
+            if (!p.Dead && !p.Gone && !p.Away) yield return (p.Pos, BodyRadius(p), Height(p));
     }
 }

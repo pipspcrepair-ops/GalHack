@@ -99,7 +99,7 @@ public sealed partial class Town
         // (Each is looked at even with nothing round: what they dealt with that went off, or is no longer in this sim, is let go.)
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null) continue;
+            if (p.Dead || p.Gone || p.Away || p.Looks == null) continue;
             Response best = Response.None;
             Creature what = null;
             float near = float.MaxValue;

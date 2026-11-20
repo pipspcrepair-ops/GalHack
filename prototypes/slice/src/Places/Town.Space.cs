@@ -26,6 +26,9 @@ public sealed partial class Town
     /// <summary>Who the worst overlap was between (tests).</summary>
     public string WorstNote = "";
 
+    /// <summary>The fastest two bodies in each other, or a body and a piece of furniture, are parted, m/s.</summary>
+    const float PartPace = 3f;
+
     /// <summary>Your weight against theirs where bodies meet (your own share of a parting is never applied).</summary>
     const float PlayerGive = 0.6f;
 
@@ -58,7 +61,7 @@ public sealed partial class Town
     /// In the furniture on purpose: sitting or lying in it, or on the last step into or the first out of the
     /// seat or bed they use (that piece is what they are in; nothing else of the room is).
     /// </summary>
-    bool InUse(Person p) => p.Sitting || p.GettingUp || p.Asleep || p.Slept > 0f || p.Indoors || IntoSeat(p) || InSeat(p, p.Left)
+    bool InUse(Person p) => p.Sitting || p.GettingUp || p.Asleep || p.Slept > 0f || IntoSeat(p) || InSeat(p, p.Left)
         || p.Seat >= 0 || p.Path != null && p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
 
     /// <summary>How deep a person's body is in the place's furniture or clutter, m (0: clear, as it should always be; tests).</summary>
@@ -68,10 +71,11 @@ public sealed partial class Town
     public Wildlife.PartSet Parts => _parts;
 
     /// <summary>
-    /// A person's body held off the place's parts after a move: pushed out sideways where it went in, or back
-    /// where it was when that can't be done (a step into a gap too narrow for them waits rather than goes through).
+    /// A person's body held off the place's parts after a move: pushed out sideways where it went in, by the least way out and
+    /// at a walk at most (one wedged in a piece comes out of it over a few ticks, never in one), or back where it was when that
+    /// can't be done (a step into a gap too narrow for them waits rather than goes through).
     /// </summary>
-    void OffParts(Person p, Vector3 was)
+    void OffParts(Person p, Vector3 was, float dt)
     {
         if (_parts == null) return;
         float r = BodyRadius(p), h = Height(p);
@@ -83,11 +87,11 @@ public sealed partial class Town
         Vector3 to = _parts.PushOut(p.Pos, r, h);
         to.Y = p.Pos.Y;
         float after = _parts.Gap(to, r, h);
-        if (after >= 0f && OnGrid(to)) { p.Pos = to; return; }
+        if (after >= 0f && OnGrid(to)) { p.Pos = p.Pos.MoveToward(to, PartPace * dt); return; }
         // No way clear: never deeper in than it was (one set down in a piece gets out of it by any way not further in).
         Vector3 best = p.Pos;
         float most = gap;
-        if (after > most && OnGrid(to)) { best = to; most = after; }
+        if (after > most && OnGrid(to)) { best = p.Pos.MoveToward(to, PartPace * dt); most = _parts.Gap(best, r, h); }
         p.Pos = most >= _parts.Gap(was, r, h) ? best : was;
     }
 
@@ -98,7 +102,7 @@ public sealed partial class Town
         _bodies.Clear();
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null || _held.Contains(p)) continue;
+            if (p.Dead || p.Gone || p.Asleep || p.Away || p.Looks == null || _held.Contains(p)) continue;
             // One stepping back to let another by is still on their way: counted standing, they would have the other wait in
             // turn, and the two would take turns giving way in a narrow way for good.
             bool giving = p.Yield > 0f && p.Path != null && p.Step < p.Path.Count;
@@ -111,8 +115,6 @@ public sealed partial class Town
         // (Town.Colliders). Your share isn't nothing, so one in you is moved off you at their own give: a braced guard least.
         if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = PlayerGive }); // (just inside their capsules' touch)
         _space.Resolve(dt, _openAt ??= (_, p) => Open(p), 4);
-        // (Someone who moved a long way at once, far off and updated now and then, can land on another: settle it now.)
-        if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, _openAt, 6);
         if (_space.WorstOverlap > WorstOverlap)
         {
             WorstOverlap = _space.WorstOverlap;
@@ -120,13 +122,18 @@ public sealed partial class Town
             string Who(int k) => k < _bodies.Count ? $"{_bodies[k].Job} at {_bodies[k].Pos.X:F1},{_bodies[k].Pos.Y:F1},{_bodies[k].Pos.Z:F1} {(Open(_bodies[k].Pos) ? "open" : "in a wall")}{(_bodies[k].Sitting ? " sitting" : "")}{(_bodies[k].Now > 0.1f ? " walking" : "")}" : "you";
             WorstNote = $"{Who(wa)} and {Who(wb)}";
         }
+        // (You shove at your own pace: one you walk into is moved off you as fast as you come on, or you would be in them.)
+        float yourPace = _hadPlayer && dt > 0f ? MathF.Max(PartPace, new Vector2(player.X - _lastPlayer.X, player.Z - _lastPlayer.Z).Length() / dt) : PartPace;
         for (int i = 0; i < _bodies.Count; i++)
         {
             Person p = _bodies[i];
             PersonalSpace.Body b = _space.Bodies[i];
-            Vector3 was = p.Pos;
-            p.Pos = new Vector3(b.Pos.X, p.Pos.Y, b.Pos.Z);
-            OffParts(p, was);
+            Vector3 was = p.Pos, by = new(b.Pos.X - was.X, 0f, b.Pos.Z - was.Z);
+            // Parted at a walk at most, over as many ticks as it takes: never shoved across the floor at once.
+            bool onYou = new Vector2(was.X - player.X, was.Z - player.Z).Length() < BodyRadius(p) + Slice.Player.Survivor.Radius + 0.15f;
+            float most = (onYou ? yourPace + PartPace : PartPace) * dt;
+            p.Pos = was + (by.LengthSquared() > most * most ? by.Normalized() * most : by);
+            OffParts(p, was, 0f); // (never parted into furniture: back where they were if it would)
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
         }
         // Two stood still in each other with no room to part (sent to the one spot in a narrow way): the second goes elsewhere.
@@ -162,13 +169,16 @@ public sealed partial class Town
         return town;
     }
 
-    /// <summary>Walkers put back where they last walked well, still held after finding another way (tests).</summary>
-    public int Unstuck { get; private set; }
+    /// <summary>Walkers held a second on their way who stopped where they got to short of a spot others crowd, stepped aside, or found another way (tests).</summary>
+    public int Settled { get; private set; }
+    public int SteppedAside { get; private set; }
+    public int Rerouted { get; private set; }
 
     /// <summary>
-    /// After a step along their way: someone who hasn't got a quarter metre on in a second finds another way from where
-    /// they stand (by the walking grid); still held a second later, they are put back where they last walked well, a
-    /// metre or more back, and go on from there. Nobody stands pushing into a wall or a piece of furniture.
+    /// After a step along their way: someone who hasn't got a quarter metre on in a second is never moved for it (owner, of a
+    /// set-back: "That nudge seems way too aggressive"). Near the end of their way with someone standing at its end (a crowd at
+    /// a refuge), they stop where they got to; else, a second at a time, they step aside off what holds them or find another way
+    /// from where they stand by the walking grid, and wait where they are meanwhile (bodies give way to each other: PersonalSpace).
     /// </summary>
     void Headway(Person p, float dt)
     {
@@ -178,36 +188,63 @@ public sealed partial class Town
         {
             p.ProgressAt = p.Pos;
             p.StuckFor = 0f;
-            p.Rerouted = false;
-            if ((p.Pos - p.GoodAt).LengthSquared() > 1f) (p.Behind, p.GoodAt) = (p.GoodAt, p.Pos);
             return;
         }
-        p.StuckFor += dt;
-        if (p.StuckFor >= 1f && !p.Rerouted)
+        if ((p.StuckFor += dt) < 1f) return;
+        p.StuckFor = 0f;
+        if (p.Path is { Count: > 0 } way && p.Step >= way.Count - 1 && (way[^1] - p.Pos).Length() < 2.5f && Taken(p, way[^1]))
         {
-            p.Rerouted = true;
-            if (p.Spot < 0 || p.Spot >= Spots.Count) return;
-            System.Collections.Generic.List<Vector3> path = PathFromHere(p, p.Spot, out bool pending);
-            if (pending) { p.Path = new System.Collections.Generic.List<Vector3>(); p.Asked = p.Spot; }
-            else if (path is { Count: > 0 }) p.Path = path;
-            p.Step = 0;
+            p.Step = way.Count;
+            Settled++;
+            return;
         }
-        else if (p.StuckFor >= 2f)
+        // Every other second, a step aside first, off whatever holds them (a table's corner, a bed's foot), toward where they go.
+        if ((p.Held = !p.Held) && Aside(p) is { } aside)
         {
-            if ((p.Behind - p.Pos).LengthSquared() is > 0.04f and < 25f && OnGrid(p.Behind) && (_parts == null || _parts.Fits(p.Behind, BodyRadius(p), Height(p))))
+            var on = new System.Collections.Generic.List<Vector3> { aside };
+            if (p.Path != null && p.Step < p.Path.Count) on.AddRange(p.Path.GetRange(p.Step, p.Path.Count - p.Step));
+            (p.Path, p.Step) = (on, 0);
+            SteppedAside++;
+            return;
+        }
+        if (p.Spot < 0 || p.Spot >= Spots.Count) return;
+        System.Collections.Generic.List<Vector3> path = PathFromHere(p, p.Spot, out bool pending);
+        if (pending) { p.Path = new System.Collections.Generic.List<Vector3>(); p.Asked = p.Spot; }
+        else if (path is { Count: > 0 }) p.Path = path;
+        p.Step = 0;
+        Rerouted++;
+    }
+
+    /// <summary>Someone else stands at a point (local): it is taken.</summary>
+    bool Taken(Person p, Vector3 at)
+    {
+        foreach (Person o in People)
+            if (o != p && !o.Dead && !o.Gone && !o.Away && o.Now < 0.3f && MathF.Abs(o.Pos.Y - at.Y) < 1.5f
+                && new Vector2(o.Pos.X - at.X, o.Pos.Z - at.Z).Length() < BodyRadius(o) + BodyRadius(p) + 0.1f) return true;
+        return false;
+    }
+
+    /// <summary>A point half a metre or so off where someone stands, clear of the parts and walked to straight, nearest where they go (null: none).</summary>
+    Vector3? Aside(Person p)
+    {
+        Vector3 to = p.Path != null && p.Step < p.Path.Count ? p.Path[p.Step] : p.Spot >= 0 && p.Spot < Spots.Count ? At(p.Spot) : p.Pos;
+        float r = BodyRadius(p), h = Height(p), best = float.MaxValue;
+        Vector3? found = null;
+        for (int k = 0; k < 8; k++)
+            foreach (float d in new[] { 0.5f, 0.9f })
             {
-                p.Pos = p.Behind;
-                Unstuck++;
+                Vector3 c = p.Pos + new Vector3(MathF.Sin(k * MathF.Tau / 8f), 0f, MathF.Cos(k * MathF.Tau / 8f)) * d;
+                if (!OnGrid(c) || !Straight(p, c) || _parts != null && _parts.Gap(c, r, h) < 0.05f) continue;
+                float score = (to - c).Length();
+                if (score < best) (best, found) = (score, c);
             }
-            p.GoodAt = p.Behind = p.ProgressAt = p.Pos;
-            p.StuckFor = 0f;
-            p.Rerouted = false;
-        }
+        return found;
     }
 
     /// <summary>
     /// Where someone frightened by something at a point gets in: their own home if it isn't that way (farther from it than
-    /// they are, and the way there not passing close by it), else whichever of the place's home spots that isn't lies farthest from it.
+    /// they are, and the way there not passing close by it), else whichever of the place's home spots that isn't lies farthest from it
+    /// and fewest others are making for.
     /// </summary>
     int Refuge(Person p, Vector3 danger)
     {
@@ -223,10 +260,19 @@ public sealed partial class Town
         float most = float.MinValue;
         foreach (int h in _homes)
         {
-            float score = (At(h) - danger).Length() - 0.3f * (At(h) - p.Pos).Length();
+            // (One others already make for counts for less: a crowd at the one spot wedges them all in a narrow way.)
+            float score = (At(h) - danger).Length() - 0.3f * (At(h) - p.Pos).Length() - 4f * Making(p, h);
             if (score > most && Wide(h)) { most = score; best = h; }
         }
         return best;
+    }
+
+    /// <summary>How many others are making for a spot (a refuge, a seat for the night).</summary>
+    int Making(Person p, int spot)
+    {
+        int n = 0;
+        foreach (Person o in People) if (o != p && o.Refuge == spot && !o.Dead) n++;
+        return n;
     }
 
     /// <summary>Whether a body gets straight from where they stand to a point (local) by the walking grid: floor all the way (no wall, no gap between).</summary>
