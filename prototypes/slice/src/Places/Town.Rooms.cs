@@ -269,7 +269,7 @@ public sealed partial class Town
                 if (p.Dead || p.Gone) continue;
                 if (p.Away) { if ((p.AwayFor -= dt) <= 0f) p.Away = false; continue; }
                 Day(p, dark, dt);
-                if (p.Asleep) p.Pos = p.Pos.MoveToward(_lie[p.Home] ?? p.Pos, dt);
+                InBed(p, dt);
                 probe(p, t);
             }
         }
@@ -330,11 +330,19 @@ public sealed partial class Town
         else { Idle(p, dt); p.Sitting |= p.Seat == home; }
     }
 
+    /// <summary>Down onto the mattress (asleep) and back up off it, at a walk.</summary>
+    void InBed(Person p, float dt)
+    {
+        p.Slept = Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
+        if (p.Asleep && p.Home < _lie.Count && _lie[p.Home] is Vector3 lie) p.Pos = p.Pos.MoveToward(lie, 1.5f * dt);
+    }
+
     /// <summary>Morning (or the fright over, or woken): up out of bed where they lie, at their usual pace.</summary>
     void Wake(Person p)
     {
         if (!p.Asleep && !p.Fleeing) return;
-        if (p.Asleep) { p.Asleep = false; p.Path = null; p.Step = 0; }
+        // (Off the bed onto their spot by its side, as they got in: walked, never put there.)
+        if (p.Asleep) { p.Asleep = false; p.Path = new List<Vector3> { At(p.Home) }; p.Step = 0; p.GettingUp = true; }
         p.Fleeing = false;
         p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
     }

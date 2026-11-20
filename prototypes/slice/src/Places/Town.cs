@@ -585,6 +585,7 @@ public sealed partial class Town : IKeeper
             if (!Due(who, away)) continue;
             float dt = p.Saved;
             p.Saved = 0f;
+            InBed(p, dt);
             if (away < ActRange && p.Looks != null && !p.Asleep) Acts(p, player, eye, look, away, dt);
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
@@ -1451,9 +1452,6 @@ public sealed partial class Town : IKeeper
         bool moving = p.Now > 0.05f;
         float t = _clock + who * 1.7f;
         p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f * dt);
-        // Into bed: onto the mattress at its foot and back down onto it; out again in the morning.
-        p.Slept = Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
-        if (p.Asleep && p.Home < _lie.Count && _lie[p.Home] is Vector3 lie) p.Pos = p.Pos.MoveToward(lie, 1.5f * dt);
         p.Bent = Mathf.MoveToward(p.Bent, !moving && p.Working && !p.Sitting ? (p.Job == PersonRole.Medic ? 0.6f : 1f) : 0f, 2f * dt);
         p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding || p.Pending > 0 ? 1f : 0f, 3f * dt); // (up through the burst too)
         // Looks at you if you're close and in front of them; otherwise glances about now and then.

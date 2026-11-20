@@ -130,7 +130,7 @@ public sealed partial class Town
             // Parted at a walk at most, over as many ticks as it takes: never shoved across the floor at once.
             float most = PartPace * dt;
             p.Pos = was + (by.LengthSquared() > most * most ? by.Normalized() * most : by);
-            OffParts(p, was, dt);
+            OffParts(p, was, 0f); // (never parted into furniture: back where they were if it would)
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
         }
         // Two stood still in each other with no room to part (sent to the one spot in a narrow way): the second goes elsewhere.
