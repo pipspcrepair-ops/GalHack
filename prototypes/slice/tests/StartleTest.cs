@@ -205,6 +205,7 @@ public partial class StartleTest : Node
         var people = town.People.Where(p => p.Looks != null && !p.Away).ToList();
         var was = people.ToDictionary(p => p, p => p.Pos);
         var drawn = people.ToDictionary(p => p, p => Drawn(p));
+        var placed = people.ToDictionary(p => p, p => p.View?.GlobalPosition ?? default);
         var shown = people.ToDictionary(p => p, p => p.View is { Visible: true });
         var alive = people.Where(p => !p.Dead && !p.Gone).ToList();
         static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Away ? "A" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
@@ -253,9 +254,10 @@ public partial class StartleTest : Node
                 if (vis && d is { } now && drawn[p] is { } then && new Vector2(now.X - then.X, now.Z - then.Z).Length() is var flat && flat > DrawnMove && InView(now) && InView(then))
                 {
                     drawnJumps++;
-                    Note("drawn", $"{p.Job} drawn {flat:F1} m on in a tick ({near:F0} m off, was {before[p]})");
+                    Note("drawn", $"{p.Job} drawn {flat:F1} m on in a tick ({near:F0} m off, the view's own move {(p.View.GlobalPosition - placed[p]).Length():F1} m, eased {p.View.Easing().Apart:F2} m, the body piece {(now - p.View.GlobalPosition - (then - placed[p])).Length():F1} m within it, sim {town.World(p.Pos).DistanceTo(now):F1} m off it, act {p.Act} {p.ActAmount:F2}, raised {p.Raised:F2}, crouched {p.Crouched:F2}, down {p.Down:F2}, slept {p.Slept:F2}, seated {p.Seated:F2}, bent {p.Bent:F2}, hurt {p.Hurt:F2}, owed {p.PoseOwed:F2}, was {before[p]})");
                 }
                 drawn[p] = d;
+                placed[p] = p.View?.GlobalPosition ?? default;
             }
         }
         int dead = alive.Count(p => p.Dead);
