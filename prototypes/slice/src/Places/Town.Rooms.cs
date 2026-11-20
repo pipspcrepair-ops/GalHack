@@ -157,6 +157,7 @@ public sealed partial class Town
 
     /// <summary>A spot's point: where a person stands, sits or works there (local feet).</summary>
     Vector3 At(int spot) => spot >= 0 && spot < _point.Count ? _point[spot] : Walk(Spots[spot].Cell);
+    public Vector3 SpotAt(int spot) => At(spot);
 
     /// <summary>
     /// The way to a spot from wherever they are now, when that isn't the spot they were last at (called
