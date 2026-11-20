@@ -353,7 +353,7 @@ public sealed partial class Town
         return true;
     }
 
-    /// <summary>The farthest point a body can stand straight out from a point (local) along the way in's facing, up to 10 m.</summary>
+    /// <summary>The farthest point a body walks to straight out from a point (local) along the way in's facing, up to 10 m: floor all the way at its level, clear of the parts.</summary>
     Vector3 Outside(Vector3 from)
     {
         PInt3 f = Memory.Inst.Layout.EntranceFacing.Vec();
@@ -362,7 +362,7 @@ public sealed partial class Town
         for (float s = 0.5f; s <= 10f && dir != Vector3.Zero; s += 0.5f)
         {
             Vector3 at = from + dir * s;
-            if (!OnGrid(at)) break;
+            if (!OnGrid(at) || Ground(at) is not float g || MathF.Abs(g - from.Y) > 0.3f || _parts != null && _parts.Gap(at, PlaceParts.PersonRadius, PlaceParts.PersonHeight) < 0.05f) break;
             last = at;
         }
         return last;
