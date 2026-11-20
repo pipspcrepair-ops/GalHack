@@ -236,8 +236,9 @@ public partial class StartleTest : Node
                 if (near < Near && vis != shown[p] && InView(Drawn(p) ?? town.World(p.Pos + Vector3.Up)))
                 {
                     if (p.Away || before[p].Contains('A')) { away++; Note("away", $"{p.Job} {(vis ? "back from" : "off on")} a run {near:F0} m off"); }
-                    else if (vis) { popped++; Note("popped", $"{p.Job} came into sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}, was {before[p]})"); }
-                    else { hid++; Note("hid", $"{p.Job} went out of sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Asleep ? ", asleep" : "")}, was {before[p]})"); }
+                    // (A body first posed, dissolving in where they stand, is no pop.)
+                    else if (vis && drawn[p] != null) { popped++; Note("popped", $"{p.Job} came into sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}, was {before[p]})"); }
+                    else if (!vis) { hid++; Note("hid", $"{p.Job} went out of sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Asleep ? ", asleep" : "")}, was {before[p]})"); }
                 }
                 shown[p] = vis;
                 // A body to bump into: everyone within the capsules' reach (one a Husk holds is its hold's).

@@ -1339,7 +1339,8 @@ public sealed partial class Town : IKeeper
     void MakeBody(Person p)
     {
         // Posed in the frame, not the tick (PoseFrame): drawn as posed, never eased between ticks.
-        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}", PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off };
+        // (Unseen until first posed: an unposed body would stand at the place's origin.)
+        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}", PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off, Visible = false };
         _view.AddChild(p.View);
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
@@ -1397,7 +1398,9 @@ public sealed partial class Town : IKeeper
             // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed. So is a body never yet
             // posed: built out of sight, it dissolves in there and stands where they are, not first shown as they come into view.)
             bool needed = p.Engaged || p.Dead && !p.Laid || p.View is { Drawn: null };
-            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)) continue;
+            // (Out of sight both where they are and where they were last drawn: a body left drawn in view is posed on from there.)
+            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)
+                && !(p.View.Drawn is { Length: > 0 } drawn && InSight(eye, frustum, p.View.GlobalTransform * drawn[0].Origin, shadow))) continue;
             // Further off, posed every few frames with the time between (as their steps already are, Due): a body 40 m off is a
             // few dozen pixels tall.
             if (!needed && (_frame + i) % PoseFrames(p.PoseAway) != 0) continue;
