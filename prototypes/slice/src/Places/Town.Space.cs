@@ -122,13 +122,16 @@ public sealed partial class Town
             string Who(int k) => k < _bodies.Count ? $"{_bodies[k].Job} at {_bodies[k].Pos.X:F1},{_bodies[k].Pos.Y:F1},{_bodies[k].Pos.Z:F1} {(Open(_bodies[k].Pos) ? "open" : "in a wall")}{(_bodies[k].Sitting ? " sitting" : "")}{(_bodies[k].Now > 0.1f ? " walking" : "")}" : "you";
             WorstNote = $"{Who(wa)} and {Who(wb)}";
         }
+        // (You shove at your own pace: one you walk into is moved off you as fast as you come on, or you would be in them.)
+        float yourPace = _hadPlayer && dt > 0f ? MathF.Max(PartPace, new Vector2(player.X - _lastPlayer.X, player.Z - _lastPlayer.Z).Length() / dt) : PartPace;
         for (int i = 0; i < _bodies.Count; i++)
         {
             Person p = _bodies[i];
             PersonalSpace.Body b = _space.Bodies[i];
             Vector3 was = p.Pos, by = new(b.Pos.X - was.X, 0f, b.Pos.Z - was.Z);
             // Parted at a walk at most, over as many ticks as it takes: never shoved across the floor at once.
-            float most = PartPace * dt;
+            bool onYou = new Vector2(was.X - player.X, was.Z - player.Z).Length() < BodyRadius(p) + Slice.Player.Survivor.Radius + 0.15f;
+            float most = (onYou ? yourPace + PartPace : PartPace) * dt;
             p.Pos = was + (by.LengthSquared() > most * most ? by.Normalized() * most : by);
             OffParts(p, was, 0f); // (never parted into furniture: back where they were if it would)
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
@@ -173,8 +176,8 @@ public sealed partial class Town
 
     /// <summary>
     /// After a step along their way: someone who hasn't got a quarter metre on in a second is never moved for it (owner, of a
-    /// set-back: "That nudge seems way too aggressive"). Near the end of their way (others at the one spot, a crowd at a
-    /// refuge), they stop where they got to; else, a second at a time, they step aside off what holds them or find another way
+    /// set-back: "That nudge seems way too aggressive"). Near the end of their way with someone standing at its end (a crowd at
+    /// a refuge), they stop where they got to; else, a second at a time, they step aside off what holds them or find another way
     /// from where they stand by the walking grid, and wait where they are meanwhile (bodies give way to each other: PersonalSpace).
     /// </summary>
     void Headway(Person p, float dt)
@@ -189,7 +192,7 @@ public sealed partial class Town
         }
         if ((p.StuckFor += dt) < 1f) return;
         p.StuckFor = 0f;
-        if (p.Path is { Count: > 0 } way && p.Step >= way.Count - 1 && (way[^1] - p.Pos).Length() < 2.5f)
+        if (p.Path is { Count: > 0 } way && p.Step >= way.Count - 1 && (way[^1] - p.Pos).Length() < 2.5f && Taken(p, way[^1]))
         {
             p.Step = way.Count;
             Settled++;
@@ -210,6 +213,15 @@ public sealed partial class Town
         else if (path is { Count: > 0 }) p.Path = path;
         p.Step = 0;
         Rerouted++;
+    }
+
+    /// <summary>Someone else stands at a point (local): it is taken.</summary>
+    bool Taken(Person p, Vector3 at)
+    {
+        foreach (Person o in People)
+            if (o != p && !o.Dead && !o.Gone && !o.Away && o.Now < 0.3f && MathF.Abs(o.Pos.Y - at.Y) < 1.5f
+                && new Vector2(o.Pos.X - at.X, o.Pos.Z - at.Z).Length() < BodyRadius(o) + BodyRadius(p) + 0.1f) return true;
+        return false;
     }
 
     /// <summary>A point half a metre or so off where someone stands, clear of the parts and walked to straight, nearest where they go (null: none).</summary>

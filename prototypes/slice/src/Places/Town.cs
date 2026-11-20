@@ -137,6 +137,8 @@ public sealed partial class Town : IKeeper
         /// <summary>Their job (from the generator), which sets their day; out of town on it (a scavenger's run); bent to a task where they are.</summary>
         public PersonRole Job;
         public bool Away, Working;
+        /// <summary>On their way out by the way in, to be gone once past the place's ground and out of your sight.</summary>
+        public bool Leaving;
         public float AwayFor;
         /// <summary>At a checkpoint or a post: how long they've had you halted, and whether their gun is on you (never fired outside a hostile place).</summary>
         public float Halt;
@@ -615,11 +617,9 @@ public sealed partial class Town : IKeeper
             bool scared = p.ScaredFor > 0f || Barricaded;
             bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
             bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
-            if (offDuty && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night (a fright in town doesn't reach them out there)
-            if (p.Away)
+            if (offDuty && p.Away) p.AwayFor = 0f; // back from a run in time for the night (a fright in town doesn't reach them out there)
+            if (OutOfTown(p, dt))
             {
-                // Out of town on a scavenger's run: back after a while, by the way in.
-                if ((p.AwayFor -= dt) <= 0f) p.Away = false;
                 Pose(p, who, away, dt);
                 continue;
             }
@@ -888,7 +888,7 @@ public sealed partial class Town : IKeeper
                 int gate = Spots.Select((s, i) => (s, i)).OrderBy(t => t.s.Cell.Manhattan(Memory.Inst.Layout.EntranceCell)).First().i;
                 if (p.Spot == gate && _rng.NextDouble() < 0.7)
                 {
-                    p.Away = true;
+                    (p.Path, p.Step, p.Leaving) = (new List<Vector3> { Outside(At(gate)) }, 0, true);
                     p.AwayFor = 30f + (float)_rng.NextDouble() * 60f;
                     p.Wait = 1f;
                     return;

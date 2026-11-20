@@ -87,10 +87,13 @@ public partial class StartleTest : Node
             foreach (int x in Round(inside: i % 2 == 1, night: false)) yield return x;
         for (int i = 0; i < nights; i++)
             foreach (int x in Round(inside: false, night: true)) yield return x;
+        int runs = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--runs=")) is { } u ? int.Parse(u[7..]) : 1;
+        for (int i = 0; i < runs; i++)
+            foreach (int x in Round(inside: false, night: false, runs: true)) yield return x;
     }
 
     /// <summary>One settlement: a shot among its people, then one of them killed by a rocket, each watched; or a night there.</summary>
-    IEnumerable<int> Round(bool inside, bool night)
+    IEnumerable<int> Round(bool inside, bool night, bool runs = false)
     {
         // (A town with its people in its buildings as well as out in its streets: one under a roof, one in the open.)
         const string family = "survivor_town";
@@ -105,14 +108,14 @@ public partial class StartleTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Sky.TimeOfDay = 0.42;
         _max = _game.Suit.Sim.Data.Vitals.Health.Max;
-        GD.Print($"-- a settlement, {(night ? "a night by their homes" : inside ? "in a building" : "in the open")}, {world} --");
-        foreach (int x in Startle(family, inside, night)) yield return x;
+        GD.Print($"-- a settlement, {(runs ? "the way in, watched" : night ? "a night by their homes" : inside ? "in a building" : "in the open")}, {world} --");
+        foreach (int x in Startle(family, inside, night, runs)) yield return x;
         _game.QueueFree();
         _game = null;
         yield return 0;
     }
 
-    IEnumerable<int> Startle(string family, bool inside, bool night)
+    IEnumerable<int> Startle(string family, bool inside, bool night, bool runs)
     {
         var site = _game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == family && s.Instance?.Townsfolk != null);
         if (site == null) { GD.Print($"  (no {family} with people could be seated on this world)"); yield break; }
@@ -127,6 +130,7 @@ public partial class StartleTest : Node
         if (town.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
         for (int i = 0; i < 900 && town.People.Any(p => p.Looks == null || !p.Dead && p.View == null && !p.Away); i++) { TopUp(); yield return 0; }
         if (night) { foreach (int x in Night(town, place)) yield return x; yield break; }
+        if (runs) { foreach (int x in Runs(town, place)) yield return x; yield break; }
         bool Out(Town.Person p) => !p.Dead && !p.Gone && !p.Away && p.Looks != null && p.View is { Visible: true };
         // Among a few of them: the one with the most others close by (in their building, under its roof).
         var outs = town.People.Where(Out).ToList();
@@ -172,6 +176,24 @@ public partial class StartleTest : Node
             town.Struck(victim, 9999f, DamageClass.Explosive, byPlayer: true);
         }
         foreach (int x in Watch(town, place, $"one blown up ({victim.Job}{(Weapons.Armed(victim.Figure.Prop) ? ", armed" : "")}, {(victim.Gone ? "nothing left" : "a body")})", victim)) yield return x;
+    }
+
+    /// <summary>
+    /// The sleeper inside the way in, watching it, two minutes by day: those whose day is runs out of town go out by it and come
+    /// back by it, and never vanish or appear in view (owner: nobody may).
+    /// </summary>
+    IEnumerable<int> Runs(Town town, Place place)
+    {
+        Int3 entrance = place.Memory.Inst.Layout.EntranceCell, f = place.Memory.Inst.Layout.EntranceFacing.Vec();
+        int gate = Enumerable.Range(0, town.Spots.Count).OrderBy(i => town.Spots[i].Cell.Manhattan(entrance)).First();
+        Vector3 at = town.SpotAt(gate), outward = new Vector3(f.X, 0f, f.Z).LengthSquared() > 0.1f ? new Vector3(f.X, 0f, f.Z).Normalized() : Vector3.Right, stand = at;
+        for (float d = 6f; d >= 2f; d -= 1f)
+            if (town.CanStand(at - outward * d)) { stand = at - outward * d; break; }
+        var runners = town.People.Where(p => p.Looks?.Figure.Routine?.Moves == "leave" && !p.Dead).ToList();
+        foreach (Town.Person p in runners) p.Wait = 0f;
+        _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
+        GD.Print($"  ({runners.Count} of {town.People.Count} go on runs out of town; the sleeper {(stand - at).Length():F0} m inside the way in, watching it)");
+        foreach (int x in Watch(town, place, "two minutes by the way in", null, 120, at)) yield return x;
     }
 
     /// <summary>The sleeper by the home spot most of them share, from evening through midnight to morning.</summary>
@@ -236,7 +258,7 @@ public partial class StartleTest : Node
                 // (In view: off out of town on a scavenger's run is counted apart, as they are really gone from it.)
                 if (near < Near && vis != shown[p] && InView(Drawn(p) ?? town.World(p.Pos + Vector3.Up)))
                 {
-                    if (p.Away || before[p].Contains('A')) { away++; Note("away", $"{p.Job} {(vis ? "back from" : "off on")} a run {near:F0} m off"); }
+                    if (p.Away || before[p].Contains('A')) { away++; Note("away", $"{p.Job} {(vis ? "back from" : "off on")} a run {near:F0} m off, in view"); }
                     // (A body first posed, dissolving in where they stand, is no pop.)
                     else if (vis && drawn[p] != null) { popped++; Note("popped", $"{p.Job} came into sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}, was {before[p]})"); }
                     else if (!vis) { hid++; Note("hid", $"{p.Job} went out of sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Asleep ? ", asleep" : "")}, was {before[p]})"); }
@@ -263,7 +285,7 @@ public partial class StartleTest : Node
         int dead = alive.Count(p => p.Dead);
         GD.Print($"  {what}: {alive.Count} living before, {dead} died, {fled / 60} person-seconds fleeing, held on their way: {town.Settled - settled} stopped short of a crowded spot, {town.Rerouted - rerouted} found another way{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
         Check(removed == 0 && alive.All(p => p.Dead || !p.Gone), $"after {what}, every living person is still there ({removed} removed)");
-        Check(hid == 0 && popped == 0, $"after {what}, nobody within {Near} m went out of sight or came into it in view ({hid} hidden, {popped} appeared; {away} off on or back from a run)");
+        Check(hid == 0 && popped == 0 && away == 0, $"after {what}, nobody within {Near} m went out of sight or came into it in view ({hid} hidden, {popped} appeared, {away} gone on or back from a run)");
         Check(bare == 0, $"after {what}, everyone within {Town.SolidRange - 0.5f} m has a body to bump into ({bare} person-ticks without)");
         Check(jumps == 0, $"after {what}, nobody moved more than {TickMove} m in a tick in the sim ({jumps} jumps)");
         Check(drawnJumps == 0, $"after {what}, nobody was drawn more than {DrawnMove} m on in a tick ({drawnJumps} jumps)");
