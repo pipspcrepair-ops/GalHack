@@ -275,7 +275,13 @@ public partial class StartleTest : Node
         return eye != null && !eye.IsPositionBehind(at) && new Rect2(Vector2.Zero, GetViewport().GetVisibleRect().Size).HasPoint(eye.UnprojectPosition(at));
     }
 
-    /// <summary>Where a body is drawn (world): the first piece of the pose as drawn, eased placement and all; null without one.</summary>
-    static Vector3? Drawn(Town.Person p) =>
-        p.View != null && GodotObject.IsInstanceValid(p.View) && p.View.Drawn is { Length: > 0 } pose ? p.View.GlobalTransform * pose[0].Origin : null;
+    /// <summary>Where a body is drawn (world): its torso as drawn, eased placement and all; null without one. (Not the first piece: a carried weapon's may come first, and stowed it stands anywhere.)</summary>
+    static Vector3? Drawn(Town.Person p)
+    {
+        if (p.View == null || !GodotObject.IsInstanceValid(p.View) || p.View.Drawn is not { } pose || p.Rig == null) return null;
+        var pieces = p.Rig.Layout.Pieces;
+        for (int i = 0; i < pieces.Count && i < pose.Length; i++)
+            if (pieces[i].Name == "body") return p.View.GlobalTransform * pose[i].Origin;
+        return null;
+    }
 }

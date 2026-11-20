@@ -1402,7 +1402,7 @@ public sealed partial class Town : IKeeper
             bool needed = p.Engaged || p.Dead && !p.Laid || p.View is { Drawn: null };
             // (Out of sight both where they are and where they were last drawn: a body left drawn in view is posed on from there.)
             if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)
-                && !(p.View.Drawn is { Length: > 0 } drawn && InSight(eye, frustum, p.View.GlobalTransform * drawn[0].Origin, shadow))) continue;
+                && !(p.View.Drawn != null && p.Rig != null && InSight(eye, frustum, p.View.GlobalTransform * p.Rig.ChestPoint, shadow))) continue;
             // Further off, posed every few frames with the time between (as their steps already are, Due): a body 40 m off is a
             // few dozen pixels tall.
             if (!needed && (_frame + i) % PoseFrames(p.PoseAway) != 0) continue;

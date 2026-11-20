@@ -341,8 +341,8 @@ public sealed partial class Town
     void Wake(Person p)
     {
         if (!p.Asleep && !p.Fleeing) return;
-        // (Off the bed onto their spot by its side, as they got in: walked, never put there.)
-        if (p.Asleep) { p.Asleep = false; p.Path = new List<Vector3> { At(p.Home) }; p.Step = 0; p.GettingUp = true; }
+        // (Off the bed onto their spot by its side as out of a seat, the bed theirs till they are clear of it: walked, never put there.)
+        if (p.Asleep) { p.Asleep = false; p.Path = new List<Vector3> { At(p.Home) }; p.Step = 0; (p.Seat, p.GettingUp) = (p.Home, true); }
         p.Fleeing = false;
         p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
     }
