@@ -28,8 +28,11 @@ public partial class StartleTest : Node
     const int WatchdogMinutes = 20;
     /// <summary>Within this of the sleeper nobody may go out of sight or come into it, m.</summary>
     const float Near = 40f;
-    /// <summary>The most a body may move in one physics tick, m: a run's few centimetres with plenty to spare (a push included).</summary>
-    const float TickMove = 0.35f;
+    /// <summary>
+    /// The most a body may move in one physics tick, m: a run is under 0.1 m a tick; bodies pressed together in a crowd are parted
+    /// by up to half a metre at once (PersonalSpace, eased as drawn); anything more is a jump.
+    /// </summary>
+    const float TickMove = 0.6f;
     /// <summary>The same for a drawn body (a pose's own swing and a flinch on top), m.</summary>
     const float DrawnMove = 0.5f;
     IEnumerator<int> _run;
@@ -154,12 +157,13 @@ public partial class StartleTest : Node
         if (victim == null) { GD.Print("  (nobody left out within 40 m to blow up)"); yield break; }
         WeaponDef rocket = WorldFire.Rocket(_game);
         for (int i = 0; i < 20; i++) { TopUp(); _drive.Face(town.World(victim.Pos + Vector3.Up * 1f)); yield return 0; }
+        var (fired, blasts, hits) = (_game.Arms.Fired, _game.Arms.Blasts, _game.Arms.PersonHits);
         _game.Arms.Fire(rocket, 1);
         for (int i = 0; i < 180 && !victim.Dead; i++) { TopUp(); yield return 0; }
         if (!victim.Dead)
         {
             // (The rocket went wide: the same kill as its blast's, on them.)
-            GD.Print("  (the rocket missed: the blast's kill dealt on them)");
+            GD.Print($"  (the rocket missed ({rocket.Id}: {_game.Arms.Fired - fired} fired, {_game.Arms.Blasts - blasts} blasts, {_game.Arms.PersonHits - hits} people hit, they're {(victim.Dead ? "dead" : $"{victim.Health.Current:F0} health")}, {(town.World(victim.Pos) - _game.Survivor.WorldFeet).Length():F1} m off): the blast's kill dealt on them)");
             town.Hit(victim, town.World(victim.Pos + Vector3.Up), (town.World(victim.Pos) - _game.Survivor.WorldFeet).Normalized(), 1f, Slice.Game.Game.EndOf(rocket.Kill));
             town.Struck(victim, 9999f, DamageClass.Explosive, byPlayer: true);
         }
@@ -178,6 +182,8 @@ public partial class StartleTest : Node
         var shown = people.ToDictionary(p => p, p => p.View is { Visible: true });
         var alive = people.Where(p => !p.Dead && !p.Gone).ToList();
         var inside = people.ToDictionary(p => p, p => p.Indoors);
+        static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Indoors ? "I" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Away ? "A" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
+        var before = people.ToDictionary(p => p, Flags);
         int unstuck = town.Unstuck, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0;
         var notes = new List<string>();
         var kinds = new Dictionary<string, int>();
@@ -194,16 +200,19 @@ public partial class StartleTest : Node
                 float near = (town.World(p.Pos) - you).Length();
                 if (p.Gone) { removed++; Note("gone", $"{p.Job} gone"); people.Remove(p); break; }
                 float step = (p.Pos - was[p]).Length();
-                if (step > TickMove) { jumps++; Note("jump", $"{p.Job} {step:F1} m in a tick in the sim, {was[p]} to {p.Pos} ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Indoors ? ", indoors" : "")}{(p.Engaged ? ", fighting" : "")}{(p.Far ? ", far" : "")}{(p.Asleep ? ", asleep" : "")}{(p.Away ? ", away" : "")}, spot {p.Spot} refuge {p.Refuge}, way {p.Step}/{p.Path?.Count ?? -1}, {near:F0} m off)"); }
+                // (Flat: a stair's step up is the stair's. A body far off is stepped every few ticks with the time between.)
+                step = new Vector2(p.Pos.X - was[p].X, p.Pos.Z - was[p].Z).Length();
+                if (step > TickMove * Wildlife.PersonView.PoseEvery(near)) { jumps++; Note("jump", $"{p.Job} {step:F1} m in a tick in the sim, {was[p]} to {p.Pos} ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Indoors ? ", indoors" : "")}{(p.Engaged ? ", fighting" : "")}{(p.Far ? ", far" : "")}{(p.Asleep ? ", asleep" : "")}{(p.Away ? ", away" : "")}, spot {p.Spot} refuge {p.Refuge}, way {p.Step}/{p.Path?.Count ?? -1}, {near:F0} m off, was {before[p]})"); }
                 was[p] = p.Pos;
                 bool vis = p.View is { Visible: true };
                 if (near < Near && vis != shown[p])
                 {
                     if (vis) { popped++; Note("popped", $"{p.Job} came into sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")})"); }
-                    else { hid++; Note("hid", $"{p.Job} went out of sight {near:F0} m off ({(p.Indoors ? "indoors" : "not indoors")}, {(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Asleep ? ", asleep" : "")}{(p.Away ? ", away" : "")}, indoors a tick before {inside[p]})"); }
+                    else { hid++; Note("hid", $"{p.Job} went out of sight {near:F0} m off ({(p.Indoors ? "indoors" : "not indoors")}, {(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Asleep ? ", asleep" : "")}{(p.Away ? ", away" : "")}, indoors a tick before {inside[p]}, pose away {p.PoseAway:F0}, in tree {p.View?.IsInsideTree()}, was {before[p]})"); }
                 }
                 shown[p] = vis;
                 inside[p] = p.Indoors;
+                before[p] = Flags(p);
                 Vector3? d = Drawn(p);
                 // (Drawn where you can see it: a body out of the view isn't posed till it comes back into it.)
                 if (vis && d is { } now && drawn[p] is { } then && (now - then).Length() > DrawnMove && InView(now))

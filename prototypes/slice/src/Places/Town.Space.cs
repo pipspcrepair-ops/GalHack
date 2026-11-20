@@ -167,7 +167,7 @@ public sealed partial class Town
 
     /// <summary>
     /// After a step along their way: someone who hasn't got a quarter metre on in a second finds another way from where
-    /// they stand (by the walking grid); still held a second later, they are put back where they last walked well, a
+    /// they stand (by the walking grid); still held a second later, they walk back to where they last walked well, a
     /// metre or more back, and go on from there. Nobody stands pushing into a wall or a piece of furniture.
     /// </summary>
     void Headway(Person p, float dt)
@@ -196,10 +196,13 @@ public sealed partial class Town
         {
             if ((p.Behind - p.Pos).LengthSquared() is > 0.04f and < 25f && OnGrid(p.Behind) && (_parts == null || _parts.Fits(p.Behind, BodyRadius(p), Height(p))))
             {
-                p.Pos = p.Behind;
+                // Walked back there (never put there: nobody moves faster than their legs take them), then on.
+                var back = new System.Collections.Generic.List<Vector3> { p.Behind };
+                if (p.Path != null && p.Step < p.Path.Count) back.AddRange(p.Path.GetRange(p.Step, p.Path.Count - p.Step));
+                (p.Path, p.Step) = (back, 0);
                 Unstuck++;
             }
-            p.GoodAt = p.Behind = p.ProgressAt = p.Pos;
+            p.GoodAt = p.ProgressAt = p.Pos;
             p.StuckFor = 0f;
             p.Rerouted = false;
         }
