@@ -319,7 +319,9 @@ public partial class FallTest : Node
     IEnumerable<int> Snap(Town town, Town.Person who, string name, int wait = 0)
     {
         for (int i = 0; i < wait; i++) yield return 0;
-        Vector3 at = town.World(who.Pos + Vector3.Up * 0.8f), eye = at + new Vector3(4.5f, 2.2f, 3.5f);
+        // (From where the sleeper stands watching, a little nearer and higher: over the hole, looking down into it.)
+        Vector3 at = town.World(who.Pos + Vector3.Up * 0.8f), eye = _game.Survivor.WorldFeet + Vector3.Up * 2.2f;
+        eye += (new Vector3(at.X, eye.Y, at.Z) - eye).LimitLength(2f);
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at - eye, Vector3.Up), eye);
         _game.Visor.Visible = false;
         yield return 0;
