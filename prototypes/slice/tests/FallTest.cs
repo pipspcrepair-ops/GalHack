@@ -231,6 +231,11 @@ public partial class FallTest : Node
         for (int dz = -r; dz <= r; dz++)
             for (int dx = -r; dx <= r; dx++)
                 _game.Places.Struck(new PoiPlaces.Hit(place, new Int3((int)MathF.Floor(feet.X) + dx, y, (int)MathF.Floor(feet.Z) + dz), null, null), 1e6f);
+        int left = 0;
+        for (int dz = -r; dz <= r; dz++)
+            for (int dx = -r; dx <= r; dx++)
+                if (!place.Memory.Inst.Blocks.Get(new Int3((int)MathF.Floor(feet.X) + dx, y, (int)MathF.Floor(feet.Z) + dz)).IsAir) left++;
+        if (left > 0) GD.Print($"    ({left} of the floor's blocks there would not break)");
     }
 
     /// <summary>The sleeper a few metres off one of them, where a body can stand, facing them.</summary>

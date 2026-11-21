@@ -148,7 +148,7 @@ public sealed partial class Town
                 if (p.CheckFor <= 0f || p.Clambering || _staleFor is > 0f and < StaleWait || p.CheckFor < Pressing && _looks >= LooksATick) return false;
                 if (p.CheckFor < Pressing) _looks++;
                 _looks++;
-                p.CheckFor -= dt;
+                if (_staleFor <= 0f) p.CheckFor -= dt; // (its time runs once the colliders have caught up)
                 if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
                 else
                 {
@@ -245,9 +245,13 @@ public sealed partial class Town
             _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);
             if (rest.Count == 0) return;
-            Vector3 n = (Vector3)rest["normal"] with { Y = 0f };
-            if (n.LengthSquared() < 1e-4f) return;
-            p.Pos += n.Normalized() * 0.05f;
+            // (Away from where it touches, flat; never further than a stride from where they stood: held off it, not carried along it.)
+            Vector3 away = World(p.Pos) - (Vector3)rest["point"];
+            away.Y = 0f;
+            if (away.LengthSquared() < 1e-6f) return;
+            Vector3 next = p.Pos + away.Normalized() * 0.05f;
+            if (new Vector2(next.X - p.FirmAt.X, next.Z - p.FirmAt.Z).Length() > 0.6f) return;
+            p.Pos = next;
         }
     }
 
