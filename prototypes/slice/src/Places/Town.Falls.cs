@@ -452,14 +452,14 @@ public sealed partial class Town
     }
 
     /// <summary>
-    /// On a ledge or a roof with no way down by the walking grid: the nearest edge with open air beside it down to a floor a few
+    /// On a ledge or a roof with no way down by the walking grid: the nearest edge (within 8 m) with open air beside it down to a floor a few
     /// cells under that a way goes on from, over which they step off (and fall: <see cref="Falling"/>); null if there is none.
     /// </summary>
     Vector3? WayDown(Person p)
     {
         PInt3 c = Cell(p.Pos);
         int tries = 0;
-        for (int reach = 1; reach <= 3; reach++)
+        for (int reach = 1; reach <= 8; reach++)
             for (int dz = -reach; dz <= reach; dz++)
                 for (int dx = -reach; dx <= reach; dx++)
                 {
