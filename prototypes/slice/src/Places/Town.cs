@@ -561,6 +561,8 @@ public sealed partial class Town : IKeeper
         _searchAside = true; // from here on the main thread asks: new routes come from a worker
         Vector3 player = _you = Local(_places.Zone.Wildlife.PlayerWorld());
         _tick++;
+        _looks = 0;
+        _staleFor = _place is { Stale: > 0 } ? _staleFor + tickDt : 0f;
         if (_tick % 4 == 0) Sweep(player);
         bool night = Night();
         float time = (float)_places.Zone.Sky.TimeOfDay;
