@@ -103,11 +103,13 @@ public sealed class PlanetTerrain
     {
         float h = Source.SurfaceHeight(x, z);
         Int3 c = Canonical(new Int3((int)Math.Floor(x), (int)Math.Floor(h - 0.05f), (int)Math.Floor(z)));
-        if (!Store.IsRemoved(c)) c = new Int3(c.X, c.Y - 1, c.Z);
-        if (!Store.IsRemoved(c)) return h;
-        while (c.Y > MinChunkY * S && Store.IsRemoved(c)) c = new Int3(c.X, c.Y - 1, c.Z);
+        bool Open(Int3 q) => Store.IsRemoved(q) && !Store.IsCovered(q); // (dug for something built: that stands there instead)
+        if (!Open(c)) c = new Int3(c.X, c.Y - 1, c.Z);
+        if (!Open(c)) return h;
+        while (c.Y > MinChunkY * S && Open(c)) c = new Int3(c.X, c.Y - 1, c.Z);
         return c.Y + 1;
     }
+
     public Int3 CanonicalChunk(Int3 chunk) => new(Mod(chunk.X, ChunksX), chunk.Y, Mod(chunk.Z, ChunksZ));
 
     /// <summary>The cell itself and every copy of it across a seam that lies in the frame (up to four).</summary>

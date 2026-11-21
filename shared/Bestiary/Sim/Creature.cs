@@ -304,6 +304,8 @@ public sealed class Creature
     public bool Dropping;
     /// <summary>Falling because what it stood on went (not a leap or a drop of its own): the landing hurts and frightens it.</summary>
     public bool Unfloored;
+    /// <summary>When it last came down from such a fall (sim time).</summary>
+    public float FellAt = -999f;
     /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
     public Vector3 LastFirm;
     public Vector3 LastFirmNormal = Vector3.Up;

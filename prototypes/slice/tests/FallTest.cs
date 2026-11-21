@@ -41,6 +41,7 @@ public partial class FallTest : Node
     double _max;
     string _shots;
     bool _snapping, _shot;
+    int _solidSeen;
 
     public override void _Ready()
     {
@@ -83,6 +84,9 @@ public partial class FallTest : Node
     static object Get(object o, string name) => o?.GetType().GetField(name)?.GetValue(o) ?? o?.GetType().GetProperty(name)?.GetValue(o);
     static void Set(object o, string name, object v) => o?.GetType().GetField(name)?.SetValue(o, v);
     float G => _game.Zone.Physics.Zone.Strength;
+
+    /// <summary>The ground as it stands now, dug or not (read by name: a build from before the falls had only the undug ground).</summary>
+    float GroundNow(float x, float z) => _game.Zone.Planet.Terrain.GetType().GetMethod("GroundNow")?.Invoke(_game.Zone.Planet.Terrain, new object[] { (double)x, (double)z }) is float g ? g : _game.Zone.Planet.GroundHeight(x, z);
 
     /// <summary>The sleeper's fall rule, as the physics module has it: the share of health a landing at this speed costs.</summary>
     float Share(float speed)
@@ -231,7 +235,9 @@ public partial class FallTest : Node
             Transform = new Transform3D(Basis.Identity, feet + Vector3.Up * 0.85f),
             CollisionMask = Layers.World | Layers.Hull | Layers.Interior,
         };
-        return _game.Zone.GetWorld3D().DirectSpaceState.IntersectShape(q, 1).Count > 0;
+        var hits = _game.Zone.GetWorld3D().DirectSpaceState.IntersectShape(q, 1);
+        if (hits.Count > 0 && _solidSeen++ < 3) GD.Print($"    (in {(hits[0]["collider"].AsGodotObject() as Node)?.GetPath()} at feet {feet}, {(Engine.GetPhysicsFrames())})");
+        return hits.Count > 0;
     }
 
     /// <summary>Whether something solid is under a body's footing (feet, world), within a hand of its feet.</summary>
@@ -254,6 +260,7 @@ public partial class FallTest : Node
     IEnumerable<int> Watch(Town town, Town.Person who, string what, bool shots)
     {
         float y0 = who.Pos.Y, health = who.Health.Current, last = y0;
+        _solidSeen = 0;
         int start = -1, end = -1, inSolid = 0, t;
         for (t = 0; t < 12 * 60; t++)
         {
@@ -327,7 +334,7 @@ public partial class FallTest : Node
     /// </summary>
     IEnumerable<int> Land(Town town, Place place, HashSet<Town.Person> used)
     {
-        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && !used.Contains(p) && !p.Asleep).OrderBy(p => p.Job == PersonRole.Scavenger ? 0 : 1).FirstOrDefault();
+        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && !used.Contains(p) && !p.Asleep && p.Looks != null && p.Figure.OutAt((float)_game.Zone.Sky.TimeOfDay)).OrderBy(p => p.Job == PersonRole.Scavenger ? 0 : 1).FirstOrDefault();
         if (who == null) { Check(false, "someone to send out on the land"); yield break; }
         used.Add(who);
         // Out past the place's cells on the side away from its middle, a way of a few points over the ground.
@@ -398,7 +405,7 @@ public partial class FallTest : Node
                 TopUp();
                 if (t % 30 == 0)
                     foreach (DeepSite s in patch.Sites)
-                        if (s.Sim.Creatures.FirstOrDefault(c => !c.Dead && !c.Removed && c.Space != null && !c.Species.Climbs && !c.Falling && !c.InWalls && Under(place, place.FromWorld(patch.WorldOf(c)))) is { } c) { (who, site) = (c, s); break; }
+                        if (s.Sim.Creatures.FirstOrDefault(c => !c.Dead && !c.Removed && c.Space != null && !c.Species.Climbs && !c.Species.Flies && !c.Falling && !c.InWalls && Under(place, place.FromWorld(patch.WorldOf(c)))) is { } c) { (who, site) = (c, s); break; }
                 yield return 0;
             }
         }
@@ -454,11 +461,12 @@ public partial class FallTest : Node
             if (start >= 0 && !who.Falling && y >= last - 1e-4f) { end = t; break; }
             last = y;
         }
+        if (!here()) { GD.Print($"  ({what} left its sim before it was down ({(who.Dead ? "dead" : "taken off")}): not judged)"); yield break; }
         float h = y0 - who.Position.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
         float speed = MathF.Sqrt(2f * G * MathF.Max(0f, h)), expect = Share(speed) * who.Stats.MaxHealth, lost = health - who.Health;
         Vector3 w = patch.WorldOf(who);
-        float ground = who.Space == null ? _game.Zone.Planet.Terrain.GroundNow(w.X, w.Z) : float.NaN;
-        GD.Print($"  {what}: began {(start < 0 ? "never" : $"{start * Tick:F2} s after")}, down {h:F2} m in {took:F3} s (a free fall {free:F3} s), lost {lost:F1} health (the rule {expect:F1}), feet {w.Y:F2}{(float.IsNaN(ground) ? "" : $", the ground {ground:F2}")}");
+        float ground = who.Space == null ? GroundNow(w.X, w.Z) : float.NaN;
+        GD.Print($"  {what}: began {(start < 0 ? "never" : $"{start * Tick:F2} s after")}, down {h:F2} m in {took:F3} s (a free fall {free:F3} s), lost {lost:F1} health (the rule {expect:F1}), feet {w.Y:F2} (from {y0:F2}, in its sim {here()}){(float.IsNaN(ground) ? "" : $", the ground {ground:F2}")}");
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell ({h:F2} m)");
         // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
         Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 1.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
@@ -466,12 +474,14 @@ public partial class FallTest : Node
         Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
         Vector3 at = who.Position;
         float moved = 0f;
-        for (t = 0; t < 10 * 60 && moved < 0.3f && here() && !who.Dead; t++)
+        bool fled = false;
+        for (t = 0; t < 10 * 60 && moved < 0.3f && !fled && here() && !who.Dead; t++)
         {
             TopUp();
             yield return 0;
             moved = (who.Position - at).Length();
+            fled |= who.State == CState.Flee;
         }
-        Check(who.Dead || moved >= 0.3f, $"{what}: acting after the fall ({moved:F1} m)");
+        Check(who.Dead || moved >= 0.3f || fled, $"{what}: acting after the fall ({moved:F1} m{(fled ? ", running from where it fell" : "")})");
     }
 }

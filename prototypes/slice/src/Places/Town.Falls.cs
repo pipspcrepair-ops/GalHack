@@ -77,7 +77,6 @@ public sealed partial class Town
     float? Top(Vector3 local, float above, float below)
     {
         if (_view == null || !_view.IsInsideTree()) return null;
-        FallRays++;
         Vector3 from = World(local + Vector3.Up * above);
         var q = PhysicsRayQueryParameters3D.Create(from, from + Vector3.Down * (above + below), Layers.World | Layers.Hull | Layers.Interior);
         var hit = _view.GetWorld3D().DirectSpaceState.IntersectRay(q);
@@ -99,6 +98,7 @@ public sealed partial class Town
     float? Footed(Person p, out Vector3 off)
     {
         FallChecks++;
+        FallRays += 5;
         off = Vector3.Zero;
         float best = float.NegativeInfinity;
         int held = 0;
@@ -165,6 +165,7 @@ public sealed partial class Town
     void Down(Person p, float dt)
     {
         p.LastFallTime += dt;
+        FallRays += 5;
         float reach = p.FallSpeed * dt + 0.5f * Pull * dt * dt + 0.05f;
         // What they come down on holds them as standing does (Footed): under their middle, or under three of the rest; an edge
         // under less of them they go past (off it), never caught on it.
@@ -172,7 +173,7 @@ public sealed partial class Town
         int under = 0;
         bool middle = false;
         for (int i = 0; i < 5; i++)
-            if (Top(p.Pos + Foot(p, i), 0.3f, reach) is float top) (ground, under, middle) = (MathF.Max(ground, top), under + 1, middle || i == 0);
+            if (Top(p.Pos + Foot(p, i), 0.5f, reach) is float top) (ground, under, middle) = (MathF.Max(ground, top), under + 1, middle || i == 0);
         if (!middle && under < 3) ground = float.NegativeInfinity;
         // Water takes them: they go in, and stand in it or tread it (its floor under them, or chest-deep), unhurt by it.
         bool wet = false;
@@ -184,6 +185,7 @@ public sealed partial class Town
         float y = p.Pos.Y, speed = p.FallSpeed;
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
         p.Pos.Y = y;
+        OffSides(p);
         p.FallSpeed = speed;
         if (down) Land(p, speed, wet);
         else if (p.LastFallTime > 20f)
@@ -191,6 +193,27 @@ public sealed partial class Town
             // Fallen out of everything (nothing built under them to land on): back where they last stood.
             FallRescues++;
             (p.Pos, p.Airborne, p.FallSpeed) = (p.FirmAt, false, 0f);
+        }
+    }
+
+    readonly CapsuleShape3D _body = new();
+    PhysicsShapeQueryParameters3D _bodyQuery;
+
+    /// <summary>Falling past something beside them (a wall's top, a beam, the edge of the hole): held off it sideways, never through it.</summary>
+    void OffSides(Person p)
+    {
+        float r = BodyRadius(p), h = MathF.Max(2f * r, Height(p) - 0.35f);
+        (_body.Radius, _body.Height) = (r, h);
+        _bodyQuery ??= new PhysicsShapeQueryParameters3D { Shape = _body, CollisionMask = Layers.World | Layers.Hull | Layers.Interior };
+        var space = _view.GetWorld3D().DirectSpaceState;
+        for (int k = 0; k < 6; k++)
+        {
+            _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.35f + h * 0.5f)));
+            var rest = space.GetRestInfo(_bodyQuery);
+            if (rest.Count == 0) return;
+            Vector3 n = (Vector3)rest["normal"] with { Y = 0f };
+            if (n.LengthSquared() < 1e-4f) return;
+            p.Pos += n.Normalized() * 0.05f;
         }
     }
 
@@ -203,8 +226,9 @@ public sealed partial class Town
         p.LastFallShare = wet ? 0f : Slice.Player.Survivor.FallShare(_places.Zone.Physics.Rules, speed);
         if (p.LastFallShare > 0f) Struck(p, p.LastFallShare * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
         if (p.Dead) return;
-        // Frightened by it: off to cover from here (a refuge they can still get to); out on a run, home.
-        (p.ScaredFor, p.Refuge, p.ProgressAt, p.StuckFor) = (MathF.Max(p.ScaredFor, 4f), -1, p.Pos, 0f);
+        // Startled by it and shaken (their mood), and on at once from where they landed, by a way from there; out on a run, home.
+        (p.StartleFor, p.Wait, p.Refuge, p.ProgressAt, p.StuckFor) = (0.9f, 0f, -1, p.Pos, 0f);
+        if (p.Run != null) p.ScaredFor = MathF.Max(p.ScaredFor, 4f);
         p.Feel.Hit(MoodEvent.Harm);
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
     }

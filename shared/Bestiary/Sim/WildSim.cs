@@ -88,18 +88,20 @@ public sealed class WildSim
     public event Action<Creature, float> Fell;
 
     /// <summary>
-    /// Down on its feet from a fall (on the land, or in a cave or a place): hurt by the fall rule and frightened by it (on the land
-    /// it runs a moment the way it faced), its way looked for again from where it landed.
+    /// Down on its feet from a fall (on the land, or in a cave or a place): hurt by the fall rule and frightened by it (it runs a
+    /// moment the way it faced), its way looked for again from where it landed.
     /// </summary>
     internal void Landed(Creature c, float speed)
     {
         if (!c.Dead && FallHurt?.Invoke(speed) is float share and > 0f) Damage(c, share * c.Stats.MaxHealth, null);
         c.Path.Clear();
         c.Repath = true;
-        c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + 2.5f);
+        c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + Brain.FellFright);
+        (c.FellAt, c.Think, c.ThinkEvery) = (Time, 0f, 0f);
         c.ScaredFrom = c.Position - c.Forward * 3f;
         Fell?.Invoke(c, speed);
     }
+
     /// <summary>An ambush or a hunt gives itself away: a rattle, dust, scratching, breathing.</summary>
     public event Action<TellEvent> Told;
     /// <summary>A predator brought down another creature.</summary>

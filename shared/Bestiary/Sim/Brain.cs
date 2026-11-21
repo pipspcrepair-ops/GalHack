@@ -13,6 +13,9 @@ namespace Wildlife;
 /// </summary>
 public static partial class Brain
 {
+    /// <summary>How long a fall's landing frightens it into running, s.</summary>
+    public const float FellFright = 2.5f;
+
     /// <summary>Seconds until a creature next thinks: quickly with something to deal with, slowly otherwise, a little different for each.</summary>
     public static float Interval(Creature c)
     {
@@ -49,8 +52,8 @@ public static partial class Brain
             return;
         }
 
-        // Fire: whatever it is and whatever it wanted, it runs until the fright wears off.
-        if (w.Time < c.ScaredUntil && c.Space == null)
+        // Fire (or a fall, in a cave or a place too): whatever it is and whatever it wanted, it runs until the fright wears off.
+        if (w.Time < c.ScaredUntil && (c.Space == null || w.Time - c.FellAt < FellFright))
         {
             Flee(w, c, c.ScaredFrom);
             return;
