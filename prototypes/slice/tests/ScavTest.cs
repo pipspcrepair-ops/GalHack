@@ -189,23 +189,30 @@ public partial class ScavTest : Node
             if (!_turnedBack) break;
         }
 
-        // A second watched going and coming only, the sleeper far off between.
-        _game.Zone.Sky.TimeOfDay = 0.28;
-        Town.Person second = null;
-        _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
-        foreach (Town.Person p in runners.Where(p => p != first && !OnRun(p))) p.Wait = 0f;
-        for (int i = 0; i < 150 * 60 && second == null; i++)
+        // A second watched going and coming only, the sleeper far off between (another, if one is sent home before they're off).
+        var watched = new HashSet<Town.Person> { first };
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            TopUp();
-            _drive.Face(town.World(at + outward * 6f + Vector3.Up));
-            yield return 0;
-            // (One setting out now: others may be out already, from while the first was followed.)
-            bool Going(Town.Person p) => OnRun(p) && Get(Get(p, "Run"), "Home") is not true && new Vector2(p.Pos.X - at.X, p.Pos.Z - at.Z).Length() < 12f;
-            second = runners.Where(p => p != first).FirstOrDefault(Going) ?? (runners.Count == 1 && Going(first) ? first : null);
+            _game.Zone.Sky.TimeOfDay = 0.28;
+            Town.Person second = null;
+            _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
+            foreach (Town.Person p in runners.Where(p => !watched.Contains(p) && !OnRun(p))) p.Wait = 0f;
+            for (int i = 0; i < 150 * 60 && second == null; i++)
+            {
+                TopUp();
+                _drive.Face(town.World(at + outward * 6f + Vector3.Up));
+                yield return 0;
+                // (One setting out now: others may be out already, from while the first was followed.)
+                bool Going(Town.Person p) => OnRun(p) && Get(Get(p, "Run"), "Home") is not true && new Vector2(p.Pos.X - at.X, p.Pos.Z - at.Z).Length() < 12f;
+                second = runners.Where(p => !watched.Contains(p)).FirstOrDefault(Going) ?? (runners.Count == 1 && Going(first) ? first : null);
+            }
+            if (second == null) { Check(false, "a second scavenger sets out at the way in within two and a half minutes"); yield break; }
+            if (second == first) GD.Print("  (one scavenger here: the same one on a second run)");
+            watched.Add(second);
+            _turnedBack = false;
+            foreach (int x in Unwatched(town, site, second, at, stand, outward, attempt == 2)) yield return x;
+            if (!_turnedBack) break;
         }
-        if (second == null) { Check(false, "a second scavenger sets out at the way in within two and a half minutes"); yield break; }
-        if (second == first) GD.Print("  (one scavenger here: the same one on a second run)");
-        foreach (int x in Unwatched(town, site, second, at, stand, outward)) yield return x;
         Check(town.People.Count == people && town.People.All(p => p.Dead || !p.Gone), $"nobody was removed but by death ({people} people, {town.People.Count} now, {town.People.Count(p => p.Dead)} dead, {town.People.Count(p => p.Gone && !p.Dead)} gone alive)");
     }
 
@@ -281,7 +288,7 @@ public partial class ScavTest : Node
             searched |= Searched(who) > 0;
             laden |= Laden(who);
             if (t > 120 && !OnRun(who) && out_ < 3f && searched) { home = true; break; }
-            if (!last && !searched && Get(Get(who, "Run"), "Home") is true) { _turnedBack = true; GD.Print($"  (turned for home before the find, {out_:F0} m out: scared {who.ScaredFor:F1}, fleeing {who.Fleeing}, mood {who.Feel.Mood}, threat {who.Threat?.Species.Name ?? "none"}; another followed)"); yield break; }
+            if (!last && !searched && Get(Get(who, "Run"), "Home") is true) { _turnedBack = true; GD.Print($"  (turned for home before the find, {out_:F0} m out, {Get(Get(who, "Run"), "Why")}: scared {who.ScaredFor:F1}, fleeing {who.Fleeing}, mood {who.Feel.Mood}, threat {who.Threat?.Species.Name ?? "none"}; another followed)"); yield break; }
         }
         GD.Print($"  followed {ticks / 60f:F0} s: {farthest:F0} m out at most, the longest step {worst:F2} m{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
         Check(farthest > 80f, $"the one followed went out on the land ({farthest:F0} m from the way in at most)");
@@ -303,7 +310,7 @@ public partial class ScavTest : Node
     }
 
     /// <summary>One watched as they go out (60 m), the sleeper far off while they are out (the place down), back by the way in before they are: they come home walking, and never appear in view.</summary>
-    IEnumerable<int> Unwatched(Town town, PlanetSurface.Poi.PoiSite site, Town.Person who, Vector3 gate, Vector3 stand, Vector3 outward)
+    IEnumerable<int> Unwatched(Town town, PlanetSurface.Poi.PoiSite site, Town.Person who, Vector3 gate, Vector3 stand, Vector3 outward, bool last)
     {
         int popped = 0, jumps = 0;
         bool shown = who.View is { Visible: true };
@@ -325,6 +332,8 @@ public partial class ScavTest : Node
             yield return 0;
             Watch(t);
         }
+        object going = Get(who, "Run");
+        if (!last && (going == null || Get(going, "Home") is true)) { _turnedBack = true; GD.Print($"  (sent home before they were off: {Get(going, "Why") ?? "home"}; another watched)"); yield break; }
         // Far off: 1.5 km from the town, the other side of it from where they went.
         Vector3 w = town.World(who.Pos), g = town.World(gate);
         Vector3 away = new Vector3(g.X - w.X, 0f, g.Z - w.Z).Normalized() * 1500f + g;

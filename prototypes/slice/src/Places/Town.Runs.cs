@@ -41,6 +41,8 @@ public sealed class ScavRun
     public float SearchFor;
     /// <summary>Turned for home; carrying what they found; robbed or turned on by you out here (the town hears of it at home); missed by the town at nightfall.</summary>
     public bool Home, Carrying, Robbed, Wronged, Missed;
+    /// <summary>Why they turned for home (tests).</summary>
+    public string Why = "";
     /// <summary>The spot of the round they are at or bound for, and how many they have searched (tests).</summary>
     public int Spot, Searched;
 }
@@ -108,6 +110,7 @@ public sealed partial class Town
             Seed = Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)(People.IndexOf(p) + 1) * 131UL + (ulong)RunsOut),
             Gait = Brain.GaitOf(p.Looks),
             Trunks = Trunks(),
+            Taken = People.Where(q => q.Run != null).Select(q => q.Run.Find + _origin).ToList(),
         };
         _planning = System.Threading.Tasks.Task.Run(() => GalHack.Testing.AllocMeter.Measure("town runs", () => Plan(ask)));
         _planFor = p;
@@ -123,6 +126,8 @@ public sealed partial class Town
         public ulong Seed;
         public NavGrid.Gait Gait;
         public List<(Vector3 At, float Radius)> Trunks;
+        /// <summary>Finds others of the town are out at now (world): one scavenger to a find at a time.</summary>
+        public List<Vector3> Taken;
     }
 
     /// <summary>The wild patch's rocks and trunks (world), as its ground's grid has them: what a way over the land goes round.</summary>
@@ -170,7 +175,7 @@ public sealed partial class Town
         }
         // (As far as the day allows: there and back at a walk, the way some way longer than the crow flies, and the search.)
         float reach = MathF.Min(RunFarthest, (a.Budget - SearchSpots * (SearchEach + 6f)) * a.Speed * 0.5f / 1.2f);
-        var finds = built.Where(f => f.Worth && Flat(f.Mid - exit) is var d && d >= RunNearest && d <= reach)
+        var finds = built.Where(f => f.Worth && Flat(f.Mid - exit) is var d && d >= RunNearest && d <= reach && !a.Taken.Any(t => Flat(planet.NearestCopy(t, f.Mid) - f.Mid) < 5f))
             .OrderBy(f => Flat(f.Mid - exit) * (0.5f + rng.Float())).Take(5).ToList();
         int no = 0, far = 0;
         foreach (Footing find in finds)
@@ -370,7 +375,9 @@ public sealed partial class Town
         ScavRun r = p.Run;
         float rain = _places.Zone.Weather?.Sim?.RainAt(World(p.Pos)) ?? 0f;
         bool frightened = p.ScaredFor > 0f || r.Wronged && !Fighter(p);
-        if (!r.Home && (frightened || r.Wronged || offDuty || Night() || rain > 0.5f || Late(p))) TurnHome(p); // (something only to keep wide of, they keep wide of and go on)
+        // (Something only to keep wide of, they keep wide of and go on.)
+        string why = r.Home ? null : frightened ? "frightened" : r.Wronged ? "turned on" : offDuty || Night() ? "the day over" : rain > 0.5f ? "rain" : Late(p) ? "late" : null;
+        if (why != null) { r.Why = why; TurnHome(p); }
         p.Fleeing = r.Home && frightened;
         float walk = MathF.Max(Brisk, p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f);
         p.Speed = p.Fleeing ? 3.4f : walk * (p.Job switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f });
@@ -385,10 +392,13 @@ public sealed partial class Town
             r.Searched++;
             r.Searching = -1;
             if (++r.Spot < r.Round.Count) (r.Way, r.Leg) = (new List<Vector3> { r.Round[r.Spot] }, 0);
-            else { r.Carrying = p.Laden = true; TurnHome(p); }
+            else { (r.Carrying, p.Laden, r.Why) = (true, true, "found"); TurnHome(p); }
             return;
         }
-        if (!Walk(p, dt)) return;
+        // (Home: by the way in is enough, its spot may be crowded.)
+        bool there = Walk(p, dt) || r.Home && r.Leg >= r.Way.Count - 1 && Flat(r.Way[^1] - p.Pos) < 1.5f;
+        Apart(p, dt);
+        if (!there) return;
         // (Home with the place still down, coming up as you come: they stand at the way in till it is up, in the town again from there;
         // with nobody near to see, they are simply home, kept with the place.)
         if (r.Home) { if (_place is { Ready: true, Dormant: false } || (player - p.Pos).Length() > PersonView.FarRange + 50f) Back(p); else p.Now = 0f; return; }
@@ -465,6 +475,20 @@ public sealed partial class Town
         if (Flat(heading) > 0.01f) p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-heading.X, -heading.Z), 5f * dt);
         p.Sitting = false;
         return r.Leg >= way.Count;
+    }
+
+    /// <summary>Two of them out on the land never stand in one another (as in town, a step aside at the crowd's pace).</summary>
+    void Apart(Person p, float dt)
+    {
+        foreach (Person q in People)
+        {
+            if (q == p || q.Run == null || q.Dead || q.Gone || MathF.Abs(p.Pos.Y - q.Pos.Y) > 1.6f) continue;
+            Vector3 d = new(p.Pos.X - q.Pos.X, 0f, p.Pos.Z - q.Pos.Z);
+            float touch = BodyRadius(p) + BodyRadius(q) + 0.1f, l = d.Length();
+            if (l >= touch) continue;
+            Vector3 away = l > 1e-3f ? d / l : new Vector3(MathF.Cos(p.Yaw), 0f, -MathF.Sin(p.Yaw));
+            p.Pos += away * MathF.Min(touch - l, PartPace * dt);
+        }
     }
 
     /// <summary>A shot at one of them out on a run (at them, or hitting them): by a creature, met as a danger; by you, they're done with you and the run.</summary>

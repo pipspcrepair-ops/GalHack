@@ -43,7 +43,7 @@ public sealed partial class Town
 
     /// <summary>Whether a body can stand here: the cell at its feet, or on a stair the one below or above (between levels a walker's height is in between).</summary>
     // (The furniture is each body's own test, at its own size, after the move: OffParts.)
-    bool Open(Vector3 local) => OnGrid(local);
+    bool Open(Vector3 local) => OnGrid(local) || Away(local) > 0f; // (past the place's cells: the open land, where a run goes)
 
     /// <summary>The cell at its feet (or on a stair the one below or above) is one the walking grid stands people in.</summary>
     bool OnGrid(Vector3 local)
