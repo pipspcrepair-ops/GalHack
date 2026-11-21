@@ -26,7 +26,7 @@ namespace Slice.Tests;
 /// height (a long drop kills, limp), and keep acting after. (New members are read by name, so the same test runs, and fails, on a
 /// build from before the falls.)
 ///
-/// -- --worlds=N: settlements (default 2). --shots=DIR (windowed): falling.png, landed.png of a person below a blown floor.
+/// -- --worlds=N: settlements (default 3). --shots=DIR (windowed): falling.png, landed.png of a person below a blown floor.
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/FallTest.tscn
 /// </summary>
 public partial class FallTest : Node
@@ -42,6 +42,7 @@ public partial class FallTest : Node
     string _shots;
     bool _snapping, _shot;
     int _solidSeen;
+    readonly HashSet<string> _proven = new();
 
     public override void _Ready()
     {
@@ -97,9 +98,12 @@ public partial class FallTest : Node
 
     IEnumerable<int> Scenario()
     {
-        int worlds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--worlds=")) is { } w ? int.Parse(w[9..]) : 2;
+        int worlds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--worlds=")) is { } w ? int.Parse(w[9..]) : 3;
         for (int i = 0; i < worlds; i++)
             foreach (int x in World(i == 0)) yield return x;
+        // Every case shown on at least one of the worlds (a world may have nobody sitting, or no creature near, at the time).
+        foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height" })
+            Check(_proven.Contains(kind), $"shown falling on at least one world: {kind}");
     }
 
     IEnumerable<int> World(bool first)
@@ -185,7 +189,7 @@ public partial class FallTest : Node
             if (t % 30 == 0) who = town.People.Where(fits).Where(p => Under(place, p.Pos) && DropUnder(town, p.Pos) >= room).OrderByDescending(p => MathF.Min(DropUnder(town, p.Pos), 6f)).FirstOrDefault();
             yield return 0;
         }
-        if (who == null) { Check(false, $"someone {what} on a floor of the place's blocks with room under it, within {wait} s"); yield break; }
+        if (who == null) { GD.Print($"  (nobody {what} on a floor of the place's blocks with room under it within {wait} s: not tried here)"); yield break; }
         used.Add(who);
         Stand(town, who);
         for (int i = 0; i < 30; i++) { TopUp(); _drive.Face(town.World(who.Pos + Vector3.Up)); yield return 0; }
@@ -257,7 +261,7 @@ public partial class FallTest : Node
     /// A person whose footing has gone, watched: when they start to come down and when they are down, against a free fall from
     /// that height under the world's pull; never in anything solid; hurt by the fall rule for the speed it comes to; acting after.
     /// </summary>
-    IEnumerable<int> Watch(Town town, Town.Person who, string what, bool shots)
+    IEnumerable<int> Watch(Town town, Town.Person who, string what, bool shots, string kind = null)
     {
         float y0 = who.Pos.Y, health = who.Health.Current, last = y0, from = y0;
         _solidSeen = 0;
@@ -270,7 +274,7 @@ public partial class FallTest : Node
             float y = who.Pos.Y;
             // (Off their feet: the moment their fall has them; on a build without falls, the moment they first go down.)
             if (start < 0 && (Get(who, "Airborne") is bool air ? air : y < y0 - 1e-3f)) (start, from) = (t, last);
-            if (start >= 0 && Get(who, "Airborne") is not true && y >= last - 1e-4f) { end = t; break; }
+            if (start >= 0 && (Get(who, "Airborne") is bool still ? !still : y >= last - 1e-4f)) { end = t; break; }
             if (start >= 0 && shots && !_shot && y0 - y > 0.6f) { foreach (int x in Snap(town, who, "falling.png")) yield return x; _shot = true; }
             if (start >= 0 && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
             last = y;
@@ -280,6 +284,7 @@ public partial class FallTest : Node
         float speed = MathF.Sqrt(2f * G * MathF.Max(0f, h)), expect = Share(speed) * who.Health.Max, lost = health - who.Health.Current;
         GD.Print($"  {what}: began {(start < 0 ? "never" : $"{start * Tick:F2} s after")}, down {h:F2} m in {took:F3} s (a free fall {free:F3} s), {speed:F1} m/s, lost {lost:F1} health (the rule {expect:F1}), {(who.Dead ? "dead" : "alive")}, falls {Get(who, "Falls")}");
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell, from the moment their footing went (began {start * Tick:F2} s after, {h:F2} m)");
+        if (start >= 0 && end >= 0 && h > 0.3f) _proven.Add(kind ?? what);
         Check(end >= 0 && MathF.Abs(took - free) <= Tick + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
         Check(inSolid == 0 && !InSolid(town.World(who.Pos), 0.2f), $"{what}: never in anything solid on the way or landed ({inSolid} ticks)");
         Check(OnSomething(town.World(who.Pos), 0.25f) || town.World(who.Pos).Y - (_game.Zone.Planet.WaterSurfaceAt(town.World(who.Pos)) ?? -1e9f) < 0f, $"{what}: landed on something ({town.World(who.Pos)})");
@@ -373,7 +378,7 @@ public partial class FallTest : Node
         (who.Sitting, who.Asleep, who.Path) = (false, false, null);
         who.Pos += Vector3.Up * height;
         Set(who, "CheckFor", 1f);
-        foreach (int x in Watch(town, who, $"{height:F0} m up", false)) yield return x;
+        foreach (int x in Watch(town, who, $"{height:F0} m up", false, height < 50f ? "set high" : "a killing height")) yield return x;
         if (height < 50f) yield break;
         Check(who.Dead, $"a {height:F0} m drop kills");
         int t = 0;
@@ -415,7 +420,7 @@ public partial class FallTest : Node
         _game.Survivor.PlaceOutside((patch.WorldOf(who) + Vector3.Back * 5f + Vector3.Up * 0.3f).ToNumerics());
         GD.Print($"  -- the floor broken under one of the place's creatures ({who.Species.Name}, {who.Species.BodyLength:F1} m) --");
         Break(place, feet, 1);
-        foreach (int x in WatchCreature(who, $"the place's {who.Species.Name}", () => site.Sim.Creatures.Contains(who))) yield return x;
+        foreach (int x in WatchCreature(who, $"the place's {who.Species.Name}", () => site.Sim.Creatures.Contains(who), "one of a place's creatures")) yield return x;
     }
 
     /// <summary>A small or large walker on the land near the sleeper: a crater blown under it.</summary>
@@ -438,19 +443,23 @@ public partial class FallTest : Node
         if (who == null) { GD.Print($"  ({what} on dry land near the sleeper: none here)"); yield break; }
         Vector3 at = patch.WorldOf(who);
         _game.Survivor.PlaceOutside((at + new Vector3(8f + who.Species.BodyLength, 0f, 0f) with { Y = _game.Zone.Planet.GroundHeight(at.X + 8f + who.Species.BodyLength, at.Z) + 0.5f }).ToNumerics());
-        for (int i = 0; i < 20; i++) { TopUp(); yield return 0; }
+        for (int i = 0; i < 120; i++) { TopUp(); yield return 0; }
+        // (Moved near it, the patch may have been made again round the sleeper: the same one, as the patch now has it.)
+        Species kind = who.Species;
+        who = patch.Sim.Creatures.Where(c => c.Species == kind && !c.Dead && !c.Removed && !c.Falling).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
+        if (who == null) { GD.Print($"  ({what} gone from the patch as the sleeper came: not tried)"); yield break; }
         at = patch.WorldOf(who);
         float radius = Math.Clamp(who.Species.BodyLength * 0.7f, 2.5f, 6f);
         GD.Print($"  -- a crater of {radius:F1} m blown under {what} ({who.Species.Name}, {who.Species.BodyLength:F1} m) --");
         _game.Zone.Edits.Blast((at + Vector3.Down * 0.5f).ToNumerics(), radius);
-        foreach (int x in WatchCreature(who, what, () => patch.Sim.Creatures.Contains(who))) yield return x;
+        foreach (int x in WatchCreature(who, what, () => patch.Sim.Creatures.Contains(who), small ? "a small creature" : "a large creature")) yield return x;
     }
 
     /// <summary>A creature whose footing has gone, watched as a person is: the fall's time, the rule's hurt, solid ground at the end, acting after.</summary>
-    IEnumerable<int> WatchCreature(Creature who, string what, Func<bool> here)
+    IEnumerable<int> WatchCreature(Creature who, string what, Func<bool> here, string kind)
     {
         WildlifePatch patch = _game.Zone.Wildlife;
-        float y0 = who.Position.Y, health = who.Health, last = y0;
+        float y0 = who.Position.Y, health = who.Health, last = y0, from = y0;
         int start = -1, end = -1, t;
         for (t = 0; t < 12 * 60; t++)
         {
@@ -458,17 +467,18 @@ public partial class FallTest : Node
             yield return 0;
             if (!here()) break;
             float y = who.Position.Y;
-            if (start < 0 && y < y0 - 1e-3f) start = t;
-            if (start >= 0 && !who.Falling && y >= last - 1e-4f) { end = t; break; }
+            if (start < 0 && who.Falling) (start, from) = (t, last);
+            if (start >= 0 && !who.Falling) { end = t; break; }
             last = y;
         }
         if (!here()) { GD.Print($"  ({what} left its sim before it was down ({(who.Dead ? "dead" : "taken off")}): not judged)"); yield break; }
-        float h = y0 - who.Position.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
+        float h = from - who.Position.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
         float speed = MathF.Sqrt(2f * G * MathF.Max(0f, h)), expect = Share(speed) * who.Stats.MaxHealth, lost = health - who.Health;
         Vector3 w = patch.WorldOf(who);
         float ground = who.Space == null ? GroundNow(w.X, w.Z) : float.NaN;
         GD.Print($"  {what}: began {(start < 0 ? "never" : $"{start * Tick:F2} s after")}, down {h:F2} m in {took:F3} s (a free fall {free:F3} s), lost {lost:F1} health (the rule {expect:F1}), feet {w.Y:F2} (from {y0:F2}, in its sim {here()}){(float.IsNaN(ground) ? "" : $", the ground {ground:F2}")}");
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell ({h:F2} m)");
+        if (start >= 0 && end >= 0 && h > 0.3f) _proven.Add(kind);
         // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
         Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 1.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
         // (A creature on the land stands on its sim's ground, read every 2 m: in a hole that is a coarse floor, but never in the ground.)

@@ -156,6 +156,7 @@ public static class Crawl
         {
             Unfloor(c);
             c.Position = center - n * clr;
+            Fall(w, c, dt); // (from this very step)
             return;
         }
 
@@ -249,6 +250,7 @@ public static class Crawl
         else
         {
             Unfloor(c);
+            Fall(w, c, dt); // (from this very step)
             return;
         }
         // On its floor, never further into a piece than where it stood.
