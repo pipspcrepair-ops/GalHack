@@ -65,6 +65,9 @@ public sealed partial class Town
     /// <summary>The most of them looked under in a tick (those falling are always stepped).</summary>
     const int LooksATick = 1;
 
+    /// <summary>A look under someone this long or longer to come is for something that went from under them (not the sweep's), s.</summary>
+    const float Pressing = 0.2f;
+
     /// <summary>
     /// Something under a stretch went (world frame: blocks broken, a piece taken, the ground dug): whoever stands, sits or lies over
     /// it is looked under for the next second, and a body lying there falls again, limp.
@@ -141,7 +144,9 @@ public sealed partial class Town
             if (!p.Airborne)
             {
                 // (The place's colliders a moment behind its blocks: looked under once they have caught up; a few a tick at most, the rest the next.)
-                if (p.CheckFor <= 0f || p.Clambering || _staleFor is > 0f and < StaleWait || _looks >= LooksATick) return false;
+                // (Those something went from under are looked at every step; the sweep's and a walker's missing floor, one a step.)
+                if (p.CheckFor <= 0f || p.Clambering || _staleFor is > 0f and < StaleWait || p.CheckFor < Pressing && _looks >= LooksATick) return false;
+                if (p.CheckFor < Pressing) _looks++;
                 _looks++;
                 p.CheckFor -= dt;
                 if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
@@ -178,7 +183,7 @@ public sealed partial class Town
     {
         Unseat(p);
         (p.Airborne, p.FallSpeed, p.FirmAt, p.CheckFor, p.LastFallTime) = (true, 0f, p.Pos, 0f, 0f);
-        (p.Path, p.Step, p.Asked, p.Partner, p.Now, p.Yield) = (null, 0, -1, null, 0f, 0f);
+        (p.Path, p.Step, p.Asked, p.Partner, p.Now, p.Yield, p.ClimbTo, p.Clambering) = (null, 0, -1, null, 0f, 0f, null, false);
     }
 
     void Unseat(Person p) => (p.Sitting, p.Seat, p.GettingUp, p.Asleep, p.Working) = (false, -1, false, false, false); // (sat or lain, they come out of it as their pose eases)
@@ -373,9 +378,9 @@ public sealed partial class Town
     /// </summary>
     int OnFrom(Person p)
     {
-        if (StandIn(Cell(p.Pos)) is not { } c) { p.ClimbTo = WayUp(p); return -1; }
+        if (StandIn(Cell(p.Pos)) is not { } c) { GetOut(p); return -1; }
         int spot = SpotFrom(c, out List<PInt3> way);
-        if (spot == -1) (p.ClimbTo, p.Path, p.Asked) = (WayUp(p), null, -1);
+        if (spot == -1) GetOut(p);
         if (spot < 0) return spot;
         List<Vector3> path = Points(way);
         if (way[^1] == Spots[spot].Cell) path.Add(At(spot));
@@ -384,12 +389,12 @@ public sealed partial class Town
     }
 
     /// <summary>Whether there is no walking anywhere from where someone stands, nor climbing out to where there is (tests).</summary>
-    public bool Stranded(Person p) => p.ClimbTo == null && (StandIn(Cell(p.Pos)) is not { } c || SpotFrom(c, out _) == -1) && WayUp(p) == null;
+    public bool Stranded(Person p) => p.ClimbTo == null && (StandIn(Cell(p.Pos)) is not { } c || SpotFrom(c, out _) == -1) && WayOut(p) == null;
 
     /// <summary>Their way on from where they stand, told (tests).</summary>
     public string WayOn(Person p) => StandIn(Cell(p.Pos)) is not { } c ? "nowhere to stand" : SpotFrom(c, out var way) switch
     {
-        -1 => $"no spot to walk to from {c}, {(WayUp(p) is { } up ? $"a way up to {up}" : "no way up")}",
+        -1 => $"no spot to walk to from {c}, {(WayOut(p) is { } up ? $"a way out by {up}" : "no way out")}",
         SpotSearchSpent => $"open ground round {c}, no spot within {SpotSearch} cells",
         int s => $"spot {s} {way.Count} cells away from {c}",
     };
@@ -421,26 +426,68 @@ public sealed partial class Town
         return null;
     }
 
+    /// <summary>A way out of where they landed with no walking on: up the side of a hole, else down off the edge of a ledge or a roof.</summary>
+    Vector3? WayOut(Person p) => WayUp(p) ?? WayDown(p);
+
+    /// <summary>Out by <see cref="WayOut"/>: holding on and climbing for a way up (not looked under meanwhile), walking for a way down.</summary>
+    void GetOut(Person p)
+    {
+        Vector3? up = WayUp(p);
+        (p.ClimbTo, p.Clambering, p.Path, p.Asked) = (up ?? WayDown(p), up != null, null, -1);
+    }
+
+    /// <summary>
+    /// On a ledge or a roof with no way down by the walking grid: the nearest edge with open air beside it down to a floor a few
+    /// cells under that a way goes on from, over which they step off (and fall: <see cref="Falling"/>); null if there is none.
+    /// </summary>
+    Vector3? WayDown(Person p)
+    {
+        PInt3 c = Cell(p.Pos);
+        int tries = 0;
+        for (int reach = 1; reach <= 3; reach++)
+            for (int dz = -reach; dz <= reach; dz++)
+                for (int dx = -reach; dx <= reach; dx++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != reach) continue;
+                    // (Open beside them at their height and down the column to a floor.)
+                    if (_nav.Solid(new PInt3(c.X + dx, c.Y, c.Z + dz)) || _nav.Solid(new PInt3(c.X + dx, c.Y + 1, c.Z + dz))) continue;
+                    for (int dy = 1; dy <= 6; dy++)
+                    {
+                        var q = new PInt3(c.X + dx, c.Y - dy, c.Z + dz);
+                        if (_nav.Solid(q)) break;
+                        if (!_nav.Standable(q)) continue;
+                        if (tries++ < 4 && SpotFrom(q, out _) != -1) return new Vector3(q.X + 0.5f, p.Pos.Y, q.Z + 0.5f);
+                        break;
+                    }
+                }
+        return null;
+    }
+
     /// <summary>Climbing out: straight up the side to the rim's height, then over onto it, and on from there. True while it has them.</summary>
+    /// <summary>
+    /// Out of where they landed: up a hole's side (holding on, straight up to the rim's height, then over onto it), or over the
+    /// edge of a ledge (walking to it, looked under each step: off it they fall). True while it has them.
+    /// </summary>
     bool Climb(Person p, float dt)
     {
         Vector3 to = p.ClimbTo.Value;
-        p.Clambering = true;
         p.Now = 0f;
-        if (p.Pos.Y < to.Y) p.Pos.Y = MathF.Min(to.Y, p.Pos.Y + Clamber * dt);
-        else
+        if (p.Clambering && p.Pos.Y < to.Y)
         {
-            Vector3 d = new(to.X - p.Pos.X, 0f, to.Z - p.Pos.Z);
-            float step = Clamber * dt;
-            if (d.Length() > step)
-            {
-                p.Pos += d.Normalized() * step;
-                p.Yaw = MathF.Atan2(-d.X, -d.Z);
-                return true;
-            }
-            (p.Pos, p.ClimbTo, p.Clambering) = (to, null, false);
-            if (OnFrom(p) == SpotSearchSpent) Next(p);
+            p.Pos.Y = MathF.Min(to.Y, p.Pos.Y + Clamber * dt);
+            return true;
         }
+        if (!p.Clambering) p.CheckFor = MathF.Max(p.CheckFor, Pressing);
+        Vector3 d = new(to.X - p.Pos.X, 0f, to.Z - p.Pos.Z);
+        float step = Clamber * dt;
+        if (d.Length() > step)
+        {
+            p.Pos += d.Normalized() * step;
+            p.Yaw = MathF.Atan2(-d.X, -d.Z);
+            return true;
+        }
+        (p.Pos, p.ClimbTo, p.Clambering) = (to, null, false);
+        if (OnFrom(p) == SpotSearchSpent) Next(p);
         return true;
     }
 
