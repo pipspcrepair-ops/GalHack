@@ -248,6 +248,7 @@ public partial class SurfaceZone : Node3D
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
         Edits.Edited += edit => DugDry(edit.Removed);
+        Edits.Edited += edit => Wildlife?.Dug(edit.Removed); // what stood over it falls in
         Edits.Edited += _ => Light.Touch();
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };

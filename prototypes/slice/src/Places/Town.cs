@@ -561,6 +561,7 @@ public sealed partial class Town : IKeeper
         _searchAside = true; // from here on the main thread asks: new routes come from a worker
         Vector3 player = _you = Local(_places.Zone.Wildlife.PlayerWorld());
         _tick++;
+        if (_tick % 4 == 0) Sweep(player);
         bool night = Night();
         float time = (float)_places.Zone.Sky.TimeOfDay;
         // Where you are looking, in the place's frame: what you point at, people see.
@@ -662,6 +663,13 @@ public sealed partial class Town : IKeeper
         p.Saved += tickDt;
         float away = (player - p.Pos).Length();
         p.Far = away > FarSchedule;
+        // Nothing under them: falling, whatever they were at, every step till down (Town.Falls).
+        if ((p.Airborne || p.CheckFor > 0f) && Falling(p, p.Saved))
+        {
+            Pose(p, who, away, p.Saved);
+            p.Saved = 0f;
+            return;
+        }
         if (!Due(who, away)) return;
         float dt = p.Saved;
         p.Saved = 0f;
@@ -812,6 +820,7 @@ public sealed partial class Town : IKeeper
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
         if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
+        else if (!Floored(p.Pos)) p.CheckFor = MathF.Max(p.CheckFor, 0.05f); // (no floor under them by the blocks: looked under, Town.Falls)
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was, dt);
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.

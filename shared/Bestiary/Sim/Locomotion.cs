@@ -36,6 +36,11 @@ public static class Locomotion
             Fall(w, c, dt);
             return;
         }
+        if (Unfooted(w, c))
+        {
+            FreeFall(w, c, dt);
+            return;
+        }
         if (c.Phase == AttackPhase.Lunge && c.Species.Flight != FlightKind.Glide)
         {
             Lunge(w, c);
@@ -90,6 +95,36 @@ public static class Locomotion
         }
         c.Velocity = v;
         c.Position = p;
+    }
+
+    /// <summary>How far over the ground under it a body on its feet may find itself before it falls, m.</summary>
+    const float FootSlack = 0.25f;
+
+    /// <summary>
+    /// Nothing under its feet (the ground dug or blasted away from under it): anything that walks, crawls or stands, and a flier
+    /// standing on the ground, falls. Its feet are on the ground after every step, so only the ground changing finds this.
+    /// </summary>
+    static bool Unfooted(WildSim w, Creature c)
+    {
+        if (c.Falling) return true;
+        if (c.Species.Flies && !c.Landed || c.Species.Rig == RigKind.GasBag || c.Hop == HopPhase.Air) return false;
+        if (c.Position.Y - w.Terrain.Height(c.Position.X, c.Position.Z) <= FootSlack) return false;
+        c.Falling = true;
+        c.Velocity = Vector3.Zero;
+        return true;
+    }
+
+    /// <summary>Falling under the world's pull (<see cref="Drop"/>) to the ground under it, landing on its feet (<see cref="WildSim.Landed"/>).</summary>
+    static void FreeFall(WildSim w, Creature c, float dt)
+    {
+        float y = c.Position.Y, speed = MathF.Max(0f, -c.Velocity.Y);
+        bool down = Drop.Step(ref y, ref speed, w.Terrain.Height(c.Position.X, c.Position.Z), w.Gravity, dt);
+        c.Position = new Vector3(c.Position.X, y, c.Position.Z);
+        c.Velocity = new Vector3(0f, -speed, 0f);
+        if (!down) return;
+        c.Falling = false;
+        c.Velocity = Vector3.Zero;
+        w.Landed(c, speed);
     }
 
     /// <summary>Downed by a hard landing: it lies still, then rolls back onto its feet over its last moments.</summary>
@@ -333,7 +368,7 @@ public static class Locomotion
         float ground = w.Terrain.Height(c.Position.X, c.Position.Z);
         if (c.Position.Y > ground + 0.01f)
         {
-            float g = c.Species.Rig == RigKind.GasBag ? 2.5f : 12f;
+            float g = c.Species.Rig == RigKind.GasBag ? 2.5f : w.Gravity;
             Vector3 v = c.Velocity * MathF.Max(0f, 1f - dt) + Vector3.Down * g * dt;
             Vector3 p = c.Position + v * dt;
             if (p.Y < ground) { p.Y = ground; v = Vector3.Zero; }

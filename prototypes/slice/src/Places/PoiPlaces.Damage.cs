@@ -123,6 +123,23 @@ public partial class PoiPlaces
             if (door.Lift < 0 && door.Cells.Any(c => p.Inst.Blocks.Get(c).IsAir)) p.TakeDoor(door);
         Unheld(p, gone);
         p.Rebuild(gone);
+        // Whoever stood over what went falls (Town.Falls).
+        Int3 lo = gone.Aggregate(Int3.Min), hi = gone.Aggregate(Int3.Max);
+        p.Memory.Town?.Unfloored(p.WorldOrigin + new Vector3(lo.X, lo.Y, lo.Z), p.WorldOrigin + new Vector3(hi.X + 1, hi.Y + 1, hi.Z + 1));
+    }
+
+    /// <summary>The ground dug or blasted away (planet cells): a town's people over it, in its yards or out on a run, fall in.</summary>
+    public void Dug(IReadOnlyList<TerrainDigging.Terrain.RemovedCell> cells)
+    {
+        if (cells.Count == 0) return;
+        var lo = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        Vector3 hi = -lo;
+        foreach (var c in cells) (lo, hi) = (lo.Min(new Vector3(c.Cell.X, c.Cell.Y, c.Cell.Z)), hi.Max(new Vector3(c.Cell.X + 1, c.Cell.Y + 1, c.Cell.Z + 1)));
+        foreach (Town t in Towns)
+        {
+            Vector3 near = t.World(Vector3.Zero), shift = Zone.Planet.NearestCopy(lo, near) - lo;
+            t.Unfloored(lo + shift, hi + shift);
+        }
     }
 
     /// <summary>Dressing by the gaps with nothing left under it (hung up: nothing beside or over it) comes away; a hazard goes up.</summary>

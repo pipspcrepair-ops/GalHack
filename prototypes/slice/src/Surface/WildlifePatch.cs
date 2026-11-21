@@ -329,6 +329,13 @@ public partial class WildlifePatch : Node3D
         if (old != null) _refilledFrom += oldOrigin - origin; // where the last group came back, in the new patch's frame
         Origin = origin;
         Position = origin;
+        Rule(sim);
+        // (Baked from the planet as it was made: where it has been dug since, read again here.)
+        foreach (TerrainDigging.Terrain.Int3 ch in _planet.Terrain.Store.EditedChunks)
+        {
+            Vector3 at = PatchLocal(_planet.NearestCopy(new Vector3(ch.X, 0f, ch.Z) * TerrainDigging.Terrain.ChunkStore.Size, origin));
+            if (terrain.Inside(at, -TerrainDigging.Terrain.ChunkStore.Size)) Reground(at, at + new Vector3(TerrainDigging.Terrain.ChunkStore.Size, 0f, TerrainDigging.Terrain.ChunkStore.Size));
+        }
         Audio.Origin = origin;
         if (Player != null) sim.Targets.Add(Player);
         View.Bind(sim, null, across);
@@ -605,6 +612,39 @@ public partial class WildlifePatch : Node3D
     public void Heard(PlayerGesture g, Vector3 eye, Vector3 look)
     {
         if (Sim != null) Brain.Gestured(Sim, g, PatchLocal(eye), look);
+    }
+
+    /// <summary>A sim of this world's (the patch's, a cave's, a place's): what falls in it comes down under the world's pull and lands by the sleeper's rule.</summary>
+    public void Rule(WildSim sim)
+    {
+        sim.Gravity = Zone.Physics.Zone.Strength;
+        GalHack.Physics.PhysicsRules rules = Zone.Physics.Rules;
+        sim.FallHurt = speed => Slice.Player.Survivor.FallShare(rules, speed);
+    }
+
+    /// <summary>The ground dug or blasted away: the creatures' ground over it read again, so whatever stood there falls into the hole.</summary>
+    public void Dug(IReadOnlyList<TerrainDigging.Terrain.RemovedCell> cells)
+    {
+        if (Sim == null || cells.Count == 0) return;
+        Vector3 lo = new(float.MaxValue, 0f, float.MaxValue), hi = -lo;
+        foreach (var c in cells)
+        {
+            Vector3 at = PatchLocal(_planet.NearestCopy(new Vector3(c.Cell.X, 0f, c.Cell.Z), Origin));
+            (lo, hi) = (lo.Min(at), hi.Max(at + new Vector3(1f, 0f, 1f)));
+        }
+        Reground(lo, hi);
+    }
+
+    /// <summary>The creatures' ground over a stretch (patch frame) read again from the ground as it stands, a body's draught under any water over it.</summary>
+    void Reground(Vector3 lo, Vector3 hi)
+    {
+        float ox = Origin.X, oz = Origin.Z;
+        Sim.Terrain.Rebake(lo.X - 1f, lo.Z - 1f, hi.X + 1f, hi.Z + 1f, (x, z) =>
+        {
+            double wx = Mathx.WrapX(ox + x, _planet.Width), wz = Mathx.Wrap(oz + z, _planet.Height);
+            float ground = _planet.Terrain.GroundNow(wx, wz);
+            return _planet.Source.WaterSurfaceAt(wx, wz, out float surface) ? MathF.Max(ground, surface - Draught) : ground;
+        });
     }
 
     /// <summary>Zone frame to patch frame and back.</summary>

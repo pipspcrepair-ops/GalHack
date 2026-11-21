@@ -47,6 +47,16 @@ public sealed class Terrain
             _grid[j * _n + i] = height(-halfSize + i * Step, -halfSize + j * Step);
     }
 
+    /// <summary>The ground over a stretch changed (dug, blasted away): its grid points from x0, z0 to x1, z1 read again from <paramref name="height"/>.</summary>
+    public void Rebake(float x0, float z0, float x1, float z1, Func<float, float, float> height)
+    {
+        int i0 = Math.Max(0, (int)MathF.Floor((x0 + HalfSize) / Step)), i1 = Math.Min(_n - 1, (int)MathF.Ceiling((x1 + HalfSize) / Step));
+        int j0 = Math.Max(0, (int)MathF.Floor((z0 + HalfSize) / Step)), j1 = Math.Min(_n - 1, (int)MathF.Ceiling((z1 + HalfSize) / Step));
+        for (int j = j0; j <= j1; j++)
+        for (int i = i0; i <= i1; i++)
+            _grid[j * _n + i] = height(-HalfSize + i * Step, -HalfSize + j * Step);
+    }
+
     /// <summary>Ground height at a point, from the baked grid (clamped at the edge of the map).</summary>
     public float Height(float x, float z)
     {

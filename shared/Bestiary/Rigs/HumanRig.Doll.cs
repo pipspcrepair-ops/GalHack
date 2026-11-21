@@ -15,7 +15,7 @@ public sealed partial class HumanRig
     sealed class Doll
     {
         public const int Pelvis = 0, Chest = 1, Neck = 2, Crown = 3, Shoulder = 4, Elbow = 6, Wrist = 8, Hip = 10, Knee = 12, Ankle = 14, Toe = 16, Count = 18;
-        const float H = 1f / 120f, Gravity = 9.8f;
+        const float H = 1f / 120f;
         readonly Vector3[] _p = new Vector3[Count + 2], _old = new Vector3[Count + 2];
         readonly float[] _r = new float[Count + 2], _ground = new float[Count + 2];
         readonly List<(int a, int b, float min, float max)> _links = new();
@@ -141,6 +141,9 @@ public sealed partial class HumanRig
             _calm = 0f;
         }
 
+        /// <summary>What it lay on went from under it: limp again, it falls on to whatever is below.</summary>
+        public void Wake() => (Settled, _calm, _age) = (false, 0f, 0f);
+
         /// <summary>No hit to go by: the top of the body tips over one way and the knees go.</summary>
         public void Topple(Vector3 dir)
         {
@@ -164,7 +167,7 @@ public sealed partial class HumanRig
                 {
                     Vector3 v = (_p[i] - _old[i]) * 0.998f;
                     _old[i] = _p[i];
-                    _p[i] += v + Vector3.Down * Gravity * H * H;
+                    _p[i] += v + Vector3.Down * rig.Gravity * H * H;
                 }
                 for (int it = 0; it < 8; it++)
                 {

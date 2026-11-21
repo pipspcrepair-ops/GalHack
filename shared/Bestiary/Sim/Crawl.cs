@@ -55,7 +55,7 @@ public static class Crawl
         c.Position = p - n * clr;
         c.LastFirm = c.GoodAt = c.Behind = c.ProgressAt = c.Position;
         c.LastFirmNormal = c.GoodUp = c.BehindUp = n;
-        c.Falling = false;
+        c.Falling = c.Unfloored = false;
         c.Velocity = Vector3.Zero;
         SyncYaw(c);
     }
@@ -154,7 +154,7 @@ public static class Crawl
         float d = SpaceMath.Distance(s, center, out Vector3 now);
         if (now == Vector3.Zero || d < -clr - 0.45f)
         {
-            Release(w, c);
+            Unfloor(c);
             c.Position = center - n * clr;
             return;
         }
@@ -248,7 +248,7 @@ public static class Crawl
         if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is float y) feet.Y = y;
         else
         {
-            Release(w, c);
+            Unfloor(c);
             return;
         }
         // On its floor, never further into a piece than where it stood.
@@ -338,17 +338,29 @@ public static class Crawl
         c.Velocity += c.Facing.Y * 0.6f;
     }
 
-    /// <summary>Falling: gravity until it lands on whatever is below, landing on its feet.</summary>
+    /// <summary>What it stood on went from under it: it drops straight down from where it was (no push off anything).</summary>
+    static void Unfloor(Creature c)
+    {
+        if (c.Falling) return;
+        (c.Falling, c.Unfloored, c.CrawlSpeed, c.Velocity) = (true, true, 0f, Vector3.Zero);
+    }
+
+    /// <summary>Falling: the world's pull until it lands on whatever is below, landing on its feet; in steps short enough that a fast fall never skips a floor.</summary>
     static void Fall(WildSim w, Creature c, float dt)
+    {
+        int n = Math.Max(1, (int)MathF.Ceiling((c.Velocity.Length() + w.Gravity * dt) * dt / (c.Clearance * 0.8f)));
+        for (int i = 0; i < n && c.Falling; i++) FallStep(w, c, dt / n);
+    }
+
+    static void FallStep(WildSim w, Creature c, float dt)
     {
         // A walker comes down to the floor (it never stands on the furniture; it is moved off it when it lands).
         ISolidSpace s = c.Species.Climbs ? c.Space : c.Space.Bare;
-        float clr = c.Clearance, g = w.Data.Deep.Crawl.Gravity;
+        float clr = c.Clearance, g = w.Gravity;
         Vector3 n = c.Facing.Y;
         Vector3 center = c.Position + n * clr;
-        Vector3 v = c.Velocity + Vector3.Down * g * dt;
-        v = v.LimitLength(25f);
-        Vector3 next = center + v * dt;
+        Vector3 v = (c.Velocity + Vector3.Down * g * dt).LimitLength(80f);
+        Vector3 next = center + (c.Velocity + v) * 0.5f * dt;
         // Turn right way up while falling, like a cat.
         Vector3 up = SpaceMath.TurnToward(n, Vector3.Up, MathF.Min(1f, dt * 8f));
         // A walker carried on by its lunge flies no further into a piece of furniture than it is: it drops beside it.
@@ -375,12 +387,14 @@ public static class Crawl
                 SpaceMath.Project(s, ref next, clr, out Vector3 landed);
                 if (landed == Vector3.Zero) landed = normal;
                 c.Falling = false;
-                c.Dropping = false;
+                bool unfloored = c.Unfloored;
+                c.Dropping = c.Unfloored = false;
                 c.Velocity = Vector3.Zero;
                 c.CrawlSpeed = 0f;
                 c.Facing = SpaceMath.Frame(-c.Facing.Z, landed);
                 c.Position = next - landed * clr;
                 SyncYaw(c);
+                if (unfloored) w.Landed(c, MathF.Max(0f, -v.Dot(landed)));
                 return;
             }
         }
@@ -394,7 +408,7 @@ public static class Crawl
             c.Position = c.LastFirm;
             c.Facing = SpaceMath.Frame(-c.Facing.Z, c.LastFirmNormal);
             c.Velocity = Vector3.Zero;
-            c.Falling = false;
+            c.Falling = c.Unfloored = false;
         }
     }
 

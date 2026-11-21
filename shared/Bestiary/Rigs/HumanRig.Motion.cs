@@ -221,6 +221,12 @@ public sealed partial class HumanRig
     /// <summary>Whether the dead body has come to rest (and stays as it lies).</summary>
     public bool Settled => _doll?.Settled == true;
 
+    /// <summary>The world's pull on the limp body, m/s².</summary>
+    public float Gravity = 9.8f;
+
+    /// <summary>What the body lay on went: it falls again, limp, on to whatever is below.</summary>
+    public void Unsettle() => _doll?.Wake();
+
     /// <summary>Where each joint is this frame, for the ragdoll to start from: see <see cref="Doll"/> for the order.</summary>
     readonly Vector3[] _joints = new Vector3[Doll.Count], _jointsBefore = new Vector3[Doll.Count];
     bool _jointsKnown;

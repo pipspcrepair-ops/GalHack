@@ -461,7 +461,7 @@ public sealed partial class Town
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
         p.Gait += step;
-        Vector3 heading = next;
+        Vector3 heading = next, was = p.Pos;
         while (step > 0f && r.Leg < way.Count)
         {
             Vector3 to = way[r.Leg], d = to - p.Pos;
@@ -472,6 +472,7 @@ public sealed partial class Town
             heading = d;
             step = 0f;
         }
+        OnLand(p, was, dt);
         if (Flat(heading) > 0.01f) p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-heading.X, -heading.Z), 5f * dt);
         p.Sitting = false;
         return r.Leg >= way.Count;

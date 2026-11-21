@@ -100,6 +100,7 @@ public partial class DeepSite : Node3D
     public static DeepSite Create(WildlifePatch patch, WildSim sim, string name)
     {
         var site = new DeepSite { Name = name, Patch = patch, Sim = sim };
+        patch.Rule(sim);
         site._creatures = new Node3D { Name = "Creatures" };
         site.AddChild(site._creatures);
         site._lairs = new Node3D { Name = "Lairs" };
