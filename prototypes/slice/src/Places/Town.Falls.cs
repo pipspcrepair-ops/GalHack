@@ -169,12 +169,16 @@ public sealed partial class Town
         float reach = p.FallSpeed * dt + 0.5f * Pull * dt * dt + 0.05f;
         // What they come down on holds them as standing does (Footed): under their middle, or under three of the rest; an edge
         // under less of them they go past (off it), never caught on it.
-        float ground = float.NegativeInfinity;
+        // (On what is under their middle when there is something; else the highest of the rest, if under three of them.)
+        float ground = float.NegativeInfinity, rest = float.NegativeInfinity;
         int under = 0;
-        bool middle = false;
         for (int i = 0; i < 5; i++)
-            if (Top(p.Pos + Foot(p, i), 0.5f, reach) is float top) (ground, under, middle) = (MathF.Max(ground, top), under + 1, middle || i == 0);
-        if (!middle && under < 3) ground = float.NegativeInfinity;
+        {
+            if (Top(p.Pos + Foot(p, i), 0.5f, reach) is not float top) continue;
+            if (i == 0) ground = top;
+            else (rest, under) = (MathF.Max(rest, top), under + 1);
+        }
+        if (float.IsNegativeInfinity(ground) && under >= 3) ground = rest;
         // Water takes them: they go in, and stand in it or tread it (its floor under them, or chest-deep), unhurt by it.
         bool wet = false;
         if (_places?.Zone.Planet?.WaterSurfaceAt(World(p.Pos)) is float surface)
@@ -202,13 +206,13 @@ public sealed partial class Town
     /// <summary>Falling past something beside them (a wall's top, a beam, the edge of the hole): held off it sideways, never through it.</summary>
     void OffSides(Person p)
     {
-        float r = BodyRadius(p), h = MathF.Max(2f * r, Height(p) - 0.35f);
+        float r = BodyRadius(p), h = MathF.Max(2f * r, Height(p) - 0.25f);
         (_body.Radius, _body.Height) = (r, h);
         _bodyQuery ??= new PhysicsShapeQueryParameters3D { Shape = _body, CollisionMask = Layers.World | Layers.Hull | Layers.Interior };
         var space = _view.GetWorld3D().DirectSpaceState;
         for (int k = 0; k < 6; k++)
         {
-            _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.35f + h * 0.5f)));
+            _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);
             if (rest.Count == 0) return;
             Vector3 n = (Vector3)rest["normal"] with { Y = 0f };
@@ -228,7 +232,11 @@ public sealed partial class Town
         if (p.Dead) return;
         // Startled by it and shaken (their mood), and on at once from where they landed, by a way from there; out on a run, home.
         (p.StartleFor, p.Wait, p.Refuge, p.ProgressAt, p.StuckFor) = (0.9f, 0f, -1, p.Pos, 0f);
+        // (Where they were bound, by a way from here; with no floor left there, somewhere else.)
         if (p.Run != null) p.ScaredFor = MathF.Max(p.ScaredFor, 4f);
+        else if (p.Spot >= 0 && Whole(p.Spot)) GoTo(p, p.Spot);
+        else Next(p);
+        if (p.Run == null && p.Asked < 0 && p.Path is not { Count: > 0 }) p.Wait = 0.5f; // (no way there from here: soon somewhere else)
         p.Feel.Hit(MoodEvent.Harm);
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
     }

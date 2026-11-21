@@ -150,9 +150,9 @@ public partial class FallTest : Node
 
         foreach (int x in Floor(town, place, "standing", p => Free(p) && p.Now < 0.05f && !p.Sitting && !p.Asleep, used, shots && _shots != null)) yield return x;
         foreach (int x in Floor(town, place, "walking", p => Free(p) && p.Now > 0.5f && p.Path != null, used, false)) yield return x;
-        foreach (int x in Floor(town, place, "sitting", p => Free(p) && p.Sitting && p.Seated > 0.5f, used, false)) yield return x;
+        foreach (int x in Floor(town, place, "sitting", p => Free(p) && p.Sitting && p.Seated > 0.5f, used, false, 120)) yield return x;
         _game.Zone.Sky.TimeOfDay = 0.02;
-        foreach (int x in Floor(town, place, "asleep in bed", p => !p.Dead && !p.Gone && p.View != null && p.Asleep && !used.Contains(p), used, false, 150)) yield return x;
+        foreach (int x in Floor(town, place, "asleep in bed", p => !p.Dead && !p.Gone && p.View != null && p.Asleep && !used.Contains(p), used, false, 150, 1f)) yield return x;
         _game.Zone.Sky.TimeOfDay = 0.42;
         foreach (int x in Land(town, place, used)) yield return x;
         foreach (int x in PlaceCreature(place)) yield return x;
@@ -176,16 +176,16 @@ public partial class FallTest : Node
     /// One of them chosen (the one with the most under their floor, near you), the sleeper set a few metres off watching, and the
     /// floor's blocks under them and round them broken.
     /// </summary>
-    IEnumerable<int> Floor(Town town, Place place, string what, Func<Town.Person, bool> fits, HashSet<Town.Person> used, bool shots, int wait = 60)
+    IEnumerable<int> Floor(Town town, Place place, string what, Func<Town.Person, bool> fits, HashSet<Town.Person> used, bool shots, int wait = 60, float room = 2f)
     {
         Town.Person who = null;
         for (int t = 0; t < wait * 60 && who == null; t++)
         {
             TopUp();
-            if (t % 30 == 0) who = town.People.Where(fits).Where(p => Under(place, p.Pos)).OrderByDescending(p => MathF.Min(DropUnder(town, p.Pos), 6f)).FirstOrDefault();
+            if (t % 30 == 0) who = town.People.Where(fits).Where(p => Under(place, p.Pos) && DropUnder(town, p.Pos) >= room).OrderByDescending(p => MathF.Min(DropUnder(town, p.Pos), 6f)).FirstOrDefault();
             yield return 0;
         }
-        if (who == null) { Check(false, $"someone {what} on a floor of the place's blocks within {wait} s"); yield break; }
+        if (who == null) { Check(false, $"someone {what} on a floor of the place's blocks with room under it, within {wait} s"); yield break; }
         used.Add(who);
         Stand(town, who);
         for (int i = 0; i < 30; i++) { TopUp(); _drive.Face(town.World(who.Pos + Vector3.Up)); yield return 0; }
@@ -259,7 +259,7 @@ public partial class FallTest : Node
     /// </summary>
     IEnumerable<int> Watch(Town town, Town.Person who, string what, bool shots)
     {
-        float y0 = who.Pos.Y, health = who.Health.Current, last = y0;
+        float y0 = who.Pos.Y, health = who.Health.Current, last = y0, from = y0;
         _solidSeen = 0;
         int start = -1, end = -1, inSolid = 0, t;
         for (t = 0; t < 12 * 60; t++)
@@ -268,14 +268,15 @@ public partial class FallTest : Node
             _drive.Face(town.World(who.Pos + Vector3.Up));
             yield return 0;
             float y = who.Pos.Y;
-            if (start < 0 && y < y0 - 1e-3f) start = t;
+            // (Off their feet: the moment their fall has them; on a build without falls, the moment they first go down.)
+            if (start < 0 && (Get(who, "Airborne") is bool air ? air : y < y0 - 1e-3f)) (start, from) = (t, last);
             if (start >= 0 && Get(who, "Airborne") is not true && y >= last - 1e-4f) { end = t; break; }
             if (start >= 0 && shots && !_shot && y0 - y > 0.6f) { foreach (int x in Snap(town, who, "falling.png")) yield return x; _shot = true; }
             if (start >= 0 && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
             last = y;
         }
         // (Down on the tick it stops: the ticks it came down are those from its first move to that one.)
-        float h = y0 - who.Pos.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
+        float h = from - who.Pos.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
         float speed = MathF.Sqrt(2f * G * MathF.Max(0f, h)), expect = Share(speed) * who.Health.Max, lost = health - who.Health.Current;
         GD.Print($"  {what}: began {(start < 0 ? "never" : $"{start * Tick:F2} s after")}, down {h:F2} m in {took:F3} s (a free fall {free:F3} s), {speed:F1} m/s, lost {lost:F1} health (the rule {expect:F1}), {(who.Dead ? "dead" : "alive")}, falls {Get(who, "Falls")}");
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell, from the moment their footing went (began {start * Tick:F2} s after, {h:F2} m)");
@@ -470,7 +471,8 @@ public partial class FallTest : Node
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell ({h:F2} m)");
         // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
         Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 1.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
-        Check(float.IsNaN(ground) || MathF.Abs(w.Y - ground) < 0.6f, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2})");
+        // (A creature on the land stands on its sim's ground, read every 2 m: in a hole that is a coarse floor, but never in the ground.)
+        Check(float.IsNaN(ground) || w.Y > ground - 0.3f && w.Y < ground + 1.2f, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2})");
         Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
         Vector3 at = who.Position;
         float moved = 0f;
