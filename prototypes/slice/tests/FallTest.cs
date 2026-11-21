@@ -152,6 +152,8 @@ public partial class FallTest : Node
         {
             double Ms() => Get(town, "FallMs") is double v ? v : 0.0;
             double ms0 = Ms(), last = ms0;
+            int Fell() => town.People.Sum(p => Get(p, "Falls") is int f ? f : 0);
+            int fell0 = Fell();
             var frames = new List<double>(600);
             for (int i = 0; i < 600; i++) { TopUp(); yield return 0; frames.Add(Ms() - last); last = Ms(); }
             frames.Sort();
@@ -160,7 +162,7 @@ public partial class FallTest : Node
             // (The worst single frame is told, not judged: a timer read across a thread switch can say anything.)
             Check(each < 0.05 && p99 < 0.1, $"looking under them costs well under 0.1 ms a frame ({each:F4} ms a frame on average, {p99:F4} ms in 99 frames of 100, {worst:F4} ms at the worst)");
             int rays = (int)Get(town, "FallRays") - rays0, checks = (int)Get(town, "FallChecks") - checks0;
-            GD.Print($"  (the sweep, nothing breaking: {checks / 10f:F1} looks and {rays / 10f:F1} rays a second over {town.People.Count(p => !p.Dead)} people, {town.People.Count(p => !p.Dead && (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() < 60f)} within its reach)");
+            GD.Print($"  (the sweep, nothing breaking: {Fell() - fell0} fell meanwhile, {checks / 10f:F1} looks and {rays / 10f:F1} rays a second over {town.People.Count(p => !p.Dead)} people, {town.People.Count(p => !p.Dead && (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() < 60f)} within its reach)");
         }
 
         foreach (int x in Floor(town, place, "standing", p => Free(p) && p.Now < 0.05f && !p.Sitting && !p.Asleep, used, shots && _shots != null)) yield return x;
@@ -440,7 +442,7 @@ public partial class FallTest : Node
     {
         // (One with nothing over them all the way up: they come down where they stood, the whole height.)
         bool Open(Town.Person p) => _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(town.World(p.Pos + Vector3.Up * (height + 1f)), town.World(p.Pos + Vector3.Up * 0.3f), Layers.World | Layers.Hull | Layers.Interior)).Count == 0;
-        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep && town.CanStand(p.Pos) && Open(p)).FirstOrDefault();
+        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep && town.CanStand(p.Pos) && Open(p) && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { p }) is not true).FirstOrDefault(); // (not a lookout set on a roof with no way down)
         if (who == null) { Check(false, $"someone to set {height:F0} m up"); yield break; }
         used.Add(who);
         Stand(town, who);

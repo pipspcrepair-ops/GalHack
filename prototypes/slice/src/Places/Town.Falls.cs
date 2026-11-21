@@ -221,7 +221,11 @@ public sealed partial class Town
         p.Pos.Y = y;
         OffSides(p);
         p.FallSpeed = speed;
-        if (down) Land(p, speed, wet);
+        if (down)
+        {
+            OffSides(p, 6); // (down beside a step or a wall's foot: stood clear of it)
+            Land(p, speed, wet);
+        }
         else if (p.LastFallTime > 20f)
         {
             // Fallen out of everything (nothing built under them to land on): back where they last stood.
@@ -234,13 +238,13 @@ public sealed partial class Town
     PhysicsShapeQueryParameters3D _bodyQuery;
 
     /// <summary>Falling past something beside them (a wall's top, a beam, the edge of the hole): held off it sideways, never through it.</summary>
-    void OffSides(Person p)
+    void OffSides(Person p, int most = 3)
     {
         float r = BodyRadius(p), h = MathF.Max(2f * r, Height(p) - 0.25f);
         (_body.Radius, _body.Height) = (r, h);
         _bodyQuery ??= new PhysicsShapeQueryParameters3D { Shape = _body, CollisionMask = Layers.World | Layers.Hull | Layers.Interior };
         var space = _view.GetWorld3D().DirectSpaceState;
-        for (int k = 0; k < 3; k++) // (0.15 m a step at most, a run's: eased off it, never thrown)
+        for (int k = 0; k < most; k++) // (0.15 m a step at most falling, a run's: eased off it, never thrown)
         {
             _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);
@@ -465,7 +469,7 @@ public sealed partial class Town
                         blocked |= _nav.Solid(mid + PInt3.Up) || _nav.Solid(mid + PInt3.Up * 2);
                     }
                     if (blocked) continue;
-                    for (int dy = 1; dy <= 6; dy++)
+                    for (int dy = 1; dy <= 14; dy++)
                     {
                         var q = new PInt3(c.X + dx, c.Y - dy, c.Z + dz);
                         if (_nav.Solid(q)) break;
