@@ -548,8 +548,8 @@ public partial class FallTest : Node
         if (start >= 0 && end >= 0 && h > 0.3f) _proven.Add(kind);
         // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
         Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 1.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
-        // (A creature on the land stands on its sim's ground, read every 2 m: in a hole that is a coarse floor, but never in the ground.)
-        Check(float.IsNaN(ground) || w.Y > ground - 0.3f && w.Y < ground + 1.5f, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2})");
+        // (On the land a creature stands on the ground as dug, by the metre.)
+        Check(float.IsNaN(ground) || MathF.Abs(w.Y - ground) < 0.35f, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2})");
         Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
         Vector3 at = who.Position;
         float moved = 0f;
