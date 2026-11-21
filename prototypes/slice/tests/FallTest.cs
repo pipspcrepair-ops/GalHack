@@ -105,7 +105,7 @@ public partial class FallTest : Node
         for (int i = 0; i < worlds; i++)
             foreach (int x in World(i == 0)) yield return x;
         // Every case shown on at least one of the worlds (a world may have nobody sitting, or no creature near, at the time).
-        foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "into water", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height" })
+        foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "into deep water", "into shallow water", "a creature into deep water", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height" })
             Check(_proven.Contains(kind), $"shown falling on at least one world: {kind}");
     }
 
@@ -172,7 +172,9 @@ public partial class FallTest : Node
         foreach (int x in Floor(town, place, "asleep in bed", p => !p.Dead && !p.Gone && p.View != null && p.Asleep && !used.Contains(p), used, false, 150, 1f)) yield return x;
         _game.Zone.Sky.TimeOfDay = 0.42;
         foreach (int x in Land(town, place, used)) yield return x;
-        foreach (int x in Water(town, used)) yield return x;
+        foreach (int x in Water(town, used, deep: true)) yield return x;
+        foreach (int x in Water(town, used, deep: false)) yield return x;
+        foreach (int x in WaterCreature(town)) yield return x;
         foreach (int x in PlaceCreature(place)) yield return x;
         foreach (int x in Creatures(small: true)) yield return x;
         foreach (int x in Creatures(small: false)) yield return x;
@@ -180,7 +182,6 @@ public partial class FallTest : Node
         // (High enough to kill on this world: a landing at its safe speed and 26 m/s more.)
         float lethal = MathF.Pow(_game.Zone.Physics.Rules.Contacts.PlayerSafeSpeed + 26f, 2f) / (2f * G);
         foreach (int x in High(town, place, used, lethal)) yield return x;
-        if (Get(town, "FallRescues") is int rescued) Check(rescued == 0, $"nobody fell with nothing under them to land on ({rescued} put back where they stood)");
     }
 
     /// <summary>The drop under a point of the place (local feet): from the floor's underside down to what is below, m (by the colliders).</summary>
@@ -397,45 +398,103 @@ public partial class FallTest : Node
         foreach (int x in Watch(town, who, "out on the land", false)) yield return x;
     }
 
-    /// <summary>
-    /// One of the people over water near the settlement (a lake, a river, the sea), as if off a bank that went: into it, standing on
-    /// its floor where it is shallow or treading it chest-deep, unhurt by it, never in anything solid.
-    /// </summary>
-    IEnumerable<int> Water(Town town, HashSet<Town.Person> used)
+    /// <summary>Water near the settlement (world): deep enough to swim in (over two metres) or shallow enough to wade (a hand to half a metre); null if none within 250 m.</summary>
+    (Vector3 At, float Top, float Floor)? WaterNear(Town town, bool deep)
     {
-        Vector3 o = town.World(Vector3.Zero), at = default;
-        float? surface = null;
-        for (float r = 20f; r <= 250f && surface == null; r += 10f)
-            for (int k = 0; k < 24 && surface == null; k++)
+        Vector3 o = town.World(Vector3.Zero);
+        for (float r = 20f; r <= 250f; r += 6f)
+            for (int k = 0; k < 36; k++)
             {
-                at = o + new Vector3(MathF.Sin(k * MathF.Tau / 24f), 0f, MathF.Cos(k * MathF.Tau / 24f)) * r;
-                surface = _game.Zone.Planet.WaterSurfaceAt(at);
+                Vector3 at = o + new Vector3(MathF.Sin(k * MathF.Tau / 36f), 0f, MathF.Cos(k * MathF.Tau / 36f)) * r;
+                if (_game.Zone.Planet.WaterSurfaceAt(at) is not float top) continue;
+                float floor = GroundNow(at.X, at.Z), depth = top - floor;
+                if (deep ? depth > 2.2f : depth is > 0.2f and < 0.5f) return (at, top, floor);
             }
-        if (surface is not float top) { GD.Print("  (no water within 250 m of the settlement: not tried here)"); yield break; }
-        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep).FirstOrDefault();
-        if (who == null) { Check(false, "someone to send over water"); yield break; }
-        used.Add(who);
-        float bottom = GroundNow(at.X, at.Z);
-        _game.Survivor.PlaceOutside(((at + Vector3.Back * 6f) with { Y = MathF.Max(top, _game.Zone.Planet.GroundHeight(at.X, at.Z + 6f)) + 1f }).ToNumerics());
-        for (int i = 0; i < 120; i++) { TopUp(); yield return 0; }
-        GD.Print($"  -- one set 6 m over water ({who.Job}; the water {top - bottom:F1} m deep) --");
-        (who.Sitting, who.Asleep, who.Path) = (false, false, null);
-        who.Pos = town.Local(at with { Y = top + 6f });
-        // (Out there on an errand, so they are stepped there whether the place stands or not.)
-        who.Run = new ScavRun { Out = new List<Vector3> { who.Pos }, Round = new List<Vector3> { who.Pos }, Way = new List<Vector3> { who.Pos }, Find = who.Pos };
-        Set(who, "CheckFor", 1f);
-        float health = who.Health.Current;
-        int t = 0;
-        for (; t < 6 * 60 && (t < 2 || Get(who, "Airborne") is true); t++) { TopUp(); yield return 0; }
-        Vector3 w = town.World(who.Pos);
-        float tread = top - who.Figure.Height * 0.75f, expect = MathF.Max(tread, bottom);
-        GD.Print($"  into water: feet at {w.Y:F2} (the surface {top:F2}, its floor {bottom:F2}: {(bottom > tread ? "wading" : "treading")} at {expect:F2}), lost {health - who.Health.Current:F1}, falls {Get(who, "Falls")}");
-        bool down = MathF.Abs(w.Y - expect) < 0.35f && Get(who, "Airborne") is false;
-        Check(down, $"into water: in it, {(bottom > tread ? "standing on its floor" : "treading it chest-deep")} ({w.Y:F2} against {expect:F2})");
-        Check(health - who.Health.Current < 0.5f, $"into water: the water takes the fall ({health - who.Health.Current:F1} lost)");
-        Check(!InSolid(w, 0.2f), "into water: never in anything solid");
-        if (down) _proven.Add("into water");
+        return null;
     }
+
+    /// <summary>
+    /// One of the people dropped into water near the settlement (as if off a bank that went): unhurt by it, they swim (deep) or wade
+    /// (shallow) for a bank, never standing on the water, and climb or walk out onto it, never with a leap; then on from there.
+    /// </summary>
+    IEnumerable<int> Water(Town town, HashSet<Town.Person> used, bool deep)
+    {
+        string what = deep ? "into deep water" : "into shallow water";
+        if (WaterNear(town, deep) is not var (at, top, floor)) { GD.Print($"  (no {(deep ? "deep" : "shallow")} water within 250 m of the settlement: not tried here)"); yield break; }
+        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep).FirstOrDefault();
+        if (who == null) { Check(false, $"someone to drop {what}"); yield break; }
+        used.Add(who);
+        _game.Survivor.PlaceOutside(((at + Vector3.Back * 8f) with { Y = MathF.Max(top, _game.Zone.Planet.GroundHeight(at.X, at.Z + 8f)) + 1f }).ToNumerics());
+        for (int i = 0; i < 120; i++) { TopUp(); yield return 0; }
+        GD.Print($"  -- one dropped 4 m {what} ({who.Job}; {top - floor:F1} m deep) --");
+        (who.Sitting, who.Asleep, who.Path) = (false, false, null);
+        who.Pos = town.Local(at with { Y = top + 4f });
+        // (Out there as if on an errand home, so they are stepped there whether the place stands or not.)
+        Vector3 home = town.SpotAt(0);
+        who.Run = new ScavRun { Out = new List<Vector3> { home }, Round = new List<Vector3> { home }, Way = new List<Vector3> { home }, Find = home, Home = true };
+        Set(who, "CheckFor", 1f);
+        float health = who.Health.Current, last = who.Pos.Y, rise = 0f, swimOff = 0f;
+        int onWater = 0, swum = 0, t;
+        bool entered = false, outOn = false;
+        for (t = 0; t < 120 * 60; t++)
+        {
+            TopUp();
+            yield return 0;
+            Vector3 w = town.World(who.Pos);
+            float? s = _game.Zone.Planet.WaterSurfaceAt(w);
+            float bottom = GroundNow(w.X, w.Z);
+            bool inWater = s is float st && st - bottom > 0.15f, swimming = Get(who, "Swimming") is true, wading = Get(who, "Wading") is true;
+            if (!entered) { entered = Get(who, "Airborne") is false && t > 1; last = who.Pos.Y; continue; }
+            rise = MathF.Max(rise, who.Pos.Y - last);
+            last = who.Pos.Y;
+            // In it, nobody stands on the water: swimming, the head at the surface (feet a swimming depth under it); else on its floor.
+            if (inWater && swimming) { swum++; swimOff = MathF.Max(swimOff, MathF.Abs(s.Value - w.Y - who.Figure.Height * _game.Zone.Physics.Rules.Water.SwimDepth)); }
+            else if (inWater && w.Y > bottom + 0.2f) onWater++;
+            if (!inWater && !swimming && !wading && MathF.Abs(w.Y - bottom) < 0.3f) { outOn = true; break; }
+        }
+        float lost = health - who.Health.Current;
+        GD.Print($"  {what}: {(outOn ? $"out on the bank after {t / 60f:F1} s" : "still in it")} ({town.World(who.Pos)}), {swum / 60f:F1} s swimming (the head off the surface by {swimOff:F2} m at most), {onWater} ticks standing on the water, the most risen in a tick {rise:F3} m, lost {lost:F1}");
+        Check(entered && lost < 0.5f, $"{what}: in it, unhurt by the fall ({lost:F1} lost)");
+        Check(onWater == 0 && (!deep || swum > 0 && swimOff < 0.3f), $"{what}: never standing on the water ({onWater} ticks), {(deep ? $"swimming with the head at the surface ({swimOff:F2} m off)" : "wading on its floor")}");
+        Check(outOn, $"{what}: out onto a bank within two minutes");
+        Check(rise < 0.05f, $"{what}: out on foot, never with a leap (the most risen in a tick {rise:F3} m)");
+        if (outOn && onWater == 0) _proven.Add(what);
+    }
+
+    /// <summary>One of the land's creatures that swims, dropped into deep water: it swims for a bank and walks out, never with a leap.</summary>
+    IEnumerable<int> WaterCreature(Town town)
+    {
+        if (WaterNear(town, deep: true) is not var (at, top, floor)) { GD.Print("  (no deep water within 250 m: no creature dropped in)"); yield break; }
+        _game.Survivor.PlaceOutside(((at + Vector3.Back * 8f) with { Y = MathF.Max(top, _game.Zone.Planet.GroundHeight(at.X, at.Z + 8f)) + 1f }).ToNumerics());
+        for (int i = 0; i < 240; i++) { TopUp(); yield return 0; }
+        WildlifePatch patch = _game.Zone.Wildlife;
+        Creature who = patch.Sim.Creatures.Where(c => !c.Dead && !c.Removed && c.Space == null && !c.Species.Flies && c.Species.Rig is not (RigKind.GasBag or RigKind.Swarm or RigKind.Hopper)
+            && c.Species.Domestic == DomesticKind.None && Shore.Swims(c.Species)).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
+        if (who == null) { GD.Print("  (no creature that swims in the patch: none dropped in)"); yield break; }
+        GD.Print($"  -- a creature dropped into deep water ({who.Species.Name}, {who.Species.BodyLength:F1} m; {top - floor:F1} m deep) --");
+        who.Position = patch.PatchLocal(at with { Y = top + 3f });
+        who.Velocity = Vector3.Zero;
+        float last = who.Position.Y, rise = 0f;
+        int swum = 0, t;
+        bool entered = false, outOn = false;
+        for (t = 0; t < 120 * 60 && patch.Sim.Creatures.Contains(who) && !who.Dead; t++)
+        {
+            TopUp();
+            yield return 0;
+            Vector3 w = patch.WorldOf(who);
+            bool inWater = _game.Zone.Planet.WaterSurfaceAt(w) is float s && s - GroundNow(w.X, w.Z) > 0.15f;
+            if (!entered) { entered = !who.Falling && t > 1; last = who.Position.Y; continue; }
+            rise = MathF.Max(rise, who.Position.Y - last);
+            last = who.Position.Y;
+            if (inWater && who.Position.Y - patch.Sim.Terrain.Height(who.Position.X, who.Position.Z) > 0.3f) swum++;
+            if (!inWater) { outOn = true; break; }
+        }
+        GD.Print($"  a creature in deep water: {(outOn ? $"out on the bank after {t / 60f:F1} s" : who.Dead ? "drowned" : "still in it")}, {swum / 60f:F1} s swimming, the most risen in a tick {rise:F3} m");
+        Check(outOn, "a creature that swims, dropped into deep water: out onto a bank within two minutes");
+        Check(rise < 0.06f, $"a creature out of the water on foot, never with a leap (the most risen in a tick {rise:F3} m)");
+        if (outOn) _proven.Add("a creature into deep water");
+    }
+
 
     /// <summary>One of the people set high over the ground (as if on a ledge that went): hurt by the rule, killed by a long drop, limp.</summary>
     IEnumerable<int> High(Town town, Place place, HashSet<Town.Person> used, float height)

@@ -36,6 +36,7 @@ public static class Locomotion
             Fall(w, c, dt);
             return;
         }
+        if (c.Space == null && !c.Falling && !(c.Species.Flies && !c.Landed) && Swim(w, c, dt)) return;
         if (Unfooted(w, c))
         {
             FreeFall(w, c, dt);
@@ -133,15 +134,66 @@ public static class Locomotion
     /// <summary>Falling under the world's pull (<see cref="Drop"/>) to the ground under it, landing on its feet (<see cref="WildSim.Landed"/>).</summary>
     static void FreeFall(WildSim w, Creature c, float dt)
     {
-        float y = c.Position.Y, speed = MathF.Max(0f, -c.Velocity.Y);
-        bool down = Drop.Step(ref y, ref speed, Footing(w, c, c.Position.X, c.Position.Z), w.Gravity, dt);
+        float y = c.Position.Y, speed = MathF.Max(0f, -c.Velocity.Y), ground = Footing(w, c, c.Position.X, c.Position.Z);
+        // (Into water: down to where it floats, or to the bottom if it can stand there or sinks; the water takes the blow.)
+        bool wet = w.WaterAt?.Invoke(c.Position.X, c.Position.Z) is float top && top > ground;
+        if (wet && Shore.Swims(c.Species)) ground = MathF.Max(ground, w.WaterAt(c.Position.X, c.Position.Z).Value - c.Species.BodyHeight * w.SwimShare);
+        bool down = Drop.Step(ref y, ref speed, ground, w.Gravity, dt);
         c.Position = new Vector3(c.Position.X, y, c.Position.Z);
         c.Velocity = new Vector3(0f, -speed, 0f);
         if (!down) return;
         c.Falling = false;
         c.Velocity = Vector3.Zero;
-        w.Landed(c, speed);
+        w.Landed(c, wet ? 0f : speed);
     }
+
+    /// <summary>
+    /// In water over the depth it wades in: a swimmer swims (its back at the surface) for the nearest bank it can climb out on and
+    /// walks up out of it; what can't swim walks the bottom for it where its head is clear, and drowns where it isn't. Out of its
+    /// depth with no bank in reach, it treads water and looks again. True while the water has it (and its own mind waits).
+    /// </summary>
+    static bool Swim(WildSim w, Creature c, float dt)
+    {
+        if (w.WaterAt?.Invoke(c.Position.X, c.Position.Z) is not float top || c.Position.Y > top + 0.05f) // (over it, it falls in first: Unfooted)
+        {
+            c.Shoreward = null;
+            return false;
+        }
+        float bottom = Footing(w, c, c.Position.X, c.Position.Z), depth = top - bottom, h = c.Species.BodyHeight;
+        if (c.Shoreward == null && depth <= h * w.WadeShare) return false; // (wading: on its feet as on land)
+        bool swims = Shore.Swims(c.Species), deep = depth > h * w.SwimShare;
+        if (c.Shoreward == null && w.Time - c.ShorewardAt > 5f)
+        {
+            c.ShorewardAt = w.Time;
+            c.Shoreward = Shore.Nearest(c.Position, w.WaterAt, w.Terrain.Height, BankClimb(c), BankReach);
+        }
+        if (!swims && depth > h)
+        {
+            // Out of its depth and too heavy to swim: it sinks, and drowns.
+            c.Position = c.Position with { Y = Mathf.MoveToward(c.Position.Y, bottom, 1.5f * dt) };
+            c.Velocity = Vector3.Zero;
+            w.Damage(c, c.Stats.MaxHealth * 0.12f * dt, null);
+            return true;
+        }
+        Vector3 to = c.Shoreward is { } bank ? WildSim.Flat(bank - c.Position) : Vector3.Zero;
+        float speed = to.LengthSquared() < 0.01f ? 0f : (swims && deep ? 0.6f : 0.4f) * c.Stats.WalkSpeed;
+        Vector3 dir = speed > 0f ? to.Normalized() : c.Forward;
+        Turn(c, dir, dt);
+        Vector3 p = c.Position + c.Forward * speed * dt;
+        p = Bound(w, p, ref dir);
+        // Its back at the surface where it swims; on the bottom where it wades out (up the bank at a walk, never a leap).
+        float floatAt = top - h * w.SwimShare, under = Footing(w, c, p.X, p.Z);
+        p.Y = swims && deep ? Mathf.MoveToward(c.Position.Y, MathF.Max(floatAt, under), 2f * dt) : under;
+        if (p.Y - c.Position.Y > StrideDrop) p = c.Position with { Y = c.Position.Y + 1.5f * dt }; // (a step up out of it too high to stride: it clambers)
+        c.Velocity = c.Forward * speed;
+        c.Position = p;
+        if (w.WaterAt(p.X, p.Z) == null) c.Shoreward = null; // (out on the bank: its own way again)
+        return true;
+    }
+
+    /// <summary>How high over the water a bank may stand for a creature to climb out onto it (its own legs' reach), m; and how far it looks for one.</summary>
+    static float BankClimb(Creature c) => MathF.Max(0.5f, c.Species.Body.LegLength * 0.8f);
+    const float BankReach = 80f;
 
     /// <summary>Downed by a hard landing: it lies still, then rolls back onto its feet over its last moments.</summary>
     static void GetUp(Creature c, float dt)

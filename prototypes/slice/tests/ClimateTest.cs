@@ -514,7 +514,8 @@ public partial class ClimateTest : Node
 
         foreach (int x in IceWater(water)) yield return x;
 
-        // A land animal driven out over the water floats on it at the most, never sinks.
+        // A land animal out over deep water swims, its back at the surface (Locomotion.Swim), or too heavy to swim, sinks: it never
+        // stands on the water.
         WildlifePatch patch = Zone.Wildlife;
         patch.FinishFollowing();
         foreach (int x in _drive.Wait(5)) yield return x;
@@ -522,9 +523,11 @@ public partial class ClimateTest : Node
         if (patch.Fauna.Species.Count > 0 && patch.Sim.Terrain.Inside(local, 20f))
         {
             Species s = patch.Fauna.Species[0];
-            Creature c = patch.Sim.Spawn(s, local);
-            float below = water.Y - patch.FromPatch(c.Position).Y;
-            Check(below <= WildlifePatch.Draught + 0.05f, $"a land animal over deep water floats: its feet {below:F2} m under the surface");
+            Creature c = patch.Sim.Spawn(s, local with { Y = water.Y - patch.Origin.Y });
+            foreach (int x in _drive.Wait(180)) yield return x;
+            float below = water.Y - patch.FromPatch(c.Position).Y, swim = s.BodyHeight * patch.Sim.SwimShare;
+            bool swims = Shore.Swims(s);
+            Check(c.Removed || (swims ? MathF.Abs(below - swim) < 0.35f : below > swim), $"a land animal over deep water {(swims ? "swims, its back at the surface" : "too heavy to swim, sinks")}: its feet {below:F2} m under the surface ({swim:F2} swimming)");
             c.Removed = true;
         }
     }

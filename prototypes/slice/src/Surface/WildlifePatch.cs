@@ -201,14 +201,8 @@ public partial class WildlifePatch : Node3D
     static (Terrain, NavGrid, Vector3, List<(long, Obstacle)>) Bake(PlanetWorld planet, Vector3 origin, float halfSize, Task<List<PlanetSurface.Terrain.FloraSolid>> woods)
     {
         float ox = origin.X, oz = origin.Z;
-        // Land animals don't sink: over water their ground is the surface, less a body's draught, so at
-        // the very most one driven in floats. Pure generator reads: safe on a worker.
-        float Height(float x, float z)
-        {
-            double wx = Mathx.WrapX(ox + x, planet.Width), wz = Mathx.Wrap(oz + z, planet.Height);
-            float ground = planet.GroundHeight(wx, wz);
-            return planet.Source.WaterSurfaceAt(wx, wz, out float surface) ? MathF.Max(ground, surface - Draught) : ground;
-        }
+        // The ground itself, under water too: what is in water swims, wades or sinks (Locomotion.Swim). Pure generator reads: safe on a worker.
+        float Height(float x, float z) => planet.GroundHeight(Mathx.WrapX(ox + x, planet.Width), Mathx.Wrap(oz + z, planet.Height));
         var terrain = new Terrain(Height, halfSize);
         var nav = new NavGrid(terrain.HalfSize, 3f);
         // Creatures keep out of the sea and the rivers, coming no nearer than the edge to drink.
@@ -218,9 +212,6 @@ public partial class WildlifePatch : Node3D
                 nav.AddObstacle(new Vector3(x, 0f, z), 3.5f);
         return (terrain, nav, origin, Wood(planet, nav, origin, terrain.HalfSize, woods?.Result));
     }
-
-    /// <summary>How far below the surface a land animal's feet hang when it floats, metres.</summary>
-    public const float Draught = 0.35f;
 
     /// <summary>
     /// A new patch takes over: creatures standing inside it come across where they stand, and
@@ -330,6 +321,7 @@ public partial class WildlifePatch : Node3D
         Origin = origin;
         Position = origin;
         Rule(sim);
+        sim.WaterAt = (x, z) => _planet.WaterSurfaceAt(new Vector3(origin.X + x, 0f, origin.Z + z));
         // (Baked from the planet as it was made: where it has been dug since, read again here.)
         foreach (TerrainDigging.Terrain.Int3 ch in _planet.Terrain.Store.EditedChunks)
         {
@@ -620,6 +612,7 @@ public partial class WildlifePatch : Node3D
         sim.Gravity = Zone.Physics.Zone.Strength;
         GalHack.Physics.PhysicsRules rules = Zone.Physics.Rules;
         sim.FallHurt = speed => Slice.Player.Survivor.FallShare(rules, speed);
+        (sim.SwimShare, sim.WadeShare) = (rules.Water.SwimDepth, rules.Water.WadeDepth); // (as the sleeper swims and wades)
     }
 
     /// <summary>The ground dug or blasted away: the creatures' ground over it read again, so whatever stood there falls into the hole.</summary>
@@ -637,7 +630,7 @@ public partial class WildlifePatch : Node3D
 
     /// <summary>
     /// The creatures' ground over a stretch (patch frame) read again, a metre column at a time: where it has been dug, the column's
-    /// top as it stands (a body's draught under any water over it), so a hole has its own floor and its rim its own edge.
+    /// top as it stands, so a hole has its own floor and its rim its own edge.
     /// </summary>
     void Reground(Vector3 lo, Vector3 hi)
     {
@@ -649,7 +642,7 @@ public partial class WildlifePatch : Node3D
                 double wx = Mathx.WrapX(ox + x + 0.5f, _planet.Width), wz = Mathx.Wrap(oz + z + 0.5f, _planet.Height);
                 float ground = _planet.Terrain.GroundNow(wx, wz);
                 if (ground >= _planet.Source.SurfaceHeight(wx, wz) - 0.05f) continue;
-                dug.Add((x, z, _planet.Source.WaterSurfaceAt(wx, wz, out float surface) ? MathF.Max(ground, surface - Draught) : ground));
+                dug.Add((x, z, ground));
             }
         if (dug.Count > 0) Sim.Terrain.Dug(dug);
     }

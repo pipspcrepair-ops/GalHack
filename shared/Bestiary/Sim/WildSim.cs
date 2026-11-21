@@ -82,6 +82,9 @@ public sealed class WildSim
 
     /// <summary>The world's pull on whatever falls here, m/s² (the game sets its planet's).</summary>
     public float Gravity = 9.8f;
+    /// <summary>The water's surface over a point (sim frame; null on dry ground, and with no water known), and the shares of a body's height under it at which it swims, and below which it wades again (the game sets its own).</summary>
+    public Func<float, float, float?> WaterAt;
+    public float SwimShare = 0.7f, WadeShare = 0.55f;
     /// <summary>What a landing at a speed (m/s) costs, as a share of the body's health (the game's own fall rule; none without one).</summary>
     public Func<float, float> FallHurt;
     /// <summary>A creature came down from a fall at a speed (m/s).</summary>

@@ -666,7 +666,7 @@ public sealed partial class Town : IKeeper
         float away = (player - p.Pos).Length();
         p.Far = away > FarSchedule;
         // Nothing under them: falling, whatever they were at, every step till down (Town.Falls).
-        if ((p.Airborne || p.CheckFor > 0f) && Falling(p, p.Saved) || p.ClimbTo != null && Climb(p, p.Saved))
+        if ((p.Airborne || p.CheckFor > 0f) && Falling(p, p.Saved) || p.ClimbTo != null && Climb(p, p.Saved) || (p.Swimming || p.Wading) && Water(p, p.Saved))
         {
             Pose(p, who, away, p.Saved);
             p.Saved = 0f;
@@ -1560,7 +1560,7 @@ public sealed partial class Town : IKeeper
         {
             Feet = p.Pos,
             Yaw = p.Yaw,
-            Speed = p.Now,
+            Speed = p.Swimming ? MathF.Max(p.Now, 1.1f) : p.Now, // (swimming, the sleeper's stroke: never still)
             Walked = p.Gait,
             Sit = p.Seated,
             Work = p.Bent,
@@ -1578,6 +1578,7 @@ public sealed partial class Town : IKeeper
             Style = _style ??= Gestures.FriendlyStyle(_places.Zone.Wildlife.Life.World.Seed),
             Far = p.PoseAway >= 30f && !p.Engaged,
         });
+        if (p.Swimming) LayOut(p);
         p.LookFor = MathF.Max(0f, p.LookFor - dt);
         p.View.Sync(p.Pos, p.Yaw, p.Now, PoseKey(p));
         PoseWeapon(p);

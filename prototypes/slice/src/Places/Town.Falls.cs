@@ -50,9 +50,6 @@ public sealed partial class Town
     /// <summary>Looked under in the slow sweep only this near you (out beyond it there may be nothing built to collide with), m.</summary>
     const float SweepRange = 60f;
 
-    /// <summary>Falls broken off for want of anything under them, put back where they stood (tests: none).</summary>
-    public int FallRescues { get; private set; }
-
     /// <summary>Support checks made, rays cast for them (measurements).</summary>
     public int FallChecks { get; private set; }
     public int FallRays { get; private set; }
@@ -212,12 +209,12 @@ public sealed partial class Town
         // (Off the place's grid the land is under them as it stands, built to collide with or not.)
         if (!Memory.Inst.Blocks.InBounds(Cell(p.Pos)) && _places?.Zone.Planet is { } planet && World(p.Pos) is var w)
             ground = MathF.Max(ground, planet.Terrain.GroundNow(w.X, w.Z) - _origin.Y);
-        // Water takes them: they go in, and stand in it or tread it (its floor under them, or chest-deep), unhurt by it.
+        // Into water: down to where they swim, or to its floor where it is shallow enough to stand in; deep enough, it takes the blow.
         bool wet = false;
-        if (_places?.Zone.Planet?.WaterSurfaceAt(World(p.Pos)) is float surface)
+        if (Surface(p.Pos) is float water && water > ground)
         {
-            float tread = surface - _origin.Y - Height(p) * 0.75f;
-            if (tread > ground) (ground, wet) = (tread, true);
+            wet = water - ground > Wade(p);
+            ground = MathF.Max(ground, water - SwimDepth(p));
         }
         float y = p.Pos.Y, speed = p.FallSpeed;
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
@@ -228,12 +225,6 @@ public sealed partial class Town
         {
             OffSides(p, 6); // (down beside a step or a wall's foot: stood clear of it)
             Land(p, speed, wet);
-        }
-        else if (p.LastFallTime > 20f)
-        {
-            // Fallen out of everything (nothing built under them to land on): back where they last stood.
-            FallRescues++;
-            (p.Pos, p.Airborne, p.FallSpeed) = (p.FirmAt, false, 0f);
         }
     }
 
@@ -271,6 +262,7 @@ public sealed partial class Town
         if (share > 0f) Struck(p, share * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
         if (p.Dead) return;
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
+        if (InWaterAt(p.Pos)) { EnterWater(p); return; } // (in water: out of it first, Town.Water)
         // A step down (off a kerb, a pad's edge): on as they were, unshaken; out on a run their way goes on by itself.
         if (p.FirmAt.Y - p.Pos.Y < StepDown)
         {
@@ -309,6 +301,8 @@ public sealed partial class Town
     void OnLand(Person p, Vector3 was, float dt)
     {
         p.Clambering = false;
+        // (Walked into water deeper than they wade: out of it to the nearest bank, Town.Water; their way, planned round water, goes on after.)
+        if (Surface(p.Pos) is float top && top - Bottom(p.Pos) > Wade(p)) { EnterWater(p); return; }
         GalHack.Terrain.PlanetTerrain t = _places.Zone.Planet.Terrain;
         Vector3 w = World(p.Pos);
         var chunk = TerrainDigging.Terrain.ChunkStore.ChunkOf(t.Canonical(new TerrainDigging.Terrain.Int3((int)MathF.Floor(w.X), (int)MathF.Floor(w.Y), (int)MathF.Floor(w.Z))));

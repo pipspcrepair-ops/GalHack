@@ -304,6 +304,9 @@ public sealed class Creature
     public bool Dropping;
     /// <summary>Falling because what it stood on went (not a leap or a drop of its own): the landing hurts and frightens it.</summary>
     public bool Unfloored;
+    /// <summary>In water over its depth: the bank it makes for (sim frame; null: none found yet), and when it last looked for one.</summary>
+    public Vector3? Shoreward;
+    public float ShorewardAt = -999f;
     /// <summary>When it last came down from such a fall (sim time).</summary>
     public float FellAt = -999f;
     /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
