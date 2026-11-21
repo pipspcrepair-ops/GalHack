@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using GalHack.Physics;
 using Godot;
 using Wildlife;
@@ -165,9 +166,14 @@ public sealed partial class Town
     {
         p.LastFallTime += dt;
         float reach = p.FallSpeed * dt + 0.5f * Pull * dt * dt + 0.05f;
+        // What they come down on holds them as standing does (Footed): under their middle, or under three of the rest; an edge
+        // under less of them they go past (off it), never caught on it.
         float ground = float.NegativeInfinity;
+        int under = 0;
+        bool middle = false;
         for (int i = 0; i < 5; i++)
-            if (Top(p.Pos + Foot(p, i), 0.3f, reach) is float top) ground = MathF.Max(ground, top);
+            if (Top(p.Pos + Foot(p, i), 0.3f, reach) is float top) (ground, under, middle) = (MathF.Max(ground, top), under + 1, middle || i == 0);
+        if (!middle && under < 3) ground = float.NegativeInfinity;
         // Water takes them: they go in, and stand in it or tread it (its floor under them, or chest-deep), unhurt by it.
         bool wet = false;
         if (_places?.Zone.Planet?.WaterSurfaceAt(World(p.Pos)) is float surface)
@@ -242,6 +248,14 @@ public sealed partial class Town
 
     /// <summary>How fast someone clambers up out of a hole, m/s.</summary>
     const float Clamber = 1.2f;
+
+    /// <summary>Whether there is no walking anywhere from where someone stands: none of the town's spots on the walking grid from there (tests).</summary>
+    public bool Stranded(Person p)
+    {
+        if (Stand(Cell(p.Pos)) is not { } c) return true;
+        var reach = _nav.Reachable(c);
+        return !Spots.Any(s => reach.Contains(s.Cell));
+    }
 
     /// <summary>Whether a spot still stands by the place's blocks (its floor not broken away from under it): a refuge or a seat for the night only then.</summary>
     bool Whole(int spot)

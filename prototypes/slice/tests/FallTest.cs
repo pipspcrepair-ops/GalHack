@@ -292,7 +292,9 @@ public partial class FallTest : Node
             moved = MathF.Max(moved, new Vector2(who.Pos.X - at.X, who.Pos.Z - at.Z).Length());
             if (t % 60 == 0 && moved < 0.5f) GD.Print($"    ({t / 60} s: at {who.Pos}, run {(who.Run == null ? "none" : $"leg {who.Run.Leg}/{who.Run.Way.Count} home {who.Run.Home} searching {who.Run.Searching}")}, now {who.Now:F2}, clambering {Get(who, "Clambering")}, airborne {Get(who, "Airborne")}, spot {who.Spot} refuge {who.Refuge} asked {who.Asked}, wait {who.Wait:F1})");
         }
-        Check(moved >= 0.5f || who.Path is { Count: > 0 }, $"{what}: acting after the fall ({moved:F1} m gone from where they landed, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1})");
+        // (Landed somewhere the walking grid has no way out of, a pit with no stair, they stay there: nobody walks through a wall.)
+        bool stranded = moved < 0.5f && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { who }) is true;
+        Check(moved >= 0.5f || stranded, $"{what}: acting after the fall ({moved:F1} m gone from where they landed{(stranded ? ", no way out of where they landed" : "")}, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1})");
     }
 
     /// <summary>A shot of one of them from the side (windowed only).</summary>
@@ -371,21 +373,36 @@ public partial class FallTest : Node
         Check(who.Rig is { Settled: true }, $"the body falls limp and comes to rest ({t * Tick:F1} s)");
     }
 
-    /// <summary>One of the place's own creatures on its floor: the floor broken under it.</summary>
-    IEnumerable<int> PlaceCreature(Place place)
+    /// <summary>One of a place's own creatures on its floor (the settlement's, else the next places round it): the floor broken under it.</summary>
+    IEnumerable<int> PlaceCreature(Place home)
     {
         WildlifePatch patch = _game.Zone.Wildlife;
         Creature who = null;
         DeepSite site = null;
-        for (int t = 0; t < 20 * 60 && who == null; t++)
+        Place place = home;
+        Vector3 from = _game.Survivor.WorldFeet;
+        var others = _game.Zone.Planet.Pois.Where(s => s.Instance != null && s != home.Memory.Site)
+            .Select(s => (s, at: _game.Zone.Planet.NearestCopy(new Vector3(s.Entrance.X + 0.5f, s.Entrance.Y, s.Entrance.Z + 0.5f), from)))
+            .Where(o => (o.at - from).Length() < 900f).OrderBy(o => (o.at - from).Length()).Take(4).ToList();
+        for (int k = -1; k < others.Count && who == null; k++)
         {
-            TopUp();
-            if (t % 30 == 0)
-                foreach (DeepSite s in patch.Sites)
-                    if (s.Sim.Creatures.FirstOrDefault(c => !c.Dead && !c.Removed && c.Space != null && !c.Species.Climbs && !c.Falling && !c.InWalls && Under(place, place.FromWorld(patch.WorldOf(c)))) is { } c) { (who, site) = (c, s); break; }
-            yield return 0;
+            if (k >= 0)
+            {
+                _game.Survivor.PlaceOutside((others[k].at + Vector3.Up * 0.5f).ToNumerics());
+                for (int i = 0; i < 2400 && _game.Places.PlaceOf(others[k].s) is not { Ready: true }; i++) { TopUp(); yield return 0; }
+                if (_game.Places.PlaceOf(others[k].s) is not { Ready: true } p) continue;
+                place = p;
+            }
+            for (int t = 0; t < 15 * 60 && who == null; t++)
+            {
+                TopUp();
+                if (t % 30 == 0)
+                    foreach (DeepSite s in patch.Sites)
+                        if (s.Sim.Creatures.FirstOrDefault(c => !c.Dead && !c.Removed && c.Space != null && !c.Species.Climbs && !c.Falling && !c.InWalls && Under(place, place.FromWorld(patch.WorldOf(c)))) is { } c) { (who, site) = (c, s); break; }
+                yield return 0;
+            }
         }
-        if (who == null) { GD.Print("  (none of the place's creatures on a floor of its blocks: not tried here)"); yield break; }
+        if (who == null) { GD.Print("  (none of the creatures of the settlement or the places nearest it on a floor of their blocks: not tried here)"); yield break; }
         Vector3 feet = place.FromWorld(patch.WorldOf(who));
         _game.Survivor.PlaceOutside((patch.WorldOf(who) + Vector3.Back * 5f + Vector3.Up * 0.3f).ToNumerics());
         GD.Print($"  -- the floor broken under one of the place's creatures ({who.Species.Name}, {who.Species.BodyLength:F1} m) --");

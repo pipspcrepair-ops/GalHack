@@ -96,12 +96,14 @@ public sealed class PlanetTerrain
 
     /// <summary>
     /// The ground's top over a column as it stands now (main thread: the store is written there): the undug surface, down
-    /// through whatever has been dug out of the top of it. x and z wrap.
+    /// through whatever has been dug out of the top of it (the cell the surface crosses may have been air already, so the one
+    /// under it says too). x and z wrap.
     /// </summary>
     public float GroundNow(double x, double z)
     {
         float h = Source.SurfaceHeight(x, z);
         Int3 c = Canonical(new Int3((int)Math.Floor(x), (int)Math.Floor(h - 0.05f), (int)Math.Floor(z)));
+        if (!Store.IsRemoved(c)) c = new Int3(c.X, c.Y - 1, c.Z);
         if (!Store.IsRemoved(c)) return h;
         while (c.Y > MinChunkY * S && Store.IsRemoved(c)) c = new Int3(c.X, c.Y - 1, c.Z);
         return c.Y + 1;
