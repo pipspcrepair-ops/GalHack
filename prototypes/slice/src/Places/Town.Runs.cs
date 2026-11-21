@@ -155,7 +155,9 @@ public sealed partial class Town
             if (Flat(mid - exit) > RunFarthest + 200f) return;
             built.Add(new Footing(mid, (s.MaxX - s.MinX) * 0.5f, (s.MaxZ - s.MinZ) * 0.5f, what, worth));
         }
-        foreach (FlavourRuin r in planet.Infra.Ruins) Add(r.Stamp, r.Family.Id, true);
+        // (A town's landing clearing, where traders set down, is that town's, not salvage.)
+        var landings = planet.Infra.LandingSpots.Select(l => (l.X, l.Z)).ToHashSet();
+        foreach (FlavourRuin r in planet.Infra.Ruins) Add(r.Stamp, r.Family.Id, !landings.Contains(r.Center));
         foreach (PlanetSurface.Poi.PoiSite s in planet.Pois)
             if (s != Memory.Site) Add(s.Stamp, s.Family.Id, s.State is PoiState.Abandoned or PoiState.Ruined);
         // (As far as the day allows: there and back at a walk, the way some way longer than the crow flies, and the search.)

@@ -69,7 +69,14 @@ public partial class ScavTest : Node
         GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
     }
 
-    void TopUp() => _game.Suit.Vitals.Health = _max;
+    /// <summary>Health kept up, and the weather kept clear (a downpour sends them home: not what is tested here).</summary>
+    void TopUp()
+    {
+        _game.Suit.Vitals.Health = _max;
+        if (++_tops % 300 == 0) _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+    }
+
+    int _tops;
 
     /// <summary>Where shots go (--shots=dir; null: none), and a shot being taken.</summary>
     string _shots;
@@ -229,7 +236,8 @@ public partial class ScavTest : Node
                 if (step.Length() > 0.4f) to = you + step.Normalized() * 0.4f + Vector3.Up * (_game.Zone.GroundAt(you.X, you.Z).Y + 0.1f - you.Y);
                 _game.Survivor.PlaceOutside(to.ToNumerics(), glide: true);
             }
-            _drive.Face(w + Vector3.Up * 1.2f);
+            // (Watching them, not aiming at them: a gun held on someone is a threat, and the look is the aim.)
+            _drive.Face(Beside(w + Vector3.Up * 1.2f, 4f));
             yield return 0;
             ticks++;
             if (who.Dead) { GD.Print("  (the one followed died out there)"); break; }
@@ -255,11 +263,12 @@ public partial class ScavTest : Node
             if (shot != null)
             {
                 took.Add(shot);
-                Vector3 side = new Vector3(-who.Forward.Z, 0f, who.Forward.X) * 5.5f + who.Forward * (shot == "search" ? -4f : 3.5f);
+                // (From the side as they go out, behind as they go home: the bundle is on their back.)
+                Vector3 side = new Vector3(-who.Forward.Z, 0f, who.Forward.X) * (shot == "home" ? 2.5f : 5.5f) + who.Forward * (shot == "out" ? 3.5f : -4.5f);
                 Vector3 at = town.World(who.Pos) + side;
                 at.Y = _game.Zone.GroundAt(at.X, at.Z).Y + 0.1f;
                 _game.Survivor.PlaceOutside(at.ToNumerics(), glide: true);
-                for (int k = 0; k < 20; k++) { TopUp(); _drive.Face(town.World(who.Pos) + Vector3.Up * 1.0f); yield return 0; }
+                for (int k = 0; k < 20; k++) { TopUp(); _drive.Face(Beside(town.World(who.Pos) + Vector3.Up * 1.0f, 1.6f)); yield return 0; }
                 was = who.Pos;
                 Snap(System.IO.Path.Combine(_shots, $"scav-{shot}.png"));
                 while (_snapping) yield return 0;
@@ -282,6 +291,14 @@ public partial class ScavTest : Node
     }
 
     static double Wrap(float v, double size) => ((v % size) + size) % size;
+
+    /// <summary>A point this far to the side of another, square to the sleeper's way of looking at it.</summary>
+    Vector3 Beside(Vector3 at, float by)
+    {
+        Vector3 to = at - _game.Survivor.WorldEye();
+        Vector3 side = new Vector3(-to.Z, 0f, to.X);
+        return side.LengthSquared() > 1e-4f ? at + side.Normalized() * by : at;
+    }
 
     /// <summary>One watched as they go out (60 m), the sleeper far off while they are out (the place down), back by the way in before they are: they come home walking, and never appear in view.</summary>
     IEnumerable<int> Unwatched(Town town, PlanetSurface.Poi.PoiSite site, Town.Person who, Vector3 gate, Vector3 stand, Vector3 outward)
@@ -328,7 +345,7 @@ public partial class ScavTest : Node
             object run = Get(who, "Run");
             if (who.Dead || run == null && !OnRun(who) || Get(run, "Home") is true && new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length() < 90f) break;
         }
-        GD.Print($"  out of sight {(down ? "with the place down" : "with the place still up")}: {moved:F0} m along their way, {Searched(who)} spots searched; the walk of those out {(samples > 0 ? sumMs / samples : 0):F4} ms a tick on average, {worstMs:F4} ms at worst");
+        GD.Print($"  out of sight {(down ? "with the place down" : "with the place still up")}: {moved:F0} m along their way, {Searched(who)} spots searched (on a run {OnRun(who)}, homeward {Get(Get(who, "Run"), "Home")}, scared {who.ScaredFor:F1}, {new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length():F0} m out); the walk of those out {(samples > 0 ? sumMs / samples : 0):F4} ms a tick on average, {worstMs:F4} ms at worst");
         Check(moved > 40f && down, $"far off, with the place down, they kept walking their way ({moved:F0} m, the place {(down ? "down" : "never down")})");
         Check(samples > 0 && worstMs < 0.1f, $"the far walking cost under 0.1 ms a tick ({worstMs:F4} ms at worst over {samples} ticks)");
         // Back inside the way in, before they are.
