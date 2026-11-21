@@ -52,6 +52,8 @@ public sealed partial class Town
     /// <summary>How long a spot round a find is searched, s (and the spots searched at most).</summary>
     const float SearchEach = 12f;
     const int SearchSpots = 4;
+    /// <summary>Their pace out on the land at the least, m/s: a brisk walk, with a day's walk to make.</summary>
+    const float Brisk = 1.5f;
     /// <summary>How near something has to be to one of them out on the land to be seen as on their way, m.</summary>
     const float WaySight = 45f;
 
@@ -101,8 +103,8 @@ public sealed partial class Town
             Origin = _origin,
             Gate = gate,
             Exit = Outside(gate),
-            Budget = seconds * 0.6f,
-            Speed = p.Speed,
+            Budget = seconds * 0.85f,
+            Speed = MathF.Max(p.Speed, Brisk),
             Seed = Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)(People.IndexOf(p) + 1) * 131UL + (ulong)RunsOut),
             Gait = Brain.GaitOf(p.Looks),
             Trunks = Trunks(),
@@ -148,20 +150,26 @@ public sealed partial class Town
         var rng = Wildlife.Rng.For(a.Seed, "run");
         // Everything built round: ruins by the roads and in the country, and the places (the abandoned and ruined worth a look).
         var built = new List<Footing>();
-        void Add(TerrainStamp s, string what, bool worth)
+        void Add(double minX, double maxX, double minZ, double maxZ, string what, bool worth)
         {
-            if (s == null) return;
-            Vector3 mid = planet.NearestCopy(new Vector3((s.MinX + s.MaxX) * 0.5f, 0f, (s.MinZ + s.MaxZ) * 0.5f), exit);
+            Vector3 mid = planet.NearestCopy(new Vector3((float)(minX + maxX) * 0.5f, 0f, (float)(minZ + maxZ) * 0.5f), exit);
             if (Flat(mid - exit) > RunFarthest + 200f) return;
-            built.Add(new Footing(mid, (s.MaxX - s.MinX) * 0.5f, (s.MaxZ - s.MinZ) * 0.5f, what, worth));
+            built.Add(new Footing(mid, (float)(maxX - minX) * 0.5f, (float)(maxZ - minZ) * 0.5f, what, worth));
         }
+        void Stamp(TerrainStamp s, string what, bool worth) { if (s != null) Add(s.MinX, s.MaxX, s.MinZ, s.MaxZ, what, worth); }
         // (A town's landing clearing, where traders set down, is that town's, not salvage.)
         var landings = planet.Infra.LandingSpots.Select(l => (l.X, l.Z)).ToHashSet();
-        foreach (FlavourRuin r in planet.Infra.Ruins) Add(r.Stamp, r.Family.Id, !landings.Contains(r.Center));
+        foreach (FlavourRuin r in planet.Infra.Ruins) Stamp(r.Stamp, r.Family.Id, !landings.Contains(r.Center));
         foreach (PlanetSurface.Poi.PoiSite s in planet.Pois)
-            if (s != Memory.Site) Add(s.Stamp, s.Family.Id, s.State is PoiState.Abandoned or PoiState.Ruined);
+            if (s != Memory.Site) Stamp(s.Stamp, s.Family.Id, s.State is PoiState.Abandoned or PoiState.Ruined);
+        // The wrecks left on the roads and in the fields: loose salvage (the box round each site's corners).
+        foreach (WreckSite w in planet.Infra.Wrecks)
+        {
+            var c = new[] { w.World(0f, 0f), w.World(w.Width, 0f), w.World(0f, w.Length), w.World(w.Width, w.Length) };
+            Add(c.Min(q => q.X), c.Max(q => q.X), c.Min(q => q.Z), c.Max(q => q.Z), w.Site, true);
+        }
         // (As far as the day allows: there and back at a walk, the way some way longer than the crow flies, and the search.)
-        float reach = MathF.Min(RunFarthest, (a.Budget - SearchSpots * (SearchEach + 6f)) * a.Speed * 0.5f / 1.3f);
+        float reach = MathF.Min(RunFarthest, (a.Budget - SearchSpots * (SearchEach + 6f)) * a.Speed * 0.5f / 1.2f);
         var finds = built.Where(f => f.Worth && Flat(f.Mid - exit) is var d && d >= RunNearest && d <= reach)
             .OrderBy(f => Flat(f.Mid - exit) * (0.5f + rng.Float())).Take(5).ToList();
         int no = 0, far = 0;
@@ -364,7 +372,7 @@ public sealed partial class Town
         bool frightened = p.ScaredFor > 0f || r.Wronged && !Fighter(p);
         if (!r.Home && (frightened || r.Wronged || offDuty || Night() || rain > 0.5f || Late(p))) TurnHome(p); // (something only to keep wide of, they keep wide of and go on)
         p.Fleeing = r.Home && frightened;
-        float walk = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
+        float walk = MathF.Max(Brisk, p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f);
         p.Speed = p.Fleeing ? 3.4f : walk * (p.Job switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f });
         p.Working = r.Searching >= 0;
         if (r.Searching >= 0)

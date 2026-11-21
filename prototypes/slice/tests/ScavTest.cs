@@ -20,7 +20,7 @@ namespace Slice.Tests;
 /// walking, never appearing in view. Nobody is removed except by death, and the far walking is cheap.
 /// (Members new with the runs are read by name, so the same test runs on a build from before them, and fails there.)
 ///
-/// -- --worlds=N: worlds to try for a settlement with scavengers (default 4).
+/// -- --worlds=N: worlds to try for a settlement with scavengers and something in reach to pick over (default 6).
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ScavTest.tscn
 /// </summary>
 public partial class ScavTest : Node
@@ -104,7 +104,7 @@ public partial class ScavTest : Node
 
     IEnumerable<int> Scenario()
     {
-        int worlds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--worlds=")) is { } w ? int.Parse(w[9..]) : 4;
+        int worlds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--worlds=")) is { } w ? int.Parse(w[9..]) : 6;
         _shots = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?[8..];
         // (Finds near enough that two runs fit the test's time: the day allows a few hundred metres at most anyway.)
         SetStatic("RunNearest", 90f);
@@ -153,7 +153,6 @@ public partial class ScavTest : Node
         for (int i = 0; i < 900 && town.People.Any(p => p.Looks == null || !p.Dead && p.View == null); i++) { TopUp(); yield return 0; }
         var runners = town.People.Where(Scavenger).ToList();
         if (runners.Count == 0) { GD.Print($"  (none of its {town.People.Count} go on runs: jobs {string.Join(", ", town.People.GroupBy(p => p.Job).Select(g => $"{g.Count()} {g.Key}"))})"); yield break; }
-        found(true);
         int people = town.People.Count;
         Int3 entrance = place.Memory.Inst.Layout.EntranceCell, f = place.Memory.Inst.Layout.EntranceFacing.Vec();
         int gate = Enumerable.Range(0, town.Spots.Count).OrderBy(i => town.Spots[i].Cell.Manhattan(entrance)).First();
@@ -172,14 +171,17 @@ public partial class ScavTest : Node
         {
             first = null;
             _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
-            for (int i = 0; i < 150 * 60 && first == null; i++)
+            for (int i = 0; i < 150 * 60 && first == null && !(i > 900 && attempt == 0 && Get(town, "LastPlan") is string none && none.Contains(" 0 finds")); i++)
             {
                 TopUp();
                 _drive.Face(town.World(at + outward * 6f + Vector3.Up));
                 yield return 0;
                 first = runners.FirstOrDefault(p => OnRun(p) && !tried.Contains(p) && Get(Get(p, "Run"), "Home") is not true && new Vector2(p.Pos.X - at.X, p.Pos.Z - at.Z).Length() < 12f);
             }
+            // (Nothing to pick over within a day's walk of this town: another world.)
+            if (first == null && attempt == 0 && Get(town, "LastPlan") is string plan && plan.Contains(" 0 finds")) { GD.Print($"  (nothing in reach to go to: {plan})"); yield break; }
             if (first == null) { Check(false, $"a scavenger sets out at the way in within two and a half minutes ({runners.Count} waiting; {Get(town, "LastPlan")})"); yield break; }
+            found(true);
             tried.Add(first);
             GD.Print($"  (one sets out: {Get(town, "LastPlan")})");
             _turnedBack = false;
