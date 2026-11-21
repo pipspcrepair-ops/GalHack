@@ -824,7 +824,7 @@ public sealed partial class Town : IKeeper
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
         if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
-        else if (!Floored(p.Pos)) p.CheckFor = MathF.Max(p.CheckFor, 0.05f); // (no floor under them by the blocks: looked under, Town.Falls)
+        else if (_clock - p.NoFloorAt > 1f && !Floored(p.Pos)) (p.CheckFor, p.NoFloorAt) = (MathF.Max(p.CheckFor, 0.05f), _clock); // (no floor under them by the blocks: looked under, Town.Falls)
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was, dt);
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.

@@ -208,7 +208,7 @@ public partial class FallTest : Node
         used.Add(who);
         float drop = DropUnder(town, who.Pos);
         GD.Print($"  -- the floor broken under one {what} ({who.Job}, {drop:F1} m down to what is under the floor) --");
-        Break(place, who.Pos, 1);
+        Break(place, who.Pos, what == "walking" ? 2 : 1); // (one walking may be a stride on by the time it goes: wider under them)
         foreach (int x in Watch(town, who, what, shots)) yield return x;
     }
 
@@ -324,7 +324,7 @@ public partial class FallTest : Node
         bool stranded = moved < 0.5f && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { who }) is true;
         // (Or gone on to a spot right by where they landed: there, about their day.)
         bool there = who.Spot >= 0 && (who.Pos - town.SpotAt(who.Spot)).Length() < 1.5f && (who.Path == null || who.Step >= who.Path.Count) && Get(who, "Falls") is int n && n > 0;
-        Check(moved >= 0.5f || there, $"{what}: acting after the fall ({moved:F1} m gone from where they landed{(stranded ? ", no way out of where they landed" : there ? ", at a spot by it" : "")}, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1})");
+        Check(moved >= 0.5f || there, $"{what}: acting after the fall ({moved:F1} m gone from where they landed{(stranded ? ", no way out of where they landed" : there ? ", at a spot by it" : "")}, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1}{(moved < 0.5f && !there ? $"; {town.GetType().GetMethod("WayOn")?.Invoke(town, new object[] { who })}" : "")})");
     }
 
     /// <summary>A shot of one of them from the side (windowed only).</summary>

@@ -25,6 +25,8 @@ public sealed partial class Town
         public Vector3 FirmAt;
         /// <summary>How long more they are looked under each step (something under them went; its colliders may follow a moment later).</summary>
         public float CheckFor;
+        /// <summary>When the blocks last showed no floor under them as they walked (clock): looked under once a second at most for it.</summary>
+        public float NoFloorAt = -9f;
         /// <summary>Clambering up the side of a hole (held to it, not falling), and in a place, the rim they climb to (the place's frame).</summary>
         public bool Clambering;
         public Vector3? ClimbTo;
@@ -61,7 +63,7 @@ public sealed partial class Town
     const float StaleWait = 0.3f;
 
     /// <summary>The most of them looked under in a tick (those falling are always stepped).</summary>
-    const int LooksATick = 3;
+    const int LooksATick = 1;
 
     /// <summary>
     /// Something under a stretch went (world frame: blocks broken, a piece taken, the ground dug): whoever stands, sits or lies over
@@ -233,7 +235,7 @@ public sealed partial class Town
         (_body.Radius, _body.Height) = (r, h);
         _bodyQuery ??= new PhysicsShapeQueryParameters3D { Shape = _body, CollisionMask = Layers.World | Layers.Hull | Layers.Interior };
         var space = _view.GetWorld3D().DirectSpaceState;
-        for (int k = 0; k < 2; k++) // (a tenth of a metre a step at most: eased off it, never thrown)
+        for (int k = 0; k < 3; k++) // (0.15 m a step at most, a run's: eased off it, never thrown)
         {
             _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);
@@ -252,18 +254,15 @@ public sealed partial class Town
         float share = wet ? 0f : Slice.Player.Survivor.FallShare(_places.Zone.Physics.Rules, speed);
         if (share > 0f) Struck(p, share * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
         if (p.Dead) return;
-        // Startled by it and shaken (their mood), and on at once from where they landed, by a way from there; out on a run, home.
+        // Startled by it (their body says so), on at once.
         (p.StartleFor, p.Wait, p.Refuge, p.ProgressAt, p.StuckFor) = (0.9f, 0f, -1, p.Pos, 0f);
-        // (Where they were bound, by a way from here; with no floor left there, somewhere else.)
+        // On from here: out on a run, home; in the place, by a way from where they landed to the nearest spot there is one to; in a hole
+        // with none, up its side to where there is; on open ground past the search, where they were bound (or somewhere else).
         if (p.Run != null) p.ScaredFor = MathF.Max(p.ScaredFor, 4f);
-        else if (p.Spot >= 0 && Whole(p.Spot)) GoTo(p, p.Spot);
-        else Next(p);
-        // (No way there from here: the nearest spot there is a way to; none, up the side of where they landed to where there is.)
-        if (p.Run == null)
+        else if (OnFrom(p) == SpotSearchSpent)
         {
-            int near = NearestReachable(p);
-            if (near < 0 && p.Asked < 0 && p.Path is not { Count: > 0 }) (p.ClimbTo, p.Path) = (WayUp(p), null);
-            else if (p.Asked < 0 && p.Path is not { Count: > 0 }) GoTo(p, near);
+            if (p.Spot >= 0 && Whole(p.Spot)) GoTo(p, p.Spot);
+            else Next(p);
         }
         if (share > 0f) p.Feel.Hit(MoodEvent.Harm); // (hurt by it, shaken by it)
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
@@ -321,18 +320,23 @@ public sealed partial class Town
         return null;
     }
 
-    /// <summary>The nearest of the town's spots that can be walked to from where someone stands (-1: none, they are stranded there).</summary>
-    int NearestReachable(Person p) => StandIn(Cell(p.Pos)) is { } c ? SpotFrom(c) : -1; // (where they are, beside it or under it: never over, which is a climb)
-
     /// <summary>Spots by their cell and the cells beside them (a seat's own cell may be no place to stand: the one by it is).</summary>
     Dictionary<PInt3, int> _spotBy;
 
-    /// <summary>How far over the walking grid a way on is looked for, cells: a few milliseconds at the most, only on landing.</summary>
-    const int SpotSearch = 1500;
+    /// <summary>How far over the walking grid a way on is looked for from where someone lands, cells (well under a millisecond).</summary>
+    const int SpotSearch = 1000;
 
-    /// <summary>The first spot reached over the walking grid from a cell (the nearest by steps), within <see cref="SpotSearch"/> cells; -1 if none.</summary>
-    int SpotFrom(PInt3 from)
+    /// <summary><see cref="SpotFrom"/>: no spot in the cells searched, but more beyond them (open ground: there are ways, only far).</summary>
+    const int SpotSearchSpent = -2;
+
+    /// <summary>
+    /// The nearest spot by steps over the walking grid from a cell (a spot's cell or one beside it reached), and the cells of the way
+    /// there; -1 if every cell that can be walked to from it has been searched and none is a spot (a pit, a hole with no way out),
+    /// <see cref="SpotSearchSpent"/> if the search ran out first.
+    /// </summary>
+    int SpotFrom(PInt3 from, out List<PInt3> way)
     {
+        way = null;
         if (_spotBy == null)
         {
             _spotBy = new Dictionary<PInt3, int>();
@@ -340,27 +344,55 @@ public sealed partial class Town
                 foreach (PInt3 d in new[] { PInt3.Zero, new PInt3(1, 0, 0), new PInt3(-1, 0, 0), new PInt3(0, 0, 1), new PInt3(0, 0, -1) })
                     _spotBy.TryAdd(Spots[i].Cell + d, i);
         }
-        var seen = new HashSet<PInt3> { from };
+        var back = new Dictionary<PInt3, PInt3> { [from] = from };
         var next = new Queue<PInt3>();
         var near = new List<PInt3>(8);
         next.Enqueue(from);
-        while (next.Count > 0 && seen.Count < SpotSearch)
+        while (next.Count > 0)
         {
+            if (back.Count >= SpotSearch) return SpotSearchSpent;
             PInt3 c = next.Dequeue();
-            if (_spotBy.TryGetValue(c, out int spot)) return spot;
+            if (_spotBy.TryGetValue(c, out int spot))
+            {
+                way = new List<PInt3>();
+                for (PInt3 at = c; ; at = back[at]) { way.Add(at); if (at == from) break; }
+                way.Reverse();
+                return spot;
+            }
             near.Clear();
             _nav.NeighboursInto(c, near);
             foreach (PInt3 n in near)
-                if (seen.Add(n)) next.Enqueue(n);
+                if (back.TryAdd(n, c)) next.Enqueue(n);
         }
         return -1;
     }
 
+    /// <summary>
+    /// On from where they stand (landed, or over the rim they climbed to): along the way to the nearest spot there is one to, and on
+    /// with their day from there; with none, up the side to a rim that has one. Returns what <see cref="SpotFrom"/> found.
+    /// </summary>
+    int OnFrom(Person p)
+    {
+        if (StandIn(Cell(p.Pos)) is not { } c) { p.ClimbTo = WayUp(p); return -1; }
+        int spot = SpotFrom(c, out List<PInt3> way);
+        if (spot == -1) (p.ClimbTo, p.Path, p.Asked) = (WayUp(p), null, -1);
+        if (spot < 0) return spot;
+        List<Vector3> path = Points(way);
+        if (way[^1] == Spots[spot].Cell) path.Add(At(spot));
+        (p.Path, p.Step, p.Spot, p.Asked, p.Wait) = (path, 0, spot, -1, 1f);
+        return spot;
+    }
+
     /// <summary>Whether there is no walking anywhere from where someone stands, nor climbing out to where there is (tests).</summary>
-    public bool Stranded(Person p) => p.ClimbTo == null && NearestReachable(p) < 0 && WayUp(p) == null;
+    public bool Stranded(Person p) => p.ClimbTo == null && (StandIn(Cell(p.Pos)) is not { } c || SpotFrom(c, out _) == -1) && WayUp(p) == null;
 
     /// <summary>Their way on from where they stand, told (tests).</summary>
-    public string WayOn(Person p) => NearestReachable(p) is int near and >= 0 && StandIn(Cell(p.Pos)) is { } c ? $"the nearest spot {near} {(Route(c, near) is { } r ? $"{r.Count} points away" : "with no route found to it")}, standing in {c}" : $"no spot to walk to, {(WayUp(p) is { } up ? $"a way up to {up}" : "no way up")}";
+    public string WayOn(Person p) => StandIn(Cell(p.Pos)) is not { } c ? "nowhere to stand" : SpotFrom(c, out var way) switch
+    {
+        -1 => $"no spot to walk to from {c}, {(WayUp(p) is { } up ? $"a way up to {up}" : "no way up")}",
+        SpotSearchSpent => $"open ground round {c}, no spot within {SpotSearch} cells",
+        int s => $"spot {s} {way.Count} cells away from {c}",
+    };
 
     /// <summary>
     /// Landed where the walking grid has no way out (a pit, a hole in a floor): the rim beside them, a cell or two up, that a way
@@ -383,7 +415,7 @@ public sealed partial class Town
                         if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != reach) continue;
                         var q = new PInt3(c.X + dx, c.Y + dy, c.Z + dz);
                         if (!_nav.Standable(q)) continue;
-                        if (tries++ < 4 && SpotFrom(q) >= 0) return Walk(q);
+                        if (tries++ < 4 && SpotFrom(q, out _) != -1) return Walk(q);
                     }
             }
         return null;
@@ -407,7 +439,7 @@ public sealed partial class Town
                 return true;
             }
             (p.Pos, p.ClimbTo, p.Clambering) = (to, null, false);
-            if (NearestReachable(p) is int near and >= 0) GoTo(p, near);
+            if (OnFrom(p) == SpotSearchSpent) Next(p);
         }
         return true;
     }
