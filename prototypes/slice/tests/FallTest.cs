@@ -151,10 +151,14 @@ public partial class FallTest : Node
         if (Get(town, "FallRays") is int rays0 && Get(town, "FallChecks") is int checks0)
         {
             double Ms() => Get(town, "FallMs") is double v ? v : 0.0;
-            double ms0 = Ms(), last = ms0, worst = 0.0;
-            for (int i = 0; i < 600; i++) { TopUp(); yield return 0; worst = Math.Max(worst, Ms() - last); last = Ms(); }
+            double ms0 = Ms(), last = ms0;
+            var frames = new List<double>(600);
+            for (int i = 0; i < 600; i++) { TopUp(); yield return 0; frames.Add(Ms() - last); last = Ms(); }
+            frames.Sort();
+            double worst = frames[^1], p99 = frames[593];
             double each = (Ms() - ms0) / 600.0;
-            Check(each < 0.1 && worst < 0.1, $"looking under them costs well under 0.1 ms a frame ({each:F4} ms a frame on average, {worst:F4} ms at the worst frame)");
+            // (The worst single frame is told, not judged: a timer read across a thread switch can say anything.)
+            Check(each < 0.05 && p99 < 0.1, $"looking under them costs well under 0.1 ms a frame ({each:F4} ms a frame on average, {p99:F4} ms in 99 frames of 100, {worst:F4} ms at the worst)");
             int rays = (int)Get(town, "FallRays") - rays0, checks = (int)Get(town, "FallChecks") - checks0;
             GD.Print($"  (the sweep, nothing breaking: {checks / 10f:F1} looks and {rays / 10f:F1} rays a second over {town.People.Count(p => !p.Dead)} people, {town.People.Count(p => !p.Dead && (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() < 60f)} within its reach)");
         }
@@ -429,7 +433,9 @@ public partial class FallTest : Node
     /// <summary>One of the people set high over the ground (as if on a ledge that went): hurt by the rule, killed by a long drop, limp.</summary>
     IEnumerable<int> High(Town town, Place place, HashSet<Town.Person> used, float height)
     {
-        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep && town.CanStand(p.Pos) && !place.Roofed(town.World(p.Pos + Vector3.Up * 2f))).FirstOrDefault();
+        // (One with nothing over them all the way up: they come down where they stood, the whole height.)
+        bool Open(Town.Person p) => _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(town.World(p.Pos + Vector3.Up * (height + 1f)), town.World(p.Pos + Vector3.Up * 0.3f), Layers.World | Layers.Hull | Layers.Interior)).Count == 0;
+        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep && town.CanStand(p.Pos) && Open(p)).FirstOrDefault();
         if (who == null) { Check(false, $"someone to set {height:F0} m up"); yield break; }
         used.Add(who);
         Stand(town, who);

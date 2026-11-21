@@ -433,7 +433,8 @@ public sealed partial class Town
     void GetOut(Person p)
     {
         Vector3? up = WayUp(p);
-        (p.ClimbTo, p.Clambering, p.Path, p.Asked) = (up ?? WayDown(p), up != null, null, -1);
+        Vector3? to = up ?? WayDown(p);
+        (p.ClimbTo, p.Clambering, p.Path, p.Asked) = (to, to is { } t && t.Y > p.Pos.Y + 0.5f, null, -1); // (up a side or over a parapet, held on)
     }
 
     /// <summary>
@@ -449,21 +450,29 @@ public sealed partial class Town
                 for (int dx = -reach; dx <= reach; dx++)
                 {
                     if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != reach) continue;
-                    // (Open beside them at their height and down the column to a floor.)
+                    // (Open beside them at their height and down the column to a floor; a parapet on the way, they climb over it.)
                     if (_nav.Solid(new PInt3(c.X + dx, c.Y, c.Z + dz)) || _nav.Solid(new PInt3(c.X + dx, c.Y + 1, c.Z + dz))) continue;
+                    bool over = false, blocked = false;
+                    for (int k = 1; k < reach; k++)
+                    {
+                        var mid = new PInt3(c.X + (int)MathF.Round(dx * k / (float)reach), c.Y, c.Z + (int)MathF.Round(dz * k / (float)reach));
+                        if (!_nav.Solid(mid)) continue;
+                        over = true;
+                        blocked |= _nav.Solid(mid + PInt3.Up) || _nav.Solid(mid + PInt3.Up * 2);
+                    }
+                    if (blocked) continue;
                     for (int dy = 1; dy <= 6; dy++)
                     {
                         var q = new PInt3(c.X + dx, c.Y - dy, c.Z + dz);
                         if (_nav.Solid(q)) break;
                         if (!_nav.Standable(q)) continue;
-                        if (tries++ < 4 && SpotFrom(q, out _) != -1) return new Vector3(q.X + 0.5f, p.Pos.Y, q.Z + 0.5f);
+                        if (tries++ < 4 && SpotFrom(q, out _) != -1) return new Vector3(q.X + 0.5f, p.Pos.Y + (over ? 1.05f : 0f), q.Z + 0.5f);
                         break;
                     }
                 }
         return null;
     }
 
-    /// <summary>Climbing out: straight up the side to the rim's height, then over onto it, and on from there. True while it has them.</summary>
     /// <summary>
     /// Out of where they landed: up a hole's side (holding on, straight up to the rim's height, then over onto it), or over the
     /// edge of a ledge (walking to it, looked under each step: off it they fall). True while it has them.
@@ -486,11 +495,10 @@ public sealed partial class Town
             p.Yaw = MathF.Atan2(-d.X, -d.Z);
             return true;
         }
-        (p.Pos, p.ClimbTo, p.Clambering) = (to, null, false);
+        (p.Pos, p.ClimbTo, p.Clambering, p.CheckFor) = (to, null, false, 1f); // (over a ledge's edge or a parapet: nothing under them, and they fall)
         if (OnFrom(p) == SpotSearchSpent) Next(p);
         return true;
     }
-
 
     /// <summary>Whether a spot still stands by the place's blocks (its floor not broken away from under it): a refuge or a seat for the night only then.</summary>
     bool Whole(int spot)
