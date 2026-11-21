@@ -48,7 +48,7 @@ public sealed class ScavRun
 public sealed partial class Town
 {
     /// <summary>How near and far a find may lie from the way in, m (tests narrow it).</summary>
-    public static float RunNearest = 150f, RunFarthest = 1200f;
+    public static float RunNearest = 100f, RunFarthest = 1500f;
     /// <summary>How long a spot round a find is searched, s (and the spots searched at most).</summary>
     const float SearchEach = 12f;
     const int SearchSpots = 4;
@@ -60,6 +60,8 @@ public sealed partial class Town
     public int RunsHome { get; private set; }
     public int Hauls { get; private set; }
     public int Missed { get; private set; }
+    /// <summary>What the last run planned came to (tests).</summary>
+    public string LastPlan { get; private set; } = "";
 
     int _gate = -1;
     /// <summary>The spot by the way in.</summary>
@@ -156,8 +158,11 @@ public sealed partial class Town
         foreach (FlavourRuin r in planet.Infra.Ruins) Add(r.Stamp, r.Family.Id, true);
         foreach (PlanetSurface.Poi.PoiSite s in planet.Pois)
             if (s != Memory.Site) Add(s.Stamp, s.Family.Id, s.State is PoiState.Abandoned or PoiState.Ruined);
-        var finds = built.Where(f => f.Worth && Flat(f.Mid - exit) is var d && d >= RunNearest && d <= RunFarthest)
+        // (As far as the day allows: there and back at a walk, the way some way longer than the crow flies, and the search.)
+        float reach = MathF.Min(RunFarthest, (a.Budget - SearchSpots * (SearchEach + 6f)) * a.Speed * 0.5f / 1.3f);
+        var finds = built.Where(f => f.Worth && Flat(f.Mid - exit) is var d && d >= RunNearest && d <= reach)
             .OrderBy(f => Flat(f.Mid - exit) * (0.5f + rng.Float())).Take(5).ToList();
+        int no = 0, far = 0;
         foreach (Footing find in finds)
         {
             // The walls are gone round from the side nearest home.
@@ -167,11 +172,11 @@ public sealed partial class Town
             for (int i = 1; i < round.Count; i++) if (Flat(round[i] - exit) < Flat(round[first] - exit)) first = i;
             round = Enumerable.Range(0, Math.Min(SearchSpots, round.Count)).Select(i => round[(first + i) % round.Count]).ToList();
             List<Vector3> land = ByRoad(planet, exit, round[0], built, a, out bool road) ?? Leg(planet, exit, round[0], built, a);
-            if (land == null) continue;
+            if (land == null) { no++; continue; }
             float length = 0f;
             for (int i = 1; i < land.Count; i++) length += Flat(land[i] - land[i - 1]);
             float trip = 2f * (length + 20f) / MathF.Max(0.5f, a.Speed) + round.Count * (SearchEach + 6f);
-            if (trip > a.Budget) continue;
+            if (trip > a.Budget) { far++; continue; }
             var run = new ScavRun
             {
                 Out = new List<Vector3> { a.Gate },
@@ -183,8 +188,10 @@ public sealed partial class Town
             };
             run.Out.AddRange(land.Select(q => q - a.Origin));
             run.Round[0] = run.Out[^1];
+            LastPlan = $"{run.What} {length:F0} m off{(road ? " by road" : "")}";
             return run;
         }
+        LastPlan = $"no run: {finds.Count} finds {RunNearest:F0}-{reach:F0} m off of {built.Count} built round ({no} with no way there, {far} too far for the day)";
         return null;
     }
 

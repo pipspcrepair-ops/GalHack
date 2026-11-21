@@ -1092,7 +1092,7 @@ public sealed partial class Town : IKeeper
         _moodBefore = Memory.Mood;
         Memory.Mood = Mood.Hostile;
         // Each takes it in in their own time: the bold and the near first, children and the old later.
-        Vector3 at = Local(_places.Zone.Wildlife.PlayerWorld());
+        Vector3 at = _places != null ? Local(_places.Zone.Wildlife.PlayerWorld()) : Vector3.Zero;
         var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "provoked", (long)(_clock * 100f));
         foreach (Person p in People)
         {
