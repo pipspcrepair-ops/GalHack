@@ -24,8 +24,9 @@ public sealed partial class Town
         public Vector3 FirmAt;
         /// <summary>How long more they are looked under each step (something under them went; its colliders may follow a moment later).</summary>
         public float CheckFor;
-        /// <summary>Out on the land, clambering up the side of a hole (held to it, not falling).</summary>
+        /// <summary>Clambering up the side of a hole (held to it, not falling), and in a place, the rim they climb to (the place's frame).</summary>
         public bool Clambering;
+        public Vector3? ClimbTo;
         /// <summary>Falls landed (tests), and how long the one under way has lasted.</summary>
         public int Falls;
         public float LastFallTime;
@@ -49,6 +50,8 @@ public sealed partial class Town
     /// <summary>Support checks made, rays cast for them (measurements).</summary>
     public int FallChecks { get; private set; }
     public int FallRays { get; private set; }
+    /// <summary>The time all of it has taken (looking under them, falling, landing), ms (measurements).</summary>
+    public double FallMs { get; private set; }
 
     int _sweep;
 
@@ -122,20 +125,26 @@ public sealed partial class Town
             p.CheckFor = 0f; // (nothing built to stand on or to tell by: a day without the game)
             return false;
         }
-        if (!p.Airborne)
+        long from = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
         {
-            if (p.CheckFor <= 0f || p.Clambering) return false;
-            p.CheckFor -= dt;
-            if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
-            else
+            if (!p.Airborne)
             {
-                // Sitting on a seat that has gone: down on the floor (their pose eases down), up off it frightened.
-                if (p.Sitting && p.Seated > 0.5f && SeatUnder(p) == null) { Unseat(p); p.ScaredFor = MathF.Max(p.ScaredFor, 4f); }
-                return false;
+                // (The place's colliders a moment behind its blocks: looked under once they have caught up.)
+                if (p.CheckFor <= 0f || p.Clambering || _place is { Stale: > 0 }) return false;
+                p.CheckFor -= dt;
+                if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
+                else
+                {
+                    // Sitting on a seat that has gone: down on the floor (their pose eases down), up off it frightened.
+                    if (p.Sitting && p.Seated > 0.5f && SeatUnder(p) == null) { Unseat(p); p.ScaredFor = MathF.Max(p.ScaredFor, 4f); }
+                    return false;
+                }
             }
+            Down(p, dt);
+            return true;
         }
-        Down(p, dt);
-        return true;
+        finally { FallMs += System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds; }
     }
 
     /// <summary>
@@ -240,8 +249,13 @@ public sealed partial class Town
         if (p.Run != null) p.ScaredFor = MathF.Max(p.ScaredFor, 4f);
         else if (p.Spot >= 0 && Whole(p.Spot)) GoTo(p, p.Spot);
         else Next(p);
-        // (No way there from here: the nearest spot there is a way to, if any; stranded, they stay.)
-        if (p.Run == null && p.Asked < 0 && p.Path is not { Count: > 0 } && NearestReachable(p) is int near and >= 0) GoTo(p, near);
+        // (No way there from here: the nearest spot there is a way to; none, up the side of where they landed to where there is.)
+        if (p.Run == null)
+        {
+            int near = NearestReachable(p);
+            if (near < 0) (p.ClimbTo, p.Path, p.Asked) = (WayUp(p), null, -1);
+            else if (p.Asked < 0 && p.Path is not { Count: > 0 }) GoTo(p, near);
+        }
         p.Feel.Hit(MoodEvent.Harm);
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
     }
@@ -289,7 +303,8 @@ public sealed partial class Town
     /// <summary>The nearest of the town's spots that can be walked to from where someone stands (-1: none, they are stranded there). A search over the walking grid: only on landing.</summary>
     int NearestReachable(Person p)
     {
-        if (Stand(Cell(p.Pos)) is not { } c) return -1;
+        // (Where they are, or a cell beside it or under it: never one over them, which is a climb.)
+        if (Stand(Cell(p.Pos)) is not { } c || c.Y > Cell(p.Pos).Y) return -1;
         var reach = _nav.Reachable(c);
         int best = -1;
         for (int i = 0; i < Spots.Count; i++)
@@ -297,8 +312,60 @@ public sealed partial class Town
         return best;
     }
 
-    /// <summary>Whether there is no walking anywhere from where someone stands (tests).</summary>
-    public bool Stranded(Person p) => NearestReachable(p) < 0;
+    /// <summary>Whether there is no walking anywhere from where someone stands, nor climbing out to where there is (tests).</summary>
+    public bool Stranded(Person p) => p.ClimbTo == null && NearestReachable(p) < 0 && WayUp(p) == null;
+
+    /// <summary>
+    /// Landed where the walking grid has no way out (a pit, a hole in a floor): the rim beside them, a cell or two up, that a way
+    /// goes on from, with clear air over them to climb by; null if there is none. Only on landing.
+    /// </summary>
+    Vector3? WayUp(Person p)
+    {
+        PInt3 c = Cell(p.Pos);
+        for (int reach = 1; reach <= 2; reach++)
+            for (int dy = 1; dy <= 2; dy++)
+            {
+                // (Clear over them, up to a head over the rim.)
+                bool clear = true;
+                for (int k = 1; k <= dy + 1 && clear; k++) clear = !_nav.Solid(c + new PInt3(0, k, 0));
+                if (!clear) continue;
+                for (int dz = -reach; dz <= reach; dz++)
+                    for (int dx = -reach; dx <= reach; dx++)
+                    {
+                        if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != reach) continue;
+                        var q = new PInt3(c.X + dx, c.Y + dy, c.Z + dz);
+                        if (!_nav.Standable(q)) continue;
+                        var on = _nav.Reachable(q);
+                        foreach (var s in Spots)
+                            if (on.Contains(s.Cell)) return Walk(q);
+                    }
+            }
+        return null;
+    }
+
+    /// <summary>Climbing out: straight up the side to the rim's height, then over onto it, and on from there. True while it has them.</summary>
+    bool Climb(Person p, float dt)
+    {
+        Vector3 to = p.ClimbTo.Value;
+        p.Clambering = true;
+        p.Now = 0f;
+        if (p.Pos.Y < to.Y) p.Pos.Y = MathF.Min(to.Y, p.Pos.Y + Clamber * dt);
+        else
+        {
+            Vector3 d = new(to.X - p.Pos.X, 0f, to.Z - p.Pos.Z);
+            float step = Clamber * dt;
+            if (d.Length() > step)
+            {
+                p.Pos += d.Normalized() * step;
+                p.Yaw = MathF.Atan2(-d.X, -d.Z);
+                return true;
+            }
+            (p.Pos, p.ClimbTo, p.Clambering) = (to, null, false);
+            if (NearestReachable(p) is int near and >= 0) GoTo(p, near);
+        }
+        return true;
+    }
+
 
     /// <summary>Whether a spot still stands by the place's blocks (its floor not broken away from under it): a refuge or a seat for the night only then.</summary>
     bool Whole(int spot)

@@ -86,6 +86,9 @@ public partial class FallTest : Node
     static void Set(object o, string name, object v) => o?.GetType().GetField(name)?.SetValue(o, v);
     float G => _game.Zone.Physics.Zone.Strength;
 
+    /// <summary>Physics ticks since a frame count: the sim's own time, whatever the test does between (a shot taken).</summary>
+    static int Frame(ulong from) => (int)(Engine.GetPhysicsFrames() - from);
+
     /// <summary>The ground as it stands now, dug or not (read by name: a build from before the falls had only the undug ground).</summary>
     float GroundNow(float x, float z) => _game.Zone.Planet.Terrain.GetType().GetMethod("GroundNow")?.Invoke(_game.Zone.Planet.Terrain, new object[] { (double)x, (double)z }) is float g ? g : _game.Zone.Planet.GroundHeight(x, z);
 
@@ -102,7 +105,7 @@ public partial class FallTest : Node
         for (int i = 0; i < worlds; i++)
             foreach (int x in World(i == 0)) yield return x;
         // Every case shown on at least one of the worlds (a world may have nobody sitting, or no creature near, at the time).
-        foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height" })
+        foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "into water", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height" })
             Check(_proven.Contains(kind), $"shown falling on at least one world: {kind}");
     }
 
@@ -147,7 +150,11 @@ public partial class FallTest : Node
         // What looking under them costs with nothing breaking: the slow sweep (and a look wherever the blocks show no floor).
         if (Get(town, "FallRays") is int rays0 && Get(town, "FallChecks") is int checks0)
         {
-            for (int i = 0; i < 600; i++) { TopUp(); yield return 0; }
+            double Ms() => Get(town, "FallMs") is double v ? v : 0.0;
+            double ms0 = Ms(), last = ms0, worst = 0.0;
+            for (int i = 0; i < 600; i++) { TopUp(); yield return 0; worst = Math.Max(worst, Ms() - last); last = Ms(); }
+            double each = (Ms() - ms0) / 600.0;
+            Check(each < 0.1 && worst < 0.1, $"looking under them costs well under 0.1 ms a frame ({each:F4} ms a frame on average, {worst:F4} ms at the worst frame)");
             int rays = (int)Get(town, "FallRays") - rays0, checks = (int)Get(town, "FallChecks") - checks0;
             GD.Print($"  (the sweep, nothing breaking: {checks / 10f:F1} looks and {rays / 10f:F1} rays a second over {town.People.Count(p => !p.Dead)} people, {town.People.Count(p => !p.Dead && (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() < 60f)} within its reach)");
         }
@@ -159,6 +166,7 @@ public partial class FallTest : Node
         foreach (int x in Floor(town, place, "asleep in bed", p => !p.Dead && !p.Gone && p.View != null && p.Asleep && !used.Contains(p), used, false, 150, 1f)) yield return x;
         _game.Zone.Sky.TimeOfDay = 0.42;
         foreach (int x in Land(town, place, used)) yield return x;
+        foreach (int x in Water(town, used)) yield return x;
         foreach (int x in PlaceCreature(place)) yield return x;
         foreach (int x in Creatures(small: true)) yield return x;
         foreach (int x in Creatures(small: false)) yield return x;
@@ -270,6 +278,8 @@ public partial class FallTest : Node
         float y0 = who.Pos.Y, health = who.Health.Current, last = y0, from = y0;
         _solidSeen = 0;
         int start = -1, end = -1, inSolid = 0, t;
+        ulong f0 = Engine.GetPhysicsFrames();
+        bool shot = false;
         for (t = 0; t < 12 * 60; t++)
         {
             TopUp();
@@ -277,14 +287,15 @@ public partial class FallTest : Node
             yield return 0;
             float y = who.Pos.Y;
             // (Off their feet: the moment their fall has them; on a build without falls, the moment they first go down.)
-            if (start < 0 && (Get(who, "Airborne") is bool air ? air : y < y0 - 1e-3f)) (start, from) = (t, last);
-            if (start >= 0 && (Get(who, "Airborne") is bool still ? !still : y >= last - 1e-4f)) { end = t; break; }
-            if (start >= 0 && shots && !_shot && y0 - y > 0.6f) { foreach (int x in Snap(town, who, "falling.png")) yield return x; _shot = true; }
+            if (start < 0 && (Get(who, "Airborne") is bool air ? air : y < y0 - 1e-3f)) (start, from) = (Frame(f0), last);
+            if (start >= 0 && (Get(who, "Airborne") is bool still ? !still : y >= last - 1e-4f)) { end = Frame(f0); break; }
+            if (start >= 0 && _shots != null && !_shot && y0 - y > 1.5f) { foreach (int x in Snap(town, who, "falling.png")) yield return x; (_shot, shot) = (true, true); }
             if (start >= 0 && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
             last = y;
         }
-        // (Down on the tick it stops: the ticks it came down are those from its first move to that one.)
         float h = from - who.Pos.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
+        // (A shot taken in the fall holds this watch a few ticks: their own count of the fall's ticks then.)
+        if (shot && end >= 0 && Get(who, "LastFallTime") is float own) took = own - Tick;
         float speed = MathF.Sqrt(2f * G * MathF.Max(0f, h)), expect = Share(speed) * who.Health.Max, lost = health - who.Health.Current;
         GD.Print($"  {what}: began {(start < 0 ? "never" : $"{start * Tick:F2} s after")}, down {h:F2} m in {took:F3} s (a free fall {free:F3} s), {speed:F1} m/s, lost {lost:F1} health (the rule {expect:F1}), {(who.Dead ? "dead" : "alive")}, falls {Get(who, "Falls")}");
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell, from the moment their footing went (began {start * Tick:F2} s after, {h:F2} m)");
@@ -293,7 +304,7 @@ public partial class FallTest : Node
         Check(inSolid == 0 && !InSolid(town.World(who.Pos), 0.2f), $"{what}: never in anything solid on the way or landed ({inSolid} ticks)");
         Check(OnSomething(town.World(who.Pos), 0.25f) || town.World(who.Pos).Y - (_game.Zone.Planet.WaterSurfaceAt(town.World(who.Pos)) ?? -1e9f) < 0f, $"{what}: landed on something ({town.World(who.Pos)})");
         Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
-        if (shots && _shot) foreach (int x in Snap(town, who, "landed.png", 40)) yield return x;
+        if (shot) foreach (int x in Snap(town, who, "landed.png", 40)) yield return x;
         if (!who.Dead) foreach (int x in Acting(town, who, what)) yield return x;
     }
 
@@ -309,11 +320,11 @@ public partial class FallTest : Node
             moved = MathF.Max(moved, new Vector2(who.Pos.X - at.X, who.Pos.Z - at.Z).Length());
             if (t % 60 == 0 && moved < 0.5f) GD.Print($"    ({t / 60} s: at {who.Pos}, run {(who.Run == null ? "none" : $"leg {who.Run.Leg}/{who.Run.Way.Count} home {who.Run.Home} searching {who.Run.Searching}")}, now {who.Now:F2}, clambering {Get(who, "Clambering")}, airborne {Get(who, "Airborne")}, spot {who.Spot} refuge {who.Refuge} asked {who.Asked}, wait {who.Wait:F1})");
         }
-        // (Landed somewhere the walking grid has no way out of, a pit with no stair, they stay there: nobody walks through a wall.)
+        // (Landed somewhere with no walking out nor climbing out: said, and a failure.)
         bool stranded = moved < 0.5f && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { who }) is true;
         // (Or gone on to a spot right by where they landed: there, about their day.)
         bool there = who.Spot >= 0 && (who.Pos - town.SpotAt(who.Spot)).Length() < 1.5f && (who.Path == null || who.Step >= who.Path.Count) && Get(who, "Falls") is int n && n > 0;
-        Check(moved >= 0.5f || stranded || there, $"{what}: acting after the fall ({moved:F1} m gone from where they landed{(stranded ? ", no way out of where they landed" : there ? ", at a spot by it" : "")}, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1})");
+        Check(moved >= 0.5f || there, $"{what}: acting after the fall ({moved:F1} m gone from where they landed{(stranded ? ", no way out of where they landed" : there ? ", at a spot by it" : "")}, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1})");
     }
 
     /// <summary>A shot of one of them from the side (windowed only).</summary>
@@ -373,6 +384,46 @@ public partial class FallTest : Node
         GD.Print($"  -- the ground dug from under one out on the land ({who.Job}, {(who.Pos - way[0]).Length():F1} m along) --");
         _game.Zone.Edits.Dig(new TInt3((int)MathF.Floor(w.X), (int)MathF.Floor(w.Y - 0.6f), (int)MathF.Floor(w.Z)), 2f);
         foreach (int x in Watch(town, who, "out on the land", false)) yield return x;
+    }
+
+    /// <summary>
+    /// One of the people over water near the settlement (a lake, a river, the sea), as if off a bank that went: into it, standing on
+    /// its floor where it is shallow or treading it chest-deep, unhurt by it, never in anything solid.
+    /// </summary>
+    IEnumerable<int> Water(Town town, HashSet<Town.Person> used)
+    {
+        Vector3 o = town.World(Vector3.Zero), at = default;
+        float? surface = null;
+        for (float r = 20f; r <= 250f && surface == null; r += 10f)
+            for (int k = 0; k < 24 && surface == null; k++)
+            {
+                at = o + new Vector3(MathF.Sin(k * MathF.Tau / 24f), 0f, MathF.Cos(k * MathF.Tau / 24f)) * r;
+                surface = _game.Zone.Planet.WaterSurfaceAt(at);
+            }
+        if (surface is not float top) { GD.Print("  (no water within 250 m of the settlement: not tried here)"); yield break; }
+        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep).FirstOrDefault();
+        if (who == null) { Check(false, "someone to send over water"); yield break; }
+        used.Add(who);
+        float bottom = GroundNow(at.X, at.Z);
+        _game.Survivor.PlaceOutside(((at + Vector3.Back * 6f) with { Y = MathF.Max(top, _game.Zone.Planet.GroundHeight(at.X, at.Z + 6f)) + 1f }).ToNumerics());
+        for (int i = 0; i < 120; i++) { TopUp(); yield return 0; }
+        GD.Print($"  -- one set 6 m over water ({who.Job}; the water {top - bottom:F1} m deep) --");
+        (who.Sitting, who.Asleep, who.Path) = (false, false, null);
+        who.Pos = town.Local(at with { Y = top + 6f });
+        // (Out there on an errand, so they are stepped there whether the place stands or not.)
+        who.Run = new ScavRun { Out = new List<Vector3> { who.Pos }, Round = new List<Vector3> { who.Pos }, Way = new List<Vector3> { who.Pos }, Find = who.Pos };
+        Set(who, "CheckFor", 1f);
+        float health = who.Health.Current;
+        int t = 0;
+        for (; t < 6 * 60 && (t < 2 || Get(who, "Airborne") is true); t++) { TopUp(); yield return 0; }
+        Vector3 w = town.World(who.Pos);
+        float tread = top - who.Figure.Height * 0.75f, expect = MathF.Max(tread, bottom);
+        GD.Print($"  into water: feet at {w.Y:F2} (the surface {top:F2}, its floor {bottom:F2}: {(bottom > tread ? "wading" : "treading")} at {expect:F2}), lost {health - who.Health.Current:F1}, falls {Get(who, "Falls")}");
+        bool down = MathF.Abs(w.Y - expect) < 0.35f && Get(who, "Airborne") is false;
+        Check(down, $"into water: in it, {(bottom > tread ? "standing on its floor" : "treading it chest-deep")} ({w.Y:F2} against {expect:F2})");
+        Check(health - who.Health.Current < 0.5f, $"into water: the water takes the fall ({health - who.Health.Current:F1} lost)");
+        Check(!InSolid(w, 0.2f), "into water: never in anything solid");
+        if (down) _proven.Add("into water");
     }
 
     /// <summary>One of the people set high over the ground (as if on a ledge that went): hurt by the rule, killed by a long drop, limp.</summary>
@@ -470,14 +521,15 @@ public partial class FallTest : Node
         WildlifePatch patch = _game.Zone.Wildlife;
         float y0 = who.Position.Y, health = who.Health, last = y0, from = y0;
         int start = -1, end = -1, t;
+        ulong f0 = Engine.GetPhysicsFrames();
         for (t = 0; t < 12 * 60; t++)
         {
             TopUp();
             yield return 0;
             if (!here()) break;
             float y = who.Position.Y;
-            if (start < 0 && who.Falling) (start, from) = (t, last);
-            if (start >= 0 && !who.Falling) { end = t; break; }
+            if (start < 0 && who.Falling) (start, from) = (Frame(f0), last);
+            if (start >= 0 && !who.Falling) { end = Frame(f0); break; }
             last = y;
         }
         if (!here()) { GD.Print($"  ({what} left its sim before it was down ({(who.Dead ? "dead" : "taken off")}): not judged)"); yield break; }

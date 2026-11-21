@@ -100,6 +100,22 @@ public static class Locomotion
     /// <summary>How far over the ground under it a body on its feet may find itself before it falls, m.</summary>
     const float FootSlack = 0.25f;
 
+    /// <summary>The most it steps down in a stride going down a slope, m: more, and it is over a drop.</summary>
+    const float StrideDrop = 0.5f;
+
+    /// <summary>
+    /// What its feet stand on (patch frame): the ground under its middle, or where that is a hole narrower than it (a giant over a
+    /// pit), the ground under three of its four feet, round it at its body's reach.
+    /// </summary>
+    public static float Footing(WildSim w, Creature c, float x, float z)
+    {
+        float r = c.Radius * 0.7f, h = w.Terrain.Height(x, z);
+        float a = w.Terrain.Height(x + r, z), b = w.Terrain.Height(x - r, z), d = w.Terrain.Height(x, z + r), e = w.Terrain.Height(x, z - r);
+        // (The second lowest of the four, the lowest that three of its feet stand on or over: of each pair's lower and higher.)
+        float lowA = MathF.Min(a, b), highA = MathF.Max(a, b), lowB = MathF.Min(d, e), highB = MathF.Max(d, e);
+        return MathF.Max(h, MathF.Min(MathF.Max(lowA, lowB), MathF.Min(highA, highB)));
+    }
+
     /// <summary>
     /// Nothing under its feet (the ground dug or blasted away from under it): anything that walks, crawls or stands, and a flier
     /// standing on the ground, falls. Its feet are on the ground after every step, so only the ground changing finds this.
@@ -108,7 +124,7 @@ public static class Locomotion
     {
         if (c.Falling) return true;
         if (c.Species.Flies && !c.Landed || c.Species.Rig == RigKind.GasBag || c.Hop == HopPhase.Air) return false;
-        if (c.Position.Y - w.Terrain.Height(c.Position.X, c.Position.Z) <= FootSlack) return false;
+        if (c.Position.Y - Footing(w, c, c.Position.X, c.Position.Z) <= FootSlack) return false;
         c.Falling = true;
         c.Velocity = Vector3.Zero;
         return true;
@@ -118,7 +134,7 @@ public static class Locomotion
     static void FreeFall(WildSim w, Creature c, float dt)
     {
         float y = c.Position.Y, speed = MathF.Max(0f, -c.Velocity.Y);
-        bool down = Drop.Step(ref y, ref speed, w.Terrain.Height(c.Position.X, c.Position.Z), w.Gravity, dt);
+        bool down = Drop.Step(ref y, ref speed, Footing(w, c, c.Position.X, c.Position.Z), w.Gravity, dt);
         c.Position = new Vector3(c.Position.X, y, c.Position.Z);
         c.Velocity = new Vector3(0f, -speed, 0f);
         if (!down) return;
@@ -165,7 +181,9 @@ public static class Locomotion
         Vector3 held = w.Unpressed(c, c.Position, p);
         if (held != p) (p, v) = (held, WildSim.Flat(held - c.Position) / MathF.Max(dt, 1e-4f));
         p = Bound(w, p, ref v);
-        p.Y = w.Terrain.Height(p.X, p.Z);
+        // On its feet on the ground under them; a drop more than a stride down a slope it goes over, and falls (Unfooted).
+        p.Y = Footing(w, c, p.X, p.Z);
+        if (c.Position.Y - p.Y > StrideDrop) p.Y = c.Position.Y;
         KeepOffFaces(w, c, ref p, ref v);
         if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
         c.Velocity = v;
@@ -233,7 +251,7 @@ public static class Locomotion
         if (!Interpenetration.SolidSurface(w, alongX, c.Species)) { p = alongX; v.Z = 0f; }
         else if (!Interpenetration.SolidSurface(w, alongZ, c.Species)) { p = alongZ; v.X = 0f; }
         else { p = c.Position; v = Vector3.Zero; return; }
-        p.Y = w.Terrain.Height(p.X, p.Z);
+        p.Y = Footing(w, c, p.X, p.Z);
     }
 
     /// <summary>Hoppers stand still on the ground and cover distance in ballistic hops.</summary>

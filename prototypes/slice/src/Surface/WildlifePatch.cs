@@ -635,16 +635,23 @@ public partial class WildlifePatch : Node3D
         Reground(lo, hi);
     }
 
-    /// <summary>The creatures' ground over a stretch (patch frame) read again from the ground as it stands, a body's draught under any water over it.</summary>
+    /// <summary>
+    /// The creatures' ground over a stretch (patch frame) read again, a metre column at a time: where it has been dug, the column's
+    /// top as it stands (a body's draught under any water over it), so a hole has its own floor and its rim its own edge.
+    /// </summary>
     void Reground(Vector3 lo, Vector3 hi)
     {
         float ox = Origin.X, oz = Origin.Z;
-        Sim.Terrain.Rebake(lo.X - 1f, lo.Z - 1f, hi.X + 1f, hi.Z + 1f, (x, z) =>
-        {
-            double wx = Mathx.WrapX(ox + x, _planet.Width), wz = Mathx.Wrap(oz + z, _planet.Height);
-            float ground = _planet.Terrain.GroundNow(wx, wz);
-            return _planet.Source.WaterSurfaceAt(wx, wz, out float surface) ? MathF.Max(ground, surface - Draught) : ground;
-        });
+        var dug = new List<(int, int, float)>();
+        for (int z = (int)MathF.Floor(lo.Z); z < (int)MathF.Ceiling(hi.Z); z++)
+            for (int x = (int)MathF.Floor(lo.X); x < (int)MathF.Ceiling(hi.X); x++)
+            {
+                double wx = Mathx.WrapX(ox + x + 0.5f, _planet.Width), wz = Mathx.Wrap(oz + z + 0.5f, _planet.Height);
+                float ground = _planet.Terrain.GroundNow(wx, wz);
+                if (ground >= _planet.Source.SurfaceHeight(wx, wz) - 0.05f) continue;
+                dug.Add((x, z, _planet.Source.WaterSurfaceAt(wx, wz, out float surface) ? MathF.Max(ground, surface - Draught) : ground));
+            }
+        if (dug.Count > 0) Sim.Terrain.Dug(dug);
     }
 
     /// <summary>Zone frame to patch frame and back.</summary>

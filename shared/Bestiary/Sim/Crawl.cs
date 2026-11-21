@@ -247,6 +247,7 @@ public static class Crawl
             if (!parts.Fits(feet, pr, ph) && parts.Gap(start, pr, ph) > parts.Gap(feet, pr, ph)) feet = start;
         }
         if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is float y) feet.Y = y;
+        else if (FeetFloor(s, c, feet) is float held) feet.Y = held; // (over a hole narrower than it: on three of its feet)
         else
         {
             Unfloor(c);
@@ -261,6 +262,21 @@ public static class Crawl
         c.LastFirm = feet;
         c.LastFirmNormal = Vector3.Up;
         SyncYaw(c);
+    }
+
+    /// <summary>The floor under three or four of a walker's feet (round its middle at its body's reach) where there is none under its middle: the lowest of them; else null.</summary>
+    static float? FeetFloor(ISolidSpace s, Creature c, Vector3 feet)
+    {
+        float r = c.Radius * 0.7f, lowest = float.MaxValue;
+        int held = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            Vector3 f = feet + (i switch { 0 => new Vector3(r, 0f, 0f), 1 => new Vector3(-r, 0f, 0f), 2 => new Vector3(0f, 0f, r), _ => new Vector3(0f, 0f, -r) });
+            if (SpaceMath.FloorBelow(s, f.X, feet.Y + 0.45f, f.Z, 1.4f) is not float y) continue;
+            held++;
+            lowest = MathF.Min(lowest, y);
+        }
+        return held >= 3 ? lowest : null;
     }
 
     /// <summary>Pushes a walker's body (its centre a clearance over its feet) out from any wall closer than its clearance, sideways only.</summary>

@@ -664,7 +664,7 @@ public sealed partial class Town : IKeeper
         float away = (player - p.Pos).Length();
         p.Far = away > FarSchedule;
         // Nothing under them: falling, whatever they were at, every step till down (Town.Falls).
-        if ((p.Airborne || p.CheckFor > 0f) && Falling(p, p.Saved))
+        if ((p.Airborne || p.CheckFor > 0f) && Falling(p, p.Saved) || p.ClimbTo != null && Climb(p, p.Saved))
         {
             Pose(p, who, away, p.Saved);
             p.Saved = 0f;
