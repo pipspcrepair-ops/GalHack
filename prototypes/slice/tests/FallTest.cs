@@ -166,6 +166,7 @@ public partial class FallTest : Node
         // (High enough to kill on this world: a landing at its safe speed and 26 m/s more.)
         float lethal = MathF.Pow(_game.Zone.Physics.Rules.Contacts.PlayerSafeSpeed + 26f, 2f) / (2f * G);
         foreach (int x in High(town, place, used, lethal)) yield return x;
+        if (Get(town, "FallRescues") is int rescued) Check(rescued == 0, $"nobody fell with nothing under them to land on ({rescued} put back where they stood)");
     }
 
     /// <summary>The drop under a point of the place (local feet): from the floor's underside down to what is below, m (by the colliders).</summary>

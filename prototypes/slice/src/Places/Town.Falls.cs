@@ -18,17 +18,17 @@ public sealed partial class Town
 {
     public sealed partial class Person
     {
-        /// <summary>Falling: how fast (m/s, down), from what height and where they last stood (the place's frame).</summary>
+        /// <summary>Falling: how fast (m/s, down), and where they last stood (the place's frame).</summary>
         public bool Airborne;
-        public float FallSpeed, FellFrom;
+        public float FallSpeed;
         public Vector3 FirmAt;
         /// <summary>How long more they are looked under each step (something under them went; its colliders may follow a moment later).</summary>
         public float CheckFor;
         /// <summary>Out on the land, clambering up the side of a hole (held to it, not falling).</summary>
         public bool Clambering;
-        /// <summary>Falls landed, the last one's drop (m), speed (m/s) and share of their health it cost (tests).</summary>
+        /// <summary>Falls landed (tests), and how long the one under way has lasted.</summary>
         public int Falls;
-        public float LastDrop, LastFallSpeed, LastFallShare, LastFallTime;
+        public float LastFallTime;
     }
 
     /// <summary>The world's pull, m/s².</summary>
@@ -154,7 +154,7 @@ public sealed partial class Town
     {
         Unseat(p);
         if (off != Vector3.Zero && Open(p.Pos + off)) p.Pos += off;
-        (p.Airborne, p.FallSpeed, p.FellFrom, p.FirmAt, p.CheckFor, p.LastFallTime) = (true, 0f, p.Pos.Y, p.Pos, 0f, 0f);
+        (p.Airborne, p.FallSpeed, p.FirmAt, p.CheckFor, p.LastFallTime) = (true, 0f, p.Pos, 0f, 0f);
         (p.Path, p.Step, p.Asked, p.Partner, p.Now, p.Yield) = (null, 0, -1, null, 0f, 0f);
     }
 
@@ -225,9 +225,8 @@ public sealed partial class Town
     {
         p.Airborne = false;
         p.Falls++;
-        (p.LastDrop, p.LastFallSpeed) = (p.FellFrom - p.Pos.Y, speed);
-        p.LastFallShare = wet ? 0f : Slice.Player.Survivor.FallShare(_places.Zone.Physics.Rules, speed);
-        if (p.LastFallShare > 0f) Struck(p, p.LastFallShare * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
+        float share = wet ? 0f : Slice.Player.Survivor.FallShare(_places.Zone.Physics.Rules, speed);
+        if (share > 0f) Struck(p, share * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
         if (p.Dead) return;
         // Startled by it and shaken (their mood), and on at once from where they landed, by a way from there; out on a run, home.
         (p.StartleFor, p.Wait, p.Refuge, p.ProgressAt, p.StuckFor) = (0.9f, 0f, -1, p.Pos, 0f);
