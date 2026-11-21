@@ -302,7 +302,7 @@ public sealed partial class Staging
         Town town = p.Memory.Town;
         foreach (int x in NoonLight()) yield return x;
         Vector3 feet = p.FromWorld(_game.Survivor.WorldFeet);
-        Town.Person who = town.People.Where(q => !q.Dead && !q.Away && q.Looks != null && !q.Fleeing && q.Figure.Stage != LifeStage.Child)
+        Town.Person who = town.People.Where(q => !q.Dead && q.Looks != null && !q.Fleeing && q.Figure.Stage != LifeStage.Child)
             .OrderBy(q => q.Pos.DistanceTo(feet)).FirstOrDefault();
         if (who == null) { GD.Print("(nobody out)"); yield break; }
         // They stop where they are; the sleeper is set down in front of them, 4 m off.

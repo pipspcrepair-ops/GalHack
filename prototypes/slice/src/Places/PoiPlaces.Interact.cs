@@ -392,20 +392,25 @@ public partial class PoiPlaces
         return true;
     }
 
+    /// <summary>Every town with its people about: each place standing with people, and any with one of theirs out on a run with the place down.</summary>
+    public readonly HashSet<Town> Towns = new();
+
     /// <summary>The town whose area a world point is in, if any place standing has people.</summary>
-    public Town TownAt(Vector3 world) => Standing.Select(p => p.Memory.Town).FirstOrDefault(t => t != null && t.Covers(world));
+    public Town TownAt(Vector3 world) => Towns.FirstOrDefault(t => t.Covers(world));
 
     /// <summary>The town whose ground a world point is on, out to a reach beyond its edge (the people met on its roads are its own), if any place standing has people.</summary>
-    public Town TownHolding(Vector3 world, float reach) => Standing.Select(p => p.Memory.Town).Where(t => t != null && t.Beyond(world) < reach).OrderBy(t => t.Beyond(world)).FirstOrDefault();
+    public Town TownHolding(Vector3 world, float reach) => Towns.Where(t => t.Beyond(world) < reach).OrderBy(t => t.Beyond(world)).FirstOrDefault();
+
+    /// <summary>Someone of any town about you could rob now (their hands up to you, close by), in town or out on the land.</summary>
+    public Town.Person Robbable(Vector3 world) => Towns.Select(t => t.Robbable(world)).FirstOrDefault(p => p != null);
 
     /// <summary>The townsperson nearest along a ray, in any standing place (with <paramref name="dead"/>, the body).</summary>
     public Town.Person PersonAlong(Vector3 eye, Vector3 dir, float reach, out float distance, bool dead = false)
     {
         distance = reach;
         Town.Person best = null;
-        foreach (Place p in Standing)
+        foreach (Town t in Towns)
         {
-            if (p.Memory.Town is not Town t) continue;
             Town.Person q = t.Along(eye, dir, distance, out float d, dead);
             if (q == null) continue;
             best = q;

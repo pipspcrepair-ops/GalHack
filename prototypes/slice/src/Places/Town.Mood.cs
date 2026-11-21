@@ -18,11 +18,11 @@ public sealed partial class Town
     /// <summary>An event at a world point reaches everyone out and about within earshot, nearer ones harder.</summary>
     public void Stir(MoodEvent e, Vector3 world, float reach = 40f)
     {
-        if (_place == null) return;
-        Vector3 at = _place.FromWorld(world);
+        if (_view == null) return;
+        Vector3 at = Local(world);
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Away) continue;
+            if (p.Dead || p.Gone) continue;
             float d = (p.Pos - at).Length();
             if (d > reach) continue;
             Bind(p);
@@ -31,7 +31,7 @@ public sealed partial class Town
     }
 
     /// <summary>A shot was fired in or near the town.</summary>
-    public void Gunshot() { if (_place != null) Stir(MoodEvent.Shot, _places.Zone.Wildlife.PlayerWorld(), 70f); }
+    public void Gunshot() { if (_view != null) Stir(MoodEvent.Shot, _places.Zone.Wildlife.PlayerWorld(), 70f); }
 
     /// <summary>
     /// A shot (a blow, a blast, where one landed) heard in or near the town (owner: "startled or trigger aggression [or] fleeing
@@ -42,15 +42,17 @@ public sealed partial class Town
     /// </summary>
     public void Gunfire(Vector3 world, float radius, Vector3 dir, object by)
     {
-        if (_place == null || Beyond(world) > radius || by is Person { Town: var own } && own == this || by is Creature { Keeper: var k } && k == this) return;
-        var shot = new WorldNoise { Position = _place.FromWorld(world), Radius = radius, Dir = dir };
+        if (_view == null || by is Person { Town: var own } && own == this || by is Creature { Keeper: var k } && k == this) return;
+        var shot = new WorldNoise { Position = Local(world), Radius = radius, Dir = dir };
         bool at = Covers(world);
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Away) continue;
+            if (p.Dead || p.Gone) continue;
             float d = (p.Pos - shot.Position).Length();
             if (d > radius) continue;
-            at |= shot.At(p.Pos + Vector3.Up * 1.2f);
+            // (Out on a run, a shot at them is theirs to answer, not the town's: Town.Runs.)
+            if (p.Run != null) { if (shot.At(p.Pos + Vector3.Up * 1.2f)) ShotAt(p, by); }
+            else at |= shot.At(p.Pos + Vector3.Up * 1.2f);
             Bind(p);
             p.Feel.Hit(MoodEvent.Shot, 1f - d / radius);
             p.StartleFor = MathF.Max(p.StartleFor, 0.7f);
@@ -101,7 +103,7 @@ public sealed partial class Town
                 // Those who saw it; a partner takes it hardest.
                 foreach (Person q in People)
                 {
-                    if (q == p || q.Dead || q.Gone || q.Away || q.Asleep) continue;
+                    if (q == p || q.Dead || q.Gone || q.Asleep) continue;
                     float d = (q.Pos - p.Pos).Length();
                     if (d > 25f) continue;
                     Bind(q);

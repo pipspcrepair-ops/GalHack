@@ -53,9 +53,9 @@ public partial class Game
     /// <summary>E on someone holding their hands up to you, close by: you take what they carry. Possible, and costly (<see cref="Town"/>).</summary>
     void StepRobbing(Controls c)
     {
-        if (!c.WasPressed(Key.E) || TownHere is not Town t || t.Robbable(Survivor.WorldFeet) is not Town.Person p) return;
+        if (!c.WasPressed(Key.E) || Places?.Robbable(Survivor.WorldFeet) is not Town.Person p) return;
         c.Pressed.Remove(Key.E);
-        t.Rob(p);
+        p.Town.Rob(p);
         Robbed++;
         var kit = Zone.Data.Rules.Materials.StartKit;
         if (kit != null && kit.Count > 0) { var (id, n) = System.Linq.Enumerable.ElementAt(kit, (int)(p.Spawn.Cell.X & 0x7fff) % kit.Count); Pack.Add(id, Math.Max(1, n / 2)); }

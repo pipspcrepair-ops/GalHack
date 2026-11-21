@@ -921,7 +921,7 @@ public partial class PlaceTest : Node
                 .Where(c => c.Y == door.Y && (c - door).X * outward.X + (c - door).Z * outward.Z == 0).Append(door).Distinct().ToList();
             Vector3 wayMiddle = new((float)wayCells.Average(c => c.X) + 0.5f, door.Y, (float)wayCells.Average(c => c.Z) + 0.5f);
             // Two of them meeting in the way in: one waits or steps aside, neither passes through the other.
-            var pair = town.People.Where(q => !q.Dead && !q.Away && q.Looks != null && q.Role != "guard").Take(2).ToList();
+            var pair = town.People.Where(q => !q.Dead && q.Looks != null && q.Role != "guard").Take(2).ToList();
             if (pair.Count == 2)
             {
                 GD.Print("  (TEST: two of them set either side of the way in, each sent through it)");
@@ -939,7 +939,7 @@ public partial class PlaceTest : Node
                 Check(through && closest > need - 0.07f, $"two meeting in the way in get past each other without passing through (closest {closest:F2} m, bodies {need:F2} m; {(through ? "both through" : "not through")}; ends {pair[0].Pos.DistanceTo(doorAt + outv * 3f):F1} and {pair[1].Pos.DistanceTo(doorAt - outv * 3f):F1} m short, paths {pair[0].Path?.Count}/{pair[0].Step} {pair[1].Path?.Count}/{pair[1].Step}, yield {pair[0].Yield:F1}/{pair[1].Yield:F1}{(through ? "" : $"; threat {pair[0].Threat?.Species.CommonName}/{pair[1].Threat?.Species.CommonName}, act {pair[0].Act}/{pair[1].Act}, seat {pair[0].Seat}/{pair[1].Seat}, partner {pair[0].Partner != null}/{pair[1].Partner != null}, fleeing {pair[0].Fleeing}/{pair[1].Fleeing}, walking {pair[0].Now:F1}/{pair[1].Now:F1}")})");
             }
             // One standing in the way in: you can't walk through them; walking into them presses them aside, and you get through.
-            Town.Person block = town.People.Where(q => !q.Dead && !q.Away && q.Looks != null && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
+            Town.Person block = town.People.Where(q => !q.Dead && q.Looks != null && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
             int civTicks = -1;
             float civGave = 0f;
             if (block != null)
@@ -953,7 +953,7 @@ public partial class PlaceTest : Node
                 Check(town.Pushed > pushes && civTicks >= 0 && civTicks <= 120 && through < 1.2f, $"one standing in the way in is pushed clear in {civTicks / 60f:F1} s and you get through ({through:F1} m from the far side, they answered {block.Answer})");
             }
             // A braced guard holds longer.
-            Town.Person brace = town.People.Where(q => !q.Dead && !q.Away && q.Looks != null && q.Role == "guard").OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
+            Town.Person brace = town.People.Where(q => !q.Dead && q.Looks != null && q.Role == "guard").OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
             if (brace != null && civTicks >= 0)
             {
                 GD.Print("  (TEST: a guard set braced in the way in)");
@@ -1048,7 +1048,7 @@ public partial class PlaceTest : Node
         // A Husk at the edge of them: by the place's temper and each one's nerve they fight it, shut themselves in, or run.
         {
             var sim = game.Zone.Wildlife.Sim;
-            Town.Person near = town.People.Where(q => !q.Dead && !q.Away && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            Town.Person near = town.People.Where(q => !q.Dead && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
             if (sim != null && near != null)
             {
                 Vector3 spot = near.Position + new Vector3(11f, 0f, 0f);
@@ -1067,7 +1067,7 @@ public partial class PlaceTest : Node
         // (a wave); let go, the sleeper's arm waves, and they answer.
         {
             // In sight of one of them: wherever the checkpoint left you may be past where anyone takes in a gesture.
-            Town.Person seen = town.People.Where(q => !q.Dead && !q.Gone && !q.Away && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            Town.Person seen = town.People.Where(q => !q.Dead && !q.Gone && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
             if (seen != null && seen.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet)) > 5f)
             {
                 Vector3 by = place.ToWorld(seen.Pos);
@@ -1094,7 +1094,7 @@ public partial class PlaceTest : Node
             }
             game.Keyboard = false;
             foreach (int x in drive.Wait(50)) yield return x;
-            Check(open && game.LastGesture == Wildlife.PlayerGesture.Wave && town.Answered > heard, $"Z held on the keyboard, the wheel opens; up and let go, a wave, and they answer it ({town.LastHeard}, {town.Answered - heard} answered; {town.People.Count(q => !q.Dead && !q.Gone && !q.Away)} out, the nearest {town.People.Where(q => !q.Dead && !q.Gone && !q.Away).Select(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).DefaultIfEmpty(-1f).Min():F1} m off, barricaded {town.Barricaded}; {string.Join(", ", town.People.Where(q => q.Answer != Wildlife.BodyAct.None).GroupBy(q => q.Answer).Select(g => $"{g.Count()} {g.Key}"))})");
+            Check(open && game.LastGesture == Wildlife.PlayerGesture.Wave && town.Answered > heard, $"Z held on the keyboard, the wheel opens; up and let go, a wave, and they answer it ({town.LastHeard}, {town.Answered - heard} answered; {town.People.Count(q => !q.Dead && !q.Gone)} out, the nearest {town.People.Where(q => !q.Dead && !q.Gone).Select(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).DefaultIfEmpty(-1f).Min():F1} m off, barricaded {town.Barricaded}; {string.Join(", ", town.People.Where(q => q.Answer != Wildlife.BodyAct.None).GroupBy(q => q.Answer).Select(g => $"{g.Count()} {g.Key}"))})");
             Check(hand > shoulder + 0.2f, $"and the sleeper's own arm waves: the right hand {hand - shoulder:+0.00;-0.00} m over the shoulder");
             // A threat costs goodwill, and puts hands up.
             float stood = town.Standing;
@@ -1103,7 +1103,7 @@ public partial class PlaceTest : Node
             Check(town.Standing < stood, $"a threat costs the place's goodwill ({stood:F0} to {town.Standing:F0})");
             // Robbing one of them: possible, and costly.
             // Robbing one of them: possible, and costly. Covered (looked at down your sights, close), their hands go up.
-            Town.Person mark = town.People.Where(q => !q.Dead && !q.Away && q.Looks != null && !q.Fleeing && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            Town.Person mark = town.People.Where(q => !q.Dead && q.Looks != null && !q.Fleeing && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
             if (mark != null)
             {
                 GD.Print("  (TEST: set down 1.8 m from one of them, to rob them)");
@@ -1191,9 +1191,9 @@ public partial class PlaceTest : Node
     {
         who.Pos = doorAt; who.Path = null; who.Wait = 30f; who.ScaredFor = 0f; who.Pursue = 0f;
         // Anyone else in the way in would part them before you touch them: sent off for the push.
-        var near = town.People.Where(q => q != who && !q.Dead && !q.Gone && !q.Away && new Vector2(q.Pos.X - doorAt.X, q.Pos.Z - doorAt.Z).Length() < 2.5f).ToList();
-        foreach (Town.Person q in near) { q.Away = true; q.AwayFor = 12f; }
-        if (near.Count > 0) GD.Print($"  (TEST: {near.Count} others in the way in sent off for the push)");
+        var near = town.People.Where(q => q != who && !q.Dead && !q.Gone && new Vector2(q.Pos.X - doorAt.X, q.Pos.Z - doorAt.Z).Length() < 2.5f).ToList();
+        foreach (Town.Person q in near) (q.Pos, q.Path, q.Wait) = (town.SpotAt(q.Home), null, 15f);
+        if (near.Count > 0) GD.Print($"  (TEST: {near.Count} others in the way in sent home for the push)");
         game.Survivor.PlaceOutside(place.ToWorld(doorAt + outv * 3f + Vector3.Up * 0.3f).ToNumerics());
         foreach (int x in drive.Wait(10)) yield return x;
         _pushWalked = 0f;
@@ -1216,7 +1216,6 @@ public partial class PlaceTest : Node
             if (tick > 0 || new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length() < who.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius + 0.15f) tick++;
             yield return walking.Current;
         }
-        foreach (Town.Person q in near) { q.Away = false; q.AwayFor = 0f; } // (back again)
         result(clear, closest, (place.FromWorld(game.Survivor.WorldFeet) - (doorAt - outv * 3f)).Length(), gave);
     }
     /// <summary>A door block on a base (set down whole for the test, printed): it opens as you come up, lets you through, shuts behind you; E works it too.</summary>

@@ -233,7 +233,7 @@ public partial class CombatTest : Node
         Place place = game.Places.PlaceOf(site);
         Town town = place?.Memory.Town;
         for (int i = 0; i < 600 && town != null && town.People.Any(p => p.Looks == null); i++) { game.Suit.Vitals.Health = max; yield return 0; }
-        var outs = town?.People.Where(p => !p.Dead && !p.Away && p.Looks != null).ToList();
+        var outs = town?.People.Where(p => !p.Dead && p.Looks != null).ToList();
         Check(outs is { Count: > 0 }, $"the squatters' works stand with its people out ({outs?.Count} of {town?.People.Count})");
         if (outs is not { Count: > 0 }) { game.QueueFree(); yield break; }
         // Its own creatures' sim, or one made for it as the game makes them, its blocks for their space.
@@ -321,7 +321,7 @@ public partial class CombatTest : Node
         int aims = 0, aimsBeforeFirst = -1;
         town.Aimed += _ => aims++;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
-        for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         var armed = town.People.Where(p => p.Looks != null && Weapons.Armed(p.Figure.Prop)).ToList();
         GD.Print($"  ({armed.Count} of {town.People.Count} armed: {string.Join(", ", armed.Select(p => p.Figure.Prop).GroupBy(x => x).Select(g => $"{g.Count()} {g.Key}"))})");
         if (armed.Count == 0) { GD.Print("  (nobody armed here this time)"); yield break; }
@@ -345,7 +345,7 @@ public partial class CombatTest : Node
         game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
         for (int i = 0; i < 3600 && game.Places.PlaceOf(site) is not { Ready: true }; i++) { game.Suit.Vitals.Health = max; yield return 0; } // (a minute, as at first)
         place = game.Places.PlaceOf(site);
-        for (int i = 0; i < 600 && armed.Any(p => !p.Dead && p.View == null && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        for (int i = 0; i < 600 && armed.Any(p => !p.Dead && p.View == null); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         for (int i = 0; i < 120; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         AppDomain.CurrentDomain.FirstChanceException -= count;
         var again = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();

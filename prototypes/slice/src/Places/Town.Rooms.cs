@@ -267,7 +267,6 @@ public sealed partial class Town
             foreach (Person p in People)
             {
                 if (p.Dead || p.Gone) continue;
-                if (OutOfTown(p, dt)) continue;
                 Day(p, dark, dt);
                 InBed(p, dt);
                 probe(p, t);
@@ -333,48 +332,6 @@ public sealed partial class Town
         if (!Move(p, dt) || p.Spot != home || p.Fleeing) return;
         if (sleep && home == p.Home && home < _lie.Count && _lie[home] != null) { p.Asleep = true; p.Yaw = _face[p.Home]; p.Path = null; }
         else { Idle(p, dt); p.Sitting |= p.Seat == home; }
-    }
-
-    /// <summary>
-    /// A scavenger's run (owner: nobody vanishes or appears in view): out through the way in on foot to the edge of the place's
-    /// ground, gone from there only once out of your sight; back after a while from the same point, only while you don't see
-    /// it, and in on foot. True while they are out or on their way out.
-    /// </summary>
-    bool OutOfTown(Person p, float dt)
-    {
-        if (p.Away)
-        {
-            if ((p.AwayFor -= dt) > 0f || Seen(p.Pos)) return true;
-            (p.Away, p.Path, p.Step) = (false, new List<Vector3> { At(p.Spot) }, 0);
-            return false;
-        }
-        if (!p.Leaving) return false;
-        if (Move(p, dt) && !Seen(p.Pos)) (p.Away, p.Leaving) = (true, false);
-        return true;
-    }
-
-    /// <summary>The farthest point a body walks to straight out from a point (local) along the way in's facing, up to 10 m: floor all the way at its level, clear of the parts.</summary>
-    Vector3 Outside(Vector3 from)
-    {
-        PInt3 f = Memory.Inst.Layout.EntranceFacing.Vec();
-        Vector3 dir = new Vector3(f.X, 0f, f.Z) is var d && d.LengthSquared() > 0.1f ? d.Normalized() : Vector3.Zero;
-        Vector3 last = from;
-        for (float s = 0.5f; s <= 10f && dir != Vector3.Zero; s += 0.5f)
-        {
-            Vector3 at = from + dir * s;
-            if (!OnGrid(at) || Ground(at) is not float g || MathF.Abs(g - from.Y) > 0.3f || _parts != null && _parts.Gap(at, PlaceParts.PersonRadius, PlaceParts.PersonHeight) < 0.05f) break;
-            last = at;
-        }
-        return last;
-    }
-
-    /// <summary>Whether you could see a body standing at a point (local): in the view and in drawing range, or close by.</summary>
-    bool Seen(Vector3 local)
-    {
-        if (_place == null || _place.GetViewport()?.GetCamera3D() is not { } eye) return false;
-        Vector3 at = _place.ToWorld(local) + Vector3.Up;
-        float d = at.DistanceTo(eye.GlobalPosition);
-        return d < 8f || d < PersonView.FarRange && eye.IsPositionInFrustum(at);
     }
 
     /// <summary>Down onto the mattress (asleep) and back up off it, at a walk: off the bed only once at their spot by it.</summary>
