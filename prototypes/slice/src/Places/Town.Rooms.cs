@@ -305,13 +305,13 @@ public sealed partial class Town
     /// </summary>
     int NightSpot(Person p)
     {
-        if (p.Home < _lie.Count && _lie[p.Home] != null) return p.Home;
+        if (p.Home < _lie.Count && _lie[p.Home] != null && Whole(p.Home)) return p.Home;
         Vector3 home = At(p.Home);
         int seat = -1, other = -1;
         float seatAt = 6f, otherAt = 8f;
         for (int i = 0; i < Spots.Count; i++)
         {
-            if (Spots[i].Tag == "bed" || Making(p, i) > 0) continue;
+            if (Spots[i].Tag == "bed" || Making(p, i) > 0 || !Whole(i)) continue;
             float d = (At(i) - home).Length();
             if (Spots[i].Tag == "sit" && d < seatAt) (seat, seatAt) = (i, d);
             else if (i != p.Home && d < otherAt) (other, otherAt) = (i, d);

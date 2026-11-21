@@ -2,6 +2,7 @@ using System;
 using GalHack.Physics;
 using Godot;
 using Wildlife;
+using PoiGenerator.Gen;
 using PInt3 = PoiGenerator.Gen.Int3;
 
 namespace Slice.Places;
@@ -138,9 +139,9 @@ public sealed partial class Town
             {
                 // On what is left: their feet on its top (a stair, rubble), never in it or over it.
                 if (MathF.Abs(top - p.Pos.Y) < FootSlack) p.Pos.Y = top;
-                // Sitting on a seat that has gone: down off its height on to the floor.
-                if (p.Sitting && p.Seated > 0.5f && SeatUnder(p) == null) { Unseat(p); p.Pos.Y += 0.45f; LoseFooting(p, Vector3.Zero); }
-                else return false;
+                // Sitting on a seat that has gone: down on the floor (their pose eases down), up off it frightened.
+                if (p.Sitting && p.Seated > 0.5f && SeatUnder(p) == null) { Unseat(p); p.ScaredFor = MathF.Max(p.ScaredFor, 4f); }
+                return false;
             }
             else LoseFooting(p, off);
         }
@@ -157,7 +158,7 @@ public sealed partial class Town
         (p.Path, p.Step, p.Asked, p.Partner, p.Now, p.Yield) = (null, 0, -1, null, 0f, 0f);
     }
 
-    void Unseat(Person p) => (p.Sitting, p.Seat, p.GettingUp, p.Seated, p.Asleep, p.Slept, p.Working) = (false, -1, false, 0f, false, 0f, false);
+    void Unseat(Person p) => (p.Sitting, p.Seat, p.GettingUp, p.Asleep, p.Working) = (false, -1, false, false, false); // (sat or lain, they come out of it as their pose eases)
 
     /// <summary>A step of a fall: down by the world's pull to the highest thing under their footing (or into water), landing there.</summary>
     void Down(Person p, float dt)
@@ -179,7 +180,7 @@ public sealed partial class Town
         p.Pos.Y = y;
         p.FallSpeed = speed;
         if (down) Land(p, speed, wet);
-        else if (p.FellFrom - p.Pos.Y > FallReach || p.LastFallTime > 10f)
+        else if (p.LastFallTime > 20f)
         {
             // Fallen out of everything (nothing built under them to land on): back where they last stood.
             FallRescues++;
@@ -196,8 +197,8 @@ public sealed partial class Town
         p.LastFallShare = wet ? 0f : Slice.Player.Survivor.FallShare(_places.Zone.Physics.Rules, speed);
         if (p.LastFallShare > 0f) Struck(p, p.LastFallShare * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
         if (p.Dead) return;
-        // Frightened by it: off to cover from here, away from where they fell (Step's refuge); out on a run, home.
-        (p.ScaredFor, p.FleeFrom, p.FleeAt, p.Refuge, p.ProgressAt, p.StuckFor) = (MathF.Max(p.ScaredFor, 4f), p.Pos, _clock, -1, p.Pos, 0f);
+        // Frightened by it: off to cover from here (a refuge they can still get to); out on a run, home.
+        (p.ScaredFor, p.Refuge, p.ProgressAt, p.StuckFor) = (MathF.Max(p.ScaredFor, 4f), -1, p.Pos, 0f);
         p.Feel.Hit(MoodEvent.Harm);
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
     }
@@ -231,7 +232,7 @@ public sealed partial class Town
             p.Pos.Y = was.Y;
             p.CheckFor = MathF.Max(p.CheckFor, 0.05f);
         }
-        else if (ground > was.Y + 0.5f)
+        else if (ground > was.Y + 0.7f)
         {
             p.Pos = was with { Y = was.Y + Clamber * dt };
             p.Clambering = true;
@@ -241,6 +242,14 @@ public sealed partial class Town
 
     /// <summary>How fast someone clambers up out of a hole, m/s.</summary>
     const float Clamber = 1.2f;
+
+    /// <summary>Whether a spot still stands by the place's blocks (its floor not broken away from under it): a refuge or a seat for the night only then.</summary>
+    bool Whole(int spot)
+    {
+        PInt3 under = Spots[spot].Cell + PInt3.Down;
+        BlockGrid g = Memory.Inst.Blocks;
+        return _nav == null || !g.InBounds(under) || !g.Get(under).IsAir || _nav.IsRock(under) || _nav.RampAt(Spots[spot].Cell, out _);
+    }
 
     /// <summary>Whether a point (the place's frame) has a floor under it by the place's blocks (off its grid: not for them to say).</summary>
     bool Floored(Vector3 local)
