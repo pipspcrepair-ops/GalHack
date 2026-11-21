@@ -157,18 +157,27 @@ public partial class ScavTest : Node
         _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
         GD.Print($"  ({runners.Count} of {people} go on runs; the sleeper {(stand - at).Length():F0} m inside the way in)");
 
-        // One followed all the way.
+        // One followed all the way (one sent home by something on the way, frightened before reaching a find, another).
         Town.Person first = null;
-        for (int i = 0; i < 120 * 60 && first == null; i++)
+        var tried = new HashSet<Town.Person>();
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            TopUp();
-            _drive.Face(town.World(at + outward * 6f + Vector3.Up));
-            yield return 0;
-            first = runners.FirstOrDefault(OnRun);
+            first = null;
+            _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
+            for (int i = 0; i < 150 * 60 && first == null; i++)
+            {
+                TopUp();
+                _drive.Face(town.World(at + outward * 6f + Vector3.Up));
+                yield return 0;
+                first = runners.FirstOrDefault(p => OnRun(p) && !tried.Contains(p) && new Vector2(p.Pos.X - at.X, p.Pos.Z - at.Z).Length() < 12f);
+            }
+            if (first == null) { Check(false, $"a scavenger sets out at the way in within two and a half minutes ({runners.Count} waiting; {Get(town, "LastPlan")})"); yield break; }
+            tried.Add(first);
+            GD.Print($"  (one sets out: {Get(town, "LastPlan")})");
+            _turnedBack = false;
+            foreach (int x in Follow(town, first, at, attempt == 2)) yield return x;
+            if (!_turnedBack) break;
         }
-        if (first == null) { Check(false, $"a scavenger sets out within two minutes at the way in ({runners.Count} waiting; {Get(town, "LastPlan")})"); yield break; }
-        GD.Print($"  (one sets out: {Get(town, "LastPlan")})");
-        foreach (int x in Follow(town, first, at)) yield return x;
 
         // A second watched going and coming only, the sleeper far off between.
         _game.Zone.Sky.TimeOfDay = 0.28;
@@ -189,7 +198,9 @@ public partial class ScavTest : Node
     }
 
     /// <summary>The sleeper keeps 10 to 30 m from one of them from the way in, out, round the find and home again.</summary>
-    IEnumerable<int> Follow(Town town, Town.Person who, Vector3 gate)
+    bool _turnedBack;
+
+    IEnumerable<int> Follow(Town town, Town.Person who, Vector3 gate, bool last)
     {
         var planet = _game.Zone.Planet;
         int undrawn = 0, jumps = 0, offGround = 0, ticks = 0, wet = 0;
@@ -233,7 +244,7 @@ public partial class ScavTest : Node
                 float ground = planet.GroundHeight(Wrap(feet.X, planet.Width), Wrap(feet.Z, planet.Height));
                 float gap = MathF.Abs(feet.Y - ground);
                 worstGround = MathF.Max(worstGround, gap);
-                if (gap > 0.6f) offGround++;
+                if (gap > 0.6f && offGround++ == 0) notes.Add($"{gap:F1} m off the ground {out_:F0} m out at {t / 60f:F0} s ({(Get(Get(who, "Run"), "Road") is true ? "by road" : "over the land")})");
                 if (planet.WaterSurfaceAt(feet) != null) wet++;
             }
             // Shots (--shots=dir, a windowed run): out on the land, searching, and on the way home with the bundle; a few metres off, from the side.
@@ -251,10 +262,12 @@ public partial class ScavTest : Node
                 while (_snapping) yield return 0;
                 was = who.Pos;
             }
+            if (t % 1800 == 0) { object r = Get(who, "Run"); GD.Print($"    {t / 60} s: {out_:F0} m out, homeward {Get(r, "Home")}, way {Get(r, "Leg")}/{(Get(r, "Way") as System.Collections.ICollection)?.Count}, searching {Get(r, "Searching")}, now {who.Now:F2}, speed {who.Speed:F1}, scared {who.ScaredFor:F1}, fighting {who.Engaged}, fleeing {who.Fleeing}, act {who.Act}"); }
             worst = MathF.Max(worst, flat);
             searched |= Searched(who) > 0;
             laden |= Laden(who);
             if (t > 120 && !OnRun(who) && out_ < 3f && searched) { home = true; break; }
+            if (!last && !searched && Get(Get(who, "Run"), "Home") is true) { _turnedBack = true; GD.Print($"  (turned for home before the find, {out_:F0} m out: scared {who.ScaredFor:F1}, fleeing {who.Fleeing}, mood {who.Feel.Mood}, threat {who.Threat?.Species.Name ?? "none"}; another followed)"); yield break; }
         }
         GD.Print($"  followed {ticks / 60f:F0} s: {farthest:F0} m out at most, the longest step {worst:F2} m{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
         Check(farthest > 80f, $"the one followed went out on the land ({farthest:F0} m from the way in at most)");
@@ -296,6 +309,7 @@ public partial class ScavTest : Node
         away.Y = _game.Zone.GroundAt(away.X, away.Z).Y + 0.3f;
         _game.Survivor.PlaceOutside(away.ToNumerics());
         Vector3 left = who.Pos;
+        float moved = 0f;
         bool down = false;
         float worstMs = 0f, sumMs = 0f;
         int samples = 0;
@@ -305,11 +319,12 @@ public partial class ScavTest : Node
             TopUp();
             yield return 0;
             down |= _game.Places.PlaceOf(site) == null;
+            moved += new Vector2(who.Pos.X - left.X, who.Pos.Z - left.Z).Length();
+            left = who.Pos;
             if (Get(town, "LastRunsMs") is float ms && OnRun(who) && t > 600) { worstMs = MathF.Max(worstMs, ms); sumMs += ms; samples++; }
             object run = Get(who, "Run");
-            if (who.Dead || run == null && !OnRun(who) || Get(run, "Home") is true && new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length() < 110f) break;
+            if (who.Dead || run == null && !OnRun(who) || Get(run, "Home") is true && new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length() < 90f) break;
         }
-        float moved = new Vector2(who.Pos.X - left.X, who.Pos.Z - left.Z).Length();
         GD.Print($"  out of sight {(down ? "with the place down" : "with the place still up")}: {moved:F0} m along their way, {Searched(who)} spots searched; the walk of those out {(samples > 0 ? sumMs / samples : 0):F4} ms a tick on average, {worstMs:F4} ms at worst");
         Check(moved > 40f && down, $"far off, with the place down, they kept walking their way ({moved:F0} m, the place {(down ? "down" : "never down")})");
         Check(samples > 0 && worstMs < 0.1f, $"the far walking cost under 0.1 ms a tick ({worstMs:F4} ms at worst over {samples} ticks)");
@@ -330,6 +345,8 @@ public partial class ScavTest : Node
             if (!OnRun(who) && out_ < 3f) { home = true; break; }
             if (who.Dead) break;
         }
+        object r = Get(who, "Run");
+        if (!home) GD.Print($"  (not home: {new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length():F1} m from the way in, on a run {OnRun(who)}, homeward {Get(r, "Home")}, way {Get(r, "Leg")}/{(Get(r, "Way") as System.Collections.ICollection)?.Count}, searching {Get(r, "Searching")}, now {who.Now:F2}, the place {(_game.Places.PlaceOf(site) is { Ready: true } ? "up" : "down")}, drawn {who.View is { Visible: true }})");
         Check(home && walking, $"the one not watched came home walking through the way in (home {home}, walking in {walking}{(Laden(who) ? ", carrying what they found" : "")})");
         Check(popped == 0, $"they never appeared in view within {Near} m ({popped} times)");
         Check(jumps == 0, $"no step longer than a run's in a tick while watched ({jumps} jumps)");

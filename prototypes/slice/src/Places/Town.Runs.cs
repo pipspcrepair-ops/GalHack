@@ -360,7 +360,7 @@ public sealed partial class Town
         ScavRun r = p.Run;
         float rain = _places.Zone.Weather?.Sim?.RainAt(World(p.Pos)) ?? 0f;
         bool frightened = p.ScaredFor > 0f || r.Wronged && !Fighter(p);
-        if (!r.Home && (frightened || p.AvoidFor > 0f || r.Wronged || offDuty || Night() || rain > 0.5f || Late(p))) TurnHome(p);
+        if (!r.Home && (frightened || r.Wronged || offDuty || Night() || rain > 0.5f || Late(p))) TurnHome(p); // (something only to keep wide of, they keep wide of and go on)
         p.Fleeing = r.Home && frightened;
         float walk = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
         p.Speed = p.Fleeing ? 3.4f : walk * (p.Job switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f });
@@ -379,7 +379,9 @@ public sealed partial class Town
             return;
         }
         if (!Walk(p, dt)) return;
-        if (r.Home) { Back(p); return; }
+        // (Home with the place still down, coming up as you come: they stand at the way in till it is up, in the town again from there;
+        // with nobody near to see, they are simply home, kept with the place.)
+        if (r.Home) { if (_place is { Ready: true, Dormant: false } || (player - p.Pos).Length() > PersonView.FarRange + 50f) Back(p); else p.Now = 0f; return; }
         // At the find, or the next spot round it: search there.
         r.Searching = r.Spot;
         r.SearchFor = SearchEach * (0.7f + 0.6f * (float)_rng.NextDouble());
@@ -418,7 +420,7 @@ public sealed partial class Town
         RunsHome++;
         if (r.Carrying) Hauls++;
         p.Run = null;
-        (p.Path, p.Step, p.Wait, p.Fleeing, p.Working) = (null, 0, 4f, false, false);
+        (p.Path, p.Step, p.Wait, p.Fleeing, p.Working) = (null, 0, r.Carrying ? 4f : 45f, false, false); // (sent home empty-handed, a while before trying again)
         p.Spot = Gate;
         p.ProgressAt = p.Pos;
         // Robbed or shot at out there: now the town knows.
