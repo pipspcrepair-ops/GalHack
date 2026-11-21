@@ -134,12 +134,14 @@ public sealed partial class Town : IKeeper
         public int Left = -1;
         /// <summary>The seat they sat down in and haven't yet got up out of (-1: none).</summary>
         public int Seat = -1;
-        /// <summary>Their job (from the generator), which sets their day; out of town on it (a scavenger's run); bent to a task where they are.</summary>
+        /// <summary>Their job (from the generator), which sets their day; bent to a task where they are.</summary>
         public PersonRole Job;
-        public bool Away, Working;
-        /// <summary>On their way out by the way in, to be gone once past the place's ground and out of your sight.</summary>
-        public bool Leaving;
-        public float AwayFor;
+        public bool Working;
+        /// <summary>A scavenger's trip out of town under way, walked on the land the whole time (Town.Runs); null at home.</summary>
+        public ScavRun Run;
+        /// <summary>A bundle of what they found on their back (home from a run, till bed), and its model.</summary>
+        public bool Laden;
+        public Node3D Sack;
         /// <summary>At a checkpoint or a post: how long they've had you halted, and whether their gun is on you (never fired outside a hostile place).</summary>
         public float Halt;
         public bool Holding;
@@ -170,7 +172,7 @@ public sealed partial class Town : IKeeper
         public string Name => $"{Spawn.Role}";
         public Vector3 Position => Town._places == null ? Pos : Town._places.Zone.Wildlife.PatchLocal(Town.World(Pos));
         public Vector3 Forward => new(-MathF.Sin(Yaw), 0, -MathF.Cos(Yaw));
-        public bool Attackable => !Dead && !Away;
+        public bool Attackable => !Dead;
         public float ThreatScale => 1f;
     }
 
@@ -311,17 +313,21 @@ public sealed partial class Town : IKeeper
     /// <summary>The last frame's posing, ms (measurements).</summary>
     public float LastPoseMs { get; private set; }
 
-    public Vector3 World(Vector3 local) => _place != null ? _place.ToWorld(local) : local;
+    public Vector3 World(Vector3 local) => local + _origin;
+    public Vector3 Local(Vector3 world) => world - _origin;
 
     // ---- Standing and sitting ---------------------------------------------------------------------
 
+
+    /// <summary>The place's frame in the world (its origin, kept once it has stood: a scavenger out on a run walks in it with the place down).</summary>
+    Vector3 _origin;
 
     public void Stand(Place place, PoiPlaces places)
     {
         _place = place;
         _places = places;
-        _view = new Node3D { Name = "Townsfolk" };
-        place.AddChild(_view);
+        _origin = place.WorldOrigin;
+        Open();
         Populate();
         // Who they are and what they're drawn with is worked out on a worker: a town coming into view costs the frame nothing.
         if (People.Count > 0 && People[0].Looks == null && _rolling == null)
@@ -333,36 +339,64 @@ public sealed partial class Town : IKeeper
                 foreach (Person p in People) p.Ready = PersonView.Prepare(p.Rig);
             }));
         }
-        WildlifePatch patch = places.Zone.Wildlife;
-        Register(patch.Sim, null, Vector3.Zero);
+        Register(places.Zone.Wildlife.Sim, null, Vector3.Zero);
+    }
+
+    /// <summary>
+    /// The town's own node in the zone, at the place's frame (not the place's: one of them out on a run is drawn, ticked and
+    /// hunted with the place down), its ticker, and its ear on the wild patch.
+    /// </summary>
+    void Open()
+    {
+        if (_view != null) return;
+        _view = new Node3D { Name = $"Townsfolk {Memory.Site?.Name}", Position = _origin };
+        _places.AddChild(_view);
+        _places.Towns.Add(this);
+        _view.AddChild(new Ticker { Name = "Ticker", Town = this });
+        WildlifePatch patch = _places.Zone.Wildlife;
         patch.Swapped += OnSwapped;
         patch.Bitten += OnBitten;
         patch.Died += OnDied;
-        var ticker = new Ticker { Name = "Ticker", Town = this };
-        _view.AddChild(ticker);
+    }
+
+    /// <summary>The town's node gone with nobody of it out on the land (the place down, the last one back).</summary>
+    void Close()
+    {
+        if (_view == null) return;
+        WildlifePatch patch = _places.Zone.Wildlife;
+        patch.Swapped -= OnSwapped;
+        patch.Bitten -= OnBitten;
+        patch.Died -= OnDied;
+        DropSolids();
+        foreach (Person p in People) (p.View, p.Holder, p.Model) = (null, null, null);
+        _places.Towns.Remove(this);
+        _view.QueueFree();
+        _view = null;
     }
 
     public void Sit(Place place)
     {
         WildlifePatch patch = _places.Zone.Wildlife;
-        patch.Swapped -= OnSwapped;
-        patch.Bitten -= OnBitten;
-        patch.Died -= OnDied;
         if (patch.Sim != null)
         {
             patch.Sim.Settlements.Remove(_settlement);
-            foreach (Person p in People) patch.Sim.Targets.Remove(p);
+            foreach (Person p in People) if (p.Run == null) patch.Sim.Targets.Remove(p);
             foreach (var a in _animals) patch.Sim.Remove(a.Creature);
             // Beasts kept out in the open go with the town and come back with it (those of the place's own sim stay there with it).
             foreach (Creature c in patch.Sim.Creatures) if (c.Keeper == this) { patch.Sim.Remove(c); _kennelled = false; }
             patch.Sim.StrayEntered -= OnStray;
         }
         _animals.Clear();
-        DropSolids();
-        // (Their bodies went with the place's nodes: the gun hung in each hand went with them.)
-        foreach (Person p in People) (p.View, p.Holder, p.Model) = (null, null, null);
-        _view = null;
         _place = null;
+        if (!People.Any(p => p.Run != null)) { Close(); return; }
+        // Out on the land, a scavenger stays as they are; those at home go with the place.
+        foreach (Person p in People)
+        {
+            if (p.Run != null || p.View == null) continue;
+            if (_solids.Remove(p, out Solid s)) GiveSolid(s);
+            p.View.QueueFree();
+            (p.View, p.Holder, p.Model) = (null, null, null);
+        }
     }
 
     /// <summary>The town in the patch's sim: its area (wildlife keeps out), its people (hunted only outside it), its animals.</summary>
@@ -413,7 +447,9 @@ public sealed partial class Town : IKeeper
     void OnSwapped(WildSim old, Vector3 oldOrigin, WildSim sim)
     {
         if (old != null) old.StrayEntered -= OnStray;
-        Register(sim, old, oldOrigin);
+        if (_place != null) Register(sim, old, oldOrigin);
+        else if (sim != null)
+            foreach (Person p in People) if (p.Run != null && !p.Dead && !sim.Targets.Contains(p)) sim.Targets.Add(p); // (out on the land with the place down: hunted there still)
     }
 
     /// <summary>A wild creature got in: the nearest guard deals with it.</summary>
@@ -433,7 +469,7 @@ public sealed partial class Town : IKeeper
     void OnDied(Creature c, ITarget killer)
     {
         if (killer == null || killer != _places.Zone.Wildlife.Player || !(c.Species.Husk || CrossReactions.Danger(c.Species) || Foe(c))) return;
-        if (_place != null && Covers(_places.Zone.Wildlife.WorldOf(c)) || _place != null && (_place.FromWorld(_places.Zone.Wildlife.WorldOf(c)) - Walk(Data.AreaCenter)).Length() < Data.AreaRadius + 25f) Did(Deed.Help);
+        if (_place != null && Covers(_places.Zone.Wildlife.WorldOf(c)) || _place != null && (Local(_places.Zone.Wildlife.WorldOf(c)) - Walk(Data.AreaCenter)).Length() < Data.AreaRadius + 25f) Did(Deed.Help);
     }
 
     /// <summary>A creature went for one of the town's people (outside the town, where they can be hunted).</summary>
@@ -512,167 +548,205 @@ public sealed partial class Town : IKeeper
         return MathF.Sqrt(dx * dx + dz * dz);
     }
 
+    /// <summary>The last tick's walking of everyone out on a run, ms (measurements: the far ones are a point stepped along a way).</summary>
+    public float LastRunsMs { get; private set; }
+
     void Tick(float tickDt)
     {
-        if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
+        if (_view == null || !Rolled) return;
+        bool standing = _place is { Ready: true, Dormant: false };
+        bool runs = false;
+        foreach (Person p in People) runs |= p.Run != null && !p.Gone;
+        if (!standing && !runs) { if (_place == null) Close(); return; }
         _searchAside = true; // from here on the main thread asks: new routes come from a worker
-        Vector3 player = _you = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
-        // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
-        _owed += tickDt;
+        Vector3 player = _you = Local(_places.Zone.Wildlife.PlayerWorld());
         _tick++;
-        int every = Spaced ? PersonView.PoseEvery(Away(player)) : 1;
-        if (_tick % every != 0) return;
-        _step = every;
-        tickDt = _owed;
-        _owed = 0f;
         bool night = Night();
         float time = (float)_places.Zone.Sky.TimeOfDay;
         // Where you are looking, in the place's frame: what you point at, people see.
         Vector3 eye = player + Vector3.Up * 1.6f;
         ITarget you = _places.Zone.Wildlife.Player;
-        Vector3 look = you == null ? Vector3.Forward : (_place.FromWorld(_places.Zone.Wildlife.PlayerWorld() + you.Forward) - player);
+        Vector3 look = you == null ? Vector3.Forward : (Local(_places.Zone.Wildlife.PlayerWorld() + you.Forward) - player);
         look = look.LengthSquared() > 1e-4f ? look.Normalized() : Vector3.Forward;
+        // Out on a run, every tick in their own turn by how far off they are (the place's pace is the place's): the same
+        // walk whether the place stands or not, a body near you, a point stepped along the way far off.
+        if (runs)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (!standing)
+            {
+                _clock += tickDt;
+                Sense(tickDt);
+                MoodTick(tickDt);
+                Held();
+            }
+            _step = 1;
+            for (int who = 0; who < People.Count; who++)
+                if (People[who].Run != null) Step(People[who], who, player, eye, look, tickDt, night, time);
+            Miss();
+            LastRunsMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+        }
+        // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
+        _owed += tickDt;
+        int every = Spaced ? PersonView.PoseEvery(Away(player)) : 1;
+        if (!standing || _tick % every != 0)
+        {
+            if (runs) Solids(player, tickDt);
+            return;
+        }
+        _step = every;
+        tickDt = _owed;
+        _owed = 0f;
         _clock += tickDt;
         Voices(player, tickDt);
         Worms(player, tickDt);
         Sense(tickDt);
         Word(tickDt);
         MoodTick(tickDt);
-        // Whoever a Husk has by the head (out in the open, or in a place's rooms) stays where they are taken.
+        Held();
+        for (int who = 0; who < People.Count; who++)
+            if (People[who].Run == null) Step(People[who], who, player, eye, look, tickDt, night, time);
+        KeepApart(player, tickDt);
+        Solids(player, tickDt);
+    }
+
+    /// <summary>Whoever a Husk has by the head (out in the open, or in a place's rooms) stays where they are taken.</summary>
+    void Held()
+    {
         _held.Clear();
         WildlifePatch patch = _places.Zone.Wildlife;
         for (int si = -1; si < patch.Sites.Count; si++)
             if ((si < 0 ? patch.Sim : patch.Sites[si].Sim) is { } wild)
                 foreach (Creature c in wild.Creatures)
                     if (c.Phase == AttackPhase.Hold && Of(c.Holding) is { } h && h.Town == this) _held.Add(h);
-        for (int who = 0; who < People.Count; who++)
+    }
+
+    /// <summary>One of them, a step of their day (or of their run) with the time since their last.</summary>
+    void Step(Person p, int who, Vector3 player, Vector3 eye, Vector3 look, float tickDt, bool night, float time)
+    {
+        if (p.Gone) return;
+        p.StunReady = MathF.Max(0f, p.StunReady - tickDt);
+        p.StunFor = MathF.Max(0f, p.StunFor - tickDt);
+        // Whoever a Husk holds, or a stun has caught, stays where they are.
+        if ((p.StunFor > 0f || _held.Contains(p)) && !p.Dead)
         {
-            Person p = People[who];
-            if (p.Gone) continue;
-            p.StunReady = MathF.Max(0f, p.StunReady - tickDt);
-            p.StunFor = MathF.Max(0f, p.StunFor - tickDt);
-            // Whoever a Husk holds, or a stun has caught, stays where they are.
-            if ((p.StunFor > 0f || _held.Contains(p)) && !p.Dead)
-            {
-                p.Now = 0f;
-                Pose(p, who, (player - p.Pos).Length(), tickDt);
-                continue;
-            }
-            if (p.Dead)
-            {
-                // Going down, then lying where they fell; the hurt flash fades whatever happens.
-                if (p.View == null) { BuildNext(p); if (p.View == null) continue; }
-                p.Hurt = MathF.Max(0f, p.Hurt - tickDt);
-                float lying = (player - p.Pos).Length();
-                if (p.Down >= 1f && p.Laid)
-                {
-                    // Down: only seen or not as you come and go, and posed where they lie when they come into view.
-                    p.Saved += tickDt;
-                    if (!Due(who, lying)) continue;
-                    bool was = p.View.Visible;
-                    if (Shown(p, lying, p.Saved) && !was) PoseBody(p, who, p.Saved);
-                    p.Saved = 0f;
-                    continue;
-                }
-                // Laid once the limp body has come to rest (it falls as a ragdoll, onto whatever is under it).
-                p.Laid = p.Down >= 1f && p.Rig.Settled && p.Hurt <= 0f;
-                p.Down = MathF.Min(1f, p.Down + tickDt * 1.8f);
-                Pose(p, who, lying, tickDt);
-                continue;
-            }
-            if (p.View == null || p.Holder == null && p.Model == null && Wields(p)) BuildNext(p);
-            // Far from you a town needn't move every tick: each in their turn, with the time they missed,
-            // the further off the fewer times a second (and so their bodies are posed).
-            p.Saved += tickDt;
-            float away = (player - p.Pos).Length();
-            p.Far = away > FarSchedule;
-            if (!Due(who, away)) continue;
-            float dt = p.Saved;
-            p.Saved = 0f;
-            InBed(p, dt);
-            if (away < ActRange && p.Looks != null && !p.Asleep) Acts(p, player, eye, look, away, dt);
-            bool guard = p.Role == "guard";
-            p.Hurt = MathF.Max(0f, p.Hurt - dt);
-            // Until it reaches them, they carry on as they were; then a start, and they act.
-            Mood mood = Memory.Mood;
-            if (!p.Reacted)
-            {
-                if (_clock < p.ReactAt) mood = _moodBefore;
-                else { p.Reacted = true; p.Path = null; p.Step = 0; p.Partner = null; p.StartleFor = 0.7f; }
-            }
-            // Their day over (each job keeps its own hours), or the place turned hostile: home, or to cover.
-            // The guards and the law keep their posts round the clock, and turn on you.
-            bool offDuty = !guard && p.Looks != null ? !p.Figure.OutAt(time) : night;
-            p.ScaredFor = MathF.Max(0f, p.ScaredFor - dt);
-            p.ShovedFor = MathF.Max(0f, p.ShovedFor - dt);
-            p.ShooFor = MathF.Max(0f, p.ShooFor - dt);
-            p.AvoidFor = MathF.Max(0f, p.AvoidFor - dt);
-            // Something dangerous about: those who answer it with a gun fight it, as a hostile place's fighters fight you (Town.Combat);
-            // the rest go to their doors (the scared at a run, those keeping wide of it at a walk); a barricaded place keeps everyone in.
-            if (Combat(p, player, mood, dt))
-            {
-                Pose(p, who, away, dt);
-                continue;
-            }
-            bool scared = p.ScaredFor > 0f || Barricaded;
-            bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
-            bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
-            if (offDuty && p.Away) p.AwayFor = 0f; // back from a run in time for the night (a fright in town doesn't reach them out there)
-            if (OutOfTown(p, dt))
-            {
-                Pose(p, who, away, dt);
-                continue;
-            }
-            if (hide && !p.Asleep)
-            {
-                // Home, wherever they were going, to their bed or a seat by their spot (NightSpot). From a fright they run for
-                // the nearest that isn't toward what frightened them (what they saw, else you) and cower there, in sight.
-                p.Fleeing = mood == Mood.Hostile || scared;
-                if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : NightSpot(p);
-                if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
-                p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
-                Arrive(p, dt, offDuty && !p.Fleeing);
-                Pose(p, who, away, dt);
-                continue;
-            }
-            // Morning, or the fright over, or a fright in the night: up and about.
-            if (!hide) p.Refuge = -1;
-            if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
-            if (p.Asleep) { Pose(p, who, away, dt); continue; }
-            if (guard && mood != Mood.Hostile && !YouDown && Pursuit(p, player, dt))
-            {
-                Pose(p, who, away, dt);
-                continue;
-            }
-            if (guard && mood != Mood.Hostile && !YouDown && Checkpoint(p, player, mood, dt))
-            {
-                Pose(p, who, away, dt);
-                continue;
-            }
-            // Unwelcome, you: off their post, they make for it before anything else (watching you on the way).
-            if (guard && mood != Mood.Hostile && Unwelcome && (p.Pos - At(p.Spawn.Spot)).Length() > 2f)
-            {
-                if (p.Spot != p.Spawn.Spot || p.Path == null || p.Step >= p.Path.Count) GoTo(p, p.Spawn.Spot);
-                Move(p, dt);
-                Pose(p, who, away, dt);
-                continue;
-            }
-            if (guard && mood != Mood.Peaceful && !YouDown && (player - p.Pos).Length() < 40f)
-            {
-                Guard(p, player, mood, dt);
-                Pose(p, who, away, dt);
-                continue;
-            }
-            if (Move(p, dt))
-            {
-                p.Wait -= dt;
-                if (p.Wait <= 0f) Next(p);
-                else Idle(p, dt);
-            }
-            Pose(p, who, away, dt);
+            p.Now = 0f;
+            Pose(p, who, (player - p.Pos).Length(), tickDt);
+            return;
         }
-        KeepApart(player, tickDt);
-        Solids(player, tickDt);
+        if (p.Dead)
+        {
+            // Going down, then lying where they fell; the hurt flash fades whatever happens.
+            if (p.View == null) { BuildNext(p); if (p.View == null) return; }
+            p.Hurt = MathF.Max(0f, p.Hurt - tickDt);
+            float lying = (player - p.Pos).Length();
+            if (p.Down >= 1f && p.Laid)
+            {
+                // Down: only seen or not as you come and go, and posed where they lie when they come into view.
+                p.Saved += tickDt;
+                if (!Due(who, lying)) return;
+                bool was = p.View.Visible;
+                if (Shown(p, lying, p.Saved) && !was) PoseBody(p, who, p.Saved);
+                p.Saved = 0f;
+                return;
+            }
+            // Laid once the limp body has come to rest (it falls as a ragdoll, onto whatever is under it).
+            p.Laid = p.Down >= 1f && p.Rig.Settled && p.Hurt <= 0f;
+            p.Down = MathF.Min(1f, p.Down + tickDt * 1.8f);
+            Pose(p, who, lying, tickDt);
+            return;
+        }
+        if (p.View == null || p.Holder == null && p.Model == null && Wields(p)) BuildNext(p);
+        // Far from you a town needn't move every tick: each in their turn, with the time they missed,
+        // the further off the fewer times a second (and so their bodies are posed).
+        p.Saved += tickDt;
+        float away = (player - p.Pos).Length();
+        p.Far = away > FarSchedule;
+        if (!Due(who, away)) return;
+        float dt = p.Saved;
+        p.Saved = 0f;
+        InBed(p, dt);
+        if (away < ActRange && p.Looks != null && !p.Asleep) Acts(p, player, eye, look, away, dt);
+        bool guard = p.Role == "guard";
+        p.Hurt = MathF.Max(0f, p.Hurt - dt);
+        // Until it reaches them, they carry on as they were; then a start, and they act. (Out on a run, what they make of you is theirs.)
+        Mood mood = p.Run is { Wronged: true } ? Mood.Hostile : Memory.Mood;
+        if (!p.Reacted)
+        {
+            if (_clock < p.ReactAt) mood = _moodBefore;
+            else { p.Reacted = true; p.Path = null; p.Step = 0; p.Partner = null; p.StartleFor = 0.7f; }
+        }
+        // Their day over (each job keeps its own hours), or the place turned hostile: home, or to cover.
+        // The guards and the law keep their posts round the clock, and turn on you.
+        bool offDuty = !guard && p.Looks != null ? !p.Figure.OutAt(time) : night;
+        p.ScaredFor = MathF.Max(0f, p.ScaredFor - dt);
+        p.ShovedFor = MathF.Max(0f, p.ShovedFor - dt);
+        p.ShooFor = MathF.Max(0f, p.ShooFor - dt);
+        p.AvoidFor = MathF.Max(0f, p.AvoidFor - dt);
+        // Something dangerous about: those who answer it with a gun fight it, as a hostile place's fighters fight you (Town.Combat);
+        // the rest go to their doors (the scared at a run, those keeping wide of it at a walk); a barricaded place keeps everyone in.
+        if (Combat(p, player, mood, dt))
+        {
+            Pose(p, who, away, dt);
+            return;
+        }
+        if (p.Run != null)
+        {
+            // Out on the land: on with the run, or home along it (Town.Runs).
+            Trek(p, player, mood, offDuty, dt);
+            Pose(p, who, away, dt);
+            return;
+        }
+        bool scared = p.ScaredFor > 0f || Barricaded;
+        bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
+        bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared || p.AvoidFor > 0f);
+        if (hide && !p.Asleep)
+        {
+            // Home, wherever they were going, to their bed or a seat by their spot (NightSpot). From a fright they run for
+            // the nearest that isn't toward what frightened them (what they saw, else you) and cower there, in sight.
+            p.Fleeing = mood == Mood.Hostile || scared;
+            if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : NightSpot(p);
+            if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
+            p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
+            Arrive(p, dt, offDuty && !p.Fleeing);
+            Pose(p, who, away, dt);
+            return;
+        }
+        // Morning, or the fright over, or a fright in the night: up and about.
+        if (!hide) p.Refuge = -1;
+        if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
+        if (p.Asleep) { Pose(p, who, away, dt); return; }
+        if (guard && mood != Mood.Hostile && !YouDown && Pursuit(p, player, dt))
+        {
+            Pose(p, who, away, dt);
+            return;
+        }
+        if (guard && mood != Mood.Hostile && !YouDown && Checkpoint(p, player, mood, dt))
+        {
+            Pose(p, who, away, dt);
+            return;
+        }
+        // Unwelcome, you: off their post, they make for it before anything else (watching you on the way).
+        if (guard && mood != Mood.Hostile && Unwelcome && (p.Pos - At(p.Spawn.Spot)).Length() > 2f)
+        {
+            if (p.Spot != p.Spawn.Spot || p.Path == null || p.Step >= p.Path.Count) GoTo(p, p.Spawn.Spot);
+            Move(p, dt);
+            Pose(p, who, away, dt);
+            return;
+        }
+        if (guard && mood != Mood.Peaceful && !YouDown && (player - p.Pos).Length() < 40f)
+        {
+            Guard(p, player, mood, dt);
+            Pose(p, who, away, dt);
+            return;
+        }
+        if (Move(p, dt))
+        {
+            p.Wait -= dt;
+            if (p.Wait <= 0f) Next(p);
+            else Idle(p, dt);
+        }
+        Pose(p, who, away, dt);
     }
 
     /// <summary>Walks a person along their path; true once they are there (or have no path).</summary>
@@ -861,7 +935,7 @@ public sealed partial class Town : IKeeper
             case "visit":
             {
                 // To someone out and about, to look them over; between rounds, their own place.
-                Person who = People.Where(o => o != p && !o.Dead && !o.Asleep && !o.Away && o.Job != PersonRole.Guard && o.Job != PersonRole.Lawman).OrderBy(_ => _rng.Next()).FirstOrDefault();
+                Person who = People.Where(o => o != p && !o.Dead && !o.Asleep && o.Job != PersonRole.Guard && o.Job != PersonRole.Lawman).OrderBy(_ => _rng.Next()).FirstOrDefault();
                 if (who != null && _rng.NextDouble() < 0.6)
                 {
                     GoTo(p, who.Spot);
@@ -884,12 +958,10 @@ public sealed partial class Town : IKeeper
                 }
                 break;
             case "leave":
-                // Out by the way in, a while away, back with whatever they found.
-                int gate = Spots.Select((s, i) => (s, i)).OrderBy(t => t.s.Cell.Manhattan(Memory.Inst.Layout.EntranceCell)).First().i;
-                if (p.Spot == gate && _rng.NextDouble() < 0.7)
+                // Out by the way in to somewhere worth picking over and back with what they found, on foot all the way (Town.Runs).
+                int gate = Gate;
+                if (p.Spot == gate && (_planFor == p || _rng.NextDouble() < 0.7) && SetOut(p))
                 {
-                    (p.Path, p.Step, p.Leaving) = (new List<Vector3> { Outside(At(gate)) }, 0, true);
-                    p.AwayFor = 30f + (float)_rng.NextDouble() * 60f;
                     p.Wait = 1f;
                     return;
                 }
@@ -1016,14 +1088,15 @@ public sealed partial class Town : IKeeper
     {
         Gunshot();
         // Already hostile: a shot in or at the place tells them where you are.
-        if (Memory.Mood == Mood.Hostile) { if (_place != null) Alert(_place.FromWorld(_places.Zone.Wildlife.PlayerWorld())); return; }
+        if (Memory.Mood == Mood.Hostile) { if (_place != null) Alert(Local(_places.Zone.Wildlife.PlayerWorld())); return; }
         _moodBefore = Memory.Mood;
         Memory.Mood = Mood.Hostile;
         // Each takes it in in their own time: the bold and the near first, children and the old later.
-        Vector3 at = _place != null ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) : Vector3.Zero;
+        Vector3 at = _places != null ? Local(_places.Zone.Wildlife.PlayerWorld()) : Vector3.Zero;
         var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "provoked", (long)(_clock * 100f));
         foreach (Person p in People)
         {
+            if (p.Run != null) continue; // (out on a run, nobody tells them: they find out coming home)
             Figure f = p.Looks?.Figure;
             p.ReactAt = _clock + Reaction.Delay(p.Nerve, (p.Pos - at).Length(), saw: false, f?.Stage == LifeStage.Child, f?.Stage == LifeStage.Elder, roll);
             p.Reacted = false;
@@ -1044,7 +1117,7 @@ public sealed partial class Town : IKeeper
     public float Beyond(Vector3 world)
     {
         if (_place == null) return float.MaxValue;
-        Vector3 l = _place.FromWorld(world);
+        Vector3 l = Local(world);
         return new Vector2(l.X - Data.AreaCenter.X, l.Z - Data.AreaCenter.Z).Length() - Data.AreaRadius;
     }
 
@@ -1054,10 +1127,10 @@ public sealed partial class Town : IKeeper
         distance = reach;
         Person best = null;
         if (_place == null) return null;
-        Vector3 e = _place.FromWorld(eye);
+        Vector3 e = Local(eye);
         foreach (Person p in People)
         {
-            if (p.Dead != dead || p.Gone || p.Away) continue;
+            if (p.Dead != dead || p.Gone) continue;
             float h = p.Looks?.Figure.Height ?? 1.75f;
             // A body is a ball round its middle as it lies.
             Vector3 c = dead ? p.Rig?.BoundsCenter ?? p.Pos : p.Pos + Vector3.Up * h * (p.Sitting ? 0.34f : 0.53f);
@@ -1252,7 +1325,7 @@ public sealed partial class Town : IKeeper
         {
             // Waving a pest off: face it, the back of the hand at it.
             want = BodyAct.WaveOff;
-            Vector3 d = _place.FromWorld(_places.Zone.Wildlife.WorldOf(p.Threat)) - p.Pos;
+            Vector3 d = Local(_places.Zone.Wildlife.WorldOf(p.Threat)) - p.Pos;
             p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 4f));
         }
         else if (p.StartleFor > 0f) want = f.Startled;
@@ -1323,7 +1396,7 @@ public sealed partial class Town : IKeeper
         float best = 26f * 26f;
         foreach (Person p in People)
         {
-            if (p.Dead || p.Asleep || p.Away || p.Looks == null) continue;
+            if (p.Dead || p.Asleep || p.Looks == null) continue;
             float d = (player - p.Pos).LengthSquared() * (0.6f + (float)_rng.NextDouble());
             if (d < best) { best = d; who = p; }
         }
@@ -1384,9 +1457,9 @@ public sealed partial class Town : IKeeper
 
     void PoseFrame()
     {
-        if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
+        if (_view == null || !Rolled) return;
         _frame++;
-        Camera3D eye = _place.GetViewport()?.GetCamera3D();
+        Camera3D eye = _view.GetViewport()?.GetCamera3D();
         Godot.Collections.Array<Plane> frustum = eye?.GetFrustum();
         Vector3 toSun = _places.Zone.Sky?.ToSun ?? Vector3.Up;
         // Where a body's shadow falls, from its top (the sun's way along the ground, as far as a low sun throws it).
@@ -1401,7 +1474,7 @@ public sealed partial class Town : IKeeper
             // posed: built out of sight, it dissolves in there and stands where they are, not first shown as they come into view.)
             bool needed = p.Engaged || p.Dead && !p.Laid || p.View is { Drawn: null };
             // (Out of sight both where they are and where they were last drawn: a body left drawn in view is posed on from there.)
-            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, _place.ToWorld(p.Pos), shadow)
+            if (!needed && frustum != null && p.View != null && !InSight(eye, frustum, World(p.Pos), shadow)
                 && !(p.View.Drawn != null && p.Rig != null && InSight(eye, frustum, p.View.GlobalTransform * p.Rig.ChestPoint, shadow))) continue;
             // Further off, posed every few frames with the time between (as their steps already are, Due): a body 40 m off is a
             // few dozen pixels tall.
@@ -1429,12 +1502,12 @@ public sealed partial class Town : IKeeper
             if (plane.DistanceTo(at) > radius) return false;
         return true;
     }
-
+    /// <summary>Whether their body shows at all (not beyond the far range), faded in and out at its edges.</summary>
     /// <summary>Whether their body shows at all (not away on a run, not beyond the far range), faded in and out at its edges.</summary>
     bool Shown(Person p, float away, float dt)
     {
         if (p.View == null) return false;
-        bool shows = !p.Away && p.View.Fade(away, dt);
+        bool shows = p.View.Fade(away, dt);
         if (p.View.Visible != shows) p.View.Visible = shows;
         return shows;
     }
@@ -1442,8 +1515,8 @@ public sealed partial class Town : IKeeper
     /// <summary>What someone's raised weapon is aimed at, in the place's frame: what they fight (a danger, else you: Town.Combat), else a stray they're seeing off; null otherwise.</summary>
     Vector3? AimedAt(Person p)
     {
-        if (p.Threat is { Dead: false, Removed: false } c && (p.Facing > 0f || !p.Engaged)) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * Arming.Chest(c));
-        return p.Engaged ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) + Vector3.Up * 1.15f : null;
+        if (p.Threat is { Dead: false, Removed: false } c && (p.Facing > 0f || !p.Engaged)) return Local(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * Arming.Chest(c));
+        return p.Engaged ? Local(_places.Zone.Wildlife.PlayerWorld()) + Vector3.Up * 1.15f : null;
     }
 
     /// <summary>What a body is doing as far as its pose goes: a change of it blends the pose (<see cref="PersonView.Sync(Vector3, float, float, int)"/>).</summary>
@@ -1461,7 +1534,7 @@ public sealed partial class Town : IKeeper
         p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding || p.Pending > 0 ? 1f : 0f, 3f * dt); // (up through the burst too)
         // Looks at you if you're close and in front of them; otherwise glances about now and then.
         float look = MathF.Sin(t * 0.31f) > 0.55f ? MathF.Sin(t * 1.1f) * 0.9f : 0f;
-        Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos, toShown = p.LookAt - p.Pos;
+        Vector3 toPlayer = Local(_places.Zone.Wildlife.PlayerWorld()) - p.Pos, toShown = p.LookAt - p.Pos;
         // Shown somewhere (a shot heard, where you pointed): there.
         if (p.LookFor > 0f) look = Mathf.Clamp(Mathf.AngleDifference(p.Yaw, MathF.Atan2(-toShown.X, -toShown.Z)), -1.25f, 1.25f);
         else if (toPlayer.LengthSquared() < 100f)
@@ -1495,6 +1568,7 @@ public sealed partial class Town : IKeeper
         p.LookFor = MathF.Max(0f, p.LookFor - dt);
         p.View.Sync(p.Pos, p.Yaw, p.Now, PoseKey(p));
         PoseWeapon(p);
+        PoseSack(p);
         p.View.Hurt(p.Hurt / 0.4f);
     }
 }

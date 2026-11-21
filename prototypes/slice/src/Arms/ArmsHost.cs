@@ -414,9 +414,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         }
         PoiPlaces places = Game.Places;
         if (places != null)
-            foreach (Place pl in places.Standing)
+            foreach (Town t in places.Towns)
             {
-                if (pl.Memory.Town is not Town t) continue;
                 foreach (Town.Person p in t.People)
                 {
                     if (p.Dead || p == ignore) continue;
@@ -1051,9 +1050,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         }
         PoiPlaces places = Game.Places;
         if (places != null)
-            foreach (Place pl in places.Standing)
+            foreach (Town t in places.Towns)
             {
-                if (pl.Memory.Town is not Town t) continue;
                 foreach (Town.Person person in t.People)
                 {
                     if (person.Dead) continue;

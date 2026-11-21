@@ -128,10 +128,10 @@ public partial class StartleTest : Node
         Town town = place?.Memory.Town;
         if (town == null) { Check(false, $"the {family} stands with its people"); yield break; }
         if (town.Memory.Mood == Mood.Hostile) town.Memory.Mood = Mood.Wary;
-        for (int i = 0; i < 900 && town.People.Any(p => p.Looks == null || !p.Dead && p.View == null && !p.Away); i++) { TopUp(); yield return 0; }
+        for (int i = 0; i < 900 && town.People.Any(p => p.Looks == null || !p.Dead && p.View == null); i++) { TopUp(); yield return 0; }
         if (night) { foreach (int x in Night(town, place)) yield return x; yield break; }
         if (runs) { foreach (int x in Runs(town, place)) yield return x; yield break; }
-        bool Out(Town.Person p) => !p.Dead && !p.Gone && !p.Away && p.Looks != null && p.View is { Visible: true };
+        bool Out(Town.Person p) => !p.Dead && !p.Gone && p.Looks != null && p.View is { Visible: true };
         // Among a few of them: the one with the most others close by (in their building, under its roof).
         var outs = town.People.Where(Out).ToList();
         Town.Person anchor = outs.Where(p => place.Roofed(town.World(p.Pos + Vector3.Up)) == inside)
@@ -192,9 +192,9 @@ public partial class StartleTest : Node
         var runners = town.People.Where(p => (p.Looks?.Figure.Routine?.Moves == "leave" || p.Job == Wildlife.PersonRole.Scavenger) && !p.Dead).ToList();
         foreach (Town.Person p in runners) p.Wait = 0f;
         _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
-        GD.Print($"  ({runners.Count} of {town.People.Count} go on runs out of town ({runners.Count(p => p.Away)} out now; jobs here {string.Join(", ", town.People.GroupBy(p => p.Job).Select(g => $"{g.Count()} {g.Key}"))}); the sleeper {(stand - at).Length():F0} m inside the way in, watching it)");
+        GD.Print($"  ({runners.Count} of {town.People.Count} go on runs out of town ({runners.Count(p => p.Run != null)} out now; jobs here {string.Join(", ", town.People.GroupBy(p => p.Job).Select(g => $"{g.Count()} {g.Key}"))}); the sleeper {(stand - at).Length():F0} m inside the way in, watching it)");
         foreach (int x in Watch(town, place, "two minutes by the way in", null, 120, at)) yield return x;
-        GD.Print($"  ({runners.Count(p => p.Away)} out of town at the end)");
+        GD.Print($"  ({runners.Count(p => p.Run != null)} out of town at the end)");
     }
 
     /// <summary>The sleeper by the home spot most of them share, from evening through midnight to morning.</summary>
@@ -225,15 +225,15 @@ public partial class StartleTest : Node
     /// </summary>
     IEnumerable<int> Watch(Town town, Place place, string what, Town.Person killed, int seconds = 10, Vector3? face = null)
     {
-        var people = town.People.Where(p => p.Looks != null && !p.Away).ToList();
+        var people = town.People.Where(p => p.Looks != null).ToList();
         var was = people.ToDictionary(p => p, p => p.Pos);
         var drawn = people.ToDictionary(p => p, p => Drawn(p));
         var placed = people.ToDictionary(p => p, p => p.View?.GlobalPosition ?? default);
         var shown = people.ToDictionary(p => p, p => p.View is { Visible: true });
         var alive = people.Where(p => !p.Dead && !p.Gone).ToList();
-        static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Away ? "A" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
+        static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
         var before = people.ToDictionary(p => p, Flags);
-        int settled = town.Settled, rerouted = town.Rerouted, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0, bare = 0, away = 0;
+        int settled = town.Settled, rerouted = town.Rerouted, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0, bare = 0;
         var notes = new List<string>();
         var kinds = new Dictionary<string, int>();
         void Note(string kind, string s) { if ((kinds[kind] = kinds.GetValueOrDefault(kind) + 1) <= 3) notes.Add(s); }
@@ -253,20 +253,18 @@ public partial class StartleTest : Node
                 // (Flat: a stair's step up is the stair's. A body far off is stepped every few ticks with the time between.)
                 step = new Vector2(p.Pos.X - was[p].X, p.Pos.Z - was[p].Z).Length();
                 // (Stepped as often as a body just beyond where they stand: at the edge of a ring, it may have been their last step's.)
-                if (step > TickMove * Wildlife.PersonView.PoseEvery(near + 1f)) { jumps++; Note("jump", $"{p.Job} {step:F1} m in a tick in the sim, {was[p]} to {p.Pos} ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Far ? ", far" : "")}{(p.Asleep ? ", asleep" : "")}{(p.Away ? ", away" : "")}, spot {p.Spot} refuge {p.Refuge}, way {p.Step}/{p.Path?.Count ?? -1}, {near:F0} m off, was {before[p]})"); }
+                if (step > TickMove * Wildlife.PersonView.PoseEvery(near + 1f)) { jumps++; Note("jump", $"{p.Job} {step:F1} m in a tick in the sim, {was[p]} to {p.Pos} ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Far ? ", far" : "")}{(p.Asleep ? ", asleep" : "")}, spot {p.Spot} refuge {p.Refuge}, way {p.Step}/{p.Path?.Count ?? -1}, {near:F0} m off, was {before[p]})"); }
                 was[p] = p.Pos;
                 bool vis = p.View is { Visible: true };
-                // (In view: off out of town on a scavenger's run is counted apart, as they are really gone from it.)
                 if (near < Near && vis != shown[p] && InView(Drawn(p) ?? town.World(p.Pos + Vector3.Up)))
                 {
-                    if (p.Away || before[p].Contains('A')) { away++; Note("away", $"{p.Job} {(vis ? "back from" : "off on")} a run {near:F0} m off, in view"); }
                     // (A body first posed, dissolving in where they stand, is no pop.)
-                    else if (vis && drawn[p] != null) { popped++; Note("popped", $"{p.Job} came into sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}, was {before[p]})"); }
+                    if (vis && drawn[p] != null) { popped++; Note("popped", $"{p.Job} came into sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}, was {before[p]})"); }
                     else if (!vis) { hid++; Note("hid", $"{p.Job} went out of sight {near:F0} m off ({(p.Fleeing ? "fleeing" : "not fleeing")}{(p.Engaged ? ", fighting" : "")}{(p.Asleep ? ", asleep" : "")}, was {before[p]})"); }
                 }
                 shown[p] = vis;
                 // A body to bump into: everyone within the capsules' reach (one a Husk holds is its hold's).
-                if (!p.Away && near < Town.SolidRange - 0.5f && !town.HasSolid(p) && !town.InHold(p))
+                if (near < Town.SolidRange - 0.5f && !town.HasSolid(p) && !town.InHold(p))
                 {
                     bare++;
                     Note("bare", $"{p.Job} {near:F0} m off with no capsule ({(p.Asleep ? "asleep" : p.Sitting ? "sitting" : "up")}, was {before[p]})");
@@ -287,7 +285,7 @@ public partial class StartleTest : Node
         int dead = alive.Count(p => p.Dead);
         GD.Print($"  {what}: {alive.Count} living before, {dead} died, {fled / 60} person-seconds fleeing, held on their way: {town.Settled - settled} stopped short of a crowded spot, {town.Rerouted - rerouted} found another way{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
         Check(removed == 0 && alive.All(p => p.Dead || !p.Gone), $"after {what}, every living person is still there ({removed} removed)");
-        Check(hid == 0 && popped == 0 && away == 0, $"after {what}, nobody within {Near} m went out of sight or came into it in view ({hid} hidden, {popped} appeared, {away} gone on or back from a run)");
+        Check(hid == 0 && popped == 0, $"after {what}, nobody within {Near} m went out of sight or came into it in view ({hid} hidden, {popped} appeared)");
         Check(bare == 0, $"after {what}, everyone within {Town.SolidRange - 0.5f} m has a body to bump into ({bare} person-ticks without)");
         Check(jumps == 0, $"after {what}, nobody moved more than {TickMove} m in a tick in the sim ({jumps} jumps)");
         Check(drawnJumps == 0, $"after {what}, nobody was drawn more than {DrawnMove} m on in a tick ({drawnJumps} jumps)");

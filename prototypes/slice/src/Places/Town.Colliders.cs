@@ -79,7 +79,7 @@ public sealed partial class Town
         _hadPlayer = true;
         foreach (Person p in People)
         {
-            bool near = !p.Dead && !p.Gone && !p.Away && p.Looks != null && !_held.Contains(p)
+            bool near = !p.Dead && !p.Gone && p.Looks != null && !_held.Contains(p)
                 && (p.Pos - player).Length() < SolidRange;
             _solids.TryGetValue(p, out Solid s);
             if (!near)
@@ -181,7 +181,7 @@ public sealed partial class Town
         Vector3 centre = v.Body.WorldPosition.ToGodot();
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Away || p.Looks == null || _clock - p.StruckAt < 1f) continue;
+            if (p.Dead || p.Gone || p.Looks == null || _clock - p.StruckAt < 1f) continue;
             Vector3 at = World(p.Pos + Vector3.Up * p.Figure.Height * 0.5f);
             if (at.DistanceTo(centre) > reach + 1f) continue;
             float r = BodyRadius(p);

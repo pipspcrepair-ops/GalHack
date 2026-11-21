@@ -43,7 +43,7 @@ public sealed partial class Town
 
     /// <summary>Whether a body can stand here: the cell at its feet, or on a stair the one below or above (between levels a walker's height is in between).</summary>
     // (The furniture is each body's own test, at its own size, after the move: OffParts.)
-    bool Open(Vector3 local) => OnGrid(local);
+    bool Open(Vector3 local) => OnGrid(local) || Away(local) > 0f; // (past the place's cells: the open land, where a run goes)
 
     /// <summary>The cell at its feet (or on a stair the one below or above) is one the walking grid stands people in.</summary>
     bool OnGrid(Vector3 local)
@@ -102,7 +102,7 @@ public sealed partial class Town
         _bodies.Clear();
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Asleep || p.Away || p.Looks == null || _held.Contains(p)) continue;
+            if (p.Dead || p.Gone || p.Asleep || p.Looks == null || _held.Contains(p)) continue;
             // One stepping back to let another by is still on their way: counted standing, they would have the other wait in
             // turn, and the two would take turns giving way in a narrow way for good.
             bool giving = p.Yield > 0f && p.Path != null && p.Step < p.Path.Count;
@@ -219,7 +219,7 @@ public sealed partial class Town
     bool Taken(Person p, Vector3 at)
     {
         foreach (Person o in People)
-            if (o != p && !o.Dead && !o.Gone && !o.Away && o.Now < 0.3f && MathF.Abs(o.Pos.Y - at.Y) < 1.5f
+            if (o != p && !o.Dead && !o.Gone && o.Now < 0.3f && MathF.Abs(o.Pos.Y - at.Y) < 1.5f
                 && new Vector2(o.Pos.X - at.X, o.Pos.Z - at.Z).Length() < BodyRadius(o) + BodyRadius(p) + 0.1f) return true;
         return false;
     }
