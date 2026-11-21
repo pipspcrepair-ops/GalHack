@@ -26,8 +26,11 @@ public sealed partial class Town
     /// <summary>The water's surface over a point (the place's frame), or null on dry ground (and on a lava world, whose seas aren't entered).</summary>
     float? Surface(Vector3 local) => _places?.Zone.Planet?.WaterSurfaceAt(World(local)) is float s ? s - _origin.Y : null;
 
-    /// <summary>The ground under a point as it stands (the place's frame): under water, the water's floor.</summary>
-    float Bottom(Vector3 local) => _places?.Zone.Planet is { } planet && World(local) is var w ? planet.Terrain.GroundNow(w.X, w.Z) - _origin.Y : local.Y;
+    /// <summary>The land's top under a point as the planet has it, dug or not (the place's frame): cheap, for looking for a bank.</summary>
+    float LandAt(Vector3 local) => _places?.Zone.Planet is { } planet && World(local) is var w ? planet.Terrain.GroundNow(w.X, w.Z) - _origin.Y : local.Y;
+
+    /// <summary>The ground under a point as it is built (the place's frame): under water, the bed a river has cut, by its collider where there is one.</summary>
+    float Bottom(Vector3 local) => Top(local with { Y = Surface(local) ?? local.Y + 0.5f }, 0.5f, 60f) ?? LandAt(local);
 
     /// <summary>How deep someone wades and from how deep they swim, as the sleeper does (shares of their height), m; and how high a bank they climb out onto.</summary>
     float Wade(Person p) => Height(p) * (_places?.Zone.Physics.Rules.Water.WadeDepth ?? 0.55f);
@@ -64,7 +67,7 @@ public sealed partial class Town
         if (p.Bank == null && _clock - p.BankAt > 5f)
         {
             p.BankAt = _clock;
-            p.Bank = Shore.Nearest(p.Pos, (x, z) => Surface(new Vector3(x, 0f, z)), (x, z) => Bottom(new Vector3(x, 0f, z)), BankClimb(p), 80f);
+            p.Bank = Shore.Nearest(p.Pos, (x, z) => Surface(new Vector3(x, 0f, z)), (x, z) => LandAt(new Vector3(x, 0f, z)), BankClimb(p), 80f);
         }
         // Frightened, away from what frightened them first; then for the bank (none in reach: treading where they are).
         Vector3 danger = _clock - p.FleeAt < 4f ? p.FleeFrom : _you;

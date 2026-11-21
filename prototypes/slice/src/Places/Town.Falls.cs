@@ -244,11 +244,13 @@ public sealed partial class Town
             _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);
             if (rest.Count == 0) return;
-            // (Away from where it touches, flat; never further than a metre from where they stood: held off it, not carried along it.)
-            Vector3 away = World(p.Pos) - (Vector3)rest["point"];
-            away.Y = 0f;
-            if (away.LengthSquared() < 1e-6f) return;
-            Vector3 next = p.Pos + away.Normalized() * 0.05f;
+            // (Out along the face it touches, flat, turned away from where it touches if the two disagree; never further than a metre
+            // from where they stood: held off it, not carried along it.)
+            Vector3 face = (Vector3)rest["normal"] with { Y = 0f }, away = (World(p.Pos) - (Vector3)rest["point"]) with { Y = 0f };
+            if (face.LengthSquared() < 1e-4f) face = away;
+            else if (away.LengthSquared() > 1e-4f && face.Dot(away) < 0f) face = -face;
+            if (face.LengthSquared() < 1e-6f) return;
+            Vector3 next = p.Pos + face.Normalized() * 0.05f;
             if (new Vector2(next.X - p.FirmAt.X, next.Z - p.FirmAt.Z).Length() > 1f) return;
             p.Pos = next;
         }

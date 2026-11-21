@@ -215,7 +215,7 @@ public partial class FallTest : Node
         used.Add(who);
         float drop = DropUnder(town, who.Pos);
         GD.Print($"  -- the floor broken under one {what} ({who.Job}, {drop:F1} m down to what is under the floor) --");
-        Break(place, who.Pos, what == "walking" ? 2 : 1); // (one walking may be a stride on by the time it goes: wider under them)
+        Break(place, who.Pos, what is "walking" or "asleep in bed" ? 2 : 1); // (one walking may be a stride on by the time it goes, and a bed is long: wider under them)
         foreach (int x in Watch(town, who, what, shots)) yield return x;
     }
 
@@ -398,6 +398,14 @@ public partial class FallTest : Node
         foreach (int x in Watch(town, who, "out on the land", false)) yield return x;
     }
 
+    /// <summary>The ground under a point (world) as it is built, a river's cut bed under water: by the colliders where there are any.</summary>
+    float BedAt(Vector3 w, float? top)
+    {
+        Vector3 from = w with { Y = (top ?? w.Y) + 0.5f };
+        var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(from, from + Vector3.Down * 60f, Layers.World | Layers.Hull | Layers.Interior));
+        return hit.Count > 0 ? ((Vector3)hit["position"]).Y : GroundNow(w.X, w.Z);
+    }
+
     /// <summary>Water near the settlement (world): deep enough to swim in (over two metres) or shallow enough to wade (a hand to half a metre); null if none within 250 m.</summary>
     (Vector3 At, float Top, float Floor)? WaterNear(Town town, bool deep)
     {
@@ -442,7 +450,7 @@ public partial class FallTest : Node
             yield return 0;
             Vector3 w = town.World(who.Pos);
             float? s = _game.Zone.Planet.WaterSurfaceAt(w);
-            float bottom = GroundNow(w.X, w.Z);
+            float bottom = BedAt(w, s);
             bool inWater = s is float st && st - bottom > 0.15f, swimming = Get(who, "Swimming") is true, wading = Get(who, "Wading") is true;
             if (!entered) { entered = Get(who, "Airborne") is false && t > 1; last = who.Pos.Y; continue; }
             rise = MathF.Max(rise, who.Pos.Y - last);
@@ -482,7 +490,7 @@ public partial class FallTest : Node
             TopUp();
             yield return 0;
             Vector3 w = patch.WorldOf(who);
-            bool inWater = _game.Zone.Planet.WaterSurfaceAt(w) is float s && s - GroundNow(w.X, w.Z) > 0.15f;
+            bool inWater = _game.Zone.Planet.WaterSurfaceAt(w) is float s && s - BedAt(w, s) > 0.15f;
             if (!entered) { entered = !who.Falling && t > 1; last = who.Position.Y; continue; }
             rise = MathF.Max(rise, who.Position.Y - last);
             last = who.Position.Y;
