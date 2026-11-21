@@ -183,17 +183,20 @@ public partial class FallTest : Node
     IEnumerable<int> Floor(Town town, Place place, string what, Func<Town.Person, bool> fits, HashSet<Town.Person> used, bool shots, int wait = 60, float room = 2f)
     {
         Town.Person who = null;
+        // (One chosen, the sleeper set by them; gone on from over the room under them meanwhile, another.)
         for (int t = 0; t < wait * 60 && who == null; t++)
         {
             TopUp();
-            if (t % 30 == 0) who = town.People.Where(fits).Where(p => Under(place, p.Pos) && DropUnder(town, p.Pos) >= room).OrderByDescending(p => MathF.Min(DropUnder(town, p.Pos), 6f)).FirstOrDefault();
+            if (t % 30 == 0 && town.People.Where(fits).Where(p => Under(place, p.Pos) && DropUnder(town, p.Pos) >= room).OrderByDescending(p => MathF.Min(DropUnder(town, p.Pos), 6f)).FirstOrDefault() is { } pick)
+            {
+                Stand(town, pick);
+                for (int i = 0; i < 30; i++) { TopUp(); _drive.Face(town.World(pick.Pos + Vector3.Up)); yield return 0; }
+                if (fits(pick) && Under(place, pick.Pos) && DropUnder(town, pick.Pos) >= room) who = pick;
+            }
             yield return 0;
         }
         if (who == null) { GD.Print($"  (nobody {what} on a floor of the place's blocks with room under it within {wait} s: not tried here)"); yield break; }
         used.Add(who);
-        Stand(town, who);
-        for (int i = 0; i < 30; i++) { TopUp(); _drive.Face(town.World(who.Pos + Vector3.Up)); yield return 0; }
-        if (!fits(who)) GD.Print($"  (no longer {what} as the sleeper came: on with them as they are)");
         float drop = DropUnder(town, who.Pos);
         GD.Print($"  -- the floor broken under one {what} ({who.Job}, {drop:F1} m down to what is under the floor) --");
         Break(place, who.Pos, 1);
@@ -359,6 +362,7 @@ public partial class FallTest : Node
         who.Run = new ScavRun { Out = way, Round = new List<Vector3> { way[^1] }, Way = way, Find = way[^1] + dir * 3f, Leg = 1 };
         _game.Survivor.PlaceOutside(town.World(way[0] + Vector3.Left * 5f + Vector3.Up * 0.5f).ToNumerics());
         for (int i = 0; i < 120; i++) { TopUp(); _drive.Face(town.World(who.Pos + Vector3.Up)); yield return 0; }
+        if (who.Dead) { GD.Print($"  (the one sent out died out there before the ground was dug ({Get(who, "Falls")} falls): not tried)"); yield break; }
         if (who.Run == null) { Check(false, "the one sent out stays out on the land"); yield break; }
         Vector3 w = town.World(who.Pos);
         GD.Print($"  -- the ground dug from under one out on the land ({who.Job}, {(who.Pos - way[0]).Length():F1} m along) --");

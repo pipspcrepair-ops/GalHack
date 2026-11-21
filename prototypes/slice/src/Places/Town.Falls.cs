@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using GalHack.Physics;
 using Godot;
 using Wildlife;
@@ -236,7 +235,8 @@ public sealed partial class Town
         if (p.Run != null) p.ScaredFor = MathF.Max(p.ScaredFor, 4f);
         else if (p.Spot >= 0 && Whole(p.Spot)) GoTo(p, p.Spot);
         else Next(p);
-        if (p.Run == null && p.Asked < 0 && p.Path is not { Count: > 0 }) p.Wait = 0.5f; // (no way there from here: soon somewhere else)
+        // (No way there from here: the nearest spot there is a way to, if any; stranded, they stay.)
+        if (p.Run == null && p.Asked < 0 && p.Path is not { Count: > 0 } && NearestReachable(p) is int near and >= 0) GoTo(p, near);
         p.Feel.Hit(MoodEvent.Harm);
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
     }
@@ -281,13 +281,19 @@ public sealed partial class Town
     /// <summary>How fast someone clambers up out of a hole, m/s.</summary>
     const float Clamber = 1.2f;
 
-    /// <summary>Whether there is no walking anywhere from where someone stands: none of the town's spots on the walking grid from there (tests).</summary>
-    public bool Stranded(Person p)
+    /// <summary>The nearest of the town's spots that can be walked to from where someone stands (-1: none, they are stranded there). A search over the walking grid: only on landing.</summary>
+    int NearestReachable(Person p)
     {
-        if (Stand(Cell(p.Pos)) is not { } c) return true;
+        if (Stand(Cell(p.Pos)) is not { } c) return -1;
         var reach = _nav.Reachable(c);
-        return !Spots.Any(s => reach.Contains(s.Cell));
+        int best = -1;
+        for (int i = 0; i < Spots.Count; i++)
+            if (reach.Contains(Spots[i].Cell) && (best < 0 || (At(i) - p.Pos).LengthSquared() < (At(best) - p.Pos).LengthSquared())) best = i;
+        return best;
     }
+
+    /// <summary>Whether there is no walking anywhere from where someone stands (tests).</summary>
+    public bool Stranded(Person p) => NearestReachable(p) < 0;
 
     /// <summary>Whether a spot still stands by the place's blocks (its floor not broken away from under it): a refuge or a seat for the night only then.</summary>
     bool Whole(int spot)
