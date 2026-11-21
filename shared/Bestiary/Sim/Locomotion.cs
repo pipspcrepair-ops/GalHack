@@ -156,7 +156,7 @@ public static class Locomotion
     {
         if (w.WaterAt?.Invoke(c.Position.X, c.Position.Z) is not float top || c.Position.Y > top + 0.05f) // (over it, it falls in first: Unfooted)
         {
-            c.Shoreward = null;
+            (c.Shoreward, c.ShorewardReach) = (null, 0f);
             return false;
         }
         float bottom = Footing(w, c, c.Position.X, c.Position.Z), depth = top - bottom, h = c.Species.BodyHeight;
@@ -165,7 +165,8 @@ public static class Locomotion
         if (c.Shoreward == null && w.Time - c.ShorewardAt > 5f)
         {
             c.ShorewardAt = w.Time;
-            c.Shoreward = Shore.Nearest(c.Position, w.WaterAt, w.Terrain.Height, BankClimb(c), BankReach);
+            c.ShorewardReach = c.ShorewardReach <= 0f ? Shore.Reach : MathF.Min(c.ShorewardReach * 2f, Shore.FarReach);
+            c.Shoreward = Shore.Nearest(c.Position, w.WaterAt, w.Terrain.Height, BankClimb(c), c.ShorewardReach);
         }
         if (!swims && depth > h)
         {
@@ -191,9 +192,8 @@ public static class Locomotion
         return true;
     }
 
-    /// <summary>How high over the water a bank may stand for a creature to climb out onto it (its own legs' reach), m; and how far it looks for one.</summary>
+    /// <summary>How high over the water a bank may stand for a creature to climb out onto it (its own legs' reach), m.</summary>
     static float BankClimb(Creature c) => MathF.Max(0.5f, c.Species.Body.LegLength * 0.8f);
-    const float BankReach = 80f;
 
     /// <summary>Downed by a hard landing: it lies still, then rolls back onto its feet over its last moments.</summary>
     static void GetUp(Creature c, float dt)

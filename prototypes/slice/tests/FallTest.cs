@@ -289,6 +289,9 @@ public partial class FallTest : Node
     {
         float y0 = who.Pos.Y, health = who.Health.Current, last = y0, from = y0;
         _solidSeen = 0;
+        // (Standing against a wall where they stood (as the walking grid lets them), the first of the fall goes down it: not counted.)
+        bool touching = InSolid(town.World(who.Pos), 0.2f);
+        _solidSeen = 0;
         int start = -1, end = -1, inSolid = 0, t;
         ulong f0 = Engine.GetPhysicsFrames();
         bool shot = false;
@@ -302,7 +305,7 @@ public partial class FallTest : Node
             if (start < 0 && (Get(who, "Airborne") is bool air ? air : y < y0 - 1e-3f)) (start, from) = (Frame(f0), last);
             if (start >= 0 && (Get(who, "Airborne") is bool still ? !still : y >= last - 1e-4f)) { end = Frame(f0); break; }
             if (start >= 0 && _shots != null && !_shot && y0 - y > 1.5f) { foreach (int x in Snap(town, who, "falling.png")) yield return x; (_shot, shot) = (true, true); }
-            if (start >= 0 && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
+            if (start >= 0 && !(touching && y0 - who.Pos.Y < 0.5f) && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
             last = y;
         }
         float h = from - who.Pos.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);

@@ -179,12 +179,12 @@ public sealed partial class Town
         return Top(p.Pos, 0.5f, 1.5f) is not float top || p.Pos.Y - top < FootSlack + 0.05f;
     }
 
-    /// <summary>Off their feet: up out of a seat or a bed, their way given up, falling from where they are.</summary>
+    /// <summary>Off their feet: up out of a seat or a bed, falling from where they are (their way kept: a step down, they go on along it).</summary>
     void LoseFooting(Person p)
     {
         Unseat(p);
         (p.Airborne, p.FallSpeed, p.FirmAt, p.CheckFor, p.LastFallTime) = (true, 0f, p.Pos, 0f, 0f);
-        (p.Path, p.Step, p.Asked, p.Partner, p.Now, p.Yield, p.ClimbTo, p.Clambering) = (null, 0, -1, null, 0f, 0f, null, false);
+        (p.Partner, p.Now, p.Yield, p.ClimbTo, p.Clambering) = (null, 0f, 0f, null, false);
     }
 
     void Unseat(Person p) => (p.Sitting, p.Seat, p.GettingUp, p.Asleep, p.Working) = (false, -1, false, false, false); // (sat or lain, they come out of it as their pose eases)
@@ -267,11 +267,7 @@ public sealed partial class Town
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
         if (InWaterAt(p.Pos)) { EnterWater(p); return; } // (in water: out of it first, Town.Water)
         // A step down (off a kerb, a pad's edge): on as they were, unshaken; out on a run their way goes on by itself.
-        if (p.FirmAt.Y - p.Pos.Y < StepDown)
-        {
-            if (p.Run == null && p.Spot >= 0) GoTo(p, p.Spot);
-            return;
-        }
+        if (p.FirmAt.Y - p.Pos.Y < StepDown) return;
         // Startled by it (their body says so), on at once.
         (p.StartleFor, p.Wait, p.Refuge, p.ProgressAt, p.StuckFor) = (0.9f, 0f, -1, p.Pos, 0f);
         // On from here: out on a run, home; in the place, by a way from where they landed to the nearest spot there is one to; in a hole

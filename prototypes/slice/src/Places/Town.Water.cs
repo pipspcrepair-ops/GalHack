@@ -17,10 +17,10 @@ public sealed partial class Town
 {
     public sealed partial class Person
     {
-        /// <summary>Swimming (over their depth) or wading (in it to below their chest); the bank they make for (the place's frame), when they last looked for one, how long the water has had them.</summary>
+        /// <summary>Swimming (over their depth) or wading (in it to below their chest); the bank they make for (the place's frame), when they last looked for one and how far, how long the water has had them.</summary>
         public bool Swimming, Wading;
         public Vector3? Bank;
-        public float BankAt = -99f, InWaterFor;
+        public float BankAt = -99f, BankReach, InWaterFor;
     }
 
     /// <summary>The water's surface over a point (the place's frame), or null on dry ground (and on a lava world, whose seas aren't entered).</summary>
@@ -44,7 +44,7 @@ public sealed partial class Town
     void EnterWater(Person p)
     {
         Unseat(p);
-        (p.Path, p.Step, p.Asked, p.ClimbTo, p.Clambering, p.InWaterFor, p.Bank, p.BankAt, p.CheckFor) = (null, 0, -1, null, false, 0f, null, -99f, 0f);
+        (p.Path, p.Step, p.Asked, p.ClimbTo, p.Clambering, p.InWaterFor, p.Bank, p.BankAt, p.BankReach, p.CheckFor) = (null, 0, -1, null, false, 0f, null, -99f, 0f, 0f);
         p.Swimming = Surface(p.Pos) is float top && top - Bottom(p.Pos) > SwimDepth(p);
         p.Wading = !p.Swimming;
     }
@@ -67,7 +67,8 @@ public sealed partial class Town
         if (p.Bank == null && _clock - p.BankAt > 5f)
         {
             p.BankAt = _clock;
-            p.Bank = Shore.Nearest(p.Pos, (x, z) => Surface(new Vector3(x, 0f, z)), (x, z) => LandAt(new Vector3(x, 0f, z)), BankClimb(p), 80f);
+            p.BankReach = p.BankReach <= 0f ? Shore.Reach : MathF.Min(p.BankReach * 2f, Shore.FarReach); // (none found: further each look)
+            p.Bank = Shore.Nearest(p.Pos, (x, z) => Surface(new Vector3(x, 0f, z)), (x, z) => LandAt(new Vector3(x, 0f, z)), BankClimb(p), p.BankReach);
         }
         // Frightened, away from what frightened them first; then for the bank (none in reach: treading where they are).
         Vector3 danger = _clock - p.FleeAt < 4f ? p.FleeFrom : _you;

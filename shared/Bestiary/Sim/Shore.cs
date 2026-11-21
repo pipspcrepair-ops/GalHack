@@ -17,9 +17,9 @@ public static class Shore
     public static Vector3? Nearest(Vector3 from, Func<float, float, float?> water, Func<float, float, float> ground, float climb, float reach)
     {
         float top = water(from.X, from.Z) ?? from.Y;
-        for (float r = Step; r <= reach; r += Step)
+        for (float r = Step; r <= reach; r += MathF.Max(Step, r * 0.06f))
         {
-            int n = Math.Max(12, (int)(r * 1.5f));
+            int n = Math.Clamp((int)(r * 1.5f), 12, 120);
             Vector3? best = null;
             float low = float.MaxValue;
             for (int k = 0; k < n; k++)
@@ -35,7 +35,10 @@ public static class Shore
         return null;
     }
 
-    /// <summary>The rings' spacing, m.</summary>
+    /// <summary>How far a first look for a bank goes, and the farthest a look ever goes (each look with none found twice the last), m.</summary>
+    public const float Reach = 60f, FarReach = 480f;
+
+    /// <summary>The nearest rings' spacing, m (further out, wider: some sixty rings and seven thousand points at the farthest).</summary>
     const float Step = 2f;
 
     /// <summary>
