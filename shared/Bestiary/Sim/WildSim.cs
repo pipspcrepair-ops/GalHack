@@ -87,6 +87,9 @@ public sealed class WildSim
     /// <summary>A creature came down from a fall at a speed (m/s).</summary>
     public event Action<Creature, float> Fell;
 
+    /// <summary>Landing slower than this is a step down (about half a metre), m/s: on as it was, unshaken.</summary>
+    const float StepSpeed = 3f;
+
     /// <summary>
     /// Down on its feet from a fall (on the land, or in a cave or a place): hurt by the fall rule and frightened by it (it runs a
     /// moment the way it faced), its way looked for again from where it landed.
@@ -94,12 +97,13 @@ public sealed class WildSim
     internal void Landed(Creature c, float speed)
     {
         if (!c.Dead && FallHurt?.Invoke(speed) is float share and > 0f) Damage(c, share * c.Stats.MaxHealth, null);
+        Fell?.Invoke(c, speed);
+        if (speed < StepSpeed) return; // (a step down: on as it was)
         c.Path.Clear();
         c.Repath = true;
         c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + Brain.FellFright);
         (c.FellAt, c.Think, c.ThinkEvery) = (Time, 0f, 0f);
         c.ScaredFrom = c.Position - c.Forward * 3f;
-        Fell?.Invoke(c, speed);
     }
 
     /// <summary>An ambush or a hunt gives itself away: a rattle, dust, scratching, breathing.</summary>

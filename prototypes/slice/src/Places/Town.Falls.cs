@@ -44,6 +44,9 @@ public sealed partial class Town
     /// <summary>How far over what is under their feet someone may be and still stand on it, m.</summary>
     const float FootSlack = 0.3f;
 
+    /// <summary>A drop no more than this is a step down, not a fall that shakes them, m.</summary>
+    const float StepDown = 0.6f;
+
     /// <summary>Looked under in the slow sweep only this near you (out beyond it there may be nothing built to collide with), m.</summary>
     const float SweepRange = 60f;
 
@@ -267,6 +270,13 @@ public sealed partial class Town
         float share = wet ? 0f : Slice.Player.Survivor.FallShare(_places.Zone.Physics.Rules, speed);
         if (share > 0f) Struck(p, share * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
         if (p.Dead) return;
+        p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
+        // A step down (off a kerb, a pad's edge): on as they were, unshaken; out on a run their way goes on by itself.
+        if (p.FirmAt.Y - p.Pos.Y < StepDown)
+        {
+            if (p.Run == null && p.Spot >= 0) GoTo(p, p.Spot);
+            return;
+        }
         // Startled by it (their body says so), on at once.
         (p.StartleFor, p.Wait, p.Refuge, p.ProgressAt, p.StuckFor) = (0.9f, 0f, -1, p.Pos, 0f);
         // On from here: out on a run, home; in the place, by a way from where they landed to the nearest spot there is one to; in a hole
@@ -278,7 +288,6 @@ public sealed partial class Town
             else Next(p);
         }
         if (share > 0f) p.Feel.Hit(MoodEvent.Harm); // (hurt by it, shaken by it)
-        p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
     }
 
     /// <summary>The slow sweep: each town step, the next of them near you is looked under (a floor gone with nothing told).</summary>
