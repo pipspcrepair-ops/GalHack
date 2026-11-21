@@ -145,7 +145,9 @@ public sealed partial class Town
     bool OnFloor(Person p)
     {
         PInt3 c = Cell(p.Pos);
-        if (!Memory.Inst.Blocks.InBounds(c) || !Floored(p.Pos)) return false;
+        // (Off the place's grid, the land as it stands, dug or not.)
+        if (!Memory.Inst.Blocks.InBounds(c)) return _places?.Zone.Planet is { } planet && World(p.Pos) is var w && p.Pos.Y - (planet.Terrain.GroundNow(w.X, w.Z) - _origin.Y) < FootSlack + 0.05f;
+        if (!Floored(p.Pos)) return false;
         if (_nav.RampAt(c, out _) || _nav.RampAt(c + PInt3.Down, out _)) return true;
         // (Nothing for the rays to meet, nothing built there to collide with yet: the blocks say.)
         return Top(p.Pos, 0.5f, 1.5f) is not float top || p.Pos.Y - top < FootSlack + 0.05f;
@@ -179,6 +181,9 @@ public sealed partial class Town
             else (rest, under) = (MathF.Max(rest, top), under + 1);
         }
         if (float.IsNegativeInfinity(ground) && under >= 3) ground = rest;
+        // (Off the place's grid the land is under them as it stands, built to collide with or not.)
+        if (!Memory.Inst.Blocks.InBounds(Cell(p.Pos)) && _places?.Zone.Planet is { } planet && World(p.Pos) is var w)
+            ground = MathF.Max(ground, planet.Terrain.GroundNow(w.X, w.Z) - _origin.Y);
         // Water takes them: they go in, and stand in it or tread it (its floor under them, or chest-deep), unhurt by it.
         bool wet = false;
         if (_places?.Zone.Planet?.WaterSurfaceAt(World(p.Pos)) is float surface)

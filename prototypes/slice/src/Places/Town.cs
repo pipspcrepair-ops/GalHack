@@ -716,7 +716,7 @@ public sealed partial class Town : IKeeper
             if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : NightSpot(p);
             if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
             // No way there from here (the floor gone between, say): another of the homes.
-            if (p.Spot != p.Refuge && p.Asked < 0 && p.Path is { Count: 0 } && _homes.Length > 1) p.Refuge = _homes[_rng.Next(_homes.Length)];
+            if (p.Asked < 0 && p.Path is { Count: 0 } && (p.Pos - At(p.Refuge)).Length() > 1.5f && _homes.Length > 1) p.Refuge = _homes[_rng.Next(_homes.Length)];
             p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
             Arrive(p, dt, offDuty && !p.Fleeing);
             Pose(p, who, away, dt);
