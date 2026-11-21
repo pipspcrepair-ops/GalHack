@@ -133,6 +133,7 @@ public sealed partial class Town
     /// </summary>
     bool Falling(Person p, float dt)
     {
+        if (p.Swimming || p.Wading) { p.CheckFor = 0f; return false; } // (the water has them: Town.Water)
         if (_view == null || !_view.IsInsideTree())
         {
             p.CheckFor = 0f; // (nothing built to stand on or to tell by: a day without the game)
@@ -243,12 +244,12 @@ public sealed partial class Town
             _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);
             if (rest.Count == 0) return;
-            // (Away from where it touches, flat; never further than a stride from where they stood: held off it, not carried along it.)
+            // (Away from where it touches, flat; never further than a metre from where they stood: held off it, not carried along it.)
             Vector3 away = World(p.Pos) - (Vector3)rest["point"];
             away.Y = 0f;
             if (away.LengthSquared() < 1e-6f) return;
             Vector3 next = p.Pos + away.Normalized() * 0.05f;
-            if (new Vector2(next.X - p.FirmAt.X, next.Z - p.FirmAt.Z).Length() > 0.6f) return;
+            if (new Vector2(next.X - p.FirmAt.X, next.Z - p.FirmAt.Z).Length() > 1f) return;
             p.Pos = next;
         }
     }
@@ -418,7 +419,7 @@ public sealed partial class Town
     {
         PInt3 c = Cell(p.Pos);
         int tries = 0;
-        for (int reach = 1; reach <= 2; reach++)
+        for (int reach = 1; reach <= 3; reach++)
             for (int dy = 1; dy <= 2; dy++)
             {
                 // (Clear over them, up to a head over the rim.)
@@ -431,7 +432,7 @@ public sealed partial class Town
                         if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != reach) continue;
                         var q = new PInt3(c.X + dx, c.Y + dy, c.Z + dz);
                         if (!_nav.Standable(q)) continue;
-                        if (tries++ < 4 && SpotFrom(q, out _) != -1) return Walk(q);
+                        if (tries++ < 12 && SpotFrom(q, out _) != -1) return Walk(q);
                     }
             }
         return null;
@@ -477,7 +478,7 @@ public sealed partial class Town
                         var q = new PInt3(c.X + dx, c.Y - dy, c.Z + dz);
                         if (_nav.Solid(q)) break;
                         if (!_nav.Standable(q)) continue;
-                        if (tries++ < 4 && SpotFrom(q, out _) != -1) return new Vector3(q.X + 0.5f, p.Pos.Y + (over ? 1.05f : 0f), q.Z + 0.5f);
+                        if (tries++ < 12 && SpotFrom(q, out _) != -1) return new Vector3(q.X + 0.5f, p.Pos.Y + (over ? 1.05f : 0f), q.Z + 0.5f);
                         break;
                     }
                 }

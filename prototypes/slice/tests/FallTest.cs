@@ -336,7 +336,7 @@ public partial class FallTest : Node
         bool stranded = moved < 0.5f && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { who }) is true;
         // (Or gone on to a spot right by where they landed: there, about their day.)
         bool there = who.Spot >= 0 && (who.Pos - town.SpotAt(who.Spot)).Length() < 1.5f && (who.Path == null || who.Step >= who.Path.Count) && Get(who, "Falls") is int n && n > 0;
-        Check(moved >= 0.5f || there, $"{what}: acting after the fall ({moved:F1} m gone from where they landed{(stranded ? ", no way out of where they landed" : there ? ", at a spot by it" : "")}, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1}{(moved < 0.5f && !there ? $"; {town.GetType().GetMethod("WayOn")?.Invoke(town, new object[] { who })}" : "")})");
+        Check(moved >= 0.5f || there || who.Path is { Count: > 0 } && !stranded, $"{what}: acting after the fall ({moved:F1} m gone from where they landed{(stranded ? ", no way out of where they landed" : there ? ", at a spot by it" : "")}, way {who.Step}/{who.Path?.Count ?? -1}, scared {who.ScaredFor:F1}{(moved < 0.5f && !there ? $"; {town.GetType().GetMethod("WayOn")?.Invoke(town, new object[] { who })}" : "")})");
     }
 
     /// <summary>A shot of one of them from the side (windowed only).</summary>

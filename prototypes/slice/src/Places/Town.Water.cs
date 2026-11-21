@@ -41,7 +41,7 @@ public sealed partial class Town
     void EnterWater(Person p)
     {
         Unseat(p);
-        (p.Path, p.Step, p.Asked, p.ClimbTo, p.Clambering, p.InWaterFor, p.Bank, p.BankAt) = (null, 0, -1, null, false, 0f, null, -99f);
+        (p.Path, p.Step, p.Asked, p.ClimbTo, p.Clambering, p.InWaterFor, p.Bank, p.BankAt, p.CheckFor) = (null, 0, -1, null, false, 0f, null, -99f, 0f);
         p.Swimming = Surface(p.Pos) is float top && top - Bottom(p.Pos) > SwimDepth(p);
         p.Wading = !p.Swimming;
     }
