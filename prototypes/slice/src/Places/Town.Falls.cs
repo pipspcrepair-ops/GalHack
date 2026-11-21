@@ -90,30 +90,21 @@ public sealed partial class Town
     }
 
     /// <summary>
-    /// What holds them up, by their real footing (their middle and four points round it): the top of it, or null if nothing under
-    /// enough of it does (nothing under the middle and less than three of the rest). Held only by an edge, <paramref name="off"/>
-    /// is the step off it, away from what is left.
+    /// Whether something holds them up, by their real footing (their middle and four points round it): under the middle, or under
+    /// three of the rest. Held only by an edge, they go off it as they fall (<see cref="Down"/> passes such an edge by).
     /// </summary>
-    float? Footed(Person p, out Vector3 off)
+    bool Footed(Person p)
     {
         FallChecks++;
         FallRays += 5;
-        off = Vector3.Zero;
-        float best = float.NegativeInfinity;
         int held = 0;
-        bool middle = false;
-        Vector3 lean = Vector3.Zero;
         for (int i = 0; i < 5; i++)
-        {
-            if (Top(p.Pos + Foot(p, i), 0.5f, FootSlack) is not float top) continue;
-            held++;
-            best = MathF.Max(best, top);
-            if (i == 0) middle = true;
-            else lean += Foot(p, i);
-        }
-        if (middle || held >= 3) return best;
-        if (held > 0 && lean.LengthSquared() > 1e-6f) off = -lean.Normalized() * BodyRadius(p);
-        return null;
+            if (Top(p.Pos + Foot(p, i), 0.5f, FootSlack) is float)
+            {
+                if (i == 0) return true;
+                held++;
+            }
+        return held >= 3;
     }
 
     /// <summary>A seat's top under someone sitting, or null if the seat has gone from under them.</summary>
@@ -135,25 +126,35 @@ public sealed partial class Town
         {
             if (p.CheckFor <= 0f || p.Clambering) return false;
             p.CheckFor -= dt;
-            if (Footed(p, out Vector3 off) is float top)
+            if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
+            else
             {
-                // On what is left: their feet on its top (a stair, rubble), never in it or over it.
-                if (MathF.Abs(top - p.Pos.Y) < FootSlack) p.Pos.Y = top;
                 // Sitting on a seat that has gone: down on the floor (their pose eases down), up off it frightened.
                 if (p.Sitting && p.Seated > 0.5f && SeatUnder(p) == null) { Unseat(p); p.ScaredFor = MathF.Max(p.ScaredFor, 4f); }
                 return false;
             }
-            else LoseFooting(p, off);
         }
         Down(p, dt);
         return true;
     }
 
-    /// <summary>Off their feet: up out of a seat or a bed, their way given up, falling from where they are (stepped off the edge that held them).</summary>
-    void LoseFooting(Person p, Vector3 off)
+    /// <summary>
+    /// Where the place's blocks give them a floor (a stair's slope among them, whose steps the rays may miss), they stand on it unless
+    /// it is well under their feet (the bed they lay on gone): the rays alone never drop anyone through a floor that stands.
+    /// </summary>
+    bool OnFloor(Person p)
+    {
+        PInt3 c = Cell(p.Pos);
+        if (!Memory.Inst.Blocks.InBounds(c) || !Floored(p.Pos)) return false;
+        if (_nav.RampAt(c, out _) || _nav.RampAt(c + PInt3.Down, out _)) return true;
+        // (Nothing for the rays to meet, nothing built there to collide with yet: the blocks say.)
+        return Top(p.Pos, 0.5f, 1.5f) is not float top || p.Pos.Y - top < FootSlack + 0.05f;
+    }
+
+    /// <summary>Off their feet: up out of a seat or a bed, their way given up, falling from where they are.</summary>
+    void LoseFooting(Person p)
     {
         Unseat(p);
-        if (off != Vector3.Zero && Open(p.Pos + off)) p.Pos += off;
         (p.Airborne, p.FallSpeed, p.FirmAt, p.CheckFor, p.LastFallTime) = (true, 0f, p.Pos, 0f, 0f);
         (p.Path, p.Step, p.Asked, p.Partner, p.Now, p.Yield) = (null, 0, -1, null, 0f, 0f);
     }
@@ -209,7 +210,7 @@ public sealed partial class Town
         (_body.Radius, _body.Height) = (r, h);
         _bodyQuery ??= new PhysicsShapeQueryParameters3D { Shape = _body, CollisionMask = Layers.World | Layers.Hull | Layers.Interior };
         var space = _view.GetWorld3D().DirectSpaceState;
-        for (int k = 0; k < 6; k++)
+        for (int k = 0; k < 2; k++) // (a tenth of a metre a step at most: eased off it, never thrown)
         {
             _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);
