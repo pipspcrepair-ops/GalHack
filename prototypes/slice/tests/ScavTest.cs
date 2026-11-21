@@ -131,7 +131,8 @@ public partial class ScavTest : Node
 
     IEnumerable<int> Runs(string family, Action<bool> found)
     {
-        var site = _game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == family && s.Instance?.Townsfolk != null);
+        // (One not held by raiders: their people are all raiders, and raiders do not go on runs.)
+        var site = _game.Zone.Planet.Pois.Where(s => s.Family.Id == family).Take(4).Where(s => s.Instance?.Townsfolk != null).OrderBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0).FirstOrDefault();
         if (site == null) { GD.Print($"  (no {family} with people on this world)"); yield break; }
         if (site.Instance.Mood == Mood.Hostile) site.Instance.Mood = Mood.Wary;
         Int3 c0 = site.Instance.Townsfolk.Spots[0].Cell;
@@ -169,7 +170,7 @@ public partial class ScavTest : Node
                 TopUp();
                 _drive.Face(town.World(at + outward * 6f + Vector3.Up));
                 yield return 0;
-                first = runners.FirstOrDefault(p => OnRun(p) && !tried.Contains(p) && new Vector2(p.Pos.X - at.X, p.Pos.Z - at.Z).Length() < 12f);
+                first = runners.FirstOrDefault(p => OnRun(p) && !tried.Contains(p) && Get(Get(p, "Run"), "Home") is not true && new Vector2(p.Pos.X - at.X, p.Pos.Z - at.Z).Length() < 12f);
             }
             if (first == null) { Check(false, $"a scavenger sets out at the way in within two and a half minutes ({runners.Count} waiting; {Get(town, "LastPlan")})"); yield break; }
             tried.Add(first);
@@ -189,7 +190,9 @@ public partial class ScavTest : Node
             TopUp();
             _drive.Face(town.World(at + outward * 6f + Vector3.Up));
             yield return 0;
-            second = runners.Where(p => p != first).FirstOrDefault(OnRun) ?? (runners.Count == 1 ? runners.FirstOrDefault(OnRun) : null);
+            // (One setting out now: others may be out already, from while the first was followed.)
+            bool Going(Town.Person p) => OnRun(p) && Get(Get(p, "Run"), "Home") is not true && new Vector2(p.Pos.X - at.X, p.Pos.Z - at.Z).Length() < 12f;
+            second = runners.Where(p => p != first).FirstOrDefault(Going) ?? (runners.Count == 1 && Going(first) ? first : null);
         }
         if (second == null) { Check(false, "a second scavenger sets out at the way in within two and a half minutes"); yield break; }
         if (second == first) GD.Print("  (one scavenger here: the same one on a second run)");
