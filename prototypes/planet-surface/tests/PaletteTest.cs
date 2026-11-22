@@ -58,8 +58,8 @@ public partial class PaletteTest : Node
             GD.Print($"palette test run seed {RunSeed}");
             Variety("meadow", 24, () => (Archetype.Temperate, (int)(Fresh() % 2), false));
             foreach (Archetype a in new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava, Archetype.Alien })
-                Variety(a.ToString().ToLowerInvariant(), 10, () => (a, (int)(Fresh() % 2), false));
-            Variety("airless", 10, () => (new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava }[Fresh() % 3], (int)(Fresh() % 2), true));
+                Variety(a.ToString().ToLowerInvariant(), 14, () => (a, (int)(Fresh() % 2), false));
+            Variety("airless", 14, () => (new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava }[Fresh() % 3], (int)(Fresh() % 2), true));
             Grade();
         }
         catch (Exception e)

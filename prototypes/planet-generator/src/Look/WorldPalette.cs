@@ -108,8 +108,9 @@ public sealed record WorldPalette
         // Iron: most rock carries some; one world in four is iron-rich (red beds, Mars).
         float iron = U(1) > 0.75f ? 0.75f + 0.25f * U(2) : 0.12f + 0.5f * U(2);
         float life = LifeOf(spec);
-        // The air's particles come and go by world, as Earth's do from place to place: under half to nearly twice its kind's usual.
-        air = air with { Aerosol = air.Aerosol * (0.4f + 1.4f * U(3)) };
+        // The air's particles come and go by world, as Earth's do from place to place and Mars' from season to season:
+        // a third to two and a half times its kind's usual, evenly on a log scale.
+        air = air with { Aerosol = air.Aerosol * MathF.Exp(MathF.Log(0.35f) + MathF.Log(2.5f / 0.35f) * U(3)) };
         bool wet = air.Column > 0f && !spec.Airless;
 
         Spectrum light = Spectrum.Blackbody(kelvin);
