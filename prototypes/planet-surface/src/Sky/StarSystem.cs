@@ -165,6 +165,34 @@ public sealed class StarSystem
     /// <summary>The fastest a moon goes round its parent, m/s: slower than a vessel in space, so one can always be caught. Its month is lengthened to fit.</summary>
     public static double MoonSpeedCap = 50.0;
 
+    /// <summary>
+    /// How orbits tilt (owner, 22 Nov: "Moons don't necessarily orbit on the same plane, same with planets. Look at our
+    /// solar system, it's not a flat plane"), in degrees and shares, after the solar system's own spread.
+    /// </summary>
+    public sealed record OrbitPlanes
+    {
+        /// <summary>Most worlds round the star lie within this of the system's plane.</summary>
+        public double Planets { get; init; } = 7.0;
+        /// <summary>The share of worlds past the frost line tilted further, and how far.</summary>
+        public double OuterShare { get; init; } = 0.1;
+        public double Outer { get; init; } = 20.0;
+        /// <summary>The share of them that are wanderers, and how far out of the plane those go.</summary>
+        public double WandererShare { get; init; } = 0.02;
+        public double Wanderer { get; init; } = 40.0;
+        /// <summary>Moons nearer than this many of their parent's radii are locked to it, on its equator (where its rings lie) within <see cref="NearMoons"/>.</summary>
+        public double LockedRadii { get; init; } = 10.0;
+        public double NearMoons { get; init; } = 3.0;
+        /// <summary>Moons farther out spread up to this from the system's plane.</summary>
+        public double FarMoons { get; init; } = 30.0;
+        /// <summary>The share of far moons that are captured bodies, at this range of tilt: steep, or past 90 going round backwards.</summary>
+        public double CapturedShare { get; init; } = 0.1;
+        public double CapturedFrom { get; init; } = 45.0;
+        public double CapturedTo { get; init; } = 170.0;
+    }
+
+    /// <summary>The one table every orbit's plane is rolled from.</summary>
+    public static OrbitPlanes Planes = new();
+
     /// <summary>The galaxy catalogue's key for this star.</summary>
     public ulong StarKey { get; private set; }
 
@@ -466,8 +494,17 @@ public sealed class StarSystem
         // A moon's month, no shorter than going round its orbit at the cap takes (days are the sky's, real minutes).
         double capped(double orbit, double month) => Math.Max(month, Math.Tau * orbit / (MoonSpeedCap * sky.DayMinutes * 60.0));
         double phase() => next();
-        double tilted() => (next() - 0.5f) * 0.1; // within 3 degrees of the system's plane
         double node() => next() * Math.Tau;
+        double degrees(double d) => d * Math.PI / 180.0;
+        // A world round the star: most near the system's plane, now and then one past the frost line tilted further,
+        // rarely a wanderer well out of it.
+        (double I, double Node) planetPlane(double h)
+        {
+            float roll = next();
+            double most = h <= FrostLine ? Planes.Planets : roll < Planes.WandererShare ? Planes.Wanderer
+                : roll < Planes.WandererShare + Planes.OuterShare ? Planes.Outer : Planes.Planets;
+            return (degrees(most) * next(), node());
+        }
         s.Tilt = (5.0 + 25.0 * next()) * Math.PI / 180.0;
         s.Axis = new D3(Math.Sin(s.Tilt), Math.Cos(s.Tilt), 0);
         // An orbit in the home globe's equator, near enough: within 5 degrees of it.
@@ -554,10 +591,11 @@ public sealed class StarSystem
         {
             // A warm giant, whose moon this world is.
             double r = GiantRadius(homeRadius, next());
+            var hostPlane = planetPlane(homeH);
             host = add(new Orbiter
             {
                 Name = big.Name, Kind = OrbiterKind.GasGiant, Parent = star, Radius = r, Habitable = homeH, Orbit = chart(homeH), Period = year(homeH),
-                DayLength = 0.4 + 0.3 * next(), Phase0 = phase(), Inclination = tilted(), Node = node(), Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
+                DayLength = 0.4 + 0.3 * next(), Phase0 = phase(), Inclination = hostPlane.I, Node = hostPlane.Node, Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
                 Color = big.Color, Band = big.Band, Rings = big.Rings, RingColor = big.RingColor,
                 RingNormal = new D3(Math.Sin(big.RingTilt) * 0.6, Math.Cos(big.RingTilt), Math.Sin(big.RingTilt) * 0.8).Normalized,
             });
@@ -574,6 +612,27 @@ public sealed class StarSystem
         s.Home = home;
         widths[home] = spec.WidthKm;
         add(home);
+
+        // A parent's equator as an orbit's tilt and node: the plane its rings lie in (the start world's, its own axis).
+        (double I, double Node) equatorOf(Orbiter parent)
+        {
+            D3 n = parent == home ? s.Axis : parent.RingNormal;
+            double i = Math.Acos(Math.Clamp(n.Y, -1.0, 1.0));
+            return (i, i < 1e-9 ? 0.0 : Math.Atan2(-n.X, -n.Z));
+        }
+        // A moon close in is locked to its parent, on its equator within a few degrees; one farther out spreads wider;
+        // now and then a far one is a captured body, steep or going round backwards. Radii are the parent's.
+        (double I, double Node) moonPlane(Orbiter parent, double radii)
+        {
+            if (radii < Planes.LockedRadii)
+            {
+                var (i, n) = equatorOf(parent);
+                double near = degrees(Planes.NearMoons);
+                return (i + near * (2.0 * next() - 1.0), n + near * (2.0 * next() - 1.0));
+            }
+            if (next() < Planes.CapturedShare) return (degrees(Planes.CapturedFrom + (Planes.CapturedTo - Planes.CapturedFrom) * next()), node());
+            return (degrees(Planes.FarMoons) * next(), node());
+        }
 
         // A clear place for a moon round a parent, out from the orbit asked for.
         double clearOrbit(Orbiter parent, double orbit)
@@ -604,10 +663,11 @@ public sealed class StarSystem
                 : first ? homeRadius * (ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next()) : Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 14.0, homeRadius * 40.0);
             double orbit = clearOrbit(holder, wanted), month = capped(orbit, host != null ? giantMonth(orbit / host.Radius) : rockMonth(orbit / homeRadius));
             first = false;
+            var plane = moonPlane(holder, orbit / holder.Radius);
             ground(new Orbiter
             {
                 Name = b.Name, Kind = OrbiterKind.Moon, Parent = holder, Orbit = orbit, Period = month, DayLength = month,
-                Phase0 = b.Phase0, Inclination = equator(), Node = equatorNode(), Color = b.Color, Band = b.Color, Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
+                Phase0 = b.Phase0, Inclination = plane.I, Node = plane.Node, Color = b.Color, Band = b.Color, Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
             }, size);
         }
         if (host != null) s.DressRing(host, host.Color, widths);
@@ -621,11 +681,12 @@ public sealed class StarSystem
                 : t > 330 ? Rgb.Lerp(Rgb.Hex("a07058"), Rgb.Hex("d8c8a8"), tone)
                 : t > 210 ? Rgb.Lerp(Rgb.Hex("b89a80"), Rgb.Hex("7898b8"), tone)
                 : Rgb.Lerp(Rgb.Hex("c8d8e8"), Rgb.Hex("9098a8"), tone);
+            var plane = planetPlane(h);
             var w = new Orbiter
             {
                 Name = $"world {++number}", Kind = giant ? OrbiterKind.GasGiant : OrbiterKind.Planet, Parent = star, Habitable = h, Orbit = chart(h), Period = year(h),
                 Radius = giant ? GiantRadius(homeRadius, next()) : 0.0, DayLength = giant ? 0.4 + 0.3 * next() : 0.7 + 2.0 * next(),
-                Phase0 = phase(), Inclination = tilted(), Node = node(), Temperature = t, Zone = ZoneAt(h), Color = color, Band = Rgb.Lerp(color, Rgb.Hex("5a4a3a"), 0.45f),
+                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Temperature = t, Zone = ZoneAt(h), Color = color, Band = Rgb.Lerp(color, Rgb.Hex("5a4a3a"), 0.45f),
                 Rings = giant && next() < 0.45f,
             };
             return giant ? add(w) : ground(w, PlanetSpec.RollWidthKm(upcoming()));
@@ -634,10 +695,11 @@ public sealed class StarSystem
         {
             double orbit = clearOrbit(parent, parent.Radius * radii);
             period = capped(orbit, period);
+            var plane = moonPlane(parent, orbit / parent.Radius);
             return ground(new Orbiter
             {
                 Name = $"a moon of {parent.Name}", Kind = OrbiterKind.Moon, Parent = parent, Orbit = orbit, Period = period, DayLength = period,
-                Phase0 = phase(), Inclination = tilted(), Node = node(), Habitable = parent.Habitable, Temperature = parent.Temperature, Zone = parent.Zone,
+                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Habitable = parent.Habitable, Temperature = parent.Temperature, Zone = parent.Zone,
                 Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
             }, moonWidth(parent));
         }
@@ -660,10 +722,11 @@ public sealed class StarSystem
             double from = moon.Radius * 3.0, to = 0.5 * moon.Orbit * moon.Radius / moon.Parent.Radius / Math.Cbrt(3.0);
             if (to < from * 1.2) return;
             double orbit = from + (to - from) * next(), month = capped(orbit, rockMonth(orbit / moon.Radius));
+            var plane = moonPlane(moon, orbit / moon.Radius);
             ground(new Orbiter
             {
                 Name = $"a moon of {moon.Name}", Kind = OrbiterKind.Moon, Parent = moon, Orbit = orbit, Period = month, DayLength = month,
-                Phase0 = phase(), Inclination = tilted(), Node = node(), Habitable = moon.Habitable, Temperature = moon.Temperature, Zone = moon.Zone,
+                Phase0 = phase(), Inclination = plane.I, Node = plane.Node, Habitable = moon.Habitable, Temperature = moon.Temperature, Zone = moon.Zone,
                 Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
             }, moonWidth(moon));
         }
@@ -727,12 +790,13 @@ public sealed class StarSystem
         if (near == null)
         {
             double radii = ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next(), chord = homeRadius * radii;
+            var nearPlane = moonPlane(home, radii);
             // A sister keeps one small arc ahead on the same orbit, so she is always in reach: the one shared orbit.
             near = host == null
                 ? new Orbiter
                 {
                     Name = "the near moon", Kind = OrbiterKind.Moon, Parent = home, Orbit = chord, Period = capped(chord, rockMonth(radii)), DayLength = capped(chord, rockMonth(radii)),
-                    Phase0 = phase(), Inclination = equator(), Node = equatorNode(), Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
+                    Phase0 = phase(), Inclination = nearPlane.I, Node = nearPlane.Node, Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
                     Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
                 }
                 : new Orbiter

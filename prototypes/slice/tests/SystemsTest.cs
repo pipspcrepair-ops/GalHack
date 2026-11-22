@@ -84,6 +84,7 @@ public partial class SystemsTest : Node
         Gravity(systems);
         Vacuum(systems);
         Moons(systems);
+        Planes(systems);
         Rings(systems);
         SunsAndGiants(systems);
         HeavyWorlds(systems);
@@ -256,6 +257,53 @@ public partial class SystemsTest : Node
                 if (fromGround.Dot(truly) < 1.0 - 1e-9 || fromParent.Dot(trulyThere) < 1.0 - 1e-9) off++;
             }
         Check(seen > 0 && off == 0, $"moons: each of {seen} moons' moons stands where it truly is from the ground and from its parent's sky ({off} did not)");
+    }
+
+    // ---- 3b. Orbits aren't one flat plane (owner, 22 Nov) ------------------------------------------------
+
+    /// <summary>An orbit's normal in the system's frame, as <see cref="StarSystem.Position"/> turns it.</summary>
+    static D3 Normal(double i, double node) => new(-Math.Sin(i) * Math.Sin(node), Math.Cos(i), -Math.Sin(i) * Math.Cos(node));
+
+    static double Deg(double radians) => radians * 180.0 / Math.PI;
+
+    void Planes(List<StarSystem> systems)
+    {
+        StarSystem.OrbitPlanes p = StarSystem.Planes;
+        int planets = 0, flat = 0, innerOff = 0, outerTilted = 0, wanderers = 0, tooSteep = 0, near = 0, nearOff = 0, far = 0, captured = 0, backwards = 0;
+        double worstNear = 0;
+        foreach (StarSystem s in systems)
+            foreach (Orbiter b in s.Bodies)
+            {
+                double i = Deg(b.Inclination);
+                if (b.Parent == s.Star && (b.Kind is OrbiterKind.Planet or OrbiterKind.GasGiant) && b != s.Home)
+                {
+                    planets++;
+                    if (i <= p.Planets) flat++;
+                    else if (b.Habitable <= StarSystem.FrostLine) innerOff++;
+                    else if (i <= p.Outer) outerTilted++;
+                    else if (i <= p.Wanderer) wanderers++;
+                    else tooSteep++;
+                    continue;
+                }
+                if (b.Kind != OrbiterKind.Moon || b == s.Home || b.Parent == s.Home.Parent && b.Orbit == s.Home.Orbit) continue; // the start world, and its sister on its orbit
+                if (b.Orbit / b.Parent.Radius < p.LockedRadii)
+                {
+                    near++;
+                    D3 equator = b.Parent == s.Home ? s.Axis : b.Parent.RingNormal;
+                    double off = Deg(Math.Acos(Math.Clamp(Normal(b.Inclination, b.Node).Dot(equator), -1.0, 1.0)));
+                    worstNear = Math.Max(worstNear, off);
+                    if (off > p.NearMoons * 1.5) nearOff++;
+                    continue;
+                }
+                far++;
+                if (i > p.FarMoons) captured++;
+                if (i > 90.0) backwards++;
+            }
+        Check(innerOff == 0 && tooSteep == 0 && flat >= planets * 0.9 && outerTilted > 0 && wanderers > 0,
+            $"planes: of {planets} worlds round the star {flat} lie within {p.Planets}° of the plane, {outerTilted} outer ones up to {p.Outer}°, {wanderers} wanderers up to {p.Wanderer}° ({innerOff} inner ones off the plane, {tooSteep} steeper)");
+        Check(near > 0 && nearOff == 0, $"planes: all {near} moons within {p.LockedRadii} radii keep to their parent's equator, where its rings lie ({worstNear:F1}° off at worst)");
+        Check(far > 0 && Math.Abs(captured / (double)far - p.CapturedShare) < 0.03 && backwards > 0,
+            $"planes: {captured} of {far} farther moons are captured, past {p.FarMoons}° ({captured * 100.0 / far:F1}%, {p.CapturedShare:P0} wanted), {backwards} going round backwards");
     }
 
     // ---- 4. Rings ---------------------------------------------------------------------------------------
