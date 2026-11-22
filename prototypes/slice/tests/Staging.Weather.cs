@@ -443,27 +443,29 @@ public partial class Staging
         }
         foreach (int x in Frame("5-high-ground", high, 2200f, 6f, 0f, -0.02f)) yield return x;
         // From the same spot, a kilometre off: at dusk with the sun at the eye's back and looking into it, at night, and at noon.
-        sky.TimeOfDay = Hour(0.05f);
+        _game.Survivor.PlaceOutside((ground - toward * 3f + Vector3.Up).ToNumerics()); // the sun's height is where the eye is on the map
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in Hour(0.05f)) yield return x;
         foreach (int x in Frame("6-dusk-away", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
         Vector3 sun = new Vector3(sky.ToSun.X, 0f, sky.ToSun.Z).Normalized();
         foreach (int x in FrameWay("7-dusk-toward-sun", ground, 1000f, 1.7f, 0f, 0.1f, sun)) yield return x;
-        sky.TimeOfDay = Hour(-0.35f);
+        foreach (int x in Hour(-0.35f)) yield return x;
         foreach (int x in Frame("8-night", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
         sky.TimeOfDay = 0.5;
         foreach (int x in Frame("9-noon", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
 
-        // The evening hour with the sun this high (negative: under the horizon), where the eye stands: the sky placed for each
-        // hour tried and the sun read as it is drawn (SunAt alone misses where on the map the eye is).
-        double Hour(float sunY)
+        // Sets the evening hour with the sun this high (negative: under the horizon) as it is drawn where the eye stands: each
+        // hour tried is drawn until its sun has caught up, and read there (stand the eye first: its place on the map moves the sun too).
+        IEnumerable<int> Hour(float sunY)
         {
             double best = 0.5, off = double.MaxValue;
-            for (double t = 0.5; t < 0.99; t += 0.002)
+            for (double t = 0.7; t < 0.95; t += 0.01)
             {
                 sky.TimeOfDay = t;
-                sky.Track();
+                foreach (int x in _drive.Wait(40)) yield return x; // the drawn sun follows the clock over half a second or so
                 if (Math.Abs(sky.ToSun.Y - sunY) < off) (best, off) = (t, Math.Abs(sky.ToSun.Y - sunY));
             }
-            return best;
+            sky.TimeOfDay = best;
         }
     }
 
