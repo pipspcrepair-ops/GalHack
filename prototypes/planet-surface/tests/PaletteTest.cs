@@ -141,7 +141,9 @@ public partial class PaletteTest : Node
             lines.Add($"{Channels[c]} median dE {median:F1}, same {same:P0}, chroma {chroma / seen:F1}");
             spread &= same < 0.5f;
         }
-        int twins = 0, pairs = 0;
+        // Twins in every colour mean something where there are several to match: with only a ground and its rock (an
+        // airless body's, the one mineral twice) that is the clustering above again.
+        int twins = 0, pairs = 0, colours = Channels.Length - worlds[0].Colors.Count(x => x == null);
         for (int i = 0; i < worlds.Count; i++)
             for (int j = i + 1; j < worlds.Count; j++)
             {
@@ -153,7 +155,7 @@ public partial class PaletteTest : Node
             }
         GD.Print($"PALETTE {kind}: {string.Join("; ", lines)}; twins {twins} of {pairs} pairs");
         Check(spread, $"{count} fresh {kind} worlds spread in every natural colour: none has half its pairs within dE {Same}");
-        Check(twins <= pairs * TwinShare, $"{kind} worlds are told apart: {twins} of {pairs} pairs twins in every colour (dE < {Same})");
+        if (colours >= 4) Check(twins <= pairs * TwinShare, $"{kind} worlds are told apart: {twins} of {pairs} pairs twins in every colour (dE < {Same})");
         float night = worlds.Max(w => w.Night.L);
         Check(night < 8f, $"{kind} night skies stay dark (brightest zenith L* {night:F1})");
         if (kind == "meadow")

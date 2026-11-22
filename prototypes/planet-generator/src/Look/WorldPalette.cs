@@ -246,7 +246,7 @@ public sealed record WorldPalette
             : spec.Archetype switch
             {
                 Archetype.Lava => new[] { (Mineral.Basalt, 0.45f), (Mineral.Andesite, 0.3f), (Mineral.Granite, 0.25f) }, // granite's volcanic twin, rhyolite: pale and pink
-                Archetype.Arid => new[] { (Mineral.Sandstone, 0.4f), (Mineral.Granite, 0.25f), (Mineral.Basalt, 0.2f), (Mineral.Limestone, 0.15f) },
+                Archetype.Arid => new[] { (Mineral.Sandstone, 0.3f), (Mineral.Granite, 0.2f), (Mineral.Basalt, 0.25f), (Mineral.Limestone, 0.25f) }, // red beds, grus, black sand, white gypsum and lime
                 Archetype.Ice => new[] { (Mineral.Granite, 0.35f), (Mineral.Basalt, 0.35f), (Mineral.Shale, 0.3f) },
                 _ => new[] { (Mineral.Granite, 0.25f), (Mineral.Basalt, 0.2f), (Mineral.Sandstone, 0.2f), (Mineral.Limestone, 0.15f), (Mineral.Shale, 0.2f) },
             };
