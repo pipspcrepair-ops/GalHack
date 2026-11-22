@@ -1,6 +1,6 @@
 # GalHack — Game Design Document
 
-> This is a published copy of GalHack's living design document, last refreshed from revision 819. The design doc is the authority on how the game should work; the code may lag behind it.
+> This is a published copy of GalHack's living design document, last refreshed from revision 844. The design doc is the authority on how the game should work; the code may lag behind it.
 
 ## 1. Overview
 
@@ -769,14 +769,13 @@ Building costs are based on Empyrion's, whose costs are well balanced: what a bl
 
 Every structure the player owns is built block by block on a grid. Blocks carry hit points and mass, components are the functional parts, and a structure's function comes from which blocks are attached to its core: devices work whichever way they face and wherever they sit, except thrusters, which push along their facing. A vessel's heading is set by the seat of whoever holds the pilot role: forward is whichever way that seat faces. Roles can be reassigned to any player in a command chair, so handing the pilot role to someone in a seat facing another way turns the ship's forward with it. There is no separate ship editor: the player builds in the world, in either game mode. In Survival, as in Empyrion, blocks are craftable items: constructors make them from materials, players carry them in stacks on the toolbar and in their bag, each placement uses one (from the player's own stack, or, when building on a structure, from that structure's shared storage: still one storage per core, kept separate from the player's own storage, and usable only while the player is within the structure's area radius, for bases, small vessels and capital ships alike; the player selects which source they're taking from, as in Empyrion), a crafted block of a family can be placed in any of that family's shapes, and taking a block down with the tool returns it to the inventory. A new base or vessel starts with its crafted core block placed from the inventory; everything else is built onto that structure, and only blocks compatible with its class can be placed (base and capital-vessel blocks, small-vessel blocks, and so on, as in Empyrion); building happens under threat; in Creative placing is free and unlimited, with every block available.
 
-**Grids**
+**One grid**
 
-| Grid | Block edge | Used by | Notes |
-| --- | --- | --- | --- |
-| Large | 2 m | Bases, capital vessels | Big devices, turrets, constructors, blueprint factory |
-| Small | 0.5 m | Hover vessels, small vessels | Fine detail; 1 large block = 64 small blocks of volume |
+Everything is built on one 1 m block (owner, 12 Nov 2026; docs/one-metre-grid.md). Structural blocks are uniform 1 m. Devices take up as many 1 m blocks as they need, set by what they are and their tier, as in Empyrion, where higher-tier thrusters span several blocks. Nothing is labelled small, large or by any other size class. Doors come in variable sizes; the standard ones are 1×2×1 and 2×2×1 (width × height × depth, in metres).
 
 Reference cap: about 250 blocks per axis per structure, for performance.
+
+**One door height.** Every doorway a person walks through is 2 m tall, everywhere: the player's door blocks (the standard doors are 1×2×1 and 2×2×1, owner, 12 Nov 2026), generated houses, shops, ruins and every other place, so bases and decks stay compact and doors fit any wall. Generated places may add grander openings where their style calls for them (double, barn and garage doors), but no person door is ever lower than 2 m. Nothing hangs lower than the door head over a doorway or just in front of it, and every people is capped under 2 m to pass through (owner, 8 Nov 2026; replaces a short-lived 3 m standard).
 
 **Placing and shaping**
 
@@ -803,7 +802,7 @@ Ships and structures are built from blocks and components: blocks form the hull 
 - Components have the same stats plus their function, and stop working when destroyed, so tucking a generator behind armor is a real defensive choice.
 - There's no structural load or stress simulation, by design: it adds bug risk and serves no pillar. Only sections cut off from the core break away (below).
 
-**Armor materials** (reference values, large grid)
+**Armor materials** (reference values)
 
 | Material | Hit points | Mass | How it's obtained | Role |
 | --- | --- | --- | --- | --- |
@@ -815,7 +814,7 @@ Ships and structures are built from blocks and components: blocks form the hull 
 | Precursor alloy | 2,750 | Heavy | Salvage only, from alien structures; can't be crafted | Prize armor; mildly radioactive |
 | Windows | Light and heavy variants | Light | Early to mid unlocks | Visibility; weak points |
 
-Small-grid blocks have about a tenth of the hit points of their large-grid equivalent per cube. Precursor alloy and charged armor tie top-tier building to discovery: the best armor comes from exploring alien sites, not from a recipe.
+Precursor alloy and charged armor tie top-tier building to discovery: the best armor comes from exploring alien sites, not from a recipe.
 
 **Damage model**
 
@@ -837,18 +836,18 @@ Toggles and triggers (switches, sensors, device groups) are covered in section 1
 
 Four structure classes divide the world by where each can go, and two of them (bases and capital vessels) are really one structure with two core modes. Each one opens a new space to explore, so the class ladder is pillar 4 (scale) and pillar 1 (discovery) at once. Player structures never carry NPC crew: players fly and man them, and turret AI and autopilot cover any station nobody is manning.
 
-| Class | Grid | Where it operates | What it's for | Hard limits | Unlock (reference level) |
+| Class | Core mode | Where it operates | What it's for | Hard limits | Unlock (reference level) |
 | --- | --- | --- | --- | --- | --- |
-| Base | Large, core in base mode | Fixed, on a planet or in space | Production hub, storage, defence, repair, respawn | Can't move until switched to capital mode | Start |
-| Capital vessel | Large, core in capital mode | Space; can land on planets | Mobile base, warship, interstellar explorer | Needs thrusters, a command chair, and enough thrust to lift its mass | 7 |
-| Hover vessel (HV) | Small | Planet surface only, hovering a few metres up | Rovers, mining crawlers, ground combat, cargo haulers | No flight or space; moves in 2D, so needs forward, reverse and strafe thrust | 1 |
-| Small vessel (SV) | Small | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Warp drive within a system; no fold drive, so no jumps between systems | 5 |
+| Base | Core in base mode | Fixed, on a planet or in space | Production hub, storage, defence, repair, respawn | Can't move until switched to capital mode | Start |
+| Capital vessel | Core in capital mode | Space; can land on planets | Mobile base, warship, interstellar explorer | Needs thrusters, a command chair, and enough thrust to lift its mass | 7 |
+| Hover vessel (HV) | Core in hover mode | Planet surface only, hovering a few metres up | Rovers, mining crawlers, ground combat, cargo haulers | No flight or space; moves in 2D, so needs forward, reverse and strafe thrust | 1 |
+| Small vessel (SV) | Core in vessel mode | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Warp drive within a system; no fold drive, so no jumps between systems | 5 |
 
 **Bases and capital vessels are one thing**
 
-Bases and capital vessels share every block and component, and both are built on a Large Core (small-grid vessels use a Small Core); only the core's mode differs, and a core console switches it. Every material, block and recipe works the same in both modes, so nothing ever needs rebuilding when a core changes mode. A capital vessel is a floating base: it burns fuel to maintain lift and wind can buffet it. A base anchors to the ground instead.
+Bases and capital vessels share every block and component, and both are built on the core; only the core's mode differs, and a core console switches it. Every material, block and recipe works the same in both modes, so nothing ever needs rebuilding when a core changes mode. A capital vessel is a floating base: it burns fuel to maintain lift and wind can buffet it. A base anchors to the ground instead.
 
-**Two classes, Large and Small.** Structures come in two classes by core. Large (the Large Core, large grid) has three modes: Base, Hover and Flight. Small (the Small Core, small grid) has two: Hover and Flight. Older wording in this document maps onto these: Capital Mode and Vessel Mode are Flight, and a base is a Large structure in Base Mode. Large Hover works like Small Hover: large hover plates give lift only close to the ground, thrusters push the craft along, and it can't reach orbit, which makes hover tanks, land carriers and mobile bases. In the tech tree the tabs are Large and Small, and on the Large tab large hover tech is a branch in parallel with flight tech. The word is always Large, never big, in the inventory, the tech tree and everywhere else (owner, 9 Nov 2026). Beyond scale and mass, what sets Large apart is that only Large can be a base and only Large carries a fold drive; everything on a capital ship is costed up, powered up and stronger than its small-craft counterpart, with more capacity. Mass, thrust, gyro torque, cost, power draw, fuel use and every other figure for blocks and devices, large and small, follow Empyrion's own figures closely, under GalHack's own names.
+**One core.** Every structure is built on one unified 1 m core with three modes: Base, Hover and Flight (owner, 12 Nov 2026; docs/one-metre-grid.md). Older wording in this document maps onto these: Capital Mode and Vessel Mode are Flight, and a base is a structure in Base Mode. Hover works for every structure: hover plates give lift only close to the ground, thrusters push the craft along, and it can't reach orbit, which makes hover tanks, land carriers and mobile bases. In the tech tree hover tech is a branch in parallel with flight tech. Nothing is labelled small, large or by any other size class. Beyond scale and mass, what sets Large apart is that only Large can be a base and only Large carries a fold drive; everything on a capital ship is costed up, powered up and stronger than its small-craft counterpart, with more capacity. Mass, thrust, gyro torque, cost, power draw, fuel use and every other figure for blocks and devices follow Empyrion's own figures closely, under GalHack's own names.
 
 - **Ship to base:** allowed at any time. The structure anchors where it comes to rest: on the ground, or holding still in space (it becomes a station). Switched in the air, it falls until it lands, then anchors and stops simulating physics.
 - **Base to ship:** allowed at any time, but it only flies with thrusters, a command chair, and enough thrust to lift its mass. Those blocks can sit on a base beforehand and do nothing until the core is switched.
@@ -857,7 +856,7 @@ Bases and capital vessels share every block and component, and both are built on
 
 **Small and hover vessels are one thing**
 
-Small vessels and hover vessels work the same way: one Small Core with Vessel Mode and Hover Mode, and every small block works in both. Hover plates give lift in Hover Mode and do nothing in Vessel Mode. In Hover Mode thrusters only push the craft along, and hover works only close to the ground, so a craft that goes over a cliff sinks until the ground is back in range, and it can't reach orbit.
+Small vessels and hover vessels work the same way: the same core with Vessel Mode and Hover Mode, and every block works in both. Hover plates give lift in Hover Mode and do nothing in Vessel Mode. In Hover Mode thrusters only push the craft along, and hover works only close to the ground, so a craft that goes over a cliff sinks until the ground is back in range, and it can't reach orbit.
 
 **Switching modes.** Either core's mode can be changed from the menu at any time, even in flight, and nothing refuses it. It's never a keyboard command: the switch is only in the menu, with warning stripes around it. Switch a flying ship to a mode it isn't fitted for and it loses lift and falls. That's the player's own doing, and they can switch back. The console warns about missing parts. While seated, a visual indicator always shows the craft's current mode.
 
@@ -867,14 +866,14 @@ Small vessels and hover vessels work the same way: one Small Core with Vessel Mo
 - **Recoil.** Heavy guns shove a flyer around. A hover craft braced against the ground is a stable platform for them.
 - **Mass.** Heavy armour makes a flyer cumbersome. Hover plates carry it with no slowdown, up to their lift limit.
 - **Roles.** A hover craft suits ground assault, combining heavy armour, heavy weapons, strafing and speed. A flyer can still carry those, just badly, and the player can choose that.
-- **Large Core, same logic.** A base has no thrusters drawing power and no flight to disturb its aim, so the heaviest guns and armour work best there. A capital ship can land and switch to Base Mode to bring heavy guns to full power.
+- **The core, same logic.** A base has no thrusters drawing power and no flight to disturb its aim, so the heaviest guns and armour work best there. A capital ship can land and switch to Base Mode to bring heavy guns to full power.
 - **Relocating.** A heavy base or hover tank isn't stuck: with enough thrusters, CPU and power it can switch mode and move, slowly.
 
 **The capital-to-base loop is the heart of building.** Landing a capital ship on a planet, switching it to base mode, running it as a base and lifting off clean is the loop players should do most. When it lifts off, terrain it was built into breaks free so it never snags, and vessels parked on it ride along.
 
 **Wrecks can be restored**
 
-Any wreck with no core (shot down, crashed, severed in combat or found as a POI) can be claimed by placing a core in it. Repair it, then add whatever is missing to fly it in capital mode, or keep it as a base. Small-grid wrecks work the same way with a small-grid core. A crashed capital ship reads as one: capital-vessel size and shape, several decks, engines at the stern, a bridge with forward windows, and real rooms (engine room, holds, quarters, hangar), all generated from one hull builder and laid out like Empyrion's POIs.
+Any wreck with no core (shot down, crashed, severed in combat or found as a POI) can be claimed by placing a core in it. Repair it, then add whatever is missing to fly it in capital mode, or keep it as a base. A crashed capital ship reads as one: capital-vessel size and shape, several decks, engines at the stern, a bridge with forward windows, and real rooms (engine room, holds, quarters, hangar), all generated from one hull builder and laid out like Empyrion's POIs.
 
 **Docking**
 
@@ -946,7 +945,7 @@ This keeps the good part of the genre's air systems (sealed rooms that matter in
 
 **Repair**
 
-- **Repair bay T1** repairs damaged blocks on craft docked nearby; **T2** also replaces destroyed ones, from the craft's template. One per large-grid structure, in either core mode; it repairs docked craft of any class.
+- **Repair bay T1** repairs damaged blocks on craft docked nearby; **T2** also replaces destroyed ones, from the craft's template. One per structure, in either core mode; it repairs docked craft of any class.
 - **Field repair station** (bases and capital vessels): the player uses it in person to restore the structure. It won't run under attack, with shields up or with turrets firing, so repair is a between-fights activity.
 - Repairs consume materials from the structure's shared storage.
 
@@ -982,8 +981,8 @@ Only blocks that do something cost CPU: devices such as thrusters, drives, shiel
 
 | Class | T1 (core) | T2 (1 extender) | T3 (2 extenders) | T4 (4 extenders) |
 | --- | --- | --- | --- | --- |
-| Small or hover vessel (small grid, either core mode) | 6,000 | 15,000 | 40,000 | 100,000 |
-| Base or capital vessel (large grid, either core mode) | 200,000 | 500,000 | 1,500,000 | 10,000,000 |
+| Small or hover vessel (either core mode) | 6,000 | 15,000 | 40,000 | 100,000 |
+| Base or capital vessel (either core mode) | 200,000 | 500,000 | 1,500,000 | 10,000,000 |
 
 - T3 and T4 extenders need **lattice core** and **lattice array** components, found only in points of interest or bought from traders. CPU growth is therefore gated by exploration, not just by the tech tree.
 - Losing an extender in combat drops the structure a tier mid-fight.
@@ -1439,7 +1438,7 @@ GalHack plays the same alone, or in co-op over Steam, and every player belongs t
 
 **Where everything lives**
 
-GalHack's interface **looks like part of the world** without being built into it. Every panel is styled as the suit's or ship's own tech (screen glass, scanlines, bold paperback colours), but it's an ordinary on-screen interface, not a screen you walk up to. Everything the player manages lives in **one full-screen menu on Tab**. A minimal helmet-visor HUD covers what matters moment to moment, and the game never pauses for the menu.
+GalHack's interface **looks like part of the world** without being built into it. Every panel is styled as the suit's or ship's own tech (screen glass, scanlines, bold paperback colours), but it's an ordinary on-screen interface, not a screen you walk up to. Everything the player manages lives in **one full-screen menu on Tab**. A minimal helmet-visor HUD covers what matters moment to moment, and the game never pauses for the menu. The HUD's layout follows Empyrion's (owner, 9 Nov 2026), in GalHack's own look. The gauges, icon row and temperature are laid out as in the Visor HUD layout below (owner, 15 Nov), which is later. On foot: the toolbar along the bottom with the empty hand last, and the clock and a 3D radar grid at the top right. In a vessel: a heading tape across the top, a pitch ladder and an altitude bar, and speed against the vessel's maximum. Every flying vessel handles the same way to control, whatever its class: the same keys, mouse steering and response, mouse turning as it already feels (no settle curve added), and pitch, roll and yaw sensitivity on its control panel. How quick it is still comes from its thrusters, gyros and mass, but turning has a ceiling as well as a floor, so a light ship is nimble without being twitchy. The Tab menu follows Empyrion's too: a ribbon of icon tabs across the top with the screen's name at the top left and close at the top right, and each screen laid out as Empyrion lays it out, with GalHack's own content: the planet map (a gridded globe with a planet info panel and its deposits), the system map (orbit lines, a sector info panel), the galaxy map (warp lines, names, map markers by distance), blueprints (library list, resources required, an info panel with size and counts), the vessel statistics for the vessel piloted or in range (power and fuel, oxygen, defence, thrust in each direction drawn round the hull, cargo, thrusters), the vessel control panel (name, faction, mass, energy and CPU, switches for power, oxygen, shield, lights, thrusters, auto brake and pilot mode, and gauges for its tanks with fill buttons; device groups and signal logic come later), a constructor (one shared container, never separate input and output, with its queue and template grid) and logistics (moving items between your bag and a vessel's or base's containers, with mass and volume). Traders come last, with trading (owner, 9 Nov 2026).
 
 | Need | Where | Notes |
 | --- | --- | --- |
@@ -1686,7 +1685,7 @@ The world save is the most important system in the game. Structures, items and p
 | Alarm level | A boarded structure's response state, 0 (unaware) to 3 (last stand) |
 | Archetype | A planet type (temperate, lava, ocean...), refined by a variant and modifiers |
 | Burnstone | Common fuel ore, refined into fuel packs |
-| Capital vessel (CV) | A large-grid structure with its core in capital mode: it flies, warps between stars and carries smaller craft. Switch the core to base mode once landed |
+| Capital vessel (CV) | A structure with its core in capital mode: it flies, warps between stars and carries smaller craft. Switch the core to base mode once landed |
 | Component | A functional part of a ship or structure (engine, generator, turret, shield, command chair and so on), with its own structural stats; also called a device |
 | Core | The block that defines a structure's owner; destroy it to make a derelict, hijack it to capture |
 | CPU tier and extender | A structure's complexity budget, raised in four tiers by placing extenders |
@@ -1697,7 +1696,7 @@ The world save is the most important system in the game. Structures, items and p
 | Fold crystal | Rare crystal that fuels fold jumps and recharges shields |
 | Gravium | Uncommon dense ore from high-gravity worlds, used for heavy armor |
 | Hijack Tool | Handheld device that takes over an enemy core, in three tiers |
-| Hover vessel (HV) | Small-grid surface vehicle that hovers over land and water |
+| Hover vessel (HV) | Surface vehicle that hovers over land and water |
 | Lattice core and lattice array | Unique components needed for CPU tiers 3 and 4 |
 | Modifier | A trait rolled onto a planet that changes its look and play (ringed sky, perpetual storm...) |
 | Organics | Plant matter, creature meat and other biomass, kept in storage to feed replicators |
@@ -1710,7 +1709,7 @@ The world save is the most important system in the game. Structures, items and p
 | Ship frame | A structure's own reference frame, so players can walk inside it while it moves |
 | Short-range warp | A free jump to a target within the same playfield |
 | Signal lead | A beacon or signal that points toward content by direction and distance |
-| Small vessel (SV) | Small-grid ship for atmosphere and in-system space |
+| Small vessel (SV) | Ship for atmosphere and in-system space |
 | Standing | The player faction's shared reputation with an NPC faction, from hostile to honored |
 | Starsilver | Rare metal from worlds near giant stars, for top-tier devices |
 | Storage unit (SU) | The volume measure for items and containers |
