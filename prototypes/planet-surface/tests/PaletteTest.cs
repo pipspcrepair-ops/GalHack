@@ -103,8 +103,10 @@ public partial class PaletteTest : Node
         string name = $"seed {seed}, {a} {v}{(spec.Airless ? " airless" : "")} {spec.WidthKm} km, {sky.Star} star, {sky.Air} air";
         GD.Print($"world: {name}");
         Lab? Water(Godot.Color c) => look.Lava || spec.Airless ? null : Lab.Of(new Rgb(c.R, c.G, c.B));
+        // The sea as the water shader shows it 40 m deep, off a coast (its own shallow-to-deep blend over 120 m).
+        float off = Mathf.SmoothStep(0f, 0.6f, 40f / 120f);
         Lab? Air(Rgb c) => spec.Airless ? null : Lab.Of(c);
-        return new Looks(name, new[] { Air(sky.Zenith), Air(sky.Horizon), plants, bare, Lab.Of(ground.Rock), Water(look.Deep), Water(look.Shallow) }, Lab.Of(sky.NightZenith));
+        return new Looks(name, new[] { Air(sky.Zenith), Air(sky.Horizon), plants, bare, Lab.Of(ground.Rock), Water(look.Shallow.Lerp(look.Deep, off)), Water(look.Shallow) }, Lab.Of(sky.NightZenith));
     }
 
     /// <summary>
