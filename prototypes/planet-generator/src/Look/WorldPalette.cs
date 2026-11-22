@@ -298,7 +298,7 @@ public sealed record WorldPalette
     {
         float top = 0f;
         for (int i = 0; i < Spectrum.Bands; i++) top = MathF.Max(top, mineral[i]);
-        return mineral.Map(v => 0.55f + 0.42f * v / MathF.Max(top, 1e-4f));
+        return mineral.Map(v => 0.4f + 0.57f * v / MathF.Max(top, 1e-4f)); // Mars dust: about 0.65 in the blue, 0.97 in the red
     }
 
     /// <summary>
