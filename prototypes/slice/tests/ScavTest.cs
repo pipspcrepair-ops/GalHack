@@ -348,6 +348,7 @@ public partial class ScavTest : Node
         float moved = 0f;
         bool down = false;
         float worstMs = 0f, sumMs = 0f;
+        string worstNote = "";
         int samples = 0;
         // Until they are on their way home and near it (or home already): the place down, their walk stepped as a point.
         for (int t = 0; t < 12 * 60 * 60; t++)
@@ -357,11 +358,11 @@ public partial class ScavTest : Node
             down |= _game.Places.PlaceOf(site) == null;
             moved += new Vector2(who.Pos.X - left.X, who.Pos.Z - left.Z).Length();
             left = who.Pos;
-            if (Get(town, "LastRunsMs") is float ms && OnRun(who) && t > 600) { worstMs = MathF.Max(worstMs, ms); sumMs += ms; samples++; }
+            if (Get(town, "LastRunsMs") is float ms && OnRun(who) && t > 600) { if (ms > worstMs) (worstMs, worstNote) = (ms, Get(town, "LastRunsNote") as string ?? ""); sumMs += ms; samples++; }
             object run = Get(who, "Run");
             if (who.Dead || run == null && !OnRun(who) || Get(run, "Home") is true && new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length() < 90f) break;
         }
-        GD.Print($"  out of sight {(down ? "with the place down" : "with the place still up")}: {moved:F0} m along their way, {Searched(who)} spots searched (on a run {OnRun(who)}, homeward {Get(Get(who, "Run"), "Home")}, scared {who.ScaredFor:F1}, {new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length():F0} m out); the walk of those out {(samples > 0 ? sumMs / samples : 0):F4} ms a tick on average, {worstMs:F4} ms at worst");
+        GD.Print($"  out of sight {(down ? "with the place down" : "with the place still up")}: {moved:F0} m along their way, {Searched(who)} spots searched (on a run {OnRun(who)}, homeward {Get(Get(who, "Run"), "Home")}, scared {who.ScaredFor:F1}, {new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length():F0} m out); the walk of those out {(samples > 0 ? sumMs / samples : 0):F4} ms a tick on average, {worstMs:F4} ms at worst{(worstNote != "" ? $" ({worstNote})" : "")}");
         Check(moved > 40f && down, $"far off, with the place down, they kept walking their way ({moved:F0} m, the place {(down ? "down" : "never down")})");
         Check(samples > 0 && worstMs < 0.1f, $"the far walking cost under 0.1 ms a tick ({worstMs:F4} ms at worst over {samples} ticks)");
         // Back inside the way in, before they are.

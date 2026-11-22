@@ -626,6 +626,9 @@ public sealed partial class Town : IKeeper
 
     /// <summary>The last tick's walking of everyone out on a run, ms (measurements: the far ones are a point stepped along a way).</summary>
     public float LastRunsMs { get; private set; }
+    /// <summary>What the last tick over a millisecond of it went on (measurements).</summary>
+    public string LastRunsNote { get; private set; } = "";
+    long _built;
 
     void Tick(float tickDt)
     {
@@ -659,12 +662,16 @@ public sealed partial class Town : IKeeper
                 MoodTick(tickDt);
                 Held();
             }
+            long kept = System.Diagnostics.Stopwatch.GetTimestamp();
+            _built = 0;
             _step = 1;
             for (int who = 0; who < People.Count; who++)
                 if (People[who].Run != null) Step(People[who], who, player, eye, look, tickDt, night, time);
+            long walked = System.Diagnostics.Stopwatch.GetTimestamp();
             if (!standing) KeepApart(player, tickDt, all: false); // (the place down: only they are about to keep apart)
             Miss();
             LastRunsMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+            if (LastRunsMs > 1f) LastRunsNote = $"the town's own {(kept - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2}, their steps {(walked - kept) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2}, kept apart {LastApartMs:F2} ms; bodies built {_built * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2} ms";
         }
         // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
         _owed += tickDt;
@@ -736,7 +743,7 @@ public sealed partial class Town : IKeeper
             Pose(p, who, lying, tickDt);
             return;
         }
-        if (p.View == null || p.Holder == null && p.Model == null && Wields(p)) BuildNext(p);
+        if (p.View == null || p.Holder == null && p.Model == null && Wields(p)) { long b = System.Diagnostics.Stopwatch.GetTimestamp(); BuildNext(p); _built += System.Diagnostics.Stopwatch.GetTimestamp() - b; }
         // Far from you a town needn't move every tick: each in their turn, with the time they missed,
         // the further off the fewer times a second (and so their bodies are posed).
         p.Saved += tickDt;
