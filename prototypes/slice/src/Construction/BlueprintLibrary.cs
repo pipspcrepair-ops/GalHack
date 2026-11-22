@@ -49,7 +49,8 @@ public sealed class LibraryEntry
 public sealed class BlueprintLibrary
 {
     readonly GameData _data;
-    readonly float _gravity;
+    /// <summary>The gravity its numbers are on, m/s².</summary>
+    public float Gravity { get; }
     readonly List<LibraryEntry> _starters = new();
     readonly List<LibraryEntry> _yours = new();
 
@@ -64,7 +65,7 @@ public sealed class BlueprintLibrary
     public BlueprintLibrary(GameData data, float gravity, string folder = null)
     {
         _data = data;
-        _gravity = gravity;
+        Gravity = gravity;
         foreach (string file in data.Rules.Build.Library)
             _starters.Add(Entry(data.Blueprint(file), file, BlueprintSource.Starter, System.IO.File.ReadAllText(GameData.Own("data/blueprints/" + file))));
         UseFolder(folder ?? data.Rules.Build.Saved);
@@ -108,7 +109,7 @@ public sealed class BlueprintLibrary
         float cell = plan.Grid.CellSize;
         StructureStats st = StructureStats.Compute(plan);
         HandlingStats h = plan.Mode == CoreMode.Base ? null
-            : HandlingModel.Compute(new StructureVessel(plan, _data.Handling), new FlightConditions(_gravity, true), _data.Handling);
+            : HandlingModel.Compute(new StructureVessel(plan, _data.Handling), new FlightConditions(Gravity, true), _data.Handling);
         return new LibraryEntry
         {
             File = file, Source = source, Plan = plan,

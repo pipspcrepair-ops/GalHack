@@ -62,6 +62,8 @@ uniform vec3 giant_color : source_color = vec3(0.8, 0.7, 0.5);
 uniform vec3 giant_band : source_color = vec3(0.5, 0.4, 0.3);
 uniform bool rings = false;
 uniform vec3 ring_color : source_color = vec3(0.9, 0.85, 0.7);
+uniform float ring_brightness = 1.0;  // bright ice to faint dust (StarSystem.DressRing)
+uniform float ring_outer = 2.42;      // its outer edge in giant radii
 uniform vec3 ring_normal = vec3(0.0, 1.0, 0.0);
 
 uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
@@ -225,7 +227,7 @@ vec4 bodies(vec3 dir, vec3 sun) {
 			if (t > 0.0) {
 				float rr = length(dir * t - giant_dir) / sin(giant_radius);
 				// The bands are rock in lighter and darker tones: only the gap lets through what is behind.
-				float ring = smoothstep(1.45, 1.5, rr) * (1.0 - smoothstep(2.35, 2.42, rr));
+				float ring = smoothstep(1.45, 1.5, rr) * (1.0 - smoothstep(ring_outer - 0.07, ring_outer, rr)) * ring_brightness;
 				ring *= 1.0 - (smoothstep(1.93, 1.97, rr) - smoothstep(2.03, 2.07, rr)) * 0.85;
 				float tone = 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
 				float lit = 0.6 + 0.4 * clamp(abs(dot(axis, giant_light)) * 1.5, 0.0, 1.0);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Planets.Gen;
 
@@ -44,17 +45,42 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
     /// <summary>The width every start world has, km: gravity is measured against it.</summary>
     public const int StartWidthKm = 16;
 
-    /// <summary>The gravity ratio from which a world is dangerous (Empyrion's high-gravity worlds pull 25 or more against its usual 5 to 12): 32 km worlds and up.</summary>
-    public const float DangerousGravity = 1.8f;
+    /// <summary>
+    /// Surface gravity in g by size class, beside <see cref="Widths"/> (owner, 22 Nov: from size alone; the start
+    /// size 1 g, the largest 5 g, moons as low as 0.2 g). The one table every fall and thrust reads.
+    /// </summary>
+    public static readonly float[] Gravities = { 0.2f, 1.0f, 2.2f, 5.0f };
+
+    /// <summary>The chance a world of each size class has no air (owner, 22 Nov: the smallest about 95%, too light to hold it; the largest never).</summary>
+    public static readonly float[] VacuumChances = { 0.95f, 0.6f, 0.25f, 0f };
 
     /// <summary>
-    /// Surface gravity against a start world's, from the world's size alone (the same rock all through: a
-    /// body pulls in step with its radius, so an 8 km world half as hard and a 64 km one four times).
+    /// How thick a world's air is by size class, against a start world's (owner, 22 Nov: air density grows with size,
+    /// thin on the smallest that keep any, always dense on the largest).
     /// </summary>
-    public float GravityScale => WidthKm / (float)StartWidthKm;
+    public static readonly float[] AirThicknesses = { 0.5f, 1.0f, 1.4f, 2.0f };
 
-    /// <summary>A dangerous high-gravity world: the ones that hold hyperspace fuel.</summary>
-    public bool HighGravity => GravityScale >= DangerousGravity;
+    /// <summary>
+    /// This world's air thickness, from its size alone: 0 in vacuum, then thin up to dense (<see cref="AirThicknesses"/>).
+    /// The one value its sky and its globe's air shell read, beside its air kind (<c>SkySystem.Air</c>, <c>SkySystem.Thickness</c>).
+    /// </summary>
+    public float AirThickness => Airless ? 0f : AirThicknesses[SizeClass];
+
+    /// <summary>A width's size class: its place in <see cref="Widths"/> and the tables beside it.</summary>
+    public static int ClassOf(int widthKm) => Math.Max(0, Array.FindLastIndex(Widths, w => w <= widthKm));
+
+    public int SizeClass => ClassOf(WidthKm);
+
+    /// <summary>The gravity from which a world is dangerous (Empyrion's high-gravity worlds pull 25 or more against its usual 5 to 12): 32 km worlds and up.</summary>
+    public const float DangerousGravity = 1.8f;
+
+    /// <summary>Surface gravity against a start world's (1 g), from <see cref="Gravities"/>.</summary>
+    public float GravityScale => Gravities[SizeClass];
+
+    /// <summary>Whether a world of this width is a dangerous high-gravity one: they hold fold fuel and fold drive materials.</summary>
+    public static bool Heavy(int widthKm) => Gravities[ClassOf(widthKm)] >= DangerousGravity;
+
+    public bool HighGravity => Heavy(WidthKm);
 
     /// <summary>
     /// Whether natural impact craters stay on a kind of world: barren rock with no air or water to wear
@@ -76,17 +102,26 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
 
     /// <summary>
     /// A world's width in km, rolled from its seed on Empyrion's planet classes 2-5 (5/40/50/5%):
-    /// 8x4 km 5%, 16x8 km 40%, 32x16 km 50%, 64x32 km 5%. Moons take the two small classes at the
-    /// same odds as each other (1 in 9, 8 in 9). A start world is always 16x8 km. Separate from
-    /// <see cref="Roll"/>'s width, so a caller that names a size keeps it.
+    /// 8x4 km 5%, 16x8 km 40%, 32x16 km 50%, 64x32 km 5%. A moon rolls the same odds among the sizes
+    /// smaller than what it orbits (owner, 22 Nov), its parent's width given (a giant's moons, any size):
+    /// a 32 km world's are 8 km 1 in 9 and 16 km 8 in 9, and an 8 km world has none. A start world is
+    /// always 16x8 km. Separate from <see cref="Roll"/>'s width, so a caller that names a size keeps it.
     /// </summary>
-    public static int RollWidthKm(ulong seed, WorldKind kind = WorldKind.Planet)
+    public static int RollWidthKm(ulong seed, WorldKind kind = WorldKind.Planet, int parentWidthKm = int.MaxValue)
     {
-        if (kind == WorldKind.Start) return 16;
-        float roll = new Rng(Hash.Of(seed, 0x53495A45)).NextFloat();
-        if (kind == WorldKind.Moon) return roll < 5f / 45f ? 8 : 16;
-        return roll < 0.05f ? 8 : roll < 0.45f ? 16 : roll < 0.95f ? 32 : 64;
+        if (kind == WorldKind.Start) return StartWidthKm;
+        int last = kind == WorldKind.Moon ? Array.FindLastIndex(Widths, w => w < parentWidthKm) : Widths.Length - 1;
+        if (last < 0) throw new ArgumentException($"no world is small enough to be a moon of a {parentWidthKm} km one");
+        float roll = new Rng(Hash.Of(seed, 0x53495A45)).NextFloat() * SizeOdds.Take(last + 1).Sum();
+        for (int i = 0; i < last; i++)
+            if ((roll -= SizeOdds[i]) < 0f) return Widths[i];
+        return Widths[last];
     }
+
+    static readonly float[] SizeOdds = { 0.05f, 0.4f, 0.5f, 0.05f };
+
+    /// <summary>Whether a world of this width can have moons: something smaller than it must exist.</summary>
+    public static bool HoldsMoons(int widthKm) => widthKm > Widths[0];
 
     /// <summary>A planet with its modifiers and its size both rolled from the seed.</summary>
     public static PlanetSpec RollSized(ulong seed, Archetype archetype, int variant, WorldKind kind = WorldKind.Planet) =>

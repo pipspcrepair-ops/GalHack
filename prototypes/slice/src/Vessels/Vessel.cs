@@ -302,7 +302,7 @@ public sealed partial class Vessel
             Position = at,
             Rotation = MathX.Yaw(heading),
         });
-        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
+        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Data.Rules.Planet.Gravity }; // 1 g on any world (design: core gravity)
         var vessel = new Vessel(zone, s, body);
         vessel._legsKey = vessel.LegsKey();
         body.Controller = vessel.NewController();
@@ -340,7 +340,7 @@ public sealed partial class Vessel
             Position = at,
             Rotation = MathX.Yaw(heading),
         });
-        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
+        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Data.Rules.Planet.Gravity }; // 1 g on any world (design: core gravity)
         var vessel = new Vessel(zone, s, body);
         var node = new StaticBody3D { Name = s.Name.Replace(" ", "") };
         zone.AddChild(node);

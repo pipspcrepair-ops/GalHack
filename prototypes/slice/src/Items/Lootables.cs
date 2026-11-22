@@ -96,8 +96,8 @@ public partial class Lootables : Node3D
     /// <summary>What a bag lands and rests on: the ground and rock, hulls, a place's floors and furniture (its scenery layer), boulders and logs.</summary>
     public const uint RestOn = Layers.World | Layers.Hull | Layers.Flora | (1u << 10);
 
-    /// <summary>How fast things fall, m/s².</summary>
-    const float Fall = 9.8f;
+    /// <summary>How fast things fall here, m/s²: the zone's own gravity (none in orbit; a bag made outside any zone, a test's, a start world's).</summary>
+    float Fall => GetParent() is Slice.Surface.SurfaceZone zone ? zone.Physics.Zone.Strength : GalHack.Physics.Units.StandardGravity;
 
     public Lootable Create(LootKind kind, string name, Vector3 at, int columns, int rows, Bill contents = null)
     {
