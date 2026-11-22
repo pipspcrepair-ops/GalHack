@@ -213,7 +213,7 @@ public sealed partial class Town
     public int Rerouted { get; private set; }
 
     /// <summary>Held up on their way this long, s: they stop and look at what holds them; then step aside once; then find another way.</summary>
-    const float HeldLook = 1f, HeldAside = 2f, HeldWay = 4f;
+    const float HeldLook = 1f, HeldAside = 2f, HeldWay = 3f;
 
     /// <summary>
     /// After a step along their way: someone who hasn't got a quarter metre on in a second is never moved for it (owner, of a
@@ -235,10 +235,10 @@ public sealed partial class Town
         }
         if ((p.StuckFor += dt) < HeldLook) return;
         if (Settles(p)) return;
-        if (p.StuckFor < HeldAside)
+        // Someone in the way: stood still a moment, looking at them, rather than pressing on into them. (Held by the furniture: aside at once.)
+        if (p.StuckFor < HeldAside && InTheWay(p) is { } o)
         {
-            // Someone in the way: stood still a moment, looking at them, rather than pressing on into them.
-            if (InTheWay(p) is { } o) (p.Now, p.LookAt, p.LookFor) = (0f, o.Pos + Vector3.Up * 1.5f, 0.5f);
+            (p.Now, p.LookAt, p.LookFor) = (0f, o.Pos + Vector3.Up * 1.5f, 0.5f);
             return;
         }
         // Once on this way, a step aside off whatever holds them (one in the way, a table's corner, a bed's foot), toward where they go.
@@ -302,7 +302,7 @@ public sealed partial class Town
         float near = BodyRadius(p) + 0.9f;
         foreach (Person o in People)
         {
-            if (o == p || o.Dead || o.Gone || MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
+            if (o == p || o.Dead || o.Gone || o.Asleep || o.Sitting || MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
             Vector3 d = (o.Pos - p.Pos) with { Y = 0f };
             float l = d.Length();
             if (l < near && l > 1e-3f && d.Dot(p.Forward) > 0.6f * l) (best, near) = (o, l);

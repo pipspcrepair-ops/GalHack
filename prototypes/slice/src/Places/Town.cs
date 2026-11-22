@@ -300,7 +300,8 @@ public sealed partial class Town : IKeeper
             for (int k = 0; k < 4; k++)
                 if (Cell(q + new Vector3(k % 2 == 0 ? -R : R, 0f, k < 2 ? -R : R)) is var f && (!_nav.Standable(f) || _nav.RampAt(f, out _) || !OnePart(ca, f))) return false;
         }
-        return _fixed == null || _fixed.Sweep(a, b, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls: Place.WallsOf(_nav), wallRadius: PlaceParts.PersonRadius);
+        PartSet parts = _parts ?? _fixed; // (the clutter too: a way pulled straight never goes through what the body would be held off)
+        return parts == null || parts.Sweep(a, b, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls: Place.WallsOf(_nav), wallRadius: PlaceParts.PersonRadius);
     }
 
     List<Vector3> PathBetween(int a, int b) => PathBetween(a, b, out _);
@@ -873,8 +874,8 @@ public sealed partial class Town : IKeeper
         float flat = new Vector2(d.X, d.Z).Length();
         // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
         bool last = p.Step >= p.Path.Count - 1;
-        // Coming up on a crowd at the end of their way: they stop at its edge, an arm's length off the nearest, not pressed into it.
-        if (last && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength && Settles(p)) return true;
+        // Coming up on a crowd at the end of their way (not into a seat or a bed: walked as it lies): they stop at its edge, an arm's length off the nearest, not pressed into it.
+        if (last && !(p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength && Settles(p)) return true;
         float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         // Behind someone going their way: on at their pace an arm's length back, never into them (Town.Space).
