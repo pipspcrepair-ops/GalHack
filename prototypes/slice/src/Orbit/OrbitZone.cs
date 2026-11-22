@@ -257,9 +257,7 @@ public partial class OrbitZone : SurfaceZone
             b.Velocity = N.Vector3.Transform(b.Velocity, d);
             b.AngularVelocity = N.Vector3.Transform(b.AngularVelocity, d);
             b.Up = N.Vector3.Transform(b.Up, d);
-            BodyBinding binding = Host.BindingOf(b);
-            binding?.Teleport();
-            binding?.Node.ResetPhysicsInterpolation();
+            Host.BindingOf(b)?.Teleport(); // which resets its interpolation: a second reset walked a big hull's thousands of nodes again
         }
         foreach (Lootable l in Loot.All)
         {

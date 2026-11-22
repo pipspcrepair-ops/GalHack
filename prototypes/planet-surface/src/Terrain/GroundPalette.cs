@@ -329,7 +329,7 @@ public sealed class GroundPalette
     {
         double w = Map.WidthMeters, h = Map.HeightMeters;
         float At(double px, double pz) => Map.Sample(Map.Elevation, Mathx.WrapX(px, w), Mathx.Wrap(pz, h));
-        float height = At(x, z);
+        float height = Map.SampleSmooth(Map.Elevation, x, z); // the shore where the paint has it (ColorMap): no seabed rim round a smoothed lake
         var normal = new Vector3(At(x - across, z) - At(x + across, z), 2f * across, At(x, z - across) - At(x, z + across)).Normalized();
         return FarGround(Mathx.WrapX(x, w), Mathx.Wrap(z, h), height, normal.Y, out _);
     }

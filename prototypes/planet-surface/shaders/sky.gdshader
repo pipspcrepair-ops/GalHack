@@ -823,9 +823,7 @@ void sky() {
 		// The air under the level goes first: nothing is left there to light but the world's own rim.
 		if (space_fade > 0.0) {
 			float gone = mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y));
-			// Past the cap the land curves away from under the level: what shows there is space round the globe, not a wall of haze,
-			// and the haze over the level goes with it, so the sky darkens up from the horizon instead of standing on black.
-			gone = max(gone, space_under * smoothstep(0.35, -0.04, dir.y));
+
 			float dark = smoothstep(0.78, 1.0, space_fade);
 			// The air goes; the sun and everything else up there stays, in front of the backdrop's stars;
 			// and any cloud still over you stays in front of all of it: the backdrop's dark where they
@@ -834,8 +832,10 @@ void sky() {
 			vec3 behind = space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS) * (1.0 - solid.a) + solid.rgb;
 			vec3 spaced = max(clouded - (plain - night) * (1.0 - laid), vec3(0.0)) + (behind - night) * through_clouds;
 			col = mix(col, spaced, gone);
-			// Nor any of the sky's own cloud down there: from over the cap the world's clouds are its globe's, a thin layer on it.
-			col = mix(col, behind, space_under * smoothstep(0.02, -0.06, dir.y));
+			// Past the cap the land curves away from under the level: what shows there is space round the globe, with none of
+			// the sky's own haze or cloud (the world's clouds are its globe's, a thin layer on it). It goes up from the horizon
+			// over a wide reach of the sky, so the sky darkens into space with no line across it.
+			col = mix(col, behind, space_under * smoothstep(0.35, -0.04, dir.y));
 		}
 		COLOR = col;
 	}

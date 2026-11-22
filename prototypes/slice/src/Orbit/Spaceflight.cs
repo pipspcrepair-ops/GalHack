@@ -334,14 +334,14 @@ public partial class Spaceflight : Node
         _aligned = true;
         HoldSurfaceBehind();
         string laid = Ms(watch);
-        to.ProcessMode = ProcessModeEnum.Inherit;
+        Run(to);
         string woken = Ms(watch);
         to.Visible = true;
         string shown = Ms(watch);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
         string moved = Ms(watch);
-        from.ProcessMode = ProcessModeEnum.Disabled; // the surface waits, exactly as it was left (still on screen: the seam)
+        Park(from); // the surface waits, exactly as it was left (still on screen: the seam)
         GD.Print($"[crossing up, ms in all by: laid out {laid}, orbit woken {woken}, shown {shown}, moved {moved}, surface parked {Ms(watch)}]");
         _surfaceFar = g.Camera.Far;
         if (from == g.Surface) _surfaceAir ??= g.Suit.Sim.Environment;
@@ -402,13 +402,14 @@ public partial class Spaceflight : Node
 
         ReleaseSurface();
         string shown = Ms(watch);
-        Wake(to);
+        Run(to);
+        to.Visible = true;
         to.Use();
         string woken = Ms(watch);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
         string moved = Ms(watch);
-        from.ProcessMode = ProcessModeEnum.Disabled; // orbit waits, wrecks as you left them
+        Park(from); // orbit waits, wrecks as you left them
         string stilled = Ms(watch);
         from.Visible = false;
         GD.Print($"[crossing down, ms in all by: surface shown {shown}, woken {woken}, moved {moved}, orbit stilled {stilled}, hidden {Ms(watch)}]");
@@ -438,11 +439,46 @@ public partial class Spaceflight : Node
         return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
     }
 
-    static void Wake(SurfaceZone zone)
+    // ---- Parking -------------------------------------------------------------------------------
+
+    /// <summary>
+    /// A zone waits (ProcessMode, which takes its colliders out of the physics too) or runs again without one frame paying
+    /// for all of it: a hull of two thousand shapes cost 10 to 15 ms to take out or put back, and a crossing parks one zone
+    /// and wakes another. Its big branches (more than <see cref="ManyKids"/> children) go a frame or so each (see
+    /// <see cref="TurnGround"/>): parking, the branches first and the zone last; waking, the zone at once with its big
+    /// branches held back under it (which costs nothing while it is parked), and let go after.
+    /// </summary>
+    void Park(SurfaceZone zone)
     {
-        zone.ProcessMode = ProcessModeEnum.Inherit;
-        zone.Visible = true;
+        foreach (Node c in Branches(zone))
+        {
+            _held.Add(c);
+            _modeTurns.Enqueue(() => { if (IsInstanceValid(c) && c.GetParent() == zone) c.ProcessMode = ProcessModeEnum.Disabled; });
+        }
+        _modeTurns.Enqueue(() => zone.ProcessMode = ProcessModeEnum.Disabled);
     }
+
+    void Run(SurfaceZone zone)
+    {
+        while (_modeTurns.TryDequeue(out Action turn)) turn(); // a park still under way finishes first
+        _held.RemoveWhere(n => !IsInstanceValid(n));
+        foreach (Node c in Branches(zone))
+        {
+            c.ProcessMode = ProcessModeEnum.Disabled;
+            _held.Add(c);
+        }
+        zone.ProcessMode = ProcessModeEnum.Inherit;
+        foreach (Node c in zone.GetChildren())
+            if (_held.Remove(c)) _modeTurns.Enqueue(() => { if (IsInstanceValid(c) && c.ProcessMode == ProcessModeEnum.Disabled) c.ProcessMode = ProcessModeEnum.Inherit; });
+    }
+
+    /// <summary>A zone's big branches that go by its mode (its streamer's mode is the descent's to set: <see cref="StreamAhead"/>).</summary>
+    static List<Node> Branches(SurfaceZone zone) =>
+        zone.GetChildren().Where(c => c.ProcessMode == ProcessModeEnum.Inherit && c != zone.Streamer && c.GetChildCount() > ManyKids).ToList();
+
+    /// <summary>Branches held parked by <see cref="Park"/> or <see cref="Run"/>, to let go when their zone runs.</summary>
+    readonly HashSet<Node> _held = new();
+    readonly Queue<Action> _modeTurns = new();
 
     // ---- The record, and the crossing's report -------------------------------------------------
 

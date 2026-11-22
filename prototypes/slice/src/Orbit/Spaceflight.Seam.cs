@@ -37,7 +37,6 @@ public partial class Spaceflight
     ShaderMaterial _sky;
     float _fogDensity, _fogHeight, _fogScatter, _fogSky, _ambient;
     bool _aligned, _streaming;
-    float _wreckFade = -1f;
     float _band;
 
     /// <summary>Where you are in the band over the cap: 0 at its foot, 1 at its top (the orbit's own sky).</summary>
@@ -212,15 +211,16 @@ public partial class Spaceflight
         SurfaceZone s = Below;
         Godot.Environment env = s.Sky.Environment;
         _sky ??= env.Sky.SkyMaterial as ShaderMaterial;
-        _sky.SetShaderParameter("space_fade", gone);
-        // Past the cap the sheet curves away from under the level: the sky there, and the fog's wash over the sky, give way to space.
-        float overCap = Smooth((y - Ceiling) / 200f);
-        _sky.SetShaderParameter("space_under", overCap);
+        // Once the world below is seen from outside, the sky is space as its rim of air shows: the one rule for both, over the
+        // level and (with the fog's wash over the sky) under it, where the sheet curves away.
+        float outside = SeenFromOutside(y);
+        _sky.SetShaderParameter("space_fade", MathF.Max(gone, outside));
+        _sky.SetShaderParameter("space_under", outside);
         env.FogDensity = _fogDensity * (1f - gone);
         // Height fog thickens with height over the clouds' base: left to itself it would fog your own hull.
         env.FogHeightDensity = _fogHeight * (1f - Smooth((y - Rules.Crossing.FadeFrom) / 150f));
         env.FogSunScatter = _fogScatter * (1f - gone);
-        env.FogSkyAffect = _fogSky * (1f - gone) * (1f - overCap);
+        env.FogSkyAffect = _fogSky * (1f - gone) * (1f - outside);
         env.AmbientLightEnergy = _ambient * (1f - gone) + Rules.Space.Ambient[1] * gone;
         // The surface's flat cloud deck goes as the sheet comes over the land, and in orbit there is none: the clouds are the globe's.
         s.Sky.CloudDeckFade = Game.InOrbit ? 0f : (1f - gone) * (1f - OverLand(y));
@@ -319,13 +319,14 @@ public partial class Spaceflight
     /// <summary>
     /// Showing or hiding a node visits everything under it, and the land is thousands of nodes: all
     /// at once it cost 80 ms of the crossing's frame. It goes a little a frame, the sheet in front of
-    /// it the while, so what's left of the land for those few frames can't be seen.
+    /// it the while, so what's left of the land for those few frames can't be seen. A zone's parking and waking
+    /// (<see cref="Park"/>) go the same way, first.
     /// </summary>
     void TurnGround()
     {
-        if (_groundTurns.Count == 0) return;
+        if (_groundTurns.Count == 0 && _modeTurns.Count == 0) return;
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (_groundTurns.TryDequeue(out Action turn))
+        while (_modeTurns.TryDequeue(out Action turn) || _groundTurns.TryDequeue(out turn))
         {
             turn();
             if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) break;
@@ -350,6 +351,9 @@ public partial class Spaceflight
 
     /// <summary>The sheet over the land (0 to 1): complete at the cap, the land still there under it until then.</summary>
     float OverLand(float y) => Smooth((y - Rules.Crossing.SwapFrom) / (Ceiling - Rules.Crossing.SwapFrom));
+
+    /// <summary>How far the world below is seen from outside, 0 to 1: its rim of air shows, and the sky over you is space, over the first 600 m past the cap.</summary>
+    float SeenFromOutside(float y) => Smooth((y - Ceiling) / 600f);
 
     /// <summary>How much of the world's air its rim shows from outside: thick air glows, thin air hardly at all.</summary>
     float AirShare => Globe.AirShare(Below.Planet?.Sky.Density ?? 0f);
@@ -453,7 +457,7 @@ public partial class Spaceflight
             ToSun = s.Sky.ToSun,
             FogDensity = SurfaceShown ? env.FogDensity : 0f,
             FogColor = airFar,
-            Rim = Smooth((y - cap) / 600f) * share,
+            Rim = SeenFromOutside(y) * share,
             TrueDepth = onGlobe >= 1f,
             TrueCentre = o.Centre,
         });
@@ -480,6 +484,7 @@ public partial class Spaceflight
         {
             AirGone = 1f;
             if (_band < 1f) AllSpace();
+            FadeWrecks(1f); // the last of them, a few a frame
             _band = 1f;
             _aligned = false; // over the top: the sphere's own terms again
             DrawWorld(y);
@@ -524,19 +529,32 @@ public partial class Spaceflight
         o.Space.Show(true, 1f);
         o.Space.Light(1f);
         o.Space.ShowBodies(true);
-        FadeWrecks(1f);
     }
 
-    /// <summary>The wrecks far off fade in up the band: none of them hangs in the planet's sky.</summary>
+    /// <summary>
+    /// The wrecks far off fade in up the band: none of them hangs in the planet's sky. A wreck is faded piece by piece,
+    /// and all of them at once took 17 ms of a frame: they catch up a few a frame, from where the last frame stopped.
+    /// </summary>
     void FadeWrecks(float fade)
     {
-        if (fade == _wreckFade || (Mathf.Abs(fade - _wreckFade) < 0.04f && fade is > 0f and < 1f)) return;
-        _wreckFade = fade;
-        foreach (Vessel w in Orbit.Wrecks)
+        List<Vessel> wrecks = Orbit.Wrecks;
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        for (int i = 0; i < wrecks.Count; i++)
         {
+            Vessel w = wrecks[(_wreckNext + i) % wrecks.Count];
+            float was = _wreckFadeOf.TryGetValue(w, out float f) ? f : -1f;
+            if (fade == was || (Mathf.Abs(fade - was) < 0.04f && fade is > 0f and < 1f)) continue;
+            _wreckFadeOf[w] = fade;
             w.Node.Visible = fade > 0.01f;
             foreach (Node n in w.View.GetChildren())
                 if (n is GeometryInstance3D g) g.Transparency = 1f - fade;
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds < WreckFadeMs) continue;
+            _wreckNext = (_wreckNext + i + 1) % wrecks.Count;
+            return;
         }
     }
+
+    const double WreckFadeMs = 1.0;
+    readonly Dictionary<Vessel, float> _wreckFadeOf = new();
+    int _wreckNext;
 }

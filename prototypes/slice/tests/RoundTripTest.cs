@@ -116,6 +116,7 @@ public partial class RoundTripTest : Node
     {
         long now = Stopwatch.GetTimestamp();
         if (_game?.Phase == Phase.Playing) WatchClouds();
+        HoldAffinity();
         if (_game?.Phase != Phase.Playing || _probe == null || _unmeasured > 0)
         {
             _unmeasured = Math.Max(_unmeasured - 1, 0);
@@ -154,7 +155,21 @@ public partial class RoundTripTest : Node
         var process = Process.GetCurrentProcess();
         double wall = _clock.Elapsed.TotalSeconds - wallAtStart, used = (process.TotalProcessorTime - cpuAtStart).TotalSeconds;
         var busy = process.Threads.Cast<ProcessThread>().Select(t => { try { return t.TotalProcessorTime.TotalSeconds; } catch { return 0.0; } }).Where(t => t > 0.01).OrderByDescending(t => t).ToList();
-        GD.Print($"  threads: the run used {used / wall:F2} cores on average over {wall:F0} s ({System.Environment.ProcessorCount} logical, affinity 0x{(long)process.ProcessorAffinity:X}); the busiest threads' CPU seconds: {string.Join(", ", busy.Take(12).Select(t => t.ToString("F1")))} ({busy.Count} threads with any)");
+        GD.Print($"  threads: the run used {used / wall:F2} cores on average over {wall:F0} s ({System.Environment.ProcessorCount} logical, affinity 0x{(long)process.ProcessorAffinity:X}, put back {_affinityResets} times); the busiest threads' CPU seconds: {string.Join(", ", busy.Take(12).Select(t => t.ToString("F1")))} ({busy.Count} threads with any)");
+    }
+
+    Process _self;
+    int _affinityResets;
+
+    /// <summary>--minspec: the 4-core stand-in held all run (it was found reset to every core a while after start), and how often it had to be put back.</summary>
+    void HoldAffinity()
+    {
+        if (!_args.ContainsKey("minspec") || Engine.GetProcessFrames() % 30 != 0) return;
+        _self ??= Process.GetCurrentProcess();
+        _self.Refresh();
+        if ((long)_self.ProcessorAffinity == 0x55) return;
+        _self.ProcessorAffinity = 0x55;
+        _affinityResets++;
     }
 
     // ---- Clouds past a cap ------------------------------------------------------------------------
@@ -405,6 +420,7 @@ public partial class RoundTripTest : Node
         frames.Sort();
         Anomalies(step);
         Globes(step, loop);
+        if (loop == 2 && _args.ContainsKey("census")) Census(_game.Zone);
         TheSky(step);
         _unmeasured = int.MaxValue; // until the next step starts
         if (Windowed && (loop == 1 || loop == Loops - 1) && _game.InOrbit) foreach (int x in Pictures(loop, step)) yield return x;
@@ -427,6 +443,21 @@ public partial class RoundTripTest : Node
     }
 
     IEnumerable<SurfaceZone> Zones() => _game.GetChildren().OfType<SurfaceZone>();
+
+    /// <summary>--census=1: the branches a zone's process mode has to reach, by how many nodes inherit it, and what turning each off and back on costs, ms.</summary>
+    static void Census(SurfaceZone zone)
+    {
+        static int Inheriting(Node n) => 1 + n.GetChildren().Where(c => c.ProcessMode == ProcessModeEnum.Inherit).Sum(Inheriting);
+        foreach (Node c in zone.GetChildren().Where(c => c.ProcessMode == ProcessModeEnum.Inherit).OrderByDescending(Inheriting).Take(8))
+        {
+            var watch = Stopwatch.StartNew();
+            c.ProcessMode = ProcessModeEnum.Disabled;
+            double off = watch.Elapsed.TotalMilliseconds;
+            watch.Restart();
+            c.ProcessMode = ProcessModeEnum.Inherit;
+            GD.Print($"  (census {zone.Name}/{c.Name} ({c.GetType().Name}): {Inheriting(c)} nodes inherit its mode, off {off:F1} ms, on {watch.Elapsed.TotalMilliseconds:F1} ms, {c.GetChildCount()} children)");
+        }
+    }
 
     /// <summary>Everything that changes with the zone reads the zone you are in, never the one you left.</summary>
     void Anomalies(string step)

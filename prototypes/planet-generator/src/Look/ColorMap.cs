@@ -81,7 +81,8 @@ public sealed class ColorMap
                 int a = map.Index(i0, j0), b = map.Index(i0 + 1, j0);
                 int c = map.Index(i0, j0 + 1), d = map.Index(i0 + 1, j0 + 1);
                 float wa = (1 - tx) * (1 - ty), wb = tx * (1 - ty), wc = (1 - tx) * ty, wd = tx * ty;
-                float e = map.Elevation[a] * wa + map.Elevation[b] * wb + map.Elevation[c] * wc + map.Elevation[d] * wd;
+                // The shore from a cubic spread over the cells round it: straight between cells it traced the grid, a stair of 32 m steps.
+                float e = map.SampleSmooth(map.Elevation, x, y);
                 bool liquid = e < 0f;
 
                 Rgb col, emit = default;

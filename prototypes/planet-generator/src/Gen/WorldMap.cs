@@ -121,6 +121,33 @@ public sealed class WorldMap
         return Mathx.Lerp(Mathx.Lerp(a, b, tx), Mathx.Lerp(c, d, tx), ty);
     }
 
+    /// <summary>
+    /// A per-cell field at a point in metres as a cubic B-spline over the 4 by 4 cells round it, wrapping on both axes:
+    /// smooth, so its level lines are curves where bilinear ones trace the grid (a shore drawn from it is no stair of cells).
+    /// </summary>
+    public float SampleSmooth(float[] field, double x, double y)
+    {
+        double gx = x / CellSize - 0.5, gy = y / CellSize - 0.5;
+        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gy);
+        float tx = (float)(gx - i0), ty = (float)(gy - j0), sum = 0f;
+        for (int dj = -1; dj <= 2; dj++)
+        {
+            float row = 0f;
+            for (int di = -1; di <= 2; di++) row += field[Index(i0 + di, j0 + dj)] * Spline(tx, di);
+            sum += row * Spline(ty, dj);
+        }
+        return sum;
+    }
+
+    /// <summary>The cubic B-spline's weight for cell <paramref name="k"/> (-1 to 2) from a point <paramref name="t"/> past cell 0.</summary>
+    static float Spline(float t, int k) => k switch
+    {
+        -1 => (1f - t) * (1f - t) * (1f - t) / 6f,
+        0 => (3f * t * t * t - 6f * t * t + 4f) / 6f,
+        1 => (-3f * t * t * t + 3f * t * t + 3f * t + 1f) / 6f,
+        _ => t * t * t / 6f,
+    };
+
     /// <summary>Whether the sea is drawn over a point in metres (<see cref="SeaFrom"/>; both axes wrap).</summary>
     public bool IsSea(double x, double y) => Sample(SeaDepth, x, y) > SeaFrom;
 
