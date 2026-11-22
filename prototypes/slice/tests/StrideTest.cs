@@ -497,7 +497,6 @@ public partial class StrideTest : Node
             {
                 if (tick - heldShot is 0 or 4 or 8 && shotHeld != null) Snap(town, shotHeld, $"held-{_round}-{tick - heldShot}.png");
                 if (tick - bumpShot is 0 or 4 or 8 && shotBumped != null) Snap(town, shotBumped, $"bumped-{_round}-{tick - bumpShot}.png");
-                if (tick == heldShot + 9 || tick == bumpShot + 9) { _game.FixedCamera = null; _game.Visor.Visible = true; }
             }
         }
         _timed = null;
@@ -515,11 +514,16 @@ public partial class StrideTest : Node
         Capture(Path.Combine(_shots, name));
     }
 
+    /// <summary>Shots asked for and not yet saved: the view goes back to the sleeper's once the last is (a slow frame takes a few ticks).</summary>
+    int _owed;
+
     async void Capture(string file)
     {
+        _owed++;
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         Error err = GetViewport().GetTexture().GetImage().SavePng(file);
         GD.Print(err == Error.Ok ? $"  (saved {file})" : $"  (could not save {file}: {err})");
+        if (--_owed == 0) (_game.FixedCamera, _game.Visor.Visible) = (null, true);
     }
 }
