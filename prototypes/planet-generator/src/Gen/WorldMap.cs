@@ -137,7 +137,9 @@ public sealed class WorldMap
             for (int di = -1; di <= 2; di++) row += field[Index(i0 + di, j0 + dj)] * Spline(tx, di);
             sum += row * Spline(ty, dj);
         }
-        return sum;
+        // Held within the four cells round the point: past a step the spline overshoots, and a lake's bed would ring with water.
+        float a = field[Index(i0, j0)], b = field[Index(i0 + 1, j0)], c = field[Index(i0, j0 + 1)], d = field[Index(i0 + 1, j0 + 1)];
+        return Math.Clamp(sum, Math.Min(Math.Min(a, b), Math.Min(c, d)), Math.Max(Math.Max(a, b), Math.Max(c, d)));
     }
 
     /// <summary>The Catmull-Rom spline's weight for cell <paramref name="k"/> (-1 to 2) from a point <paramref name="t"/> past cell 0.</summary>
