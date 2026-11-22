@@ -877,7 +877,7 @@ public sealed partial class Town : IKeeper
         // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
         bool last = p.Step >= p.Path.Count - 1;
         // Coming up on a crowd at the end of their way (not into a seat or a bed: walked as it lies): they stop at its edge, an arm's length off the nearest, not pressed into it.
-        if (last && !(p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength && Settles(p)) return true;
+        if (last && !ToSeat(p) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength && Settles(p)) return true;
         float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         // Behind someone going their way: on at their pace an arm's length back, never into them (Town.Space).
@@ -918,6 +918,8 @@ public sealed partial class Town : IKeeper
         if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {
             p.Blocked = 0f;
+            // (Held a hand's breadth short of the end of their way: as near as the furniture lets them is there.)
+            if (last && flat < 0.3f && !ToSeat(p)) { p.Step = p.Path.Count; return true; }
             if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
         }
         Headway(p, dt);
@@ -927,6 +929,9 @@ public sealed partial class Town : IKeeper
     }
 
     const float PeopleAccel = 3f;
+
+    /// <summary>Bound for a seat or a bed (a spot with furniture of its own), whose last steps are walked as they lie.</summary>
+    bool ToSeat(Person p) => p.Spot >= 0 && (p.Spot < _own.Count && _own[p.Spot] != null || p.Spot < _lie.Count && _lie[p.Spot] != null);
 
     /// <summary>A point of a way is behind someone already: within a metre of it and on past it toward the next.</summary>
     static bool Passed(Vector3 at, Vector3 point, Vector3 next) => Flat(at - point) < 1f && (at - point).Dot(next - point) > 0f;
