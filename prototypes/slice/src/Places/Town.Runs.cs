@@ -460,7 +460,6 @@ public sealed partial class Town
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
-        p.Gait += step;
         Vector3 heading = next, was = p.Pos;
         while (step > 0f && r.Leg < way.Count)
         {
