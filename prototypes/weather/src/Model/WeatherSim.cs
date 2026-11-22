@@ -126,7 +126,9 @@ public sealed class WeatherSim
     readonly List<Tornado> _tornadoes = new();
     readonly List<StormCell> _cells = new();
     readonly List<DustStorm> _dust = new();
-    Segment _jumpedInto;
+    Segment _jumpedInto, _calmSegment;
+    Conditions _calm;
+    double _calmTime = -1;
     float _cellTimer, _dustTimer;
     Front _front;
     readonly List<WeatherEvent> _events = new();
@@ -401,7 +403,9 @@ public sealed class WeatherSim
     {
         Segment s = SegmentAt(Time);
         (from, to, blend) = (s.FromKind, s.Kind, Blend(s, Time));
-        Conditions c = Conditions.Lerp(Calm(s.From, from), Calm(s.To, to), blend);
+        // The same everywhere at one moment: worked out once a tick, as every body's wind reads it every tick.
+        if (s != _calmSegment || Time != _calmTime) (_calm, _calmSegment, _calmTime) = (Conditions.Lerp(Calm(s.From, from), Calm(s.To, to), blend), s, Time);
+        Conditions c = _calm;
         if (_front != null && _frontSegment != null && (_frontSegment == s || _frontSegment.Start > Time))
         {
             // The front's own weather behind its edge, the one before it everywhere else.
@@ -580,7 +584,8 @@ public sealed class WeatherSim
 
         foreach (Segment s in _segments)
         {
-            if (Time < s.WarningAt || Time >= s.End || s.Kind == WeatherKind.DustStorm) continue; // a dust storm's storms warn for themselves
+            // A dust storm weather is warned while it is coming; once it is in, its storms warn for themselves, where they are.
+            if (Time < s.WarningAt || Time >= s.End || (s.Kind == WeatherKind.DustStorm && Time >= s.Start)) continue;
             // As it will be here: a tornado storm over the mountains is a lightning storm, a blizzard on warm low ground no blizzard.
             WeatherKind kind = LocalKind(s.Kind, observer);
             // Only a real hazard warns, and by its own sign: clear skies, clouds and fog never do.
