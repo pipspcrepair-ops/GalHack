@@ -313,29 +313,18 @@ public partial class Spaceflight : Node
     }
 
     /// <summary>
-    /// Just under the cap the orbit is laid out over the point under you and starts running, a frame
-    /// apart, so the crossing's own frame has neither to do (each visits much of the zone). It is
-    /// all rigid and out of sight; dropping back down parks it again.
+    /// Just under the cap the orbit is laid out over the point under you, so the crossing's own frame
+    /// need not (it visits every body of the zone). It is all rigid and out of sight, and the zone
+    /// stays parked till you cross: its systems take the zone they run in for the one you are in.
     /// </summary>
     void ReadyAbove(Vessel carrier, float y)
     {
         if (Orbit?.Ready != true || Below != Game.Zone) return;
         float under = Ceiling - y;
-        if (under > 2f * ReadyUnder)
-        {
-            if (Orbit.ProcessMode != ProcessModeEnum.Disabled) Park(Orbit);
-            _aligned = false;
-            return;
-        }
+        if (under > 2f * ReadyUnder) _aligned = false;
         if (under > ReadyUnder) return;
         Vector3 p = carrier != null ? carrier.Body.Position.ToGodot() : Game.Survivor.WorldFeet;
         if (!_aligned || new Vector2(p.X - _alignedOver.X, p.Z - _alignedOver.Z).Length() > RealignFrom) AlignOver(p);
-        else if (Orbit.ProcessMode == ProcessModeEnum.Disabled)
-        {
-            var watch = Stopwatch.StartNew();
-            Orbit.ProcessMode = ProcessModeEnum.Inherit;
-            GD.Print($"[lap orbit running {watch.Elapsed.TotalMilliseconds:F1}]");
-        }
     }
 
     /// <summary>How far under the cap the orbit gets ready, m, and how far you may drift from where it was laid out before it is laid out again.</summary>

@@ -231,6 +231,7 @@ public partial class RoundTripTest : Node
         int crossings = _game.Spaceflight.Crossings.Count;
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 60 * 150 && !_game.InOrbit; i++) yield return 0;
+        Arrived();
         for (int i = 0; i < 60 * 60 && !_game.Spaceflight.PastBand; i++) yield return 0;
         _game.Controls.ReleaseAll();
         foreach (int x in _pilot.Stop()) yield return x;
@@ -290,10 +291,42 @@ public partial class RoundTripTest : Node
             yield return 0;
         }
         _comingDown = false;
+        Arrived();
         _game.Controls.ReleaseAll();
         foreach (int x in _pilot.Stop()) yield return x;
         Check(_game.Zone == body.Surface && v.Zone == body.Surface && _game.Spaceflight.Crossings.Count == crossings + 1 && _game.Spaceflight.Crossings[^1].Audit.Count == 0,
             $"down through {body.Name}'s cap onto its surface, in the seat, nothing lost or doubled");
+    }
+
+    /// <summary>
+    /// Just after a crossing: the vessel and the eye are over the ground under them, at the height the vessel left
+    /// at (over sea level, the globe's ground), whatever the globe's size.
+    /// </summary>
+    void Arrived()
+    {
+        if (_game.Spaceflight.Crossings.Count == 0) return;
+        Crossing c = _game.Spaceflight.Crossings[^1];
+        OrbitZone o = _game.Orbit;
+        Vector3 eye = _game.Camera.GlobalPosition;
+        float left, now, ground, eyeOver;
+        if (c.Up)
+        {
+            Celestial body = o.Anchor;
+            left = c.PositionBefore.Y;
+            now = body.Height(c.PositionAfter.ToGodot());
+            ground = body.World?.Map.Sample(body.World.Map.Elevation, c.MapX, c.MapZ) ?? 0f;
+            eyeOver = body.Height(eye) - ground;
+        }
+        else
+        {
+            SurfaceZone z = _game.Zone;
+            left = o.Anchor.Height(c.PositionBefore.ToGodot());
+            now = c.PositionAfter.Y;
+            ground = z.GroundAt(c.PositionAfter.X, c.PositionAfter.Z).Y;
+            eyeOver = eye.Y - z.GroundAt(eye.X, eye.Z).Y;
+        }
+        Check(MathF.Abs(now - left) < 1f && now > ground && eyeOver > 0f,
+            $"crossing {(c.Up ? "up" : "down")} under a globe {o.Anchor.GlobeRadius / 1000f:F1} km in radius: the vessel arrived {now:F1} m up, as it left ({left:F1} m), over the ground under it ({ground:F0} m), the eye {eyeOver:F0} m over the ground");
     }
 
     void Place(Vessel v, Vector3 at)

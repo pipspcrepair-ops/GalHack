@@ -18,6 +18,9 @@ namespace Slice.Orbit;
 public sealed class GlobePaint
 {
     public ArchetypeLook Look { get; private init; }
+
+    /// <summary>The colour map's painter, to paint the ground near you finer (<see cref="Near"/>).</summary>
+    ColorMap.Painter _painter;
     public Image Albedo { get; private init; }
     public Image Glow { get; private init; }
     public Image Clouds { get; private init; }
@@ -37,7 +40,8 @@ public sealed class GlobePaint
         IReadOnlyList<PlanetSurface.Poi.PoiSite> sites = null)
     {
         ArchetypeLook look = ArchetypeLook.For(spec);
-        ColorMap colors = ColorMap.Build(map, look, WidthFor(map.WidthMeters, rules), land);
+        ColorMap.Painter painter = ColorMap.For(map, look, land);
+        ColorMap colors = painter.Paint(WidthFor(map.WidthMeters, rules), WidthFor(map.WidthMeters, rules) / 2, 0, 0, map.WidthMeters, map.HeightMeters);
         byte[] clouds = CloudMap.Build(spec, look, rules.CloudWidth, out int cloudHeight);
         for (int i = 3; i < clouds.Length; i += 4)
         {
@@ -56,6 +60,7 @@ public sealed class GlobePaint
         }
         return new GlobePaint
         {
+            _painter = painter,
             Look = look,
             Albedo = Mipmapped(colors.Width, colors.Height, Image.Format.Rgba8, colors.Albedo),
             Glow = Mipmapped(colors.Width, colors.Height, Image.Format.Rgb8, colors.Glow),
@@ -64,6 +69,17 @@ public sealed class GlobePaint
             Lights = LightsOf(sites, map.WidthMeters, map.HeightMeters),
         };
     }
+
+    /// <summary>The ground round a map point (m), <see cref="NearSpan"/> m square, painted <see cref="NearTexels"/> texels across, its albedo and glow mipmapped: any thread.</summary>
+    public (Image Albedo, Image Glow) Near(double x, double z)
+    {
+        ColorMap c = _painter.Paint(NearTexels, NearTexels, x - NearSpan * 0.5, z - NearSpan * 0.5, NearSpan, NearSpan);
+        return (Mipmapped(NearTexels, NearTexels, Image.Format.Rgba8, c.Albedo), Mipmapped(NearTexels, NearTexels, Image.Format.Rgb8, c.Glow));
+    }
+
+    /// <summary>The near ground's size, map metres, and its texels across: about a metre of map a texel, where the whole map's paint is four.</summary>
+    public const float NearSpan = 1200f;
+    public const int NearTexels = 1024;
 
     /// <summary>The colour map's width for a world: a texel to <see cref="OrbitRules.GlobeRules.TexelMetres"/> of its map, a power of two, as wide as the rules allow at most.</summary>
     public static int WidthFor(double mapWidth, OrbitRules.GlobeRules rules) =>
@@ -144,9 +160,6 @@ public readonly record struct WorldView
     public Vector4[] Umbra { get; init; }
     public int UmbraCount { get; init; }
     public float UmbraSun { get; init; }
-
-    /// <summary>The cloud deck's true height over sea level, m (it is drawn as low as the relief is: see <see cref="Globe.Lie"/>).</summary>
-    public float CloudHeight { get; init; }
 
     /// <summary>How much of the rim of air shows, 0 to 1.</summary>
     public float Rim { get; init; }
@@ -303,8 +316,10 @@ public partial class Globe : Node3D
         uniform float day_glow = 0.6;
         uniform float night_glow = 1.6;
         uniform float relief = 1.0;
-        uniform float sky_fill = 0.04;
         uniform sampler2D grain : filter_linear_mipmap, repeat_enable;
+        uniform sampler2D near_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+        uniform sampler2D near_glow : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+        uniform vec4 near_at = vec4(0.0); // the near ground's paint: its middle (map m), its span (m), and whether it is there
         {{GridCode}}
         {{Paint}}
         {{UmbraCode}}
@@ -346,22 +361,29 @@ public partial class Globe : Node3D
         void fragment() {
             MapPoint m = map_point(offset);
             vec4 a = paint(albedo_map, m);
+            vec4 glow = paint(glow_map, m);
             vec3 rn = normalize(round_normal);
+            vec2 at = (m.under > 0.5 ? m.under_uv : m.uv) * map_size;
+            // Under you the ground is painted finer, round the place under you, faded into the whole map's paint at its edge.
+            vec2 d = at - near_at.xy;
+            d -= map_size * round(d / map_size);
+            vec2 q = d / max(near_at.z, 1.0) + 0.5, qx = dFdx(q), qy = dFdy(q);
+            float near_share = near_at.w * (1.0 - smoothstep(0.4, 0.5, max(abs(q.x - 0.5), abs(q.y - 0.5))));
+            if (near_share > 0.0) {
+                a = mix(a, textureGrad(near_albedo, q, qx, qy), near_share);
+                glow = mix(glow, textureGrad(near_glow, q, qx, qy), near_share);
+            }
             // The ground's own grain, finer than its map holds (the land's patches of growth, scree and soil),
             // at two scales, each fading out as a pixel comes to cover it, so it never shimmers.
-            vec2 at = (m.under > 0.5 ? m.under_uv : m.uv) * map_size;
             float metres = length(fwidth(at));
             vec2 fine = at / 23.0, broad = at / 97.0;
             float g = (textureGrad(grain, fine, dFdx(fine), dFdy(fine)).r - 0.5) * (1.0 - smoothstep(3.0, 20.0, metres))
                 + (textureGrad(grain, broad, dFdx(broad), dFdy(broad)).r - 0.5) * (1.0 - smoothstep(12.0, 80.0, metres));
-            float sun = sunlight_at(rn, sun_dir);
-            ALBEDO = a.rgb * (1.0 + 0.4 * g * (1.0 - a.a)) * sun;
-            // On the day side the air's own light fills what faces away from the sun: a slope in shadow is dim, never black.
-            EMISSION = ALBEDO * sky_fill * smoothstep(-0.15, 0.3, dot(rn, sun_dir));
+            ALBEDO = a.rgb * (1.0 + 0.4 * g * (1.0 - a.a)) * sunlight_at(rn, sun_dir);
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(rn, sun_dir));
-            EMISSION += paint(glow_map, m).rgb * (day_glow + night * night_glow);
+            EMISSION = glow.rgb * (day_glow + night * night_glow);
             // The places' lights, only after dark: the same towns' glow seen from the ground.
             EMISSION += paint(lights_map, m).rgb * smoothstep(0.05, -0.2, dot(rn, sun_dir)) * lights_gain;
         }
@@ -559,8 +581,10 @@ public partial class Globe : Node3D
             vec2 xz = (m.under > 0.5 ? m.under_uv : m.uv) * map_size;
             float flash = live > 0.5 ? flashes(xz, c.lightning, c.storm, c.billow) : 0.0;
             EMISSION = vec3(0.72, 0.78, 1.0) * flash * 1.6 * night * c.alpha;
-            // Lit softly round the terminator, and dark past it: the night side's clouds are seen by their lightning.
+            // Lit softly round the terminator, and dark past it: the night side's clouds are seen by their lightning,
+            // and fade from sight there, so past the limb no dark shell stands out against space.
             ALBEDO *= 1.0 - 0.7 * night;
+            c.alpha *= 1.0 - 0.9 * night * (1.0 - clamp(flash * 3.0, 0.0, 1.0));
             // An eclipse: a moon's shadow on the globe dims what lies under it.
             ALBEDO *= sunlight_at(rn, sun_dir);
             ROUGHNESS = 0.4;
@@ -656,6 +680,10 @@ public partial class Globe : Node3D
 
     ShaderMaterial _ground, _clouds, _air, _ringMaterial;
     ShaderMaterial[] _grids, _byRay; // the ground and clouds, laid on the grid; the air and the ring, worked out by each ray
+    GlobePaint _paint;
+    System.Threading.Tasks.Task<(Image Albedo, Image Glow)> _nearJob;
+    Vector2 _nearAt, _nearPainting;
+    ImageTexture _nearAlbedo, _nearGlow;
     MeshInstance3D _airMesh, _ring;
     bool _hasRing;
     float _airThickness, _reliefFar;
@@ -683,6 +711,7 @@ public partial class Globe : Node3D
     {
         Radius = radius;
         _map = map;
+        _paint = paint;
         _airThickness = atmosphereRadius - radius;
         _reliefFar = (float)rules.ReliefFar;
         var mapSize = new Vector2((float)map.Width, (float)map.Height);
@@ -696,7 +725,6 @@ public partial class Globe : Node3D
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("lights_map"), ImageTexture.CreateFromImage(paint.Lights));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("grain"), Grain);
-        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_fill"), atmosphereRadius > radius ? 0.12f : 0.03f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("day_glow"), look.LiquidGlow > 0 ? 0.9f : 0.5f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_glow"), look.GlowingNights ? 2.5f : 1.4f);
         AddChild(Instance("Ground", grid, _ground));
@@ -705,7 +733,11 @@ public partial class Globe : Node3D
         _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_map"), ImageTexture.CreateFromImage(paint.Clouds));
         Weather = new GlobeWeather(mapSize);
         Weather.Bind(_clouds, C(look.CloudColor));
-        AddChild(Instance("Clouds", grid, _clouds));
+        // The deck hugs the globe, a share of its radius over sea level whatever its size, so it is never a sphere of its own
+        // standing off the world; no air, no clouds.
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lift"), (float)rules.CloudHeight * radius);
+        if (atmosphereRadius > radius) AddChild(Instance("Clouds", grid, _clouds));
+
         _grids = new[] { _ground, _clouds };
         foreach (ShaderMaterial m in _grids)
         {
@@ -735,7 +767,7 @@ public partial class Globe : Node3D
     /// <summary>How far off an eye at a height is, 0 to 1: near the ground (what you land on, at its true heights, seen through little air) to far off.</summary>
     float Away(float height) => Smooth((height - TrueHeightUnder) / (3f * Radius));
 
-    /// <summary>How far the relief and cloud deck stand up at a height, 0 to 1: all of it near the ground, the far share far off.</summary>
+    /// <summary>How far the relief stands up at a height, 0 to 1: all of it near the ground, the far share far off.</summary>
     public float Lie(float height) => Mathf.Lerp(1f, _reliefFar, Away(height));
 
     static readonly Aabb Everywhere = new(new Vector3(-1e6f, -1e6f, -1e6f), new Vector3(2e6f, 2e6f, 2e6f));
@@ -786,7 +818,8 @@ public partial class Globe : Node3D
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("umbra_sun"), v.UmbraSun);
         }
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief"), lie);
-        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lift"), v.CloudHeight * lie);
+        PaintNear(new Vector2((float)gx, (float)gz), height);
+
         if (_hasRing)
         {
             _ring.GlobalTransform = new Transform3D(_ringBasis, v.Centre);
@@ -797,6 +830,47 @@ public partial class Globe : Node3D
         // Close over the ground you look down through little air: the rim of it shows as you draw away.
         _airMesh.Visible = Air(_air, (v.Eye - v.Centre).Normalized(), Radius, _airThickness, height, v.Rim * Away(height), v.ToSun);
     }
+
+    /// <summary>Under this height the ground under you is painted finer, m; it is painted again round you once you have drifted a fifth of its span.</summary>
+    const float NearWithin = 6000f;
+
+    /// <summary>
+    /// The ground under you painted finer, on a worker thread, and swapped in when it is ready: low over a
+    /// world a texel of the whole map's paint is several pixels, and this keeps the land sharp down to the
+    /// switch. Far off, the whole map's paint is finer than the screen and this is left as it is.
+    /// </summary>
+    void PaintNear(Vector2 nadir, float height)
+    {
+        if (_nearJob is { IsCompleted: true })
+        {
+            var (albedo, glow) = _nearJob.Result;
+            _nearJob = null;
+            if (_nearAlbedo == null)
+            {
+                (_nearAlbedo, _nearGlow) = (ImageTexture.CreateFromImage(albedo), ImageTexture.CreateFromImage(glow));
+                _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_albedo"), _nearAlbedo);
+                _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_glow"), _nearGlow);
+            }
+            else
+            {
+                _nearAlbedo.Update(albedo);
+                _nearGlow.Update(glow);
+            }
+            albedo.Dispose();
+            glow.Dispose();
+            _nearAt = _nearPainting;
+            _hasNear = true;
+        }
+        bool low = height < NearWithin;
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_at"), new Vector4(_nearAt.X, _nearAt.Y, GlobePaint.NearSpan, low && _hasNear ? 1f : 0f));
+        Vector2 drift = new((float)Planets.Gen.Mathx.WrapDelta(nadir.X - _nearAt.X, _map.Width), (float)Planets.Gen.Mathx.WrapDelta(nadir.Y - _nearAt.Y, _map.Height));
+        if (!low || _nearJob != null || (_hasNear && drift.Length() < GlobePaint.NearSpan * 0.2f)) return;
+        _nearPainting = nadir;
+        GlobePaint paint = _paint;
+        _nearJob = System.Threading.Tasks.Task.Run(() => paint.Near(nadir.X, nadir.Y));
+    }
+
+    bool _hasNear;
 
     static float Smooth(float t)
     {

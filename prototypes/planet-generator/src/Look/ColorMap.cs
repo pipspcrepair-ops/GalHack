@@ -35,14 +35,40 @@ public sealed class ColorMap
     const int SoftenPasses = 8;  // about two cells of spread: past the stair-steps a 32 m grid leaves in a border
 
     /// <param name="land">The ground's own colour at a map point (metres), for a map that must match the land you stand on; null: the biomes' colours.</param>
-    public static ColorMap Build(WorldMap map, ArchetypeLook look, int width, Func<double, double, Rgb> land = null)
+    public static ColorMap Build(WorldMap map, ArchetypeLook look, int width, Func<double, double, Rgb> land = null) =>
+        For(map, look, land).Paint(width, width / 2, 0, 0, map.WidthMeters, map.HeightMeters);
+
+    /// <summary>The per-cell inputs worked out once, to paint any piece of the map from (a globe's near ground, again and again as you fly).</summary>
+    public static Painter For(WorldMap map, ArchetypeLook look, Func<double, double, Rgb> land = null) => new(map, look, land);
+
+    public sealed class Painter
     {
-        int height = width / 2;
-        var result = new ColorMap(width, height);
+        readonly WorldMap _map;
+        readonly ArchetypeLook _look;
+        readonly Func<double, double, Rgb> _land;
+        readonly Rgb[] _color, _glow;
+        readonly float[] _shade;
+
+        internal Painter(WorldMap map, ArchetypeLook look, Func<double, double, Rgb> land)
+        {
+            (_map, _look, _land) = (map, look, land);
+            _color = CellColors(map, look, out _glow);
+            _shade = Shades(map);
+        }
+
+        /// <summary>
+        /// The map's colours over a window of it, <paramref name="width"/> by <paramref name="height"/> pixels from
+        /// (<paramref name="x0"/>, <paramref name="y0"/>) over <paramref name="spanX"/> by <paramref name="spanY"/> m: the
+        /// whole map, or a piece of it (wrapping round its seams) painted finer.
+        /// </summary>
+        public ColorMap Paint(int width, int height, double x0, double y0, double spanX, double spanY) =>
+            Build(_map, _look, _land, _color, _glow, _shade, width, height, x0, y0, spanX, spanY);
+    }
+
+    static float[] Shades(WorldMap map)
+    {
         int n = map.Count;
 
-        // Per-cell inputs, so per-pixel work is just blending.
-        Rgb[] color = CellColors(map, look, out Rgb[] glow);
         var shade = new float[n];
         float flat = Light.z;
         for (int k = 0; k < n; k++)
@@ -56,19 +82,25 @@ public sealed class ColorMap
             float s = nrm.x * Light.x + nrm.y * Light.y + nrm.z * Light.z;
             shade[k] = Math.Clamp(1f + (s - flat) * 1.5f, 0.5f, 1.35f);
         }
-        shade = Soften(map, shade, 2); // a cliff one cell wide would otherwise shade as a stair of cells
+        return Soften(map, shade, 2); // a cliff one cell wide would otherwise shade as a stair of cells
+    }
 
-        float[] rivers = RasterizeRivers(map, width, height);
+    // Per-cell inputs (color, glow, shade), so per-pixel work is just blending.
+    static ColorMap Build(WorldMap map, ArchetypeLook look, Func<double, double, Rgb> land, Rgb[] color, Rgb[] glow, float[] shade,
+        int width, int height, double x0, double y0, double spanX, double spanY)
+    {
+        var result = new ColorMap(width, height);
+        float[] rivers = RasterizeRivers(map, width, height, x0, y0, spanX, spanY);
         var jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), BorderWave, 4);
         Rgb riverColor = Rgb.Lerp(look.ShallowSea, look.DeepSea, 0.25f);
         bool lava = map.Def.Liquid == Liquid.Lava;
-        double sx = map.WidthMeters / width, sy = map.HeightMeters / height;
+        double sx = spanX / width, sy = spanY / height;
 
         Parallel.For(0, height, py =>
         {
             for (int px = 0; px < width; px++)
             {
-                double x = (px + 0.5) * sx, y = (py + 0.5) * sy;
+                double x = Mathx.WrapX(x0 + (px + 0.5) * sx, map.WidthMeters), y = Mathx.Wrap(y0 + (py + 0.5) * sy, map.HeightMeters);
                 double gx = x / map.CellSize - 0.5, gy = y / map.CellSize - 0.5;
                 int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gy);
                 float tx = (float)(gx - i0), ty = (float)(gy - j0);
@@ -248,16 +280,22 @@ public sealed class ColorMap
         total += w;
     }
 
-    /// <summary>Draws river polylines as anti-aliased lines; small streams fade out rather than vanish.</summary>
-    static float[] RasterizeRivers(WorldMap map, int width, int height)
+    /// <summary>Draws river polylines as anti-aliased lines over a window of the map; small streams fade out rather than vanish.</summary>
+    static float[] RasterizeRivers(WorldMap map, int width, int height, double fromX, double fromY, double spanX, double spanY)
     {
         var mask = new float[width * height];
-        double sx = width / map.WidthMeters, sy = height / map.HeightMeters;
+        double sx = width / spanX, sy = height / spanY;
+        bool whole = spanX >= map.WidthMeters && spanY >= map.HeightMeters;
+        // A window's points are taken the short way round from its middle; the whole map's as they are, wrapped by the pixel.
+        double midX = fromX + spanX * 0.5, midY = fromY + spanY * 0.5;
+        double X(double x) => whole ? x * sx : (Mathx.WrapDelta(x - midX, map.WidthMeters) + spanX * 0.5) * sx;
+        double Y(double y) => whole ? y * sy : (Mathx.WrapDelta(y - midY, map.HeightMeters) + spanY * 0.5) * sy;
         foreach (River r in map.Rivers)
         {
             for (int k = 0; k + 1 < r.Count; k++)
             {
-                double ax = r.X[k] * sx, ay = r.Y[k] * sy, bx = r.X[k + 1] * sx, by = r.Y[k + 1] * sy;
+                double ax = X(r.X[k]), ay = Y(r.Y[k]), bx = X(r.X[k + 1]), by = Y(r.Y[k + 1]);
+                if (!whole && (Math.Abs(bx - ax) > width || Math.Abs(by - ay) > height)) continue; // across the window's far seam
                 float widthPx = r.Width[k] * (float)sx;
                 float half = Math.Max(widthPx * 0.5f, 0.45f);
                 float alpha = Math.Clamp(widthPx * 1.5f + 0.25f, 0.3f, 1f);
@@ -272,6 +310,7 @@ public sealed class ColorMap
                     double dx = cx - (ax + vx * t), dy = cy - (ay + vy * t);
                     float cover = Math.Clamp(half + 0.5f - (float)Math.Sqrt(dx * dx + dy * dy), 0f, 1f) * alpha;
                     if (cover <= 0f) continue;
+                    if (!whole && (px < 0 || py < 0 || px >= width || py >= height)) continue;
                     int wx = (px % width + width) % width, wy = (py % height + height) % height;
                     ref float m = ref mask[wy * width + wx];
                     m = Math.Max(m, cover);

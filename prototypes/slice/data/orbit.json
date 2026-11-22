@@ -3,12 +3,9 @@
 // Everything else (the map, its colours, the places in space) is read from the prototype that owns it.
 {
   "globe": {
-    // The globe's radius against the map: the map's width is the length of its equator, so 1 is
-    // true scale (radius = width / 2π, about 2.5 km for a 16 km world).
-    "radiusScale": 1.0,
-    // How high the rim of air drawn round the globe reaches, as a share of its radius. It thins
-    // away to nothing by there, and has to stay under the orbit's lowest height.
-    "atmosphere": 0.15,
+    // How high the rim of air drawn round the globe reaches, as a share of its radius: it hugs the
+    // world, thinning away to nothing by there, and stays under the orbit's lowest height.
+    "atmosphere": 0.08,
     // The globe's polar grid: bearings and rings, spread closest under you.
     "segments": 256,
     "rings": 160,
@@ -17,11 +14,11 @@
     "texelMetres": 4,
     "textureWidth": 4096,
     "cloudWidth": 1024,
-    // The cloud deck's height over sea level, m, on a world whose sky isn't running (the one below
-    // has its own); at this share of the generator's cover (its cloud map is a stormy day's;
-    // thinned, the land under it reads from orbit).
-    "cloudHeight": 700,
-    // The share of the map's relief (and of the cloud deck's height) the globe draws from far off (it
+    // The cloud deck hugs the globe at this share of its radius over sea level (a separate shell
+    // well off the world reads as a second sphere); at this share of the generator's cover (its
+    // cloud map is a stormy day's; thinned, the land under it reads from orbit).
+    "cloudHeight": 0.012,
+    // The share of the map's relief the globe draws from far off (it
     // is a small world: at full height its peaks would stand a quarter of its radius high). All of
     // it near the ground, where it is what you land on.
     "reliefFar": 0.12,

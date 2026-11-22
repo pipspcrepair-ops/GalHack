@@ -60,6 +60,8 @@ public partial class Screenshot : Node
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.GetValueOrDefault("rounded", "1") == "0") PoiGenerator.Gen.Underground.Rounded = false; // the old look, for a shot against it
         if (_args.TryGetValue("view", out string v)) _view = v;
+        Slice.Orbit.OrbitZone.TodaysSize = _args.GetValueOrDefault("globe") == "today";
+        PlanetSurface.Terrain.TerrainStreamer.LongReach = _args.GetValueOrDefault("reach") == "long";
         // A shot waits for drawn frames, and a headless run draws none: it would sit there until the watchdog.
         if (DisplayServer.GetName() == "headless")
         {

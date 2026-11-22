@@ -19,10 +19,10 @@ namespace Slice.Orbit;
 /// </summary>
 public partial class OrbitZone
 {
-    /// <summary>A body's sizes in the zone, from its map: true scale, as the start world's.</summary>
+    /// <summary>A body's sizes in the zone: its radius (<see cref="RadiusOf"/>), and everything that goes by it.</summary>
     void Size(Celestial c, double width, double height, float ceiling)
     {
-        c.GlobeRadius = (float)(width / (2 * Math.PI) * Rules.Globe.RadiusScale);
+        c.GlobeRadius = RadiusOf(width);
         c.AtmosphereRadius = c.GlobeRadius;
         c.Ceiling = ceiling;
         c.ShellRadius = c.GlobeRadius + ceiling - Rules.Crossing.Gap;
@@ -93,6 +93,16 @@ public partial class OrbitZone
             _solids.Add((b, shell));
         }
     }
+
+    /// <summary>
+    /// A body's radius, the one place it is read: a globe as wide as its map (owner, 22 Nov: a 16 x 8 km world is
+    /// a globe 16 km across, so its land and towns look about three times as big from space as once you land).
+    /// proto/sysrules is putting the same rule into the system model; once it is in, this reads Orbiter.Radius.
+    /// </summary>
+    public static float RadiusOf(double width) => (float)(width / (TodaysSize ? Math.Tau : 2.0));
+
+    /// <summary>Screenshots for the owner only (--globe=today): the globe at its old size, width / 2π, to lay against the new.</summary>
+    public static bool TodaysSize;
 
     /// <summary>One piece of a moon's globe a frame: painted off the main thread from its own map, then uploaded (one moon at a time).</summary>
     void MoonStep()

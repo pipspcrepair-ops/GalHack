@@ -136,8 +136,11 @@ public sealed partial class Staging
                     double noon = Enumerable.Range(0, 200).Select(k => k / 200.0).OrderByDescending(t => sky.SunAt(t).Y).First();
                     time = noon - 0.1 + (noon < 0.1 ? 1 : 0);
                 }
-                foreach (var (way, name) in new[] { (toSea, "sea"), (-toSea, "back") })
-                foreach (float pitch in new[] { 0f, down })
+                var ways = _args.ContainsKey("ways")
+                    ? _args["ways"].Split(',').Select(w => (w == "east" ? new Vector2(1f, 0f) : w == "west" ? new Vector2(-1f, 0f) : w == "south" ? new Vector2(0f, 1f) : new Vector2(0f, -1f), w)).ToArray()
+                    : new[] { (toSea, "sea"), (-toSea, "back") };
+                foreach (var (way, name) in ways)
+                foreach (float pitch in _args.ContainsKey("pitches") ? Floats("pitches", "0") : new[] { 0f, down })
                 {
                     float p = pitch * Mathf.Pi / 180f;
                     Vector3 flat = new Vector3(way.X, 0f, way.Y).Normalized();
@@ -148,7 +151,7 @@ public sealed partial class Staging
                         if (_game.Orbit?.Globe is { } globe)
                         {
                             globe.GetNode<Node3D>("Ground").Visible = !hide.Contains("sheet");
-                            globe.GetNode<Node3D>("Clouds").Visible = !hide.Contains("clouds");
+                            if (globe.GetNodeOrNull<Node3D>("Clouds") is { } clouds) clouds.Visible = !hide.Contains("clouds");
                         }
                         _game.Zone.Streamer.Visible = _game.Surface.Sea.Visible = !hide.Contains("land");
                         _game.Survivor.PlaceOutside(feet.ToNumerics());

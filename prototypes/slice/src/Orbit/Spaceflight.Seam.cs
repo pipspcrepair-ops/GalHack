@@ -329,13 +329,11 @@ public partial class Spaceflight
         float rim = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir ? Globe.AirShare(c.World.Sky.Density) : 0f;
         Basis home = Orbit.Home.Turn.ToBasis();
         int umbrae = Orbit.Space.Umbrae(Game.Surface.Planet.StarSystem, c.Body, Below.Sky.Days, home, _umbra, out float umbraSun);
-        PlanetSurface.Skies.AtmosphereState? sky = c.Surface is { Arrived: true } s ? s.Sky.Air : null;
         c.Globe.Draw(new WorldView
         {
             Eye = eye, Centre = c.Centre, Turn = c.Turn,
             ToSun = (home * Orbit.Space.ToSun).Normalized(),
             Umbra = _umbra, UmbraCount = umbrae, UmbraSun = umbraSun,
-            CloudHeight = sky is { } air ? air.CloudBase + air.CloudThickness * 0.45f : Rules.Globe.CloudHeight,
             Rim = rim * shown,
         });
     }

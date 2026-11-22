@@ -82,8 +82,12 @@ public partial class TerrainStreamer : Node3D
     public Vector2 LandReach { get; private set; }
 
     /// <summary>The land's reach on a map of this size, m east and south of the eye.</summary>
-    public static Vector2 ReachOn(double width, double height) =>
-        new(MathF.Min(HorizonReach - HorizonRebuild, (float)width * 0.5f), MathF.Min(HorizonReach - HorizonRebuild, (float)height * 0.5f));
+    public static Vector2 ReachOn(double width, double height) => LongReach ? new(MeshReach - HorizonRebuild, MeshReach - HorizonRebuild)
+        : new(MathF.Min(HorizonReach - HorizonRebuild, (float)width * 0.5f), MathF.Min(HorizonReach - HorizonRebuild, (float)height * 0.5f));
+
+    /// <summary>Screenshots for the owner only, till the reach is chosen (--reach=long): the land 7.6 km round the eye whatever the map's size, its wrap showing.</summary>
+    public static bool LongReach;
+    static float MeshReach => LongReach ? 8800f : HorizonReach;
 
     /// <summary>How far inside the voxel square the far rings still draw: past the wall they dive under it by.</summary>
     const float FarHoleCut = 8f;
@@ -1145,7 +1149,7 @@ public partial class TerrainStreamer : Node3D
     {
         WorldMap map = world.Map;
         GroundPalette pal = world.Palette;
-        int n = (int)(HorizonReach * 2 / HorizonSpacing) + 1;
+        int n = (int)(MeshReach * 2 / HorizonSpacing) + 1;
         var verts = new Vector3[n * n];
         var normals = new Vector3[n * n];
         var colors = new Color[n * n];
@@ -1155,14 +1159,14 @@ public partial class TerrainStreamer : Node3D
         for (int j = 0; j < n; j++)
         for (int i = 0; i < n; i++)
         {
-            double x = Mathx.WrapX(cx - HorizonReach + i * HorizonSpacing, map.WidthMeters), z = Mathx.Wrap(cz - HorizonReach + j * HorizonSpacing, map.HeightMeters);
+            double x = Mathx.WrapX(cx - MeshReach + i * HorizonSpacing, map.WidthMeters), z = Mathx.Wrap(cz - MeshReach + j * HorizonSpacing, map.HeightMeters);
             height[j * n + i] = map.Sample(map.Elevation, x, z);
         }
         for (int j = 0; j < n; j++)
         for (int i = 0; i < n; i++)
         {
             int k = j * n + i;
-            double x = cx - HorizonReach + i * HorizonSpacing, z = cz - HorizonReach + j * HorizonSpacing;
+            double x = cx - MeshReach + i * HorizonSpacing, z = cz - MeshReach + j * HorizonSpacing;
             float hl = height[j * n + Math.Max(i - 1, 0)], hr = height[j * n + Math.Min(i + 1, n - 1)];
             float hd = height[Math.Max(j - 1, 0) * n + i], hu = height[Math.Min(j + 1, n - 1) * n + i];
             var normal = new Vector3(hl - hr, 2f * HorizonSpacing, hd - hu).Normalized();

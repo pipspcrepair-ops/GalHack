@@ -16,14 +16,13 @@ public sealed class OrbitRules
 
     public sealed class GlobeRules
     {
-        public double RadiusScale { get; set; } = 1.0;
         public double Atmosphere { get; set; } = 0.075;
         public int Segments { get; set; } = 192;
         public int Rings { get; set; } = 96;
         public int TextureWidth { get; set; } = 4096;
         public double TexelMetres { get; set; } = 4;
         public int CloudWidth { get; set; } = 1024;
-        public float CloudHeight { get; set; } = 700f;
+        public double CloudHeight { get; set; } = 0.012;
         public double ReliefFar { get; set; } = 0.12;
         public double MapDaysPerTurn { get; set; } = 1.0;
         public double TemperateYearDays { get; set; } = 24.0;
