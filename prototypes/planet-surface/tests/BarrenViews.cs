@@ -46,6 +46,8 @@ public static class BarrenViews
             PlanetSpec home = PlanetSpec.Roll((ulong)rng.NextInt64(1, long.MaxValue), Archetype.Temperate, 0, PlanetSpec.StartWidthKm);
             // The system the start world's own world will build: its star found in the galaxy as it finds it.
             SkySystem sky = SkySystem.For(home);
+            // Out of the nebulae: inside one its glow washes even a vacuum's black sky (the system's truth, not this rule's).
+            if (sky.Nebula) continue;
             StarKind kind = SkyRig.KindOf(sky.Star);
             Galaxy galaxy = Galaxy.Make(home.Seed);
             ulong seed = galaxy.SystemSeed(galaxy.Home(kind, Galaxy.HomeKey(home.Seed, kind, sky.Nebula), sky.Nebula));
@@ -77,8 +79,10 @@ public static class BarrenViews
                     sky.TimeOfDay = t;
                     sky.Track();
                     float sun = Mathf.RadToDeg(MathF.Asin(sky.ToSun.Y));
-                    float over = sky.Drawn.Where(d => d.Body.Seed == body.Parent.Seed).Select(d => Mathf.RadToDeg(MathF.Asin(d.Direction.Y))).DefaultIfEmpty(-90f).First();
-                    double score = -Math.Abs(sun - 24f) - (body.Kind == OrbiterKind.Moon ? Math.Abs(over - 40f) : 0f);
+                    var (_, toParent, _) = sky.Drawn.FirstOrDefault(d => d.Body.Seed == body.Parent.Seed);
+                    float over = toParent == Vector3.Zero ? -90f : Mathf.RadToDeg(MathF.Asin(toParent.Y));
+                    // And its face to us lit: the sun well round from it.
+                    double score = -Math.Abs(sun - 24f) - (body.Kind == OrbiterKind.Moon ? Math.Abs(over - 40f) + 20f * Math.Max(0f, sky.ToSun.Dot(toParent)) : 0f);
                     if (score > bestScore) (bestScore, lon, colat, time) = (score, lo, co, t);
                 }
             }
@@ -91,20 +95,20 @@ public static class BarrenViews
         TerrainModel model = w.Map.Model;
         bool OnPlain((double X, double Y, float Radius, float Fresh) c) => model.Mix.Count == 1 || (Landform)w.Map.Landform[w.Map.CellAt(c.X, c.Y)] is Landform.Plains or Landform.IcePlain;
         double Near((double X, double Y, float Radius, float Fresh) c) => Math.Abs(Mathx.WrapDelta(c.Y - z, w.Height));
-        var field = model.CratersOver(50f).Where(c => c.Radius < 160f && c.Fresh > 0.75f && OnPlain(c)).OrderBy(Near).FirstOrDefault();
+        var field = model.CratersOver(70f).Where(c => c.Radius < 200f && c.Fresh > 0.75f && OnPlain(c)).OrderBy(Near).FirstOrDefault();
         if (field.Radius <= 0f) field = model.CratersOver(50f).Where(c => c.Radius < 200f).OrderBy(Near).First();
-        var big = model.CratersOver(300f).Where(c => c.Fresh > 0.7f).OrderByDescending(c => c.Radius).FirstOrDefault();
+        var big = model.CratersOver(300f).OrderByDescending(c => c.Fresh > 0.85f).ThenByDescending(c => c.Fresh * c.Radius).FirstOrDefault();
         float Ground(double x, double zz) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(zz, w.Height));
         Screenshot.Shot Toward(string name, Vector3 from, Vector3 dir) =>
             new(name, from, Mathf.RadToDeg(MathF.Atan2(dir.X, -dir.Z)), Mathf.RadToDeg(MathF.Asin(Math.Clamp(dir.Normalized().Y, -1f, 1f))));
         var shots = new List<Screenshot.Shot>();
 
-        // Across a crater field, the sun to one side: stood off a fresh crater, looking over it.
+        // Across a crater field, the sun to one side: stood just off a fresh crater's rim, looking over its bowl and on.
         var side = new Vector2(-sunFlat.Y, sunFlat.X);
-        var eye = new Vector3((float)(field.X + side.X * field.Radius * 2.6f), 0f, (float)(field.Y + side.Y * field.Radius * 2.6f));
+        var eye = new Vector3((float)(field.X + side.X * field.Radius * 1.4f), 0f, (float)(field.Y + side.Y * field.Radius * 1.4f));
         eye.Y = Ground(eye.X, eye.Z) + 1.8f;
         var at = new Vector3((float)field.X, Ground(field.X, field.Y), (float)field.Y);
-        shots.Add(Toward("field", eye, (at - eye).Normalized() with { Y = -0.06f }));
+        shots.Add(Toward("field", eye, new Vector3(at.X - eye.X, 0f, at.Z - eye.Z).Normalized() with { Y = -0.1f }));
         GD.Print($"barren view field: a {field.Radius:F0} m crater at {field.X:F0},{field.Y:F0}, the eye at {eye}; sun {Mathf.RadToDeg(MathF.Asin(toSun.Y)):F0}° up at {time:F3}");
 
         // Up at the body it circles, from the same place.
@@ -124,11 +128,10 @@ public static class BarrenViews
             // On its crest (the highest ground out from its middle toward the sun), looking down at the far wall.
             Vector3 Out(float t) => new((float)(big.X + sunFlat.X * big.Radius * t), 0f, (float)(big.Y + sunFlat.Y * big.Radius * t));
             float crest = Enumerable.Range(0, 31).Select(k => 0.85f + 0.01f * k).MaxBy(t => Ground(Out(t).X, Out(t).Z));
-            Vector3 rim = Out(crest), far = Out(-0.55f);
+            Vector3 rim = Out(crest - 0.03f);
             rim.Y = Ground(rim.X, rim.Z) + 2.5f;
-            far.Y = Ground(far.X, far.Z);
             var middle = new Vector3((float)big.X, Ground(big.X, big.Y), (float)big.Y);
-            shots.Add(Toward("rim", rim, (far - rim).Normalized()));
+            shots.Add(Toward("rim", rim, (middle - rim).Normalized()));
             GD.Print($"barren view rim: a {big.Radius:F0} m crater at {big.X:F0},{big.Y:F0}, its floor {rim.Y - middle.Y:F0} m under the rim");
         }
         return shots;
