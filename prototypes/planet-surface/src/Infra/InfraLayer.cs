@@ -986,7 +986,7 @@ public sealed partial class TileBuilder
     /// <summary>The tile's parts (<see cref="InfraLayer.Piece.Part"/>), each on its own: built again alone when something in it changes, the rest of the tile standing.</summary>
     public readonly Dictionary<string, TileBuilder> Parts = new();
     public TileBuilder PartOf(string name) => Parts.TryGetValue(name, out TileBuilder part) ? part : Parts[name] = new TileBuilder(World, OriginX, OriginZ);
-    public bool HasContent => Mesh.Triangles > 0 || Collision.Count > 0;
+    public bool HasContent => Mesh.Triangles > 0 || Collision.Count > 0 || Extra.Count > 0;
 
     public TileBuilder(PlanetWorld world, double ox, double oz)
     {
@@ -1167,8 +1167,19 @@ public sealed partial class TileBuilder
         var steps = new Queue<Func<Node3D>>();
         if (Mesh.Triangles > 0) steps.Enqueue(() => new MeshInstance3D { Mesh = DecoGodot.ToMesh(Mesh), Name = "Mesh" });
         if (Collision.Count > 0) steps.Enqueue(() => _body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 });
+        // Each part a node of its own, made a step at a time as the tile is (its colliders with the tile's, when something is near).
         foreach (var (name, part) in Parts)
-            if (part.HasContent) steps.Enqueue(() => part.ToNode(name));
+        {
+            if (!part.HasContent) continue;
+            Node3D node = null;
+            steps.Enqueue(() => node = new Node3D { Name = name });
+            foreach (var make in part.Steps())
+                steps.Enqueue(() =>
+                {
+                    if (make() is Node3D made && made.GetParent() == null) node.AddChild(made);
+                    return null;
+                });
+        }
         foreach (var make in Extra) steps.Enqueue(make);
         return steps;
     }
@@ -1190,6 +1201,8 @@ public sealed partial class TileBuilder
             });
         }
         foreach (Action make in Solid) steps.Enqueue(make);
+        foreach (TileBuilder part in Parts.Values)
+            foreach (Action make in part.SolidSteps()) steps.Enqueue(make);
         return steps;
     }
 
