@@ -385,7 +385,7 @@ public partial class CrowdTest : Node
         Vector3 feet = _game.Survivor.WorldFeet, to = new Vector3(at.X - feet.X, 0f, at.Z - feet.Z);
         to = to.LengthSquared() > 0.01f ? to.Normalized() : Vector3.Forward;
         Vector3 eye = at - to * back;
-        eye.Y = MathF.Max(at.Y + 2.2f, _game.Zone.GroundAt(eye.X, eye.Z).Y + 2.2f);
+        eye.Y = MathF.Max(at.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y) + back * 0.8f; // (looking down on them: their spacing shows, over any trunk between)
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 0.6f - eye, Vector3.Up), eye);
         _game.Visor.Visible = false;
         yield return 0;
