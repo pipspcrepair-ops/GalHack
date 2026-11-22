@@ -288,12 +288,17 @@ public sealed partial class Town : IKeeper
         if (MathF.Abs(a.Y - b.Y) > 0.05f) return false;
         Vector3 d = (b - a) with { Y = 0f };
         float len = d.Length();
+        if (len < 1e-3f) return true;
         PInt3 ca = Cell(a), cb = Cell(b);
         if (!OnePart(ca, cb)) return false;
-        for (float s = 0.25f; s < len; s += 0.25f)
+        const float R = PlaceParts.PersonRadius;
+        for (float s = 0f; s <= len; s += 0.25f)
         {
-            PInt3 c = Cell(a + d * (s / len));
-            if (!_nav.Standable(c) || _nav.RampAt(c, out _) || c != ca && c != cb && _passages.Contains(c) || !OnePart(ca, c)) return false;
+            Vector3 q = a + d * (s / len);
+            if (Cell(q) is var c && c != ca && c != cb && _passages.Contains(c)) return false;
+            // (The body's width on the floor all the way: no wall's corner clipped between two cells.)
+            for (int k = 0; k < 4; k++)
+                if (Cell(q + new Vector3(k % 2 == 0 ? -R : R, 0f, k < 2 ? -R : R)) is var f && (!_nav.Standable(f) || _nav.RampAt(f, out _) || !OnePart(ca, f))) return false;
         }
         return _fixed == null || _fixed.Sweep(a, b, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls: Place.WallsOf(_nav), wallRadius: PlaceParts.PersonRadius);
     }
@@ -861,9 +866,8 @@ public sealed partial class Town : IKeeper
         // The doors ahead opened as they come (a door they may not open: they wait where they are).
         if (!ThroughDoors(p)) { p.Now = 0f; return true; }
         // Pushed or stepped on past a point of their way (in a crowd; a new way from the middle of the cell they stand in): on to
-        // the next, never turned back for it. (Not out of a seat, nor the last of the way or a gap among the furniture: those are walked as they lie.)
-        while (p.Step < p.Path.Count - 2 && p.Seat < 0 && Passed(p.Pos, p.Path[p.Step], p.Path[p.Step + 1]) && Straight(p, p.Path[p.Step + 1])
-               && (_fixed == null || !_fixed.Touches(p.Path[p.Step], PlaceParts.PersonRadius, PlaceParts.PersonHeight))) p.Step++;
+        // the next where a body gets there straight, never turned back for it. (Not out of a seat, nor the last of the way: walked as they lie.)
+        while (p.Step < p.Path.Count - 2 && p.Seat < 0 && Passed(p.Pos, p.Path[p.Step], p.Path[p.Step + 1]) && Shortcut(p.Pos, p.Path[p.Step + 1])) p.Step++;
         Vector3 to = p.Path[p.Step];
         Vector3 d = to - p.Pos;
         float flat = new Vector2(d.X, d.Z).Length();

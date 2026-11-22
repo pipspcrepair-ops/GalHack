@@ -172,7 +172,7 @@ public sealed partial class Town
         if (here is not { } h || !_nav.Standable(Spots[spot].Cell)) return null;
         pending = !Searched(h, spot, out List<Vector3> path);
         // (Its first point is the middle of the cell they stand in: from anywhere in it, on straight for the next, not back to it first and round again.)
-        return path is { Count: > 1 } && here == Stand(Cell(p.Pos)) && Straight(p, path[1]) ? path.GetRange(1, path.Count - 1) : path;
+        return path is { Count: > 1 } && here == Stand(Cell(p.Pos)) && Shortcut(p.Pos, path[1]) ? path.GetRange(1, path.Count - 1) : path;
     }
 
     /// <summary>On the last step of the way to a seat, inside the seat's own cells (tests).</summary>
