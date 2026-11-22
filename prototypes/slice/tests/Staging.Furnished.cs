@@ -127,7 +127,7 @@ public sealed partial class Staging
                 walked += new Vector2(person.Pos.X - was.X, person.Pos.Z - was.Z).Length();
                 worstPerson = MathF.Max(worstPerson, -parts.Gap(person.Pos, Town.RadiusOf(person), Town.HeightOf(person)));
                 rig.Pace.Note(person.Pos, new Vector3(-MathF.Sin(person.Yaw), 0f, -MathF.Cos(person.Yaw)), dt);
-                rig.Drive(new Gesture { Feet = person.Pos, Yaw = person.Yaw, Speed = rig.Pace.Speed, Walked = rig.Pace.Walked, Clock = clock });
+                rig.Drive(new Gesture { Feet = person.Pos, Yaw = person.Yaw, Speed = rig.Pace.Speed, Walked = rig.Pace.Walked, Travels = true, Clock = clock });
                 view.Sync();
                 if (there) person.Path = town.Walker(looks, person.Pos, person.Pos.DistanceTo(from) < 0.5f ? to : from)?.Path ?? person.Path;
             }

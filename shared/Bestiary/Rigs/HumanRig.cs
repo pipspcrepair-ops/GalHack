@@ -80,6 +80,8 @@ public sealed partial class HumanRig : Rig
     readonly float[] _settle = new float[2];
     /// <summary>How far the body is walking (0 standing, 1) and running, eased: a stop or a sprint never changes the stride's shape in a frame.</summary>
     float _moving, _run;
+    /// <summary>How far aslant of the way the body faces its stride runs, radians, eased.</summary>
+    float _aslant;
     readonly float _offset;
     /// <summary>How far through its stride the body is (cycles), how fast that goes now (strides a second), and how far it had walked when last posed.</summary>
     float _stride, _cadence, _walkedWas = float.NaN;
@@ -330,10 +332,10 @@ public sealed partial class HumanRig : Rig
 
     /// <summary>
     /// Where the feet are this pose (<see cref="_feet"/>): a foot on the ground moves back under the body at walking speed, one in
-    /// the air comes through high; going over the ground, one down keeps to it (<see cref="Keep"/>) no further from its hip
+    /// the air comes through high, the way the stride runs (<paramref name="along"/>); going over the ground, one down keeps to it (<see cref="Keep"/>) no further from its hip
     /// (<paramref name="hip"/>, flat) than <paramref name="most"/>. How far the furthest is from its hip, flat (the hips come down to it).
     /// </summary>
-    float PlaceFeet(in Gesture g, Vector3 hip, Vector3 recoil, Vector3 fwd, Vector3 right, float phase, float duty, float half, float moving, float run,
+    float PlaceFeet(in Gesture g, Vector3 hip, Vector3 recoil, Vector3 fwd, Vector3 along, Vector3 right, float phase, float duty, float half, float moving, float run,
         float stalk, float staggerSide, float keyed, Vector3 hitFlat, float stagger, bool husk, float most)
     {
         Figure f = _f;
@@ -344,8 +346,9 @@ public sealed partial class HumanRig : Rig
         {
             float side = i == 0 ? -1f : 1f;
             bool stance = StepAt(phase + i * 0.5f, duty, out float reach, out float lift);
-            float forward = moving * reach * half + g.Sit * f.UpperLeg * 0.8f + g.Crouch * 0.05f * side + stalk * 0.08f * side;
-            Vector3 foot = g.Feet + recoil * 0.6f + fwd * forward + right * side * (f.HipW * 0.7f + staggerSide * 0.6f + g.Sit * 0.04f + g.Crouch * 0.06f + wide);
+            // Where the gait and the stance have it (a wide stance or a crouch stepped into, standing), and what a moment throws it by.
+            Vector3 at = g.Feet + along * (moving * reach * half) + fwd * (g.Crouch * 0.05f * side + stalk * 0.08f * side) + right * side * (f.HipW * 0.7f + g.Crouch * 0.06f + wide);
+            Vector3 foot = at + recoil * 0.6f + fwd * (g.Sit * f.UpperLeg * 0.8f) + right * side * (staggerSide * 0.6f + g.Sit * 0.04f);
             // Staggered: one foot steps out along the hit to catch the weight, the other follows a little.
             float stepLift = 0f;
             if (stagger > 0f)
@@ -355,7 +358,7 @@ public sealed partial class HumanRig : Rig
             }
             bool grounded = stance || moving <= 0f;
             Vector3 hipAt = hip + right * side * f.HipW * 0.55f;
-            foot += Keep(i, g.Feet + fwd * (moving * reach * half) + right * side * f.HipW * 0.7f, hipAt, most, g.Travels && g.Sit <= 0f && g.Down <= 0f, ref grounded, out float rise);
+            foot += Keep(i, at, hipAt, most, g.Travels && g.Sit <= 0f && g.Down <= 0f, ref grounded, out float rise);
             apart = MathF.Max(apart, WildSim.Flat(foot - hipAt).Length());
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
             // The heel comes up as a foot trails behind; the swing clears the ground.
@@ -365,7 +368,7 @@ public sealed partial class HumanRig : Rig
             foot.Y = ground + f.Ankle + moving * (heel + lift * step * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run) * (1f - 0.5f * stalk)) + stepLift + rise;
             _feet[i] = foot;
             // (A step is a foot swung through and set down: a stride barely begun and settled again is none.)
-            if (!grounded && moving * lift > 0.3f) _swung[i] = true;
+            if (!grounded && _settle[i] <= 0f && moving * lift > 0.3f) _swung[i] = true; // (a step of its own counts itself)
             if (grounded && _swung[i]) (Steps, _swung[i]) = (Steps + 1, false);
             _planted[i] = grounded;
         }
@@ -373,15 +376,15 @@ public sealed partial class HumanRig : Rig
     }
 
     /// <summary>How long a step taken standing lasts, and how quickly a lifted foot's stray from the gait's place for it fades, s; how far a foot strays from that place before a step taken standing (a share of the leg).</summary>
-    const float SettleTime = 0.3f, Fade = 0.07f, SettleAt = 0.25f;
+    const float SettleTime = 0.3f, Fade = 0.07f, SettleAt = 0.1f;
 
     /// <summary>
     /// Travelling (<paramref name="on"/>), a foot down stays where it was set down while the body goes on over it, is pushed or
     /// turns: the gait's place for it (<paramref name="at"/>) is only where it lands. A foot lifted (or no longer kept: sat,
     /// lain down) eases from where it was to the gait's place in its swing; one strayed from it while the body stands (turned,
     /// nudged, stopped mid-stride) settles there in a quick step of its own (<paramref name="down"/> false and
-    /// <paramref name="rise"/> its lift meanwhile); one down further than <paramref name="most"/> from its hip (<paramref name="hip"/>)
-    /// is dragged after it. What to add to the gait's place for the foot, flat.
+    /// <paramref name="rise"/> its lift meanwhile); one left further than <paramref name="most"/> from its hip (<paramref name="hip"/>) steps so too
+    /// (dragged after it if it can't). What to add to the gait's place for the foot, flat.
     /// </summary>
     Vector3 Keep(int i, Vector3 at, Vector3 hip, float most, bool on, ref bool down, out float rise)
     {
@@ -395,7 +398,9 @@ public sealed partial class HumanRig : Rig
             (_ground[i], _lifted[i], _settle[i], _kept[i]) = (at, Vector3.Zero, 0f, on && down);
             return Vector3.Zero;
         }
-        if (on && _settle[i] <= 0f && down && _kept[i] && _moving <= 0f && _settle[1 - i] <= 0f && off.LengthSquared() > SettleAt * SettleAt * leg * leg)
+        // (Standing and strayed, or barely going and left further from the hip than a leg gives: walking on, its stride takes it up.)
+        bool strayed = _moving <= 0f && off.LengthSquared() > SettleAt * SettleAt * leg * leg, behind = _moving < 0.5f && WildSim.Flat(_ground[i] - hip).LengthSquared() > most * most;
+        if (on && _settle[i] <= 0f && down && _kept[i] && _settle[1 - i] <= 0f && (strayed || behind))
             (_settle[i], _lifted[i]) = (1e-4f, off);
         if (on && _settle[i] > 0f)
         {
@@ -492,9 +497,16 @@ public sealed partial class HumanRig : Rig
         Vector3 recoil = g.Act == BodyAct.Startle ? -fwd * 0.16f * keyed + Vector3.Up * 0.03f * keyed : g.Act is BodyAct.HandsUp or BodyAct.Cower ? -fwd * 0.06f * keyed : Vector3.Zero;
         recoil += fwd * blowForward * f.Height / 1.72f + hitFlat * (0.05f * snap + 0.24f * stagger);
         Vector3 hip = g.Feet + right * (sway + staggerSide + idle) + recoil;
-        // The feet first: the hips come down as far as they part (a little at most: a foot kept down further off is dragged).
-        float most = MathF.Sqrt(MathF.Max(0f, legReach * legReach - 0.64f * still * still));
-        float apart = PlaceFeet(g, hip, recoil, fwd, right, phase, duty, half, moving, run, stalk, staggerSide, keyed, hitFlat, stagger, husk, most);
+        // The feet first: the hips come down as far as they part (a third at most: a foot kept down further off is dragged).
+        float most = MathF.Sqrt(MathF.Max(0f, legReach * legReach - 0.49f * still * still));
+        // Going over the ground, the stride runs the way the body goes, within an eighth of a turn of the way it faces and turned
+        // to it by degrees: a body going a little aslant (into a corner, parted from someone) keeps its feet down; further aslant,
+        // they keep to the ground.
+        Vector3 went = WildSim.Flat(Pace.Velocity);
+        if (went.Dot(fwd) < -0.05f) went = -went; // (stepping back: the stride runs backwards)
+        _aslant = Ease(_aslant, g.Travels && went.LengthSquared() > 0.04f ? Math.Clamp(Geo.WrapAngle(MathF.Atan2(-went.X, -went.Z) - g.Yaw), -0.8f, 0.8f) : 0f, 3f);
+        Vector3 along = new Basis(Vector3.Up, g.Yaw + _aslant) * Vector3.Forward;
+        float apart = PlaceFeet(g, hip, recoil, fwd, along, right, phase, duty, half, moving, run, stalk, staggerSide, keyed, hitFlat, stagger, husk, most);
         hipY -= MathF.Max(0f, hipUp - MathF.Sqrt(MathF.Max(0f, legReach * legReach - apart * apart)));
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         hip += Vector3.Up * hipY;

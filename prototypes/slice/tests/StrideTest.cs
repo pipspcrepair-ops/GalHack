@@ -125,7 +125,7 @@ public partial class StrideTest : Node
         (float Before, float Then)[] _moves = Array.Empty<(float, float)>();
         const float Pop = 0.5f;
         bool _has;
-        float _win, _slide, _path, _yaw, _turned;
+        float _win, _slide, _path, _yaw, _turned, _movedThen, _turnedThen;
         int _slideN, _steps0;
         Vector3 _at0, _last;
         bool _wanted = true;
@@ -177,7 +177,8 @@ public partial class StrideTest : Node
             }
             (_yaw, _turned) = (yaw, _turned + turned);
             t.WorstJump = MathF.Max(t.WorstJump, worst);
-            if (worst > 0f) { t.Jumps++; t.Why(t.JumpWhy, doing()); t.Note("jump", $"{Who}: {(which % 2 == 0 ? "a knee" : "a foot")} jumped {worst:F2} m about the body in a frame ({doing()})"); }
+            if (worst > 0f) { t.Jumps++; t.Why(t.JumpWhy, doing()); t.Note("jump", $"{Who}: {(which % 2 == 0 ? "a knee" : "a foot")} jumped {worst:F2} m about the body in a frame, the body going {_movedThen:F2} m and turning {_turnedThen:F2} rad ({doing()})"); }
+            (_movedThen, _turnedThen) = (moved, turned);
             // A planted foot over the ground: its move (a foot pivoted round a body turning on the spot slides too).
             for (int i = 0; i < feet.Length; i++)
             {
@@ -246,6 +247,7 @@ public partial class StrideTest : Node
         var town = new Tally();
         for (int i = 0; i < rounds; i++)
             foreach (int x in Round(wild, folk, town)) yield return x;
+        GD.Print($"  (posing a person walked steadily: {_poseUs / Math.Max(1, _posed):F2} µs a pose over {_posed})");
         Report("people walked steadily", _steady);
         Report("beasts in the sim", wild);
         Report("people in the sim", folk);
@@ -277,10 +279,13 @@ public partial class StrideTest : Node
     }
 
     readonly Tally _steady = new();
+    /// <summary>A person's pose, timed (the rig alone, nothing drawn), µs all told and how many.</summary>
+    double _poseUs;
+    int _posed;
 
     /// <summary>
-    /// The world's people (grown, old and young), each walked straight on at a steady pace for 3 s, from an amble to a fighter's
-    /// run, then stopped dead and set off again: the gait itself, with nothing pushing them.
+    /// The world's people (grown, old and young), each set off (at a sprinter's pick-up at most) and walked straight on for 3 s, from an amble to a fighter's
+    /// run, then stopped dead: the gait itself, with nothing pushing them.
     /// </summary>
     void Steady(WorldLife life, Tally t)
     {
@@ -297,12 +302,14 @@ public partial class StrideTest : Node
                 float clock = 0f;
                 for (int k = 0; k < 4 * 60; k++)
                 {
-                    // (Stopped dead for the last of it, as a held body is.)
-                    float v = k < 3 * 60 ? speed : 0f;
+                    // (Off at a sprinter's pick-up, 10 m/s²; stopped dead for the last of it, as a held body is.)
+                    float v = k < 3 * 60 ? MathF.Min(speed, 10f * Dt * (k + 1)) : 0f;
                     at += Vector3.Forward * v * Dt;
                     clock += Dt;
                     rig.Pace.Note(at, Vector3.Forward, Dt);
+                    long from = Stopwatch.GetTimestamp();
                     rig.Drive(new Gesture { Feet = at, Speed = rig.Pace.Speed, Walked = rig.Pace.Walked, Clock = clock, Travels = true });
+                    (_poseUs, _posed) = (_poseUs + Stopwatch.GetElapsedTime(from).TotalMilliseconds * 1000.0, _posed + 1);
                     var drawn = new Vector3[legs.Length];
                     for (int i = 0; i < legs.Length; i++) drawn[i] = rig.Pose[legs[i]].Origin;
                     var feet = new Vector3[2];
