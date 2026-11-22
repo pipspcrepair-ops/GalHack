@@ -138,6 +138,21 @@ public partial class GravityTest : Node
         float jump = S.Legs.JumpSpeed, wantHop = jump * jump / (2f * g);
         Check(Near(top - from, wantHop, 0.12f, 0.04f), $"{at}: a hop rises {top - from:F2} m (want {wantHop:F2} at {jump} m/s)");
 
+        // A walk: lighter than 1 g the stride's own scaling, heavier the design's "heavy gravity slows" (WalkController.TunedGravity).
+        foreach (int x in _drive.UntilSettled(10)) yield return x;
+        keys.Hold(Key.W);
+        foreach (int x in _drive.Wait(90)) yield return x;
+        var paces = new List<float>();
+        for (int t = 0; t < 30; t++)
+        {
+            yield return 0;
+            paces.Add(new Vector2(S.Body.Velocity.X, S.Body.Velocity.Z).Length());
+        }
+        keys.Hold(Key.W, false);
+        float tuned = S.Legs.TunedGravity, pace = paces.Average();
+        float wantPace = S.Legs.WalkSpeed * MathF.Sqrt(MathF.Min(g / tuned, 1f)) * (g > tuned ? MathF.Sqrt(tuned / g) : 1f);
+        Check(Near(pace, wantPace, 0.1f), $"{at}: a walk goes {pace:F2} m/s (want {wantPace:F2}, {S.Legs.WalkSpeed} m/s at 1 g)");
+
         // The jetpack held: in the air it pushes up at its own rate against this g (it can't lift off a heavy world).
         foreach (int x in _drive.UntilSettled(10)) yield return x;
         keys.Hold(Key.Space);

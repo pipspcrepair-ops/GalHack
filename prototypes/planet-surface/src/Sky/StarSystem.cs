@@ -56,7 +56,7 @@ public sealed record Orbiter
     public double Node { get; init; }
     /// <summary>A belt's width, m.</summary>
     public double BeltWidth { get; init; }
-    /// <summary>Its habitable distance: its true orbit over the square root of its star's brightness. Sunlight is 1 / hÂ².</summary>
+    /// <summary>Its habitable distance: its true orbit over the square root of its star's brightness. Sunlight is 1 / h².</summary>
     public double Habitable { get; init; }
     /// <summary>What it holds: <see cref="Deposit"/>.</summary>
     public List<string> Deposits { get; } = new();
@@ -142,7 +142,7 @@ public sealed class StarSystem
     /// <summary>A giant's radius: eight to eleven of the home world's, and always bigger than the biggest world you could land on (so the star, bigger still, and every giant out-size every world).</summary>
     static double GiantRadius(double homeRadius, float roll) => Math.Max(homeRadius * (8.0 + 3.0 * roll), LargestLandableRadius * 1.5);
 
-    /// <summary>Surface gravity of a world with ground, m/sÂ², given the start world's: from its size alone (<see cref="PlanetSpec.Gravities"/>).</summary>
+    /// <summary>Surface gravity of a world with ground, m/s², given the start world's: from its size alone (<see cref="PlanetSpec.Gravities"/>).</summary>
     public float GravityOf(Orbiter b, float homeGravity) => homeGravity * b.Spec.GravityScale / Home.Spec.GravityScale;
 
     /// <summary>The longitude whose solar time the game's clock tells, radians: the map's middle, where start sites stand.</summary>
@@ -172,7 +172,7 @@ public sealed class StarSystem
     /// <summary>The moon a start can reach on thrusters alone, with warp fuel and what a warp drive takes.</summary>
     public Orbiter FuelMoon { get; private set; }
     public double Luminosity { get; private set; }
-    /// <summary>The chart's spread for this star: chart distance = spread Ã— h^0.7 AU.</summary>
+    /// <summary>The chart's spread for this star: chart distance = spread × h^0.7 AU.</summary>
     public double Spread { get; private set; }
     public double Tilt { get; private set; }
 
