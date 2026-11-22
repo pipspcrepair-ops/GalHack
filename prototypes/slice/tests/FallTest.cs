@@ -234,7 +234,9 @@ public partial class FallTest : Node
         BlockGrid g = place.Memory.Inst.Blocks;
         return g.InBounds(c) && !g.Get(c).IsAir && g.Get(c).Role is not (Role.Loot or Role.Terminal or Role.Core or Role.Secret);
     }
-/// <summary>A floor of the place's blocks with nothing built over it where the feet are (no wall's foot).</summary>    static bool OpenFloor(Place place, Vector3 feet) => Under(place, feet) && place.Memory.Inst.Blocks.Get(new Int3((int)MathF.Floor(feet.X), (int)MathF.Floor(feet.Y + 0.05f), (int)MathF.Floor(feet.Z))).IsAir;
+
+    /// <summary>A floor of the place's blocks with nothing built over it where the feet are (no wall's foot).</summary>
+    static bool OpenFloor(Place place, Vector3 feet) => Under(place, feet) && place.Memory.Inst.Blocks.Get(new Int3((int)MathF.Floor(feet.X), (int)MathF.Floor(feet.Y + 0.05f), (int)MathF.Floor(feet.Z))).IsAir;
 
     /// <summary>The floor's blocks under a point (local feet) and round it broken by a weapon's hits.</summary>
     void Break(Place place, Vector3 feet, int r)
