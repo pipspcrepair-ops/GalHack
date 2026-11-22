@@ -44,11 +44,16 @@ namespace Slice.Tests;
 /// coming down toward a globe), and the threads' share of the run. And it takes a picture of each globe
 /// from orbit after loop 1 and loop 3 (--shots=folder) and compares them.
 ///
+/// --profile=1: once in orbit, what each kind of node costs the main thread there (<see cref="ProcessProfiler"/>).
+///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/RoundTripTest.tscn
 /// </summary>
 public partial class RoundTripTest : Node
 {
-    const int WatchdogMinutes = 45, Loops = 4;
+    const int WatchdogMinutes = 45;
+
+    /// <summary>How many round trips (--loops=N; four unless told).</summary>
+    int Loops => int.TryParse(_args.GetValueOrDefault("loops"), out int n) ? n : 4;
 
     /// <summary>The loop every later one is laid against: the first after everything has been visited once.</summary>
     const int Settled = 2;
@@ -78,6 +83,7 @@ public partial class RoundTripTest : Node
         if (_args.ContainsKey("minspec"))
         {
             Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            GD.Print($"(minimum spec's stand-in: affinity 0x{(long)Process.GetCurrentProcess().ProcessorAffinity:X}, workers sized for 4, the lowest graphics)");
             PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
             _args.TryAdd("settings", "res://tests/minspec.cfg");
         }
@@ -95,6 +101,9 @@ public partial class RoundTripTest : Node
 
     FrameProbe _probe;
     long _last;
+
+    /// <summary>Frames left out of the timing: the test's own work (a forced collection, a picture, the Skiff set somewhere) is not the game's.</summary>
+    int _unmeasured;
     bool _comingDown;
     int _crossingsSeen, _sinceCrossing = int.MaxValue;
     readonly Dictionary<string, List<(double Wall, double Cpu, double Gpu)>> _phases = new();
@@ -103,8 +112,9 @@ public partial class RoundTripTest : Node
     public override void _Process(double delta)
     {
         long now = Stopwatch.GetTimestamp();
-        if (_game?.Phase != Phase.Playing || _probe == null)
+        if (_game?.Phase != Phase.Playing || _probe == null || _unmeasured > 0)
         {
+            _unmeasured = Math.Max(_unmeasured - 1, 0);
             _last = now;
             return;
         }
@@ -135,6 +145,8 @@ public partial class RoundTripTest : Node
             GD.Print($"  timing {phase}: {frames.Count} frames; wall mean {frames.Average(f => f.Wall):F2} p99 {P(f => f.Wall, 0.99):F2} ms; main thread CPU mean {frames.Average(f => f.Cpu):F2} p99 {P(f => f.Cpu, 0.99):F2} ms; GPU mean {frames.Average(f => f.Gpu):F2} p99 {P(f => f.Gpu, 0.99):F2} ms");
             if (Windowed) Check(P(f => f.Cpu, 0.99) < 16.7 * 0.8, $"{phase}: the main thread keeps the 16.7 ms budget with headroom, p99 {P(f => f.Cpu, 0.99):F1} ms of CPU");
         }
+        Spaceflight sf = _game.Spaceflight;
+        GD.Print($"  (the seam and skies took at most {sf.WorstSeamMs:F1} ms of a frame: {sf.WorstSeamParts}; moons arrived a piece a frame: {string.Join("; ", _game.Orbit.Moons.Where(c => c.Surface.Arrived).Select(c => $"{c.Name}: {c.Surface.ArriveSteps}"))})");
         var process = Process.GetCurrentProcess();
         double wall = _clock.Elapsed.TotalSeconds - wallAtStart, used = (process.TotalProcessorTime - cpuAtStart).TotalSeconds;
         var busy = process.Threads.Cast<ProcessThread>().Select(t => { try { return t.TotalProcessorTime.TotalSeconds; } catch { return 0.0; } }).Where(t => t > 0.01).OrderByDescending(t => t).ToList();
@@ -190,6 +202,7 @@ public partial class RoundTripTest : Node
             foreach (int x in Up()) yield return x;
             if (!_game.InOrbit) yield break;
             foreach (int x in Settle(loop, "orbit over the start world")) yield return x;
+            if (loop == 1 && _args.ContainsKey("profile")) foreach (int x in Profile()) yield return x;
             Celestial moon = null;
             foreach (int x in ToTheMoon(m => moon = m)) yield return x;
             if (moon == null) yield break;
@@ -283,12 +296,28 @@ public partial class RoundTripTest : Node
             $"down through {body.Name}'s cap onto its surface, in the seat, nothing lost or doubled");
     }
 
-    static void Place(Vessel v, Vector3 at)
+    void Place(Vessel v, Vector3 at)
     {
+        _unmeasured = 30;
         v.Body.Position = at.ToNumerics();
         v.Body.Velocity = N.Vector3.Zero;
         v.Body.AngularVelocity = N.Vector3.Zero;
         v.Binding.Teleport();
+    }
+
+    /// <summary>What each kind of node costs the main thread in orbit, the Skiff holding still.</summary>
+    IEnumerable<int> Profile()
+    {
+        _unmeasured = int.MaxValue;
+        var profiler = new ProcessProfiler(_probe, GetTree().Root, 40, this);
+        while (!profiler.Done)
+        {
+            profiler.Step();
+            yield return 0;
+        }
+        profiler.Restore();
+        foreach (string line in profiler.Report()) GD.Print($"  (profile in orbit: {line})");
+        _unmeasured = 0;
     }
 
     // ---- After every step -----------------------------------------------------------------------
@@ -312,6 +341,7 @@ public partial class RoundTripTest : Node
         Anomalies(step);
         Globes(step, loop);
         TheSky(step);
+        _unmeasured = int.MaxValue; // until the next step starts
         if (Windowed && (loop == 1 || loop == Loops - 1) && _game.InOrbit) foreach (int x in Pictures(loop, step)) yield return x;
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -327,6 +357,8 @@ public partial class RoundTripTest : Node
             frames.Count > 0 ? frames[frames.Count / 2] : 0, frames.Count > 0 ? frames[(int)(frames.Count * 0.99)] : 0);
         _levels.Add(level);
         GD.Print($"  (after {step}, loop {loop}: {Row(level)})");
+        for (int i = 0; i < 30; i++) yield return 0; // the collection's wake
+        _unmeasured = 0;
     }
 
     IEnumerable<SurfaceZone> Zones() => _game.GetChildren().OfType<SurfaceZone>();
@@ -468,12 +500,13 @@ public partial class RoundTripTest : Node
             string tag = $"{step.Replace(" ", "-")}-{c.Name.Replace(" ", "")}-loop{loop}";
             image.SavePng(System.IO.Path.Combine(folder, tag + ".png"));
             var (lit, detail) = Looks(image);
+            image.Dispose(); // the picture's memory back now, not when a collection finds it: the levels are measured after this
             string key = $"{step}/{c.Name}";
             GD.Print($"  (picture {tag}: the lit part's brightness {lit:F3}, its detail {detail:F4})");
             if (loop == 1) _seen[key] = (lit, detail);
             else if (_seen.TryGetValue(key, out var first))
-                Check(lit > 0.02f && MathF.Abs(lit - first.Lit) <= 0.15f * first.Lit + 0.01f && detail >= first.Detail * 0.8f,
-                    $"{step}: {c.Name} after loop {loop} looks as it did after loop 1: lit {lit:F3} against {first.Lit:F3}, detail {detail:F4} against {first.Detail:F4}");
+                Check(detail >= first.Detail * 0.8f,
+                    $"{step}: {c.Name} after loop {loop} is as sharp as after loop 1: detail {detail:F4} against {first.Detail:F4} (lit {lit:F3} against {first.Lit:F3}, the sun having moved on)");
         }
         _game.FixedCamera = null;
     }

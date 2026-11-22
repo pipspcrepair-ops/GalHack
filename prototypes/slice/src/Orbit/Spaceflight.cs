@@ -150,7 +150,9 @@ public partial class Spaceflight : Node
         if (g.Phase != Phase.Playing || g.Survivor == null) return;
         if (_parkNext != null)
         {
+            var watch = Stopwatch.StartNew();
             Park(_parkNext);
+            GD.Print($"[lap parked {_parkNext.Name} {watch.Elapsed.TotalMilliseconds:F1}]");
             _parkNext = null;
         }
         OrbitComing();
@@ -328,7 +330,12 @@ public partial class Spaceflight : Node
         if (under > ReadyUnder) return;
         Vector3 p = carrier != null ? carrier.Body.Position.ToGodot() : Game.Survivor.WorldFeet;
         if (!_aligned || new Vector2(p.X - _alignedOver.X, p.Z - _alignedOver.Z).Length() > RealignFrom) AlignOver(p);
-        else if (Orbit.ProcessMode == ProcessModeEnum.Disabled) Orbit.ProcessMode = ProcessModeEnum.Inherit;
+        else if (Orbit.ProcessMode == ProcessModeEnum.Disabled)
+        {
+            var watch = Stopwatch.StartNew();
+            Orbit.ProcessMode = ProcessModeEnum.Inherit;
+            GD.Print($"[lap orbit running {watch.Elapsed.TotalMilliseconds:F1}]");
+        }
     }
 
     /// <summary>How far under the cap the orbit gets ready, m, and how far you may drift from where it was laid out before it is laid out again.</summary>
@@ -338,10 +345,12 @@ public partial class Spaceflight : Node
     /// <summary>Lays the orbit out over the surface point under a position on the surface: nothing about it changes to the eye.</summary>
     void AlignOver(Vector3 p)
     {
+        var watch = Stopwatch.StartNew();
         double x = Mathx.WrapX(p.X, Below.Planet.Width), z = Mathx.Wrap(p.Z, Below.Planet.Height);
-        Orbit.Align(Here, x, z, p.X, p.Z);
+        Orbit.Align(Here, x, z, p.X, p.Z, seen: Game.InOrbit);
         _aligned = true;
         _alignedOver = p;
+        GD.Print($"[lap aligned {watch.Elapsed.TotalMilliseconds:F1}]");
     }
 
     /// <summary>What you are in stands at the cap, moving on: it keeps its speed for the crossing, which carries it on over.</summary>

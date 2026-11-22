@@ -241,8 +241,12 @@ public partial class OrbitZone : SurfaceZone
     /// </summary>
     public void Align(double x, double z, float sx, float sz) => Align(Home, x, z, sx, sz);
 
-    /// <summary>The same over any body's map: it becomes the anchor, laid out under the world point.</summary>
-    public void Align(Celestial c, double x, double z, float sx, float sz)
+    /// <summary>
+    /// The same over any body's map: it becomes the anchor, laid out under the world point. <paramref name="seen"/>:
+    /// the zone is in view, so what moved is drawn where it now is at once (resetting a hull's drawn motion visits
+    /// every node of it: out of view it is left to catch up by itself).
+    /// </summary>
+    public void Align(Celestial c, double x, double z, float sx, float sz, bool seen = true)
     {
         Anchor = c;
         N.Quaternion turn = N.Quaternion.Conjugate(c.Map.Frame(x, z));
@@ -259,7 +263,7 @@ public partial class OrbitZone : SurfaceZone
             b.Up = N.Vector3.Transform(b.Up, d);
             BodyBinding binding = Host.BindingOf(b);
             binding?.Teleport();
-            binding?.Node.ResetPhysicsInterpolation();
+            if (seen) binding?.Node.ResetPhysicsInterpolation();
         }
         foreach (Lootable l in Loot.All)
         {
