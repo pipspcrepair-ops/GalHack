@@ -475,6 +475,7 @@ public partial class Spaceflight : Node
             else if (b.Collider is { } body && IsInstanceValid(body) && body.CanProcess()) Shelve(body, cabins: true);
         }
         w.Pieces.Push(new Piece(zone, Step.Hold, 0));
+        (w.Doing, w.Since) = ($"{zone.Name} parked", Engine.GetProcessFrames());
     }
 
     void Run(SurfaceZone zone)
@@ -501,10 +502,11 @@ public partial class Spaceflight : Node
         // that are the zone at work (its sky, camera, weather) wake now too; bodies and big branches a piece each.
         bool Now(Node n) => w.Now.Contains(n) || n.GetParent() == zone && n is not CollisionObject3D && n.GetChildCount() <= ManyKids;
         for (int i = w.Held.Count - 1; i >= 0; i--)
-            if (IsInstanceValid(w.Held[i]) && Now(w.Held[i])) ModeStep(w, new Piece(w.Held[i], Step.Wake, 0));
+            if (IsInstanceValid(w.Held[i]) && Now(w.Held[i])) ModeStep(w, new Piece(w.Held[i], Step.Wake, 3)); // whole, at once
         foreach (Node n in w.Held)
             if (IsInstanceValid(n) && n.ProcessMode == ProcessModeEnum.Disabled) w.Pieces.Push(new Piece(n, Step.Wake, 0));
         w.Held.Clear();
+        (w.Doing, w.Since) = ($"{zone.Name} woken", Engine.GetProcessFrames());
     }
 
     /// <summary>A zone's parking or waking, a piece at a time: one zone's never waits on another's, nor finishes it.</summary>
@@ -517,6 +519,9 @@ public partial class Spaceflight : Node
         public HashSet<Node> Now = new();
         /// <summary>Bodies given their layers back, to be turned off their own way again once it has woken.</summary>
         public readonly List<(CollisionObject3D Body, CollisionObject3D.DisableModeEnum Mode)> Unshelved = new();
+        /// <summary>What it is doing and the frame it began, printed when it is done (how long a zone runs on parked, or waits woken).</summary>
+        public string Doing;
+        public ulong Since;
     }
 
     /// <summary>A zone's work, what was still to come of it (the other way) done now: a crossing starts from its zone settled.</summary>
@@ -555,13 +560,14 @@ public partial class Spaceflight : Node
                 break;
             case Step.Wake:
                 if (n.ProcessMode != ProcessModeEnum.Disabled) break;
-                // A big branch made parked (never held twig by twig) holds its twigs first, each woken on a piece of its own.
-                if (!Shelved(n) && n.GetChildCount() > ManyKids)
+                // A branch woken a piece at a time holds its twigs first (three levels down), each woken on a piece of its own: a place's
+                // few branches hold hundreds of colliders between them, put back in the physics as each wakes (30 ms a place whole).
+                if (p.Depth < 3 && !Shelved(n) && n.GetChildCount() > 0)
                     foreach (Node k in n.GetChildren())
                         if (k.ProcessMode == ProcessModeEnum.Inherit && !w.Now.Contains(k))
                         {
                             k.ProcessMode = ProcessModeEnum.Disabled;
-                            w.Pieces.Push(new Piece(k, Step.Wake, 0));
+                            w.Pieces.Push(new Piece(k, Step.Wake, p.Depth + 1));
                         }
                 n.ProcessMode = ProcessModeEnum.Inherit;
                 break;

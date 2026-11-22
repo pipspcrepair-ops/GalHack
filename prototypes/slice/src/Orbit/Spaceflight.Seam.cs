@@ -332,7 +332,11 @@ public partial class Spaceflight
         foreach (ZoneWork w in _workOf.Values)
         {
             Turn(w.Pieces, w, from: started);
-            if (w.Pieces.Count == 0) Settled(w);
+            if (w.Pieces.Count > 0) continue;
+            Settled(w);
+            if (w.Doing == null) continue;
+            GD.Print($"[{w.Doing} over {Engine.GetProcessFrames() - w.Since} frames]");
+            w.Doing = null;
         }
         Turn(_groundWork);
     }

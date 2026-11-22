@@ -155,6 +155,7 @@ public partial class OrbitZone : SurfaceZone
     public override void _Ready()
     {
         ProcessPhysicsPriority = 50;
+        StandStill();
         if (_preparing.IsFaulted) throw new InvalidOperationException("the orbit failed to build", _preparing.Exception);
         Physics = new PhysicsWorld(Data.Physics);
         // No weight anywhere and never in the atmosphere: the handling model flies by its space rules.

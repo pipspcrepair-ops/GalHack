@@ -130,9 +130,26 @@ public partial class SurfaceZone : Node3D
     double _valleyTimer;
     float _valleyFloor;
 
+    /// <summary>
+    /// The zone itself never moves, so it isn't interpolated: a zone parked or woken (a pause) then resets nothing under it,
+    /// where the reset walked every node of the zone (20-30 ms for the orbit's). What hangs from it is, as it was by inheriting.
+    /// </summary>
+    protected void StandStill()
+    {
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        foreach (Node c in GetChildren()) Interpolated(c);
+        ChildEnteredTree += Interpolated;
+    }
+
+    static void Interpolated(Node c)
+    {
+        if (c.PhysicsInterpolationMode == PhysicsInterpolationModeEnum.Inherit) c.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.On;
+    }
+
     public override void _Ready()
     {
         ProcessPhysicsPriority = 50; // after the physics host (-10) and game logic (0): frame shifts see where things ended up
+        StandStill();
         Data ??= GameData.Shared;
         SliceRules.PlanetRules p = Data.Rules.Planet;
         // A zone made without a world (a tool, a probe): the world the slice's tests are tuned on.
