@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -141,7 +141,7 @@ public partial class LayersTest : Node
         // History changes what grows: the same climate under a dead, an overgrown, a swollen and a fungal world.
         var habitats = new[] { new Habitat(0, 0.6f, 0.6f, 0.7f, new[] { PlantFamily.Conifer, PlantFamily.Broadleaf, PlantFamily.Shrub, PlantFamily.Grass }), new Habitat(1, 0.5f, 0.4f, 0.3f, new[] { PlantFamily.Broadleaf, PlantFamily.Grass, PlantFamily.Fungus }) };
         ulong fs = Seed();
-        Herbarium Book(FloraMood m) => Herbarium.Roll(new FloraClimate(fs, 0.6f, 0.6f, 1f, new Tone(1f, 0.97f, 0.9f), 0.03f, 1f, m), habitats);
+        Herbarium Book(FloraMood m) => Herbarium.Roll(new FloraClimate(fs, 0.6f, 0.6f, 1f, new Tone(0.3f, 0.42f, 0.2f), 0.03f, 1f, m), habitats);
         Herbarium plain = Book(null), dead = Book(new FloraMood(Dead: 0.9f)), over = Book(new FloraMood(Overgrown: 0.9f)), swollen = Book(new FloraMood(Swollen: 0.9f)), burnt = Book(new FloraMood(Burnt: 0.9f));
         static float Sat(Tone t) { float mx = MathF.Max(t.R, MathF.Max(t.G, t.B)), mn = MathF.Min(t.R, MathF.Min(t.G, t.B)); return mx <= 0f ? 0f : (mx - mn) / mx; }
         static IEnumerable<Plant> Trees(Herbarium h) => h.Plants.Where(p => p.Family is PlantFamily.Conifer or PlantFamily.Broadleaf);

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System;
 using System.Linq;
 using GalHack.Terrain;
@@ -201,7 +201,8 @@ public sealed class GroundPalette
     readonly float[] _glow;
     readonly Fractal _jitter, _tone;
 
-    public GroundPalette(WorldMap map, PlanetFlora flora = null)
+    /// <param name="colours">the world's natural colours (its sky's palette)</param>
+    public GroundPalette(WorldMap map, WorldPalette colours, PlanetFlora flora = null)
     {
         Map = map;
         Flora = flora;
@@ -213,75 +214,52 @@ public sealed class GroundPalette
         for (int k = 0; k < map.Count; k++)
         {
             var biome = (Biome)map.Biome[k];
-            _cells[k] = Soil(biome);
+            // The soil the cell's own climate weathers from the world's rock, or the mineral the biome is.
+            _cells[k] = colours.Ground(biome, map.Temperature[k], map.Humidity[k], Alien(biome));
             // Green country takes the green of whatever grows on it: russet under russet trees.
             if (verdure is GalHack.Plants.Tone v) _cells[k] = Rgb.Lerp(_cells[k], new Rgb(v.R, v.G, v.B), Verdant(biome));
             _glow[k] = biome switch { Biome.LavaField => 1f, Biome.HotSpring => 0.12f, Biome.GlowMoss => 0.1f, _ => 0f };
         }
         _cells = ColorMap.Soften(map, _cells);
 
+        // The rock is the world's own mineral, alien worlds' too (their soils keep their own chemistry).
         (Rock, Strata) = (map.Def.Archetype, map.Def.Variant) switch
         {
-            (Archetype.Temperate, _) => (Rgb.Hex("726b61"), 0.25f),
-            (Archetype.Arid, 0) => (Rgb.Hex("a2725a"), 0.55f),
-            (Archetype.Arid, _) => (Rgb.Hex("9c5436"), 0.9f),
-            (Archetype.Ice, _) => (Rgb.Hex("5d646e"), 0.3f),
-            (Archetype.Lava, _) => (Rgb.Hex("2f2a2b"), 0.35f),
-            (Archetype.Alien, 0) => (Rgb.Hex("6f6185"), 0.5f),
-            _ => (Rgb.Hex("6b5a52"), 0.3f),
+            (Archetype.Temperate, _) => (colours.Bedrock, 0.25f),
+            (Archetype.Arid, 0) => (colours.Bedrock, 0.55f),
+            (Archetype.Arid, _) => (colours.Bedrock, 0.9f),
+            (Archetype.Ice, _) => (colours.Bedrock, 0.3f),
+            (Archetype.Lava, _) => (colours.Bedrock, 0.35f),
+            (Archetype.Alien, 0) => (colours.Bedrock, 0.5f),
+            _ => (colours.Bedrock, 0.3f),
         };
         DeepRock = Rock * 0.72f;
         Bedrock = Rgb.Hex("26262b");
-        Seabed = Rgb.Lerp(Rock, Rgb.Hex("b0a48a"), 0.45f) * 0.85f;
-        RiverBed = Rgb.Lerp(Rock, Rgb.Hex("4a4034"), 0.6f);
-        BareSoil = Rgb.Lerp(Rock, Rgb.Hex("7a5e44"), 0.45f);
-        Snow = Rgb.Hex("eef2f6");
+        // Under water the rock's own sand; in a river's bed its fines darkened wet; worn bare, the rock's dust.
+        Seabed = Rgb.Lerp(Rock, colours.Sand, 0.55f) * 0.85f;
+        RiverBed = Rgb.Lerp(Rock, colours.Dust * 0.5f, 0.6f);
+        BareSoil = Rgb.Lerp(Rock, colours.Dust * 0.8f, 0.55f);
+        Snow = colours.Snow;
     }
 
-    /// <summary>How much of a biome's topsoil is what grows on it.</summary>
+    /// <summary>How much of a biome's topsoil is what grows on it: a meadow's grass all but hides its soil.</summary>
     static float Verdant(Biome b) => b switch
     {
-        Biome.Grassland or Biome.Meadow => 0.55f,
-        Biome.Forest or Biome.Jungle or Biome.Rainforest or Biome.Riverbank or Biome.Oasis => 0.5f,
-        Biome.PineForest or Biome.CloudForest => 0.45f,
-        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => 0.35f,
-        Biome.Tundra or Biome.Scrub or Biome.HotSpring => 0.22f,
+        Biome.Grassland or Biome.Meadow => 0.75f,
+        Biome.Jungle or Biome.Riverbank or Biome.Oasis => 0.65f,
+        Biome.Forest or Biome.Rainforest => 0.55f,
+        Biome.PineForest or Biome.CloudForest => 0.5f,
+        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => 0.45f,
+        Biome.Tundra or Biome.Scrub or Biome.HotSpring => 0.3f,
         _ => 0f,
     };
 
-    /// <summary>A grounded colour for each biome's topsoil, sand, ash or snow.</summary>
-    public static Rgb Soil(Biome b) => b switch
+    /// <summary>The ground of biomes whose chemistry the world palette doesn't model: hot-spring sinter, crystal, fungal and alien ground.</summary>
+    static Rgb Alien(Biome b) => b switch
     {
-        Biome.Beach => Rgb.Hex("c8b386"),
-        Biome.Grassland => Rgb.Hex("5b7838"),
-        Biome.Meadow => Rgb.Hex("76863c"),
-        Biome.Forest => Rgb.Hex("40592c"),
-        Biome.PineForest => Rgb.Hex("3e4e34"),
-        Biome.Tundra => Rgb.Hex("7d7a5c"),
-        Biome.Snow => Rgb.Hex("e4e9ee"),
-        Biome.Cliff => Rgb.Hex("6e675e"),
-        Biome.Riverbank => Rgb.Hex("4d6c33"),
-        Biome.Jungle => Rgb.Hex("3b6829"),
-        Biome.Rainforest => Rgb.Hex("345d2b"),
-        Biome.Swamp => Rgb.Hex("4f5a31"),
-        Biome.CloudForest => Rgb.Hex("486848"),
-        Biome.Dunes => Rgb.Hex("c99860"),
-        Biome.Erg => Rgb.Hex("d6ad76"),
-        Biome.SaltFlat => Rgb.Hex("dcd4c2"),
-        Biome.Scrub => Rgb.Hex("998a56"),
-        Biome.RedRock => Rgb.Hex("9c5638"),
-        Biome.Badlands => Rgb.Hex("ad6e47"),
-        Biome.MesaTop => Rgb.Hex("b78a5a"),
-        Biome.Oasis => Rgb.Hex("55783a"),
-        Biome.Glacier => Rgb.Hex("dde7ef"),
-        Biome.Snowfield => Rgb.Hex("edf1f5"),
-        Biome.IceTundra => Rgb.Hex("888e96"),
         Biome.BlueIce => Rgb.Hex("9dc1da"),
         Biome.HotSpring => Rgb.Hex("6aa59c"),
         Biome.Sinter => Rgb.Hex("bf8f5e"),
-        Biome.Basalt => Rgb.Hex("3a3436"),
-        Biome.Ash => Rgb.Hex("5b5553"),
-        Biome.LavaField => Rgb.Hex("2e2220"),
         Biome.Obsidian => Rgb.Hex("201b24"),
         Biome.Sulfur => Rgb.Hex("c2ae4a"),
         Biome.CrystalPlain => Rgb.Hex("6c5c86"),

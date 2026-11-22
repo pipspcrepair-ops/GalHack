@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -238,32 +238,19 @@ public sealed class Herbarium
 
     static FloraStyle RollStyle(FloraClimate c, Dice d)
     {
-        // Leaves answer the light: under a red star they go dark and take all they can get; under a hard white
-        // one they turn pale and throw light back. Alien chemistry may be anything, and only that earns odd hues.
-        float warmLight = c.Light.R - c.Light.B;
-        (float H, float S, float V)[] pigments =
-            warmLight > 0.55f ? new[] { (335f, 0.5f, 0.3f), (290f, 0.38f, 0.28f), (15f, 0.55f, 0.3f), (90f, 0.38f, 0.22f) }
-            : warmLight > 0.3f ? new[] { (36f, 0.62f, 0.44f), (14f, 0.58f, 0.38f), (78f, 0.5f, 0.32f), (348f, 0.42f, 0.34f), (122f, 0.42f, 0.27f), (164f, 0.4f, 0.29f), (56f, 0.55f, 0.4f) }
-            : warmLight < -0.12f ? new[] { (168f, 0.36f, 0.42f), (196f, 0.32f, 0.46f), (138f, 0.42f, 0.38f), (22f, 0.5f, 0.46f) }
-            : new[] { (96f, 0.62f, 0.4f), (122f, 0.52f, 0.33f), (76f, 0.66f, 0.46f), (154f, 0.5f, 0.32f), (172f, 0.42f, 0.34f), (52f, 0.58f, 0.46f), (108f, 0.42f, 0.3f) };
-        // A world that suits life as we know it stays green under any ordinary sun, in a wide range of greens,
-        // warmer under a warm star and cooler under a hard one. Only a rare one goes its own way.
-        bool familiar = Familiar(c);
-        if (familiar && d.Chance(0.88f))
-        {
-            pigments = new[] { (96f, 0.62f, 0.4f), (122f, 0.52f, 0.33f), (78f, 0.66f, 0.44f), (146f, 0.5f, 0.32f), (164f, 0.44f, 0.33f), (108f, 0.42f, 0.3f), (88f, 0.5f, 0.36f), (132f, 0.58f, 0.27f) };
-            warmLight = Math.Clamp(warmLight, -0.2f, 0.3f);
-        }
-        else familiar = false;
-        (float H, float S, float V) p = d.Pick(pigments);
-        p.H += d.Range(-9f, 9f) - (familiar ? warmLight * 20f : 0f);
+        // Leaves take the pigment the world's light evolved (the planet's palette works it out from its star and air:
+        // green under a sunlike star, gold under a hot one, near black under a red dwarf). Alien chemistry may be
+        // anything, and only that earns odd hues.
+        (float H, float S, float V) p = c.Pigment.ToHsv();
+        p.H += d.Range(-9f, 9f);
         if (c.Alien > 0.4f)
         {
             p = (d.Range(0f, 360f), d.Range(0.34f, 0.62f), d.Range(0.34f, 0.56f));
         }
-        // Cold greys and darkens them; drought bleaches them; thick wet air deepens them; thin air pales them.
+        // Cold greys and darkens them; drought bleaches them; thick wet air deepens them; thin air pales them. Gently:
+        // the pigment already holds the light, and each species greys again by its own dryness (Make).
         float cold = 1f - c.Warmth, dry = 1f - c.Wetness;
-        p.S *= 1f - 0.25f * cold - 0.28f * dry;
+        p.S *= 1f - 0.12f * cold - 0.15f * dry;
         p.V *= (1f + 0.22f * dry) * (c.Wetness > 0.6f ? 0.92f : 1f) * (c.Air < 0.7f ? 1.12f : 1f);
         if (c.Air < 0.7f) p.S *= 0.82f;
         FloraMood m = c.Moods;

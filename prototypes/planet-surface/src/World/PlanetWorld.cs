@@ -206,7 +206,7 @@ public sealed partial class PlanetWorld
         // What grows here: the type's, as its layers have shaped it (overgrown, dead, swollen, fungal, burned, sparse, stranger).
         var r = Reading;
         Flora = PlanetFlora.For(map, Sky, mood: new GalHack.Plants.FloraMood(r.Overgrown, r.Dead, r.Swollen, r.Fungal, r.Burnt, r.Sparse), lean: r.Alien);
-        Palette = new GroundPalette(map, Flora);
+        Palette = new GroundPalette(map, Sky.Palette, Flora);
         // Every blast's dead zone shows in the ground's colour, fading back to the land's own, and nothing grows
         // in it (the scatter and the cover read the same zones); its crater shows on the map as in the ground.
         // An old shell hole's dead ground has all grown back: only its bowl is left.
@@ -404,7 +404,7 @@ public sealed record WorldLook
 {
     public float SnowAltitude { get; init; } = 100000f;
     public float BaseSnow { get; init; }
-    public Color Dust { get; init; } = new("9c7e5a");
+    public Color Dust { get; init; }
     public Color Glow { get; init; } = new("ff5212");
     public Color Shallow { get; init; }
     public Color Deep { get; init; }
@@ -414,16 +414,22 @@ public sealed record WorldLook
     public static WorldLook For(WorldMap map, SkySystem sky)
     {
         ArchetypeDef def = map.Def;
-        return (def.Archetype, def.Variant) switch
+        WorldLook look = (def.Archetype, def.Variant) switch
         {
-            (Archetype.Temperate, 0) => new() { SnowAltitude = 380f, Shallow = new("2e7a80"), Deep = new("0c2c40") },
-            (Archetype.Temperate, _) => new() { SnowAltitude = 500f, Shallow = new("2f7c6c"), Deep = new("0c3236") },
-            (Archetype.Arid, _) => new() { SnowAltitude = 640f, Dust = new("b98a56"), Shallow = new("3a8c8a"), Deep = new("12384a") },
-            (Archetype.Ice, 0) => new() { BaseSnow = 0.55f, SnowAltitude = 60f, Dust = new("c8ccd0"), Shallow = new("2c5a78"), Deep = new("0a1c34") },
-            (Archetype.Ice, _) => new() { BaseSnow = 0.35f, SnowAltitude = 150f, Dust = new("c0c4c8"), Shallow = new("2a6a7c"), Deep = new("0a2236"), Glow = new("40fff0") },
-            (Archetype.Lava, _) => new() { Dust = new("4a4442"), Shallow = new("8a1a0a"), Deep = new("ff6a18"), Lava = true, LiquidGlow = 2.2f },
-            (Archetype.Alien, 0) => new() { SnowAltitude = 500f, Dust = new("a898b8"), Shallow = new("2a8a86"), Deep = new("0c2a3a"), Glow = new("c070ff"), LiquidGlow = 0.25f },
-            _ => new() { SnowAltitude = 500f, Dust = new("8a8a5a"), Shallow = new("5a3a7a"), Deep = new("1a0c30"), Glow = new("30ffc0"), LiquidGlow = 0.25f },
+            (Archetype.Temperate, 0) => new() { SnowAltitude = 380f },
+            (Archetype.Temperate, _) => new() { SnowAltitude = 500f },
+            (Archetype.Arid, _) => new() { SnowAltitude = 640f },
+            (Archetype.Ice, 0) => new() { BaseSnow = 0.55f, SnowAltitude = 60f },
+            (Archetype.Ice, _) => new() { BaseSnow = 0.35f, SnowAltitude = 150f, Glow = new("40fff0") },
+            (Archetype.Lava, _) => new() { Shallow = new("8a1a0a"), Deep = new("ff6a18"), Lava = true, LiquidGlow = 2.2f },
+            (Archetype.Alien, 0) => new() { SnowAltitude = 500f, Glow = new("c070ff"), LiquidGlow = 0.25f },
+            _ => new() { SnowAltitude = 500f, Glow = new("30ffc0"), LiquidGlow = 0.25f },
         };
+        // Water and dust are the world's palette's; lava is the type's own fire.
+        WorldPalette p = sky.Palette;
+        look = look with { Dust = C(p.Dust) };
+        return look.Lava ? look : look with { Shallow = C(p.Shallow), Deep = C(p.Deep) };
     }
+
+    static Color C(Rgb c) => new(c.R, c.G, c.B);
 }
