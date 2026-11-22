@@ -467,7 +467,7 @@ public partial class FallTest : Node
         Set(who, "CheckFor", 1f);
         float health = who.Health.Current, last = who.Pos.Y, rise = 0f, swimOff = 0f;
         int onWater = 0, swum = 0, t;
-        bool entered = false, outOn = false;
+        bool entered = false, outOn = false, was = false;
         for (t = 0; t < 120 * 60; t++)
         {
             TopUp();
@@ -482,7 +482,9 @@ public partial class FallTest : Node
             // In it, nobody stands on the water: swimming, the head at the surface (feet a swimming depth under it); else on its floor.
             if (inWater && swimming) { swum++; swimOff = MathF.Max(swimOff, MathF.Abs(s.Value - w.Y - who.Figure.Height * _game.Zone.Physics.Rules.Water.SwimDepth)); }
             else if (inWater && w.Y > bottom + 0.2f) onWater++;
-            if (!inWater && !swimming && !wading && MathF.Abs(w.Y - bottom) < 0.3f) { outOn = true; break; }
+            // (Out: on the bank, or out of the water by their own say on its edge (an errand home that crosses the shallows wades on).)
+            if (!swimming && !wading && (!inWater || was) && MathF.Abs(w.Y - bottom) < 0.3f) { outOn = true; break; }
+            was = swimming || wading;
         }
         float lost = health - who.Health.Current;
         GD.Print($"  {what}: {(outOn ? $"out on the bank after {t / 60f:F1} s" : "still in it")} ({town.World(who.Pos)}), {swum / 60f:F1} s swimming (the head off the surface by {swimOff:F2} m at most), {onWater} ticks standing on the water, the most risen in a tick {rise:F3} m, lost {lost:F1}");
