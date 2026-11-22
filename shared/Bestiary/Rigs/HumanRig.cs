@@ -307,7 +307,8 @@ public sealed partial class HumanRig : Rig
             return;
         }
         _doll = null;
-        DriveAlive(g);
+        DriveAlive(Aimed(g));
+        CarryHit(g);
     }
 
     /// <summary>A grown person's quickest stride, a second (a sprint's 215 steps a minute).</summary>
@@ -682,17 +683,20 @@ public sealed partial class HumanRig : Rig
             if (stalk > 0f) pole = pole.Lerp(F.V(0.5f, -0.4f, -0.8f), stalk).Normalized();
             // The hand's shape and where its palm faces, eased the way the hand is.
             HandSpec spec = StanceHand(i, g, kind, hold, moving, run, stalk, sip);
-            // A hand on a weapon stays on it; the other does the gesture (a one-handed one done by the free hand).
-            bool keeps = i == 1 ? hold.RW > 0f : kind == HoldKind.Bow;
-            if (act > 0f && !keeps)
+            // A hand on a weapon stays on it; the other does the gesture (a one-handed one done by the free hand). Each arm's share
+            // of it eases over as the doer or the hold changes: a gesture never jumps from hand to hand.
+            float keeps = i == 1 ? hold.RW : kind == HoldKind.Bow ? 1f : 0f;
+            _actShare[i] = Ease(_actShare[i], (1f - keeps) * (OneHanded(g) && i != doer ? 0f : 1f), 5f);
+            float acts = act * _actShare[i];
+            if (acts > 0f)
             {
-                ArmGoal a = ActArm(g, i, i == doer, shoulder, neck, torso, headBasis, upperArm, forearm);
+                ArmGoal a = ActArm(g, i, shoulder, neck, torso, headBasis, upperArm, forearm);
                 if (a.On)
                 {
-                    hand = hand.Lerp(a.Hand, act);
-                    pole = pole.Lerp(a.Pole, act).Normalized();
-                    spec = HandSpec.Lerp(spec, a.Spec, act);
-                    if (i == 1) rightOff = MathF.Max(rightOff, act);
+                    hand = hand.Lerp(a.Hand, acts);
+                    pole = pole.Lerp(a.Pole, acts).Normalized();
+                    spec = HandSpec.Lerp(spec, a.Spec, acts);
+                    if (i == 1) rightOff = MathF.Max(rightOff, acts);
                 }
             }
             float on = i == 1 ? hold.RW : hold.LW;
@@ -743,17 +747,19 @@ public sealed partial class HumanRig : Rig
                 {
                     (Vector3 e0, Vector3 w0) = LeggedRig.SolveIK(shoulder, want, upperArm, forearm, pole);
                     gripFore = (w0 - e0).Normalized();
-                    want = hand - HandGrip(i, axis.Normalized(), gripFore, ahead, -F.Out, F.Mix(spec.Palm)) * (HandMake.Fist * _handSize[i]) * gripW;
+                    want = hand - HandGrip(i, axis.Normalized(), gripFore, ahead, -F.Out, F.Mix(spec.Palm), _gripTurn[i]) * (HandMake.Fist * _handSize[i]) * gripW;
                 }
                 hand = want;
             }
+            TurnGrip(i, gripW, axis, gripFore, F, spec);
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
             if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f) * f.Padding) * on; // (a thick coat's shoulder rolls further forward)
-            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F, i, spec, axis, gripW, gripFore, on >= 0.999f);
-            Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
-            Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
-            PoseHand(i, HandFrame(i, spec, F, axis, gripW, (wrist - elbow).Normalized(), gripFore), wrist, spec.Shape);
+            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F, i, spec, axis, gripW, gripFore, on >= 0.999f, out Vector3 hinge);
+            // (Rolled with the elbow's hinge, never the torso's side: a bone along that has no roll to take from it.)
+            Pose[_armU[i]] = Geo.Segment(shoulder, elbow, hinge);
+            Pose[_armL[i]] = Geo.Segment(elbow, wrist, hinge);
+            PoseHand(i, Wrist(i, HandFrame(i, spec, F, axis, gripW, (wrist - elbow).Normalized(), gripFore)), wrist, spec.Shape);
             _wrist[i] = wrist;
             _elbow[i] = elbow;
             _shoulder[i] = shoulder;
@@ -779,6 +785,8 @@ public sealed partial class HumanRig : Rig
     }
 
     readonly Vector3[] _elbow = new Vector3[2], _shoulder = new Vector3[2];
+    /// <summary>Each arm's share of the gesture, eased (the doer's 1, a hand that keeps a weapon or the one not doing a one-handed act 0).</summary>
+    readonly float[] _actShare = { 1f, 1f };
     /// <summary>Each arm's shoulder, elbow and wrist as last posed (0 left, 1 right), for the tests.</summary>
     public (Vector3 shoulder, Vector3 elbow, Vector3 wrist) ArmOf(int i) => (_shoulder[i], _elbow[i], _wrist[i]);
 

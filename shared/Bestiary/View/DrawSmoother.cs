@@ -177,7 +177,7 @@ public sealed class PoseBlend
     /// One piece's pose between two, by a straight blend of each axis kept at its blended length: a fifth of the cost of
     /// a rotation's slerp, and for the few tenths of a second it lasts, as good.
     /// </summary>
-    static Transform3D Mix(in Transform3D a, in Transform3D b, float w)
+    internal static Transform3D Mix(in Transform3D a, in Transform3D b, float w)
     {
         float v = 1f - w;
         Vector3 a0 = a.Basis.Column0, a1 = a.Basis.Column1, a2 = a.Basis.Column2, b0 = b.Basis.Column0, b1 = b.Basis.Column1, b2 = b.Basis.Column2;

@@ -13,7 +13,7 @@ namespace Slice.Tests;
 /// frames"). On fresh worlds every run (nothing pinned), people of every sort with every kind of thing in hand, Husks and walking
 /// machines, each taken through a day's worth of moves a tick at a time: walking, running and turning, startled, panicking and
 /// cowering, aiming round and switching targets, holding and carrying, sitting down and getting up, bumped and struck, striking,
-/// and every gesture. Each arm bone (upper arm, forearm, hand) and what the hand holds is watched in the body's frame, as the rig
+/// and every gesture. Each arm bone (upper arm, forearm, hand) and what the hand holds is watched in the torso's frame, as the rig
 /// poses it and as it is drawn (through the pose blend): none turns more than 60° in a frame where a frame beside it turns under 30°.
 ///
 /// -- --rounds=N worlds (default 2); --seeds=a:b:... rolls a run's worlds again (an A/B; never pinned); --shots=dir (windowed)
@@ -23,13 +23,16 @@ namespace Slice.Tests;
 public partial class ArmTest : Node
 {
     const int WatchdogMinutes = 10;
-    const float Dt = 1f / 60f, Pop = 60f, Calm = 30f;
+    const float Dt = 1f / 60f, Pop = 60f, Calm = 30f, Flick = 0.04f, Sudden = 3f;
     IEnumerator<int> _run;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
     readonly System.Random _rng = new();
     static readonly string[] Args = OS.GetCmdlineUserArgs();
     readonly ulong[] _seeds = Args.FirstOrDefault(a => a.StartsWith("--seeds=")) is { } s ? s[8..].Split(':').Select(ulong.Parse).ToArray() : Array.Empty<ulong>();
+    /// <summary>--trace: the joints about the body (its root's frame) printed for the ticks round the first flip or flick of each kind.</summary>
+    static readonly bool Trace = Args.Contains("--trace");
+    readonly Queue<string> _ring = new();
     readonly string _shots = Args.FirstOrDefault(a => a.StartsWith("--shots=")) is { } d ? d[8..] : null;
 
     public override void _Ready()
@@ -69,38 +72,44 @@ public partial class ArmTest : Node
 
     sealed class Tally
     {
-        public int Frames, Pops;
-        public float Worst;
-        public readonly Dictionary<string, int> Why = new();
+        public int Frames, Pops, Jumps;
+        public float Worst, WorstJump;
+        public readonly Dictionary<string, int> Why = new(), JumpWhy = new();
         public readonly List<string> Notes = new();
-        public string Top => string.Join(", ", Why.OrderByDescending(k => k.Value).Take(30).Select(k => $"{k.Value} {k.Key}"));
+        public static string Top(Dictionary<string, int> d) => string.Join(", ", d.OrderByDescending(k => k.Value).Take(16).Select(k => $"{k.Value} {k.Key}"));
     }
 
-    /// <summary>The arm pieces of one body, frame to frame: each piece's turn in the body's frame the frame before last and last frame, degrees.</summary>
+    /// <summary>
+    /// The arm pieces of one body, frame to frame in the body's frame: each piece's turn (degrees), and the move of a point a
+    /// little way along it (m, so a turn or a shift of it both show), the frame before last, last frame and this.
+    /// </summary>
     sealed class Watch
     {
         readonly Quaternion[] _q;
-        readonly Vector3[] _y;
+        readonly Vector3[] _y, _p;
         readonly (float Before, float Then, float Swing)[] _turn;
+        readonly (float Before, float Then)[] _move;
         readonly bool[] _has;
-        public Watch(int n) => (_q, _y, _turn, _has) = (new Quaternion[n], new Vector3[n], new (float, float, float)[n], new bool[n]);
+        public Watch(int n) => (_q, _y, _p, _turn, _move, _has) = (new Quaternion[n], new Vector3[n], new Vector3[n], new (float, float, float)[n], new (float, float)[n], new bool[n]);
 
         /// <summary>
-        /// One piece this frame (null: not shown); true when last frame was a flip: over <see cref="Pop"/> with a frame beside it under
-        /// <see cref="Calm"/>. How far it turned then, and how far of that its length swung (the rest is a roll about it).
+        /// One piece this frame (null: not shown) and how far along it its point is, m. A flip: last frame it turned over <see cref="Pop"/>
+        /// with a frame beside it under <see cref="Calm"/> (how far, and how far of that its length swung: the rest is a roll about it).
+        /// A flick: last frame its point moved over <see cref="Flick"/> m and <see cref="Sudden"/> times as far as in either frame beside it.
         /// </summary>
-        public bool Sample(int k, Basis? rel, out float flip, out float swing)
+        public (bool Flip, bool Flick) Sample(int k, Transform3D? rel, float along, out float flip, out float swing, out float flick)
         {
-            (flip, swing) = (0f, 0f);
-            if (rel is not { } b || b.X.LengthSquared() < 0.09f) { _has[k] = false; return false; }
-            Quaternion q = b.GetRotationQuaternion().Normalized();
-            Vector3 y = b.Y.Normalized();
-            if (!_has[k]) { (_q[k], _y[k], _turn[k], _has[k]) = (q, y, (0f, 0f, 0f), true); return false; }
-            float now = Mathf.RadToDeg(2f * MathF.Acos(MathF.Min(1f, MathF.Abs(q.Dot(_q[k]))))), swung = Mathf.RadToDeg(y.AngleTo(_y[k]));
+            (flip, swing, flick) = (0f, 0f, 0f);
+            if (rel is not { } t || t.Basis.X.LengthSquared() < 0.09f) { _has[k] = false; return (false, false); }
+            Quaternion q = t.Basis.GetRotationQuaternion().Normalized();
+            Vector3 y = t.Basis.Y.Normalized(), p = t.Origin + y * along;
+            if (!_has[k]) { (_q[k], _y[k], _p[k], _turn[k], _move[k], _has[k]) = (q, y, p, (0f, 0f, 0f), (0f, 0f), true); return (false, false); }
+            float now = Mathf.RadToDeg(2f * MathF.Acos(MathF.Min(1f, MathF.Abs(q.Dot(_q[k]))))), swung = Mathf.RadToDeg(y.AngleTo(_y[k])), moved = p.DistanceTo(_p[k]);
             (float before, float then, swing) = _turn[k];
-            (_q[k], _y[k], _turn[k]) = (q, y, (then, now, swung));
-            flip = then;
-            return then > Pop && MathF.Min(before, now) < Calm;
+            (float mBefore, float mThen) = _move[k];
+            (_q[k], _y[k], _p[k], _turn[k], _move[k]) = (q, y, p, (then, now, swung), (mThen, moved));
+            (flip, flick) = (then, mThen);
+            return (then > Pop && MathF.Min(before, now) < Calm, mThen > Flick && mThen > Sudden * MathF.Max(mBefore, moved));
         }
     }
 
@@ -158,11 +167,13 @@ public partial class ArmTest : Node
 
     void Report(string what, Tally t)
     {
-        GD.Print($"  {what}: {t.Frames} frames, {t.Pops} flips, worst {t.Worst:F0}° in a frame");
-        if (t.Why.Count > 0) GD.Print($"  ({what}: flips while {t.Top})");
+        GD.Print($"  {what}: {t.Frames} frames, {t.Pops} flips (worst {t.Worst:F0}° in a frame), {t.Jumps} flicks (worst {t.WorstJump * 100f:F1} cm)");
+        if (t.Why.Count > 0) GD.Print($"  ({what}: flips while {Tally.Top(t.Why)})");
+        if (t.JumpWhy.Count > 0) GD.Print($"  ({what}: flicks while {Tally.Top(t.JumpWhy)})");
         foreach (string n in t.Notes) GD.Print($"    {n}");
         Check(t.Frames > 10000, $"{what}: arms watched ({t.Frames} frames)");
         Check(t.Pops == 0, $"{what}: no arm bone or held thing turns over {Pop:F0}° in a frame beside a frame under {Calm:F0}° ({t.Pops} frames, worst {t.Worst:F0}°)");
+        Check(t.Jumps == 0, $"{what}: no arm bone or held thing flicks (over {Flick * 100f:F0} cm in a frame and {Sudden:F0} times the frames beside it) ({t.Jumps} frames, worst {t.WorstJump * 100f:F1} cm)");
     }
 
     // ---- One body's day ----------------------------------------------------------------------------
@@ -174,7 +185,6 @@ public partial class ArmTest : Node
         public BodyAct Act;
         public Vector3? AimAt;
         public Vector3 ActAt;
-        public int Style;
     }
 
     /// <summary>
@@ -188,6 +198,7 @@ public partial class ArmTest : Node
         var blend = new PoseBlend();
         var pieces = rig.Layout.Pieces;
         int[] bones = { pieces.FindIndex(p => p.Name == "arm0u"), pieces.FindIndex(p => p.Name == "arm0l"), -1, pieces.FindIndex(p => p.Name == "arm1u"), pieces.FindIndex(p => p.Name == "arm1l"), -1, pieces.FindIndex(p => p.Name == "prop") };
+        int torso = pieces.FindIndex(p => p.Name == "body");
         var hands = new int[6];
         for (int i = 0; i < 2; i++)
             for (int k = 0; k < 3; k++) hands[i * 3 + k] = pieces.FindIndex(p => p.Name == HandMake.PieceName((HandShape)k, i));
@@ -228,30 +239,45 @@ public partial class ArmTest : Node
                 {
                     Feet = at, Yaw = yaw, Speed = speed, Walked = walked, Travels = true, Sit = sit, Work = work, Aim = aim,
                     AimAt = aim > 0.05f ? a.AimAt : null, Look = 0.6f * MathF.Sin(clock * 0.4f), Crouch = crouch, Reach = reach, Sip = sip, Strike = a.Strike,
-                    Act = now, ActAmount = act, ActAt = a.ActAt, Clock = clock, Style = a.Style,
+                    Act = now, ActAmount = act, ActAt = a.ActAt, Clock = clock, Style = (int)(seed % 3), // (a place's own way of greeting and thanking)
                 });
                 (_poseMs, _poses) = (_poseMs + Stopwatch.GetElapsedTime(from).TotalMilliseconds, _poses + 1);
                 var root = new Transform3D(new Basis(Vector3.Up, yaw), at);
                 int key = (int)a.Act | (a.Speed > 0.05f ? 1 : 0) << 8 | (a.Sit > 0f ? 1 : 0) << 9 | (a.Act == BodyAct.Panic ? 1 : 0) << 12 | (a.Aim > 0f ? 1 : 0) << 15;
                 Transform3D[] drawn = blend.Frame(rig.Pose, root, key, 0f, s.Figure?.Height ?? 1.8f, clock);
                 if (frame != null) { frame(tick, rig, drawn, root); continue; }
-                Basis back = root.Basis.Inverse();
+                if (tick < 10) continue; // (the body first posed, settling: built out of sight)
+                if (Trace)
+                {
+                    Transform3D inv = root.AffineInverse();
+                    string P(Vector3 v) { Vector3 b = inv * v; return $"({b.X:F2} {b.Y:F2} {b.Z:F2})"; }
+                    var (s0, e0, w0) = rig.ArmOf(0);
+                    var (s1, e1, w1) = rig.ArmOf(1);
+                    _ring.Enqueue($"      t{tick}: L {P(s0)} {P(e0)} {P(w0)} | R {P(s1)} {P(e1)} {P(w1)} | grips {P(rig.GripRight)} {rig.GripRightOn:F2} {P(rig.GripLeft)} {rig.GripLeftOn:F2} | line {rig.WeaponLine.X:F2} {rig.WeaponLine.Y:F2} {rig.WeaponLine.Z:F2}");
+                    if (_ring.Count > 4) _ring.Dequeue();
+                }
+                // (In the torso's frame: the arms as they hang from it, whatever the hips and back do.)
+                Transform3D back = rig.Pose[torso].AffineInverse(), backDrawn = drawn[torso].AffineInverse();
                 for (int k = 0; k < Names.Length; k++)
                 {
                     int arm = k < 3 ? 0 : 1;
                     bool hand = k % 3 == 2 && k < 6;
                     // (A hand that changes shape changes piece: the new one is watched from there.)
                     HandShape sh = rig.HandOf(arm).shape;
-                    if (hand && sh != shape[arm]) drawnW.Sample(k, null, out _, out _);
+                    if (hand && sh != shape[arm]) drawnW.Sample(k, null, 0f, out _, out _, out _);
                     if (hand) shape[arm] = sh;
                     int piece = hand ? hands[arm * 3 + (int)sh] : bones[k];
-                    Basis? posed = hand ? back * rig.HandOf(arm).at.Basis : piece >= 0 ? back * rig.Pose[piece].Basis : null;
-                    Basis? shown = piece >= 0 ? back * drawn[piece].Basis : null;
+                    Transform3D? posed = hand ? back * rig.HandOf(arm).at : piece >= 0 ? back * rig.Pose[piece] : null;
+                    Transform3D? shown = piece >= 0 ? backDrawn * drawn[piece] : null;
+                    float along = hand ? 0.1f : 0.25f;
                     string Doing() => $"{who}, {beat}{(now != BodyAct.None ? $" ({now} {act:F2})" : "")}{(aim > 0.05f ? $" aim {aim:F2}" : "")}{(sit > 0f ? $" sit {sit:F2}" : "")}";
-                    if (posedW.Sample(k, posed, out float f1, out float s1)) Flip(_posed, Names[k], beat, Doing(), f1, s1, s, seed, tick);
-                    if (drawnW.Sample(k, shown, out float f2, out float s2)) Flip(_drawn, Names[k], beat, Doing(), f2, s2, s, seed, tick);
-                    _posed.Worst = MathF.Max(_posed.Worst, f1);
-                    _drawn.Worst = MathF.Max(_drawn.Worst, f2);
+                    (bool flip1, bool flick1) = posedW.Sample(k, posed, along, out float f1, out float s1, out float j1);
+                    (bool flip2, bool flick2) = drawnW.Sample(k, shown, along, out float f2, out float s2, out float j2);
+                    if (flip1) Flip(_posed, Names[k], beat, Doing(), f1, s1, s, seed, tick);
+                    if (flip2) Flip(_drawn, Names[k], beat, Doing(), f2, s2, s, seed, tick);
+                    if (flick1 && !flip1) Flicked(_posed, Names[k], beat, Doing() + $", tick {tick - 1}", j1);
+                    if (flick2 && !flip2) Flicked(_drawn, Names[k], beat, Doing() + $", tick {tick - 1}", j2);
+                    (_posed.Worst, _drawn.Worst) = (MathF.Max(_posed.Worst, f1), MathF.Max(_drawn.Worst, f2));
                 }
                 _posed.Frames++;
                 _drawn.Frames++;
@@ -264,8 +290,23 @@ public partial class ArmTest : Node
         t.Pops++;
         string key = $"{piece} {beat}";
         t.Why[key] = t.Why.GetValueOrDefault(key) + 1;
-        if (t.Why[key] == 1 && t.Notes.Count < 40) t.Notes.Add($"{piece} turned {deg:F0}° in a frame ({swing:F0}° of its length, the rest a roll): {doing}, tick {tick - 1}");
+        if (t.Why[key] == 1 && t.Notes.Count < 150) Note(t, $"{piece} turned {deg:F0}° in a frame ({swing:F0}° of its length, the rest a roll): {doing}, tick {tick - 1}");
         _firstFlip ??= (s, seed, tick - 1);
+    }
+
+    void Note(Tally t, string s)
+    {
+        t.Notes.Add(s);
+        if (Trace) t.Notes.AddRange(_ring);
+    }
+
+    void Flicked(Tally t, string piece, string beat, string doing, float m)
+    {
+        t.Jumps++;
+        t.WorstJump = MathF.Max(t.WorstJump, m);
+        string key = $"{piece} {beat}";
+        t.JumpWhy[key] = t.JumpWhy.GetValueOrDefault(key) + 1;
+        if (t.JumpWhy[key] == 1 && t.Notes.Count < 300) Note(t, $"{piece} flicked {m * 100f:F1} cm in a frame: {doing}");
     }
 
     /// <summary>The beats of a body's day, each its name, its length (s) and what it asks for at each moment of it.</summary>
@@ -324,9 +365,8 @@ public partial class ArmTest : Node
         });
         foreach (BodyAct g in new[] { BodyAct.WaveOff, BodyAct.Beckon, BodyAct.Point, BodyAct.Shrug, BodyAct.Warn, BodyAct.Celebrate, BodyAct.Grieve, BodyAct.Fidget, BodyAct.Taunt, BodyAct.Present, BodyAct.Greet, BodyAct.Play, BodyAct.Thanks, BodyAct.Rummage })
         {
-            int style = r.Int(0, 2);
             Vector3 to = Around(r.Range(2f, 6f), 0.3f, 2.2f);
-            yield return ($"{g}", 1.6f, (t, a) => (a.Act, a.Style, a.ActAt) = (g, style, to));
+            yield return ($"{g}", 1.6f, (t, a) => (a.Act, a.ActAt) = (g, to));
         }
         float p0 = r.Range(0f, MathF.Tau);
         yield return ("pointing round", 4f, (t, a) => (a.Act, a.ActAt) = (BodyAct.Point, at() + new Vector3(MathF.Sin(p0 + 1.6f * t) * 4f, 1.4f + MathF.Sin(t * 1.3f), MathF.Cos(p0 + 1.6f * t) * 4f)));
