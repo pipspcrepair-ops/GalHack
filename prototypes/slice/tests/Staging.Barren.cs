@@ -37,7 +37,7 @@ public sealed partial class Staging
 
         // The field: off the landing's made ground, looking across the sun's way so every rim throws its shadow sideways.
         Vector3 field = Ring(start, 220f, 1, 8);
-        foreach (int x in BarrenShot("field", field, 1.7f, -6f, Across)) yield return x;
+        foreach (int x in BarrenShot("field", field, 1.7f, -6f, Across, open: true)) yield return x;
 
         // Up: the biggest body in the sky over the land, low enough that the ground is in the frame.
         foreach (int x in BarrenShot("up", field, 1.7f, float.NaN, s => s.Drawn.Count == 0 ? Across(s) : s.Drawn.MaxBy(d => d.Angular).Direction, body: true)) yield return x;
@@ -79,7 +79,7 @@ public sealed partial class Staging
                 if (Enumerable.Range(0, 8).All(k => At(Ring(p, 200f, k, 8)) == Biome.Highland) && At(p) == Biome.Highland) high = p;
             }
         if (high is Vector3 h)
-            foreach (int x in BarrenShot("highland", h, 1.7f, -6f, Across)) yield return x;
+            foreach (int x in BarrenShot("highland", h, 1.7f, -6f, Across, open: true)) yield return x;
         else GD.Print("BARREN highland: none within 4 km (an icy or metal body has none)");
     }
 
@@ -100,9 +100,10 @@ public sealed partial class Staging
     /// <summary>
     /// The sleeper set down at a spot and the ground round it streamed in; the sky turned to that place's low sun (about 20° up,
     /// as relief reads best; with <paramref name="body"/>, the biggest body in the sky about 25° up too); and a shot from an
-    /// eye this high over it, the way <paramref name="way"/> gives, pitched (degrees; NaN: as the way itself is). No shot with no tag.
+    /// eye this high over it, the way <paramref name="way"/> gives (with <paramref name="open"/>, the nearest way round from it over open ground),
+    /// pitched (degrees; NaN: as the way itself is, under a body in the sky). No shot with no tag.
     /// </summary>
-    IEnumerable<int> BarrenShot(string tag, Vector3 at, float high, float pitch, Func<PlanetSurface.Skies.SkyRig, Vector3> way, bool body = false)
+    IEnumerable<int> BarrenShot(string tag, Vector3 at, float high, float pitch, Func<PlanetSurface.Skies.SkyRig, Vector3> way, bool body = false, bool open = false)
     {
         _game.FixedCamera = null;
         _game.Survivor.PlaceOutside(Feet(at).ToNumerics());
@@ -125,7 +126,15 @@ public sealed partial class Staging
         if (tag == null) yield break;
         foreach (int x in _drive.Wait(10)) yield return x;
         Vector3 look = way(sky).Normalized(), flat = new Vector3(look.X, 0f, look.Z).Normalized();
-        if (float.IsNaN(pitch)) pitch = Mathf.RadToDeg(Mathf.Asin(look.Y)) - 12f; // the body over the middle, the land along the bottom
+        float fov = _game.Settings.Fov;
+        if (float.IsNaN(pitch))
+        {
+            // The body in the frame with the land along its bottom: a wider lens for one high in the sky.
+            float up = Mathf.RadToDeg(Mathf.Asin(look.Y));
+            _game.Settings.Fov = Mathf.Max(fov, up + 26f);
+            pitch = Mathf.Min(up - 12f, _game.Settings.Fov * 0.5f - 12f);
+        }
+        else if (open) flat = Open(at, flat, high); // over open ground, never into the slope beside it
         look = flat * Mathf.Cos(Mathf.DegToRad(pitch)) + Vector3.Up * Mathf.Sin(Mathf.DegToRad(pitch));
         Vector3 front = at + flat * 1.5f; // the eye out in front of the sleeper's own head
         Vector3 eye = _game.Zone.GroundAt(front.X, front.Z) + Vector3.Up * high;
@@ -136,5 +145,22 @@ public sealed partial class Staging
             + (body && sky.Drawn.Count > 0 ? $", {sky.Drawn.MaxBy(d => d.Angular).Body.Name} {Mathf.RadToDeg(Mathf.Asin(sky.Drawn.MaxBy(d => d.Angular).Direction.Y)):F0}° up" : ""));
         Snap(tag);
         _game.FixedCamera = null;
+        _game.Settings.Fov = fov;
+    }
+
+    /// <summary>The way nearest the one asked for, round from it, whose ground ahead never rises past the eye's level by more than a twentieth.</summary>
+    Vector3 Open(Vector3 at, Vector3 prefer, float high)
+    {
+        float eye = _game.Zone.GroundAt(at.X, at.Z).Y + high, best = float.MinValue;
+        Vector3 pick = prefer;
+        for (int k = 0; k < 16; k++)
+        {
+            float a = (k % 2 == 0 ? 1 : -1) * ((k + 1) / 2) * Mathf.Tau / 16f;
+            Vector3 d = prefer.Rotated(Vector3.Up, a);
+            float worst = new[] { 15f, 30f, 60f, 120f }.Min(r => (eye - _game.Zone.GroundAt(at.X + d.X * r, at.Z + d.Z * r).Y) / r);
+            if (worst > -0.05f) return d;
+            if (worst > best) (best, pick) = (worst, d);
+        }
+        return pick;
     }
 }
