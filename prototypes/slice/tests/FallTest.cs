@@ -211,7 +211,7 @@ public partial class FallTest : Node
         for (int t = 0; t < wait * 60 && who == null; t++)
         {
             TopUp();
-            if (t % 30 == 0 && town.People.Where(fits).Where(p => Under(place, p.Pos) && DropUnder(town, p.Pos) >= room).OrderByDescending(p => MathF.Min(DropUnder(town, p.Pos), 6f)).FirstOrDefault() is { } pick)
+            if (t % 30 == 0 && town.People.Where(fits).Where(p => MathF.Abs(p.Pos.Y - MathF.Round(p.Pos.Y)) < 0.02f && Under(place, p.Pos) && DropUnder(town, p.Pos) >= room).OrderByDescending(p => MathF.Min(DropUnder(town, p.Pos), 6f)).FirstOrDefault() is { } pick)
             {
                 Stand(town, pick);
                 for (int i = 0; i < 30; i++) { TopUp(); _drive.Face(town.World(pick.Pos + Vector3.Up)); yield return 0; }
@@ -433,11 +433,11 @@ public partial class FallTest : Node
         return hit.Count > 0 ? ((Vector3)hit["position"]).Y : GroundNow(w.X, w.Z);
     }
 
-    /// <summary>Water near the settlement (world): deep enough to swim in (over two metres) or shallow enough to wade (a hand to 0.6 m); null if none within 400 m.</summary>
+    /// <summary>Water near the settlement (world): deep enough to swim in (over two metres) or shallow enough to wade (a hand to 0.6 m); null if none within 800 m.</summary>
     (Vector3 At, float Top, float Floor)? WaterNear(Town town, bool deep)
     {
         Vector3 o = town.World(Vector3.Zero);
-        for (float r = 20f; r <= 400f; r += 4f)
+        for (float r = 20f; r <= 800f; r += r < 400f ? 4f : 8f)
             for (int k = 0; k < 36; k++)
             {
                 Vector3 at = o + new Vector3(MathF.Sin(k * MathF.Tau / 36f), 0f, MathF.Cos(k * MathF.Tau / 36f)) * r;
@@ -455,7 +455,7 @@ public partial class FallTest : Node
     IEnumerable<int> Water(Town town, HashSet<Town.Person> used, bool deep)
     {
         string what = deep ? "into deep water" : "into shallow water";
-        if (WaterNear(town, deep) is not var (at, top, floor)) { GD.Print($"  (no {(deep ? "deep" : "shallow")} water within 400 m of the settlement: not tried here)"); yield break; }
+        if (WaterNear(town, deep) is not var (at, top, floor)) { GD.Print($"  (no {(deep ? "deep" : "shallow")} water within 800 m of the settlement: not tried here)"); yield break; }
         Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep).FirstOrDefault();
         if (who == null) { Check(false, $"someone to drop {what}"); yield break; }
         used.Add(who);
@@ -502,10 +502,11 @@ public partial class FallTest : Node
     /// <summary>One of the land's creatures that swims, dropped into deep water: it swims for a bank and walks out, never with a leap.</summary>
     IEnumerable<int> WaterCreature(Town town)
     {
-        if (WaterNear(town, deep: true) is not var (at, top, floor)) { GD.Print("  (no deep water within 400 m: no creature dropped in)"); yield break; }
+        if (WaterNear(town, deep: true) is not var (at, top, floor)) { GD.Print("  (no deep water within 800 m: no creature dropped in)"); yield break; }
         _game.Survivor.PlaceOutside(((at + Vector3.Back * 8f) with { Y = MathF.Max(top, _game.Zone.Planet.GroundHeight(at.X, at.Z + 8f)) + 1f }).ToNumerics());
         for (int i = 0; i < 240; i++) { TopUp(); yield return 0; }
         WildlifePatch patch = _game.Zone.Wildlife;
+        for (int i = 0; i < 1800 && !patch.Sim.Terrain.Inside(patch.PatchLocal(at), 20f); i++) { TopUp(); yield return 0; } // (the creatures' patch baked round the water)
         Creature who = patch.Sim.Creatures.Where(c => !c.Dead && !c.Removed && c.Space == null && !c.Species.Flies && c.Species.Rig is not (RigKind.GasBag or RigKind.Swarm or RigKind.Hopper)
             && c.Species.Domestic == DomesticKind.None && !c.Species.IsHunter && c.Target == null && Swims(c.Species)).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
         if (who == null) { GD.Print("  (no creature that swims in the patch: none dropped in)"); yield break; }
