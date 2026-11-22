@@ -22,6 +22,7 @@ public sealed partial class Staging
         _game.Hands.Visible = false;
         GD.Print($"world: seed {_game.World.Seed}, {_game.World}");
         PowerLines lines = _game.Zone.Planet.Infra.Power;
+        GD.Print($"(power: {lines.Poles.Count} poles, {lines.Poles.Count(q => q.Pylon)} pylons, {lines.Poles.Count(q => q.Fallen)} down, {lines.Wires.Count} wires; roles {string.Join(", ", lines.Poles.GroupBy(q => q.Role).Select(g => $"{g.Key} {g.Count()}"))})");
         Vector3 from = _game.Survivor.WorldFeet;
         Vector3 At(int i) => _game.Zone.Planet.NearestCopy(new Vector3((float)lines.Poles[i].X, lines.Poles[i].Ground, (float)lines.Poles[i].Z), from);
         foreach (bool pylon in new[] { false, true })

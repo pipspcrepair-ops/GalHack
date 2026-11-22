@@ -29,20 +29,29 @@ public sealed partial class Staging
         for (int i = 0; i < 3600 && _game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         Place place = _game.Places.PlaceOf(site);
         if (place == null || !WorldFire.Wall(place, rng, out Int3 cell, out Int3 o)) { GD.Print($"(shotdamage: {site.Name} has no outside wall to fire at)"); yield break; }
-        Vector3 outward = new(o.X, o.Y, o.Z), face = place.WorldOf(cell) + outward * 0.5f, across = outward.Cross(Vector3.Up);
-        _game.Survivor.PlaceOutside((face + outward * 14f + across * 8f).ToNumerics());
+        Vector3 outward = new(o.X, o.Y, o.Z), face = place.WorldOf(cell) + outward * 0.5f;
+        if (_args.ContainsKey("tag"))
+        {
+            // A kind of place asked for by name: its front, where you come at it (a fuel stop's forecourt and shop).
+            var mid = _game.Zone.Planet.NearestCopy(new Vector3((site.Footprint.Min.X + site.Footprint.Max.X) * 0.5f, gate.Y, (site.Footprint.Min.Z + site.Footprint.Max.Z) * 0.5f), from);
+            outward = new Vector3(gate.X - mid.X, 0f, gate.Z - mid.Z).Normalized();
+            face = mid + Vector3.Up * 2f;
+        }
+        Vector3 across = outward.Cross(Vector3.Up);
+        float off = _args.ContainsKey("tag") ? 3f : 1f; // (a whole place's front is seen and shot from further off than one wall)
+        _game.Survivor.PlaceOutside((face + outward * 14f * off + across * 8f).ToNumerics());
         foreach (int x in _drive.Wait(60)) yield return x;
-        Vector3 wallEye = face + outward * 7f + across * 3f + Vector3.Up * 0.8f;
+        Vector3 wallEye = face + (outward * 7f + across * 3f) * off + Vector3.Up * 0.8f * off;
         foreach (int x in View("wall-before", wallEye, face)) yield return x;
         GalHack.Arms.WeaponDef rifle = _game.Zone.Data.Arms.OfItem(Wildlife.Weapons.ItemOf("rifle")), rocket = WorldFire.Rocket(_game);
         for (int i = 0; i < 12; i++)
         {
-            WorldFire.Fire(_game, rifle, face + outward * 6f + across * 0.3f, face + across * (i % 3 - 1) * 0.6f);
+            WorldFire.Fire(_game, rifle, face + outward * 6f * off + across * 0.3f, face + across * (i % 3 - 1) * 0.6f * off);
             foreach (int x in _drive.Wait(5)) yield return x;
         }
         for (int i = 0; i < 2; i++)
         {
-            WorldFire.Fire(_game, rocket, face + outward * 7f, face + Vector3.Up * 0.5f * i);
+            WorldFire.Fire(_game, rocket, face + outward * 7f * off, face + across * (i - 0.5f) * 2f * off + Vector3.Up * 0.5f * i);
             foreach (int x in _drive.Wait(50)) yield return x;
         }
         Vector3 spot = _game.Zone.GroundAt(face.X + outward.X * 24f + across.X * 10f, face.Z + outward.Z * 24f + across.Z * 10f);
