@@ -233,6 +233,7 @@ public sealed partial class Town
             p.StuckFor = 0f;
             return;
         }
+        float was = p.StuckFor;
         if ((p.StuckFor += dt) < HeldLook) return;
         if (Settles(p)) return;
         // Someone in the way: stood still a moment, looking at them, rather than pressing on into them. (Held by the furniture: aside at once.)
@@ -254,8 +255,8 @@ public sealed partial class Town
                 return;
             }
         }
-        if (p.StuckFor < HeldWay) return;
-        (p.StuckFor, p.Held) = (0f, false);
+        // Every few seconds still held, another way from where they stand (and meanwhile they squeeze by whoever holds them: Move).
+        if ((int)(was / HeldWay) == (int)(p.StuckFor / HeldWay)) return;
         if (p.Spot < 0 || p.Spot >= Spots.Count) return;
         System.Collections.Generic.List<Vector3> path = PathFromHere(p, p.Spot, out bool pending);
         if (pending) { p.Path = new System.Collections.Generic.List<Vector3>(); p.Asked = p.Spot; }
