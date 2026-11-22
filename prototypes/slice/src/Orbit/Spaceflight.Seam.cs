@@ -162,13 +162,13 @@ public partial class Spaceflight
         N.Vector3 q = c.ToGlobe(eye.ToNumerics()), h = o.Home.ToGlobe(eye.ToNumerics());
         var inHome = ViewFrom ?? new PlanetSurface.Skies.D3(h.X, h.Y, h.Z);
         var inHere = c.IsHome ? inHome : new PlanetSurface.Skies.D3(q.X, q.Y, q.Z);
-        if (s.Arrived)
+        if (s.Arrived && c.Surface == s)
         {
             s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
             s.Sky.Track();
             Lap("the sky below");
         }
-        o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
+        o.Space.Track(o.Home.Seen, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
     }
 
     /// <summary>Lays the orbit out over the surface at the point under a world position.</summary>

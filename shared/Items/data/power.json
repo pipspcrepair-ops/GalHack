@@ -50,7 +50,7 @@
     "fold-drive": { "engaged": 1 }
   },
   "drives": {
-    "warp-drive": { "fuel": "warp-cell", "per": 1, "unit": "AU", "spool": 10 },
+    "warp-drive": { "fuel": "warp-cell", "per": 1, "unit": "AU", "spool": 6 },
     "fold-drive": { "fuel": "fold-crystal", "per": 1, "unit": "LY", "spool": 15 }
   },
   "shield": { "fuel": "fold-crystal", "foldPerHp": 0.0002, "cooldown": 15, "blocks": { "shield-generator": { "hp": 4000, "recharge": 500 } } },

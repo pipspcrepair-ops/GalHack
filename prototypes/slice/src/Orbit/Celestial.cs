@@ -75,7 +75,8 @@ public sealed class Celestial
         IsHome = home;
     }
 
-    public string Name => IsHome ? "world" : Charts.Tidy(Body.Name);
+    /// <summary>"world" for the start world (the system's own model sees from it); any other body by its name.</summary>
+    public string Name => IsHome && Seen?.Origin == null ? "world" : Charts.Tidy(Body.Name);
 
     public N.Vector3 ToWorld(N.Vector3 globe) => Shift + N.Vector3.Transform(globe, Turn);
     public N.Vector3 ToGlobe(N.Vector3 world) => N.Vector3.Transform(world - Shift, N.Quaternion.Conjugate(Turn));

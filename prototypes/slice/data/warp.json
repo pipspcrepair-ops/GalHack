@@ -1,0 +1,21 @@
+// The warp drive's trips inside a system (docs/solar-systems.md section 6 and section 8, DESIGN.md "Flying in a
+// system"). The drive's fuel (a warp cell a chart AU) and its spool come from shared/Items/data/power.json. Read by
+// src/Orbit/Spaceflight.Warp.cs.
+{
+  // The trip in the tunnel: about 6 s a chart AU after the spool (so about 670 km/s), never under this. It lasts
+  // longer while the destination is still being made: a slower machine gets a longer tunnel, never a freeze.
+  "tripSecondsPerAu": 6,
+  "leastTripSeconds": 2,
+  // Short-range warp, to a body or wreck of the orbit you are in: free on any warp drive, from this speed (m/s).
+  "shortRangeSpeed": 30,
+  // Arrival at a world is in its highest orbit: this far inside the edge of the space where it is the frame you fly in (m).
+  "inside": 300,
+  // A gas giant's high orbit (its radii, out past its rings) and the star's (chart AU): a warp stops there.
+  "giantHighOrbit": 3.0,
+  "starHighOrbitAu": 0.25,
+  // An arrival keeps clear of every other body's air by this (m), with a clear line to what it faces, and of wrecks by this.
+  "clearance": 1500,
+  "wreckClearance": 450,
+  // A short-range warp to a wreck stops this far off it (m).
+  "wreckStandOff": 350
+}

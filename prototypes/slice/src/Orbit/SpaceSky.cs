@@ -213,7 +213,7 @@ public partial class SpaceSky : Node3D
         var bodyShader = new Shader { Code = BodySource };
         foreach (Orbiter b in model.Bodies)
         {
-            if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == model.Home) continue;
+            if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == model.Home && b.Spec != null) continue; // a giant you are round is drawn here: it has no globe
             var material = new ShaderMaterial { Shader = bodyShader };
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.Color));
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("band"), C(b.Band));
