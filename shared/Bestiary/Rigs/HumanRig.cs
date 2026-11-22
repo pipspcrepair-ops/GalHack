@@ -341,7 +341,7 @@ public sealed partial class HumanRig : Rig
     {
         Figure f = _f;
         int stepper = hitFlat.Dot(right) > 0f ? 1 : 0;
-        float wide = (g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed : 0f) + stalk * 0.06f; // a wide stance for a threat or a fright
+        float wide = (g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed * (1f - moving) : 0f) + stalk * 0.06f; // a wide stance for a threat or a fright, standing (a run stays narrow)
         float apart = 0f;
         for (int i = 0; i < 2; i++)
         {
