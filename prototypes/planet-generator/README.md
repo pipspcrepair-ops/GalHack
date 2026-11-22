@@ -387,7 +387,7 @@ The generator's public API only grew. Nothing was renamed or removed, and downst
    {
        if (map.Has(k, CellFlags.Water)) continue;
        var l = (Landform)map.Landform[k];
-       Rgb c = BiomeLook.Color((Biome)map.Biome[k]);
+       Rgb c = WorldPalette.Of(map.Spec).Land((Biome)map.Biome[k], map.Temperature[k], map.Humidity[k]);
        var (s, n) = sums.GetValueOrDefault(l);
        sums[l] = (s + new Godot.Color(c.R, c.G, c.B), n + 1);
    }

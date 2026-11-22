@@ -32,12 +32,12 @@ public sealed record SkyBody
 /// A world's place in its system, as far as the sky is concerned: the star it circles, the air it
 /// breathes, and what else hangs overhead. Derived deterministically from the planet spec, so
 /// every player sees the same sky, and the sky follows the place:
-/// - <b>Star</b>: its class sets the sunlight's colour and how big and bright the sun is. A red
-///   dwarf's world has orange light and a muted teal-grey sky; a blue-white star bleaches it.
-/// - <b>Air</b>: Rayleigh scattering of that starlight gives the clear-sky colour (blue under a
-///   yellow star), then dust, ash, sulfur or exotic chemistry tint and thicken it. Earth-like
-///   worlds read Earth-like; dusty worlds read dusty; only exotic air (or a nebula behind it)
-///   earns pastel and neon colours.
+/// - <b>Star</b>: its class sets the sunlight's colour (Planck's law at its temperature) and how
+///   big and bright the sun is. A red dwarf's world has orange light under a grey-gold sky.
+/// - <b>Air</b>: its kind and thickness, through the world's palette (<see cref="WorldPalette"/>):
+///   Rayleigh scattering of that starlight gives the clear sky (blue under a yellow star), dust,
+///   ash and sulfur tint and thicken it. Only exotic air (or a nebula behind it) earns pastel and
+///   neon colours.
 /// - <b>Bodies</b>: moons, a neighbouring gas giant (ringed if the planet's RingedSky modifier
 ///   says the system has one), and sometimes a nebula backdrop, sized and placed to make sense.
 /// </summary>
@@ -244,12 +244,6 @@ public sealed record SkySystem
             });
         }
         return list;
-    }
-
-    static Rgb Normalize(Rgb c)
-    {
-        float m = MathF.Max(c.R, MathF.Max(c.G, c.B));
-        return m > 0f ? c * (1f / m) : c;
     }
 
     static float Frac(float v) => v - MathF.Floor(v);

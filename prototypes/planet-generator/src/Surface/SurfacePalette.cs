@@ -32,14 +32,15 @@ sealed class SurfacePalette
         _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), ColorMap.BorderWave, 4);
         _clump = new Fractal(Hash.Of(map.Spec.Seed, 0x636C756D), 70, 3);
 
-        (Cliff, GlowColor) = (map.Def.Archetype, map.Def.Variant) switch
+        // Cliffs are the world's own rock (its palette's); what glows is the type's own.
+        Cliff = WorldPalette.Of(map.Spec).Bedrock;
+        GlowColor = (map.Def.Archetype, map.Def.Variant) switch
         {
-            (Archetype.Temperate, _) => (BiomeLook.Color(Biome.Cliff), Rgb.Hex("ffffff")),
-            (Archetype.Arid, _) => (BiomeLook.Color(Biome.RedRock), Rgb.Hex("ffffff")),
-            (Archetype.Ice, _) => (BiomeLook.Color(Biome.BlueIce), Rgb.Hex("40fff0")),
-            (Archetype.Lava, _) => (BiomeLook.Color(Biome.Obsidian), Rgb.Hex("ff4a10")),
-            (Archetype.Alien, 0) => (BiomeLook.Color(Biome.CrystalSpires), Rgb.Hex("e070ff")),
-            _ => (BiomeLook.Color(Biome.Mycelium), Rgb.Hex("30ffc0")),
+            (Archetype.Temperate, _) or (Archetype.Arid, _) => Rgb.Hex("ffffff"),
+            (Archetype.Ice, _) => Rgb.Hex("40fff0"),
+            (Archetype.Lava, _) => Rgb.Hex("ff4a10"),
+            (Archetype.Alien, 0) => Rgb.Hex("e070ff"),
+            _ => Rgb.Hex("30ffc0"),
         };
         Seabed = Rgb.Lerp(look.DeepSea, Rgb.Hex("c8b890"), 0.35f) * 0.8f;
         RiverBed = Rgb.Lerp(look.DeepSea, Rgb.Hex("5a4a3a"), 0.6f);

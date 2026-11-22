@@ -214,10 +214,10 @@ public sealed class GroundPalette
         for (int k = 0; k < map.Count; k++)
         {
             var biome = (Biome)map.Biome[k];
-            // The soil the cell's own climate weathers from the world's rock, or the mineral the biome is.
-            _cells[k] = colours.Ground(biome, map.Temperature[k], map.Humidity[k], Alien(biome));
-            // Green country takes the green of whatever grows on it: russet under russet trees.
-            if (verdure is GalHack.Plants.Tone v) _cells[k] = Rgb.Lerp(_cells[k], new Rgb(v.R, v.G, v.B), Verdant(biome));
+            // The soil the cell's own climate weathers from the world's rock (or the mineral the biome is), under the
+            // colour of whatever grows on it: russet under russet trees, bare where nothing grows.
+            float warm = map.Temperature[k], wet = map.Humidity[k];
+            _cells[k] = verdure is GalHack.Plants.Tone v ? colours.Land(biome, warm, wet, new Rgb(v.R, v.G, v.B)) : colours.Ground(biome, warm, wet);
             _glow[k] = biome switch { Biome.LavaField => 1f, Biome.HotSpring => 0.12f, Biome.GlowMoss => 0.1f, _ => 0f };
         }
         _cells = ColorMap.Soften(map, _cells);
@@ -242,35 +242,7 @@ public sealed class GroundPalette
         Snow = colours.Snow;
     }
 
-    /// <summary>How much of a biome's topsoil is what grows on it: a meadow's grass all but hides its soil.</summary>
-    static float Verdant(Biome b) => b switch
-    {
-        Biome.Grassland or Biome.Meadow => 0.75f,
-        Biome.Jungle or Biome.Riverbank or Biome.Oasis => 0.65f,
-        Biome.Forest or Biome.Rainforest => 0.55f,
-        Biome.PineForest or Biome.CloudForest => 0.5f,
-        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => 0.45f,
-        Biome.Tundra or Biome.Scrub or Biome.HotSpring => 0.3f,
-        _ => 0f,
-    };
 
-    /// <summary>The ground of biomes whose chemistry the world palette doesn't model: hot-spring sinter, crystal, fungal and alien ground.</summary>
-    static Rgb Alien(Biome b) => b switch
-    {
-        Biome.BlueIce => Rgb.Hex("9dc1da"),
-        Biome.HotSpring => Rgb.Hex("6aa59c"),
-        Biome.Sinter => Rgb.Hex("bf8f5e"),
-        Biome.Obsidian => Rgb.Hex("201b24"),
-        Biome.Sulfur => Rgb.Hex("c2ae4a"),
-        Biome.CrystalPlain => Rgb.Hex("6c5c86"),
-        Biome.CrystalSpires => Rgb.Hex("8a6ca6"),
-        Biome.Chalk => Rgb.Hex("d2c6d0"),
-        Biome.GlowMoss => Rgb.Hex("3a8676"),
-        Biome.FungalForest => Rgb.Hex("874a3c"),
-        Biome.SporeMarsh => Rgb.Hex("5e6a35"),
-        Biome.Mycelium => Rgb.Hex("cbbfa4"),
-        _ => Rgb.Hex("6a6a5a"),
-    };
 
     /// <summary>Blended soil colour at a point (canonical metres) and how much it glows (lava fields, glow moss).</summary>
     public Rgb SoilAt(double x, double z, out float glow)

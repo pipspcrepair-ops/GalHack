@@ -130,27 +130,32 @@ public sealed record WorldPalette
                 soils[t * Grid + w] = (spec.Airless ? fines : Soil(fines, t / (Grid - 1f), w / (Grid - 1f), iron, life)).Reflectance(); // no air, no weather: regolith everywhere
 
         // ---- Air ----
+        // Optical depths straight up, by wavelength (nm), so the visible bands and the near infrared the plants see agree.
         float column = air.Column;
-        Spectrum rayleigh = Spectrum.Of(l =>
+        float RayleighAt(float l)
         {
             float um = l / 1000f, u2 = 1f / (um * um);
             return 0.008569f * u2 * u2 * (1f + 0.0113f * u2 + 0.00013f * u2 * u2) * column; // Hansen & Travis 1974
-        });
-        // The particles: how much they scatter by wavelength (Ångström) and what share they absorb (single-scattering albedo).
-        (float angstrom, Spectrum albedo, Spectrum? gas) = air.Particles switch
+        }
+        // The particles: how much they scatter by wavelength (Ångström) and what share they don't absorb (single-scattering albedo).
+        (float angstrom, Spectrum albedo) = air.Particles switch
         {
-            Particles.Haze => (0.5f, Spectrum.Flat(0.99f), (Spectrum?)null),
-            Particles.Dust => (0.1f, Albedo(dust), null),
-            Particles.Ash => (0.3f, Spectrum.Of(l => 0.58f + 0.14f * (l - 400f) / 300f), null),
-            // Venus' clouds: sulfuric acid, nearly white, under a gas that drinks the blue (sulfur and its oxides).
-            Particles.Sulfate => (1.1f, Spectrum.Flat(0.99f), Spectrum.Below(470f, 25f) * 0.6f),
-            _ => (1.3f, Spectrum.Flat(0.96f), null),
+            Particles.Haze => (0.5f, Spectrum.Flat(0.99f)),
+            Particles.Dust => (0.1f, Albedo(dust)),
+            Particles.Ash => (0.3f, Spectrum.Of(l => 0.58f + 0.14f * (l - 400f) / 300f)),
+            Particles.Sulfate => (1.1f, Spectrum.Flat(0.99f)), // Venus' clouds: sulfuric acid, nearly white
+            _ => (1.3f, Spectrum.Flat(0.96f)),
         };
-        Spectrum aerosol = Spectrum.Of(l => air.Aerosol * MathF.Pow(l / 550f, -angstrom));
-        Spectrum absorb = Spectrum.Flat(0f);
-        if (air.Oxygen) absorb += Spectrum.Band(600f, 45f) * (0.03f * column); // ozone's Chappuis band: deepens twilight blue
-        if (gas is Spectrum g) absorb += g * column;
-        Spectrum extinction = rayleigh + aerosol + absorb;
+        float ParticlesAt(float l) => air.Aerosol * MathF.Pow(l / 550f, -angstrom);
+        static float G(float l, float c, float w) => MathF.Exp(-0.5f * (l - c) * (l - c) / (w * w));
+        // Gases that absorb: ozone's Chappuis band (deepens twilight blue) and oxygen's A band where there is oxygen;
+        // water vapour's near-infrared bands on any world with seas under its air; over Venus-like sulfuric haze,
+        // sulfur and its oxides drinking the blue.
+        float GasAt(float l) => column * ((air.Oxygen ? 0.03f * G(l, 600f, 45f) + G(l, 762f, 6f) : 0f)
+            + (wet ? 0.2f * G(l, 722f, 12f) + 0.35f * G(l, 820f, 18f) + 1.5f * G(l, 940f, 25f) : 0f)
+            + (air.Particles == Particles.Sulfate ? 0.35f / (1f + MathF.Exp((l - 470f) / 25f)) : 0f));
+        Spectrum rayleigh = Spectrum.Of(RayleighAt), aerosol = Spectrum.Of(ParticlesAt);
+        Spectrum extinction = rayleigh + aerosol + Spectrum.Of(GasAt);
         Spectrum scatter = rayleigh + aerosol * albedo;
 
         // Single scattering of the sun 45° up: the gas's Rayleigh phase, the particles' forward lobe. Thick particles
@@ -173,19 +178,9 @@ public sealed record WorldPalette
         }
 
         // ---- Plants ----
-        // Through the air with the sun 45° up: the gas's Rayleigh (λ⁻⁴ past the bands too), the particles, ozone, and
-        // the near infrared's absorbers that carve the light plants get: oxygen's A band (762 nm) and water vapour's
-        // bands (720, 820, 940 nm) on any world with seas under its air. They put the Sun's photon peak at the ground
-        // near 685 nm, where chlorophyll absorbs (Kiang et al. 2007).
-        static float G(float l, float c, float w) => MathF.Exp(-0.5f * (l - c) * (l - c) / (w * w));
-        float Through(float l)
-        {
-            float um = l / 1000f, rayleighAt = 0.008569f / (um * um * um * um) * column;
-            float oxygen = air.Oxygen ? column * (0.03f * G(l, 600f, 45f) + 1f * G(l, 762f, 6f)) : 0f;
-            float vapour = wet ? column * (0.2f * G(l, 722f, 12f) + 0.35f * G(l, 820f, 18f) + 1.5f * G(l, 940f, 25f)) : 0f;
-            return MathF.Exp(-1.4f * (rayleighAt + air.Aerosol * MathF.Pow(l / 550f, -angstrom) + oxygen + vapour));
-        }
-        Spectrum leaf = Leaves(kelvin, Through, k => U(4 + k), out float peak);
+        // The light at the ground with the sun 45° up, into the near infrared: oxygen's and water vapour's bands carve it
+        // there, which puts the Sun's photon peak at the ground near 685 nm, where chlorophyll absorbs (Kiang et al. 2007).
+        Spectrum leaf = Leaves(kelvin, l => MathF.Exp(-1.4f * (RayleighAt(l) + ParticlesAt(l) + GasAt(l))), k => U(4 + k), out float peak);
 
         // ---- Water ----
         // Phytoplankton by how much lives (clear blue seas to green ones), dissolved matter browning still water,
@@ -357,11 +352,35 @@ public sealed record WorldPalette
     }
 
     /// <summary>
+    /// The land's colour for a biome in a climate, as it reads from a distance: its ground under what grows on it
+    /// (<see cref="Cover"/>), <paramref name="growth"/>'s colour or, given none, the world's leaf pigment; bare
+    /// ground where nothing lives.
+    /// </summary>
+    public Rgb Land(Biome biome, float warm, float wet, Rgb? growth = null)
+    {
+        Rgb ground = Ground(biome, warm, wet);
+        Rgb? green = growth ?? (Life > 0f ? Leaf : null);
+        return green is Rgb g ? Rgb.Lerp(ground, g, Cover(biome)) : ground;
+    }
+
+    /// <summary>How much of a biome's ground is hidden by what grows on it: a meadow's grass all but hides its soil.</summary>
+    public static float Cover(Biome b) => b switch
+    {
+        Biome.Grassland or Biome.Meadow => 0.75f,
+        Biome.Jungle or Biome.Riverbank or Biome.Oasis => 0.65f,
+        Biome.Forest or Biome.Rainforest => 0.55f,
+        Biome.PineForest or Biome.CloudForest => 0.5f,
+        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => 0.45f,
+        Biome.Tundra or Biome.Scrub or Biome.HotSpring => 0.3f,
+        _ => 0f,
+    };
+
+    /// <summary>
     /// The ground's own colour for a biome in a climate (warmth and wetness 0..1, a map cell's): the soil its climate
     /// weathers from the world's rock, or where the biome is a mineral in itself, that mineral (sand, snow, salt,
-    /// basalt, sulfur). Alien grounds keep their own chemistry (<paramref name="alien"/>).
+    /// basalt). Grounds whose chemistry this model doesn't hold keep their own (<see cref="BiomeLook.Ground"/>).
     /// </summary>
-    public Rgb Ground(Biome biome, float warm, float wet, Rgb alien)
+    public Rgb Ground(Biome biome, float warm, float wet)
     {
         switch (biome)
         {
@@ -378,7 +397,7 @@ public sealed record WorldPalette
             case Biome.BlueIce: case Biome.HotSpring: case Biome.Sinter:
             case Biome.CrystalPlain: case Biome.CrystalSpires: case Biome.Chalk: case Biome.GlowMoss:
             case Biome.FungalForest: case Biome.SporeMarsh: case Biome.Mycelium:
-                return alien;
+                return BiomeLook.Ground(biome);
         }
         // The climate's soils, blended between the grid's corners.
         float ft = Math.Clamp(warm, 0f, 1f) * (Grid - 1), fw = Math.Clamp(wet, 0f, 1f) * (Grid - 1);
