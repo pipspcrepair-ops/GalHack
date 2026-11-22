@@ -177,7 +177,7 @@ public partial class ProductionTest : TestBase
         Check(small.Order("thrust-assembly").Status == OrderStatus.NeedsHigherTier, "a small constructor can't make a thrust assembly");
         Check(large.Order("thrust-assembly").Ok, "a large constructor can");
         Check(large.Order("warp-coil").Status == OrderStatus.NeedsHigherTier, "only an advanced constructor makes warp coils");
-        Check(small.Order("lattice-core").Status == OrderStatus.NoRecipe, "unique finds can't be ordered");
+        Check(small.Order("echo-shard").Status == OrderStatus.NoRecipe, "unique finds can't be ordered");
         Check(small.Order("iron-ore").Status == OrderStatus.NoRecipe, "raw ore can't be ordered");
         double t = _items.Item("iron-plate").Recipe.Seconds;
         Check(Math.Abs(large.RunSeconds(_items.Item("iron-plate").Recipe) - t / 4) < 1e-9 && Math.Abs(survival.RunSeconds(_items.Item("iron-plate").Recipe) - t) < 1e-9,
@@ -343,7 +343,7 @@ public partial class ProductionTest : TestBase
     void TestDeconstructor()
     {
         var rules = new WorldRules();
-        SharedStorage storage = Storage(contents: Bill.Of(("winding", 10), ("iron-ore", 5), ("lattice-core", 1)));
+        SharedStorage storage = Storage(contents: Bill.Of(("winding", 10), ("iron-ore", 5), ("echo-shard", 1)));
         var decon = new Deconstructor(_items, _items.Machines.Deconstructor, storage, rules);
         Check(Math.Abs(decon.ReturnRate - 0.5) < 1e-9, "the deconstructor returns 50%");
 
@@ -358,7 +358,7 @@ public partial class ProductionTest : TestBase
         Check(storage.Count("winding") == 0, "the windings went into the machine");
 
         Check(decon.BreakItems("iron-ore").Status == DeconStatus.CantBreak, "raw ore can't be broken down");
-        Check(decon.BreakItems("lattice-core").Status == DeconStatus.CantBreak, "unique finds can't be broken down");
+        Check(decon.BreakItems("echo-shard").Status == DeconStatus.CantBreak, "unique finds can't be broken down");
         Check(decon.BreakItems("servo", 1).Status == DeconStatus.NotEnough, "it can't break down what storage doesn't hold");
 
         // Wreck blocks: three iron-plated blocks and a thruster come back as half their parts, whole.
