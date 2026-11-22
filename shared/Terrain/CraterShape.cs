@@ -15,13 +15,14 @@ public static class CraterShape
     /// The height a crater adds at <paramref name="t"/> = distance from its centre over its radius, metres
     /// against the land round it: <paramref name="depth"/> under it at the floor, <paramref name="rim"/> over
     /// it at the rim (t = 1), falling back to it by t = 1 + <paramref name="reach"/>. <paramref name="floor"/>
-    /// is the share of the radius that stays flat; <paramref name="peak"/> the height of a central peak.
+    /// is the share of the radius that stays flat; <paramref name="peak"/> the height of a central peak. <paramref name="ease"/>:
+    /// the rim falls away steepest at its crest and eases into the land (a natural impact's long ejecta fall, where a
+    /// ring would show where it ends), else in a straight run (a shell hole's thrown rim, inside its stamp's own blend).
     /// </summary>
-    public static float Profile(float t, float depth, float rim, float reach = 0.5f, float floor = 0f, float peak = 0f)
+    public static float Profile(float t, float depth, float rim, float reach = 0.5f, float floor = 0f, float peak = 0f, bool ease = false)
     {
         if (t >= 1f + reach) return 0f;
-        // The rim falls away steepest at its crest and eases into the land, so no ring marks where it ends.
-        if (t > 1f) return rim * Square(1f - (t - 1f) / reach);
+        if (t > 1f) return ease ? rim * Square(1f - (t - 1f) / reach) : rim * (1f - (t - 1f) / reach);
         // A parabolic bowl from the floor up to the rim's crest (a flat floor first, on a big one).
         float u = floor > 0f ? MathF.Max(0f, (t - floor) / (1f - floor)) : t;
         float h = rim - (depth + rim) * (1f - u * u);

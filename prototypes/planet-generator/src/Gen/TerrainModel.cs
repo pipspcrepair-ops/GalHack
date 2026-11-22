@@ -725,7 +725,7 @@ public sealed class TerrainModel
                 float complex = Mathx.Smooth(ComplexFrom, ComplexBy, radius);
                 float depth = CraterDepth(radius) * fresh, rim = radius * Mathx.Lerp(0.08f, 0.045f, complex) * fresh * Def.CraterRelief;
                 float peak = Hash.Unit(h, 6) < 0.75f ? depth * 0.55f * complex : 0f;
-                result += GalHack.Terrain.CraterShape.Profile(t, depth, rim, reach, 0.45f * complex, peak) * seen;
+                result += GalHack.Terrain.CraterShape.Profile(t, depth, rim, reach, 0.45f * complex, peak, ease: true) * seen;
             }
         }
         return result;
