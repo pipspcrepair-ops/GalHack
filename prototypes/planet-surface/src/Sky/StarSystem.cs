@@ -109,8 +109,20 @@ public readonly record struct Sighting(Orbiter Body, D3 Direction, double Distan
 /// </summary>
 public sealed class StarSystem
 {
-    /// <summary>One chart AU, m. Distances have their own ruler: the worlds' would put it at 60,000 km.</summary>
-    public const double AuMetres = 4e6;
+    /// <summary>
+    /// A world's radius from its map's width, m: the globe is as wide as its map (owner, 22 Nov: "Planet should scale
+    /// properly"), so a 16 x 8 km world is 16 km across. The one rule every body's <see cref="Orbiter.Radius"/> comes from.
+    /// </summary>
+    public static double RadiusOf(double widthMetres) => widthMetres * 0.5;
+
+    /// <summary>
+    /// How much bigger the worlds stood than under the old rule (radius = width / 2π): space grew with them, so every sky
+    /// keeps its look. Only the start's thruster moon stayed as near as before (<see cref="ThrusterMoonFrom"/>).
+    /// </summary>
+    const double Grown = Math.PI;
+
+    /// <summary>One chart AU, m: 4,000 km at the old worlds' size, grown with them. Distances have their own ruler, squeezed against the worlds'.</summary>
+    public const double AuMetres = 4e6 * Grown;
 
     /// <summary>Under this a body would be less than a pixel or so: it is drawn this size, in every view, as a point of light is.</summary>
     public const float LeastAngular = 0.0011f;
@@ -127,15 +139,17 @@ public sealed class StarSystem
     /// (Default Akua-Omicron's Sectors.yaml: Akua Moon 11.5 km, Omicron Moon 11.8 km, Oscutune Moon
     /// 8.3 km); for a 16 km start world and an 8 km moon this range leaves that much open space
     /// between the top of the world's crossing band and the moon's ground: about 45 s to a minute at
-    /// a vessel's 200 m/s.
+    /// a vessel's 200 m/s. That open space was 4 to 5.5 of the old radii (5.5 to 7 centre to centre, less
+    /// the world and its half-size moon); it is kept as it was when the worlds grew (owner: moon trips stay
+    /// as short), so the moon stands nearer in the new radii and looks bigger in the sky.
     /// </summary>
-    public const double ThrusterMoonFrom = 5.5, ThrusterMoonTo = 7.0;
+    public const double ThrusterMoonFrom = 1.5 + 4.0 / Grown, ThrusterMoonTo = 1.5 + 5.5 / Grown;
 
     /// <summary>The farthest the fuel moon may stand from a start world's centre, in its radii.</summary>
     public const double ThrusterReachRadii = ThrusterMoonTo;
 
     /// <summary>The radius of the biggest world you can land on (the largest width, <see cref="PlanetSpec.Widths"/>), m.</summary>
-    public static readonly double LargestLandableRadius = PlanetSpec.Widths[^1] * 1000.0 / Math.Tau;
+    public static readonly double LargestLandableRadius = RadiusOf(PlanetSpec.Widths[^1] * 1000.0);
 
     /// <summary>A giant's radius: eight to eleven of the home world's, and always bigger than the biggest world you could land on (so the star, bigger still, and every giant out-size every world).</summary>
     static double GiantRadius(double homeRadius, float roll) => Math.Max(homeRadius * (8.0 + 3.0 * roll), LargestLandableRadius * 1.5);
@@ -451,7 +465,7 @@ public sealed class StarSystem
         if (seed == 0) seed = spec.Seed;
         var rng = new Rng(Hash.Of(seed, 0x535953, (long)spec.Archetype, spec.Variant));
         float next() => rng.NextFloat();
-        double L = LuminosityOf(sky.Star), homeRadius = width / Math.Tau, spread = Math.Clamp(Math.Pow(L, 0.1), 0.75, 1.6);
+        double L = LuminosityOf(sky.Star), homeRadius = RadiusOf(width), spread = Math.Clamp(Math.Pow(L, 0.1), 0.75, 1.6);
         var s = new StarSystem { Luminosity = L, StarKey = seed, Spread = spread };
         double chart(double h) => spread * Math.Pow(h, 0.7) * AuMetres;
         double year(double h) => TemperateYearDays * Math.Pow(h, 1.5);
@@ -481,7 +495,7 @@ public sealed class StarSystem
         Orbiter ground(Orbiter b, int widthKm)
         {
             widths[b] = widthKm;
-            b.Radius = RadiusOf(widthKm);
+            b.Radius = RadiusOf(widthKm * 1000.0);
             return add(b);
         }
         // Rolled from the seed the moon is about to get: smaller than what it orbits, a giant's any size.
@@ -593,7 +607,7 @@ public sealed class StarSystem
         {
             if (b.Kind != BodyKind.Moon || !PlanetSpec.HoldsMoons(widths.GetValueOrDefault(holder, int.MaxValue))) continue; // a smallest world chosen to start on has none
             int size = moonWidth(holder);
-            double r = RadiusOf(size);
+            double r = RadiusOf(size * 1000.0);
             double wanted = host != null ? host.Radius * (3.0 + 27.0 * next())
                 : first ? homeRadius * (ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next()) : Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 14.0, homeRadius * 40.0);
             double orbit = clearOrbit(holder, wanted), month = capped(orbit, host != null ? giantMonth(orbit / host.Radius) : rockMonth(orbit / homeRadius));
@@ -687,7 +701,7 @@ public sealed class StarSystem
             var heavyRng = new Rng(Hash.Of(seed, 0x4856));
             Orbiter heavy = rockWorlds[heavyRng.Next(rockWorlds.Count)];
             widths[heavy] = heavyRng.NextFloat() < 0.1f ? 64 : 32;
-            heavy.Radius = RadiusOf(widths[heavy]);
+            heavy.Radius = RadiusOf(widths[heavy] * 1000.0);
         }
         foreach (Orbiter w in rockWorlds) rockMoons(w);
         void belt(string name, double from, double to)
@@ -757,8 +771,6 @@ public sealed class StarSystem
     /// <summary>The frost line, in h: rock inside it, ice past it (docs/solar-systems.md section 3).</summary>
     public const double FrostLine = 2.7;
 
-    /// <summary>A world's radius from its width in km: the equator is the map's width.</summary>
-    static double RadiusOf(int widthKm) => widthKm * 1000.0 / Math.Tau;
 
     /// <summary>
     /// A ring's colour, brightness and width from what the owner gave (22 Nov, from a NASA planetary scientist): past the
