@@ -81,8 +81,8 @@ public sealed partial class Town : IKeeper
         public List<Vector3> Path;
         public int Step;
         public float Wait, Speed = 1.3f, Hurt, Aim = -1f, Cooldown;
-        /// <summary>How fast they are going now (they ease into it), how far through a stride, how far down into a seat; time since their last full update.</summary>
-        public float Now, Gait, Seated, Saved;
+        /// <summary>How fast they mean to go now (they ease into it; their stride keeps to how they really go, <see cref="Rig.Pace"/>), how far down into a seat; time since their last full update.</summary>
+        public float Now, Seated, Saved;
         /// <summary>Who they are, how they stand, and what draws them (once near enough to have been built).</summary>
         public Species Looks;
         public HumanRig Rig;
@@ -799,7 +799,6 @@ public sealed partial class Town : IKeeper
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
-        p.Gait += step;
         // Turns a corner a stride early, not on the spot.
         // (Not out of a seat or into one: that way is walked as it lies, clear of the furniture round it.)
         bool exact = p.Step == 0 && p.Seat >= 0 || p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
@@ -1484,7 +1483,12 @@ public sealed partial class Town : IKeeper
         for (int i = 0; i < People.Count; i++)
         {
             Person p = People[i];
-            if (p.View is { Visible: true }) p.View.Glide();
+            // (What they hold or carry goes with the pose carried between their poses.)
+            if (p.View is { Visible: true } && p.View.Glide())
+            {
+                PoseWeapon(p);
+                PoseSack(p);
+            }
             if (p.PoseWho < 0) continue;
             // (A fighter's aim and blows, and a body still falling, are read off the pose: always posed. So is a body never yet
             // posed: built out of sight, it dissolves in there and stands where they are, not first shown as they come into view.)
@@ -1559,12 +1563,15 @@ public sealed partial class Town : IKeeper
             if (MathF.Abs(off) < 1.25f) look = off;
         }
         p.HeadYaw = Mathf.Lerp(p.HeadYaw, look, 0.08f);
+        // Their stride keeps to how they really go (held, bumped or parted from someone, not how they mean to).
+        Pace pace = p.Rig.Pace;
+        pace.Note(p.Pos, new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)), dt);
         p.Rig.Drive(new Gesture
         {
             Feet = p.Pos,
             Yaw = p.Yaw,
-            Speed = p.Swimming ? MathF.Max(p.Now, 1.1f) : p.Now, // (swimming, the sleeper's stroke: never still)
-            Walked = p.Gait,
+            Speed = p.Swimming ? MathF.Max(pace.Speed, 1.1f) : pace.Speed, // (swimming, the sleeper's stroke: never still)
+            Walked = pace.Walked,
             Sit = p.Seated,
             Work = p.Bent,
             Aim = p.Raised,

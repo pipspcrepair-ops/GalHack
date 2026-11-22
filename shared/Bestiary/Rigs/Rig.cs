@@ -86,9 +86,13 @@ public abstract class Rig
     /// <summary>Snap to a resting pose at the creature's spawn point (feet planted, chains laid out).</summary>
     public abstract void Reset(WildSim w, Creature c);
 
+    /// <summary>How fast the body really goes, from where it has been: what its gait keeps to, never what it means to do.</summary>
+    public readonly Pace Pace = new();
+
     /// <summary>Poses the body for this step, then its jaws on its heads.</summary>
     public void Update(WildSim w, Creature c, float dt)
     {
+        Pace.Note(c.Position, c.Forward, dt);
         Animate(w, c, dt);
         Gaping = Geo.Smooth(Gaping, c.Gape, c.Gape < Gaping ? 45f : 14f, dt);
         foreach ((int jaw, int head) in _jaws) Pose[jaw] = Pose[head] * Layout.Pieces[jaw].Mouth.Pose(Gaping);
@@ -175,4 +179,41 @@ public abstract class Rig
 
     /// <summary>A pose that hides a piece (scaled to nothing).</summary>
     protected static Transform3D Collapsed(Vector3 at) => new(Basis.Identity.Scaled(Vector3.One * 0.001f), at);
+}
+
+/// <summary>
+/// How fast a body really goes, from where it has been, for its gait to keep to. Its move since last noted is eased in over about
+/// a sixth of a second as a velocity, so a body pushed to and fro (held at a wall, jostled in a crowd) goes nowhere; and it changes
+/// no faster than a body can, so a set-back's one-tick jump is no sprint. A move further than a cut is a respawn: it starts over.
+/// </summary>
+public sealed class Pace
+{
+    /// <summary>How quickly a move is taken in (1/s), and the most it changes a second (m/s²).</summary>
+    const float Ease = 6f, Accel = 12f;
+
+    Vector3 _at;
+    bool _has;
+
+    public Vector3 Velocity { get; private set; }
+
+    /// <summary>Its speed over the ground (flat), m/s.</summary>
+    public float Speed => WildSim.Flat(Velocity).Length();
+
+    /// <summary>How far it has gone over the ground so far, m: backwards (stepping back, eyes front) takes it back.</summary>
+    public float Walked { get; private set; }
+
+    public void Note(Vector3 at, Vector3 forward, float dt)
+    {
+        Vector3 d = at - _at;
+        _at = at;
+        if (!_has || d.LengthSquared() > DrawSmoother.CutDistance * DrawSmoother.CutDistance)
+        {
+            (_has, Velocity) = (true, Vector3.Zero);
+            return;
+        }
+        if (dt <= 0f) return;
+        Velocity = Velocity.MoveToward(Geo.Smooth(Velocity, d / dt, Ease, dt), Accel * dt);
+        float speed = Speed;
+        Walked += (WildSim.Flat(Velocity).Dot(forward) < -0.05f ? -speed : speed) * dt;
+    }
 }

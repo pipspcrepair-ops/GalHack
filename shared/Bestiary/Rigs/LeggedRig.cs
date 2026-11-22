@@ -168,7 +168,7 @@ public sealed class LeggedRig : Rig
         SmoothIntents(c, dt);
         Proportions b = Species.Body;
         float L = b.Size, H = b.Height, W = b.Width, legLen = b.LegLength;
-        Vector3 vel = WildSim.Flat(c.Velocity);
+        Vector3 vel = WildSim.Flat(Pace.Velocity);
         float speed = vel.Length();
         float walk = MathF.Max(0.3f, Species.Stats.WalkSpeed);
 
@@ -419,7 +419,7 @@ public sealed class LeggedRig : Rig
             Vector3 p = bodyT * new Vector3(_tails.Length > 1 ? (t == 0 ? -0.15f : 0.15f) * b.Width : 0f, b.Height * 0.1f, b.Size * 0.47f);
             float yawAcc = _tails.Length > 1 ? (t == 0 ? -0.3f : 0.3f) : 0f;
             float pitchAcc = -0.3f + 0.35f * c.Alert * (Species.Stats.Hunts ? 1f : 0.4f) + 0.3f * Rearing - 0.6f * Dead;
-            float speed = WildSim.Flat(c.Velocity).Length();
+            float speed = Pace.Speed;
             float amp = speed > 0.3f ? 0.12f : 0.28f;
             float lag = Math.Clamp(-YawRate * 0.3f, -0.7f, 0.7f);
             // A swipe bends the tail round to a side and brings it down to the victim's height.
@@ -533,7 +533,7 @@ public sealed class LeggedRig : Rig
         Transform3D anchorFrame = _chinTendrils && _heads.Length > 0 ? Pose[_heads[0]] : bodyT;
         float hs = b.HeadSize;
         float len = _chinTendrils ? hs * 1.4f : b.Size * 0.5f;
-        Vector3 drag = -c.Velocity * 0.05f;
+        Vector3 drag = -Pace.Velocity * 0.05f;
         for (int t = 0; t < _tendrils.Length; t++)
         {
             int[] chain = _tendrils[t];

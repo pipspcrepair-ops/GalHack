@@ -15,7 +15,7 @@ public struct Gesture
     /// <summary>The ground under them, and which way they face.</summary>
     public Vector3 Feet;
     public float Yaw;
-    /// <summary>How fast they're going, m/s, and how far they have walked (keeps the feet in step with the ground).</summary>
+    /// <summary>How fast they're really going over the ground, m/s, and how far they have walked (the stride keeps to it): a body's <see cref="Rig.Pace"/>, never what it means to do.</summary>
     public float Speed, Walked;
     /// <summary>0..1: sitting; bent to work; rifle up; crouched; arms thrown out at something; bent over retching; down dead.</summary>
     public float Sit, Work, Aim, Crouch, Reach, Retch, Down;
@@ -74,7 +74,8 @@ public sealed partial class HumanRig : Rig
     readonly Vector3[] _feet = new Vector3[2], _drawn = new Vector3[2];
     readonly bool[] _planted = { true, true };
     readonly float _offset;
-    float _walked;
+    /// <summary>How far through its stride the body is (cycles), how fast that goes now (strides a second), and how far it had walked when last posed.</summary>
+    float _stride, _cadence, _walkedWas = float.NaN;
     /// <summary>The sim's view of the ground, when in the sim.</summary>
     WildSim _world;
     Creature _creature;
@@ -168,9 +169,7 @@ public sealed partial class HumanRig : Rig
         SmoothIntents(c, dt);
         _world = w;
         _creature = c;
-        float speed = c.Dead ? 0f : WildSim.Flat(c.Velocity).Length();
-        // Stepping back, eyes front: the stride runs backwards.
-        _walked += (WildSim.Flat(c.Velocity).Dot(c.Forward) < -0.05f ? -speed : speed) * dt;
+        float speed = c.Dead ? 0f : Pace.Speed;
         // A body act eases out before the next eases in: a wave never snaps to a warning.
         if (c.Act != _act)
         {
@@ -216,7 +215,7 @@ public sealed partial class HumanRig : Rig
             Feet = c.Position,
             Yaw = c.Yaw,
             Speed = speed,
-            Walked = _walked,
+            Walked = Pace.Walked,
             Crouch = MathF.Max(low, MathF.Max(rummage * 0.9f, infest)),
             Work = MathF.Max(rummage, infest),
             Stalk = stalk,
@@ -301,6 +300,26 @@ public sealed partial class HumanRig : Rig
         DriveAlive(g);
     }
 
+    /// <summary>A grown person's quickest stride, a second (a sprint's 215 steps a minute).</summary>
+    const float MaxCadence = 1.8f;
+
+    /// <summary>
+    /// The stride goes on by how far the body walked since it was last posed, at a rate eased to that and never over the gait's
+    /// natural cadence: a change of speed or of stride length never jumps it, and a body held where it stands stops stepping.
+    /// </summary>
+    void Stride(float walked, float length, float cap)
+    {
+        float went = float.IsNaN(_walkedWas) || MathF.Abs(walked - _walkedWas) > DrawSmoother.CutDistance ? 0f : walked - _walkedWas;
+        _walkedWas = walked;
+        if (_dt <= 0f) return;
+        _cadence = Geo.Smooth(_cadence, Math.Clamp(went / _dt / length, -cap, cap), 12f, _dt);
+        _stride += _cadence * _dt;
+        _stride -= MathF.Floor(_stride / StrideWrap) * StrideWrap;
+    }
+
+    /// <summary>The stride is kept within this many cycles (every rhythm read off it repeats in it), for float's sake.</summary>
+    const float StrideWrap = 20f;
+
     void DriveAlive(in Gesture g)
     {
         Figure f = _f;
@@ -308,7 +327,11 @@ public sealed partial class HumanRig : Rig
         float run = Math.Clamp((g.Speed - 2f) / 1.4f, 0f, 1f);
         float moving = Math.Clamp(g.Speed / 0.45f, 0f, 1f);
         float strideLength = f.LegLength * Mathf.Lerp(1.36f, 2.5f, run) * (1f - 0.35f * stalk);
-        float phase = g.Walked / strideLength + _offset;
+        // Legs swing no faster than they naturally do (as a pendulum: a child's quicker); going faster than that, the stride lengthens.
+        float cap = MaxCadence * MathF.Sqrt(0.9f / MathF.Max(0.3f, f.LegLength));
+        strideLength = MathF.Max(strideLength, MathF.Abs(g.Speed) / cap);
+        Stride(g.Walked, strideLength, cap);
+        float phase = _stride + _offset;
         // A Husk is worked like a puppet on a bad string: its stride hitches (one step quick, the
         // next dragged), and a sudden jerk runs through it now and then, each its own.
         bool husk = f.Husk;
@@ -340,7 +363,7 @@ public sealed partial class HumanRig : Rig
         if (_hitPart is Part.LegL or Part.LegR) hipY -= 0.07f * snap * f.LegLength;
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         float sway = moving * 0.018f * f.Height * MathF.Sin(cycle);
-        float staggerSide = f.Stagger * (0.09f * MathF.Sin(phase * 2.3f + g.Clock * 0.7f) + 0.03f * MathF.Sin(g.Clock * 2.1f));
+        float staggerSide = f.Stagger * (0.09f * MathF.Sin(phase * MathF.Tau * 0.35f + g.Clock * 0.7f) + 0.03f * MathF.Sin(g.Clock * 2.1f));
         float idle = (1f - moving) * 0.012f * MathF.Sin(g.Clock * 0.7f + _offset * 6f);
         if (g.Act == BodyAct.Fidget) idle += act * 0.035f * MathF.Sin(g.Clock * 0.32f * MathF.PI + _offset * 3f); // weight from foot to foot
         Vector3 recoil = g.Act == BodyAct.Startle ? -fwd * 0.16f * keyed + Vector3.Up * 0.03f * keyed : g.Act is BodyAct.HandsUp or BodyAct.Cower ? -fwd * 0.06f * keyed : Vector3.Zero;

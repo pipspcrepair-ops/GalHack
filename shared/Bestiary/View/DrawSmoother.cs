@@ -123,7 +123,11 @@ public sealed class PoseBlend
     int _key;
     double _end, _mixed;
     float _dur;
-    bool _has;
+    /// <summary>
+    /// Carried across the span between the rig's updates: straight, and every frame, as the root glides over it
+    /// (<see cref="DrawSmoother"/>), so a planted foot stays where it is planted; a change of action eases in and out.
+    /// </summary>
+    bool _has, _span;
 
     public bool Active(double now) => _dur > 0f && now < _end;
 
@@ -131,7 +135,7 @@ public sealed class PoseBlend
 
     /// <summary>
     /// The pose to draw for the rig's, made at this root. A change of <paramref name="key"/> blends over <see cref="Switch"/>;
-    /// <paramref name="span"/> above 0 (the seconds since the rig was last updated) blends over that. A piece that has leapt over
+    /// <paramref name="span"/> above 0 (the seconds since the rig was last updated) carries it over that, straight. A piece that has leapt over
     /// four fifths of the body's <paramref name="size"/> since the rig's last pose (a rig's own jump from one stride or stance to another) blends too.
     /// </summary>
     public Transform3D[] Frame(Transform3D[] live, Transform3D root, int key, float span, float size, double now)
@@ -149,10 +153,12 @@ public sealed class PoseBlend
         float dur = key != _key ? Switch : span;
         _key = key;
         if (_has && Leapt(live, root, size * 0.8f)) dur = MathF.Max(dur, Leap);
-        if (_has && dur > 0.02f)
+        // (A change of action still easing in runs its course: the span after it is in it.)
+        if (_has && dur > 0f && (dur != span || _span || !Active(now)))
         {
             Transform3D back = _lastRoot.AffineInverse();
             for (int i = 0; i < n; i++) _from[i] = back * _last[i];
+            _span = dur == span;
             _dur = MathF.Min(dur, 0.4f);
             _end = now + _dur;
             _mixed = double.MinValue;
@@ -195,12 +201,12 @@ public sealed class PoseBlend
         Transform3D[] drawn = live;
         if (_dur > 0f && now < _end)
         {
-            // (Blended 60 times a second at most: a faster screen has nothing more to see in it.)
-            if (now - _mixed >= 1.0 / 60.0 - 0.001)
+            // (A change of action blended 60 times a second at most: a faster screen has nothing more to see in it.)
+            if (_span || now - _mixed >= 1.0 / 60.0 - 0.001)
             {
                 _mixed = now;
                 float w = 1f - (float)((_end - now) / _dur);
-                w = w * w * (3f - 2f * w);
+                if (!_span) w = w * w * (3f - 2f * w);
                 for (int i = 0; i < live.Length; i++) _out[i] = Mix(root * _from[i], live[i], w);
             }
             drawn = _out;

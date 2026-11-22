@@ -277,7 +277,11 @@ public partial class StrideTest : Node
                 {
                     // Walked into: another body set down against it, a step ahead of it.
                     Creature a = live[rng.Next(live.Count)], b = live[rng.Next(live.Count)];
-                    if (a != b && !held.ContainsKey(b)) b.Position = a.Position + a.Forward * (a.Species.Body.Width * 0.5f + 0.1f);
+                    if (a != b && !held.ContainsKey(b))
+                    {
+                        b.Position = a.Position + a.Forward * (a.Species.Body.Width * 0.5f + 0.1f);
+                        gaits[b].Cut(); // (set down there: a move of the test's, not a stride)
+                    }
                 }
                 if (step % 150 == 75) live[rng.Next(live.Count)].StunFor = 0.5f;
             }

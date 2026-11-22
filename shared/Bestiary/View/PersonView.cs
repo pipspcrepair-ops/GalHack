@@ -149,26 +149,43 @@ public partial class PersonView : Node3D
     readonly DrawSmoother _smooth = new();
     readonly PoseBlend _blend = new();
     Transform3D _root;
+    double _synced = double.MinValue;
+
+    /// <summary>The longest span between poses carried across the frames between them, s: a body posed less often is far off and small.</summary>
+    const float CarriedSpan = 0.05f;
 
     /// <summary>
     /// Every piece where the rig has it, eased: the body glides from where it was drawn to where the sim has it now, and a
-    /// change of what they are doing (<paramref name="key"/>) blends the pose, as a creature's does.
+    /// change of what they are doing (<paramref name="key"/>) blends the pose, as a creature's does. Posed less often than
+    /// drawn (a fast screen, a body a little way off), the pose is carried from the last to this across the frames between, as
+    /// the body glides: a planted foot stays planted.
     /// </summary>
     public void Sync(Vector3 feet, float yaw, float speed, int key)
     {
         double now = DrawSmoother.Clock();
         _smooth.Note(feet, yaw, speed, now);
         _root = new Transform3D(new Basis(Vector3.Up, yaw), feet);
-        Write(_blend.Frame(_rig.Pose, _root, key, 0f, _rig.Species.Figure?.Height ?? 1.8f, now));
-        Glide();
+        float span = (float)(now - _synced);
+        span = span > 1.5 * GetProcessDeltaTime() && span <= CarriedSpan ? span : 0f;
+        _synced = now;
+        Write(_blend.Frame(_rig.Pose, _root, key, span, _rig.Species.Figure?.Height ?? 1.8f, now));
+        Place(now);
     }
 
     bool _placed;
 
-    /// <summary>Every frame: the body eases on towards where the sim has it (a pose blends as they are posed).</summary>
-    public void Glide()
+    /// <summary>Every frame: the body eases on towards where the sim has it, and a pose being carried is posed a step on. True if the pose moved.</summary>
+    public bool Glide()
     {
         double now = DrawSmoother.Clock();
+        Place(now);
+        if (!_blend.Active(now)) return false;
+        Write(_blend.Apply(_rig.Pose, _root, now));
+        return true;
+    }
+
+    void Place(double now)
+    {
         if (_smooth.Easing(now))
         {
             Transform = _smooth.Placement(now);
