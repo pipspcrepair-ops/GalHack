@@ -166,23 +166,24 @@ public sealed partial class HumanRig
     /// <summary><see cref="HandGrip"/>, and how far the knuckles along the axis as given suit it (below 0: the other way suits).</summary>
     Basis Grip(int arm, Vector3 axis, Vector3 fore, Vector3 across, Vector3 otherwise, Vector3 palm, float turn, out float lean)
     {
-        Basis one, other;
+        // Led by the forearm: the fingers its way round the axis, the palm to the side the palm asks.
+        Vector3 hint = across - axis * across.Dot(axis);
+        if (hint.LengthSquared() < 0.1f) hint = otherwise - axis * otherwise.Dot(axis); // the axis runs the way they would go
+        Vector3 along = fore - axis * fore.Dot(axis);
+        float w = MathF.Min(1f, along.Length() * 1.5f);
+        Vector3 d = hint.Normalized() * (1f - w) + (w > 0f ? along.Normalized() * w : Vector3.Zero);
+        d = d.LengthSquared() > 1e-4f ? d.Normalized() : hint.Normalized();
+        Vector3 n = axis.Cross(d);
+        (Basis one, Basis other, lean) = (new Basis(axis, d, n), new Basis(-axis, d, -n), n.Dot(palm));
+        // Led by the palm, as far as it has a way to face across the axis (all of it once it clearly has).
         Vector3 facing = palm - axis * palm.Dot(axis);
-        if (!(_bowman && arm == 0) && facing.LengthSquared() > 0.25f)
+        float led = _bowman && arm == 0 ? 0f : Mathf.SmoothStep(0.15f, 0.35f, facing.LengthSquared());
+        if (led > 0f)
         {
             Vector3 face = facing.Normalized(), fingers = face.Cross(axis);
-            (one, other, lean) = (new Basis(axis, fingers, face), new Basis(-axis, -fingers, face), fingers.Dot(fore));
-        }
-        else
-        {
-            Vector3 hint = across - axis * across.Dot(axis);
-            if (hint.LengthSquared() < 0.1f) hint = otherwise - axis * otherwise.Dot(axis); // the axis runs the way they would go
-            Vector3 along = fore - axis * fore.Dot(axis);
-            float w = MathF.Min(1f, along.Length() * 1.5f);
-            Vector3 d = hint.Normalized() * (1f - w) + (w > 0f ? along.Normalized() * w : Vector3.Zero);
-            d = d.LengthSquared() > 1e-4f ? d.Normalized() : hint.Normalized();
-            Vector3 n = axis.Cross(d);
-            (one, other, lean) = (new Basis(axis, d, n), new Basis(-axis, d, -n), n.Dot(palm));
+            (Basis one1, Basis other1) = (new Basis(axis, fingers, face), new Basis(-axis, -fingers, face));
+            (one, other) = led >= 1f ? (one1, other1) : (Between(one, one1, led), Between(other, other1, led));
+            if (led >= 0.5f) lean = fingers.Dot(fore);
         }
         if (turn < 0f) return lean < 0f ? other : one;
         return turn <= 0f ? one : turn >= 1f ? other : Between(one, other, turn * turn * (3f - 2f * turn));

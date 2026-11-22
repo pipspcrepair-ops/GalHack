@@ -535,7 +535,8 @@ public sealed partial class HumanRig : Rig
         // A weapon up: the left shoulder comes round toward the target (an archer's side-on stance).
         HoldKind kind = Weapons.HoldOf(f.Prop);
         float squareOff = 0f; // the upper body turned to a weapon (the hips and legs stay square)
-        float strikeOn = _blow == StrikeKind.None ? 0f : 1f;
+        StrikeCurve(_blowAt, out float blowWind, out float blowHit);
+        float strikeOn = _blow == StrikeKind.None ? 0f : MathF.Max(blowWind, blowHit); // (as far as the blow is thrown: a hand lets go of a weapon by degrees)
         float busy = Math.Clamp(MathF.Max(MathF.Max(act, g.Reach), strikeOn), 0f, 1f);
         float aimW = kind == HoldKind.None ? 0f : Math.Clamp(g.Aim, 0f, 1f) * (1f - busy);
         squareOff -= aimW * kind switch { HoldKind.Bow => 1.45f, HoldKind.Spear => 0.3f, _ => 0f };
@@ -600,7 +601,6 @@ public sealed partial class HumanRig : Rig
             sip = MathF.Max(Math.Clamp(MathF.Sin(g.Clock * 0.33f + _offset * 9f) * 5f - 3.6f, 0f, 1f) * (1f - moving), Math.Clamp(g.Sip, 0f, 1f)) * (1f - busy);
 
         // The head turns on its own, and stays nearer level than the back it sits on.
-        StrikeCurve(_blowAt, out float blowWind, out float blowHit);
         float headPitch = pitch * 0.35f + g.Retch * 0.5f + (longGun ? aimW * 0.3f : 0f) + act * (g.Act switch { BodyAct.Grieve => 0.5f, BodyAct.Taunt => 0.12f, BodyAct.Thanks => 0.15f, _ => 0f }) - 0.4f * sip - 0.5f * stalk;
         if (_blow == StrikeKind.Spew) headPitch += 0.35f * blowWind * MathF.Abs(MathF.Sin(g.Clock * 13f)) - 0.35f * blowHit;
         float headRoll = longGun ? -0.14f * aimW : 0f; // down to the sights, the cheek toward the stock
@@ -764,7 +764,7 @@ public sealed partial class HumanRig : Rig
             _elbow[i] = elbow;
             _shoulder[i] = shoulder;
         }
-        if (_prop >= 0) Pose[_prop] = PropPose(g, kind, hold, torso, fwd, right, sip, sipAxis, rightOff);
+        if (_prop >= 0) Pose[_prop] = PropPose(g, kind, hold, torso, fwd, right, sip, sipAxis, kind == HoldKind.None ? rightOff : rightOff * hold.RW); // (a holstered weapon stays put)
         if (_string0 >= 0 && _string1 >= 0)
         {
             // The string from each limb tip to the nock: straight at rest, drawn to the right hand.
@@ -892,7 +892,7 @@ public sealed partial class HumanRig : Rig
                 h.RW = aim > 0.15f ? 1f : aim / 0.15f;
                 h.L = grip - right * 0.045f * u + Vector3.Down * 0.03f * u;
                 h.LW = Mathf.SmoothStep(0.5f, 1f, drawn);
-                h.Prop = new Transform3D(Geo.AlongY(dir, aim > 0.15f ? right : torso.X), grip);
+                h.Prop = new Transform3D(Geo.AlongY(dir, torso.X.Lerp(right, Math.Clamp((aim - 0.05f) / 0.2f, 0f, 1f))), grip); // (rolled with the hips holstered, with the shoulders drawn, by degrees)
                 h.Line = dir;
                 h.RAxis = h.LAxis = h.Prop.Basis.Z;
                 (h.R, h.L) = (h.R - h.Prop.Basis.Z * 0.04f * u, h.L - h.Prop.Basis.Z * 0.04f * u); // (low on the handle, under the slide)
@@ -1025,8 +1025,13 @@ public sealed partial class HumanRig : Rig
         Vector3 fist = FistOf(1), along = _handAt[1].Basis.Y, thumb = _handAt[1].Basis.X;
         if (kind == HoldKind.Bow) return h.Prop;
         // A gun, a spear or a blade in a blow goes with the fist (a butt stroke, a thrust, a swing).
-        if (kind != HoldKind.None)
-            return busy > 0f ? h.Prop.InterpolateWith(new Transform3D(kind == HoldKind.Blade ? Geo.AlongY(thumb, right) : Geo.AlongY(along, thumb.Cross(along)), fist), busy) : h.Prop;
+        // (Turned to it in the hand's own frame: what the fist holds it by turns with the fist, never the long way round.)
+        if (kind != HoldKind.None && busy > 0f)
+        {
+            Transform3D hand = new(_handAt[1].Basis, fist), back = hand.AffineInverse();
+            return hand * (back * h.Prop).InterpolateWith(back * new Transform3D(kind == HoldKind.Blade ? Geo.AlongY(thumb, right) : Geo.AlongY(along, thumb.Cross(along)), fist), busy);
+        }
+        if (kind != HoldKind.None) return h.Prop;
         Vector3 axis = PropAxis(g, torso, fwd, right, sip, sipAxis);
         float firm = axis.Length() * (1f - busy);
         return new Transform3D(Geo.AlongY(firm > 0f ? thumb.Lerp(axis / axis.Length(), firm).Normalized() : thumb, right), fist);

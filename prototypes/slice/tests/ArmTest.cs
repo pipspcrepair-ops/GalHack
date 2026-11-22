@@ -17,7 +17,7 @@ namespace Slice.Tests;
 /// poses it and as it is drawn (through the pose blend): none turns more than 60° in a frame where a frame beside it turns under 30°.
 ///
 /// -- --rounds=N worlds (default 2); --seeds=a:b:... rolls a run's worlds again (an A/B; never pinned); --shots=dir (windowed)
-/// replays the first flip's body and saves it a few frames apart.
+/// replays the first flip's body (or --at=body:tick's) and saves it a few frames apart.
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ArmTest.tscn
 /// </summary>
 public partial class ArmTest : Node
@@ -76,6 +76,7 @@ public partial class ArmTest : Node
         public float Worst, WorstJump;
         public readonly Dictionary<string, int> Why = new(), JumpWhy = new();
         public readonly List<string> Notes = new();
+        public int Told;
         public static string Top(Dictionary<string, int> d) => string.Join(", ", d.OrderByDescending(k => k.Value).Take(16).Select(k => $"{k.Value} {k.Key}"));
     }
 
@@ -123,7 +124,9 @@ public partial class ArmTest : Node
     readonly Tally _posed = new(), _drawn = new();
     double _poseMs;
     int _poses;
-    (Species S, ulong Seed, int Frame)? _firstFlip;
+    (Species S, ulong Seed, int Frame)? _firstFlip, _shotOf;
+    /// <summary>--at=body:tick (bodies counted from 0 over the worlds): with --shots, that body at that tick is shot instead of the first flip, nothing measured.</summary>
+    readonly (int Body, int Tick)? _at = Args.FirstOrDefault(a => a.StartsWith("--at=")) is { } at ? (int.Parse(at[5..].Split(':')[0]), int.Parse(at[5..].Split(':')[1])) : null;
 
     IEnumerable<int> Scenario()
     {
@@ -152,14 +155,15 @@ public partial class ArmTest : Node
             GD.Print($"-- world {seed}: {bodies.Count} bodies ({string.Join(", ", bodies.Select(Who))}) --");
             for (int i = 0; i < bodies.Count; i++)
             {
-                Run(bodies[i], seed + (ulong)i, null);
+                if (_at is { } at && at.Body == round * bodies.Count + i) _shotOf = (bodies[i], seed + (ulong)i, at.Tick);
+                if (_at == null) Run(bodies[i], seed + (ulong)i, null);
                 yield return 0;
             }
         }
         GD.Print($"  (posing: {_poseMs * 1000.0 / Math.Max(1, _poses):F1} µs a pose over {_poses})");
         Report("as posed", _posed);
         Report("as drawn", _drawn);
-        if (_shots != null && _firstFlip is { } f)
+        if (_shots != null && (_shotOf ?? _firstFlip) is { } f)
             foreach (int x in Shots(f.S, f.Seed, f.Frame)) yield return x;
     }
 
@@ -251,9 +255,8 @@ public partial class ArmTest : Node
                 {
                     Transform3D inv = root.AffineInverse();
                     string P(Vector3 v) { Vector3 b = inv * v; return $"({b.X:F2} {b.Y:F2} {b.Z:F2})"; }
-                    var (s0, e0, w0) = rig.ArmOf(0);
-                    var (s1, e1, w1) = rig.ArmOf(1);
-                    _ring.Enqueue($"      t{tick}: L {P(s0)} {P(e0)} {P(w0)} | R {P(s1)} {P(e1)} {P(w1)} | grips {P(rig.GripRight)} {rig.GripRightOn:F2} {P(rig.GripLeft)} {rig.GripLeftOn:F2} | line {rig.WeaponLine.X:F2} {rig.WeaponLine.Y:F2} {rig.WeaponLine.Z:F2}");
+                    string Arm(int i) => $"{P(rig.Pose[bones[i * 3]].Origin)} {P(rig.Pose[bones[i * 3 + 1]].Origin)} {P(rig.Pose[hands[i * 3 + (int)rig.HandOf(i).shape]].Origin)}";
+                    _ring.Enqueue($"      t{tick}: L {Arm(0)} | R {Arm(1)} | grips {P(rig.GripRight)} {rig.GripRightOn:F2} {P(rig.GripLeft)} {rig.GripLeftOn:F2} | line {rig.WeaponLine.X:F2} {rig.WeaponLine.Y:F2} {rig.WeaponLine.Z:F2}");
                     if (_ring.Count > 4) _ring.Dequeue();
                 }
                 // (In the torso's frame: the arms as they hang from it, whatever the hips and back do.)
@@ -264,10 +267,10 @@ public partial class ArmTest : Node
                     bool hand = k % 3 == 2 && k < 6;
                     // (A hand that changes shape changes piece: the new one is watched from there.)
                     HandShape sh = rig.HandOf(arm).shape;
-                    if (hand && sh != shape[arm]) drawnW.Sample(k, null, 0f, out _, out _, out _);
+                    if (hand && sh != shape[arm]) { posedW.Sample(k, null, 0f, out _, out _, out _); drawnW.Sample(k, null, 0f, out _, out _, out _); }
                     if (hand) shape[arm] = sh;
                     int piece = hand ? hands[arm * 3 + (int)sh] : bones[k];
-                    Transform3D? posed = hand ? back * rig.HandOf(arm).at : piece >= 0 ? back * rig.Pose[piece] : null;
+                    Transform3D? posed = piece >= 0 ? back * rig.Pose[piece] : null;
                     Transform3D? shown = piece >= 0 ? backDrawn * drawn[piece] : null;
                     float along = hand ? 0.1f : 0.25f;
                     string Doing() => $"{who}, {beat}{(now != BodyAct.None ? $" ({now} {act:F2})" : "")}{(aim > 0.05f ? $" aim {aim:F2}" : "")}{(sit > 0f ? $" sit {sit:F2}" : "")}";
@@ -290,12 +293,13 @@ public partial class ArmTest : Node
         t.Pops++;
         string key = $"{piece} {beat}";
         t.Why[key] = t.Why.GetValueOrDefault(key) + 1;
-        if (t.Why[key] == 1 && t.Notes.Count < 150) Note(t, $"{piece} turned {deg:F0}° in a frame ({swing:F0}° of its length, the rest a roll): {doing}, tick {tick - 1}");
+        if (t.Why[key] == 1) Note(t, $"{piece} turned {deg:F0}° in a frame ({swing:F0}° of its length, the rest a roll): {doing}, tick {tick - 1}");
         _firstFlip ??= (s, seed, tick - 1);
     }
 
     void Note(Tally t, string s)
     {
+        if (++t.Told > 60) return;
         t.Notes.Add(s);
         if (Trace) t.Notes.AddRange(_ring);
     }
@@ -306,7 +310,7 @@ public partial class ArmTest : Node
         t.WorstJump = MathF.Max(t.WorstJump, m);
         string key = $"{piece} {beat}";
         t.JumpWhy[key] = t.JumpWhy.GetValueOrDefault(key) + 1;
-        if (t.JumpWhy[key] == 1 && t.Notes.Count < 300) Note(t, $"{piece} flicked {m * 100f:F1} cm in a frame: {doing}");
+        if (t.JumpWhy[key] == 1) Note(t, $"{piece} flicked {m * 100f:F1} cm in a frame: {doing}");
     }
 
     /// <summary>The beats of a body's day, each its name, its length (s) and what it asks for at each moment of it.</summary>

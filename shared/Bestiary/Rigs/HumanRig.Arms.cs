@@ -71,9 +71,10 @@ public sealed partial class HumanRig
             // An elbow asked inside a thick coat sits on its outside instead, the forearm going on from there as asked.
             Transform3D body = Pose[_body];
             Vector3 out_ = body * Shell.PushOut(body.AffineInverse() * elbow, UpperRadius + 0.01f), d = out_ - shoulder, up = body.Basis.Y;
-            // Out round the coat, but no higher than asked: a dropped elbow stays dropped.
-            Vector3 flat = d - up * d.Dot(up);
-            elbow = u.Dot(up) < 0f && flat.Length() < upper * 0.98f ? shoulder + flat - up * MathF.Sqrt(upper * upper - flat.LengthSquared()) : shoulder + d.Normalized() * upper;
+            // Out round the coat, but no higher than asked: a dropped elbow stays dropped (by degrees as the arm comes up to level).
+            Vector3 flat = (d - up * d.Dot(up)).LimitLength(upper), dropped = shoulder + flat - up * MathF.Sqrt(MathF.Max(0f, upper * upper - flat.LengthSquared()));
+            elbow = shoulder + (shoulder + d.Normalized() * upper).Lerp(dropped, Mathf.SmoothStep(0f, 0.2f, -u.Dot(up))) - shoulder;
+            elbow = shoulder + (elbow - shoulder).Normalized() * upper;
         }
         Vector3 hand = elbow + f * fore;
         Vector3 pole = elbow - (shoulder + hand) * 0.5f;
@@ -306,11 +307,11 @@ public sealed partial class HumanRig
     /// </summary>
     struct Swing
     {
-        float _yaw, _pitch;
+        float _yaw, _pitch, _yawRate, _pitchRate;
         public Swing() => _yaw = float.NaN;
 
-        /// <summary>How fast arms swing onto a new mark, radians a second; how far round from the body's heading they point at most (the waist's turn and the arms').</summary>
-        const float Rate = 8f, Round = 1.5f;
+        /// <summary>How quickly arms come onto a new mark (a critically damped swing's rate, 1/s: most of the way in a quarter second, sped up and slowed down smoothly); how far round from the body's heading they point at most (the waist's turn and the arms').</summary>
+        const float Quick = 12f, Round = 1.5f;
 
         public Vector3? Toward(Vector3? mark, Vector3 from, float heading, float dt)
         {
@@ -319,9 +320,19 @@ public sealed partial class HumanRig
             if (mark == null) _yaw = float.NaN;
             if (mark == null || flat < 0.3f) return mark;
             float yaw = Math.Clamp(Geo.WrapAngle(MathF.Atan2(-to.X, -to.Z) - heading), -Round, Round), pitch = MathF.Atan2(to.Y, flat);
-            if (float.IsNaN(_yaw) || dt <= 0f) (_yaw, _pitch) = (yaw, pitch);
-            else (_yaw, _pitch) = (Mathf.MoveToward(_yaw, yaw, Rate * dt), Mathf.MoveToward(_pitch, pitch, Rate * dt));
+            if (float.IsNaN(_yaw) || dt <= 0f) (_yaw, _pitch, _yawRate, _pitchRate) = (yaw, pitch, 0f, 0f);
+            else
+            {
+                Follow(ref _yaw, ref _yawRate, yaw, dt);
+                Follow(ref _pitch, ref _pitchRate, pitch, dt);
+            }
             return from + new Basis(Vector3.Up, heading + _yaw) * new Vector3(0f, MathF.Sin(_pitch), -MathF.Cos(_pitch)) * to.Length();
+        }
+
+        static void Follow(ref float x, ref float v, float target, float dt)
+        {
+            v += (Quick * Quick * (target - x) - 2f * Quick * v) * dt;
+            x += v * dt;
         }
     }
 
@@ -332,7 +343,9 @@ public sealed partial class HumanRig
     {
         Vector3 from = g.Feet + Vector3.Up * _f.Height * 0.75f;
         Gesture aimed = g;
-        aimed.AimAt = _aimed.Toward(g.AimAt, from, g.Yaw, _dt);
+        // (Raised with no mark, or the mark lost: along the look, as the hold has it then, swung to like any other.)
+        Vector3? mark = g.AimAt ?? (g.Aim > 0f ? from + new Basis(Vector3.Up, g.Yaw + Math.Clamp(g.Look, -0.6f, 0.6f)) * Vector3.Forward * 10f : null);
+        aimed.AimAt = _aimed.Toward(mark, from, g.Yaw, _dt);
         aimed.ActAt = _shown.Toward(g.Act == BodyAct.None ? null : g.ActAt, from, g.Yaw, _dt) ?? g.ActAt;
         return aimed;
     }
