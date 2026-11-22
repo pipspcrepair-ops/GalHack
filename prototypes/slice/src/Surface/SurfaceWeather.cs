@@ -212,10 +212,11 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         Color haze = env.FogLightColor;
         // Tan, not orange: the dust takes the light's brightness more than its colour, as fine dust in sunlight does.
         Color sun = Muted(Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy, 0.5f);
-        // The sky's light on it: the haze colour is the dimmer one, the sky over it brighter (the land is lit by that).
-        Color sky = Muted(haze.SrgbToLinear() * env.AmbientLightEnergy, 0.5f) * 1.6f;
+        // The sky's light on it, as the land is lit by the sky: the haze's colour and the clear sky's, which a low sun still lights.
+        var horizon = Zone.Sky.System.Horizon;
+        Color sky = Muted((haze.SrgbToLinear() * 1.2f + new Color(horizon.R, horizon.G, horizon.B).SrgbToLinear() * (0.1f + 0.4f * Zone.Sky.Daylight)) * env.AmbientLightEnergy, 0.5f);
         Color dust = Muted(_planet.Look.Dust, 0.25f);
-        Color deep = dust.SrgbToLinear() * (sky * 0.45f + sun * 0.06f); // as the body is lit deep inside, at its foot (volume.gdshader)
+        Color deep = Muted(dust, 0.45f).SrgbToLinear() * (sky * 0.55f + sun * 0.06f); // as the body is lit deep inside, at its foot (volume.gdshader)
         // Deep in it the murk hides the sky and everything far off alike, in its own colour. The fog carries most of it, a
         // little less in a lull and more in a gust; the body's heaps add the rest, uneven, streaming past the eye.
         float inside = Sim.DustDepth(camera) * open;

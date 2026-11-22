@@ -68,7 +68,7 @@ float inside(vec3 l) {
 float heap(vec3 p, float near) {
 	vec3 q = p - flow * TIME - vec3(0.0, rise * TIME, 0.0);
 	float h = texture(heaps, q / grain).r * 0.8 + texture(heaps, (q + vec3(31.0, 17.0, 53.0)) / (grain * 0.45)).r * 0.2;
-	if (near > 0.0) h += near * 0.5 * (texture(heaps, (q - flow * TIME * 0.6 + vec3(7.0, 3.0, 11.0)) / (grain * 0.07)).r - 0.5);
+	if (near > 0.0) h += near * 0.9 * (texture(heaps, (q - flow * TIME * 0.6 + vec3(7.0, 3.0, 11.0)) / (grain * 0.12)).r - 0.5);
 	return h;
 }
 
