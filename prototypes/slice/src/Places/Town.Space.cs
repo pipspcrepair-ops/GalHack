@@ -107,6 +107,16 @@ public sealed partial class Town
     /// <summary>How fast someone steps off into room when another is inside the distance they keep, m/s (a shuffle, not a shove).</summary>
     const float RoomPace = 0.35f;
 
+    /// <summary>Whether body i of those kept apart can be put at a point: on the floor, and no further into the furniture than it is (else the other takes the push).</summary>
+    bool Stands(int i, Vector3 at)
+    {
+        if (!Open(at)) return false;
+        if (i >= _bodies.Count || _parts == null || InUse(_bodies[i])) return true;
+        Person p = _bodies[i];
+        float r = BodyRadius(p), h = Height(p);
+        return _parts.Gap(at, r, h) >= MathF.Min(0f, _parts.Gap(p.Pos, r, h));
+    }
+
     /// <summary>The last tick's keeping apart, ms (measurements).</summary>
     public float LastApartMs { get; private set; }
 
@@ -130,7 +140,7 @@ public sealed partial class Town
         // You are a body they keep off too (you aren't moved: your share is dropped); walking into them is the push rule's
         // (Town.Colliders). Your share isn't nothing, so one in you is moved off you at their own give: a braced guard least.
         if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = PlayerGive, Keep = FromStranger }); // (just inside their capsules' touch)
-        _space.Resolve(dt, _openAt ??= (_, p) => Open(p), 4);
+        _space.Resolve(dt, _openAt ??= Stands, 4);
         if (_space.WorstOverlap > WorstOverlap)
         {
             WorstOverlap = _space.WorstOverlap;
@@ -148,7 +158,7 @@ public sealed partial class Town
             // Someone inside the distance they keep: a step off into the room there is, before they touch.
             p.Clear = b.Clear;
             Vector3 room = b.Room * RoomPace * dt;
-            if (room.LengthSquared() > 1e-10f && Open(b.Pos + room)) by += room;
+            if (room.LengthSquared() > 1e-10f && Stands(i, b.Pos + room)) by += room;
             // Parted at a walk at most, over as many ticks as it takes: never shoved across the floor at once.
             bool onYou = new Vector2(was.X - player.X, was.Z - player.Z).Length() < BodyRadius(p) + Slice.Player.Survivor.Radius + 0.15f;
             float most = (onYou ? yourPace + PartPace : PartPace) * dt;
@@ -246,6 +256,27 @@ public sealed partial class Town
         else if (path is { Count: > 0 }) p.Path = path;
         p.Step = 0;
         Rerouted++;
+    }
+
+    readonly System.Collections.Generic.List<int> _nearby = new();
+
+    /// <summary>
+    /// Someone's own step held from going any further into anyone else, you among them (as a creature's is, WildSim.Unpressed):
+    /// what would take them into another goes along their side, dead on not at all. (Not one walking off away from them.)
+    /// </summary>
+    Vector3 Unpressed(Person p, Vector3 from, Vector3 to)
+    {
+        _space.Near(to, _nearby);
+        float r = BodyRadius(p);
+        foreach (int j in _nearby)
+        {
+            if (j >= _bodies.Count) { to = PersonalSpace.Off(from, to, r, _space.Bodies[j].Pos, _space.Bodies[j].Radius); continue; } // (you)
+            Person o = _bodies[j];
+            Vector3 off = (o.Pos - from) with { Y = 0f };
+            if (o == p || o.Dead || o.Gone || o.Asleep || o.Now > 0.1f && off.LengthSquared() > 1e-4f && o.Forward.Dot(off.Normalized()) > 0.3f) continue;
+            to = PersonalSpace.Off(from, to, r, o.Pos, BodyRadius(o));
+        }
+        return to;
     }
 
     /// <summary>Near the end of their way with someone standing at its end (a crowd at a spot, at a refuge): they stop where they got to (true).</summary>

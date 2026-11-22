@@ -35,7 +35,8 @@ public partial class CrowdTest : Node
     IEnumerator<int> _run;
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
-    readonly System.Random _rng = new();
+    /// <summary>The staging's dice, rolled from each world's seed (so --seeds rolls the same staging again).</summary>
+    System.Random _rng = new();
     readonly ulong[] _seeds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seeds=")) is { } s ? s[8..].Split(':').Select(ulong.Parse).ToArray() : Array.Empty<ulong>();
     readonly string _shots = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots=")) is { } d ? d[8..] : null;
     bool _snapping;
@@ -148,6 +149,7 @@ public partial class CrowdTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Sky.TimeOfDay = 0.42;
         _max = _game.Suit.Sim.Data.Vitals.Health.Max;
+        _rng = new System.Random((int)(world.Seed ^ world.Seed >> 32));
         GD.Print($"-- a settlement, {world} --");
         foreach (int x in Settlement(family, round == 0)) yield return x;
         _game.QueueFree();
@@ -326,8 +328,9 @@ public partial class CrowdTest : Node
         Vector3 home = town.World(town.SpotAt(0));
         float away = _rng.NextSingle() * MathF.Tau;
         Vector3 Out(float a, float r) => _game.Zone.GroundAt(home.X + MathF.Sin(a) * r, home.Z + MathF.Cos(a) * r);
-        for (int k = 0; k < 24 && (Wet(Out(away, 110f)) || Wet(Out(away, 135f))); k++) away += MathF.Tau / 24f; // (dry land there and past it)
-        Vector3 feet = Out(away, 110f);
+        float far = 110f;
+        for (int k = 0; k < 48 && (Wet(Out(away, far)) || Wet(Out(away, far + 25f))); k++) (away, far) = (away + MathF.Tau / 24f, k < 23 ? 110f : 180f); // (dry land there and past it)
+        Vector3 feet = Out(away, far);
         _game.Survivor.PlaceOutside((feet + Vector3.Up * 0.3f).ToNumerics());
         for (int i = 0; i < 180; i++) { TopUp(); yield return 0; }
         feet = _game.Survivor.WorldFeet;
@@ -335,11 +338,12 @@ public partial class CrowdTest : Node
         patch.Sim.Targets.Remove(patch.Player);
         List<Creature> herd = new();
         Vector3 mid = feet;
-        for (int k = 0; k < 24 && herd.Count < 3; k++)
+        for (int k = 0; k < 36 && herd.Count < 3; k++)
         {
             foreach (Creature c in herd) c.Removed = true;
             float a = away + (k % 2 == 0 ? 1 : -1) * (k / 2) * MathF.Tau / 12f; // (on out first, then round)
-            mid = _game.Zone.GroundAt(feet.X + MathF.Sin(a) * (k < 12 ? 25f : 40f), feet.Z + MathF.Cos(a) * (k < 12 ? 25f : 40f));
+            float off = 25f + 20f * (k / 12);
+            mid = _game.Zone.GroundAt(feet.X + MathF.Sin(a) * off, feet.Z + MathF.Cos(a) * off);
             if (Wet(mid)) continue;
             herd = patch.Sim.SpawnGroup(s, patch.PatchLocal(mid), 9).Where(c => !c.Removed).ToList();
         }

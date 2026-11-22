@@ -100,12 +100,6 @@ public sealed class PersonalSpace
                             }
                             if (aOk) { a.Pos += pa; a.Moved += pa; }
                             if (bOk) { b.Pos += pb; b.Moved += pb; }
-                            // Face to face on a narrow way: the one who gives more waits a moment.
-                            if (a.Heading.Dot(b.Heading) < -0.5f && a.Heading.Dot(dir) > 0.6f)
-                            {
-                                if (a.Give >= b.Give) a.Wait = MathF.Max(a.Wait, 0.6f);
-                                else b.Wait = MathF.Max(b.Wait, 0.6f);
-                            }
                             Bodies[j] = b;
                         }
                     }
@@ -144,6 +138,8 @@ public sealed class PersonalSpace
                         if (!walks) continue;
                         float ahead = a.Heading.Dot(dir);
                         if (dist <= want + 1.2f && ahead >= 0.7f) bears++;
+                        // Face to face at touching on a narrow way (none walks into the other: they meet and stop): the one who gives more waits a moment.
+                        if (dist < want + 0.15f && ahead > 0.6f && a.Heading.Dot(b.Heading) < -0.5f && (a.Give > b.Give || a.Give == b.Give && i < j)) a.Wait = MathF.Max(a.Wait, 0.6f);
                         if (ahead > 0.5f && b.Heading.Dot(a.Heading) > 0.5f && (d - a.Heading * (ahead * dist)).Length() < want) a.Clear = MathF.Min(a.Clear, dist - want);
                     }
                 }
@@ -173,6 +169,23 @@ public sealed class PersonalSpace
                             }
         }
         WorstOverlap = worst;
+    }
+
+    /// <summary>
+    /// A body's own step (from, to; its radius) held from going any further into another (at o, radius r) than it already is:
+    /// the part of the step toward it goes, what is left goes along its side, dead on nothing (another floor: as it was).
+    /// </summary>
+    public static Vector3 Off(Vector3 from, Vector3 to, float radius, Vector3 o, float r)
+    {
+        if (MathF.Abs(o.Y - from.Y) > 1.5f) return to;
+        Vector3 now = new(from.X - o.X, 0f, from.Z - o.Z), next = new(to.X - o.X, 0f, to.Z - o.Z);
+        float d = next.Length();
+        if (d >= radius + r || d >= now.Length()) return to; // (clear of it, or no further in)
+        Vector3 n = now.LengthSquared() > 1e-6f ? now.Normalized() : next.LengthSquared() > 1e-6f ? next.Normalized() : Vector3.Right;
+        Vector3 step = new(to.X - from.X, 0f, to.Z - from.Z);
+        float into = step.Dot(n);
+        if (into < 0f) step -= n * into;
+        return new Vector3(from.X + step.X, to.Y, from.Z + step.Z);
     }
 
     /// <summary>The bodies near a point (within a cell or two), as the last <see cref="Resolve"/> left them (none it no longer holds).</summary>

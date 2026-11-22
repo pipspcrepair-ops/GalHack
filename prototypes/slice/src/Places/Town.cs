@@ -823,7 +823,8 @@ public sealed partial class Town : IKeeper
             // Letting someone through first: a step back out of their way.
             p.Yield -= dt;
             Vector3 back = new(MathF.Sin(p.Yaw), 0f, MathF.Cos(p.Yaw));
-            if (Open(p.Pos + back * 0.5f * dt)) p.Pos += back * 0.5f * dt;
+            Vector3 stepped = Unpressed(p, p.Pos, p.Pos + back * 0.5f * dt);
+            if (Open(stepped)) p.Pos = stepped;
             p.Now = Mathf.MoveToward(p.Now, 0f, PeopleAccel * 2f * dt);
             return false;
         }
@@ -881,7 +882,7 @@ public sealed partial class Town : IKeeper
         }
         Vector3 was = p.Pos;
         if (p.Sitting) p.GettingUp = true;
-        p.Pos += new Vector3(d.X, 0f, d.Z) / flat * step;
+        p.Pos = Unpressed(p, was, p.Pos + new Vector3(d.X, 0f, d.Z) / flat * step); // (never further into anyone: round them, Town.Space)
         if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.

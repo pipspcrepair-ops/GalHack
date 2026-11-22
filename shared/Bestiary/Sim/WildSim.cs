@@ -769,16 +769,7 @@ public sealed class WildSim
                 (o, r) = (b.Position, b.Radius);
             }
             else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);
-            if (MathF.Abs(o.Y - from.Y) > 1.5f) continue;
-            Vector3 now = Flat(from - o), next = Flat(to - o);
-            float want = c.Radius + r, d = next.Length();
-            if (d >= want || d >= now.Length()) continue; // (clear of it, or no further in)
-            // The part of the step toward it goes; what is left goes along its side.
-            Vector3 n = now.LengthSquared() > 1e-6f ? now.Normalized() : next.LengthSquared() > 1e-6f ? next.Normalized() : Vector3.Right;
-            Vector3 step = Flat(to - from);
-            float into = step.Dot(n);
-            if (into < 0f) step -= n * into;
-            to = new Vector3(from.X + step.X, to.Y, from.Z + step.Z);
+            to = PersonalSpace.Off(from, to, c.Radius, o, r);
         }
         return to;
     }
