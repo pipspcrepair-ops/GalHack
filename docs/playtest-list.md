@@ -872,3 +872,4 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 - [ ] Ground and flight builds; heavy weapons, guns through the tech tree; cyber modules [not started] [normal]
 - [ ] Water volumetric-lite: water is never treated as blocks; a light volume model (a level per basin or room that fills and drains) (owner, 9 Nov) [not started] [normal]
 - [ ] Saves [partly: saves prototype exists; not in the slice] [normal]
+- [ ] LIGHTING AND SHADOW PASS (owner, 22 Nov, screenshot of dune terrain at night-dark dusk): (1) pixelation / stair-stepping along shadow edges and (2) flicker along shadow edges are the WORST, most distracting; then (3) whole shadows flickering, (4) anomalous shadows under certain conditions (dark disc after planet return, popping by view angle, wavering). Folds in the open items "Shadows waver", "SHADOWS POP BY VIEW ANGLE", "DARK DISC AFTER RETURNING" and the shadow-distance job [running: shadow agent] [top]
