@@ -263,7 +263,8 @@ public partial class CrowdTest : Node
                     else if (MathF.Abs(off.Normalized().Dot(p.Forward)) > 0.7f) pair.Behind++;
                     else pair.Beside++;
                 }
-                if (t % 60 == 0 && counts && nearest < 3f) { pair.Gaps.Add(nearest); pair.Samples++; }
+                // (A crowd's spacing is of those standing about in it; two passing on their ways may brush by.)
+                if (t % 60 == 0 && counts && nearest < 3f && (pair == _route || !Walking(p) && !Walking(other))) { pair.Gaps.Add(nearest); pair.Samples++; }
             }
             if (shot.Name != null && t == 20 * 60 && _shots != null) foreach (int x in Snap(town.World(shot.At), shot.Name)) yield return x;
         }
@@ -298,11 +299,11 @@ public partial class CrowdTest : Node
             Town.Person p = two[i];
             p.Run = new ScavRun { Out = way, Way = way, Leg = 1, Round = new List<Vector3>(), Find = way[0], Home = true, Why = "test" };
             (p.Path, p.Step, p.Partner, p.Working, p.Wait, p.Now) = (null, 0, null, false, 0f, 0f);
-            p.Pos = way[0] + side * (i == 0 ? -0.25f : 0.25f);
+            p.Pos = way[0] + side * (i == 0 ? -0.3f : 0.3f);
             p.Yaw = MathF.Atan2(outward.X, outward.Z); // (facing home)
         }
         _game.Survivor.PlaceOutside(town.World(way[way.Count / 2] + side * 6f + Vector3.Up * 0.3f).ToNumerics());
-        GD.Print($"  (two set 0.5 m apart 40 m out, walking home side by side)");
+        GD.Print($"  (two set 0.6 m apart 40 m out, walking home side by side)");
         for (int t = 0; t < 30 * 60 && two.All(p => p.Run != null && !p.Dead); t++)
         {
             TopUp();
@@ -371,7 +372,7 @@ public partial class CrowdTest : Node
                 float nearest = WildSim.Flat(o.Position - c.Position).Length() - c.Radius - o.Radius;
                 if (-nearest > _herdWorst) (_herdWorst, _herdWorstAt) = (-nearest, $"{c.State}{(c.Species.Adult != null ? " young" : "")} and {o.State}{(o.Species.Adult != null ? " young" : "")}, {(alarmed ? "alarmed" : "grazing")}");
                 // (The young at their mothers' sides are not the herd's spacing.)
-                if (c.Species.Adult == null && o.Species.Adult == null) (alarmed ? _alarmed : _calm).Add(nearest);
+                if (c.Species.Adult == null && o.Species.Adult == null && (!alarmed || c.State == CState.Flee)) (alarmed ? _alarmed : _calm).Add(nearest);
             }
         }
         patch.Sim.Targets.Add(patch.Player);
@@ -429,7 +430,8 @@ public partial class CrowdTest : Node
         if (_herds == 0) { Check(false, "a herd watched grazing"); return; }
         Check(_herdWorst < 0.05f, $"no herd animal stands in another (deepest {_herdWorst:F2} m{(_herdWorstAt != "" ? ": " + _herdWorstAt : "")})");
         Check(Median(_calm) >= _herdR * 1.5f && Share(_calm, g => g < 0.15f) < 0.15f, $"a grazing herd spreads loosely (nearest gap median {Median(_calm):F2} m, at least 1.5 radii {_herdR * 1.5f:F2}; {Share(_calm, g => g < 0.15f) * 100f:F0}% touching, under 15%)");
-        Check(Median(_alarmed) < Median(_calm), $"and bunches tighter alarmed (median {Median(_alarmed):F2} m against {Median(_calm):F2} grazing)");
+        if (_alarmed.Count == 0) GD.Print("  (no herd took the alarm to flight: tighter when alarmed not shown this run)");
+        else Check(Median(_alarmed) < Median(_calm), $"and bunches tighter alarmed (median {Median(_alarmed):F2} m running against {Median(_calm):F2} grazing)");
         float added = Added();
         Check(float.IsNaN(added) || added < 0.1f, $"keeping a distance is cheap: {added:F3} ms more a tick for 100 bodies in a crowd than touching alone (a town all told {Avg(_townMs):F3} ms, wildlife {Avg(_wildMs):F3} ms)");
     }

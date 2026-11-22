@@ -262,7 +262,8 @@ public sealed partial class Town
 
     /// <summary>
     /// Someone's own step held from going any further into anyone else, you among them (as a creature's is, WildSim.Unpressed):
-    /// what would take them into another goes along their side, dead on not at all. (Not one walking off away from them.)
+    /// what would take them into another goes along their side, dead on not at all. (Not one walking off away from them; one
+    /// stepping back to let them by is coming their way.)
     /// </summary>
     Vector3 Unpressed(Person p, Vector3 from, Vector3 to)
     {
@@ -273,7 +274,7 @@ public sealed partial class Town
             if (j >= _bodies.Count) { to = PersonalSpace.Off(from, to, r, _space.Bodies[j].Pos, _space.Bodies[j].Radius); continue; } // (you)
             Person o = _bodies[j];
             Vector3 off = (o.Pos - from) with { Y = 0f };
-            if (o == p || o.Dead || o.Gone || o.Asleep || o.Now > 0.1f && off.LengthSquared() > 1e-4f && o.Forward.Dot(off.Normalized()) > 0.3f) continue;
+            if (o == p || o.Dead || o.Gone || o.Asleep || o.Now > 0.1f && o.Yield <= 0f && off.LengthSquared() > 1e-4f && o.Forward.Dot(off.Normalized()) > 0.3f) continue;
             to = PersonalSpace.Off(from, to, r, o.Pos, BodyRadius(o));
         }
         return to;
