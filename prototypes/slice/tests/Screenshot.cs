@@ -87,7 +87,7 @@ public partial class Screenshot : Node
         }
         // The forced place in a state of its own (--force-state=active: still powered, its lamps lit).
         if (_args.TryGetValue("force-state", out string fs) && Enum.TryParse(fs, true, out PoiGenerator.Gen.PoiState forcedState)) PlanetSurface.Poi.PoiSiting.ForceState = forcedState;
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, SettingsPath = _args.GetValueOrDefault("settings"), World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };
         _script = _staging.Run(_view).GetEnumerator();

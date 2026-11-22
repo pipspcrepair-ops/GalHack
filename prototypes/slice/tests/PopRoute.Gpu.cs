@@ -33,6 +33,19 @@ public partial class PopRoute
         Under(_game.Zone.Wildlife, 19);
     }
 
+    /// <summary>Forward+ draws opaque things' depth first (Mobile never does); the engine reads it each frame, so a case can turn it off.</summary>
+    const string DepthPrepass = "rendering/driver/depth_prepass/enable";
+
+    /// <summary>Forward+'s own effects the game leaves off, each turned on alone for a case: what it would add.</summary>
+    static readonly Dictionary<string, Action<Godot.Environment, bool>> Effects = new()
+    {
+        ["+ssao"] = (e, on) => e.SsaoEnabled = on,
+        ["+ssil"] = (e, on) => e.SsilEnabled = on,
+        ["+ssr"] = (e, on) => e.SsrEnabled = on,
+        ["+sdfgi"] = (e, on) => e.SdfgiEnabled = on,
+        ["+volumetric fog"] = (e, on) => e.VolumetricFogEnabled = on,
+    };
+
     /// <summary>The places' and people's drawings by kind: a place's blocks (its chunks), its dressing, the people, and the places' far drawings.</summary>
     static readonly Dictionary<string, int> Parts = new() { ["blocks"] = 0, ["dressing"] = 1, ["people"] = 2, ["far places"] = 3 };
 
@@ -120,8 +133,11 @@ public partial class PopRoute
             views.Add(("in the city", mid - way * 60f, 1.7f, -2f));
             views.Add(("low over the city", mid - way * (radius + 150f), 40f, -10f));
         }
-        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow" }).Concat(Enum.GetNames<Game.AntiAliasing>().Select(n => "aa " + n))
-            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).Concat(new[] { "-sky glow", "-cumulus", "-clouds" }).Append("all again").ToList();
+        // --gpu-q=0.1: each case's 10th percentile frame, not its median (a GPU other runs share only ever adds time).
+        double q = _args.TryGetValue("gpu-q", out string gq) ? double.Parse(gq, CultureInfo.InvariantCulture) : 0.5;
+        bool prepass = (bool)ProjectSettings.GetSetting(DepthPrepass, true);
+        var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-depth prepass" }).Concat(Enum.GetNames<Game.AntiAliasing>().Select(n => "aa " + n))
+            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).Concat(new[] { "-sky glow", "-cumulus", "-clouds" }).Concat(Effects.Keys).Append("all again").ToList();
         foreach (var (view, at, up, pitch) in views)
         {
             Vector3 eye = Lift(at, up);
@@ -152,6 +168,8 @@ public partial class PopRoute
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = c == "-shadows" ? 0u : uint.MaxValue;
                 env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                 env.GlowEnabled = c != "-glow" && glow;
+                foreach (var (effect, on) in Effects) on(env, c == effect);
+                ProjectSettings.SetSetting(DepthPrepass, c != "-depth prepass" && prepass);
                 Game.Game.SetAntiAliasing(GetViewport(), c.StartsWith("aa ") ? Enum.Parse<Game.AntiAliasing>(c[3..]) : aa);
                 // The sky's own parts: the lit places' glow on the cloud, the heaped cumulus, all cloud (each set back after).
                 if (sky != null)
@@ -185,8 +203,8 @@ public partial class PopRoute
                 cpu.Sort();
                 draws.Sort();
                 tris.Sort();
-                cost[c] = gpu[gpu.Count / 2];
-                renderCpu[c] = cpu[cpu.Count / 2];
+                cost[c] = gpu[(int)(gpu.Count * q)];
+                renderCpu[c] = cpu[(int)(cpu.Count * q)];
                 drawCalls[c] = draws[draws.Count / 2];
                 triangles[c] = tris[tris.Count / 2];
             }
@@ -201,7 +219,8 @@ public partial class PopRoute
             double all = cost["all"];
             double allCpu = renderCpu["all"], allDraws = drawCalls["all"], allTris = triangles["all"];
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view} by anti-aliasing (gpu ms, median of 80 frames, one scene): {string.Join(", ", cases.Where(c => c.StartsWith("aa ")).Select(c => $"{c[3..]} {cost[c]:F2}"))}"));
-            string costs = string.Join(", ", cases.Skip(1).Where(c => !c.StartsWith("aa ")).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}/{(allTris - triangles[c]) / 1000:F0}k")));
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view} with each effect the game leaves off (Forward+ only; gpu/render cpu ms more): {string.Join(", ", Effects.Keys.Select(c => $"{c[1..]} {cost[c] - all:F2}/{renderCpu[c] - allCpu:F2}"))}"));
+            string costs = string.Join(", ", cases.Skip(1).Where(c => !c.StartsWith("aa ") && !Effects.ContainsKey(c)).Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.TrimStart('-')} {all - cost[c]:F2}/{allCpu - renderCpu[c]:F2}/{allDraws - drawCalls[c]:F0}/{(allTris - triangles[c]) / 1000:F0}k")));
             // The whole picture measured again last: what it moved meanwhile (a place still coming in) is the measure's own error.
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: drift over the cases gpu {cost["all again"] - all:F2} ms, render cpu {renderCpu["all again"] - allCpu:F2} ms, draw calls {drawCalls["all again"] - allDraws:F0}"));
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: all gpu {all:F2} ms, render cpu {allCpu:F2} ms, {allDraws:F0} draw calls, {allTris / 1000:F0}k triangles ({string.Join(", ", parts.Select(kv => $"{kv.Key} {kv.Value.Count}"))}); physics: {PhysicsServer3D.GetProcessInfo(PhysicsServer3D.ProcessInfo.ActiveObjects)} active bodies, {PhysicsServer3D.GetProcessInfo(PhysicsServer3D.ProcessInfo.CollisionPairs)} collision pairs; without each (what it costs, gpu/render cpu ms/draw calls/triangles): {costs}"));
