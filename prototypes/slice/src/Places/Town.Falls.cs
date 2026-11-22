@@ -169,7 +169,7 @@ public sealed partial class Town
             {
                 // (The place's colliders a moment behind its blocks: looked under once they have caught up; a few a tick at most, the rest the next.)
                 // (Those something went from under are looked at every step; the sweep's and a walker's missing floor, one a step.)
-                if (p.CheckFor <= 0f || p.Clambering || p.CheckFor < Pressing && _looks >= LooksATick) return false;
+                if (p.CheckFor <= 0f || p.Clambering && p.ClimbTo != null || p.CheckFor < Pressing && _looks >= LooksATick) return false; // (held to a wall climbing out: not looked under)
                 // (The colliders still catching up with the blocks: where the blocks show nothing under them, held there a moment, not
                 // walked on over the gap on the old floor; looked under once the colliders have it.)
                 if (_staleFor > 0f)
