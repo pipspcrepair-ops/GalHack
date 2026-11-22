@@ -244,7 +244,8 @@ public sealed class LeggedRig : Rig
     {
         float legLen = Species.Body.LegLength;
         float duration = Math.Clamp(0.42f * MathF.Sqrt(legLen) / (1f + speed * 0.25f), 0.12f, 0.7f);
-        float threshold = MathF.Max(0.1f, legLen * (speed < 0.1f ? 0.12f : 0.32f));
+        // (Standing, a foot is let stray further before it steps again: a body nudged or turning a little shuffles, it doesn't walk.)
+        float threshold = MathF.Max(0.1f, legLen * (speed < 0.1f ? 0.22f : 0.32f));
         int activeGroup = (int)MathF.Floor(_gait * 2f) & 1;
         bool dead = Dead > 0f;
 

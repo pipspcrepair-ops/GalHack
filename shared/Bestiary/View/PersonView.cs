@@ -151,8 +151,11 @@ public partial class PersonView : Node3D
     Transform3D _root;
     double _synced = double.MinValue;
 
-    /// <summary>The longest span between poses carried across the frames between them, s: a body posed less often is far off and small.</summary>
-    const float CarriedSpan = 0.05f;
+    /// <summary>
+    /// The longest span between poses carried across the frames between them, s: a body posed every tick on a screen faster than
+    /// the ticks. One posed less often is far off and small, and a 60 Hz screen draws each pose of a near one: nothing to carry.
+    /// </summary>
+    const float CarriedSpan = 1f / 40f;
 
     /// <summary>
     /// Every piece where the rig has it, eased: the body glides from where it was drawn to where the sim has it now, and a
