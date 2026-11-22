@@ -110,19 +110,13 @@ public readonly record struct Sighting(Orbiter Body, D3 Direction, double Distan
 public sealed class StarSystem
 {
     /// <summary>
-    /// A world's radius from its map's width, m: the globe is as wide as its map (owner, 22 Nov: "Planet should scale
-    /// properly"), so a 16 x 8 km world is 16 km across. The one rule every body's <see cref="Orbiter.Radius"/> comes from.
+    /// A world's radius from its map's width, m: the map's width is its equator (true scale; the owner kept the globe
+    /// as it is, 22 Nov). The one rule every body's <see cref="Orbiter.Radius"/> comes from.
     /// </summary>
-    public static double RadiusOf(double widthMetres) => widthMetres * 0.5;
+    public static double RadiusOf(double widthMetres) => widthMetres / Math.Tau;
 
-    /// <summary>
-    /// How much bigger the worlds stood than under the old rule (radius = width / 2π): space grew with them, so every sky
-    /// keeps its look. Only the start's thruster moon stayed as near as before (<see cref="ThrusterMoonFrom"/>).
-    /// </summary>
-    const double Grown = Math.PI;
-
-    /// <summary>One chart AU, m: 4,000 km at the old worlds' size, grown with them. Distances have their own ruler, squeezed against the worlds'.</summary>
-    public const double AuMetres = 4e6 * Grown;
+    /// <summary>One chart AU, m. Distances have their own ruler: the worlds' would put it at 60,000 km.</summary>
+    public const double AuMetres = 4e6;
 
     /// <summary>Under this a body would be less than a pixel or so: it is drawn this size, in every view, as a point of light is.</summary>
     public const float LeastAngular = 0.0011f;
@@ -139,11 +133,9 @@ public sealed class StarSystem
     /// (Default Akua-Omicron's Sectors.yaml: Akua Moon 11.5 km, Omicron Moon 11.8 km, Oscutune Moon
     /// 8.3 km); for a 16 km start world and an 8 km moon this range leaves that much open space
     /// between the top of the world's crossing band and the moon's ground: about 45 s to a minute at
-    /// a vessel's 200 m/s. That open space was 4 to 5.5 of the old radii (5.5 to 7 centre to centre, less
-    /// the world and its half-size moon); it is kept as it was when the worlds grew (owner: moon trips stay
-    /// as short), so the moon stands nearer in the new radii and looks bigger in the sky.
+    /// a vessel's 200 m/s.
     /// </summary>
-    public const double ThrusterMoonFrom = 1.5 + 4.0 / Grown, ThrusterMoonTo = 1.5 + 5.5 / Grown;
+    public const double ThrusterMoonFrom = 5.5, ThrusterMoonTo = 7.0;
 
     /// <summary>The farthest the fuel moon may stand from a start world's centre, in its radii.</summary>
     public const double ThrusterReachRadii = ThrusterMoonTo;

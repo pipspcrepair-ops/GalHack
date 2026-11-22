@@ -138,7 +138,8 @@ public partial class GlobeTest : Node
     /// </summary>
     void OneSystem()
     {
-        const double width = 16000, radius = width / Math.Tau;
+        const double width = 16000;
+        double radius = PlanetSurface.Skies.StarSystem.RadiusOf(width); // the model's one rule (owner, 22 Nov: as wide as its map)
         var map = new GlobeMap(16000, 8000, radius);
         var rng = new Random();
         double worstFrame = 0, worstSight = 0, worstNoon = 0;
