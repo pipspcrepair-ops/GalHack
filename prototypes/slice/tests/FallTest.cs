@@ -234,6 +234,7 @@ public partial class FallTest : Node
         BlockGrid g = place.Memory.Inst.Blocks;
         return g.InBounds(c) && !g.Get(c).IsAir && g.Get(c).Role is not (Role.Loot or Role.Terminal or Role.Core or Role.Secret);
     }
+/// <summary>A floor of the place's blocks with nothing built over it where the feet are (no wall's foot).</summary>    static bool OpenFloor(Place place, Vector3 feet) => Under(place, feet) && place.Memory.Inst.Blocks.Get(new Int3((int)MathF.Floor(feet.X), (int)MathF.Floor(feet.Y + 0.05f), (int)MathF.Floor(feet.Z))).IsAir;
 
     /// <summary>The floor's blocks under a point (local feet) and round it broken by a weapon's hits.</summary>
     void Break(Place place, Vector3 feet, int r)
@@ -585,7 +586,7 @@ public partial class FallTest : Node
             {
                 Species kind = patch.Fauna.Species.Where(s => !s.Flies && !s.Climbs && !s.Rooted && s.Rig is RigKind.Legged or RigKind.Hopper).MinBy(s => s.Body.Size);
                 Town town = home.Memory.Town;
-                Town.Person by = town?.People.FirstOrDefault(p => !p.Dead && !p.Gone && Under(home, p.Pos) && new[] { Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }.All(d => Under(home, p.Pos + d)) && DropUnder(town, p.Pos) >= 1f); // (in the open of a floor, not by a wall)
+                Town.Person by = town?.People.FirstOrDefault(p => !p.Dead && !p.Gone && Under(home, p.Pos) && new[] { Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }.All(d => OpenFloor(home, p.Pos + d)) && DropUnder(town, p.Pos) >= 1f); // (in the open of a floor, not by a wall)
                 if (home.Memory.Fauna is not { Site: { } fs, Space: { } space } || kind == null || by == null)
                     GD.Print($"  (none of the land's walkers let in: {(home.Memory.Fauna?.Site == null ? "no creatures' site in the place" : kind == null ? "no walker on the land" : "nobody on a floor with room under it")})");
                 else
