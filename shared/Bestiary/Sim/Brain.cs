@@ -217,7 +217,10 @@ public static partial class Brain
     /// </summary>
     public static float Keep(Creature c) => c.Herd is not { } h ? 0f
         : c.Species.Behaviour == Behaviour.Folk ? (h.Alarmed ? 0.1f : PersonalSpace.ArmsLength)
-        : h.Alarmed ? c.Radius * 0.4f : c.Radius * 2.5f;
+        : h.Alarmed ? c.Radius * 0.4f : GrazeKeep(c.Radius);
+
+    /// <summary>The distance a grazing herd animal keeps past touching, m: a body and more.</summary>
+    public static float GrazeKeep(float radius) => radius * 2.5f;
 
     /// <summary>Herd-wide state, updated once per step by whichever member gets there first.</summary>
     static void UpdateHerd(WildSim w, Herd h, float dt)
