@@ -185,7 +185,7 @@ public static class Locomotion
         // Its back at the surface where it swims; on the bottom where it wades out (up the bank at a walk, never a leap).
         float floatAt = top - h * w.SwimShare, under = Footing(w, c, p.X, p.Z);
         p.Y = swims && deep ? Mathf.MoveToward(c.Position.Y, MathF.Max(floatAt, under), 2f * dt) : under;
-        if (p.Y - c.Position.Y > StrideDrop) p = c.Position with { Y = c.Position.Y + 1.5f * dt }; // (a step up out of it too high to stride: it clambers)
+        if (!(swims && deep) && p.Y - c.Position.Y > 1.5f * dt) p = c.Position with { Y = c.Position.Y + 1.5f * dt }; // (up anything steeper than a walk up the bed: it clambers, never a hop)
         c.Velocity = c.Forward * speed;
         c.Position = p;
         if (w.WaterAt(p.X, p.Z) == null) c.Shoreward = null; // (out on the bank: its own way again)
