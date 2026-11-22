@@ -39,6 +39,9 @@ public partial class StartleTest : Node
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
     readonly System.Random _rng = new();
+    /// <summary>--seeds=a:b:...: the rounds' worlds rolled again in order (an A/B of a failing run; never pinned), else fresh.</summary>
+    readonly ulong[] _seeds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seeds=")) is { } s ? s[8..].Split(':').Select(ulong.Parse).ToArray() : System.Array.Empty<ulong>();
+    int _round;
     Game.Game _game;
     Driver _drive;
     double _max;
@@ -98,7 +101,8 @@ public partial class StartleTest : Node
         // (A town with its people in its buildings as well as out in its streets: one under a roof, one in the open.)
         const string family = "survivor_town";
         PlanetSurface.Poi.PoiSiting.ForceFamily = family;
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.Fresh("temperate", _seeds.Length > _round ? _seeds[_round] : null);
+        _round++;
         _game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(_game);
         _drive = new Driver(_game);
