@@ -193,6 +193,7 @@ public sealed partial class Town : IKeeper
         town._parts = PlaceParts.Of(m);
         town._fixed = PlaceParts.Fixed(m);
         town._ways = DoorWays.Of(m);
+        town._passages = Passages(m);
         m.Bodies.Add(town.BodiesNear);
         town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
@@ -230,7 +231,56 @@ public sealed partial class Town : IKeeper
             }
             path.Add(here);
         }
-        return path;
+        return Pulled(path);
+    }
+
+    /// <summary>The place's doorways, ways out and openings between its parts: a straightened way keeps a point of its own in each it goes through.</summary>
+    HashSet<PInt3> _passages;
+
+    static HashSet<PInt3> Passages(PlaceMemory m)
+    {
+        var cells = new HashSet<PInt3>(m.Inst.Layout.Doorways.SelectMany(d => d.Cells).Concat(m.Inst.Layout.ExitCells));
+        foreach (var (a, b) in RoomDecor.Openings(m.Inst)) { cells.Add(a); cells.Add(b); }
+        return cells;
+    }
+
+    /// <summary>How many of a route's points ahead are looked along for a straight way to.</summary>
+    const int PullReach = 6;
+
+    /// <summary>
+    /// A route's points pulled straight (owner: "npc's can get really twitchy when figuring out which way to path"): the grid's
+    /// way goes cell by cell, a staircase across open floor that turned them a quarter turn every metre or so. Walked, it is a
+    /// straight line from each point kept to the farthest a few ahead a body gets to straight: on the one floor, clear of the
+    /// walls and the furniture, and never through a doorway or onto a stair but at a point of its own.
+    /// </summary>
+    List<Vector3> Pulled(List<Vector3> path)
+    {
+        if (path.Count < 3 || _nav == null) return path;
+        var kept = new List<Vector3>(path.Count) { path[0] };
+        for (int i = 0; i < path.Count - 1;)
+        {
+            int j = i + 1;
+            for (int k = Math.Min(path.Count - 1, i + PullReach); k > i + 1; k--)
+                if (Shortcut(path[i], path[k])) { j = k; break; }
+            kept.Add(path[j]);
+            i = j;
+        }
+        return kept;
+    }
+
+    /// <summary>Whether a body walks straight from one point of a route to another (<see cref="Pulled"/>).</summary>
+    bool Shortcut(Vector3 a, Vector3 b)
+    {
+        if (MathF.Abs(a.Y - b.Y) > 0.05f) return false;
+        Vector3 d = (b - a) with { Y = 0f };
+        float len = d.Length();
+        PInt3 ca = Cell(a), cb = Cell(b);
+        for (float s = 0.25f; s < len; s += 0.25f)
+        {
+            PInt3 c = Cell(a + d * (s / len));
+            if (!_nav.Standable(c) || _nav.RampAt(c, out _) || c != ca && c != cb && _passages != null && _passages.Contains(c)) return false;
+        }
+        return _fixed == null || _fixed.Sweep(a, b, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls: Place.WallsOf(_nav), wallRadius: PlaceParts.PersonRadius);
     }
 
     List<Vector3> PathBetween(int a, int b) => PathBetween(a, b, out _);
@@ -803,6 +853,8 @@ public sealed partial class Town : IKeeper
         float flat = new Vector2(d.X, d.Z).Length();
         // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
         bool last = p.Step >= p.Path.Count - 1;
+        // Coming up on a crowd at the end of their way: they stop at its edge, an arm's length off the nearest, not pressed into it.
+        if (last && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength && Settles(p)) return true;
         float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         // Behind someone going their way: on at their pace an arm's length back, never into them (Town.Space).

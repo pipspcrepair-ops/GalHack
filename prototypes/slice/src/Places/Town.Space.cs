@@ -186,6 +186,7 @@ public sealed partial class Town
         town._parts = PlaceParts.Of(m);
         town._fixed = PlaceParts.Fixed(m);
         town._ways = DoorWays.Of(m);
+        town._passages = Passages(m);
         m.Bodies.Add(town.BodiesNear);
         return town;
     }
@@ -217,13 +218,7 @@ public sealed partial class Town
             return;
         }
         if ((p.StuckFor += dt) < HeldLook) return;
-        if (p.Path is { Count: > 0 } way && p.Step >= way.Count - 1 && (way[^1] - p.Pos).Length() < 2.5f && Taken(p, way[^1]))
-        {
-            p.Step = way.Count;
-            p.StuckFor = 0f;
-            Settled++;
-            return;
-        }
+        if (Settles(p)) return;
         if (p.StuckFor < HeldAside)
         {
             // Someone in the way: stood still a moment, looking at them, rather than pressing on into them.
@@ -251,6 +246,15 @@ public sealed partial class Town
         else if (path is { Count: > 0 }) p.Path = path;
         p.Step = 0;
         Rerouted++;
+    }
+
+    /// <summary>Near the end of their way with someone standing at its end (a crowd at a spot, at a refuge): they stop where they got to (true).</summary>
+    bool Settles(Person p)
+    {
+        if (p.Path is not { Count: > 0 } way || p.Step < way.Count - 1 || (way[^1] - p.Pos).Length() >= 2.5f || !Taken(p, way[^1])) return false;
+        (p.Step, p.StuckFor) = (way.Count, 0f);
+        Settled++;
+        return true;
     }
 
     /// <summary>The nearest one standing or walking a step ahead of someone, in their way (null: nobody).</summary>

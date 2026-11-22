@@ -46,6 +46,7 @@ public partial class CrowdTest : Node
     readonly Tally _crowd = new("in a crowd"), _doors = new("through a doorway"), _route = new("on a shared route"), _land = new("two walking home over the land");
     readonly List<float> _calm = new(), _alarmed = new();
     float _herdWorst, _herdR;
+    string _herdWorstAt = "";
     int _herds;
     readonly List<float> _townMs = new(), _wildMs = new();
 
@@ -94,6 +95,7 @@ public partial class CrowdTest : Node
         public float Worst, Seconds;
         public readonly List<float> Gaps = new();
         public string WorstAt = "";
+        public readonly List<string> Notes = new();
         public Tally(string what) => What = what;
         public float PerMinute => Seconds > 1f ? Flicks / (Seconds / 60f) : 0f;
         public float Quantile(float q) => Gaps.Count == 0 ? float.NaN : Gaps.OrderBy(g => g).ElementAt(Math.Min(Gaps.Count - 1, (int)(q * Gaps.Count)));
@@ -104,6 +106,7 @@ public partial class CrowdTest : Node
     {
         public float Yaw, Dir, Amount, Since, Prev, PrevSince, TurnedAt = -9f;
         public bool Counted, Seen;
+        public string Note, PrevNote;
     }
 
     /// <summary>One tick of a body's facing: true when it completes a flick (a turn one way and straight back).</summary>
@@ -231,7 +234,8 @@ public partial class CrowdTest : Node
                 Tally tally = nearDoor ? _doors : _crowd;
                 if (!p.Sitting) tally.Seconds += dt;
                 if (!swings.TryGetValue(p, out Swing s)) swings[p] = s = new Swing();
-                if (!p.Sitting && Flicked(s, p.Yaw, now)) tally.Flicks++;
+                if (!p.Sitting && Flicked(s, p.Yaw, now) && tally.Flicks++ < 8) tally.Notes.Add($"{s.PrevNote} then {s.Note} then {Note(p)}");
+                if (s.Since == now || s.Note == null) (s.PrevNote, s.Note) = (s.Note, Note(p));
                 // Bodies in each other, and the nearest one's gap once a second (standing or walking, not seated at a table).
                 float nearest = float.MaxValue;
                 Town.Person other = null;
@@ -247,7 +251,7 @@ public partial class CrowdTest : Node
                 if (counts && nearest < -0.03f && (who.IndexOf(other) < 0 || who.IndexOf(p) < who.IndexOf(other)))
                 {
                     pair.Overlaps++;
-                    if (-nearest > pair.Worst) (pair.Worst, pair.WorstAt) = (-nearest, $"{p.Job} and {other.Job} at {p.Pos.X:F1},{p.Pos.Z:F1}, {(Walking(p) ? "walking" : "standing")}/{(Walking(other) ? "walking" : "standing")}");
+                    if (-nearest > pair.Worst) (pair.Worst, pair.WorstAt) = (-nearest, $"at {p.Pos.X:F1},{p.Pos.Z:F1}, {Note(p)} and {Note(other)}");
                 }
                 if (pair == _route && p.Now > 0.3f)
                 {
@@ -264,6 +268,11 @@ public partial class CrowdTest : Node
     }
 
     static bool Walking(Town.Person p) => p.Path != null && p.Step < p.Path.Count;
+
+    bool Wet(Vector3 w) => _game.Zone.Planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(w.X, _game.Zone.Planet.Width), Planets.Gen.Mathx.Wrap(w.Z, _game.Zone.Planet.Height), out _);
+
+    /// <summary>What someone is at, for a flick's note.</summary>
+    static string Note(Town.Person p) => $"[{p.Job} {(Walking(p) ? $"walking {p.Step}/{p.Path.Count}" : "standing")} now {p.Now:F1} spin {Ms(p, "Spin"):F1} stuck {p.StuckFor:F1} yield {p.Yield:F1}{(p.Partner != null ? " partner" : "")}{(p.AnswerFor > 0f ? " answering" : "")} act {p.Act} spot {p.Spot} wait {p.Wait:F0}{(p.Fleeing ? " fleeing" : "")}{(p.Engaged ? " engaged" : "")}]";
 
     static float Ms(object o, string name) => o.GetType().GetProperty(name)?.GetValue(o) is float f ? f : o.GetType().GetField(name)?.GetValue(o) is float g ? g : float.NaN;
 
@@ -316,7 +325,9 @@ public partial class CrowdTest : Node
         // The sleeper out past the settlement first (its wildlife about them), then the herd put down 25 m off them.
         Vector3 home = town.World(town.SpotAt(0));
         float away = _rng.NextSingle() * MathF.Tau;
-        Vector3 feet = _game.Zone.GroundAt(home.X + MathF.Sin(away) * 110f, home.Z + MathF.Cos(away) * 110f);
+        Vector3 Out(float a, float r) => _game.Zone.GroundAt(home.X + MathF.Sin(a) * r, home.Z + MathF.Cos(a) * r);
+        for (int k = 0; k < 24 && (Wet(Out(away, 110f)) || Wet(Out(away, 135f))); k++) away += MathF.Tau / 24f; // (dry land there and past it)
+        Vector3 feet = Out(away, 110f);
         _game.Survivor.PlaceOutside((feet + Vector3.Up * 0.3f).ToNumerics());
         for (int i = 0; i < 180; i++) { TopUp(); yield return 0; }
         feet = _game.Survivor.WorldFeet;
@@ -327,8 +338,9 @@ public partial class CrowdTest : Node
         for (int k = 0; k < 12 && herd.Count < 3; k++)
         {
             foreach (Creature c in herd) c.Removed = true;
-            float a = away + k * MathF.Tau / 12f;
+            float a = away + (k % 2 == 0 ? 1 : -1) * (k / 2) * MathF.Tau / 12f; // (on out first, then round)
             mid = _game.Zone.GroundAt(feet.X + MathF.Sin(a) * 25f, feet.Z + MathF.Cos(a) * 25f);
+            if (Wet(mid)) continue;
             herd = patch.Sim.SpawnGroup(s, patch.PatchLocal(mid), 9).Where(c => !c.Removed).ToList();
         }
         if (herd.Count < 3) { patch.Sim.Targets.Add(patch.Player); GD.Print($"  (no room for a herd of {s.CommonName} here)"); yield break; }
@@ -349,10 +361,12 @@ public partial class CrowdTest : Node
             var live = herd.Where(c => c.Alive && !c.Removed).ToList();
             foreach (Creature c in live)
             {
-                float nearest = live.Where(o => o != c).Select(o => WildSim.Flat(o.Position - c.Position).Length() - c.Radius - o.Radius).DefaultIfEmpty(float.MaxValue).Min();
-                if (nearest == float.MaxValue) continue;
-                _herdWorst = MathF.Max(_herdWorst, -nearest);
-                (alarmed ? _alarmed : _calm).Add(nearest);
+                Creature o = live.Where(x => x != c).OrderBy(x => WildSim.Flat(x.Position - c.Position).Length() - x.Radius).FirstOrDefault();
+                if (o == null) continue;
+                float nearest = WildSim.Flat(o.Position - c.Position).Length() - c.Radius - o.Radius;
+                if (-nearest > _herdWorst) (_herdWorst, _herdWorstAt) = (-nearest, $"{c.State}{(c.Species.Adult != null ? " young" : "")} and {o.State}{(o.Species.Adult != null ? " young" : "")}, {(alarmed ? "alarmed" : "grazing")}");
+                // (The young at their mothers' sides are not the herd's spacing.)
+                if (c.Species.Adult == null && o.Species.Adult == null) (alarmed ? _alarmed : _calm).Add(nearest);
             }
         }
         patch.Sim.Targets.Add(patch.Player);
@@ -364,7 +378,8 @@ public partial class CrowdTest : Node
     {
         Vector3 feet = _game.Survivor.WorldFeet, to = new Vector3(at.X - feet.X, 0f, at.Z - feet.Z);
         to = to.LengthSquared() > 0.01f ? to.Normalized() : Vector3.Forward;
-        Vector3 eye = at - to * back + Vector3.Up * 3.2f;
+        Vector3 eye = at - to * back;
+        eye.Y = MathF.Max(at.Y + 2.2f, _game.Zone.GroundAt(eye.X, eye.Z).Y + 2.2f);
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 0.6f - eye, Vector3.Up), eye);
         _game.Visor.Visible = false;
         yield return 0;
@@ -393,9 +408,10 @@ public partial class CrowdTest : Node
         GD.Print("-- over all worlds --");
         foreach (Tally t in new[] { _crowd, _doors, _route })
             GD.Print($"  ({t.What}: {t.Seconds / 60f:F1} person-minutes, {t.Flicks} flicks ({t.PerMinute:F2} a minute), {t.Overlaps} overlapping ticks (worst {t.Worst:F2} m{(t.WorstAt != "" ? ", " + t.WorstAt : "")}), nearest gap median {Median(t.Gaps):F2} m, 10% {t.Quantile(0.1f):F2} m over {t.Gaps.Count}{(t == _route ? $"; walking {t.Beside} side by side, {t.Behind} one behind, {t.Merged} as one" : "")})");
+        foreach (Tally t in new[] { _crowd, _doors }) foreach (string n in t.Notes) GD.Print($"    (flick {t.What}: {n})");
         GD.Print($"  ({_land.What}: {_land.Seconds:F0} s, {_land.Overlaps} ticks in each other (worst {_land.Worst:F2} m{(_land.WorstAt != "" ? ", " + _land.WorstAt : "")}), gap median {Median(_land.Gaps):F2} m, least {(_land.Gaps.Count > 0 ? _land.Gaps.Min() : float.NaN):F2} m; {_land.Beside} ticks side by side, {_land.Behind} one behind, {_land.Merged} as one)");
         GD.Print($"  (herds: {_herds}, radius {_herdR:F2} m; nearest gap grazing median {Median(_calm):F2} m ({Share(_calm, g => g < 0.15f) * 100f:F0}% within 0.15 m), alarmed median {Median(_alarmed):F2} m; deepest overlap {_herdWorst:F2} m)");
-        GD.Print($"  (cost: town personal space {Avg(_townMs):F3} ms a tick (worst {Max(_townMs):F3}), wildlife {Avg(_wildMs):F3} ms (worst {Max(_wildMs):F3}))");
+        GD.Print($"  (cost: town personal space {Avg(_townMs):F3} ms a tick (99% under {Quantile(_townMs, 0.99f):F3}), wildlife {Avg(_wildMs):F3} ms (99% under {Quantile(_wildMs, 0.99f):F3}))");
         Check(_crowd.Seconds > 60f && _route.Samples + _route.Beside + _route.Behind > 0, $"crowds watched: {_crowd.Seconds / 60f:F1} person-minutes in the open, {_doors.Seconds / 60f:F1} by doorways, {_route.Beside + _route.Behind + _route.Merged} ticks of two on one way");
         foreach (Tally t in new[] { _crowd, _doors, _route })
             Check(t.Worst < 0.05f, $"nobody stands in anybody {t.What} ({t.Overlaps} ticks over 3 cm, worst {t.Worst:F2} m{(t.WorstAt != "" ? ": " + t.WorstAt : "")})");
@@ -406,12 +422,43 @@ public partial class CrowdTest : Node
         Check(_crowd.PerMinute < 0.5f, $"no twitching in a crowd: {_crowd.PerMinute:F2} heading flicks a person a minute (under 0.5)");
         Check(_doors.Seconds < 0.5f || _doors.PerMinute < 1f, $"nor in doorways: {_doors.PerMinute:F2} a person a minute (under 1, over {_doors.Seconds / 60f:F1} person-minutes)");
         if (_herds == 0) { Check(false, "a herd watched grazing"); return; }
-        Check(_herdWorst < 0.05f, $"no herd animal stands in another (deepest {_herdWorst:F2} m)");
+        Check(_herdWorst < 0.05f, $"no herd animal stands in another (deepest {_herdWorst:F2} m{(_herdWorstAt != "" ? ": " + _herdWorstAt : "")})");
         Check(Median(_calm) >= _herdR * 1.5f && Share(_calm, g => g < 0.15f) < 0.15f, $"a grazing herd spreads loosely (nearest gap median {Median(_calm):F2} m, at least 1.5 radii {_herdR * 1.5f:F2}; {Share(_calm, g => g < 0.15f) * 100f:F0}% touching, under 15%)");
         Check(Median(_alarmed) < Median(_calm), $"and bunches tighter alarmed (median {Median(_alarmed):F2} m against {Median(_calm):F2} grazing)");
-        Check(Max(_townMs) is float m && (float.IsNaN(m) || Avg(_townMs) < 0.5f), $"personal space is cheap: {Avg(_townMs):F3} ms a tick for a town, {Avg(_wildMs):F3} ms for the wildlife");
+        float added = Added();
+        Check(float.IsNaN(added) || added < 0.1f, $"keeping a distance is cheap: {added:F3} ms more a tick for 100 bodies in a crowd than touching alone (a town all told {Avg(_townMs):F3} ms, wildlife {Avg(_wildMs):F3} ms)");
     }
 
     static float Avg(List<float> v) => v.Where(x => !float.IsNaN(x)).DefaultIfEmpty(float.NaN).Average();
-    static float Max(List<float> v) => v.Where(x => !float.IsNaN(x)).DefaultIfEmpty(float.NaN).Max();
+    static float Quantile(List<float> v, float q) { var s = v.Where(x => !float.IsNaN(x)).OrderBy(x => x).ToList(); return s.Count == 0 ? float.NaN : s[Math.Min(s.Count - 1, (int)(q * s.Count))]; }
+
+    /// <summary>What keeping a distance adds to keeping bodies apart, ms a tick: 100 bodies in a 12 m square, half walking, kept apart with and without it (NaN on a build without it).</summary>
+    static float Added()
+    {
+        FieldInfo keep = typeof(PersonalSpace.Body).GetField("Keep");
+        if (keep == null) return float.NaN;
+        var rng = new System.Random();
+        float Time(float k)
+        {
+            var space = new PersonalSpace();
+            var bodies = Enumerable.Range(0, 100).Select(i => new Vector3(rng.NextSingle() * 12f, 0f, rng.NextSingle() * 12f)).ToList();
+            long ticks = 0;
+            for (int round = 0; round < 300; round++)
+            {
+                space.Bodies.Clear();
+                for (int i = 0; i < bodies.Count; i++)
+                {
+                    object b = new PersonalSpace.Body { Pos = bodies[i], Radius = 0.27f, Give = 1f, Heading = i % 2 == 0 ? Vector3.Forward : Vector3.Zero };
+                    keep.SetValue(b, k);
+                    space.Bodies.Add((PersonalSpace.Body)b);
+                }
+                long from = Stopwatch.GetTimestamp();
+                space.Resolve(1f / 60f, null, 4);
+                if (round >= 50) ticks += Stopwatch.GetTimestamp() - from;
+            }
+            return (float)(ticks * 1000.0 / Stopwatch.Frequency / 250);
+        }
+        Time(0.3f);
+        return Time(0.3f) - Time(0f);
+    }
 }

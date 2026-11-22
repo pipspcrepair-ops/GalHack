@@ -140,7 +140,7 @@ public sealed class PersonalSpace
                         if (dist < 1e-3f || MathF.Abs(a.Pos.Y - b.Pos.Y) > 1.5f) continue;
                         Vector3 dir = d / dist;
                         float keep = a.Keep > 0f ? MathF.Max(a.Keep, b.Keep) : 0f;
-                        if (dist < want + keep) a.Room -= dir * MathF.Min(1.5f, (want + keep - dist) / keep);
+                        if (keep > 0f && dist < want + keep) a.Room -= dir * MathF.Min(1.5f, (want + keep - dist) / keep);
                         if (!walks) continue;
                         float ahead = a.Heading.Dot(dir);
                         if (dist <= want + 1.2f && ahead >= 0.7f) bears++;
