@@ -65,6 +65,8 @@ public sealed class Creature
     public int HerdSlot;
     /// <summary>Its place among the bodies kept apart this step (<see cref="WildSim.Spaced"/>), -1 for none.</summary>
     public int Spaced = -1;
+    /// <summary>Which way there is room from others inside the distance it keeps (<see cref="Brain.Keep"/>), as last kept apart.</summary>
+    public Vector3 Room;
     public Rng Rng;
 
     // Motion. Position is the ground point under the body (or the body itself for fliers).

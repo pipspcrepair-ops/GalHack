@@ -26,7 +26,7 @@ namespace Slice.Tests;
 /// height (a long drop kills, limp), and keep acting after. (New members are read by name, so the same test runs, and fails, on a
 /// build from before the falls.)
 ///
-/// -- --worlds=N: settlements (default 3). --shots=DIR (windowed): falling.png, landed.png of a person below a blown floor.
+/// -- --worlds=N: settlements (default 3); --seed=N the first world's. --shots=DIR (windowed): falling.png, landed.png of a person below a blown floor.
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/FallTest.tscn
 /// </summary>
 public partial class FallTest : Node
@@ -107,17 +107,20 @@ public partial class FallTest : Node
     {
         int worlds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--worlds=")) is { } w ? int.Parse(w[9..]) : 3;
         for (int i = 0; i < worlds; i++)
-            foreach (int x in World(i == 0)) yield return x;
+            foreach (int x in World(i == 0, i == 0 ? FirstSeed : null)) yield return x;
         // Every case shown on at least one of the worlds (a world may have nobody sitting, or no creature near, at the time).
         foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "into deep water", "into shallow water", "a creature into deep water", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height" })
             Check(_proven.Contains(kind), $"shown falling on at least one world: {kind}");
     }
 
-    IEnumerable<int> World(bool first)
+    /// <summary>--seed=N: the first world's seed (a failure's world again, for an A/B; never pinned in a run).</summary>
+    static readonly ulong? FirstSeed = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seed=")) is { } s ? ulong.Parse(s[7..]) : null;
+
+    IEnumerable<int> World(bool first, ulong? seed)
     {
         const string family = "survivor_town";
         PlanetSurface.Poi.PoiSiting.ForceFamily = family;
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.Fresh("temperate", seed);
         _game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(_game);
         _drive = new Driver(_game);
