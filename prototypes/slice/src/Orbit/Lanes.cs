@@ -7,13 +7,13 @@ using V = System.Numerics.Vector3;
 namespace Slice.Orbit;
 
 /// <summary>
-/// The hyperdrive's lanes: a lane joins two stars within jump range of each other (true 3D
+/// The fold drive's lanes: a lane joins two stars within jump range of each other (true 3D
 /// distance), and a route is the shortest chain of lanes between two stars. The range is one
 /// number, <see cref="Range"/>, which is the base drive's until a ship's own drive says otherwise.
 /// </summary>
 public sealed class Lanes
 {
-    /// <summary>One jump, light years: the base drive's reach (<see cref="Galaxy.JumpT1"/>). A fitted hyperdrive would set this from its tier.</summary>
+    /// <summary>One jump, light years: the base drive's reach (<see cref="Galaxy.JumpT1"/>). A fitted fold drive would set this from its tier.</summary>
     public static float Range = Galaxy.JumpT1;
 
     /// <summary>Fold crystal per jump per this many light years, rounded up: the route planner's preview of what a route burns.</summary>

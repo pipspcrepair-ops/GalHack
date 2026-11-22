@@ -28,7 +28,7 @@ public sealed class WreckAudit
 
     static readonly Int3[] Around = { Int3.UnitX, -Int3.UnitX, Int3.UnitZ, -Int3.UnitZ };
 
-    static readonly HashSet<string> Stores = new() { "container", "generator", "gyro", "warp-drive", "hyperdrive", "constructor", "deconstructor", "capacitor", "forecast", "fuel", "warp-tank" };
+    static readonly HashSet<string> Stores = new() { "container", "generator", "gyro", "warp-drive", "fold-drive", "constructor", "deconstructor", "capacitor", "forecast", "fuel", "warp-tank" };
 
     public static WreckAudit Of(Structure s)
     {

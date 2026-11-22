@@ -10,7 +10,7 @@ using Planets.Orbit;
 namespace Planets;
 
 /// <summary>
-/// Planets come in Empyrion's four size classes. The roll keeps to its odds, moons stay small and
+/// Planets come in Empyrion's four size classes. The roll keeps to its odds, moons are smaller than what they orbit and
 /// start worlds are always 16x8 km; at every size landforms, regions and the globe still work,
 /// and a bigger world has bigger or more regions, not stretched ones.
 /// </summary>
@@ -23,21 +23,24 @@ public partial class GenTest
         const int Rolls = 200000;
         var planets = new Dictionary<int, int>();
         var moons = new Dictionary<int, int>();
-        bool startsAll16 = true, repeatable = true;
+        bool startsAll16 = true, repeatable = true, moonsOf16 = true, giantsLikePlanets = true;
         for (ulong seed = 0; seed < Rolls; seed++)
         {
-            int w = PlanetSpec.RollWidthKm(seed), m = PlanetSpec.RollWidthKm(seed, WorldKind.Moon);
+            int w = PlanetSpec.RollWidthKm(seed), m = PlanetSpec.RollWidthKm(seed, WorldKind.Moon, 32);
+            moonsOf16 &= PlanetSpec.RollWidthKm(seed, WorldKind.Moon, 16) == 8;
+            giantsLikePlanets &= PlanetSpec.RollWidthKm(seed, WorldKind.Moon) == w;
             planets[w] = planets.GetValueOrDefault(w) + 1;
             moons[m] = moons.GetValueOrDefault(m) + 1;
             startsAll16 &= PlanetSpec.RollWidthKm(seed, WorldKind.Start) == 16;
-            repeatable &= PlanetSpec.RollWidthKm(seed) == w && PlanetSpec.RollWidthKm(seed, WorldKind.Moon) == m;
+            repeatable &= PlanetSpec.RollWidthKm(seed) == w && PlanetSpec.RollWidthKm(seed, WorldKind.Moon, 32) == m;
         }
         float Share(Dictionary<int, int> counts, int w) => counts.GetValueOrDefault(w) / (float)Rolls;
         var odds = new[] { (8, 0.05f), (16, 0.4f), (32, 0.5f), (64, 0.05f) };
         Check(odds.All(o => MathF.Abs(Share(planets, o.Item1) - o.Item2) < 0.004f) && planets.Keys.All(SizeWidths.Contains),
             $"size classes: over {Rolls} seeds, " + string.Join(", ", odds.Select(o => $"{o.Item1}x{o.Item1 / 2} km {Share(planets, o.Item1):P1} (want {o.Item2:P0})")));
         Check(moons.Keys.All(w => w is 8 or 16) && MathF.Abs(Share(moons, 8) - 5f / 45f) < 0.004f,
-            $"moons roll only the two small classes: 8x4 km {Share(moons, 8):P1}, 16x8 km {Share(moons, 16):P1}");
+            $"a 32 km world's moons roll the two classes under it at the planet odds: 8x4 km {Share(moons, 8):P1}, 16x8 km {Share(moons, 16):P1}");
+        Check(moonsOf16 && giantsLikePlanets, $"a 16 km world's moons are all 8 km ({moonsOf16}), and a giant's roll the planet odds ({giantsLikePlanets})");
         Check(startsAll16 && repeatable, $"start worlds are always 16x8 km ({startsAll16}), and the same seed rolls the same size ({repeatable})");
 
         PlanetSpec named = PlanetSpec.Roll(4242, Archetype.Temperate, 0), sized = PlanetSpec.RollSized(4242, Archetype.Temperate, 0);

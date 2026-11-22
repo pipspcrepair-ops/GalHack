@@ -160,7 +160,7 @@ public partial class SurfaceZone : Node3D
         AddChild(Sfx);
 
         Physics = new PhysicsWorld(Data.Physics);
-        Physics.Zone.Strength = p.Gravity;
+        Physics.Zone.Strength = p.Gravity * Spec.GravityScale; // the start world's 1 g, scaled by this world's size (PlanetSpec.Gravities)
         Physics.Zone.Ceiling = p.Ceiling;
         Host = new PhysicsHost(Physics);
         AddChild(Host);

@@ -7,6 +7,7 @@ using GalHack.Items;
 using GalHack.Structures;
 using Godot;
 using Planets.Gen;
+using Planets.Look;
 using PlanetSurface.Skies;
 using GalHack.Items.Bridge;
 using Slice.Game;
@@ -17,19 +18,23 @@ using N = System.Numerics;
 namespace Slice.Tests;
 
 /// <summary>
-/// The star-system and planet rules, over fresh random systems every run (no seed is ever pinned):
-/// gravity follows a world's size; the smaller a body the likelier it has no air; suns and gas giants
-/// out-size every world you could land on, have bands, storms and spots and no ground; warp fuel lies
-/// on airless and icy worlds only (as a deposit, plus loot in space places and ships), hyperspace fuel on the
-/// dangerous high-gravity ones (plus ships); every system holds a high-gravity world; every start has
-/// a vacuum moon with enough warp fuel for a first jump; every landable world holds what the cheapest
-/// flyer the recipe tree allows takes; and nothing marks a planet for a jump fuel.
+/// The star-system and planet rules (the owner's, 13, 17 and 22 Nov), over fresh random systems every run (no seed
+/// is ever pinned): gravity is the size class's from the one table; the smallest bodies are almost all vacuum and
+/// the largest never, with the densest air; a moon is smaller than what it orbits (a giant's any size), some of a
+/// giant's moons have moons of their own, in reach and on the one clock; suns and gas giants out-size every world
+/// you could land on, have bands, storms and spots and no ground; warp fuel lies on vacuum worlds only (as a
+/// deposit, plus loot in space places and ships), fold fuel on the dangerous high-gravity ones (plus ships), and
+/// the drives' materials with them; every system holds a high-gravity world; every start has a vacuum moon with
+/// enough warp fuel for a first jump; moons have no rings, and a ring's look follows the frost line and its
+/// giant's moons; every landable world holds what the cheapest flyer the recipe tree allows takes; and nothing
+/// marks a planet for a jump fuel. The rules on the systems' bodies run over thousands of systems; the ones
+/// that need a world's map over the first <see cref="Mapped"/>.
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/SystemsTest.tscn
 /// </summary>
 public partial class SystemsTest : Node
 {
-    const int Systems = 240;
+    const int Systems = 4000, Mapped = 240;
     const double TimeLimitMinutes = 12;
 
     /// <summary>Warp cells for one jump of the smallest warp drive, its longest: 15 AU at one cell an AU (docs/grid-figures.md section 4.4).</summary>
@@ -74,15 +79,20 @@ public partial class SystemsTest : Node
             systems.Add(StarSystem.For(spec, sky, spec.WidthMeters));
             daySeconds.Add(sky.DayMinutes * 60.0);
         }
-        GD.Print($"({systems.Count} fresh systems, {systems.Sum(s => Landable(s).Count())} worlds with ground)");
+        GD.Print($"({systems.Count} fresh systems, {systems.Sum(s => Landable(s).Count())} worlds with ground; maps for the first {Mapped})");
         MoonSpeeds(systems, daySeconds);
         Gravity(systems);
         Vacuum(systems);
+        Moons(systems);
+        Planes(systems);
+        Rings(systems);
         SunsAndGiants(systems);
         HeavyWorlds(systems);
-        StartMoons(systems, out List<(StarSystem System, WorldMap Moon)> moons);
-        NoWaterOnBareWorlds(Fuels(systems, moons), moons);
-        Flyer(systems);
+        DriveMaterials(systems);
+        List<StarSystem> mapped = systems.Take(Mapped).ToList();
+        StartMoons(mapped, out List<(StarSystem System, WorldMap Moon)> moons);
+        NoWaterOnBareWorlds(Fuels(mapped, moons), moons);
+        Flyer(mapped);
         Loot();
         NoMarkers(systems);
     }
@@ -130,54 +140,231 @@ public partial class SystemsTest : Node
 
     void Gravity(List<StarSystem> systems)
     {
-        int off = 0, backwards = 0, worlds = 0;
+        int off = 0, worlds = 0;
         var bySize = new SortedDictionary<int, HashSet<float>>();
         foreach (StarSystem s in systems)
             foreach (Orbiter b in Landable(s))
             {
                 worlds++;
                 float g = s.GravityOf(b, 9.8f);
-                // The pull is in step with the world's size, from the one rule (GravityScale), and with its radius.
-                if (Math.Abs(g - 9.8 * b.Spec.WidthKm / s.Home.Spec.WidthKm) > 1e-3 || Math.Abs(g / 9.8 - b.Radius / s.Home.Radius) > 1e-3) off++;
+                // The owner's ladder (22 Nov): 8 km 0.2 g, 16 km 1 g, 32 km 2.2 g, 64 km 5 g, from the one table.
+                float want = 9.8f * (b.Spec.WidthKm switch { 8 => 0.2f, 16 => 1f, 32 => 2.2f, 64 => 5f, _ => float.NaN });
+                if (!(Math.Abs(g - want) < 1e-3f)) off++;
                 if (!bySize.TryGetValue(b.Spec.WidthKm, out var set)) bySize[b.Spec.WidthKm] = set = new HashSet<float>();
                 set.Add(MathF.Round(g, 3));
             }
-        var sizes = bySize.Keys.ToList();
-        for (int i = 1; i < sizes.Count; i++)
-            if (bySize[sizes[i]].Min() <= bySize[sizes[i - 1]].Max()) backwards++;
-        Check(off == 0, $"gravity: every one of {worlds} worlds pulls in step with its radius ({off} did not)");
-        Check(backwards == 0 && sizes.Count >= 3, $"gravity: a bigger world always pulls harder ({string.Join(", ", sizes.Select(w => $"{w} km {bySize[w].Min():F1} m/s²"))})");
+        Check(off == 0 && bySize.Count == 4 && bySize.Values.All(v => v.Count == 1),
+            $"gravity: every one of {worlds} worlds pulls its size's: {string.Join(", ", bySize.Select(p => $"{p.Key} km {p.Value.First():F2} m/s²"))} ({off} did not)");
     }
 
-    // ---- 2. Small bodies are very likely vacuum -----------------------------------------------------
+    // ---- 2. Air by size: the smallest almost all vacuum, the largest never and the densest ------------
 
     void Vacuum(List<StarSystem> systems)
     {
         var total = new SortedDictionary<int, int>();
         var airless = new SortedDictionary<int, int>();
-        int wrongKind = 0, fuelMoons = 0, fuelMoonsBare = 0;
+        var thick = new SortedDictionary<int, (float Min, float Max)>();
+        int wrongKind = 0, stormy = 0, fuelMoons = 0, fuelMoonsBare = 0, homeMoons = 0, homeMoonsBare = 0, kindsThinner = 0;
         foreach (StarSystem s in systems)
             foreach (Orbiter b in Landable(s))
             {
                 if (b == s.Home) continue;
                 int w = b.Spec.WidthKm;
+                if (b.Parent == s.Home) { homeMoons++; homeMoonsBare += b.Spec.Airless ? 1 : 0; }
+                if (b == s.FuelMoon) { fuelMoons++; fuelMoonsBare += b.Spec.Airless ? 1 : 0; }
+                if (b == s.FuelMoon) continue; // made airless, so not in the size's odds
                 total[w] = total.GetValueOrDefault(w) + 1;
                 if (b.Spec.Airless)
                 {
                     airless[w] = airless.GetValueOrDefault(w) + 1;
                     if (!PlanetSpec.Craters(b.Spec.Archetype)) wrongKind++;
+                    if (b.Spec.Has(Modifier.PerpetualStorm)) stormy++;
+                    continue;
                 }
-                if (b == s.FuelMoon) { fuelMoons++; fuelMoonsBare += b.Spec.Airless ? 1 : 0; }
+                // The air's thickness is the world's size's, and its density the same kind's grows with it.
+                SkySystem sky = SkySystem.For(b.Spec), start = SkySystem.For(b.Spec with { WidthKm = PlanetSpec.StartWidthKm });
+                var (lo, hi) = thick.GetValueOrDefault(w, (float.MaxValue, 0f));
+                thick[w] = (MathF.Min(lo, sky.Thickness), MathF.Max(hi, sky.Thickness));
+                if (sky.Air != start.Air || (w > PlanetSpec.StartWidthKm ? sky.Density <= start.Density : w < PlanetSpec.StartWidthKm && sky.Density >= start.Density)) kindsThinner++;
             }
         double Rate(int w) => airless.GetValueOrDefault(w) / (double)Math.Max(1, total.GetValueOrDefault(w));
-        string rates = string.Join(", ", total.Keys.Select(w => $"{w} km {Rate(w) * 100:F0}% of {total[w]}"));
-        Check(total.ContainsKey(8) && Rate(8) >= 0.85, $"vacuum: the smallest bodies are very likely airless ({rates})");
+        string rates = string.Join(", ", total.Keys.Select(w => $"{w} km {Rate(w) * 100:F1}% of {total[w]}"));
+        Check(total.GetValueOrDefault(8) > 500 && Rate(8) is > 0.92 and < 0.98, $"vacuum: the smallest bodies are about 95% airless ({rates})");
+        Check(total.GetValueOrDefault(64) > 50 && Rate(64) == 0.0, $"vacuum: the largest worlds always have air ({rates})");
         var widths = total.Keys.ToList();
         bool falling = true;
         for (int i = 1; i < widths.Count; i++) falling &= Rate(widths[i]) < Rate(widths[i - 1]);
-        Check(falling && Rate(widths[^1]) <= 0.2, $"vacuum: the bigger the body the likelier it keeps its air ({rates})");
-        Check(wrongKind == 0, $"vacuum: every airless body is bare rock, ice or lava, never a living world ({wrongKind} were not)");
+        Check(falling, $"vacuum: the bigger the body the likelier it keeps its air ({rates})");
+        var sized = thick.Keys.ToList();
+        bool thicker = sized.Count == 4 && thick.Values.All(t => t.Min == t.Max);
+        for (int i = 1; i < sized.Count; i++) thicker &= thick[sized[i]].Min > thick[sized[i - 1]].Max;
+        Check(thicker && kindsThinner == 0, $"air: one thickness for each size, thicker the bigger, the largest's the densest ({string.Join(", ", thick.Select(p => $"{p.Key} km {p.Value.Min:F1}"))}); the same kind of air is denser on a bigger world ({kindsThinner} were not)");
+        Check(wrongKind == 0 && stormy == 0, $"vacuum: every airless body is bare rock, ice or lava, never a living world ({wrongKind} were not), and has no storm ({stormy} had)");
         Check(fuelMoons == systems.Count && fuelMoonsBare == fuelMoons, $"vacuum: every start's thruster moon is airless ({fuelMoonsBare} of {fuelMoons})");
+        // The owner's bug (17 Nov): three small moons round a start world, every one with air. A start world's own
+        // moons are smaller than it, so 8 km, and those are almost all airless.
+        Check(homeMoons > systems.Count / 2 && homeMoonsBare >= homeMoons * 0.92, $"vacuum: a start world's own moons are small and {homeMoonsBare} of {homeMoons} airless");
+    }
+
+    // ---- 3. Moons: smaller than what they orbit; a giant's any size, with moons of their own -------------
+
+    void Moons(List<StarSystem> systems)
+    {
+        int moons = 0, notSmaller = 0, smallHolds = 0, ofMoons = 0, ofMoonsWrong = 0, farApart = 0;
+        var giantMoonSizes = new SortedDictionary<int, int>();
+        foreach (StarSystem s in systems)
+            foreach (Orbiter b in Landable(s).Where(b => b.Kind == OrbiterKind.Moon))
+            {
+                moons++;
+                Orbiter p = b.Parent;
+                if (p.Kind == OrbiterKind.GasGiant) giantMoonSizes[b.Spec.WidthKm] = giantMoonSizes.GetValueOrDefault(b.Spec.WidthKm) + 1;
+                else if (p.Spec == null || b.Spec.WidthKm >= p.Spec.WidthKm) notSmaller++;
+                if (p.Spec?.WidthKm == PlanetSpec.Widths[0]) smallHolds++;
+                if (p.Kind != OrbiterKind.Moon || p == s.Home) continue;
+                // A moon's moon: its parent a giant's moon, inside half the parent's reach against the giant, on the one clock.
+                ofMoons++;
+                double hill = p.Orbit * p.Radius / p.Parent.Radius / Math.Cbrt(3.0);
+                if (p.Parent.Kind != OrbiterKind.GasGiant || b.Orbit > hill * 0.5 + 1.0 || b.Orbit < p.Radius + b.Radius) ofMoonsWrong++;
+                double day = Random.Shared.NextDouble() * 400.0;
+                if (Math.Abs((s.Position(b, day) - s.Position(p, day)).Length - b.Orbit) > 1.0) farApart++;
+            }
+        Check(notSmaller == 0 && smallHolds == 0, $"moons: all {moons} are smaller than the world they orbit ({notSmaller} were not), and no 8 km world has one ({smallHolds} did)");
+        Check(giantMoonSizes.Count == 4, $"moons: a giant's are of any size ({string.Join(", ", giantMoonSizes.Select(p => $"{p.Key} km x{p.Value}"))})");
+        Check(ofMoons > systems.Count / 20 && ofMoonsWrong == 0 && farApart == 0,
+            $"moons: {ofMoons} giants' moons have moons of their own, each in its parent's reach ({ofMoonsWrong} not) and going round it on the one clock ({farApart} off their orbit)");
+        SameFromEverywhere(systems);
+    }
+
+    /// <summary>
+    /// Celestial bodies are real: a moon's moon stands in the same direction from the start world's ground, from its
+    /// sibling's sky and from space, because every view reads the one model (<see cref="StarSystem.See"/>, <see cref="StarSystem.SeenFrom"/>).
+    /// </summary>
+    void SameFromEverywhere(List<StarSystem> systems)
+    {
+        int seen = 0, off = 0;
+        foreach (StarSystem s in systems)
+            foreach (Orbiter b in s.Bodies.Where(b => b.Kind == OrbiterKind.Moon && b.Parent.Kind == OrbiterKind.Moon && b.Parent != s.Home))
+            {
+                double day = Random.Shared.NextDouble() * 400.0;
+                var eye = new D3(0, s.Home.Radius + 2.0, 0);
+                StarSystem.Orientation o = s.Orient(day);
+                D3 fromGround = o.ToSystem(s.See(b, day, eye).Direction);
+                D3 at = s.Position(s.Home, day) + o.ToSystem(eye), truly = (s.Position(b, day) - at).Normalized;
+                StarSystem sibling = s.SeenFrom(b.Parent);
+                StarSystem.Orientation so = sibling.Orient(day);
+                var near = new D3(0, b.Parent.Radius * 1.5, 0);
+                D3 fromParent = so.ToSystem(sibling.See(b, day, near).Direction), trulyThere = (s.Position(b, day) - (s.Position(b.Parent, day) + so.ToSystem(near))).Normalized;
+                seen++;
+                if (fromGround.Dot(truly) < 1.0 - 1e-9 || fromParent.Dot(trulyThere) < 1.0 - 1e-9) off++;
+            }
+        Check(seen > 0 && off == 0, $"moons: each of {seen} moons' moons stands where it truly is from the ground and from its parent's sky ({off} did not)");
+    }
+
+    // ---- 3b. Orbits aren't one flat plane (owner, 22 Nov) ------------------------------------------------
+
+    /// <summary>An orbit's normal in the system's frame, as <see cref="StarSystem.Position"/> turns it.</summary>
+    static D3 Normal(double i, double node) => new(-Math.Sin(i) * Math.Sin(node), Math.Cos(i), -Math.Sin(i) * Math.Cos(node));
+
+    static double Deg(double radians) => radians * 180.0 / Math.PI;
+
+    void Planes(List<StarSystem> systems)
+    {
+        StarSystem.OrbitPlanes p = StarSystem.Planes;
+        int planets = 0, flat = 0, innerOff = 0, outerTilted = 0, wanderers = 0, tooSteep = 0, near = 0, nearOff = 0, far = 0, captured = 0, backwards = 0;
+        double worstNear = 0;
+        foreach (StarSystem s in systems)
+            foreach (Orbiter b in s.Bodies)
+            {
+                double i = Deg(b.Inclination);
+                if (b.Parent == s.Star && (b.Kind is OrbiterKind.Planet or OrbiterKind.GasGiant) && b != s.Home)
+                {
+                    planets++;
+                    if (i <= p.Planets) flat++;
+                    else if (b.Habitable <= StarSystem.FrostLine) innerOff++;
+                    else if (i <= p.Outer) outerTilted++;
+                    else if (i <= p.Wanderer) wanderers++;
+                    else tooSteep++;
+                    continue;
+                }
+                if (b.Kind != OrbiterKind.Moon || b == s.Home || b.Parent == s.Home.Parent && b.Orbit == s.Home.Orbit) continue; // the start world, and its sister on its orbit
+                if (b.Orbit / b.Parent.Radius < p.LockedRadii)
+                {
+                    near++;
+                    D3 equator = b.Parent == s.Home ? s.Axis : b.Parent.RingNormal;
+                    double off = Deg(Math.Acos(Math.Clamp(Normal(b.Inclination, b.Node).Dot(equator), -1.0, 1.0)));
+                    worstNear = Math.Max(worstNear, off);
+                    if (off > p.NearMoons * 1.5) nearOff++;
+                    continue;
+                }
+                far++;
+                if (i > p.FarMoons) captured++;
+                if (i > 90.0) backwards++;
+            }
+        Check(innerOff == 0 && tooSteep == 0 && flat >= planets * 0.9 && outerTilted > 0 && wanderers > 0,
+            $"planes: of {planets} worlds round the star {flat} lie within {p.Planets}° of the plane, {outerTilted} outer ones up to {p.Outer}°, {wanderers} wanderers up to {p.Wanderer}° ({innerOff} inner ones off the plane, {tooSteep} steeper)");
+        Check(near > 0 && nearOff == 0, $"planes: all {near} moons within {p.LockedRadii} radii keep to their parent's equator, where its rings lie ({worstNear:F1}° off at worst)");
+        Check(far > 0 && Math.Abs(captured / (double)far - p.CapturedShare) < 0.03 && backwards > 0,
+            $"planes: {captured} of {far} farther moons are captured, past {p.FarMoons}° ({captured * 100.0 / far:F1}%, {p.CapturedShare:P0} wanted), {backwards} going round backwards");
+    }
+
+    // ---- 4. Rings ---------------------------------------------------------------------------------------
+
+    /// <summary>A colour's brightness: its brightest channel.</summary>
+    static float Bright(Rgb c) => MathF.Max(c.R, MathF.Max(c.G, c.B));
+
+    void Rings(List<StarSystem> systems)
+    {
+        int moonRings = 0, moonLooks = 0, giants = 0, ringed = 0, rockRings = 0, rockWrong = 0, iceRings = 0, rockRingsIn = 0;
+        float iceBright = 1f, rockBright = 0f, crowdedOuter = 0f, openOuter = 9f;
+        foreach (StarSystem s in systems)
+            foreach (Orbiter b in s.Bodies)
+            {
+                if (b.Kind == OrbiterKind.Moon)
+                {
+                    if (b.Rings) moonRings++;
+                    if (b != s.Home && b.Spec != null && (ArchetypeLook.For(b.Spec).Ring || b.Spec.Has(Modifier.RingedSky))) moonLooks++;
+                    continue;
+                }
+                if (b.Kind == OrbiterKind.Planet && b.Rings)
+                {
+                    rockRings++;
+                    if (b.Spec.WidthKm < PlanetSpec.StartWidthKm || b.RingOuter >= 2.42) rockWrong++;
+                }
+                if (b.Kind != OrbiterKind.GasGiant) continue;
+                // The odds leave out the start's own giant, whose rings come from its sky's roll; the look is every giant's.
+                if (b != s.Neighbour) { giants++; ringed += b.Rings ? 1 : 0; }
+                if (!b.Rings) continue;
+                if (b.Habitable > StarSystem.FrostLine) iceRings++;
+                else rockRingsIn++;
+                bool crowded = s.Under(b).Count(m => m.Spec.HighGravity) >= StarSystem.CrowdingMoons;
+                if (b.Habitable > StarSystem.FrostLine && !crowded) iceBright = MathF.Min(iceBright, Bright(b.RingColor));
+                if (b.Habitable <= StarSystem.FrostLine && !crowded) rockBright = MathF.Max(rockBright, Bright(b.RingColor));
+                if (crowded) crowdedOuter = MathF.Max(crowdedOuter, (float)b.RingOuter);
+                else openOuter = MathF.Min(openOuter, (float)b.RingOuter);
+            }
+        Check(moonRings == 0 && moonLooks == 0, $"rings: no moon has rings, in the model or in its own look ({moonRings} did, {moonLooks} looked it)");
+        Check(giants > 0 && Math.Abs(ringed / (double)giants - 0.45) < 0.04, $"rings: {ringed} of {giants} giants are ringed (45% wanted)");
+        Check(rockWrong == 0 && rockRings < giants / 10, $"rings: {rockRings} rocky worlds have rings, all start-sized or bigger and narrow ({rockWrong} not)");
+        Check(iceRings > 0 && rockRingsIn > 0 && iceBright > rockBright && crowdedOuter < openOuter,
+            $"rings: the {iceRings} ice rings past the frost line are brighter (at least {iceBright:F2}) than the {rockRingsIn} of rock and dust in (at most {rockBright:F2}); a giant with several large moons keeps a smaller ring (out to {crowdedOuter:F2} radii, others {openOuter:F2} or more)");
+    }
+
+    // ---- 5. Drive materials ----------------------------------------------------------------------------
+
+    void DriveMaterials(List<StarSystem> systems)
+    {
+        int faults = 0, warpWrong = 0, foldWrong = 0;
+        foreach (StarSystem s in systems)
+        {
+            if (s.StartFault() is { } fault) { faults++; GD.Print($"   start fault: {fault}"); }
+            foreach (Orbiter b in s.Bodies)
+            {
+                if (b.Deposits.Contains(PlanetSurface.Skies.Deposit.WarpDrive) && b.Spec is not { Airless: true }) warpWrong++;
+                if (b.Deposits.Contains(PlanetSurface.Skies.Deposit.FoldDriveMaterials) && b.Spec is not { HighGravity: true }) foldWrong++;
+            }
+        }
+        Check(faults == 0 && warpWrong == 0 && foldWrong == 0,
+            $"drives: in all {systems.Count} systems the start's thruster moon holds warp fuel and the warp drive's materials, and a dangerous high-gravity world a warp away the fold drive's ({faults} faults, {warpWrong} warp drive materials on a world with air, {foldWrong} fold drive materials on a light world)");
     }
 
     // ---- 3. Suns and gas giants -----------------------------------------------------------------------
@@ -271,7 +458,7 @@ public partial class SystemsTest : Node
             Orbiter b = worlds[i].Body;
             bool warp = maps[i].Deposits.All().Any(d => d.Kind == DepositKind.WarpFuel), crystal = maps[i].Deposits.All().Any(d => d.Kind == DepositKind.Crystal);
             if (warp) warpOn++;
-            bool cold = b.Spec.Airless || b.Spec.Archetype == Archetype.Ice; // the moons and small bodies, and the icy worlds
+            bool cold = b.Spec.Airless; // vacuum worlds alone, icy or not (owner, 13 Nov)
             if (warp != cold) warpWrong++;
             if (cold) bare++;
             if (b.Spec.HighGravity)
@@ -282,9 +469,9 @@ public partial class SystemsTest : Node
             }
             else if (crystal && b.Spec.Archetype != Archetype.Alien) hyperElsewhere++; // only the alien crystal world's own signature, else the heavy worlds' alone
         }
-        Check(warpWrong == 0 && bare > 0, $"warp fuel (pentaxite): it lies on {warpOn} worlds, every airless or icy one of {bare} and no other ({warpWrong} wrong)");
-        Check(hyperMissing == 0 && heavy > 0, $"hyperspace fuel: every one of the {heavy} dangerous high-gravity worlds holds some ({hyperMissing} did not)");
-        Check(hyperElsewhere == 0, $"hyperspace fuel: it lies nowhere else, but on the alien crystal worlds that always had it ({hyperElsewhere} other worlds had it)");
+        Check(warpWrong == 0 && bare > 0, $"warp fuel (pentaxite): it lies on {warpOn} worlds, every vacuum one of {bare} and no other ({warpWrong} wrong)");
+        Check(hyperMissing == 0 && heavy > 0, $"fold fuel: every one of the {heavy} dangerous high-gravity worlds holds some ({hyperMissing} did not)");
+        Check(hyperElsewhere == 0, $"fold fuel: it lies nowhere else, but on the alien crystal worlds that always had it ({hyperElsewhere} other worlds had it)");
         return worlds.Select((w, i) => (w.System, w.Body, maps[i])).ToList();
     }
 
@@ -355,7 +542,7 @@ public partial class SystemsTest : Node
                 if (ids.Contains("fold-crystal") || ids.Contains("fold-crystal-raw")) withHyper++;
             }
         Check(withWarp > 0 && withWarp < ships, $"loot: {withWarp} of {ships} grounded or crashed ships hold warp cells, some and not all");
-        Check(withHyper > 0 && withHyper < ships, $"loot: {withHyper} of {ships} grounded or crashed ships hold fold crystal (hyperspace fuel), some and not all");
+        Check(withHyper > 0 && withHyper < ships, $"loot: {withHyper} of {ships} grounded or crashed ships hold fold crystal (fold fuel), some and not all");
 
         // Wrecks in space: the start system's planned derelicts, fresh seeds.
         int sites = 0, spaceWarp = 0;
@@ -411,7 +598,7 @@ public partial class SystemsTest : Node
 
     void NoMarkers(List<StarSystem> systems)
     {
-        var fuels = new[] { "warp-fuel", "hyperdrive-fuel", "hyperspace-fuel", "warp-cell", "fold-crystal" };
+        var fuels = new[] { "warp-fuel", "fold-fuel", "hyperdrive-fuel", "hyperspace-fuel", "warp-cell", "fold-crystal" };
         int marked = systems.Sum(s => s.Bodies.Sum(b => b.Deposits.Count(d => fuels.Any(f => d.Contains(f, StringComparison.OrdinalIgnoreCase)))));
         Check(marked == 0, $"no markers: no planet or moon in {systems.Count} systems is marked as holding a jump fuel ({marked} were)");
         Check(DepositFinder.Kinds.All(k => k is not (DepositKind.WarpFuel or DepositKind.Crystal)), "no markers: the scanner and the compass never look for a jump fuel");

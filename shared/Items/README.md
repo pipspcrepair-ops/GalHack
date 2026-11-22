@@ -160,7 +160,7 @@ The owner allowed Empyrion: Galactic Survival as guidance on manufacturing. Idea
 
 - The numbers (recipe times and counts, bills, the 45 ore a minute) are first passes, tuned only against the starter vessel's one-to-two-hour target.
 - The tech tree lives in the slice (`Progress`): here, a constructor knows every recipe of its tier unless its `Lock` says otherwise, and the factory doesn't check unlocks.
-- Warp drives, warp cell tanks, hyperdrives and fold crystal tanks are data only: they craft and place, and do nothing yet. Warp cells (about 1 per AU) and fold crystal (about 1 per light year) are their fuels; "warp cell" is a name in data, and the owner may change it.
+- Warp drives, warp cell tanks, fold drives and fold crystal tanks are data only: they craft and place, and do nothing yet. Warp cells (about 1 per AU) and fold crystal (about 1 per light year) are their fuels; "warp cell" is a name in data, and the owner may change it.
 - Repairs cost nothing (building's `Repair` is still free); the design wants them to draw from storage.
 - Storage is one number per structure; docked craft, Home auto-transmit and trading are not here.
 - Wreck salvage at the deconstructor is per block at 50%; the multi-tool's own field salvage rates (33%, 65%, 80%) belong to whoever builds salvage.

@@ -474,7 +474,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
 
     // ---- What a shot meets ----------------------------------------------------------------------
 
-    public N.Vector3 Gravity(N.Vector3 at) => new(0f, -Zone.Data.Rules.Planet.Gravity, 0f);
+    public N.Vector3 Gravity(N.Vector3 at) => Zone.Physics.Zone.At(at);
 
     /// <summary>
     /// The nearest thing along a segment: the colliders of the world (ground, places, hulls, trees),
