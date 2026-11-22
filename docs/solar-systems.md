@@ -607,4 +607,11 @@ These replace anything above or in section 4 that disagrees with them.
    - Small bodies, such as dwarf planets and asteroids, can have rings too.
    - Rings don't last forever.
 13. **Names.** The drive between stars is the fold drive, and its fuel is fold fuel (fold crystal). It used to be called the hyperdrive (owner, 22 Nov).
-14. **Later: suns, gas giants and black holes up close.** A black hole you visit has an accretion disc you can explore: a fast-moving cloud of debris. How close you can get to suns and gas giants is still to decide. Empyrion keeps players at high orbit, and the 8 Nov note (not sold on heat damage or skim-and-crush) still stands.
+14. **Sky and water colour come from the air and the star.** A world's sky and water colours follow its air type, how thick its air is (from its size, item 2) and the colour of its star. One model serves the ground sky, the globe's air seen from space and the water, so they always agree. This builds on the 8 Nov palette rule: natural colours come only from the star, air, soil, minerals and life, never the theme. Reference the owner gave:
+   - **Clear sky.** Starlight scattered by small gas molecules (Rayleigh, strongest for short wavelengths) makes the clear sky. Nitrogen and oxygen air under a sunlike star reads blue. Ozone deepens the blue at twilight.
+   - **Haze.** Methane, carbon dioxide and haze shift a sky through grey towards orange, as on a young world before oxygen.
+   - **Fine particles.** Sulfate, volcanic, smoke and dust particles make sunrises and sunsets deeper red and orange, and the sky hazy.
+   - **Clouds.** Large water droplets and ice scatter every colour evenly, so clouds are white or grey. Ice crystals bend sunlight into sundogs and halos.
+   - **Thin dusty air.** Fine rust-red dust in thin carbon dioxide air gives a butterscotch to reddish sky.
+   - **Meteors** glow by their elements: sodium orange-yellow, magnesium blue-green, iron yellow-white. They glow only where there is air.
+15. **Later: suns, gas giants and black holes up close.** A black hole you visit has an accretion disc you can explore: a fast-moving cloud of debris. How close you can get to suns and gas giants is still to decide. Empyrion keeps players at high orbit, and the 8 Nov note (not sold on heat damage or skim-and-crush) still stands.
