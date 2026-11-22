@@ -955,7 +955,7 @@ public partial class Globe : Node3D
         _nearCorner = new Vector2((float)Mathx.WrapX(x - _nearSpan * 0.5, _mapSize.X), (float)Mathx.Wrap(z - _nearSpan * 0.5, _mapSize.Y));
         Vector2 corner = _nearCorner;
         Func<double, double, Image> paint = _paintNear;
-        _nearPainting = System.Threading.Tasks.Task.Run(() => paint(corner.X, corner.Y));
+        _nearPainting = System.Threading.Tasks.Task.Factory.StartNew(() => paint(corner.X, corner.Y), System.Threading.CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.None, PlanetSurface.Skies.BodySurfaces.Painters);
     }
 
     /// <summary>How far along the sheet its rim stands, m: out to the limb and a little past it, for the back of the sphere is never in view.</summary>

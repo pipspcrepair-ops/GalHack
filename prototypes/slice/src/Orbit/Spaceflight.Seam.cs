@@ -221,7 +221,7 @@ public partial class Spaceflight
         // level and (with the fog's wash over the sky) under it, where the sheet curves away.
         float outside = SeenFromOutside(y);
         _sky.SetShaderParameter("space_fade", MathF.Max(gone, outside));
-        _sky.SetShaderParameter("space_under", outside);
+        _sky.SetShaderParameter("space_under", MathF.Sqrt(outside)); // under the level there is only the rim's thin air to see through: ahead of the sky over it
         env.FogDensity = _fogDensity * (1f - gone);
         // Height fog thickens with height over the clouds' base: left to itself it would fog your own hull.
         env.FogHeightDensity = _fogHeight * (1f - Smooth((y - Rules.Crossing.FadeFrom) / 150f));

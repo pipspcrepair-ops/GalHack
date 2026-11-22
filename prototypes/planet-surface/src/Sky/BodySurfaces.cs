@@ -67,8 +67,16 @@ public sealed class BodySurfaces
         // The world itself last: its moons' skies see it, and they share these.
         if (model.Home.Spec != null) order.Add(model.Home);
         Wanted = order.Count;
-        new Thread(() => Work(order)) { IsBackground = true, Name = "Body surfaces", Priority = ThreadPriority.BelowNormal }.Start();
+        System.Threading.Tasks.Task.Factory.StartNew(() => Work(order), CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.None, Painters);
     }
+
+    /// <summary>
+    /// Where paint for far looks and globes is made: a quarter of the cores the game runs on (<see cref="Terrain.TerrainStreamer.Cores"/>; one at the least). The generator's loops run
+    /// in parallel on whatever scheduler they are started from, so on all of them otherwise, and on the minimum spec's four
+    /// cores that took the frame's own threads' time while the system's bodies were painted.
+    /// </summary>
+    public static readonly System.Threading.Tasks.TaskScheduler Painters =
+        new System.Threading.Tasks.ConcurrentExclusiveSchedulerPair(System.Threading.Tasks.TaskScheduler.Default, Math.Max(1, Terrain.TerrainStreamer.Cores / 4)).ConcurrentScheduler;
 
     void Work(List<Orbiter> order)
     {
