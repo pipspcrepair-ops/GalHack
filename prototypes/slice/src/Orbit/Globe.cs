@@ -472,17 +472,17 @@ public partial class Globe : Node3D
             // up (it lies low from space): far off the grid's points are hundreds of metres apart, and lit by them
             // alone the relief from space was a smear. Worked from the height's change across the pixel as drawn.
             // Low sun stands a slope's shade on end: toward the terminator the relief eases off, or every mesa and crater
-            // there is a black hole in a lit disc.
+            // there is a black hole in a lit disc, and past it a lit blob on the night side.
             float sun_up = dot(normalize(round_normal), sun_dir);
-            float h = relief_seen(m) * stand(distance) / max(distance, 1.0) * mix(0.25, 1.0, smoothstep(0.05, 0.45, sun_up));
+            float h = relief_seen(m) * stand(distance) / max(distance, 1.0) * smoothstep(0.0, 0.45, sun_up);
             // Each pixel's own differences, not its quad's: by quads the shading stepped in blocks two pixels wide.
             vec3 dpx = dFdxFine(VERTEX), dpy = dFdyFine(VERTEX);
             vec3 r1 = cross(dpy, NORMAL), r2 = cross(NORMAL, dpx);
             float det = dot(dpx, r1);
             vec3 grad = sign(det) * (dFdxFine(h) * r1 + dFdyFine(h) * r2);
             // A cliff a map cell wide is a facet standing on end, black against the sun from any way but one: the slope a
-            // pixel shows is held under about 30 degrees, so a mesa or a crater's wall reads as relief and not as a hole.
-            grad *= min(1.0, 0.58 * abs(det) / max(length(grad), 1e-12));
+            // pixel shows is held under about 20 degrees, so a mesa or a crater's wall reads as relief and not as a hole.
+            grad *= min(1.0, 0.36 * abs(det) / max(length(grad), 1e-12));
             NORMAL = normalize(abs(det) * NORMAL - grad);
             vec4 a = paint(albedo_map, m);
             // The ground near you from its finer paint, eased in from that paint's edge.
@@ -946,7 +946,8 @@ public partial class Globe : Node3D
             _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_size"), new Vector2(_nearSpan, _nearSpan) / _mapSize);
             return;
         }
-        if (_paintNear == null) return;
+        // On a small moon the square would be a good part of the globe, its edge an arc across it; and its whole paint is as fine.
+        if (_paintNear == null || _nearSpan > _mapSize.X * 0.25f) return;
         Vector2 middle = _nearCorner + new Vector2(_nearSpan, _nearSpan) * 0.5f;
         double dx = Mathx.WrapDelta(x - middle.X, _mapSize.X), dz = Mathx.WrapDelta(z - middle.Y, _mapSize.Y);
         if (_nearAny && Math.Max(Math.Abs(dx), Math.Abs(dz)) < _nearSpan * 0.25f) return;
