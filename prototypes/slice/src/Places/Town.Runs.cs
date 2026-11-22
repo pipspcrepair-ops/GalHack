@@ -476,6 +476,8 @@ public sealed partial class Town
             heading = d;
             step = 0f;
         }
+        // (Off the way's line beside another, on the ground where they are, not the line's height.)
+        if (!OnGrid(p.Pos) && _places?.Zone.Planet is PlanetWorld planet) p.Pos.Y = Height(planet, World(p.Pos)) - _origin.Y;
         OnLand(p, was, dt);
         Turn(p, heading, dt);
         p.Sitting = false;
