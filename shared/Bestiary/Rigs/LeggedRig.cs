@@ -168,7 +168,7 @@ public sealed class LeggedRig : Rig
         SmoothIntents(c, dt);
         Proportions b = Species.Body;
         float L = b.Size, H = b.Height, W = b.Width, legLen = b.LegLength;
-        Vector3 vel = WildSim.Flat(c.Velocity);
+        Vector3 vel = WildSim.Flat(Pace.Velocity);
         float speed = vel.Length();
         float walk = MathF.Max(0.3f, Species.Stats.WalkSpeed);
 
@@ -214,7 +214,8 @@ public sealed class LeggedRig : Rig
             drop = MathF.Max(drop, hipW.Y - maxHip);
         }
         drop = MathF.Min(drop, legLen * 0.5f);
-        _sag = drop > _sag ? drop : Geo.Smooth(_sag, drop, 6f, dt);
+        // (Down onto them quickly, never in one frame: a leg left out of reach meanwhile steps.)
+        _sag = drop > _sag ? Mathf.MoveToward(_sag, drop, legLen * 6f * dt) : Geo.Smooth(_sag, drop, 6f, dt);
         bodyT.Origin += Vector3.Down * _sag;
         Pose[_body] = bodyT;
         BodyClearance = bodyT.Origin.Y - groundMid;
@@ -243,7 +244,8 @@ public sealed class LeggedRig : Rig
     {
         float legLen = Species.Body.LegLength;
         float duration = Math.Clamp(0.42f * MathF.Sqrt(legLen) / (1f + speed * 0.25f), 0.12f, 0.7f);
-        float threshold = MathF.Max(0.1f, legLen * (speed < 0.1f ? 0.12f : 0.32f));
+        // (Standing, a foot is let stray further before it steps again: a body nudged or turning a little shuffles, it doesn't walk.)
+        float threshold = MathF.Max(0.1f, legLen * (speed < 0.1f ? 0.22f : 0.32f));
         int activeGroup = (int)MathF.Floor(_gait * 2f) & 1;
         bool dead = Dead > 0f;
 
@@ -251,17 +253,19 @@ public sealed class LeggedRig : Rig
         int stompLeg = stomping ? (c.StrikeLimb < 0 ? 0 : 1) : -1;
         if (_stompLeg >= 0 && stompLeg < 0) _legs[_stompLeg].Foot = Ground(w, _legs[_stompLeg].Drawn); // it stays where it came down
         _stompLeg = stompLeg;
+        // (A foot comes down where it will be wanted half a step on, turning as going: a body turning where it stands steps less.)
+        Basis ahead = new(Vector3.Up, c.Yaw + YawRate * duration * 0.5f);
         for (int li = 0; li < _legs.Length; li++)
         {
             Leg leg = _legs[li];
-            Vector3 home = Ground(w, pos + yaw * WildSim.Flat(leg.Anchor + leg.Rest) + vel * duration * 0.5f);
+            Vector3 home = Ground(w, pos + ahead * WildSim.Flat(leg.Anchor + leg.Rest) + vel * duration * 0.5f);
             Vector3 hipW = bodyT * leg.Anchor;
             float reach = leg.Upper + leg.Lower;
 
             if (li == stompLeg)
             {
-                // Lifted in the tell, then brought down hard on whoever is there.
-                leg.Stepping = false;
+                // Lifted in the tell, then brought down hard on whoever is there. (Caught in a step, lifted from where it is.)
+                if (leg.Stepping) (leg.Foot, leg.Stepping) = (leg.Drawn, false);
                 Vector3 stompFoot;
                 if (c.Phase == AttackPhase.Windup)
                 {
@@ -274,7 +278,7 @@ public sealed class LeggedRig : Rig
                     float k = Math.Clamp(c.PhaseTime / MathF.Max(0.05f, c.PhaseLength), 0f, 1f);
                     stompFoot = _stompLifted.Lerp(c.StrikePoint, k * k);
                 }
-                (Vector3 sKnee, Vector3 sDrawn) = SolveIK(hipW, stompFoot, leg.Upper, leg.Lower, bodyT.Basis * leg.Pole);
+                (Vector3 sKnee, Vector3 sDrawn) = SolveIK(hipW, stompFoot, leg.Upper, leg.Lower, bodyT.Basis * leg.Pole, SoftKnee);
                 leg.Drawn = sDrawn;
                 Pose[leg.UpPiece] = Geo.Segment(hipW, sKnee, bodyT.Basis.X);
                 Pose[leg.LoPiece] = Geo.Segment(sKnee, sDrawn, bodyT.Basis.X);
@@ -297,13 +301,16 @@ public sealed class LeggedRig : Rig
             {
                 float err = WildSim.Flat(home - leg.Foot).Length();
                 float stretch = (leg.Foot - hipW).Length();
-                bool overstretched = stretch > reach * 0.97f;
+                // (Out of reach where it stands as well, a step would only land it out of reach again: the body sags onto it.)
+                bool overstretched = stretch > reach * 0.97f && (home - hipW).Length() < stretch - 0.05f * legLen;
                 bool myTurn = speed < 0.1f || leg.Group == activeGroup || err > threshold * 1.8f;
-                if (err > legLen * 3f)
+                // Teleported or knocked far: snap rather than skate. (Not a fast run's feet left behind, nor a small body's turned
+                // about where it stands: they step, however quickly.)
+                if (err > MathF.Max(legLen * 3f, 1.5f) + speed * duration * 2f)
                 {
-                    leg.Foot = home; // teleported or knocked far: snap rather than skate
+                    leg.Foot = home;
                 }
-                else if ((err > threshold && myTurn || overstretched) && NeighboursDown(leg) || stretch > reach * 0.995f)
+                else if ((err > threshold && myTurn || overstretched) && NeighboursDown(leg) || overstretched && stretch > reach * 0.995f)
                 {
                     leg.Stepping = true;
                     leg.T = 0f;
@@ -321,7 +328,7 @@ public sealed class LeggedRig : Rig
             }
 
             Vector3 pole = bodyT.Basis * leg.Pole;
-            (Vector3 knee, Vector3 drawn) = SolveIK(hipW, foot, leg.Upper, leg.Lower, pole);
+            (Vector3 knee, Vector3 drawn) = SolveIK(hipW, foot, leg.Upper, leg.Lower, pole, SoftKnee);
             leg.Drawn = drawn;
             Vector3 side = bodyT.Basis.X;
             Pose[leg.UpPiece] = Geo.Segment(hipW, knee, side);
@@ -336,12 +343,21 @@ public sealed class LeggedRig : Rig
         return true;
     }
 
-    /// <summary>Two-bone IK in the plane of hip, foot and pole. The foot is drawn at full reach if it is too far.</summary>
-    internal static (Vector3 knee, Vector3 foot) SolveIK(Vector3 hip, Vector3 target, float a, float b, Vector3 pole)
+    /// <summary>How much of a leg's reach its last straightening is eased over (<see cref="SolveIK"/>'s soft).</summary>
+    internal const float SoftKnee = 0.06f;
+
+    /// <summary>
+    /// Two-bone IK in the plane of hip, foot and pole. The foot is drawn at full reach if it is too far. With
+    /// <paramref name="soft"/> above 0 (a leg's), the last of that share of the reach is eased into, never quite reached: near
+    /// straight a knee swings far for a small move of the foot, and a stride through it snaps the knee straight and back.
+    /// </summary>
+    internal static (Vector3 knee, Vector3 foot) SolveIK(Vector3 hip, Vector3 target, float a, float b, Vector3 pole, float soft = 0f)
     {
         Vector3 d = target - hip;
         float len = d.Length();
         Vector3 u = len > 1e-4f ? d / len : Vector3.Down;
+        float ease = (a + b) * soft, from = a + b - ease;
+        if (soft > 0f && len > from) len = from + ease * (1f - MathF.Exp(-(len - from) / ease));
         float dist = Math.Clamp(len, MathF.Abs(a - b) + 0.01f, a + b - 0.001f);
         float cosA = Math.Clamp((a * a + dist * dist - b * b) / (2f * a * dist), -1f, 1f);
         float sinA = MathF.Sqrt(1f - cosA * cosA);
@@ -419,7 +435,7 @@ public sealed class LeggedRig : Rig
             Vector3 p = bodyT * new Vector3(_tails.Length > 1 ? (t == 0 ? -0.15f : 0.15f) * b.Width : 0f, b.Height * 0.1f, b.Size * 0.47f);
             float yawAcc = _tails.Length > 1 ? (t == 0 ? -0.3f : 0.3f) : 0f;
             float pitchAcc = -0.3f + 0.35f * c.Alert * (Species.Stats.Hunts ? 1f : 0.4f) + 0.3f * Rearing - 0.6f * Dead;
-            float speed = WildSim.Flat(c.Velocity).Length();
+            float speed = Pace.Speed;
             float amp = speed > 0.3f ? 0.12f : 0.28f;
             float lag = Math.Clamp(-YawRate * 0.3f, -0.7f, 0.7f);
             // A swipe bends the tail round to a side and brings it down to the victim's height.
@@ -533,7 +549,7 @@ public sealed class LeggedRig : Rig
         Transform3D anchorFrame = _chinTendrils && _heads.Length > 0 ? Pose[_heads[0]] : bodyT;
         float hs = b.HeadSize;
         float len = _chinTendrils ? hs * 1.4f : b.Size * 0.5f;
-        Vector3 drag = -c.Velocity * 0.05f;
+        Vector3 drag = -Pace.Velocity * 0.05f;
         for (int t = 0; t < _tendrils.Length; t++)
         {
             int[] chain = _tendrils[t];

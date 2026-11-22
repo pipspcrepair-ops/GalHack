@@ -123,6 +123,23 @@ public partial class PoiPlaces
             if (door.Lift < 0 && door.Cells.Any(c => p.Inst.Blocks.Get(c).IsAir)) p.TakeDoor(door);
         Unheld(p, gone);
         p.Rebuild(gone);
+        // Whoever stood over what went falls (Town.Falls).
+        Int3 lo = gone.Aggregate(Int3.Min), hi = gone.Aggregate(Int3.Max);
+        p.Memory.Town?.Unfloored(p.WorldOrigin + new Vector3(lo.X, lo.Y, lo.Z), p.WorldOrigin + new Vector3(hi.X + 1, hi.Y + 1, hi.Z + 1));
+    }
+
+    /// <summary>The ground dug or blasted away (planet cells): a town's people over it, in its yards or out on a run, fall in.</summary>
+    public void Dug(IReadOnlyList<TerrainDigging.Terrain.RemovedCell> cells)
+    {
+        if (cells.Count == 0) return;
+        var lo = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        Vector3 hi = -lo;
+        foreach (var c in cells) (lo, hi) = (lo.Min(new Vector3(c.Cell.X, c.Cell.Y, c.Cell.Z)), hi.Max(new Vector3(c.Cell.X + 1, c.Cell.Y + 1, c.Cell.Z + 1)));
+        foreach (Town t in Towns)
+        {
+            Vector3 near = t.World(Vector3.Zero), shift = Zone.Planet.NearestCopy(lo, near) - lo;
+            t.Unfloored(lo + shift, hi + shift);
+        }
     }
 
     /// <summary>Dressing by the gaps with nothing left under it (hung up: nothing beside or over it) comes away; a hazard goes up.</summary>
@@ -136,8 +153,8 @@ public partial class PoiPlaces
         {
             if (h.Room.Plan.Placements[h.Index] is not { Support: < 0 } at) continue; // it goes with what it stands on
             Int3 c = p.CellAt(h.Node.GlobalPosition + Vector3.Up * 0.05f);
-            if (!near.Contains(c) && !Dirs.All.Any(d => near.Contains(c + d.Vec()))) continue;
-            bool held = at.Y < 0.3f ? !g.Get(c + Int3.Down).IsAir || !g.Get(c).IsAir : Dirs.All.Any(d => !g.Get(c + d.Vec()).IsAir);
+            // (On the floor: over what went, by its own footprint; hung up: by what is beside it.)
+            bool held = at.Y < 0.3f ? Stands(p, h, near) : !(near.Contains(c) || Dirs.All.Any(d => near.Contains(c + d.Vec()))) || Dirs.All.Any(d => !g.Get(c + d.Vec()).IsAir);
             if (held) continue;
             if (h.Piece.Blast != null) Fuse(p, h);
             else
@@ -146,6 +163,29 @@ public partial class PoiPlaces
                 p.TakePiece(h);
             }
         }
+    }
+
+    /// <summary>
+    /// Whether a piece on the floor still stands on it: its middle and eight points out toward its edges looked at (those in a wall
+    /// it stands against left out), held while at least half of them have a floor under them, or while none is over what went
+    /// (<paramref name="gone"/>). A bed over a hole drops into it.
+    /// </summary>
+    static bool Stands(Place p, DecoHit h, HashSet<Int3> gone)
+    {
+        BlockGrid g = p.Inst.Blocks;
+        Vector3 o = h.Node.GlobalPosition + Vector3.Up * 0.05f, across = h.Node.GlobalBasis.X.Normalized() * h.Piece.Width * 0.4f, along = h.Node.GlobalBasis.Z.Normalized() * h.Piece.Depth * 0.4f;
+        int on = 0, over = 0;
+        bool touched = false;
+        for (int i = -1; i <= 1; i++)
+            for (int k = -1; k <= 1; k++)
+            {
+                Int3 q = p.CellAt(o + across * i + along * k);
+                if (!g.Get(q).IsAir) continue;
+                touched |= gone.Contains(q + Int3.Down);
+                if (g.Get(q + Int3.Down).IsAir) over++;
+                else on++;
+            }
+        return !touched || on >= over;
     }
 
     /// <summary>

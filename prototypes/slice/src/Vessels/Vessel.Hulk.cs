@@ -83,7 +83,7 @@ public sealed partial class Vessel : ILiftHull
         if (e != PlaceError.None) return $"CORE WON'T SEAT · {e}";
         Structure.Owner = Building.DefaultOwner;
         ApplyEdits();
-        Claimed(Zone.Physics.Zone.Strength, inOrbit: false);
+        Claimed(Zone.Data.Rules.Planet.Gravity, inOrbit: false); // its core's 1 g, whatever the world pulls
         return null;
     }
 

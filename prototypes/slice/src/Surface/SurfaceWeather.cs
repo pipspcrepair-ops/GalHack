@@ -590,7 +590,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         {
             TreesThrown++;
             _trees.Hole(root, MathF.Max(0.6f, tree.Extents.X * 3f));
-            FlungTree flung = _trees.Throw(root, throwV + t.Velocity, height, tree.Extents.X, leaf, (x, z) => Zone.GroundAt(x, z).Y, _felledMesh, _felledTurn, _felledTint);
+            FlungTree flung = _trees.Throw(root, throwV + t.Velocity, height, tree.Extents.X, leaf, (x, z) => Zone.GroundAt(x, z).Y, Zone.Physics.Zone.Strength, _felledMesh, _felledTurn, _felledTint);
             LastThrown = (_felledBounds, flung.Bounds);
         }
         else Topple(tree, root, away, height, leaf);

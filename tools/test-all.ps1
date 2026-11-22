@@ -2,9 +2,13 @@
 # A headless test scene is any prototypes/<name>/tests/*Test.tscn or *Probe.tscn. A matching
 # *.args file beside a scene adds Godot arguments for that scene only; a matching *.manual file
 # skips it (its first line says why).
+# Every Godot run goes through the machine-wide queue (.tools\queue\godot-q.ps1: at most 4 at once,
+# owner 22 Nov), so a full run never adds a fifth.
 #   .\tools\test-all.ps1
 
 . "$PSScriptRoot\env.ps1"
+Set-Location $root   # the queue reads tools\env.ps1 from the current folder
+$queue = Join-Path $tools "queue\godot-q.ps1"
 $failed = @()
 $ran = 0
 
@@ -44,7 +48,7 @@ foreach ($proto in Get-ChildItem -Path (Join-Path $root "prototypes") -Directory
         $argsFile = [IO.Path]::ChangeExtension($scene.FullName, ".args")
         $extra = @()
         if (Test-Path $argsFile) { $extra = (Get-Content $argsFile -Raw).Trim() -split '\s+' }
-        $out = & $GodotConsole --headless @extra --path $proto.FullName $res 2>&1
+        $out = & $queue -Console -Headless @extra --path $proto.FullName $res 2>&1
         $code = $LASTEXITCODE
         $ran++
         $summary = ($out | Select-String -Pattern 'ALL PASSED|FAIL' | Select-Object -Last 1)

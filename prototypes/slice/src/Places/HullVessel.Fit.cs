@@ -574,7 +574,7 @@ public sealed partial class HullVessel
     };
 
     /// <summary>A machine or a container: what the 2.7 per 100 m² counts.</summary>
-    public static bool IsMachine(BlockType t) => t.Function is "container" or "generator" or "gyro" or "warp-drive" or "hyperdrive" or "constructor" or "deconstructor" or "capacitor" or "forecast";
+    public static bool IsMachine(BlockType t) => t.Function is "container" or "generator" or "gyro" or "warp-drive" or "fold-drive" or "constructor" or "deconstructor" or "capacitor" or "forecast";
 
     // ---- lights ---------------------------------------------------------------------------------------
 
