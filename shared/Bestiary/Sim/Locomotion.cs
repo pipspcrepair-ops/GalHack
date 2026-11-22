@@ -175,7 +175,9 @@ public static class Locomotion
         {
             c.ShorewardAt = w.Time;
             c.ShorewardReach = c.ShorewardReach <= 0f ? Shore.Reach : MathF.Min(c.ShorewardReach * 2f, Shore.FarReach);
-            c.Shoreward = Shore.Nearest(c.Position, w.WaterAt, w.Terrain.Height, BankClimb(c), c.ShorewardReach);
+            // (Nothing it can step out onto even far off: a bank as high as its body, scrambled up.)
+            float climb = c.ShorewardReach >= Shore.FarReach ? MathF.Max(BankClimb(c), c.Species.BodyHeight) : BankClimb(c);
+            c.Shoreward = Shore.Nearest(c.Position, w.WaterAt, w.Terrain.Height, climb, c.ShorewardReach);
         }
         if (!swims && depth > h)
         {
