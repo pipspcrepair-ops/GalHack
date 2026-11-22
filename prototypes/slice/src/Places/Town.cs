@@ -274,8 +274,10 @@ public sealed partial class Town : IKeeper
         for (int i = 0; i < path.Count - 1;)
         {
             int j = i + 1;
-            for (int k = Math.Min(path.Count - 1, i + PullReach); k > i + 1; k--)
-                if (Shortcut(path[i], path[k])) { j = k; break; }
+            // (The first step and the last, out of a seat or a bed and into one, are walked as they lie.)
+            if (i > 0)
+                for (int k = Math.Min(path.Count - 2, i + PullReach); k > i + 1; k--)
+                    if (Shortcut(path[i], path[k])) { j = k; break; }
             kept.Add(path[j]);
             i = j;
         }

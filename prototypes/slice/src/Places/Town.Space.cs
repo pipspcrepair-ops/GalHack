@@ -286,10 +286,10 @@ public sealed partial class Town
         return to;
     }
 
-    /// <summary>Near the end of their way with someone standing at its end (a crowd at a spot, at a refuge): they stop where they got to (true).</summary>
+    /// <summary>Near the end of their way with someone standing at its end (a crowd at a spot, at a refuge): they stop where they got to (true), if it is floor (never in a bed's cells).</summary>
     bool Settles(Person p)
     {
-        if (p.Path is not { Count: > 0 } way || p.Step < way.Count - 1 || (way[^1] - p.Pos).Length() >= 2.5f || !Taken(p, way[^1])) return false;
+        if (p.Path is not { Count: > 0 } way || p.Step < way.Count - 1 || !OnGrid(p.Pos) || (way[^1] - p.Pos).Length() >= 2.5f || !Taken(p, way[^1])) return false;
         (p.Step, p.StuckFor) = (way.Count, 0f);
         Settled++;
         return true;
