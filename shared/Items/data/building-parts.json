@@ -18,14 +18,14 @@
       ]
     },
     {
-      "id": "hyperdrive-t1", "name": "Hyperdrive T1", "function": "hyperdrive", "hp": 363, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 10.3, "color": "5a189a", "glow": "c77dff", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 2, 5], "was": ["hyperdrive1"], "power": -0.0125,
+      "id": "fold-drive-t1", "name": "Fold Drive T1", "function": "fold-drive", "hp": 363, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 10.3, "color": "5a189a", "glow": "c77dff", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 2, 5], "was": ["hyperdrive1", "hyperdrive-t1"], "power": -0.0125,
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
         {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}
       ]
     },
     {
-      "id": "hyperdrive-t2", "name": "Hyperdrive T2", "function": "hyperdrive", "hp": 363, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 10.3, "color": "3c096c", "glow": "e0aaff", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 2, 5], "was": ["hyperdrive2"], "power": -0.0125,
+      "id": "fold-drive-t2", "name": "Fold Drive T2", "function": "fold-drive", "hp": 363, "armor": 15, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 10.3, "color": "3c096c", "glow": "e0aaff", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 2, 5], "was": ["hyperdrive2", "hyperdrive-t2"], "power": -0.0125,
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
         {"box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow"}

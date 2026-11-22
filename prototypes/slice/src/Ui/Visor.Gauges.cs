@@ -30,7 +30,7 @@ public readonly record struct StructureReadout(double? CapUse, double? FuelSecon
     {
         GalHack.Items.Bridge.StructurePower p = v.Power;
         bool generator = p.GeneratorMW > 0;
-        return new(generator ? p.Usage : null, generator ? p.SecondsLeft : null, p.Range("warp-drive")?.Reach, p.Range("hyperdrive")?.Reach);
+        return new(generator ? p.Usage : null, generator ? p.SecondsLeft : null, p.Range("warp-drive")?.Reach, p.Range("fold-drive")?.Reach);
     }
 }
 

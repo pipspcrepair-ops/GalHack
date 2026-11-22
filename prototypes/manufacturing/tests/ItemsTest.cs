@@ -148,7 +148,7 @@ public partial class ItemsTest : TestBase
             Check(!smallFab.Knows(_items.BlockItem(id)) && large.Knows(_items.BlockItem(id)), $"{_items.BlockItem(id).Name} needs Fabricator T2");
         Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Id == "pentaxite") && _items.Item("pentaxite").IsGathered && _items.Current("warp-fuel-ore") == "pentaxite",
             "warp cells are refined from pentaxite, a mined ore (the old warp fuel ore reads as it), never made from common materials");
-        Check(_items.Item("fold-crystal").Uses.Contains("Hyperdrive") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is hyperdrive fuel and still feeds shields");
+        Check(_items.Item("fold-crystal").Uses.Contains("Fold fuel") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is fold fuel and still feeds shields");
     }
 
     void TestDecoItems()
