@@ -864,9 +864,6 @@ public sealed class WeatherSim
         return d;
     }
 
-    /// <summary>Takes every dust storm away at once (tests, screenshots).</summary>
-    public void ClearDustStorms() => _dust.Clear();
-
     /// <summary>Takes the front away at once, and its cells (tests, screenshots).</summary>
     public void ClearFront()
     {

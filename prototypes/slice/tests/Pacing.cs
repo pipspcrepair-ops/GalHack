@@ -69,6 +69,7 @@ public partial class Pacing : Node
             _storm.Position = S.WorldFeet + _stormOffset;
             _storm.Strength = 1f;
             _storm.Age = 0f;
+            if (_builtin != null) Builtin();
         }
         try { more = _run.MoveNext(); }
         catch (Exception e)
@@ -96,7 +97,34 @@ public partial class Pacing : Node
         _storm = sim.AddDustStorm(S.WorldFeet, 1f, new Vector2(-way.X, -way.Z) * sim.Data.State(WeatherKind.DustStorm).WindSpeed);
         float h = _storm.HalfLength;
         _stormOffset = way * (where switch { "inside" => 0f, "edge" => h - 150f, "outside" => 3000f + h, _ => throw new ArgumentException($"--storm={where}") });
-        GD.Print($"PACING storm {where}: {_storm.HalfWidth * 2f:F0} x {h * 2f:F0} m, {_storm.Height:F0} m tall");
+        GD.Print($"PACING storm {where}: {_storm.HalfWidth * 2f:F0} x {h * 2f:F0} m, {_storm.Height:F0} m tall; renderer {RenderingServer.GetCurrentRenderingMethod()}");
+        // --builtin=1 (run with --rendering-method forward_plus): the measured alternative, Godot's own volumetric fog with a
+        // fog volume in the storm's place and size, instead of the game's own volume. Measure only: the game stays on Mobile.
+        if (!_args.ContainsKey("builtin")) return;
+        var env = _game.Zone.Sky.Environment;
+        env.VolumetricFogEnabled = true;
+        env.VolumetricFogDensity = 0f; // no fog of its own outside the storm, as on the game's
+        env.VolumetricFogLength = PlanetSurface.Terrain.TerrainStreamer.HorizonReach; // its froxels must reach as far as the wall is seen
+        env.VolumetricFogAlbedo = _game.Zone.Planet.Look.Dust;
+        _builtin = new FogVolume
+        {
+            Name = "StormFog", Shape = RenderingServer.FogVolumeShape.Ellipsoid,
+            Size = new Vector3(2f * _storm.HalfLength, 2f * _storm.Height, 2f * _storm.HalfWidth),
+            Material = new FogMaterial { Density = 2.3f * 0.85f / _storm.Air.Visibility, Albedo = _game.Zone.Planet.Look.Dust, EdgeFade = 0.3f },
+        };
+        _game.Zone.AddChild(_builtin);
+    }
+
+    FogVolume _builtin;
+
+    /// <summary>The fog volume where the storm stands, turned its way, and the game's own volume hidden.</summary>
+    void Builtin()
+    {
+        Vector3 at = _game.Zone.Planet.NearestCopy(_game.Zone.Planet.Canonical(_storm.Position), _game.Camera.GlobalPosition);
+        at.Y = _game.Zone.GroundAt(at.X, at.Z).Y;
+        var along = new Vector3(_storm.Heading.X, 0f, _storm.Heading.Y);
+        _builtin.GlobalTransform = new Transform3D(new Basis(along, Vector3.Up, along.Cross(Vector3.Up)), at);
+        if (_game.Zone.Weather.StormOf(_storm.Id) is { } drawn) drawn.Visible = false;
     }
 
     /// <param name="drive">what moves you meanwhile, if not <paramref name="each"/> tick by tick</param>
