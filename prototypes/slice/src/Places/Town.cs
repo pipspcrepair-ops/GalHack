@@ -1572,6 +1572,7 @@ public sealed partial class Town : IKeeper
             Yaw = p.Yaw,
             Speed = p.Swimming ? MathF.Max(pace.Speed, 1.1f) : pace.Speed, // (swimming, the sleeper's stroke: never still)
             Walked = pace.Walked,
+            Travels = !p.Swimming,
             Sit = p.Seated,
             Work = p.Bent,
             Aim = p.Raised,

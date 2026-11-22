@@ -131,6 +131,9 @@ public sealed class PoseBlend
 
     public bool Active(double now) => _dur > 0f && now < _end;
 
+    /// <summary>Carrying the pose across the span between the rig's updates (not a change of action, blended as posed).</summary>
+    public bool Carrying(double now) => _span && Active(now);
+
     public void Reset() => _has = false;
 
     /// <summary>

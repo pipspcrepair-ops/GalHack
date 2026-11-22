@@ -110,7 +110,7 @@ public partial class StrideTest : Node
 
     /// <summary>
     /// One walker, sample by sample (a tick apart): its feet and knees about its body (a jump is more than a stride can carry them
-    /// in a frame), its planted feet over the ground in its own turning frame (a slide is the stride out of step with the ground),
+    /// in a frame), its planted feet over the ground (a slide is the stride out of step with the ground),
     /// and over each second its steps against how far it really went.
     /// </summary>
     sealed class Gait
@@ -155,7 +155,7 @@ public partial class StrideTest : Node
             {
                 for (int i = 0; i < drawn.Length; i++) (_was[i], _moves[i]) = (turn * (drawn[i] - body), (0f, 0f));
                 (_yaw, _turned) = (yaw, 0f);
-                for (int i = 0; i < feet.Length; i++) (_plantedWas[i], _plantedThen[i]) = (turn * (feet[i] - root), planted[i]);
+                for (int i = 0; i < feet.Length; i++) (_plantedWas[i], _plantedThen[i]) = (feet[i], planted[i]);
                 (_has, _win, _slide, _slideN, _steps0, _at0, _wanted, _path, _last) = (true, 0f, 0f, 0, steps, root, wants, 0f, root);
                 return;
             }
@@ -178,16 +178,15 @@ public partial class StrideTest : Node
             (_yaw, _turned) = (yaw, _turned + turned);
             t.WorstJump = MathF.Max(t.WorstJump, worst);
             if (worst > 0f) { t.Jumps++; t.Why(t.JumpWhy, doing()); t.Note("jump", $"{Who}: {(which % 2 == 0 ? "a knee" : "a foot")} jumped {worst:F2} m about the body in a frame ({doing()})"); }
-            // A planted foot over the ground: its move in the body's own turning frame, plus the body's (turning on the spot is no slide).
+            // A planted foot over the ground: its move (a foot pivoted round a body turning on the spot slides too).
             for (int i = 0; i < feet.Length; i++)
             {
-                Vector3 local = turn * (feet[i] - root);
                 if (planted[i] && _plantedThen[i])
                 {
-                    _slide += WildSim.Flat(local - _plantedWas[i]).Length();
+                    _slide += WildSim.Flat(feet[i] - _plantedWas[i]).Length();
                     _slideN++;
                 }
-                (_plantedWas[i], _plantedThen[i]) = (local, planted[i]);
+                (_plantedWas[i], _plantedThen[i]) = (feet[i], planted[i]);
             }
             _wanted &= wants;
             _path += WildSim.Flat(root - _last).Length();
@@ -198,13 +197,12 @@ public partial class StrideTest : Node
             t.Windows++;
             float speed = WildSim.Flat(root - _at0).Length() / _win;
             float cadence = (steps - _steps0) / (float)_legs / _win;
-            // (A planted foot goes back under a body going on at the body's speed: any more or less is a slide over the ground.)
-            float slide = _slideN > 0 ? MathF.Abs(_slide / (_slideN * Dt) - _path / _win) : 0f;
+            float slide = _slideN > 0 ? _slide / (_slideN * Dt) : 0f;
             t.WorstCadence = MathF.Max(t.WorstCadence, cadence);
             t.WorstSlide = MathF.Max(t.WorstSlide, slide);
             // (A second's steps are counted whole: one landing more than its rate is the count's, not the legs'.)
             if (cadence > _cap + 1f / _legs / _win) { t.Spikes++; t.Note("spike", $"{Who}: {cadence:F1} steps a leg a second (natural at most {_cap:F1}) at {speed:F2} m/s"); }
-            if (_human && slide > 0.6f) { t.Slides++; t.Why(t.SlideWhy, doing()); t.Note("slide", $"{Who}: planted feet slid {slide:F2} m/s faster than it went ({speed:F2} m/s, {cadence:F1} strides a second)"); }
+            if (_human && slide > 0.6f) { t.Slides++; t.Why(t.SlideWhy, doing()); t.Note("slide", $"{Who}: planted feet slid {slide:F2} m/s over the ground ({speed:F2} m/s, {cadence:F1} strides a second)"); }
             // Held still while it meant to walk: standing, or a shuffle (a step or two a second), never a walk on (a person's walk is a stride a second).
             // (Turning where it stands, or jostled to and fro, is a move of its own, stepped round.)
             if (_wanted && _path / _win < 0.15f && _turned < 0.5f)
@@ -304,7 +302,7 @@ public partial class StrideTest : Node
                     at += Vector3.Forward * v * Dt;
                     clock += Dt;
                     rig.Pace.Note(at, Vector3.Forward, Dt);
-                    rig.Drive(new Gesture { Feet = at, Speed = rig.Pace.Speed, Walked = rig.Pace.Walked, Clock = clock });
+                    rig.Drive(new Gesture { Feet = at, Speed = rig.Pace.Speed, Walked = rig.Pace.Walked, Clock = clock, Travels = true });
                     var drawn = new Vector3[legs.Length];
                     for (int i = 0; i < legs.Length; i++) drawn[i] = rig.Pose[legs[i]].Origin;
                     var feet = new Vector3[2];

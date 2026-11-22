@@ -182,7 +182,7 @@ public partial class PersonView : Node3D
     {
         double now = DrawSmoother.Clock();
         Place(now);
-        if (!_blend.Active(now)) return false;
+        if (!_blend.Carrying(now)) return false;
         Write(_blend.Apply(_rig.Pose, _root, now));
         return true;
     }

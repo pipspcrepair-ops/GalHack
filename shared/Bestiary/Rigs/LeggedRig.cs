@@ -253,10 +253,12 @@ public sealed class LeggedRig : Rig
         int stompLeg = stomping ? (c.StrikeLimb < 0 ? 0 : 1) : -1;
         if (_stompLeg >= 0 && stompLeg < 0) _legs[_stompLeg].Foot = Ground(w, _legs[_stompLeg].Drawn); // it stays where it came down
         _stompLeg = stompLeg;
+        // (A foot comes down where it will be wanted half a step on, turning as going: a body turning where it stands steps less.)
+        Basis ahead = new(Vector3.Up, c.Yaw + YawRate * duration * 0.5f);
         for (int li = 0; li < _legs.Length; li++)
         {
             Leg leg = _legs[li];
-            Vector3 home = Ground(w, pos + yaw * WildSim.Flat(leg.Anchor + leg.Rest) + vel * duration * 0.5f);
+            Vector3 home = Ground(w, pos + ahead * WildSim.Flat(leg.Anchor + leg.Rest) + vel * duration * 0.5f);
             Vector3 hipW = bodyT * leg.Anchor;
             float reach = leg.Upper + leg.Lower;
 
@@ -299,14 +301,15 @@ public sealed class LeggedRig : Rig
             {
                 float err = WildSim.Flat(home - leg.Foot).Length();
                 float stretch = (leg.Foot - hipW).Length();
-                bool overstretched = stretch > reach * 0.97f;
+                // (Out of reach where it stands as well, a step would only land it out of reach again: the body sags onto it.)
+                bool overstretched = stretch > reach * 0.97f && (home - hipW).Length() < stretch - 0.05f * legLen;
                 bool myTurn = speed < 0.1f || leg.Group == activeGroup || err > threshold * 1.8f;
                 // Teleported or knocked far: snap rather than skate. (Not a fast run's feet left behind: they step, however quickly.)
                 if (err > legLen * 3f + speed * duration * 2f)
                 {
                     leg.Foot = home;
                 }
-                else if ((err > threshold && myTurn || overstretched) && NeighboursDown(leg) || stretch > reach * 0.995f)
+                else if ((err > threshold && myTurn || overstretched) && NeighboursDown(leg) || overstretched && stretch > reach * 0.995f)
                 {
                     leg.Stepping = true;
                     leg.T = 0f;
