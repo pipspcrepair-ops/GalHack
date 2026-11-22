@@ -112,10 +112,12 @@ public sealed partial class Town
     /// <summary>The top of what is solid under a point (the place's frame), from <paramref name="above"/> over it to <paramref name="below"/> under it; null with nothing (or nothing built to tell).</summary>
     float? Top(Vector3 local, float above, float below)
     {
-        if (_view == null || !_view.IsInsideTree()) return null;
+        // (The place's own colliders where it stands; away from it (its people out on the land, in a river), the land's.)
+        Node3D near = _view is { } v && v.IsInsideTree() ? v : _places?.Zone is { } z && z.IsInsideTree() ? z : null;
+        if (near == null) return null;
         Vector3 from = World(local + Vector3.Up * above);
         var q = PhysicsRayQueryParameters3D.Create(from, from + Vector3.Down * (above + below), Layers.World | Layers.Hull | Layers.Interior);
-        var hit = _view.GetWorld3D().DirectSpaceState.IntersectRay(q);
+        var hit = near.GetWorld3D().DirectSpaceState.IntersectRay(q);
         return hit.Count == 0 ? null : Local((Vector3)hit["position"]).Y;
     }
 
