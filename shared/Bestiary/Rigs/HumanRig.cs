@@ -72,7 +72,7 @@ public sealed partial class HumanRig : Rig
     public Vector3 WristOf(int i) => _wrist[i];
     readonly int[] _armU = new int[2], _armL = new int[2], _legU = new int[2], _legL = new int[2], _foot = new int[2];
     readonly Vector3[] _feet = new Vector3[2], _drawn = new Vector3[2];
-    readonly bool[] _planted = { true, true };
+    readonly bool[] _planted = { true, true }, _swung = new bool[2];
     readonly float _offset;
     /// <summary>How far through its stride the body is (cycles), how fast that goes now (strides a second), and how far it had walked when last posed.</summary>
     float _stride, _cadence, _walkedWas = float.NaN;
@@ -320,6 +320,20 @@ public sealed partial class HumanRig : Rig
     /// <summary>The stride is kept within this many cycles (every rhythm read off it repeats in it), for float's sake.</summary>
     const float StrideWrap = 20f;
 
+    /// <summary>A foot <paramref name="t"/> cycles into its stride: how far ahead (1) or behind (-1) it is, how high it is lifted (0..1); true while it is down.</summary>
+    static bool StepAt(float t, float duty, out float reach, out float lift)
+    {
+        t -= MathF.Floor(t);
+        if (t < duty)
+        {
+            (reach, lift) = (1f - 2f * t / duty, 0f);
+            return true;
+        }
+        float s = (t - duty) / (1f - duty);
+        (reach, lift) = (s * s * (3f - 2f * s) * 2f - 1f, MathF.Sin(s * MathF.PI));
+        return false;
+    }
+
     void DriveAlive(in Gesture g)
     {
         Figure f = _f;
@@ -361,6 +375,15 @@ public sealed partial class HumanRig : Rig
         float hop = g.Act == BodyAct.Play ? act * 0.035f * f.Height * MathF.Abs(MathF.Sin(g.Clock * 4.5f)) : 0f;
         float hipY = f.LegLength * (0.99f - 0.022f * moving - 0.07f * run - 0.42f * MathF.Max(g.Crouch, slump) - 0.24f * stalk) + bob + hop - blowDown * f.Height / 1.72f;
         if (_hitPart is Part.LegL or Part.LegR) hipY -= 0.07f * snap * f.LegLength;
+        // A foot is down no further ahead or behind than the leg reaches from the hip (or it is dragged, the knee snapping
+        // straight): a longer stride is on the ground for less of it, as a sprinter's, and the hips come down as the feet part.
+        float duty = Mathf.Lerp(0.62f, 0.4f, run), legReach = (f.UpperLeg + f.LowerLeg) * 0.95f, hipUp = hipY - f.HipW * 0.1f - f.Ankle;
+        duty = Math.Clamp(2f * MathF.Sqrt(MathF.Max(0f, legReach * legReach - hipUp * hipUp)) / MathF.Max(1e-3f, strideLength * moving), Mathf.Lerp(0.5f, 0.22f, run), duty);
+        float half = strideLength * duty * 0.5f;
+        StepAt(phase, duty, out float reach0, out _);
+        StepAt(phase + 0.5f, duty, out float reach1, out _);
+        float apart = moving * half * MathF.Max(MathF.Abs(reach0), MathF.Abs(reach1));
+        hipY -= MathF.Max(0f, hipUp - MathF.Sqrt(MathF.Max(0f, legReach * legReach - apart * apart)));
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         float sway = moving * 0.018f * f.Height * MathF.Sin(cycle);
         float staggerSide = f.Stagger * (0.09f * MathF.Sin(phase * MathF.Tau * 0.35f + g.Clock * 0.7f) + 0.03f * MathF.Sin(g.Clock * 2.1f));
@@ -426,32 +449,11 @@ public sealed partial class HumanRig : Rig
         PoseTail(g, hip, torso, cycle, moving, jerk);
 
         // Legs: a foot on the ground moves back under the body at walking speed, one in the air comes through high.
-        float duty = Mathf.Lerp(0.62f, 0.4f, run);
-        // A foot is down no further ahead or behind than the leg reaches from the hip (or it is dragged, the knee snapping
-        // straight): a longer stride is on the ground for less of it, as a sprinter's.
-        float hipUp = hipY - f.HipW * 0.1f - f.Ankle, legReach = (f.UpperLeg + f.LowerLeg) * 0.97f;
-        float under = MathF.Sqrt(MathF.Max(0f, legReach * legReach - hipUp * hipUp));
-        duty = Math.Clamp(2f * under / MathF.Max(1e-3f, strideLength * moving), Mathf.Lerp(0.5f, 0.22f, run), duty);
         int stepper = hitFlat.Dot(right) > 0f ? 1 : 0;
         for (int i = 0; i < 2; i++)
         {
             float side = i == 0 ? -1f : 1f;
-            float t = phase + i * 0.5f;
-            t -= MathF.Floor(t);
-            float reach, lift;
-            bool stance = t < duty;
-            if (stance)
-            {
-                reach = 1f - 2f * t / duty;
-                lift = 0f;
-            }
-            else
-            {
-                float s = (t - duty) / (1f - duty);
-                reach = s * s * (3f - 2f * s) * 2f - 1f;
-                lift = MathF.Sin(s * MathF.PI);
-            }
-            float half = strideLength * duty * 0.5f;
+            bool stance = StepAt(phase + i * 0.5f, duty, out float reach, out float lift);
             float forward = moving * reach * half + g.Sit * f.UpperLeg * 0.8f + g.Crouch * 0.05f * side + stalk * 0.08f * side;
             Vector3 hipJoint = hip + hipsX * side * f.HipW * 0.55f + Vector3.Down * f.HipW * 0.1f;
             float wide = g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed : 0f; // a wide stance for a threat or a fright
@@ -472,7 +474,9 @@ public sealed partial class HumanRig : Rig
             foot.Y = ground + f.Ankle + moving * (heel + lift * step * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run) * (1f - 0.5f * stalk)) + stepLift;
             _feet[i] = foot;
             bool grounded = stance || moving <= 0f;
-            if (grounded && !_planted[i]) Steps++;
+            // (A step is a foot swung through and set down: a stride barely begun and settled again is none.)
+            if (!grounded && moving * lift > 0.3f) _swung[i] = true;
+            if (grounded && _swung[i]) (Steps, _swung[i]) = (Steps + 1, false);
             _planted[i] = grounded;
             (Vector3 knee, Vector3 drawn) = LeggedRig.SolveIK(hipJoint, foot, f.UpperLeg, f.LowerLeg, fwd + right * side * 0.12f, LeggedRig.SoftKnee);
             _knee[i] = knee;

@@ -182,8 +182,8 @@ public partial class StrideTest : Node
             if (cadence > _cap + 1f / _legs / _win) { t.Spikes++; t.Note("spike", $"{Who}: {cadence:F1} steps a leg a second (natural at most {_cap:F1}) at {speed:F2} m/s"); }
             if (_human && slide > 0.6f) { t.Slides++; t.Why(t.SlideWhy, doing()); t.Note("slide", $"{Who}: planted feet slid {slide:F2} m/s faster than it went ({speed:F2} m/s, {cadence:F1} strides a second)"); }
             // Held still while it meant to walk: standing, or a shuffle (a step or two a second), never a walk on (a person's walk is a stride a second).
-            // (Turning where it stands is a move of its own, stepped round.)
-            if (_wanted && speed < 0.1f && _turned < 0.5f)
+            // (Turning where it stands, or jostled to and fro, is a move of its own, stepped round.)
+            if (_wanted && _path / _win < 0.15f && _turned < 0.5f)
             {
                 t.Held++;
                 t.WorstHeld = MathF.Max(t.WorstHeld, cadence);
