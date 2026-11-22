@@ -308,10 +308,23 @@ public sealed partial class Staging
         town.Struck(busy, 9999f, GalHack.Arms.DamageClass.Explosive, byPlayer: true);
         for (int i = 0; i < 10; i++)
         {
-            foreach (int x in _drive.Wait(18)) yield return x;
-            var runners = town.People.Where(q => q.Fleeing && q.Now > 2f).ToList();
-            if (runners.Count > 0) Look(eye, runners.Aggregate(Vector3.Zero, (s, q) => s + p.ToWorld(q.Pos)) / runners.Count + Vector3.Up);
-            foreach (int x in _drive.Wait(2)) yield return x;
+            foreach (int x in _drive.Wait(12)) yield return x;
+            var runners = town.People.Where(q => q.Fleeing && q.Now > 2f).OrderBy(q => q.Pos.DistanceTo(busy.Pos)).ToList();
+            if (runners.Count > 0)
+            {
+                // The nearest runner seen from 5 m with nothing between, side on where it can be; the sleeper a step behind the
+                // camera (what's near them is posed in full).
+                var space = _game.Zone.GetWorld3D().DirectSpaceState;
+                Town.Person r = runners[0];
+                Vector3 rp = p.ToWorld(r.Pos), ahead = new(-MathF.Sin(r.Yaw), 0f, -MathF.Cos(r.Yaw));
+                Vector3 Eye(int k) => rp + new Vector3(MathF.Cos(k * MathF.Tau / 12f), 0f, MathF.Sin(k * MathF.Tau / 12f)) * 5f + Vector3.Up * 1.5f;
+                bool Clear(Vector3 e) => space.IntersectRay(PhysicsRayQueryParameters3D.Create(e, rp + Vector3.Up * 1.1f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull)).Count == 0;
+                int best = Enumerable.Range(0, 12).OrderBy(k => Clear(Eye(k)) ? 0 : 1).ThenBy(k => MathF.Abs((Eye(k) - rp).Normalized().Dot(ahead))).First();
+                eye = Eye(best);
+                _game.Survivor.PlaceOutside(Ground(eye + (eye - rp).Normalized() * 2f).ToNumerics());
+                Look(eye, rp + Vector3.Up * 0.9f);
+            }
+            foreach (int x in _drive.Wait(3)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, $"flee-{i:00}.png"))) yield return x;
             GD.Print($"(flee-{i:00}: {runners.Count} running: {string.Join(", ", runners.Take(4).Select(q => $"{q.Job} {q.Now:F1} m/s {q.Act} {q.ActAmount:F2}"))})");
         }
