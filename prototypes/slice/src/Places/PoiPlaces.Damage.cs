@@ -154,7 +154,7 @@ public partial class PoiPlaces
             if (h.Room.Plan.Placements[h.Index] is not { Support: < 0 } at) continue; // it goes with what it stands on
             Int3 c = p.CellAt(h.Node.GlobalPosition + Vector3.Up * 0.05f);
             if (!near.Contains(c) && !Dirs.All.Any(d => near.Contains(c + d.Vec()))) continue;
-            bool held = at.Y < 0.3f ? !g.Get(c + Int3.Down).IsAir || !g.Get(c).IsAir : Dirs.All.Any(d => !g.Get(c + d.Vec()).IsAir);
+            bool held = at.Y < 0.3f ? Stands(p, h) : Dirs.All.Any(d => !g.Get(c + d.Vec()).IsAir);
             if (held) continue;
             if (h.Piece.Blast != null) Fuse(p, h);
             else
@@ -163,6 +163,26 @@ public partial class PoiPlaces
                 p.TakePiece(h);
             }
         }
+    }
+
+    /// <summary>
+    /// Whether a piece on the floor still stands on it: its middle and eight points out toward its edges looked at (those in a wall
+    /// it stands against left out), held while at least half of them have a floor under them. A bed over a hole drops into it.
+    /// </summary>
+    static bool Stands(Place p, DecoHit h)
+    {
+        BlockGrid g = p.Inst.Blocks;
+        Vector3 o = h.Node.GlobalPosition + Vector3.Up * 0.05f, across = h.Node.GlobalBasis.X.Normalized() * h.Piece.Width * 0.4f, along = h.Node.GlobalBasis.Z.Normalized() * h.Piece.Depth * 0.4f;
+        int on = 0, over = 0;
+        for (int i = -1; i <= 1; i++)
+            for (int k = -1; k <= 1; k++)
+            {
+                Int3 q = p.CellAt(o + across * i + along * k);
+                if (!g.Get(q).IsAir) continue;
+                if (g.Get(q + Int3.Down).IsAir) over++;
+                else on++;
+            }
+        return on >= over;
     }
 
     /// <summary>

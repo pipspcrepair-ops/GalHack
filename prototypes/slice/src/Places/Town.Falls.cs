@@ -202,9 +202,8 @@ public sealed partial class Town
     void Down(Person p, float dt)
     {
         p.LastFallTime += dt;
-        // Held off what is beside them first (a step down eased off it slowly, a long fall a little more: 0.1 m a tick at most, never
-        // thrown), and looked under from there: never caught on the very edge of what they stood against.
-        OffSides(p, p.FallSpeed > 3f ? 2 : 1);
+        // Held off what is beside them first, and looked under from there: never caught on the very edge of what they stood against.
+        OffSides(p, 1);
         FallRays += 5;
         float reach = p.FallSpeed * dt + 0.5f * Pull * dt * dt + 0.05f;
         // What they come down on holds them as standing does (Footed): under their middle, or under three of the rest; an edge
@@ -233,8 +232,9 @@ public sealed partial class Town
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
         p.Pos.Y = y;
         p.FallSpeed = speed;
+        // Clear of what they now pass (a ledge, an eave): a step down eased off it, a long fall held off it before it is into them.
+        OffSides(p, speed > 3f ? 4 : 1);
         if (!down) return;
-        OffSides(p, 1); // (landed by a step or a wall's foot: stood a little clear of it)
         Land(p, speed, wet);
     }
 
@@ -290,8 +290,7 @@ public sealed partial class Town
         // with none, up its side to where there is; off the place's grid, home over the land; on open ground past the search, where they
         // were bound (or somewhere else).
         if (p.Run != null) p.ScaredFor = MathF.Max(p.ScaredFor, 4f);
-        else if (!Memory.Inst.Blocks.InBounds(Cell(p.Pos))) HomeOverLand(p, "fell off the place");
-        else if (OnFrom(p) == SpotSearchSpent)
+        else if (!OnAfterFall(p))
         {
             if (p.Spot >= 0 && Whole(p.Spot)) GoTo(p, p.Spot);
             else Next(p);
@@ -420,6 +419,18 @@ public sealed partial class Town
         if (way[^1] == Spots[spot].Cell) path.Add(At(spot));
         (p.Path, p.Step, p.Spot, p.Asked, p.Wait) = (path, 0, spot, -1, 1f);
         return spot;
+    }
+
+    /// <summary>
+    /// On from where someone stands after a fall (their routes, worked out from the spots, knowing nothing of it): by the way
+    /// <see cref="OnFrom"/> finds, up a side by <see cref="GetOut"/>, or off the place's grid home over the land. False with none of
+    /// those (open ground past the search, or stranded): their day goes on as it would.
+    /// </summary>
+    bool OnAfterFall(Person p)
+    {
+        if (Memory.Inst.Blocks.InBounds(Cell(p.Pos))) return OnFrom(p) >= 0 || p.ClimbTo != null;
+        HomeOverLand(p, "fell off the place");
+        return p.Run != null;
     }
 
     /// <summary>Whether there is no walking anywhere from where someone stands, nor climbing out to where there is (tests).</summary>

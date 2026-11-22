@@ -40,7 +40,7 @@ public partial class FallTest : Node
     Driver _drive;
     double _max;
     string _shots;
-    bool _snapping, _shot;
+    bool _snapping, _shot, _swimShot;
     int _solidSeen;
     readonly HashSet<string> _proven = new();
 
@@ -485,6 +485,7 @@ public partial class FallTest : Node
             // In it, nobody stands on the water: swimming, the head at the surface (feet a swimming depth under it); else on its floor.
             if (inWater && swimming) { swum++; swimOff = MathF.Max(swimOff, MathF.Abs(s.Value - w.Y - who.Figure.Height * _game.Zone.Physics.Rules.Water.SwimDepth)); }
             else if (inWater && w.Y > bottom + 0.2f) onWater++;
+            if (inWater && swimming && swum == 60 && _shots != null && !_swimShot) { _swimShot = true; foreach (int x in Snap(town, who, "swimming.png")) yield return x; } // (a second into the swim)
             // (Out: on the bank, or out of the water by their own say on its edge (an errand home that crosses the shallows wades on).)
             if (!swimming && !wading && (!inWater || was) && MathF.Abs(w.Y - bottom) < 0.3f) { outOn = true; break; }
             was = swimming || wading;
@@ -506,7 +507,7 @@ public partial class FallTest : Node
         for (int i = 0; i < 240; i++) { TopUp(); yield return 0; }
         WildlifePatch patch = _game.Zone.Wildlife;
         Creature who = patch.Sim.Creatures.Where(c => !c.Dead && !c.Removed && c.Space == null && !c.Species.Flies && c.Species.Rig is not (RigKind.GasBag or RigKind.Swarm or RigKind.Hopper)
-            && c.Species.Domestic == DomesticKind.None && Swims(c.Species)).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
+            && c.Species.Domestic == DomesticKind.None && !c.Species.IsHunter && c.Target == null && Swims(c.Species)).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
         if (who == null) { GD.Print("  (no creature that swims in the patch: none dropped in)"); yield break; }
         GD.Print($"  -- a creature dropped into deep water ({who.Species.Name}, {who.Species.BodyLength:F1} m, health {who.Health:F0} of {who.Stats.MaxHealth:F0}; {top - floor:F1} m deep) --");
         who.Position = patch.PatchLocal(at with { Y = top + 3f });
@@ -526,7 +527,7 @@ public partial class FallTest : Node
             if (inWater && who.Position.Y - patch.Sim.Terrain.Height(who.Position.X, who.Position.Z) > 0.3f) swum++;
             if (!inWater) { outOn = true; break; }
         }
-        GD.Print($"  a creature in deep water: {(outOn ? $"out on the bank after {t / 60f:F1} s" : who.Dead ? "drowned" : "still in it")}, {swum / 60f:F1} s swimming, the most risen in a tick {rise:F3} m");
+        GD.Print($"  a creature in deep water: {(outOn ? $"out on the bank after {t / 60f:F1} s" : who.Dead ? $"dead (set on by {who.ProvokedBy?.ToString() ?? "nothing"})" : "still in it")}, {swum / 60f:F1} s swimming, the most risen in a tick {rise:F3} m");
         Check(outOn, "a creature that swims, dropped into deep water: out onto a bank within two minutes");
         Check(rise < 0.06f, $"a creature out of the water on foot, never with a leap (the most risen in a tick {rise:F3} m)");
         if (outOn) _proven.Add("a creature into deep water");
@@ -586,7 +587,7 @@ public partial class FallTest : Node
             // (None of the settlement's own on a floor of its blocks: one of the land's walkers let in, on a floor with room under it.)
             if (k == -1 && who == null)
             {
-                Species kind = patch.Fauna.Species.Where(s => !s.Flies && !s.Climbs && !s.Rooted && s.Rig is RigKind.Legged or RigKind.Hopper).MinBy(s => s.Body.Size);
+                Species kind = patch.Fauna.Species.Where(s => !s.Flies && !s.Climbs && !s.Rooted && s.Rig is RigKind.Legged or RigKind.Hopper && !s.IsHunter).MinBy(s => s.Body.Size);
                 Town town = home.Memory.Town;
                 Town.Person by = town?.People.FirstOrDefault(p => !p.Dead && !p.Gone && Under(home, p.Pos) && new[] { Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }.All(d => OpenFloor(home, p.Pos + d)) && DropUnder(town, p.Pos) >= 1f); // (in the open of a floor, not by a wall)
                 if (home.Memory.Fauna is not { Site: { } fs, Space: { } space } || kind == null || by == null)
@@ -645,7 +646,7 @@ public partial class FallTest : Node
     IEnumerable<int> WatchCreature(Creature who, string what, Func<bool> here, string kind)
     {
         WildlifePatch patch = _game.Zone.Wildlife;
-        float y0 = who.Position.Y, health = who.Health, last = y0, from = y0;
+        float y0 = who.Position.Y, health = who.Health, last = y0, from = y0, provoked = who.ProvokedAt;
         int start = -1, end = -1, t;
         ulong f0 = Engine.GetPhysicsFrames();
         for (t = 0; t < 12 * 60; t++)
@@ -672,7 +673,9 @@ public partial class FallTest : Node
         // (A body wider than the hole stands on its rim, on three of its feet: Locomotion.Footing.)
         float feet = who.Space == null ? patch.FromPatch(who.Position with { Y = Footing(patch.Sim, who) }).Y : float.NaN;
         Check(float.IsNaN(ground) || MathF.Abs(w.Y - ground) < 0.35f || MathF.Abs(w.Y - feet) < 0.35f && feet >= ground, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2}, its feet' footing {feet:F2})");
-        Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
+        // (Set on by something meanwhile, its hurt is not the fall's: told, not judged.)
+        if (who.ProvokedAt != provoked && who.ProvokedBy != null) GD.Print($"    ({what} was set on by {who.ProvokedBy} meanwhile: its hurt not judged)");
+        else Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
         Vector3 at = who.Position;
         float moved = 0f;
         bool fled = false;

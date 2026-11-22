@@ -868,6 +868,9 @@ public sealed partial class Town : IKeeper
         if (p.Seat < 0 && InSeat(p, p.Spot)) p.Seat = p.Spot;
         if (path == null)
         {
+            // Landed somewhere their routes don't know (a fall): on by a way from where they stand, out by climbing, or home over the
+            // land off the place's grid (Town.Falls).
+            if (p.Falls > 0 && OnAfterFall(p)) return;
             // No way there from here: they stay where they are a while rather than walk through anything.
             p.Path = new List<Vector3>();
             p.Step = 0;
