@@ -89,6 +89,8 @@ public sealed partial class Town : IKeeper
         /// <summary>Who they are, how they stand, and what draws them (once near enough to have been built).</summary>
         public Species Looks;
         public HumanRig Rig;
+        /// <summary>What the body was last posed from.</summary>
+        public Gesture Posed;
         /// <summary>How long the next round has waited for the weapon to come onto its mark, and how far off the mark the last round left, degrees.</summary>
         public float AimHeld, LastOff;
         public PersonView View;
@@ -1416,6 +1418,8 @@ public sealed partial class Town : IKeeper
 
     /// <summary>A body's act has to hold this long before another may start, s; it eases in and out at this rate a second.</summary>
     const float ActHold = 1.4f, ActEase = 3.5f;
+    /// <summary>Faster than this (m/s) they are under way, not standing about: no slumped act is held, so none is left by the time they are past a walk.</summary>
+    const float Afoot = 0.6f;
     /// <summary>Aimed at inside this angle, no longer outside the wider one (so the edge never flickers); within this reach, m.</summary>
     static readonly float AimIn = MathF.Cos(Mathf.DegToRad(5f)), AimOut = MathF.Cos(Mathf.DegToRad(10f));
     const float AimReach = 32f, GreetIn = 11f, GreetRearm = 22f, StartleIn = 4.5f;
@@ -1482,13 +1486,16 @@ public sealed partial class Town : IKeeper
         if (want == BodyAct.None && !p.Sitting && p.Now < 0.6f) want = MoodAct(p);
         // A child at ease plays, on and off.
         if (want == BodyAct.None && peaceful && f.Stage == LifeStage.Child && p.Now < 0.2f && !p.Sitting && MathF.Sin(_clock * 0.23f + p.Spot) > 0.1f) want = BodyAct.Play;
+        // Under way, never a slump: one on the run from a fright panics, anyone else drops it, and quickly.
+        bool running = p.Now > Afoot, slumped = running && p.Act is BodyAct.Cower or BodyAct.Grieve or BodyAct.Startle;
+        if (running && want is BodyAct.Cower or BodyAct.Grieve or BodyAct.Startle) want = p.Fleeing ? BodyAct.Panic : BodyAct.None;
         if (want == BodyAct.HandsUp && p.Wanted != BodyAct.HandsUp) Speak(p, _rng.NextDouble() < 0.5 ? VoiceMood.Whisper : VoiceMood.Cry);
         // A new act waits for the old one to have held, then the old eases out before the new eases in.
-        if (want != p.Wanted && (p.ActHeld >= ActHold || p.Wanted == BodyAct.None || want is BodyAct.Panic or BodyAct.Startle)) p.Wanted = want;
+        if (want != p.Wanted && (p.ActHeld >= ActHold || p.Wanted == BodyAct.None || want is BodyAct.Panic or BodyAct.Startle || slumped)) p.Wanted = want;
         p.ActHeld += dt;
         if (p.Act != p.Wanted)
         {
-            p.ActAmount = MathF.Max(0f, p.ActAmount - dt * ActEase * (p.Wanted is BodyAct.Startle ? 3f : 1f));
+            p.ActAmount = MathF.Max(0f, p.ActAmount - dt * ActEase * (p.Wanted is BodyAct.Startle ? 3f : slumped ? 1.6f : 1f));
             if (p.ActAmount <= 0f)
             {
                 if (p.Wanted != BodyAct.None)
@@ -1509,7 +1516,7 @@ public sealed partial class Town : IKeeper
             Vector3 d = player - p.Pos;
             p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 3f));
         }
-        if (p.Act == BodyAct.HandsUp && away < 3f) p.Wanted = BodyAct.Cower;
+        if (p.Act == BodyAct.HandsUp && away < 3f && !running) p.Wanted = BodyAct.Cower;
     }
 
     void Speak(Person p, VoiceMood mood)
@@ -1685,7 +1692,7 @@ public sealed partial class Town : IKeeper
         // Their stride keeps to how they really go (held, bumped or parted from someone, not how they mean to).
         Pace pace = p.Rig.Pace;
         pace.Note(p.Pos, new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)), dt);
-        p.Rig.Drive(new Gesture
+        p.Rig.Drive(p.Posed = new Gesture
         {
             Feet = p.Pos,
             Yaw = p.Yaw,
