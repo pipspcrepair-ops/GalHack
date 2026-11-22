@@ -168,7 +168,7 @@ public sealed partial class Staging
             eye.Y = Mathf.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.6f);
             IEnumerable<int> Look(string tag)
             {
-                _game.Survivor.PlaceOutside((eye - Vector3.Up * 1.6f).ToNumerics());
+                _game.Survivor.PlaceOutside((eye + out_ * 3f - Vector3.Up * 1.6f).ToNumerics()); // (behind the eye: its own body out of the frame)
                 for (int i = 0; i < 600; i++)
                 {
                     _game.FixedCamera = new Transform3D(Basis.LookingAt(block - eye, Vector3.Up), eye);

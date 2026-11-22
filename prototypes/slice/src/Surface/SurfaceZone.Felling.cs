@@ -190,14 +190,17 @@ public partial class SurfaceZone : IFloraField
         PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
         for (int i = 0; i < lines.Poles.Count; i++)
             if (lines.Poles[i] is { Fallen: false, Role: PlanetSurface.Infra.PowerRole.Line } p)
-                // Its reach about its foot: a pole's crossarm, a pylon's base or its arms, whichever is wider.
-                Consider(new(i, false), FootOf(p, at), p.Pylon ? Mathf.Max(p.Height * 0.13f, lines.WiresOn(p) / 2 * 4.2f + 0.6f) : 1.4f, p.Height);
+                Consider(new(i, false), FootOf(p, at), ReachOf(p, lines), p.Height);
         var items = Planet.Dress.Items;
         for (int k = 0; k < items.Count; k++)
             if (!items[k].Felled && PlanetSurface.Infra.TileBuilder.Stands(items[k]))
                 Consider(new(k, true), FootOf(items[k], at), Mathf.Max(0.4f, items[k].Part.Reach * 0.75f), PostTall);
         return best;
     }
+
+    /// <summary>A pole's reach about its foot, flat: its crossarm; a pylon's legs at its base's corners, or its arms, whichever is wider.</summary>
+    static float ReachOf(PlanetSurface.Infra.PowerPole p, PlanetSurface.Infra.PowerLines lines) =>
+        p.Pylon ? Mathf.Max(p.Height * 0.13f * Mathf.Sqrt2, lines.WiresOn(p) / 2 * 4.2f + 0.6f) : 1.4f;
 
     /// <summary>A pole's foot, or a post's, the copy of it nearest a point.</summary>
     Vector3 FootOf(PlanetSurface.Infra.PowerPole p, Vector3 near) => Planet.NearestCopy(new Vector3((float)p.X, p.Ground, (float)p.Z), near);
@@ -235,7 +238,7 @@ public partial class SurfaceZone : IFloraField
         }
         PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
         for (int i = 0; i < lines.Poles.Count; i++)
-            Blast(new(i, false), FootOf(lines.Poles[i], at), lines.Poles[i].Pylon ? lines.Poles[i].Height * 0.13f : 0f, lines.Poles[i].Height);
+            Blast(new(i, false), FootOf(lines.Poles[i], at), lines.Poles[i].Pylon ? lines.Poles[i].Height * 0.13f * Mathf.Sqrt2 : 0f, lines.Poles[i].Height); // (a pylon: to the legs at its corners)
         var items = Planet.Dress.Items;
         for (int k = 0; k < items.Count; k++)
             if (!items[k].Felled && PlanetSurface.Infra.TileBuilder.Stands(items[k])) Blast(new(k, true), FootOf(items[k], at), 0f, PostTall);

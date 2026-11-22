@@ -106,7 +106,7 @@ public sealed partial class Staging
             bool drawn = _game.Zone.Infra.PartsRebuilt == rebuilt || _game.Zone.Infra.PartsPending;
             bool ok = it.Felled && lean > 1.3f && !drawn;
             if (!ok) Faults++;
-            GD.Print($"  {(ok ? "ok   " : "FAIL ")} a {it.Model} ({it.Style}) {how} through: over after {_blows} {(cut ? "pulls of the tool" : "shots")} (felled {it.Felled}, lying {Mathf.RadToDeg(lean):F0} degrees over, its drawing {(drawn ? "still in its tiles" : "gone from its tiles")})");
+            GD.Print($"  {(ok ? "ok   " : "FAIL ")} a {it.Model} {how} through: over after {_blows} {(cut ? "pulls of the tool" : "shots")} (felled {it.Felled}, lying {Mathf.RadToDeg(lean):F0} degrees over, its drawing {(drawn ? "still in its tiles" : "gone from its tiles")})");
             foreach (int x in Shot($"post-{how}-after", eye, look)) yield return x;
             from = _game.Survivor.WorldFeet;
         }
