@@ -112,6 +112,7 @@ public partial class PopRoute
             Vector3 side0 = across.Dot(rough) < 0f ? -across : across;
             foreach (var (view, eye, look, pitch) in new[] { ("walk", Lift(start, 1.7f), side0, -6f), ("land", Lift(start, 25f), side0, -15f), ("hover", Lift(trees - across * 60f, 40f), across, -25f) })
             {
+                zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear); // a clear sky for every view: over a long run the weather moved on (a dust storm faded every shadow)
                 Vector3 side = look.Cross(Vector3.Up).Normalized();
                 var pose = new Transform3D(Basis.LookingAt(look, Vector3.Up).Rotated(side, Mathf.DegToRad(pitch)), eye);
                 void Stand(Transform3D at) => _game.Survivor.PlaceOutside((at.Origin - look * 5f + Vector3.Down * 1.6f).ToNumerics());
