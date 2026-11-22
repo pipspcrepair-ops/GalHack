@@ -555,7 +555,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 
 **Exploration-gated items** (no recipe; found or bought only)
 
-- Lattice cores and lattice arrays, precursor alloy, echo shards and epic-tier gear.
+- Precursor alloy, echo shards and epic-tier gear.
 - Unique weapons and boosters from faction rewards and rare containers.
 - This keeps pillar 1 driving progression: the best gear comes from where the player has been, not from grinding one deposit.
 
@@ -691,7 +691,6 @@ Resources climb a five-step rarity ladder (common, uncommon, rare, exotic, uniqu
 | Exotic | Rimefire | Cryo-fire worlds | Fold drive range boosters |
 | Unique | Precursor alloy | Alien ruins and ancient derelicts (salvage only) | Prize armor blocks; can't be crafted |
 | Unique | Echo shards | Alien ruins | Charged combat armor, epic gear upgrades |
-| Unique | Lattice cores and lattice arrays | Derelicts, faction strongholds, rare traders | Use to be decided (owner, 12 Nov: no CPU, so no extenders) |
 
 Rarity has one colour each in every inventory, map and loot pop-up: common grey, uncommon green, rare blue, exotic purple, unique gold.
 
@@ -714,7 +713,7 @@ The generator checks every seed against these rules. If a guarantee fails, it ad
 | Wake to Wings (everything up to and including small vessels) | Iron, copper, silicon, stone, burnstone, cobalt, magnesium, neodymium | Every planet has deposits of all of them. Uncommon ores are smaller and fewer there, but never absent |
 | Capital (first capital vessel and first fold drive jump) | The above, plus gravium, gold and fold crystal | All of them can be gathered inside the start system by small vessel, and the start system's trading station stocks fold crystal |
 | Frontier | Emberite, starsilver | At least one system rich in each lies within one T1 jump (about 30 LY) of every start system |
-| Unique items | Precursor alloy, echo shards, lattice cores and arrays | The rare POIs that hold them regenerate, and rare traders sell them at a premium, so a looted site never blocks anyone's progress on a shared server |
+| Unique items | Precursor alloy and echo shards | The rare POIs that hold them regenerate, and rare traders sell them at a premium, so a looted site never blocks anyone's progress on a shared server |
 | Exotic upgrades | Voidglass, stormcore, rimefire | Optional upgrades only, never needed to advance; each lives on its themed planet type (section 4) |
 | Getting home, from any system | Fold crystal and the small-vessel kit | Every system holds a fold crystal source (a deposit or a trader that stocks it), so no stranding is permanent (section 14) |
 
@@ -1682,7 +1681,6 @@ The world save is the most important system in the game. Structures, items and p
 | Gravium | Uncommon dense ore from high-gravity worlds, used for heavy armor |
 | Hijack Tool | Handheld device that takes over an enemy core, in three tiers |
 | Hover vessel (HV) | Surface vehicle that hovers over land and water |
-| Lattice core and lattice array | Unique components (their CPU use is gone; use to be decided, owner, 12 Nov) |
 | Modifier | A trait rolled onto a planet that changes its look and play (ringed sky, perpetual storm...) |
 | Organics | Plant matter, creature meat and other biomass, kept in storage to feed replicators |
 | PDA | The tutorial and hint system |

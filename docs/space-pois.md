@@ -969,7 +969,7 @@ Themes for POIs in planet and moon orbits. Each group opens with the world theme
 - Families: top: meridian_relay. NEW: box_works, vault_capsule, film_sheet.
 - Inside: Rack aisles, dark rows, a lit row, small family plaques, a cold pump room.
 - Occ: MCH 55, EMP 35, HOL 10.
-- Hazards/rewards: Cold, and pulling a rack ends something; data, logic parts, lattice cores.
+- Hazards/rewards: Cold, and pulling a rack ends something; data, logic parts.
 - Fit: pre H > post L/M/H | ports A-C | any | U | S | from 78 61
 
 **65. The Rotovator** (`rotovator`) - The hook comes round on time.
@@ -1444,7 +1444,7 @@ Themes for POIs in planet and moon orbits. Each group opens with the world theme
 - Families: top: kessari_foundry, broken_station. NEW: box_works.
 - Inside: Rack halls, cameras facing one wall, offerings from machines.
 - Occ: MCH 50, EMP 35, HOL 15.
-- Hazards/rewards: Mood; cyber module chance, lattice cores.
+- Hazards/rewards: Mood; cyber module chance.
 - Fit: pre H > post L/M/H | ports A-B | any | R | no | from 61 78 Z35
 
 **116. The Clone Stack** (`clone_stack`) - One face, many bunks.
@@ -1723,7 +1723,7 @@ These read the system's worlds and the system story. They share a thread with an
 - Families: top: mining_outpost. NEW: hollow_rock, vault_capsule.
 - Inside: Council hall, fine cabins, wine, staff warrens below.
 - Occ: EMP 50, MCH 25, HSK 15, HOL 10.
-- Hazards/rewards: Locked doors; lattice cores, high-level keys.
+- Hazards/rewards: Locked doors; high-level keys.
 - Fit: H | giant_trojan world_l45 | any | R | no | any
 
 **D19. The Sail Graveyard** (`sail_graveyard`) - Kilometres of silver rags.
@@ -3139,7 +3139,7 @@ The ladder from the design and from `StarSystem`: fuel moon (warp fuel and warp 
 | Fuel moon | The moon, its shells and its L points | Warp cells, a few warp parts, ore stocks, a catcher to claim | `catcher`, `fuel_stop`, `lost_property`, `quarried_moon` | Warp drive parts, never a whole drive |
 | Warp | The rest of the start system | Fold drive materials and fuel in stock form, gravium, gold, fold crystal in small amounts | `scoop_rig`, `fuel_stop`, `company_rock`, `trojan_warehouse`, `unfinished_keel` | Capital hull with no core, no drive, no fuel |
 | Capital | First capital hull, claimed or built | Claim targets, components, CPU parts | `alert_fleet`, `unfinished_keel`, `rush_ark`, `founder_carrier`, `breakers_orbit` | Claimed hulls need your own core and your own fold drive |
-| Stars | Neighbouring systems | Emberite, starsilver, faction goods, lattice cores | `sun_tap`, `star_bridge`, `black_yard`, `continuity_vault` | By danger |
+| Stars | Neighbouring systems | Emberite, starsilver, faction goods | `sun_tap`, `star_bridge`, `black_yard`, `continuity_vault` | By danger |
 | Frontier | Core, voids, periphery | Precursor alloy, echo shards, unique items | Part 4 | Finite: see below |
 
 **Captured structures must not let a player skip stages.** So a wreck in a start system has its drive room burnt or removed, and a claim hull needs the player's own devices. Zone distance sets the `claim_cap` on what a wreck can hold.

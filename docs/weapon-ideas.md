@@ -1492,7 +1492,7 @@ Ammo on a vessel comes from the structure's shared storage by calibre, as design
 | Plasma charges, gel | Emberite | Advanced fabricator | H |
 | Capacitor weapons, Coil Tower | Stormcore | Advanced fabricator | H |
 | Fold rounds, Snare Well | Fold crystal, shared with the jump tank | Advanced fabricator | H |
-| Nanite packs | Gold, lattice parts, Precursor salvage | Advanced fabricator | H |
+| Nanite packs | Gold, Precursor salvage | Advanced fabricator | H |
 | Warheads | Rare fuel plus a large fabricator | Faction reward, salvage or capture first | M-H |
 | Antimatter | Fusion cells, stormcore, a containment plant, long time | Bottle Bay only | H |
 | Relic ammo | Nothing | Found only | R |

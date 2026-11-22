@@ -1,6 +1,6 @@
 # Tech tree pacing: no empty level bands
 
-Research note for the owner. Not committed. Reference only: nothing here is copied from Empyrion, Reforged Eden 2 or Star Salvage Reborn, and GalHack's design doc wins wherever it differs from them. Names in the proposal are GalHack's own.
+Research note for the owner. Owner, 12 and 22 Nov: no CPU, so no CPU extenders, and lattice cores and lattice arrays are dropped ("they can go, we don't need them"); they are struck from the tables below. Not committed. Reference only: nothing here is copied from Empyrion, Reforged Eden 2 or Star Salvage Reborn, and GalHack's design doc wins wherever it differs from them. Names in the proposal are GalHack's own.
 
 How to read the confidence marks: **Measured** means I read it from a file on this machine. **Reported** means a web page, an in-game text mirror or a player said it, and I could not check it against files. Where I opened the page myself I say "read directly" and give the URL; where I only saw a search summary I say "search summary only". **Inferred** means my own conclusion.
 
@@ -26,7 +26,7 @@ Nodes are counted once per grid. "Large" = Big Core grid (base and capital), "sm
 | --- | --- |
 | 1 | Base core, steel, glass, concrete, generator, fuel tank, container, ladder, light (nine starter nodes, all free) |
 | 2 | Door, small fabricator |
-| 4 | CPU extender, deconstructor |
+| 4 | Deconstructor |
 | 6 | Hardened armour |
 | 7 | Capital set: chair, landing gear, gyro, thruster (plus the capital core, from the slice data) |
 | 8 | Large fabricator |
@@ -42,7 +42,7 @@ Nodes are counted once per grid. "Large" = Big Core grid (base and capital), "sm
 | 1 | Hover plate block, hover chair (plus the hover core, from the slice data) |
 | 5 | Small core, steel, glass, ladder, light, generator, fuel tank, container, landing gear, gyro, thruster (eleven nodes at once) |
 | 6 | Concrete, door, small fabricator |
-| 7 | CPU extender, deconstructor |
+| 7 | Deconstructor |
 | 8 | Hardened armour |
 | 10 | Large fabricator |
 | 12 | Factory, warp drive, warp tank |
@@ -94,7 +94,7 @@ Only levels 13 and 17 to 19 are empty in every tab before the data ends (level 1
 ### 1c. Other problems the data shows (Measured, then Inferred)
 
 - **Lumps (Measured).** Level 1 has nine large-grid nodes and level 5 has eleven small-grid nodes. A lump is one reason a tab then goes quiet: the whole set arrives together and the next tier is three levels away.
-- **Tiers are thin (Inferred).** Most categories have only two or three tiers (armour has four, including a found-only one). Once the tiers are used up, the category cannot fill later levels. Thrusters, generators, shields and CPU extenders have one tier each today, so the late game has nothing to upgrade.
+- **Tiers are thin (Inferred).** Most categories have only two or three tiers (armour has four, including a found-only one). Once the tiers are used up, the category cannot fill later levels. Thrusters, generators and shields have one tier each today, so the late game has nothing to upgrade.
 - **Late nodes cluster at the top of the old cap (Measured).** Fold drive, advanced fabricator, precursor armour and plasma ammo all sit between 15 and 20, so they need successors to fill levels 21 to 25.
 - **The two-tab rule.** Merging base+capital and small+hover is a UI and data change; the cores keep their own nodes (Big Core, Small Core).
 
@@ -222,27 +222,27 @@ Marks: **E** exists today at that level, **N** new. Nothing that exists moves. N
 | 1 | Base core, Steel, Glass, Concrete, Generator, Fuel tank, Container, Ladder, Light (E) | Hover plate T1, Hover chair, Hover core (E) | Survival tool, Hover bike, Trail ration, Patch kit, Air cell (E) | Survival constructor, O2 bottle, Energy cell (E) | BW1 Cord Sling, ME1 Work Knife, PS1 Crash Ward (N) |
 | 2 | Door, Small fabricator (E); Spotlight (N) | Hover plate T2, Hover cargo bay (N) | Chainsaw (N) | Medkit, Biofuel (E) | Pistol rounds (E); SA2 Tack Pistol, GR1 Stick Bomb, FL1 Fire Bottle, TE3 Bola Thrower, JK2 Saw Thrower (N) |
 | 3 | Replicator T1, Medium container (N) | Hover armour skirt, Harvester blades (N) | Multi-tool T1 (N) | Burnstone pack, Portable fabricator, large grid, Portable fabricator, small grid (E) | MG1 Hand Organ, BW2 Hunter's Bow, RK1 Fire Rack, MN1 Powder Keg, LT1 Dynamo Snapper, CH3 Reek Pot, LV1 Wasp Jar (N) |
-| 4 | CPU extender T1, Deconstructor (E); Shutters and ramps (N) | Hover canopy set (N) | Mining drill, Paint (E) | Survival tent, Light suit (N) | SM1 Stamp Gun, SG1 Scatterbuss, FL4 Tallow Sprayer, ME4 Maul (N) |
+| 4 | Deconstructor (E); Shutters and ramps (N) | Hover canopy set (N) | Mining drill, Paint (E) | Survival tent, Light suit (N) | SM1 Stamp Gun, SG1 Scatterbuss, FL4 Tallow Sprayer, ME4 Maul (N) |
 | 5 | Healing booth, Solar panel (N) | Small core, Steel, Glass, Ladder, Light, Generator, Fuel tank, Container, Landing gear, Gyro, Thruster T1 (E) | Hand detector (N) | Insulation booster (N) | RF1 Long Arm, BW4 Rack Bow, GL1 Stovepipe, AR1 Iron Bombard, DF1 Bull Shield, HV9 Ram Spike (N) |
 | 6 | Hardened armour (E); Detector (N) | Concrete, Door, Small fabricator (E) |  | Weapon bench, Portable heater and cooler (N) | MG6 Chatter Gun, small mount, 12 mm belt (E); SG2 Pump Scattergun, ME6 Shock Baton, PS2 Mesh Ward (N) |
-| 7 | Capital core, Capital chair, Landing gear, Gyro, Thruster T1 (E) | CPU extender T1, Deconstructor (E); Vessel mining drill (N) |  | Medium suit, Emergency O2 and water unit (N) | SA3 Six-Chamber, RF2 Line Rifle, GR2 Frag Ball, MN3 Trip Line, AC1 Scrap Coil, FL5 Pressure Thrower, SU1 Patch Gun (N) |
+| 7 | Capital core, Capital chair, Landing gear, Gyro, Thruster T1 (E) | Deconstructor (E); Vessel mining drill (N) |  | Medium suit, Emergency O2 and water unit (N) | SA3 Six-Chamber, RF2 Line Rifle, GR2 Frag Ball, MN3 Trip Line, AC1 Scrap Coil, FL5 Pressure Thrower, SU1 Patch Gun (N) |
 | 8 | Large fabricator (E); Repair bay T1 (N) | Hardened armour (E); Retro thrusters (N) | Plasma drill (E) | Large burnstone pack (E); Armour locker (N) | HV3 Deck Gun, large mount, 40 mm shells (E); SM2 Corridor Gun, BW6 Pump Gun, GL2 Break Launcher, TE1 Harpoon Rig, MI1 Dread Horn, BT1 Breaching Pipe, PS10 Ward Cell (N) |
 | 9 | Shield generator T1, Capacitor, Generator T2, Fuel tank T2 (N) | Hover plate T3, Cockpit canopy set (N) |  | Warp cell (E); Jetpack booster (N) | MG6L Chatter Gun, large mount, RK10 Rocket Pod, small mount, Rockets (E); SA4 Glint Pistol, RK3 Shoulder Tube, LS1 Cutter Beam, CH1 Etch Sprayer, LV10 Bile Pod, DF4 Flare and Chaff Pod, PS6 Quick Ward (N) |
 | 10 | Blueprint factory, Large hover block (E); Clone chamber (N) | Large fabricator (E); Vehicle detector (N) | Hijack Tool T1 (N) | Oxygen booster (N) | HV3S Deck Gun, small mount (E); LG2 Stalking Rifle, GR4 Clinger, AR2 Knee Mortar, MN13 Prox Mine, LT2 Wire Biter, ME8 Piston Fist, MA1 Sentry Stalk (N) |
 | 11 | Thruster T2, Replicator T2, Large container (N) | Thruster T2, Small shield T1 (N) | Multi-tool T2 (N) | EVA booster, Multi-charge (N) | RK10L Rocket Pod, large mount (E); SG4 Drum Sweeper, MG2 Squad Belt, FL10 Drag Flame, LV2 Hornet Hive, HV1 Drum Cannon, EW1 Paint Lamp, JK1 Junk Cannon, PS3 Field Ward (N) |
-| 12 | Combat armour, Warp drive, Warp tank (E); CPU extender T2 (N) | Blueprint factory, Warp drive, Warp tank (E) | Suit scanner (N) | Heavy suit (N) | RF4 Long Glint, GL4 Gum Launcher, SN1 Basslance, CD2 Frost Lance, SK5 Heat Dart, SU3 Weld Beam (N) |
+| 12 | Combat armour, Warp drive, Warp tank (E) | Blueprint factory, Warp drive, Warp tank (E) | Suit scanner (N) | Heavy suit (N) | RF4 Long Glint, GL4 Gum Launcher, SN1 Basslance, CD2 Frost Lance, SK5 Heat Dart, SU3 Weld Beam (N) |
 | 13 | Field repair station, Docking pad (N) | Generator T2, Salvager T1, Fuel tank T2 (N) |  | Armour booster (N) | SM4 Pingback Carbine, GR7 Flash Cracker, RK4 Lock Tube, LS2 Stutter Lamp, LT6 Skycall Rod, CH5 Tangle Gun, HV2 Chain Cannon, HV4 Flak Burst, PS7 Bulk Ward (N) |
 | 14 | Shield extender (N) | Combat armour (E); Hover shield T1 (N) |  | Fusion cell (E); Radiation booster (N) | LG3 Bench Gun, MN6 Remote Satchel, AC3 Stage Rifle, FL6 Jelly Thrower, LV6 Wormspitter, MA3 Crawl Mine, PS12 Ward Post (N) |
-| 15 | Advanced fabricator, Fold tank, Fold drive 1 (E) | Hover plate T4, CPU extender T2 (N) | Drill T3 (N) |  | Artillery shells (E); MG4 Spin Gun, AR5 Fortress Howitzer, GV1 Shove Cannon, DF3 Pop Dome, HV5 Torpedo Tube, BT2 Quake Spike (N) |
+| 15 | Advanced fabricator, Fold tank, Fold drive 1 (E) | Hover plate T4 (N) | Drill T3 (N) |  | Artillery shells (E); MG4 Spin Gun, AR5 Fortress Howitzer, GV1 Shove Cannon, DF3 Pop Dome, HV5 Torpedo Tube, BT2 Quake Spike (N) |
 | 16 | Repair bay T2, Teleporter, short range, Generator T3 (N) | Advanced fabricator (E); Thruster T3 (N) |  | Mobility booster (N) | PB3 Static Cannon, LT3 Fork Gun, ME10 Hum Blade, SK1 Bend Rounds, EW2 Jam Pod, PS4 Line Ward (N) |
 | 17 | Thruster T3, Fuel tank T3 (N) | Vessel laser drill (N) | Hijack Tool T2 (N) |  | SG5 Shardcaster, GL7 Hop Launcher, RK11 Sky Battery, AC6 Fighter Rail, FL12 Gate Jet, DF6 Needle Curtain, NU1 Hand Bomb (N) |
 | 18 | Shield generator T2 (N) | Warp drive T2, Small shield T2 (N) |  | Large medkit (N) | GR8 Pulse Ball, LS3 Scorch Line, LT4 Storm Rope, PS8 Snap Ward (N) |
-| 19 | CPU extender T3 (lattice cores), Auto-miner, Replicator T3 (N) | Generator T3, CPU extender T3 (lattice cores) (N) |  | Multi booster (N) | SA6 Three-Step Pistol, AC4 Rail Lance, SN3 Resonator, LV7 Sand Swimmer, GV3 Well Launcher, BT7 Demolition Bore (N) |
+| 19 | Auto-miner, Replicator T3 (N) | Generator T3 (N) |  | Multi booster (N) | SA6 Three-Step Pistol, AC4 Rail Lance, SN3 Resonator, LV7 Sand Swimmer, GV3 Well Launcher, BT7 Demolition Bore (N) |
 | 20 | Precursor armour, Fold drive 2 (E); Remote-control console (N) | Precursor armour (E); Hover plate T5 (N) | Drill T4 (N) |  | Plasma charges (E); RK8 Flock Launcher, MN9 Picky Mine, PL2 Ember Rifle, PL5 Strip Battery, ME11 Light Blade, SK3 Needle Swarm, HV6 Overload Torpedo (N) |
 | 21 | Generator T4, Thruster T4 (N) | Thruster T4, Salvager T2 (N) |  |  | MG5 Lamp Rotary, LS9 Lance Array, LT9 Coil Tower, CD4 Still Beam, TM1 Slow Bubble, DF7 Thread Laser, SU2 Mender Dart (N) |
 | 22 | Charged armour (echo shards), Teleporter, long range (N) | Charged armour (echo shards), Generator T4 (N) |  | Booster set T2 (N) | RF5 Dial Rifle, LS6 Cook Box, PB2 Marrow Beam, FL8 Star Gel, PH1 Swap Rifle, MI5 Confusion Lens, DS1 Ash Ray, PS5 Lattice Ward (N) |
 | 23 | Shield generator T3, Fold gate (N) | Warp drive T3, Small shield T3 (N) | Hijack Tool T3 (N) |  | AC7 Line Battery, PL7 Bottled Sun, LV3 Cinder Moths, GV4 Lift Beam, NU2 Sun Shell (N) |
-| 24 | CPU extender T4 (lattice arrays), Matter assembler (N) | CPU extender T4 (lattice arrays), Hover shield T2 (N) |  | Booster set T3 (N) | RK13 Long Reach, NA1 Mote Cloud, TM3 Delay Pistol, AM0 Bottle Bay, PS9 Sink Ward (N) |
+| 24 | Matter assembler (N) | Hover shield T2 (N) |  | Booster set T3 (N) | RK13 Long Reach, NA1 Mote Cloud, TM3 Delay Pistol, AM0 Bottle Bay, PS9 Sink Ward (N) |
 | 25 | Fold drive 3, Hyperspace gate: capstone (N) | Jet thruster, Warp drive T4: capstone (N) |  |  | AC9 Spinal Lance, AM1 Speck Rifle, SW1 Bow Gun (N) |
 
 Node totals by tab, counted once per grid:
@@ -263,7 +263,7 @@ Notes on the map:
 - **Size.** 343 nodes is about 13.7 a level across the five tabs, about six or seven of them weapons, and no tab goes over ten except the small-vessel starter set. Today's tree has 88 nodes.
 - **Gates.** The design doc's reference gates (hover at 1, portable constructor at 3, small vessel at 5, capital vessel at 7) are kept.
 - **Tiers.** In the real list a tier should change something a player can feel (capacity, output, mass, CPU cost), not only a bigger number.
-- **Finds.** The late tiers lean on finds as well as points. The design already has lattice cores and arrays (found only) as the gate for T3 and T4 CPU extenders, and precursor alloy and echo shards are found only. The tree node opens by level and points; the parts come from exploration.
+- **Finds.** The late tiers lean on finds as well as points. Precursor alloy and echo shards are found only. The tree node opens by level and points; the parts come from exploration.
 - **Hover plates.** Hover plates are a prerequisite for thrusters on Small & Hover (owner decision). Plate tiers at 1, 2, 9, 15 and 20 each come before thruster tiers at 5, 11, 16, 21 and 25, so the prerequisite stays meaningful.
 - **Items dropped from the old map.** The design doc has air handled by the core, with no refill stations to place, so the oxygen station is gone. It lists replicators, not hydroponic bays, so food is on replicator tiers. The old map also listed the large hover block on both vessel tabs; it's a large-grid block, so it's on Base & Capital only.
 - **Ranks or separate nodes.** Reforged Eden 2 merged some tier nodes into their parent to cut points and clutter (Reported, changelog read directly). If the owner wants fewer nodes, the tier rows can become ranks of one node, as long as each rank-up still shows as something new on its level.
@@ -280,7 +280,6 @@ Each ladder has as many tiers as 25 levels can use, with no thin, numbered fille
 | Thrusters | 1 | Large 7, 11, 17, 21. Small 5, 11, 16, 21, 25 (jet) |
 | Generators | 1 | Large 1, 9, 16, 21. Small 5, 13, 19, 22 |
 | Vessel and base shields | 0 | Large 9, 14 (extender), 18, 23. Small 11, 18, 23. Hover 14, 24 |
-| CPU extenders | 1 | Large 4, 12, 19, 24. Small 7, 15, 19, 24. The top two need found parts |
 | Fuel tanks | 1 | Large 1, 9, 17. Small 5, 13 |
 | Replicators | 0 | 3, 11, 19 |
 | Warp and jump | warp 1, fold drive 2 | Fold drive 15, 20, 25. Warp 12 on large; 12, 18, 23, 25 on small. Fold gate 23, hyperspace gate 25 |
