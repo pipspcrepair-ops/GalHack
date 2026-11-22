@@ -79,6 +79,36 @@ public sealed class WildSim
         Rescues++;
         Rescued?.Invoke(c);
     }
+
+    /// <summary>The world's pull on whatever falls here, m/s² (the game sets its planet's).</summary>
+    public float Gravity = 9.8f;
+    /// <summary>The water's surface over a point (sim frame; null on dry ground, and with no water known), and the shares of a body's height under it at which it swims, and below which it wades again (the game sets its own).</summary>
+    public Func<float, float, float?> WaterAt;
+    public float SwimShare = 0.7f, WadeShare = 0.55f;
+    /// <summary>What a landing at a speed (m/s) costs, as a share of the body's health (the game's own fall rule; none without one).</summary>
+    public Func<float, float> FallHurt;
+    /// <summary>A creature came down from a fall at a speed (m/s).</summary>
+    public event Action<Creature, float> Fell;
+
+    /// <summary>Landing slower than this is a step down (about half a metre), m/s: on as it was, unshaken.</summary>
+    const float StepSpeed = 3f;
+
+    /// <summary>
+    /// Down on its feet from a fall (on the land, or in a cave or a place): hurt by the fall rule and frightened by it (it runs a
+    /// moment the way it faced), its way looked for again from where it landed.
+    /// </summary>
+    internal void Landed(Creature c, float speed)
+    {
+        if (!c.Dead && FallHurt?.Invoke(speed) is float share and > 0f) Damage(c, share * c.Stats.MaxHealth, null);
+        Fell?.Invoke(c, speed);
+        if (speed < StepSpeed) return; // (a step down: on as it was)
+        c.Path.Clear();
+        c.Repath = true;
+        c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + Brain.FellFright);
+        (c.FellAt, c.Think, c.ThinkEvery) = (Time, 0f, 0f);
+        c.ScaredFrom = c.Position - c.Forward * 3f;
+    }
+
     /// <summary>An ambush or a hunt gives itself away: a rattle, dust, scratching, breathing.</summary>
     public event Action<TellEvent> Told;
     /// <summary>A predator brought down another creature.</summary>
@@ -440,6 +470,7 @@ public sealed class WildSim
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Nerve = species.Mechanical ? 1f : Rng.For(species.Seed, "nerve", c.Id).Float(); // its own stream: nothing else it rolls changes
         c.Position = c.GoodAt = c.Behind = c.ProgressAt = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
+        if (WaterAt?.Invoke(position.X, position.Z) is float top && top > c.Position.Y) c.ShorewardReach = Shore.Reach * 0.5f; // (put down in water: awake till it is out, its first look for a bank at the usual reach)
         c.SwarmAlive = species.Body.Members;
         c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)
@@ -638,19 +669,23 @@ public sealed class WildSim
           || c.Space != null && (c.Species.Climbs || c.Falling)
           || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed && c.Space == null);
 
+    /// <summary>The last step's keeping apart, ms (measurements).</summary>
+    public float LastApartMs { get; private set; }
+
     void KeepApart(float dt)
     {
+        long from = Stopwatch.GetTimestamp();
         Space.Bodies.Clear();
         _spaced.Clear();
         ISolidSpace inside = null;
         foreach (Creature c in Creatures)
         {
-            c.Spaced = -1;
+            (c.Spaced, c.Room) = (-1, Vector3.Zero);
             if (!Spaced(c)) continue;
             c.Spaced = _spaced.Count;
             inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
-            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
             _spaced.Add(c);
         }
         if (_spaced.Count == 0) return;
@@ -659,8 +694,10 @@ public sealed class WildSim
             if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
         // Where each body can be put (its own say, so that of two the one that can't be moved, the other takes the whole push).
         Space.Resolve(dt, _stands ??= (i, p) => i >= _spaced.Count || Stands(_spaced[i], p), 4);
+        LastApartMs = (float)Stopwatch.GetElapsedTime(from).TotalMilliseconds;
         for (int i = 0; i < _spaced.Count; i++)
         {
+            _spaced[i].Room = Space.Bodies[i].Room;
             Vector3 moved = Space.Bodies[i].Moved;
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
@@ -725,23 +762,12 @@ public sealed class WildSim
             float r;
             if (j < _spaced.Count)
             {
-                // (Not one walking off away from it: that gap opens by itself.)
                 Creature b = _spaced[j];
-                Vector3 off = Flat(b.Position - from);
-                if (!Spaced(b) || off.LengthSquared() > 1e-4f && Flat(b.Velocity).Dot(off.Normalized()) > 0.3f) continue;
+                if (!Spaced(b)) continue;
                 (o, r) = (b.Position, b.Radius);
             }
             else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);
-            if (MathF.Abs(o.Y - from.Y) > 1.5f) continue;
-            Vector3 now = Flat(from - o), next = Flat(to - o);
-            float want = c.Radius + r, d = next.Length();
-            if (d >= want || d >= now.Length()) continue; // (clear of it, or no further in)
-            // The part of the step toward it goes; what is left goes along its side.
-            Vector3 n = now.LengthSquared() > 1e-6f ? now.Normalized() : next.LengthSquared() > 1e-6f ? next.Normalized() : Vector3.Right;
-            Vector3 step = Flat(to - from);
-            float into = step.Dot(n);
-            if (into < 0f) step -= n * into;
-            to = new Vector3(from.X + step.X, to.Y, from.Z + step.Z);
+            to = PersonalSpace.Off(from, to, c.Radius, o, r);
         }
         return to;
     }

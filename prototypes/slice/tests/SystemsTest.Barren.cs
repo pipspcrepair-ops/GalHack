@@ -37,7 +37,7 @@ public partial class SystemsTest
 
                 // Its sky as the game makes it, seen from it: the start world's system, with no air to scatter its star.
                 SkySystem sky = SkySystem.Vacuum(SkySystem.For(s.Home.Spec));
-                if (sky.Density >= SurfaceWeather.NoAir) weather++;
+                if (sky.Density >= SurfaceWeather.NoAir || b.Spec.Has(Modifier.PerpetualStorm)) weather++;
                 if (Bright(sky.Zenith) > 0.01f || Bright(sky.Horizon) > 0.01f || sky.StarsByDay < 1f) lit++;
                 foreach (float sun in new[] { 0.9f, 0.05f, -0.1f }) // noon, dawn (when damp air fogs) and night
                 {
@@ -48,7 +48,7 @@ public partial class SystemsTest
         Check(airless > 1000 && notBarren == 0 && deserts == 0 && wrongVariant == 0,
             $"barren: all {airless} airless bodies are barren ({string.Join(", ", variants.Select((n, v) => $"{n} {Archetypes.Get(Archetype.Barren, v).VariantName}"))}) or a giant's tidally heated moon ({tidal}); {deserts} deserts, {notBarren} other kinds, {wrongVariant} of the wrong variant for what they are");
         Check(variants.All(n => n > 0), "barren: every variant turns up: regolith, icy past the cold line, metal on a heavy world");
-        Check(lit == 0 && weather == 0, $"barren: every one has the vacuum sky, black at noon with the stars out ({lit} lit), and no weather, cloud, haze or fog at any hour ({weather} had some)");
+        Check(lit == 0 && weather == 0, $"barren: every one has the vacuum sky, black at noon with the stars out ({lit} lit), and no weather, storm, cloud, haze or fog at any hour ({weather} had some)");
     }
 
     /// <summary>The mapped airless bodies: no dunes or other weathered ground, barren ground only, craters at every size.</summary>

@@ -93,6 +93,23 @@ public sealed class PlanetTerrain
         cell.Y >= MinChunkY * S && cell.Y < MaxChunkY * S;
 
     public Int3 Canonical(Int3 cell) => new(Mod(cell.X, Width), cell.Y, Mod(cell.Z, Height));
+
+    /// <summary>
+    /// The ground's top over a column as it stands now (main thread: the store is written there): the undug surface, down
+    /// through whatever has been dug out of the top of it (the cell the surface crosses may have been air already, so the one
+    /// under it says too). x and z wrap.
+    /// </summary>
+    public float GroundNow(double x, double z)
+    {
+        float h = Source.SurfaceHeight(x, z);
+        Int3 c = Canonical(new Int3((int)Math.Floor(x), (int)Math.Floor(h - 0.05f), (int)Math.Floor(z)));
+        bool Open(Int3 q) => Store.IsRemoved(q) && !Store.IsCovered(q); // (dug for something built: that stands there instead)
+        if (!Open(c)) c = new Int3(c.X, c.Y - 1, c.Z);
+        if (!Open(c)) return h;
+        while (c.Y > MinChunkY * S && Open(c)) c = new Int3(c.X, c.Y - 1, c.Z);
+        return c.Y + 1;
+    }
+
     public Int3 CanonicalChunk(Int3 chunk) => new(Mod(chunk.X, ChunksX), chunk.Y, Mod(chunk.Z, ChunksZ));
 
     /// <summary>The cell itself and every copy of it across a seam that lies in the frame (up to four).</summary>

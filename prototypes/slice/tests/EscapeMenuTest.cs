@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using DiegeticUi.Theme;
 using Godot;
+using PlanetSurface.Skies;
 using PlanetSurface.Terrain;
 using Slice.Game;
 using Slice.Ui;

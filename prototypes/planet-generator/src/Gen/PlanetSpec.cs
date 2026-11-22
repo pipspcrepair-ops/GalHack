@@ -98,9 +98,12 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
     /// </summary>
     public bool Airless => Has(Modifier.Cratered) && Craters(Archetype);
 
-    /// <summary>A planet of the given archetype with 1-2 modifiers rolled from the seed (craters only where the archetype keeps them).</summary>
-    public static PlanetSpec Roll(ulong seed, Archetype archetype, int variant, int widthKm = 16) =>
-        new(seed, archetype, variant, RollModifiers(seed, 0, archetype), widthKm);
+    /// <summary>
+    /// A planet of the given archetype with 1-2 modifiers rolled from the seed (craters only where the archetype keeps them).
+    /// <paramref name="airless"/>: whether it has air, when its place already decided (a system's body); else as rolled.
+    /// </summary>
+    public static PlanetSpec Roll(ulong seed, Archetype archetype, int variant, int widthKm = 16, bool? airless = null) =>
+        new(seed, archetype, variant, RollModifiers(seed, 0, archetype, airless), widthKm);
 
     /// <summary>
     /// A world's width in km, rolled from its seed on Empyrion's planet classes 2-5 (5/40/50/5%):
@@ -130,11 +133,13 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
         Roll(seed, archetype, variant, RollWidthKm(seed, kind));
 
     /// <summary>
-    /// 1-2 distinct modifiers. Different rerolls of the same seed give different sets. Given the archetype,
-    /// <see cref="Modifier.Cratered"/> only stays where natural craters do (<see cref="Craters"/>): on a
-    /// living world the next of the rest takes its place, so every other world rolls as it always did.
+    /// 1-2 distinct modifiers. Different rerolls of the same seed give different sets. The one air rule goes through here
+    /// (docs/solar-systems.md 8): where craters stay (<see cref="Craters"/>), <see cref="Modifier.Cratered"/> is the mark of a
+    /// world with no air (<see cref="Airless"/>), on as <paramref name="airless"/> says when that is known, else as rolled; and a
+    /// world with no air has no weather, so no perpetual storm. A barren body is its craters alone. What one of those rules
+    /// takes off is replaced by the next of the rest, so every other world rolls as it always did.
     /// </summary>
-    public static Modifier RollModifiers(ulong seed, int reroll, Archetype? archetype = null)
+    public static Modifier RollModifiers(ulong seed, int reroll, Archetype? archetype = null, bool? airless = null)
     {
         // A barren body is its craters: no mesas, canyons or seas (there was never weather or water to make them), no storm in its black sky.
         if (archetype == Archetype.Barren) return Modifier.Cratered;
@@ -151,12 +156,14 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
             result |= pool[pick];
             pool.RemoveAt(pick);
         }
-        if ((result & Modifier.Cratered) != 0 && archetype is Archetype a && !Craters(a))
+        bool none = (archetype is not Archetype a || Craters(a)) && (airless ?? (result & Modifier.Cratered) != 0);
+        Modifier off = none ? Modifier.PerpetualStorm : Modifier.Cratered;
+        if ((result & off) != 0)
         {
-            result &= ~Modifier.Cratered;
+            result &= ~off;
             result |= pool[rng.Next(pool.Count)];
         }
-        return result;
+        return none ? result | Modifier.Cratered : result;
     }
 
     public override string ToString()

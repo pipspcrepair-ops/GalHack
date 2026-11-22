@@ -939,9 +939,10 @@ void vertex() {
 		VERTEX.y = mix(VERTEX.y, UV2.x + MODEL_MATRIX[3].y, smoothstep(rim.z - 2400.0, rim.z - 600.0, out_by));
 		wpos = VERTEX;
 	}
-	// The far land sinks over the round world's horizon (round_sink); the voxels are all well inside it.
+	// The far land sinks over the round world's horizon (round_sink); the voxels are all well inside it. Measured from
+	// the player's eye in every pass: in the sun's shadow pass the camera is the light's, and the casters would sink apart.
 	if (far_ring) {
-		float sink = round_sink(wpos.xz - CAMERA_POSITION_WORLD.xz);
+		float sink = round_sink(wpos.xz - MAIN_CAM_INV_VIEW_MATRIX[3].xz);
 		VERTEX.y -= sink;
 		wpos.y -= sink;
 	}

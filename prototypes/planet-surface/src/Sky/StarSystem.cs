@@ -870,11 +870,9 @@ public sealed class StarSystem
             // heated moon keeps its own kind without air, its heat a reason for its lava or its warmed ice.
             bool vacuum = b == FuelMoon || new Rng(Hash.Of(b.Seed, 0x564143)).NextFloat() < PlanetSpec.VacuumChances[PlanetSpec.ClassOf(width)];
             if (vacuum && !TidallyHeated(b)) (type, variant) = (Archetype.Barren, Archetypes.BarrenVariant(b.Zone >= 5, PlanetSpec.Heavy(width)));
-            PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width);
+            PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width, vacuum);
             // Its sky is the system's, so a ringed sky is no modifier here: a ring is the body's own (below).
-            Modifier mods = spec.Modifiers & ~Modifier.RingedSky;
-            if (PlanetSpec.Craters(type)) mods = vacuum ? mods | Modifier.Cratered : mods & ~Modifier.Cratered;
-            b.Spec = spec with { Modifiers = mods };
+            b.Spec = spec with { Modifiers = spec.Modifiers & ~Modifier.RingedSky };
             // A rocky world's ring: rare (only the ringed kinds, start-sized or bigger); a moon never has one (owner, 17 Nov).
             ArchetypeLook look = ArchetypeLook.For(b.Spec);
             b.Rings = b.Kind == OrbiterKind.Planet && width >= PlanetSpec.StartWidthKm && look.Ring;

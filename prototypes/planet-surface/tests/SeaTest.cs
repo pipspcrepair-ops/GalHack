@@ -46,8 +46,11 @@ public partial class SeaTest : Node
         var rand = new Random();
         foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid, Archetype.Arid })
         {
-            ulong seed = (ulong)rand.NextInt64();
-            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(seed, kind, 0), Main.Catalog);
+            // A world with air: an airless one (an arid world rolls one now and then) has no sea to draw (the vacuum rule).
+            PlanetSpec spec;
+            do spec = PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0); while (spec.Airless);
+            ulong seed = spec.Seed;
+            PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
             PlanetTerrainSource source = w.Source;
             Image mask = w.SeaTexture().GetImage();
             int coast = 0, disagree = 0, hanging = 0;

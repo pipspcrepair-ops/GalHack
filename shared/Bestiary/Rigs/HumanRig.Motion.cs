@@ -172,6 +172,8 @@ public sealed partial class HumanRig
     {
         if (dir.LengthSquared() < 1e-6f) dir = -Facing;
         dir = dir.Normalized();
+        // (One hit on another still showing: the body is taken on from where that left it, not set back to stand first.)
+        if (_doll == null && (Envelope(MathF.Min(_hitAge, 1f)) > 0.05f || Stagger > 0.05f)) CarryFrom();
         _hitDir = dir;
         _hitHeavy = Math.Clamp(heavy, 0f, 1f);
         _hitAge = 0f;
@@ -192,6 +194,33 @@ public sealed partial class HumanRig
         Try(Part.LegL, _knee[0]);
         Try(Part.LegR, _knee[1]);
         _doll?.Shove(_hitPart, dir, _hitHeavy);
+    }
+
+    /// <summary>The pose a hit landed on another in (about the body's root, <see cref="_root"/>), and how much of it is still carried (1 to 0).</summary>
+    Transform3D[] _hitFrom;
+    float _hitCarry;
+    /// <summary>Where the body stood and faced when last posed.</summary>
+    Transform3D _root;
+
+    /// <summary>How long a hit on another takes to carry the body from where the last left it, s.</summary>
+    const float HitCarry = 0.1f;
+
+    void CarryFrom()
+    {
+        _hitFrom ??= new Transform3D[Pose.Length];
+        Transform3D back = _root.AffineInverse();
+        for (int i = 0; i < Pose.Length; i++) _hitFrom[i] = back * Pose[i];
+        _hitCarry = 1f;
+    }
+
+    /// <summary>The pose just made, carried on from the one a new hit landed in (<see cref="CarryFrom"/>), and the root noted.</summary>
+    void CarryHit(in Gesture g)
+    {
+        _root = new Transform3D(new Basis(Vector3.Up, g.Yaw), g.Feet);
+        if (_hitCarry <= 0f) return;
+        _hitCarry = MathF.Max(0f, _hitCarry - _dt / HitCarry);
+        float w = 1f - _hitCarry * _hitCarry * (3f - 2f * _hitCarry);
+        for (int i = 0; i < Pose.Length; i++) Pose[i] = PoseBlend.Mix(_root * _hitFrom[i], Pose[i], w);
     }
 
     /// <summary>Seconds the last hit's flinch is held at its height (a stun): the body stays caught in it.</summary>
@@ -220,6 +249,12 @@ public sealed partial class HumanRig
 
     /// <summary>Whether the dead body has come to rest (and stays as it lies).</summary>
     public bool Settled => _doll?.Settled == true;
+
+    /// <summary>The world's pull on the limp body, m/s².</summary>
+    public float Gravity = 9.8f;
+
+    /// <summary>What the body lay on went: it falls again, limp, on to whatever is below.</summary>
+    public void Unsettle() => _doll?.Wake();
 
     /// <summary>Where each joint is this frame, for the ragdoll to start from: see <see cref="Doll"/> for the order.</summary>
     readonly Vector3[] _joints = new Vector3[Doll.Count], _jointsBefore = new Vector3[Doll.Count];

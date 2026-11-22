@@ -19,7 +19,7 @@ namespace Slice.Tests;
 /// Per route: the near ground's complete radius (median, worst), the far rings' nearest chunk still short of its level,
 /// the streamer's queue, how long a column waited from coming into the ring to its first near chunk, how long a
 /// level-0 far chunk (the trees' near drawing) waited from being wanted to standing, and how far off trees appeared.
-/// Then shadow flicker (<see cref="Flicker"/>) and sparks in the grass by night (<see cref="Pinholes"/>).
+/// Then shadow edges (<see cref="Edges"/>) and sparks in the grass by night (<see cref="Pinholes"/>).
 /// </summary>
 public partial class PopRoute : Node
 {
@@ -125,6 +125,7 @@ public partial class PopRoute : Node
         zone.Weather.Sim?.Snap(Weather.Model.WeatherKind.Clear);
         zone.Wildlife.Frozen = !_args.ContainsKey("live");
         _day = zone.Sky.TimeOfDay;
+        if (_args.TryGetValue("vary", out string vary)) Vary(vary); // --vary=filter=2,...: shadow settings over the player's (Edges' variants)
         Vector3 start = _game.Survivor.WorldFeet;
         // The way to the highest ground within 4 km.
         Vector3 way = Vector3.Forward;
@@ -137,9 +138,9 @@ public partial class PopRoute : Node
         }
         GD.Print($"ROUTE toward {way} (ground up to {best - zone.GroundAt(start.X, start.Z).Y:F0} m above the start)");
         _planted0 = (zone.Planet.Palette.Planted as System.Collections.ICollection)?.Count;
-        if (_args.ContainsKey("flicker-only"))
+        if (_args.ContainsKey("edges-only"))
         {
-            foreach (int x in Flicker(start)) yield return x;
+            foreach (int x in Edges(start)) yield return x;
             yield break;
         }
         if (_args.ContainsKey("pinholes-only"))
@@ -148,7 +149,7 @@ public partial class PopRoute : Node
             yield break;
         }
         PopLog.On = true;
-        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, space, flicker, pinholes, trees.
+        // --only=a,b runs just those parts: once (flying straight off), walk, bike, fly, space, edges, pinholes, trees.
         string[] only = _args.TryGetValue("only", out string o) ? o.Split(',') : null;
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         if (only == null || only.Contains("once"))
@@ -211,8 +212,8 @@ public partial class PopRoute : Node
             foreach (int x in GpuCost(start, way)) yield return x;
         if (only?.Contains("skyday") == true)
             foreach (int x in SkyByDay(start, way)) yield return x;
-        if (only == null || only.Contains("flicker"))
-            foreach (int x in Flicker(start)) yield return x;
+        if (only == null || only.Contains("edges"))
+            foreach (int x in Edges(start)) yield return x;
         if (only == null || only.Contains("pinholes"))
             foreach (int x in Pinholes(start, way)) yield return x;
         if (only == null || only.Contains("trees"))
@@ -224,81 +225,6 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE ruin trees planted: {_planted0} when the world showed, {(zone.Planet.Palette.Planted as System.Collections.ICollection)?.Count} at the end");
     }
 
-    /// <summary>
-    /// Shadow flicker at a low sun, 115 m over the densest trees near the start, the sun moving at the game's own pace:
-    /// hovering still, and flying straight and level at 70 m/s. Counted as the share of the lower half's pixels that
-    /// change from one frame to the next, with the sun's shadows on and then off on the same path: what the shadows add
-    /// is their flicker. --bias=X sets the sun's normal bias.
-    /// </summary>
-    IEnumerable<int> Flicker(Vector3 start)
-    {
-        var zone = _game.Zone;
-        TerrainStreamer s = zone.Streamer;
-        DirectionalLight3D sun = zone.Sky.Sun;
-        _hold = Lift(start, 115f);
-        foreach (int x in _drive.Wait(60)) yield return x;
-        foreach (int x in _drive.UntilSettled(40)) yield return x;
-        foreach (int x in _drive.Wait(120)) yield return x;
-        Vector3 over = Densest(start);
-        int most = s.FloraNear(over, 30f).Count();
-        foreach (float want in new[] { 5f, 10f })
-        {
-            zone.Sky.TimeScale = 0f;
-            for (double t = 0.15; t < 0.5; t += 0.0025)
-            {
-                zone.Sky.TimeOfDay = t;
-                yield return 0;
-                if (MathF.Asin(sun.GlobalTransform.Basis.Z.Y) * 180f / MathF.PI >= want) break;
-            }
-            double from = zone.Sky.TimeOfDay;
-            if (_args.TryGetValue("bias", out string b)) sun.ShadowNormalBias = float.Parse(b, CultureInfo.InvariantCulture);
-            Vector3 toSun = new Vector3(sun.GlobalTransform.Basis.Z.X, 0f, sun.GlobalTransform.Basis.Z.Z).Normalized();
-            foreach (bool flying in new[] { false, true })
-            {
-                var share = new double[2];
-                for (int pass = 0; pass < 2; pass++)
-                {
-                    sun.ShadowEnabled = pass == 0;
-                    zone.Sky.TimeOfDay = from;
-                    zone.Sky.TimeScale = 1f;
-                    // Flying across the sun's way (shadows stretch sideways), looking ahead and down at the trees.
-                    Vector3 across = toSun.Cross(Vector3.Up), a = over - across * 150f;
-                    Image last = null;
-                    double changed = 0;
-                    int frames = 0;
-                    for (int i = 0; i < 150; i++)
-                    {
-                        Vector3 eye = Lift(flying ? a + across * (70f / Engine.PhysicsTicksPerSecond * i) : over, 115f);
-                        _game.Survivor.PlaceOutside(eye.ToNumerics());
-                        _drive.Face(eye + across * 160f + Vector3.Down * 115f);
-                        yield return 0;
-                        if (i < 100) continue;
-                        Image img = GetViewport().GetTexture().GetImage();
-                        img.Resize(480, 270, Image.Interpolation.Nearest);
-                        if (last != null)
-                        {
-                            int diff = 0, total = 0;
-                            for (int y = 135; y < 270; y++)
-                                for (int x = 0; x < 480; x++)
-                                {
-                                    total++;
-                                    if (MathF.Abs(img.GetPixel(x, y).Luminance - last.GetPixel(x, y).Luminance) > 0.06f) diff++;
-                                }
-                            changed += (double)diff / total;
-                            frames++;
-                        }
-                        last = img;
-                    }
-                    share[pass] = changed / Math.Max(1, frames) * 100.0;
-                }
-                _drive.Controls.Look = Vector2.Zero;
-                sun.ShadowEnabled = true;
-                Gate($"flicker, sun {want:F0} degrees, {(flying ? "flying" : "hovering")}: the shadows' own pixels changing a frame", share[0] - share[1], 0.1, false, "%");
-                GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE flicker sun {want:F0} deg, {(flying ? "flying level 70 m/s" : "hovering")} 115 m over {most} plants, normal bias {sun.ShadowNormalBias}: pixels changing a frame {share[0]:F2}% with shadows, {share[1]:F2}% without, the shadows' own {share[0] - share[1]:F2}%"));
-            }
-        }
-        zone.Sky.TimeScale = 1f;
-    }
     int? _planted0;
 
     /// <summary>The densest growth within 240 m of a point, on a 60 m lattice (30 m round each).</summary>

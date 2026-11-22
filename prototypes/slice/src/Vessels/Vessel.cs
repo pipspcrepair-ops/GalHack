@@ -196,8 +196,8 @@ public sealed partial class Vessel
     /// <summary>The chair's console top, middle of its edge on the sitter's side (structure frame, metres): the cockpit screen stands there.</summary>
     public N.Vector3 ConsoleEdge { get; private set; }
 
-    /// <summary>How far the chair reaches out from its seat across the floor, m: getting up puts you past it.</summary>
-    public float ChairReach { get; private set; }
+    /// <summary>Where getting up from the chair in use puts you, in the order to try them (offsets from the seat, structure frame, m): see <see cref="StandSpotsOf"/>.</summary>
+    public N.Vector3[] StandSpots { get; private set; } = Array.Empty<N.Vector3>();
 
     /// <summary>How far the seat stands above the floor its sitter's feet rest on, m (the figure's legs reach down to it).</summary>
     public float SeatDrop { get; private set; }
@@ -538,9 +538,51 @@ public sealed partial class Vessel
         // No console of its own: the chair's front edge at the seat's height.
         N.Vector3 edge = desk == null ? type.Seat with { Z = -0.5f } : new(0.5f * (desk.Min.X + desk.Max.X), desk.Max.Y, desk.Max.Z);
         ConsoleEdge = Structure.PointOf(anchor, chair, edge) * Structure.Grid.CellSize;
-        Int3 size = Footprint.WorldSize(type, chair.Rot);
-        ChairReach = MathF.Max(size.X, size.Z) * Structure.Grid.CellSize;
+        StandSpots = StandSpotsOf(Structure, anchor, chair);
         SeatDrop = FloorUnder(Structure.TypeOf(chair), Structure.Grid.CellSize);
+    }
+
+    /// <summary>
+    /// Where a person getting up from a chair can stand, best first, as offsets from its seat in the
+    /// structure's frame (m): the middle of the cell straight behind the chair, whichever way it is
+    /// turned (it faces -z in its own frame, so behind is +z); then, if the chair is deep enough to
+    /// leave room past its backrest, the floor inside its own box there (for a hull with machinery
+    /// right behind the chair); then the cell at each side of it, and last the one in front.
+    /// Directions along the vertical (a chair on its back) are left out.
+    /// </summary>
+    public static N.Vector3[] StandSpotsOf(Structure s, Int3 anchor, in Block chair)
+    {
+        N.Vector3 seat = s.TypeOf(chair).Seat, from = s.PointOf(anchor, chair, seat);
+        var turn = Orientations.Matrix(chair.Rot);
+        var spots = new List<N.Vector3>(5);
+        foreach (N.Vector3 face in new[] { N.Vector3.UnitZ, N.Vector3.UnitX, -N.Vector3.UnitX, -N.Vector3.UnitZ })
+        {
+            // The middle of that face of the chair's box, taken at the seat's own height and across, then half a cell on.
+            N.Vector3 edge = seat * (N.Vector3.One - N.Vector3.Abs(face)) + face * 0.5f;
+            N.Vector3 o = (s.PointOf(anchor, chair, edge) + turn.Apply(face) * 0.5f - from) * s.Grid.CellSize, level = new(o.X, 0f, o.Z);
+            float out_ = level.Length();
+            if (out_ < 0.1f) continue;
+            spots.Add(level + N.Vector3.UnitY * 0.05f);
+            // Behind, short of the box's rear face (which is half a cell back from the cell's middle).
+            float inside = out_ - 0.5f * s.Grid.CellSize - StandBack;
+            if (face == N.Vector3.UnitZ && inside > 0.6f) spots.Add(level / out_ * inside + N.Vector3.UnitY * 0.05f);
+        }
+        return spots.ToArray();
+    }
+
+    /// <summary>How far short of the rear of a deep chair's box a person gets up, m.</summary>
+    const float StandBack = 0.4f;
+
+    static readonly float[] StandHeights = { 0.3f, 0.9f, 1.6f };
+    static readonly N.Vector3[] StandRing = { default, new(0.3f, 0f, 0f), new(-0.3f, 0f, 0f), new(0f, 0f, 0.3f), new(0f, 0f, -0.3f) };
+
+    /// <summary>True if a person fits standing there (structure frame, m, at the feet): nothing solid, by its real shape, at the knee, chest and head, in the middle and 0.3 m out each way.</summary>
+    public static bool CanStandAt(Structure s, N.Vector3 feet)
+    {
+        foreach (float h in StandHeights)
+            foreach (N.Vector3 around in StandRing)
+                if (s.SolidAt((feet + around + N.Vector3.UnitY * h) / s.Grid.CellSize)) return false;
+        return true;
     }
 
     /// <summary>Where a seated person's feet come down, m ahead of the seat point: past the seat's front edge, short of a console.</summary>
