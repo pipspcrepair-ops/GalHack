@@ -23,7 +23,7 @@ public sealed class OrbitRules
         public int TextureWidth { get; set; } = 4096;
         public double TexelMetres { get; set; } = 4.0;
         public double NearMetres { get; set; } = 2.0;
-        public int NearTexels { get; set; } = 2048;
+        public int NearTexels { get; set; } = 1536;
         public int CloudWidth { get; set; } = 1024;
         public double CloudHeight { get; set; } = 0.012;
         public double ReliefFar { get; set; } = 0.12;

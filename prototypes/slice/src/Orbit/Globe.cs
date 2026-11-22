@@ -430,7 +430,8 @@ public partial class Globe : Node3D
         // The same at the level the pixel's own footprint wants, the two levels either side blended so no line shows where it steps.
         float relief_px(vec2 uv, vec2 dx, vec2 dy) {
             vec2 size = vec2(textureSize(relief_map, 0));
-            float lod = clamp(0.5 * log2(max(dot(dx * size, dx * size), dot(dy * size, dy * size))), 0.0, 8.0);
+            // The level under the last one is read too, so this stops one short of it (past it the grid has no size).
+            float lod = clamp(0.5 * log2(max(dot(dx * size, dx * size), dot(dy * size, dy * size))), 0.0, float(textureQueryLevels(relief_map) - 2));
             float l = floor(lod);
             return mix(relief_level(uv, l), relief_level(uv, l + 1.0), lod - l);
         }
@@ -476,8 +477,8 @@ public partial class Globe : Node3D
             float det = dot(dpx, r1);
             vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
             // A cliff a map cell wide is a facet standing on end, black against the sun from any way but one: the slope a
-            // pixel shows is held under about 40 degrees, so a mesa or a crater's wall reads as relief and not as a hole.
-            grad *= min(1.0, 0.85 * abs(det) / max(length(grad), 1e-12));
+            // pixel shows is held under about 30 degrees, so a mesa or a crater's wall reads as relief and not as a hole.
+            grad *= min(1.0, 0.58 * abs(det) / max(length(grad), 1e-12));
             NORMAL = normalize(abs(det) * NORMAL - grad);
             vec4 a = paint(albedo_map, m);
             // The ground near you from its finer paint, eased in from that paint's edge.

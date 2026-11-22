@@ -20,7 +20,7 @@
     // The ground near you, painted finer while you are low over it (a square this many texels wide,
     // this many metres each, on worker threads), so it is never blocky at the switch.
     "nearMetres": 2,
-    "nearTexels": 2048,
+    "nearTexels": 1536,
     // Clouds sit this share of the curve's radius over the ground (never over the clouds you climbed
     // through), at this share of the generator's
     // cover (its cloud map is a stormy day's; thinned, the land under it reads from orbit).

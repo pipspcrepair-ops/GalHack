@@ -222,7 +222,8 @@ public partial class Spaceflight
         env.FogSunScatter = _fogScatter * (1f - gone);
         env.FogSkyAffect = _fogSky * (1f - gone) * (1f - overCap);
         env.AmbientLightEnergy = _ambient * (1f - gone) + Rules.Space.Ambient[1] * gone;
-        s.Sky.CloudDeckFade = (1f - gone) * (1f - OverLand(y));
+        // The surface's flat cloud deck goes as the sheet comes over the land, and in orbit there is none: the clouds are the globe's.
+        s.Sky.CloudDeckFade = Game.InOrbit ? 0f : (1f - gone) * (1f - OverLand(y));
     }
 
     // ---- The crossing ---------------------------------------------------------------------------
@@ -494,6 +495,7 @@ public partial class Spaceflight
         o.Space.Show(false, 0f);
         SkyTurn();
         Lap("space sky");
+        s.Sky.CloudDeckFade = 0f; // in orbit there is none, whatever it was when this surface was last seen
         s.Sky.PlaceCloudDeck(at); // it sets the height fog, so it goes before the air is thinned
         Lap("cloud deck");
         SetSurfaceAir(AirGone, y);
