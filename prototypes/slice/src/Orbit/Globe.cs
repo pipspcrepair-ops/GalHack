@@ -303,6 +303,7 @@ public partial class Globe : Node3D
         uniform float day_glow = 0.6;
         uniform float night_glow = 1.6;
         uniform float relief = 1.0;
+        uniform float sky_fill = 0.04;
         uniform sampler2D grain : filter_linear_mipmap, repeat_enable;
         {{GridCode}}
         {{Paint}}
@@ -353,11 +354,14 @@ public partial class Globe : Node3D
             vec2 fine = at / 23.0, broad = at / 97.0;
             float g = (textureGrad(grain, fine, dFdx(fine), dFdy(fine)).r - 0.5) * (1.0 - smoothstep(3.0, 20.0, metres))
                 + (textureGrad(grain, broad, dFdx(broad), dFdy(broad)).r - 0.5) * (1.0 - smoothstep(12.0, 80.0, metres));
-            ALBEDO = a.rgb * (1.0 + 0.4 * g * (1.0 - a.a)) * sunlight_at(rn, sun_dir);
+            float sun = sunlight_at(rn, sun_dir);
+            ALBEDO = a.rgb * (1.0 + 0.4 * g * (1.0 - a.a)) * sun;
+            // On the day side the air's own light fills what faces away from the sun: a slope in shadow is dim, never black.
+            EMISSION = ALBEDO * sky_fill * smoothstep(-0.15, 0.3, dot(rn, sun_dir));
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(rn, sun_dir));
-            EMISSION = paint(glow_map, m).rgb * (day_glow + night * night_glow);
+            EMISSION += paint(glow_map, m).rgb * (day_glow + night * night_glow);
             // The places' lights, only after dark: the same towns' glow seen from the ground.
             EMISSION += paint(lights_map, m).rgb * smoothstep(0.05, -0.2, dot(rn, sun_dir)) * lights_gain;
         }
@@ -692,6 +696,7 @@ public partial class Globe : Node3D
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("lights_map"), ImageTexture.CreateFromImage(paint.Lights));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("grain"), Grain);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_fill"), atmosphereRadius > radius ? 0.12f : 0.03f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("day_glow"), look.LiquidGlow > 0 ? 0.9f : 0.5f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_glow"), look.GlowingNights ? 2.5f : 1.4f);
         AddChild(Instance("Ground", grid, _ground));
