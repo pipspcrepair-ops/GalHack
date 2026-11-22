@@ -93,15 +93,16 @@ public sealed partial class Town
     readonly List<Aabb> _gone = new();
 
     /// <summary>
-    /// Whether the place stands as it was built round someone (nothing has gone there) and the walking grid holds them: a standing
-    /// cell under them or beside them at their height (a corner cut by a stairwell's edge). Then they stand as they always have,
-    /// nothing looked under; only where something went, or off the grid of what can be walked, do the colliders say.
+    /// Whether the blocks hold them where they stand: their feet on the walking grid's floor or stair under them (out on the land, on
+    /// the land as it stands). Where nothing has gone, a standing cell beside them at their height holds them too (a corner cut by a
+    /// stairwell's edge: the place stands as it was built). Only otherwise do the colliders say (<see cref="Footed"/>: a bed, rubble).
     /// </summary>
     bool AsBuilt(Person p)
     {
-        foreach (Aabb box in _gone) if (box.HasPoint(p.Pos)) return false;
         PInt3 c = Cell(p.Pos);
         if (!Memory.Inst.Blocks.InBounds(new PInt3(c.X, Memory.Inst.Blocks.Min.Y, c.Z))) return p.Pos.Y - LandAt(p.Pos) < FootSlack + 0.05f; // (out on the land, on it)
+        if (Ground(p.Pos) is float ground && MathF.Abs(p.Pos.Y - ground) < FootSlack + 0.05f) return true;
+        foreach (Aabb box in _gone) if (box.HasPoint(p.Pos)) return false;
         for (int dz = -1; dz <= 1; dz++)
             for (int dx = -1; dx <= 1; dx++)
                 if (_nav.Standable(new PInt3(c.X + dx, c.Y, c.Z + dz)) || _nav.RampAt(new PInt3(c.X + dx, c.Y, c.Z + dz), out _) || _nav.RampAt(new PInt3(c.X + dx, c.Y - 1, c.Z + dz), out _)) return true;
@@ -172,34 +173,19 @@ public sealed partial class Town
                 if (p.CheckFor < Pressing) _looks++;
                 _looks++;
                 if (_staleFor <= 0f) p.CheckFor -= dt; // (its time runs once the colliders have caught up)
-                if (AsBuilt(p)) { p.CheckFor = 0f; return false; } // (as it was built: stood on, nothing looked under)
-                else if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
-                else
+                // (Held by the blocks where they stand, or else by what is really under them; a seat gone from under one sitting, down
+                // on the floor and up off it frightened.)
+                if (AsBuilt(p) || Footed(p))
                 {
-                    // Sitting on a seat that has gone: down on the floor (their pose eases down), up off it frightened.
                     if (p.Sitting && p.Seated > 0.5f && SeatUnder(p) == null) { Unseat(p); p.ScaredFor = MathF.Max(p.ScaredFor, 4f); }
                     return false;
                 }
+                LoseFooting(p);
             }
             Down(p, dt);
             return true;
         }
         finally { FallMs += System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds; }
-    }
-
-    /// <summary>
-    /// Where the place's blocks give them a floor (a stair's slope among them, whose steps the rays may miss), they stand on it unless
-    /// it is well under their feet (the bed they lay on gone): the rays alone never drop anyone through a floor that stands.
-    /// </summary>
-    bool OnFloor(Person p)
-    {
-        PInt3 c = Cell(p.Pos);
-        // (Off the place's grid, the land as it stands, dug or not.)
-        if (!Memory.Inst.Blocks.InBounds(c)) return _places?.Zone.Planet is { } planet && World(p.Pos) is var w && p.Pos.Y - (planet.Terrain.GroundNow(w.X, w.Z) - _origin.Y) < FootSlack + 0.05f;
-        if (!Floored(p.Pos)) return false;
-        if (_nav.RampAt(c, out _) || _nav.RampAt(c + PInt3.Down, out _)) return true;
-        // (Nothing for the rays to meet, nothing built there to collide with yet: the blocks say.)
-        return Top(p.Pos, 0.5f, 1.5f) is not float top || p.Pos.Y - top < FootSlack + 0.05f;
     }
 
     /// <summary>Off their feet: up out of a seat or a bed, falling from where they are (their way kept: a step down, they go on along it).</summary>
