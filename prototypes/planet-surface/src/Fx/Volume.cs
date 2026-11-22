@@ -71,12 +71,13 @@ public partial class Volume : MeshInstance3D
         Uniform("strength", strength);
     }
 
-    /// <summary>The light on it (linear colours, energy in) and the environment fog at the eye, which is already drawn over everything.</summary>
-    public void Light(Vector3 toSun, Color sun, Color ambient, Color fog, float fogDensity, int steps)
+    /// <summary>
+    /// The way to the light that shades it (the engine lights it by its own lights and sky, as it lights the land), and the
+    /// environment fog at the eye, which is already drawn over everything.
+    /// </summary>
+    public void Light(Vector3 toLight, Color fog, float fogDensity, int steps)
     {
-        Uniform("to_sun", toSun);
-        Uniform("sun_color", new Vector3(sun.R, sun.G, sun.B));
-        Uniform("ambient", new Vector3(ambient.R, ambient.G, ambient.B));
+        Uniform("to_sun", toLight);
         Uniform("fog_color", fog);
         Uniform("fog_floor", fogDensity);
         Uniform("steps", steps);

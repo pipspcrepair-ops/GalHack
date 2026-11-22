@@ -412,8 +412,10 @@ public partial class Staging
 
         // Stands the sleeper (and so the streaming) at a spot, the storm's leading edge `ahead` metres off the way the eye looks
         // (negative: the eye that far inside it), and frames the eye there, looking `turn` degrees off toward it.
-        IEnumerable<int> Frame(string name, Vector3 at, float ahead, float eyeUp, float turn, float pitch)
+        IEnumerable<int> Frame(string name, Vector3 at, float ahead, float eyeUp, float turn, float pitch) => FrameWay(name, at, ahead, eyeUp, turn, pitch, toward);
+        IEnumerable<int> FrameWay(string name, Vector3 at, float ahead, float eyeUp, float turn, float pitch, Vector3 toward)
         {
+            d.Heading = new Vector2(-toward.X, -toward.Z); // coming at the eye, whichever way it looks
             _game.Survivor.PlaceOutside((at - toward * 3f + Vector3.Up).ToNumerics()); // just behind the eye, out of the frame
             foreach (int x in _drive.UntilSettled()) yield return x;
             Vector3 eye = _game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * eyeUp;
@@ -424,7 +426,7 @@ public partial class Staging
             d.Position = new Vector3(eye.X, 0f, eye.Z) + toward * (ahead + d.HalfLength);
             foreach (int x in _drive.Wait(2)) yield return x;
             GD.Print($"dust: {name}: {d.Inside(eye, sim.WorldSize):F0} m inside its outline, depth {sim.DustDepth(eye):F2}, visibility {sim.LocalAt(eye).Visibility:F0} m, " +
-                     $"fog {sky.Environment.FogDensity:F4}, storm {d.HalfWidth * 2f:F0} x {d.HalfLength * 2f:F0} m, {d.Height:F0} m tall");
+                     $"fog {sky.Environment.FogDensity:F4}, storm {d.HalfWidth * 2f:F0} x {d.HalfLength * 2f:F0} m, {d.Height:F0} m tall; sun y {sky.ToSun.Y:F2}, daylight {sky.Daylight:F2}");
             foreach (int x in Shot($"{dir}/{name}.png")) yield return x;
         }
         foreach (int x in Frame("1-wall-3km", ground, 3000f, 1.7f, 0f, 0.06f)) yield return x;
@@ -440,12 +442,29 @@ public partial class Staging
             if (g.Y > high.Y && !_game.Zone.Water.LiquidAt(g.X, g.Z, out _)) high = g;
         }
         foreach (int x in Frame("5-high-ground", high, 2200f, 6f, 0f, -0.02f)) yield return x;
-        // And at dusk, the wall a kilometre off again: the evening hour with the sun this low.
-        double dusk = 0.5;
-        for (double t = 0.5; t < 0.95; t += 0.0005)
-            if (MathF.Abs(sky.SunAt(t).Y - 0.05f) < MathF.Abs(sky.SunAt(dusk).Y - 0.05f)) dusk = t;
-        sky.TimeOfDay = dusk;
-        foreach (int x in Frame("6-dusk-1km", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
+        // From the same spot, a kilometre off: at dusk with the sun at the eye's back and looking into it, at night, and at noon.
+        sky.TimeOfDay = Hour(0.05f);
+        foreach (int x in Frame("6-dusk-away", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
+        Vector3 sun = new Vector3(sky.ToSun.X, 0f, sky.ToSun.Z).Normalized();
+        foreach (int x in FrameWay("7-dusk-toward-sun", ground, 1000f, 1.7f, 0f, 0.1f, sun)) yield return x;
+        sky.TimeOfDay = Hour(-0.35f);
+        foreach (int x in Frame("8-night", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
+        sky.TimeOfDay = 0.5;
+        foreach (int x in Frame("9-noon", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
+
+        // The evening hour with the sun this high (negative: under the horizon), where the eye stands: the sky placed for each
+        // hour tried and the sun read as it is drawn (SunAt alone misses where on the map the eye is).
+        double Hour(float sunY)
+        {
+            double best = 0.5, off = double.MaxValue;
+            for (double t = 0.5; t < 0.99; t += 0.002)
+            {
+                sky.TimeOfDay = t;
+                sky.Track();
+                if (Math.Abs(sky.ToSun.Y - sunY) < off) (best, off) = (t, Math.Abs(sky.ToSun.Y - sunY));
+            }
+            return best;
+        }
     }
 
     /// <summary>A dig's dust: a handful of puffs, seen a moment after.</summary>

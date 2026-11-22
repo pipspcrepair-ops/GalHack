@@ -17,7 +17,7 @@ public sealed class DustStorm
     public Vector3 Position { get; internal set; }
 
     /// <summary>The way it moves, a unit vector on the XZ plane (x, z): its own wind's.</summary>
-    public Vector2 Heading { get; init; }
+    public Vector2 Heading { get; internal set; }
     public float Speed { get; init; }
 
     /// <summary>Half its footprint across its way and along it, metres, and how tall it stands.</summary>

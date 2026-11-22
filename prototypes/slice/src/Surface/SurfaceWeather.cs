@@ -210,13 +210,13 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         Godot.Environment env = Zone.Sky.Environment;
         Color haze = env.FogLightColor;
-        // Tan, not orange: the dust takes the light's brightness more than its colour, as fine dust in sunlight does.
-        Color sun = Muted(Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy, 0.5f);
-        // The sky's light on it, as the land is lit by the sky: the haze's colour and the clear sky's, which a low sun still lights.
-        var horizon = Zone.Sky.System.Horizon;
-        Color sky = Muted((haze.SrgbToLinear() * 1.2f + new Color(horizon.R, horizon.G, horizon.B).SrgbToLinear() * (0.1f + 0.4f * Zone.Sky.Daylight)) * env.AmbientLightEnergy, 0.5f);
+        // Tan, not orange. The body is lit by the engine as the land is; the murk inside it, which the eye's fog draws, is its
+        // colour in the haze's light (the hour's), with a little of the sun's that gets in.
         Color dust = Muted(_planet.Look.Dust, 0.25f);
-        Color deep = Muted(dust, 0.45f).SrgbToLinear() * (sky * 0.55f + sun * 0.06f); // as the body is lit deep inside, at its foot (volume.gdshader)
+        Color sun = Muted(Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy, 0.5f);
+        Color deep = Muted(dust, 0.45f).SrgbToLinear() * (Muted(haze.SrgbToLinear(), 0.5f) * env.AmbientLightEnergy * 0.8f + sun * 0.06f);
+        // It is shaded away from the light that lights it most: the sun, or the night light once the sun is down.
+        Vector3 toLight = ToSun.Y > -0.03f ? ToSun : Zone.Sky.NightLight.GlobalTransform.Basis.Z;
         // Deep in it the murk hides the sky and everything far off alike, in its own colour. The fog carries most of it, a
         // little less in a lull and more in a gust; the body's heaps add the rest, uneven, streaming past the eye.
         float inside = Sim.DustDepth(camera) * open;
@@ -261,7 +261,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             // ride on it a little faster than it moves, climbing its face, so its front rolls. Its outline drawn crisper than
             // the model's ramp: the wall is seen as a wall, and inside the eye's fog carries most of the murk.
             s.Body.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, MathF.Min(d.Edge, 150f), 900f, d.Velocity * 1.15f, 2.5f, d.Strength);
-            s.Body.Light(ToSun, sun, sky, env.FogLightColor, env.FogDensity, StormSteps);
+            s.Body.Light(toLight, env.FogLightColor, env.FogDensity, StormSteps);
         }
         foreach (int id in _gone)
         {

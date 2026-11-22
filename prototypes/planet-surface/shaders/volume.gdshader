@@ -5,9 +5,12 @@
 // in and out by the noise so it heaps and rolls. It is depth-aware: it fills only the space in front of
 // the first surface seen through a pixel, so what stands in front of it stays in front and what is in
 // it fades by how deep in it is. What the environment fog already draws at the eye is taken off its
-// density, so from inside, where the fog has thickened to its murk, it only adds its billows.
+// density, so from inside, where the fog has thickened to its murk, it only adds its billows. It is lit
+// by the same lights and sky as everything else (the sun, the night light, the sky's own ambient), so
+// it never stands darker or brighter than the land at that hour: the march only works out how much of
+// it the sky and the light reach.
 shader_type spatial;
-render_mode unshaded, cull_front, depth_draw_never, depth_test_disabled, shadows_disabled, fog_disabled;
+render_mode cull_front, depth_draw_never, depth_test_disabled, shadows_disabled, specular_disabled;
 
 #include "res://shaders/noise.gdshaderinc"
 
@@ -28,9 +31,7 @@ uniform float strength = 1.0;
 uniform float fog_floor = 0.0;          // the environment fog's density at the eye (already drawn)
 uniform vec3 fog_color : source_color = vec3(0.7);
 uniform vec3 albedo : source_color = vec3(0.6, 0.45, 0.3);
-uniform vec3 to_sun = vec3(0.0, 1.0, 0.0);
-uniform vec3 sun_color = vec3(1.0);     // the sun's light, linear, energy in
-uniform vec3 ambient = vec3(0.3);       // the sky's light, linear
+uniform vec3 to_sun = vec3(0.0, 1.0, 0.0); // the way to the light that casts its shade (the sun, or the night light)
 uniform int steps = 32;
 uniform sampler3D heaps : filter_linear, repeat_enable;
 uniform sampler2D scene_depth : hint_depth_texture, repeat_disable, filter_nearest;
@@ -95,10 +96,8 @@ void fragment() {
 	// A little jitter: enough to hide the steps' slices, too little to speckle its face.
 	float jitter = 0.5 + 0.35 * (fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715)))) - 0.5);
 	float span = t1 - t0, trans = 1.0, depth_sum = 0.0;
-	vec3 light = vec3(0.0);
+	float sky = 0.0, lit = 0.0; // how much of it the sky's light reaches, and the light's, along the ray
 	float n = float(steps);
-	float toward = max(dot(dir, to_sun), 0.0);
-	float phase = 0.75 + 0.6 * toward * toward * toward; // brighter looking toward the sun, through its thin rim
 	for (int i = 0; i < steps; i++) {
 		float a = float(i) / n, b = float(i + 1) / n, m = (float(i) + jitter) / n;
 		float t = t0 + span * m * m, dt = span * (b * b - a * a);
@@ -121,18 +120,31 @@ void fragment() {
 		float far_shade = smoothstep(-edge, 2.0 * edge, inside(local(p + to_sun * (2.5 * edge))));
 		float sunlit = (1.0 - 0.75 * near_shade) * (1.0 - 0.7 * far_shade);
 		float deep = smoothstep(0.0, 2.0 * edge, s);
-		vec3 lit = albedo * (ambient * (0.5 + 0.5 * up) * (1.0 - 0.4 * deep) + sun_color * sunlit * phase * (0.55 + 0.45 * up) * 0.6);
 		float alpha = 1.0 - exp(-sigma * dt);
-		light += trans * alpha * lit;
+		sky += trans * alpha * (0.5 + 0.5 * up) * (1.0 - 0.4 * deep);
+		lit += trans * alpha * sunlit * (0.55 + 0.45 * up);
 		depth_sum += trans * alpha * t;
 		trans *= 1.0 - alpha;
 		if (trans < 0.01) break;
 	}
 	float cover = 1.0 - trans;
 	if (cover < 0.002) discard;
-	// The environment's fog lies between the eye and it, as it lies over everything else.
-	float fogged = 1.0 - exp(-fog_floor * depth_sum / cover);
-	light = mix(light, fog_color * cover, fogged);
-	ALBEDO = light / cover;
+	// Lit as a surface facing the sky would be: the engine adds the sky's ambient by ALBEDO (as much of
+	// it as the sky reaches) and light() the sun's and night light's, scaled by ROUGHNESS (how much of
+	// it the light reaches, against the sky's, a quarter of it).
+	sky = max(sky / cover, 1e-3);
+	ALBEDO = albedo * sky;
+	ROUGHNESS = clamp(lit / cover / sky * 0.25, 0.0, 1.0);
+	METALLIC = 0.0;
+	SPECULAR = 0.0;
+	NORMAL = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+	// The environment's fog lies between the eye and it as far as most of it is, not as far as its box.
+	FOG = vec4(fog_color, 1.0 - exp(-fog_floor * depth_sum / cover));
 	ALPHA = cover;
+}
+
+// The light on it: brighter looking toward the light, through its thin rim (fine dust scatters forward).
+void light() {
+	float toward = max(dot(LIGHT, -VIEW), 0.0);
+	DIFFUSE_LIGHT += LIGHT_COLOR / PI * ROUGHNESS * 4.0 * 0.6 * (0.75 + 0.6 * toward * toward * toward);
 }
