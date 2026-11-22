@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -42,7 +42,7 @@ public sealed partial class Staging
         {
             Process.GetCurrentProcess().ProcessorAffinity = 0x55;
             var s = _game.Settings;
-            (s.Shadows, s.GroundDetail, s.DetailDistance, s.TreeDistance, s.SpawnDistance, s.ShadowDistance) = (Slice.Game.ShadowLevel.Low, 3, 0f, 0f, 0f, 0f);
+            (s.Shadows, s.GroundDetail, s.DetailDistance, s.TreeDistance, s.SpawnDistance, s.ShadowDistance) = (PlanetSurface.Skies.ShadowLevel.Low, 3, 0f, 0f, 0f, 0f);
             s.Changed();
             GD.Print("(night: the minimum spec's stand-in, 4 cores and the lowest graphics)");
         }
