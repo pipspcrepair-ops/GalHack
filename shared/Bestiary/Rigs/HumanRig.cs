@@ -377,8 +377,9 @@ public sealed partial class HumanRig : Rig
         if (_hitPart is Part.LegL or Part.LegR) hipY -= 0.07f * snap * f.LegLength;
         // A foot is down no further ahead or behind than the leg reaches from the hip (or it is dragged, the knee snapping
         // straight): a longer stride is on the ground for less of it, as a sprinter's, and the hips come down as the feet part.
-        float duty = Mathf.Lerp(0.62f, 0.4f, run), legReach = (f.UpperLeg + f.LowerLeg) * 0.95f, hipUp = hipY - f.HipW * 0.1f - f.Ankle;
-        duty = Math.Clamp(2f * MathF.Sqrt(MathF.Max(0f, legReach * legReach - hipUp * hipUp)) / MathF.Max(1e-3f, strideLength * moving), Mathf.Lerp(0.5f, 0.22f, run), duty);
+        // (The share of the stride a foot is down is the gait's, never the bob's: that would slide a planted foot.)
+        float duty = Mathf.Lerp(0.62f, 0.4f, run), legReach = (f.UpperLeg + f.LowerLeg) * 0.95f, hipUp = hipY - f.HipW * 0.1f - f.Ankle, still = hipUp - bob;
+        duty = Math.Clamp(2f * MathF.Sqrt(MathF.Max(0f, legReach * legReach - still * still)) / MathF.Max(1e-3f, strideLength * moving), Mathf.Lerp(0.5f, 0.22f, run), duty);
         float half = strideLength * duty * 0.5f;
         StepAt(phase, duty, out float reach0, out _);
         StepAt(phase + 0.5f, duty, out float reach1, out _);

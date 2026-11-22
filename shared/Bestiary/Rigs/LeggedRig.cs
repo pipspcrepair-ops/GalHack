@@ -357,6 +357,8 @@ public sealed class LeggedRig : Rig
         float cosA = Math.Clamp((a * a + dist * dist - b * b) / (2f * a * dist), -1f, 1f);
         float sinA = MathF.Sqrt(1f - cosA * cosA);
         Vector3 n = pole - u * pole.Dot(u);
+        // (A leg laid out along its pole, a foot left far behind a run, bends its knee up, by degrees, never flipping it over.)
+        if (soft > 0f) n += 0.3f * (Vector3.Up - u * u.Y);
         if (n.LengthSquared() < 1e-6f) n = (MathF.Abs(u.Y) < 0.9f ? Vector3.Up : Vector3.Forward) - u * u.Y;
         n = n.Normalized();
         return (hip + u * (a * cosA) + n * (a * sinA), hip + u * dist);
