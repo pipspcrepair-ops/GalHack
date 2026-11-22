@@ -61,7 +61,7 @@ public static class BiomeLook
         Set(Biome.Mycelium, "eadfbf");
 
         // Barren ground, a plain first pass in greys (the palette colours each by its mineral, Minerals.Of).
-        Set(Biome.Regolith, "8c8b88"); Set(Biome.Mare, "505052"); Set(Biome.Highland, "aeaca8");
+        Set(Biome.Regolith, "8a8a8a"); Set(Biome.Mare, "505052"); Set(Biome.Highland, "acacac");
         Set(Biome.Ironstone, "5c5552"); Set(Biome.Frost, "d2d6da");
         return c;
     }
@@ -119,9 +119,9 @@ public static class BiomeLook
         Set(Biome.Mycelium, R(Flora.Mushroom, 1.6f, "e08a5a"), R(Flora.GiantMushroom, 1.2f, "e0602a"));
 
         // Nothing grows on barren ground: only the boulders impacts threw out.
-        Set(Biome.Regolith, R(Flora.Rock, 0.5f, "7c7b78"));
+        Set(Biome.Regolith, R(Flora.Rock, 0.5f, "7b7b7b"));
         Set(Biome.Mare, R(Flora.Rock, 0.3f, "444446"));
-        Set(Biome.Highland, R(Flora.Rock, 0.6f, "9c9a96"));
+        Set(Biome.Highland, R(Flora.Rock, 0.6f, "9a9a9a"));
         Set(Biome.Ironstone, R(Flora.Rock, 0.6f, "4a4442"));
         Set(Biome.Frost, R(Flora.Rock, 0.15f, "8a8e94"));
         return t;
