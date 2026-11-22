@@ -597,5 +597,10 @@ public sealed partial class Staging
         eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 2f;
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 1.5f - eye, Vector3.Up), eye);
         for (int i = 0; i < 4; i++) yield return 0;
+        // Back on the ground, the surface's sun alone draws shadows (a dark disc after a return was the orbit's sun or a ring still in the shadow map).
+        var casting = _game.GetTree().Root.FindChildren("*", nameof(DirectionalLight3D), true, false).Cast<DirectionalLight3D>()
+            .Where(l => l.IsVisibleInTree() && l.ShadowEnabled && l.GetViewport() is not SubViewport).Select(l => $"{l.GetParent().Name}/{l.Name} energy {l.LightEnergy:F2}").ToList();
+        var rings = _game.GetTree().Root.FindChildren("Ring*", nameof(MeshInstance3D), true, false).Cast<MeshInstance3D>().Count(m => m.IsVisibleInTree() && m.CastShadow != GeometryInstance3D.ShadowCastingSetting.Off);
+        GD.Print($"LANDED shadow-casting suns: {casting.Count} ({string.Join(", ", casting)}); rings casting shadows: {rings}");
     }
 }
