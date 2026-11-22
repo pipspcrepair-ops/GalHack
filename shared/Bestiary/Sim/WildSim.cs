@@ -762,10 +762,8 @@ public sealed class WildSim
             float r;
             if (j < _spaced.Count)
             {
-                // (Not one going off away from it at least as fast as it follows: that gap opens by itself.)
                 Creature b = _spaced[j];
-                Vector3 off = Flat(b.Position - from);
-                if (!Spaced(b) || off.LengthSquared() > 1e-4f && Flat(b.Velocity).Dot(off.Normalized()) > MathF.Max(0.3f, Flat(c.Velocity).Dot(off.Normalized()))) continue;
+                if (!Spaced(b)) continue;
                 (o, r) = (b.Position, b.Radius);
             }
             else (o, r) = (Space.Bodies[j].Pos, Space.Bodies[j].Radius);

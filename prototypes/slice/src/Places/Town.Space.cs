@@ -240,7 +240,7 @@ public sealed partial class Town
         if ((p.StuckFor += dt) < HeldLook) return;
         if (Settles(p)) return;
         // Held a hand's breadth short of the end of their way (by the furniture, or someone): as near as they get is there.
-        if (p.Path is { Count: > 0 } way && p.Step >= way.Count - 1 && Flat(way[^1] - p.Pos) < 0.3f && !ToSeat(p)) { (p.Step, p.StuckFor) = (way.Count, 0f); return; }
+        if (p.Path is { Count: > 0 } way && p.Step >= way.Count - 1 && Flat(way[^1] - p.Pos) < 0.3f && !ToSeat(p)) { (p.Step, p.StuckFor) = (way.Count, 0f); OffParts(p, p.Pos, dt); return; }
         // Someone in the way: stood still a moment, looking at them, rather than pressing on into them. (Held by the furniture: aside at once.)
         if (p.StuckFor < HeldAside && InTheWay(p) is { } o)
         {
@@ -276,8 +276,7 @@ public sealed partial class Town
 
     /// <summary>
     /// Someone's own step held from going any further into anyone else, you among them (as a creature's is, WildSim.Unpressed):
-    /// what would take them into another goes along their side, dead on not at all. (Not one walking off away from them as fast as they follow; one
-    /// stepping back to let them by is coming their way.)
+    /// what would take them into another goes along their side, dead on not at all, whichever way the other is going.
     /// </summary>
     Vector3 Unpressed(Person p, Vector3 from, Vector3 to)
     {
@@ -287,8 +286,7 @@ public sealed partial class Town
         {
             if (j >= _bodies.Count) { to = PersonalSpace.Off(from, to, r, _space.Bodies[j].Pos, _space.Bodies[j].Radius); continue; } // (you)
             Person o = _bodies[j];
-            Vector3 off = (o.Pos - from) with { Y = 0f };
-            if (o == p || o.Dead || o.Gone || o.Asleep || o.Yield <= 0f && off.LengthSquared() > 1e-4f && o.Now * o.Forward.Dot(off.Normalized()) > MathF.Max(0.1f, p.Now * p.Forward.Dot(off.Normalized()))) continue;
+            if (o == p || o.Dead || o.Gone || o.Asleep) continue;
             to = PersonalSpace.Off(from, to, r, o.Pos, BodyRadius(o));
         }
         return to;

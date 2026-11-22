@@ -880,7 +880,7 @@ public sealed partial class Town : IKeeper
         // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
         bool last = p.Step >= p.Path.Count - 1;
         // Coming up on a crowd at the end of their way (not into a seat or a bed: walked as it lies): they stop at its edge, an arm's length off the nearest, not pressed into it.
-        if (last && !ToSeat(p) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength && Settles(p)) return true;
+        if (last && !ToSeat(p) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength * 1.5f && Settles(p)) return true;
         float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         // Behind someone going their way: on at their pace an arm's length back, never into them (Town.Space).
