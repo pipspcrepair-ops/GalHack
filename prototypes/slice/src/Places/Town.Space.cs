@@ -107,6 +107,9 @@ public sealed partial class Town
     /// <summary>How fast someone steps off into room when another is inside the distance they keep, m/s (a shuffle, not a shove).</summary>
     const float RoomPace = 0.35f;
 
+    /// <summary>How far into the furniture each of those kept apart stands this tick (NaN: not yet asked).</summary>
+    readonly System.Collections.Generic.List<float> _gapAt = new();
+
     /// <summary>Whether body i of those kept apart can be put at a point: on the floor, and no further into the furniture than it is (else the other takes the push).</summary>
     bool Stands(int i, Vector3 at)
     {
@@ -114,7 +117,8 @@ public sealed partial class Town
         if (i >= _bodies.Count || _parts == null || InUse(_bodies[i])) return true;
         Person p = _bodies[i];
         float r = BodyRadius(p), h = Height(p);
-        return _parts.Gap(at, r, h) >= MathF.Min(0f, _parts.Gap(p.Pos, r, h));
+        if (float.IsNaN(_gapAt[i])) _gapAt[i] = MathF.Min(0f, _parts.Gap(p.Pos, r, h)); // (where it stands, once a tick)
+        return _parts.Gap(at, r, h) >= _gapAt[i];
     }
 
     /// <summary>The last tick's keeping apart, ms (measurements).</summary>
@@ -126,6 +130,7 @@ public sealed partial class Town
         long from = System.Diagnostics.Stopwatch.GetTimestamp();
         _space.Bodies.Clear();
         _bodies.Clear();
+        _gapAt.Clear();
         foreach (Person p in People)
         {
             if (p.Dead || p.Gone || p.Asleep || p.Looks == null || _held.Contains(p) || !all && p.Run == null) continue;
@@ -135,6 +140,7 @@ public sealed partial class Town
             Vector3 heading = p.Now > 0.1f || going ? new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) : Vector3.Zero;
             _space.Bodies.Add(new PersonalSpace.Body { Pos = p.Pos, Radius = BodyRadius(p), Heading = heading, Give = Give(p), Keep = Spacing(p) });
             _bodies.Add(p);
+            _gapAt.Add(float.NaN);
         }
         if (_bodies.Count == 0) return;
         // You are a body they keep off too (you aren't moved: your share is dropped); walking into them is the push rule's
@@ -158,7 +164,7 @@ public sealed partial class Town
             // Someone inside the distance they keep: a step off into the room there is, before they touch.
             p.Clear = b.Clear;
             Vector3 room = b.Room * RoomPace * dt;
-            if (room.LengthSquared() > 1e-10f && Stands(i, b.Pos + room)) by += room;
+            if (room.LengthSquared() > 1e-10f && Open(b.Pos + room)) by += room;
             // Parted at a walk at most, over as many ticks as it takes: never shoved across the floor at once.
             bool onYou = new Vector2(was.X - player.X, was.Z - player.Z).Length() < BodyRadius(p) + Slice.Player.Survivor.Radius + 0.15f;
             float most = (onYou ? yourPace + PartPace : PartPace) * dt;
