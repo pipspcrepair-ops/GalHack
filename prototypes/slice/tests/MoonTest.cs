@@ -698,10 +698,11 @@ public partial class MoonTest : Node
         OrbitZone orbit = _game.Orbit;
         Vessel v = _skiff;
         Vector3 at = v.Body.Position.ToGodot();
-        Celestial next = orbit.Moons.Where(c => c != orbit.Moon).OrderBy(c => at.DistanceTo(c.Centre)).FirstOrDefault();
+        // Not a heavy one: a giant's moon can be any size (owner, 22 Nov), and the Skiff can't lift off 2.2 g or more.
+        Celestial next = orbit.Moons.Where(c => c != orbit.Moon && !c.Body.Spec.HighGravity).OrderBy(c => at.DistanceTo(c.Centre)).FirstOrDefault();
         if (next == null)
         {
-            GD.Print("  (no second moon to fly to: the thruster moon is this world's only one)");
+            GD.Print("  (no second moon to fly to: the thruster moon is this world's only light one)");
             yield break;
         }
         found(next);
