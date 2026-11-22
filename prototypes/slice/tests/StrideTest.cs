@@ -509,11 +509,11 @@ public partial class StrideTest : Node
             if (_shots != null)
             {
                 // A few shots over the first second of each, the camera on them every frame between (as they settle).
-                bool held = shotHeld != null && tick - heldShot is >= 0 and <= Shots, bumped = !held && shotBumped != null && tick - bumpShot is >= 0 and <= Shots;
-                if (held || bumped) Aim(town, held ? shotHeld : shotBumped, tick == heldShot || tick == bumpShot);
+                bool onHeld = shotHeld != null && tick - heldShot is >= 0 and <= Shots, onBumped = !onHeld && shotBumped != null && tick - bumpShot is >= 0 and <= Shots;
+                if (onHeld || onBumped) Aim(town, onHeld ? shotHeld : shotBumped, tick == heldShot || tick == bumpShot);
                 else if (_game.FixedCamera != null && _owed == 0) (_game.FixedCamera, _game.Visor.Visible) = (null, true);
-                if (held && (tick - heldShot) % 15 == 0) Capture(Path.Combine(_shots, $"held-{_round}-{tick - heldShot}.png"));
-                if (bumped && (tick - bumpShot) % 15 == 0) Capture(Path.Combine(_shots, $"bumped-{_round}-{tick - bumpShot}.png"));
+                if (onHeld && (tick - heldShot) % 15 == 0) Capture(Path.Combine(_shots, $"held-{_round}-{tick - heldShot}.png"));
+                if (onBumped && (tick - bumpShot) % 15 == 0) Capture(Path.Combine(_shots, $"bumped-{_round}-{tick - bumpShot}.png"));
             }
         }
         _timed = null;
