@@ -444,20 +444,21 @@ public partial class Spaceflight : Node
     // ---- Parking -------------------------------------------------------------------------------
 
     /// <summary>
-    /// A zone waits (ProcessMode, which takes its colliders out of the physics too) or runs again without one frame paying
-    /// for all of it: a hull of two thousand shapes cost 10 to 15 ms to take out or put back, and a crossing parks one zone
-    /// and wakes another. Its big branches (more than <see cref="ManyKids"/> children) go a frame or so each (see
-    /// <see cref="TurnGround"/>): parking, the branches first and the zone last; waking, the zone at once with its big
-    /// branches held back under it (which costs nothing while it is parked), and let go after.
+    /// A zone waits (ProcessMode, which takes its colliders out of the physics too) or runs again at once, without one
+    /// frame paying for all of it: a hull of two thousand shapes cost 10 to 15 ms to take out or put back, and a crossing
+    /// parks one zone and wakes another. Its big branches (more than <see cref="ManyKids"/> children) are held apart from
+    /// the zone's own mode for that moment, which costs nothing while their mode doesn't change, and follow it a frame or
+    /// so each after (see <see cref="TurnGround"/>): parking, they run on those few frames; waking, they wait them out.
     /// </summary>
     void Park(SurfaceZone zone)
     {
         foreach (Node c in Branches(zone))
         {
+            c.ProcessMode = ProcessModeEnum.Always; // as it was, under a running zone
             _held.Add(c);
             _modeTurns.Enqueue(() => { if (IsInstanceValid(c) && c.GetParent() == zone) c.ProcessMode = ProcessModeEnum.Disabled; });
         }
-        _modeTurns.Enqueue(() => zone.ProcessMode = ProcessModeEnum.Disabled);
+        zone.ProcessMode = ProcessModeEnum.Disabled;
     }
 
     void Run(SurfaceZone zone)
