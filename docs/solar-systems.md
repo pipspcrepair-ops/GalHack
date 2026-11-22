@@ -223,7 +223,7 @@ Roll each world's type from the zone table below, weighted by the rarity in worl
 
 - **Axial tilt:** 5° to 30° usually, rarely 60° to 98°. 20° or more allows the autumn-tilt type.
 - **Locking:** red dwarf 60% in Z1 to Z5, K 15% in Z1 to Z3, G and F 30% in Z1 only.
-- **Orbit plane:** planets within 3° of the system plane, moons within 5° of their parent's equator. So bodies rise along one narrow band of sky, and eclipses happen.
+- **Orbit plane (owner, 22 Nov: "moons don't necessarily orbit on the same plane, same with planets. Look out our solar system, it's not a flat plane"):** most planets within about 7° of the system plane, about 1 in 10 outer worlds up to 20°, the rare wanderer up to 40°. Moons within about 10 radii of their parent stay within a few degrees of its equator, so they share their parent's ring plane. Farther moons spread up to about 30°. About 1 in 10 far moons are captured, steeply inclined up to 90° or retrograde. (Was: planets within 3°, moons within 5° of the equator.)
 
 Then pick the system's notable feature, which the design says every system has. Use at most one of these system-level exceptions:
 
@@ -607,6 +607,7 @@ These replace anything above or in section 4 that disagrees with them.
    - Small bodies, such as dwarf planets and asteroids, can have rings too.
    - Rings don't last forever.
 13. **Names.** The drive between stars is the fold drive, and its fuel is fold fuel (fold crystal). It used to be called the hyperdrive (owner, 22 Nov). Any Flight structure can carry a warp drive or a fold drive if it fits it and can power it (owner, 22 Nov).
+13b. **Orbits aren't one flat plane.** Planets and moons tilt away from the system plane in the spread given under "Orbit plane" in section 4 (owner, 22 Nov).
 14. **Sky and water colour come from the air and the star.** A world's sky and water colours follow its air type, how thick its air is (from its size, item 2) and the colour of its star. One model serves the ground sky, the globe's air seen from space and the water, so they always agree. This builds on the 8 Nov palette rule: natural colours come only from the star, air, soil, minerals and life, never the theme. Reference the owner gave:
    - **Clear sky.** Starlight scattered by small gas molecules (Rayleigh, strongest for short wavelengths) makes the clear sky. Nitrogen and oxygen air under a sunlike star reads blue. Ozone deepens the blue at twilight.
    - **Haze.** Methane, carbon dioxide and haze shift a sky through grey towards orange, as on a young world before oxygen.
