@@ -829,8 +829,9 @@ void sky() {
 			vec3 spaced = max(clouded - (plain - night) * (1.0 - laid), vec3(0.0)) + (behind - night) * through_clouds;
 			col = mix(col, spaced, gone);
 		}
-		// Under the horizon the flat ground goes on, whatever the air over you.
-		if (dir.y < 0.0) col = mix(col, ground_seen(dir, sun, POSITION.y), smoothstep(0.0, -0.02, dir.y));
+		// Under the horizon the flat ground goes on, whatever the air over you, eased in under the haze
+		// along the horizon so no line is drawn there.
+		if (dir.y < 0.0) col = mix(col, ground_seen(dir, sun, POSITION.y), smoothstep(0.0, -0.1, dir.y));
 		COLOR = col;
 	}
 }
