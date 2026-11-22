@@ -127,15 +127,17 @@ public sealed partial class Town
 
     /// <summary>
     /// Whether something holds them up, by their real footing (their middle and four points round it): under the middle, or under
-    /// three of the rest. Held only by an edge, they go off it as they fall (<see cref="Down"/> passes such an edge by).
+    /// three of the rest, looked at from a hand clear of what they stand against (never held by the very edge of a wall they touch).
+    /// Held only by an edge, they go off it as they fall (<see cref="Down"/> passes such an edge by).
     /// </summary>
     bool Footed(Person p)
     {
         FallChecks++;
         FallRays += 5;
         int held = 0;
+        Vector3 at = p.Pos + OffWall(p) * 0.05f;
         for (int i = 0; i < 5; i++)
-            if (Top(p.Pos + Foot(p, i), 0.5f, FootSlack) is float)
+            if (Top(at + Foot(p, i), 0.5f, FootSlack) is float)
             {
                 if (i == 0) return true;
                 held++;
@@ -214,6 +216,9 @@ public sealed partial class Town
     void Down(Person p, float dt)
     {
         p.LastFallTime += dt;
+        // Held off what is beside them first (a step down eased off it slowly, a long fall a little more: 0.1 m a tick at most, never
+        // thrown), and looked under from there: never caught on the very edge of what they stood against.
+        OffSides(p, p.FallSpeed > 3f ? 2 : 1);
         FallRays += 5;
         float reach = p.FallSpeed * dt + 0.5f * Pull * dt * dt + 0.05f;
         // What they come down on holds them as standing does (Footed): under their middle, or under three of the rest; an edge
@@ -241,35 +246,41 @@ public sealed partial class Town
         float y = p.Pos.Y, speed = p.FallSpeed;
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
         p.Pos.Y = y;
-        // (Held off what is beside them, a step down eased off it slowly, a long fall or a landing by a step or a wall's foot a little
-        // more: 0.1 m a tick at most, never thrown.)
-        OffSides(p, down || speed > 3f ? 2 : 1);
         p.FallSpeed = speed;
-        if (down) Land(p, speed, wet);
+        if (!down) return;
+        OffSides(p, 1); // (landed by a step or a wall's foot: stood a little clear of it)
+        Land(p, speed, wet);
     }
 
     readonly CapsuleShape3D _body = new();
     PhysicsShapeQueryParameters3D _bodyQuery;
 
-    /// <summary>Falling past something beside them (a wall's top, a beam, the edge of the hole): held off it sideways, never through it.</summary>
-    void OffSides(Person p, int most = 2)
+    /// <summary>
+    /// The way out of what their body touches beside them (a wall's foot, the edge of the hole), flat and a unit; zero touching
+    /// nothing. (Out along the face it touches, turned away from where it touches if the two disagree.)
+    /// </summary>
+    Vector3 OffWall(Person p)
     {
         float r = BodyRadius(p), h = MathF.Max(2f * r, Height(p) - 0.25f);
         (_body.Radius, _body.Height) = (r, h);
         _bodyQuery ??= new PhysicsShapeQueryParameters3D { Shape = _body, CollisionMask = Layers.World | Layers.Hull | Layers.Interior };
-        var space = _view.GetWorld3D().DirectSpaceState;
-        for (int k = 0; k < most; k++) // (0.1 m a step at most falling: eased off it, never thrown)
+        _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
+        var rest = _view.GetWorld3D().DirectSpaceState.GetRestInfo(_bodyQuery);
+        if (rest.Count == 0) return Vector3.Zero;
+        Vector3 face = (Vector3)rest["normal"] with { Y = 0f }, away = (World(p.Pos) - (Vector3)rest["point"]) with { Y = 0f };
+        if (face.LengthSquared() < 1e-4f) face = away;
+        else if (away.LengthSquared() > 1e-4f && face.Dot(away) < 0f) face = -face;
+        return face.LengthSquared() < 1e-6f ? Vector3.Zero : face.Normalized();
+    }
+
+    /// <summary>Falling past something beside them (a wall's top, a beam, the edge of the hole): held off it sideways, never through it, never further than a metre from where they stood (held off it, not carried along it).</summary>
+    void OffSides(Person p, int most)
+    {
+        for (int k = 0; k < most; k++)
         {
-            _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
-            var rest = space.GetRestInfo(_bodyQuery);
-            if (rest.Count == 0) return;
-            // (Out along the face it touches, flat, turned away from where it touches if the two disagree; never further than a metre
-            // from where they stood: held off it, not carried along it.)
-            Vector3 face = (Vector3)rest["normal"] with { Y = 0f }, away = (World(p.Pos) - (Vector3)rest["point"]) with { Y = 0f };
-            if (face.LengthSquared() < 1e-4f) face = away;
-            else if (away.LengthSquared() > 1e-4f && face.Dot(away) < 0f) face = -face;
-            if (face.LengthSquared() < 1e-6f) return;
-            Vector3 next = p.Pos + face.Normalized() * 0.05f;
+            Vector3 away = OffWall(p);
+            if (away == Vector3.Zero) return;
+            Vector3 next = p.Pos + away * 0.05f;
             if (new Vector2(next.X - p.FirmAt.X, next.Z - p.FirmAt.Z).Length() > 1f) return;
             p.Pos = next;
         }
