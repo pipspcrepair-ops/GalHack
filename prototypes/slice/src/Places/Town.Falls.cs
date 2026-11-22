@@ -109,6 +109,15 @@ public sealed partial class Town
         return false;
     }
 
+    /// <summary>Whether the block under their feet is one that went (<see cref="Unfloored"/>): over a gap the colliders may not show yet.</summary>
+    bool OverGap(Person p)
+    {
+        PInt3 under = Cell(p.Pos) + PInt3.Down;
+        if (!Memory.Inst.Blocks.InBounds(under) || !Memory.Inst.Blocks.Get(under).IsAir || _nav.RampAt(under + PInt3.Up, out _) || Ground(p.Pos) is float g && MathF.Abs(p.Pos.Y - g) < FootSlack) return false;
+        foreach (Aabb box in _gone) if (box.HasPoint(p.Pos)) return true;
+        return false;
+    }
+
     /// <summary>The top of what is solid under a point (the place's frame), from <paramref name="above"/> over it to <paramref name="below"/> under it; null with nothing (or nothing built to tell).</summary>
     float? Top(Vector3 local, float above, float below)
     {
@@ -172,11 +181,11 @@ public sealed partial class Town
                 // (The place's colliders a moment behind its blocks: looked under once they have caught up; a few a tick at most, the rest the next.)
                 // (Those something went from under are looked at every step; the sweep's and a walker's missing floor, one a step.)
                 if (p.CheckFor <= 0f || p.Clambering && p.ClimbTo != null || p.CheckFor < Pressing && _looks >= LooksATick) return false; // (held to a wall climbing out: not looked under)
-                // (The colliders still catching up with the blocks: where the blocks show nothing under them, held there a moment, not
+                // (The colliders still catching up with the blocks: over a block that went, held there a moment, not
                 // walked on over the gap on the old floor; looked under once the colliders have it.)
                 if (_staleFor > 0f)
                 {
-                    if (!AsBuilt(p)) p.Now = 0f;
+                    if (OverGap(p)) p.Now = 0f;
                     if (_staleFor < StaleWait) return false;
                 }
                 if (p.CheckFor < Pressing) _looks++;
