@@ -27,6 +27,7 @@ uniform vec3 star_color : source_color;
 uniform float sun_energy = 1.3;
 uniform float density = 1.0;
 uniform vec3 far_ground : source_color = vec3(0.3); // the world's ground on average, as its globe paints it (SkyRig.SetWorld)
+uniform vec4 ground_fog = vec4(0.5, 0.5, 0.5, 0.0);  // the haze over the land: its colour and density (the land's fog as set; a game sets it)
 uniform float stars_by_day = 0.0;
 uniform mat3 star_turn = mat3(1.0);   // world directions into the galaxy catalogue's
 uniform float overcast = 0.0;          // weather greying the whole sky
@@ -96,10 +97,14 @@ float sun_air(float sun_h) {
 	return 0.45 + 0.55 * smoothstep(0.02, 0.3, sun_h);
 }
 
-// The far ground as the sun and the sky light it: the land's own Burley-lit look, near enough at that distance.
-vec3 ground_lit(vec3 sun) {
+// The flat ground going on past the land's reach (TerrainStreamer.LandReach), seen along a ray down
+// from an eye this high: the world's own ground lit as the land is, hazed by the air between as the
+// land's fog hazes the land, so the land thins away into it with no line.
+vec3 ground_seen(vec3 dir, vec3 sun, float eye) {
 	float day = smoothstep(-0.2, 0.15, sun.y) * (0.04 + 0.96 * sun_lit);
-	return far_ground * (sun_energy * max(sun.y, 0.0) * sun_air(sun.y) * day + zenith_day * 0.35 * day + zenith_night * 0.5);
+	vec3 lit = far_ground * (sun_energy * max(sun.y, 0.0) * sun_air(sun.y) * day + zenith_day * 0.35 * day + zenith_night * 0.5);
+	float away = max(eye, 1.0) / max(-dir.y, 1e-4);
+	return mix(lit, ground_fog.rgb, 1.0 - exp(-ground_fog.a * away));
 }
 
 vec3 sky_color(vec3 dir, vec3 sun) {
@@ -132,12 +137,8 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	vec3 halo = mix(sunset, star_color, smoothstep(0.03, 0.38, sun_h));
 	col += halo * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5 * sun_through * sun_through) * day * density;
 
-	// Below the horizon: the flat ground going on past the land's reach (TerrainStreamer.LandReach),
-	// the world's own ground lit as the land is, deep in the haze toward the horizon.
-	if (up < 0.0) {
-		float far = exp(up * 40.0 / max(density, 0.05)) * min(density, 1.0);
-		col = mix(col, mix(ground_lit(sun), hor, far), clamp(-up * 30.0, 0.0, 1.0));
-	}
+	// Below the horizon: the haze, darker downward.
+	if (up < 0.0) col = mix(col, haze * bright * day * 0.55 + zenith_night, clamp(-up * 6.0, 0.0, 1.0));
 	return col;
 }
 
@@ -827,9 +828,9 @@ void sky() {
 			vec3 behind = space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS) * (1.0 - solid.a) + solid.rgb;
 			vec3 spaced = max(clouded - (plain - night) * (1.0 - laid), vec3(0.0)) + (behind - night) * through_clouds;
 			col = mix(col, spaced, gone);
-			// Under the horizon the flat ground goes on, its haze going with the air.
-			col = mix(col, ground_lit(sun), gone * smoothstep(0.0, -0.02, dir.y));
 		}
+		// Under the horizon the flat ground goes on, whatever the air over you.
+		if (dir.y < 0.0) col = mix(col, ground_seen(dir, sun, POSITION.y), smoothstep(0.0, -0.02, dir.y));
 		COLOR = col;
 	}
 }

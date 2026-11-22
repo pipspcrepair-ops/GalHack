@@ -178,7 +178,7 @@ public partial class Globe : Node3D
         uniform vec3 map_up = vec3(0.0, 1.0, 0.0);
         uniform vec3 map_east = vec3(1.0, 0.0, 0.0);
         uniform vec3 map_south = vec3(0.0, 0.0, 1.0);
-        uniform vec3 centre = vec3(0.0);
+        uniform vec3 body_centre = vec3(0.0);
         uniform vec2 map_size = vec2(16000.0, 8000.0);
         uniform vec2 nadir = vec2(0.0);
         uniform float radius = 2546.0;
@@ -303,6 +303,7 @@ public partial class Globe : Node3D
         uniform float day_glow = 0.6;
         uniform float night_glow = 1.6;
         uniform float relief = 1.0;
+        uniform sampler2D grain : filter_linear_mipmap, repeat_enable;
         {{GridCode}}
         {{Paint}}
         {{UmbraCode}}
@@ -338,14 +339,21 @@ public partial class Globe : Node3D
             vec3 along = t * cos(a) - eye_up * sin(a), across = cross(eye_up, t);
             vec3 east = along * dot(eye_east, t) + across * dot(eye_east, across);
             vec3 south = along * dot(eye_south, t) + across * dot(eye_south, across);
-            VERTEX = centre + n * (radius + e);
+            VERTEX = body_centre + n * (radius + e);
             NORMAL = normalize(n - (east * (ex - e) + south * (ez - e)) / step_m);
         }
         void fragment() {
             MapPoint m = map_point(offset);
             vec4 a = paint(albedo_map, m);
             vec3 rn = normalize(round_normal);
-            ALBEDO = a.rgb * sunlight_at(rn, sun_dir);
+            // The ground's own grain, finer than its map holds (the land's patches of growth, scree and soil),
+            // at two scales, each fading out as a pixel comes to cover it, so it never shimmers.
+            vec2 at = (m.under > 0.5 ? m.under_uv : m.uv) * map_size;
+            float metres = length(fwidth(at));
+            vec2 fine = at / 23.0, broad = at / 97.0;
+            float g = (textureGrad(grain, fine, dFdx(fine), dFdy(fine)).r - 0.5) * (1.0 - smoothstep(3.0, 20.0, metres))
+                + (textureGrad(grain, broad, dFdx(broad), dFdy(broad)).r - 0.5) * (1.0 - smoothstep(12.0, 80.0, metres));
+            ALBEDO = a.rgb * (1.0 + 0.4 * g * (1.0 - a.a)) * sunlight_at(rn, sun_dir);
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(rn, sun_dir));
@@ -513,7 +521,7 @@ public partial class Globe : Node3D
             offset = VERTEX.xz * s;
             vec3 n = sphere_normal(s, t);
             round_normal = n;
-            VERTEX = centre + n * (radius + cloud_lift);
+            VERTEX = body_centre + n * (radius + cloud_lift);
             NORMAL = n;
         }
         void fragment() {
@@ -683,6 +691,7 @@ public partial class Globe : Node3D
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_map"), ImageTexture.CreateFromImage(paint.Glow));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("lights_map"), ImageTexture.CreateFromImage(paint.Lights));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("grain"), Grain);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("day_glow"), look.LiquidGlow > 0 ? 0.9f : 0.5f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_glow"), look.GlowingNights ? 2.5f : 1.4f);
         AddChild(Instance("Ground", grid, _ground));
@@ -718,10 +727,20 @@ public partial class Globe : Node3D
     /// <summary>How far along the sphere the grid reaches, m: out to the limb and a little past it, for the back of the sphere is never in view.</summary>
     public static float RimOf(float radius, float height) => radius * MathF.Acos(radius / (radius + height + 700f)) * 1.04f;
 
+    /// <summary>How far off an eye at a height is, 0 to 1: near the ground (what you land on, at its true heights, seen through little air) to far off.</summary>
+    float Away(float height) => Smooth((height - TrueHeightUnder) / (3f * Radius));
+
     /// <summary>How far the relief and cloud deck stand up at a height, 0 to 1: all of it near the ground, the far share far off.</summary>
-    public float Lie(float height) => Mathf.Lerp(1f, _reliefFar, Smooth((height - TrueHeightUnder) / (3f * Radius)));
+    public float Lie(float height) => Mathf.Lerp(1f, _reliefFar, Away(height));
 
     static readonly Aabb Everywhere = new(new Vector3(-1e6f, -1e6f, -1e6f), new Vector3(2e6f, 2e6f, 2e6f));
+
+    /// <summary>The ground's grain, one tile for every globe (generated, seamless).</summary>
+    static readonly NoiseTexture2D Grain = new()
+    {
+        Width = 256, Height = 256, Seamless = true, GenerateMipmaps = true,
+        Noise = new FastNoiseLite { Seed = 11, Frequency = 0.02f, FractalOctaves = 4, NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex },
+    };
 
     /// <summary>The ring stands in the globe's frame.</summary>
     public void PlaceRing(Transform3D globe)
@@ -751,7 +770,7 @@ public partial class Globe : Node3D
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_up"), MathX.Rotate(map, N.Vector3.UnitY).ToGodot());
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_east"), MathX.Rotate(map, N.Vector3.UnitX).ToGodot());
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_south"), MathX.Rotate(map, N.Vector3.UnitZ).ToGodot());
-            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("centre"), v.Centre);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("body_centre"), v.Centre);
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("nadir"), new Vector2((float)gx, (float)gz));
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("height"), height);
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), RimOf(Radius, height));
@@ -770,7 +789,8 @@ public partial class Globe : Node3D
             _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), _ringBasis.Y.Normalized());
         }
         foreach (ShaderMaterial m in _byRay) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("globe_centre"), v.Centre);
-        _airMesh.Visible = Air(_air, (v.Eye - v.Centre).Normalized(), Radius, _airThickness, height, v.Rim, v.ToSun);
+        // Close over the ground you look down through little air: the rim of it shows as you draw away.
+        _airMesh.Visible = Air(_air, (v.Eye - v.Centre).Normalized(), Radius, _airThickness, height, v.Rim * Away(height), v.ToSun);
     }
 
     static float Smooth(float t)

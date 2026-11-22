@@ -27,7 +27,7 @@ uniform vec3 glow_color : source_color = vec3(1.0, 0.32, 0.06);
 uniform float glow_strength = 3.0;
 uniform vec3 dust_color : source_color = vec3(0.62, 0.5, 0.36);
 
-uniform vec2 reach = vec2(0.0);  // the far land thins away past half the map round the eye: see past_reach
+uniform vec2 land_reach = vec2(0.0);  // the far land thins away past half the map round the eye: see past_reach
 
 // The roads, as segments (RoadField.cs): the nearest one to a pixel paints it, from its exact distance.
 uniform sampler2D road_segments : filter_nearest;
@@ -938,7 +938,7 @@ void vertex() {
 void fragment() {
 	far_sun = far_lit(wpos, CAMERA_POSITION_WORLD);
 	if (far_ring && inside_hole(wpos.xz) > hole_cut) discard;
-	if (far_ring && past_reach(wpos.xz - CAMERA_POSITION_WORLD.xz, reach, FRAGCOORD.xy)) discard;
+	if (far_ring && past_reach(wpos.xz - CAMERA_POSITION_WORLD.xz, land_reach, FRAGCOORD.xy)) discard;
 
 	vec3 base = srgb_to_linear(COLOR.rgb);
 	float up = wnormal.y;

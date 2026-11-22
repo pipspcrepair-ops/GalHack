@@ -32,7 +32,7 @@ namespace Slice.Orbit;
 public partial class Spaceflight
 {
     ShaderMaterial _sky;
-    float _fogDensity, _fogHeight, _fogScatter, _fogSky, _ambient;
+    float _fogDensity, _fogHeight, _fogSky, _ambient;
     bool _aligned, _streaming;
 
     /// <summary>How far the air has thinned away where you are, 0 to 1 (all of it in space).</summary>
@@ -180,14 +180,13 @@ public partial class Spaceflight
         Godot.Environment env = s.Sky.Environment;
         _fogDensity = env.FogDensity;
         _fogHeight = env.FogHeightDensity;
-        _fogScatter = env.FogSunScatter;
         _fogSky = env.FogSkyAffect;
         _ambient = env.AmbientLightEnergy;
         Vessel carrier = Carrier();
         Vector3 p = carrier != null ? carrier.Body.Position.ToGodot() : Game.Survivor.WorldFeet;
         AirGone = AirGoneAt(p.Y);
         if (Orbit != null && AirGone > 0f) SkyTurn();
-        if (AirGone > 0f || _sky != null) SetSurfaceAir(AirGone);
+        SetSurfaceAir(AirGone);
     }
 
     /// <summary>Tells the surface's sky how space's backdrop stands: it hangs in the system's own frame, as the star field does.</summary>
@@ -198,16 +197,20 @@ public partial class Spaceflight
         _sky.SetShaderParameter("space_sun", Below.Sky.StarInField);
     }
 
-    /// <summary>The air gone from the surface's sky: its colour into space's, its haze, its share of the light on your hull.</summary>
+    /// <summary>
+    /// The air gone over you: the sky's colour into space's, the fog over the sky and the height fog
+    /// round your hull, its share of the light on your hull. The land below is still seen through
+    /// the air under you, hazed as it was, and the sky's far ground past it with it.
+    /// </summary>
     void SetSurfaceAir(float gone)
     {
         SurfaceZone s = Below;
         Godot.Environment env = s.Sky.Environment;
         _sky ??= env.Sky.SkyMaterial as ShaderMaterial;
         _sky.SetShaderParameter("space_fade", gone);
-        env.FogDensity = _fogDensity * (1f - gone);
+        Color fog = env.FogLightColor;
+        _sky.SetShaderParameter("ground_fog", new Vector4(fog.R, fog.G, fog.B, _fogDensity));
         env.FogHeightDensity = _fogHeight * (1f - gone);
-        env.FogSunScatter = _fogScatter * (1f - gone);
         env.FogSkyAffect = _fogSky * (1f - gone);
         env.AmbientLightEnergy = _ambient * (1f - gone) + Rules.Space.Ambient[1] * gone;
     }

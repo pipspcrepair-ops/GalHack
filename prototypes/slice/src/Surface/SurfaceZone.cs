@@ -251,7 +251,7 @@ public partial class SurfaceZone : Node3D
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         foreach (string part in Streamer.Setting(Planet, landing, _riverMaterial = WaterMaterial(sea: false))) yield return part;
         Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
-        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), Streamer.LandReach); // the sea ends where the land does
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("land_reach"), Streamer.LandReach); // the sea ends where the land does
         yield return "sea";
         Sky.SetWorld(Planet, SkySurfaces);
         yield return "sky";

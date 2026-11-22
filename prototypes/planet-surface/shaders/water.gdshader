@@ -25,7 +25,7 @@ uniform bool lava = false;
 uniform float glow = 0.0;
 uniform float daylight = 1.0;   // how lit the underside is from above
 uniform float rain = 0.0;       // what's falling where the camera is
-uniform vec2 reach = vec2(0.0);  // the sea ends where the land does: see past_reach
+uniform vec2 land_reach = vec2(0.0);  // the sea ends where the land does: see past_reach
 
 varying vec3 wpos;
 varying float level;   // the surface's own height, before it sinks over the horizon
@@ -71,7 +71,7 @@ void vertex() {
 }
 
 void fragment() {
-	if (past_reach(wpos.xz - CAMERA_POSITION_WORLD.xz, reach, FRAGCOORD.xy)) discard;
+	if (past_reach(wpos.xz - CAMERA_POSITION_WORLD.xz, land_reach, FRAGCOORD.xy)) discard;
 	float below = texture(sea_map, wpos.xz / planet_size).r;
 	float depth;
 	if (sea) {

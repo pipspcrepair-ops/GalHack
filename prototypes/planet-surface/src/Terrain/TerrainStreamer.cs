@@ -267,7 +267,7 @@ public partial class TerrainStreamer : Node3D
         yield return "far ground material";
         _horizonMaterial = TerrainMaterial(far: true);
         LandReach = ReachOn(world.Width, world.Height);
-        foreach (ShaderMaterial m in new[] { FarMaterial, _horizonMaterial }) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), LandReach);
+        foreach (ShaderMaterial m in new[] { FarMaterial, _horizonMaterial }) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("land_reach"), LandReach);
         // Inside the square the far rings cover, the horizon's vertices a whole grid step or more in
         // drop far below any ground, so its triangles across the square's edge become walls diving
         // under the far rings: where the horizon is higher than the rings' edge, the wall fills the
