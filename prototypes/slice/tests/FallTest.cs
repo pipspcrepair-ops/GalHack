@@ -223,7 +223,7 @@ public partial class FallTest : Node
         used.Add(who);
         float drop = DropUnder(town, who.Pos);
         GD.Print($"  -- the floor broken under one {what} ({who.Job}, {drop:F1} m down to what is under the floor) --");
-        Break(place, who.Pos, what is "walking" or "asleep in bed" ? 2 : 1); // (one walking may be a stride on by the time it goes, and a bed is long: wider under them)
+        Break(place, who.Pos, what is "walking" or "sitting" or "asleep in bed" ? 2 : 1); // (one walking may be a stride on by the time it goes, a seat or a bed stands wider than them: wider under them)
         foreach (int x in Watch(town, who, what, shots)) yield return x;
     }
 
@@ -668,13 +668,14 @@ public partial class FallTest : Node
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell ({h:F2} m)");
         if (start >= 0 && end >= 0 && h > 0.3f) _proven.Add(kind);
         // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
-        Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : who.StepEvery + 0.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
+        bool setOn = who.ProvokedAt != provoked && who.ProvokedBy != null; // (set on meanwhile, a hazard's blast by the hole: its fall and its hurt are not the fall's own)
+        if (!setOn) Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : who.StepEvery + 0.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
         // (On the land a creature stands on the ground as dug, by the metre.)
         // (A body wider than the hole stands on its rim, on three of its feet: Locomotion.Footing.)
         float feet = who.Space == null ? patch.FromPatch(who.Position with { Y = Footing(patch.Sim, who) }).Y : float.NaN;
         Check(float.IsNaN(ground) || MathF.Abs(w.Y - ground) < 0.35f || MathF.Abs(w.Y - feet) < 0.35f && feet >= ground, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2}, its feet' footing {feet:F2})");
         // (Set on by something meanwhile, its hurt is not the fall's: told, not judged.)
-        if (who.ProvokedAt != provoked && who.ProvokedBy != null) GD.Print($"    ({what} was set on by {who.ProvokedBy} meanwhile: its hurt not judged)");
+        if (setOn) GD.Print($"    ({what} was set on by {who.ProvokedBy} meanwhile: its fall's time and hurt not judged)");
         else Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
         Vector3 at = who.Position;
         float moved = 0f;

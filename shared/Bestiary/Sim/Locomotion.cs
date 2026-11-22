@@ -117,6 +117,12 @@ public static class Locomotion
         return MathF.Max(h, MathF.Min(MathF.Max(lowA, lowB), MathF.Min(highA, highB)));
     }
 
+    /// <summary>The ground under it changed (dug, blasted): looked under now, asleep or not; with nothing under its feet it falls (and so is stepped till down).</summary>
+    public static void LookUnder(WildSim w, Creature c)
+    {
+        if (c.Space == null && !c.Dead && !c.Thrown) Unfooted(w, c);
+    }
+
     /// <summary>
     /// Nothing under its feet (the ground dug or blasted away from under it): anything that walks, crawls or stands, and a flier
     /// standing on the ground, falls. Its feet are on the ground after every step, so only the ground changing finds this.

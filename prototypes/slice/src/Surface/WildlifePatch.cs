@@ -626,6 +626,8 @@ public partial class WildlifePatch : Node3D
             (lo, hi) = (lo.Min(at), hi.Max(at + new Vector3(1f, 0f, 1f)));
         }
         Reground(lo, hi);
+        foreach (Creature c in Sim.Creatures)
+            if (c.Position.X > lo.X - 3f && c.Position.X < hi.X + 3f && c.Position.Z > lo.Z - 3f && c.Position.Z < hi.Z + 3f) Locomotion.LookUnder(Sim, c);
     }
 
     /// <summary>
