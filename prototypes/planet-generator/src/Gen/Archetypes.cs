@@ -318,7 +318,7 @@ public static class Archetypes
             LandMin = 1f, LandMax = 1f,
             ContinentScale = 0.45f, ContinentAmp = 130f, MountainHeight = 140f, SummitHeight = 0f, MountainWavelength = 1700f, RidgeSharpness = 1.1f,
             HillHeight = 30f, HillWavelength = 1400f, HillOctaves = 3, Roughness = 0.3f,
-            CraterSpacing = 2000f, CraterRelief = 0.65f, MareBury = 0.6f, RilleDepth = 9f, RilleWidth = 26f, RilleWavelength = 2800f, RilleWarp = 0.04f, WrinkleHeight = 6f,
+            CraterSpacing = 2000f, CraterRelief = 0.65f, MareBury = 0.25f, RilleDepth = 9f, RilleWidth = 26f, RilleWavelength = 2800f, RilleWarp = 0.04f, WrinkleHeight = 6f,
             RiverArea = 1e9f, Rain = 0f, BaseTemperature = 0.04f, LatitudeRange = 0.2f, BaseHumidity = 0f, RiverbankBiome = Biome.Frost,
             Hazard = "vacuum, extreme cold, cracking ice", Resources = "water ice, ammonia, cobalt", Signature = DepositKind.Water,
             Landforms = Odds((Landform.IcePlain, 4f), (Landform.Plains, 1.5f), (Landform.Hills, 1.2f)),
