@@ -1524,7 +1524,7 @@ GalHack is built in Godot 4 with C#, by a team of AI agents directed by a human 
 | Area | Choice | Why |
 | --- | --- | --- |
 | Engine | Godot 4, .NET build, pinned to one version; C# for all game code | Scenes and resources are short text files that diff and merge cleanly; everything runs from the command line; open source; no licence activation; light on low-end PCs |
-| Rendering | Mobile renderer by default, Compatibility renderer as the fallback for very old GPUs; mostly baked or simple lighting; no heavy post-processing | The Foss style (bold flat colour, decals, chunky silhouettes) is cheap to draw |
+| Rendering | Forward+ renderer (owner, 22 Nov 2026; was Mobile), Compatibility renderer as the fallback for very old GPUs; mostly simple lighting; screen-space effects (SSAO, SSIL, SSR, SDFGI) off by default, 1.6 to 2.9 ms each; volumetric fog available (about 0.4 ms) | The Foss style (bold flat colour, decals, chunky silhouettes) is cheap to draw |
 | Multiplayer | Host co-op over Steam for one group of friends, plus an optional always-on server the group runs itself. No matchmaking, anti-cheat or public server browser. The host owns the world; each player's own movement and shots are trusted | It's a game for friends, not a public service, so trust keeps play smooth and the code simple |
 | Large worlds | Floating origin per playfield, plus ship-local frames for interiors | Keeps standard-precision maths accurate across a 64 km planet without a custom engine build |
 | Engine changes | None; a custom engine build only if profiling proves it's needed | No engine to maintain |
