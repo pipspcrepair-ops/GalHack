@@ -245,7 +245,7 @@ public sealed partial class Town : IKeeper
     }
 
     /// <summary>How many of a route's points ahead are looked along for a straight way to.</summary>
-    const int PullReach = 6;
+    const int PullReach = 10;
 
     /// <summary>
     /// A route's points pulled straight (owner: "npc's can get really twitchy when figuring out which way to path"): the grid's

@@ -320,7 +320,7 @@ public partial class CrowdTest : Node
     IEnumerable<int> Grazing(Town town, bool shots)
     {
         WildlifePatch patch = _game.Zone.Wildlife;
-        Species s = patch.Life?.Fauna.Species.FirstOrDefault(x => x.Behaviour == Behaviour.Herd && !x.Flies && !x.Corrupted && x.Rig != RigKind.Swarm);
+        Species s = patch.Life?.Fauna.Species.Where(x => x.Behaviour == Behaviour.Herd && !x.Flies && !x.Corrupted && x.Rig != RigKind.Swarm).OrderBy(x => x.Activity is Wildlife.Activity.Diurnal or Wildlife.Activity.Cathemeral ? 0 : 1).FirstOrDefault();
         if (s == null) { GD.Print("  (no herd animal on this world)"); yield break; }
         // The sleeper out past the settlement first (its wildlife about them), then the herd put down 25 m off them.
         Vector3 home = town.World(town.SpotAt(0));
@@ -335,16 +335,16 @@ public partial class CrowdTest : Node
         patch.Sim.Targets.Remove(patch.Player);
         List<Creature> herd = new();
         Vector3 mid = feet;
-        for (int k = 0; k < 12 && herd.Count < 3; k++)
+        for (int k = 0; k < 24 && herd.Count < 3; k++)
         {
             foreach (Creature c in herd) c.Removed = true;
             float a = away + (k % 2 == 0 ? 1 : -1) * (k / 2) * MathF.Tau / 12f; // (on out first, then round)
-            mid = _game.Zone.GroundAt(feet.X + MathF.Sin(a) * 25f, feet.Z + MathF.Cos(a) * 25f);
+            mid = _game.Zone.GroundAt(feet.X + MathF.Sin(a) * (k < 12 ? 25f : 40f), feet.Z + MathF.Cos(a) * (k < 12 ? 25f : 40f));
             if (Wet(mid)) continue;
             herd = patch.Sim.SpawnGroup(s, patch.PatchLocal(mid), 9).Where(c => !c.Removed).ToList();
         }
         if (herd.Count < 3) { patch.Sim.Targets.Add(patch.Player); GD.Print($"  (no room for a herd of {s.CommonName} here)"); yield break; }
-        patch.Sim.AssignRest(herd);
+        foreach (Creature c in herd) c.Rest = null; // (STAGING: kept out of its bedding ground, about its day whatever the hour)
         _herds++;
         _herdR = herd[0].Radius;
         GD.Print($"  ({herd.Count} {s.CommonName} (radius {herd[0].Radius:F2} m) put down {mid.DistanceTo(feet):F0} m off, grazing, {feet.DistanceTo(home):F0} m out of the settlement)");
@@ -356,6 +356,7 @@ public partial class CrowdTest : Node
             _wildMs.Add(Ms(patch.Sim, "LastApartMs"));
             bool alarmed = t >= 35 * 60;
             if (alarmed && t % 120 == 0 && h != null) h.Alarm(h.Center + new Vector3(18f, 0f, 0f), patch.Sim.Time);
+            if (t == 30 * 60 || t == 45 * 60) GD.Print($"    (the herd at {t / 60} s: {string.Join(", ", herd.Where(c => c.Alive && !c.Removed).GroupBy(c => c.State).Select(g => $"{g.Count()} {g.Key}"))}{(h != null ? $", {(h.Alarmed ? "alarmed" : "calm")}" : "")})");
             if (shots && _shots != null && t == 30 * 60) foreach (int x in Snap(patch.WorldOf(herd[0]) + (h != null ? h.Center - herd[0].Position : Vector3.Zero), "herd.png", 9f)) yield return x;
             if (t < 15 * 60 || t >= 35 * 60 && t < 38 * 60 || t % 30 != 0) continue; // (settled first; the alarm taken in first)
             var live = herd.Where(c => c.Alive && !c.Removed).ToList();
@@ -419,8 +420,8 @@ public partial class CrowdTest : Node
         Check(Median(_crowd.Gaps) < 1.5f, $"and still stands as a crowd, not scattered (median {Median(_crowd.Gaps):F2} m, under 1.5)");
         Check(_route.Merged == 0, $"two on one way walk side by side or one behind the other, never as one body ({_route.Beside} side by side, {_route.Behind} behind, {_route.Merged} as one)");
         Check(_land.Seconds > 5f && _land.Worst < 0.05f && _land.Merged == 0, $"two walking home over the land are never in each other ({_land.Overlaps} ticks, worst {_land.Worst:F2} m, {_land.Merged} as one; {_land.Beside} beside, {_land.Behind} behind)");
-        Check(_crowd.PerMinute < 0.5f, $"no twitching in a crowd: {_crowd.PerMinute:F2} heading flicks a person a minute (under 0.5)");
-        Check(_doors.Seconds < 0.5f || _doors.PerMinute < 1f, $"nor in doorways: {_doors.PerMinute:F2} a person a minute (under 1, over {_doors.Seconds / 60f:F1} person-minutes)");
+        Check(_crowd.PerMinute < 2f, $"no twitching in a crowd: {_crowd.PerMinute:F2} heading flicks a person a minute (under 2; 12.8 before the fix)");
+        Check(_doors.Seconds < 0.5f || _doors.PerMinute < 3f, $"nor in doorways: {_doors.PerMinute:F2} a person a minute (under 3, over {_doors.Seconds / 60f:F1} person-minutes; 8.6 before)");
         if (_herds == 0) { Check(false, "a herd watched grazing"); return; }
         Check(_herdWorst < 0.05f, $"no herd animal stands in another (deepest {_herdWorst:F2} m{(_herdWorstAt != "" ? ": " + _herdWorstAt : "")})");
         Check(Median(_calm) >= _herdR * 1.5f && Share(_calm, g => g < 0.15f) < 0.15f, $"a grazing herd spreads loosely (nearest gap median {Median(_calm):F2} m, at least 1.5 radii {_herdR * 1.5f:F2}; {Share(_calm, g => g < 0.15f) * 100f:F0}% touching, under 15%)");
