@@ -372,6 +372,7 @@ public partial class Spaceflight
         float cap = Ceiling, R = o.GlobeRadius;
         // The weather it shows: often while its clouds are in sight, now and then while they're under the sky's own.
         o.Globe.Weather?.Update(_frameDelta, s.Weather?.Sim, s.Sky, s.Planet.Look.Dust, orbit || y > s.Sky.Air.CloudBase ? GlobeWeather.LeastPeriod : 15.0);
+        Lap("globe weather");
         double w = s.Planet.Width, h = s.Planet.Height;
 
         // Where the sheet stands: under you on the flat map, turning into under you on the globe up the band.
@@ -395,6 +396,7 @@ public partial class Spaceflight
         N.Quaternion map = o.Map.Frame(nx, nz);
         // Low over it, as far up as a descent streams the ground ahead, the ground under you is painted finer.
         if (y < cap + r.Band * r.StreamAhead) o.Globe.Near(nx, nz);
+        Lap("near ground");
 
         // What stands in front of what. It looks the same wherever it stands on its eye rays.
         float over = OverLand(y), near, far;

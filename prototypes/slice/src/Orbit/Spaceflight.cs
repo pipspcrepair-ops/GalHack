@@ -334,13 +334,15 @@ public partial class Spaceflight : Node
         _aligned = true;
         HoldSurfaceBehind();
         string laid = Ms(watch);
-        Wake(to);
+        to.ProcessMode = ProcessModeEnum.Inherit;
         string woken = Ms(watch);
+        to.Visible = true;
+        string shown = Ms(watch);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
         string moved = Ms(watch);
         from.ProcessMode = ProcessModeEnum.Disabled; // the surface waits, exactly as it was left (still on screen: the seam)
-        GD.Print($"[crossing up, ms in all by: laid out {laid}, orbit woken {woken}, moved {moved}, surface parked {Ms(watch)}]");
+        GD.Print($"[crossing up, ms in all by: laid out {laid}, orbit woken {woken}, shown {shown}, moved {moved}, surface parked {Ms(watch)}]");
         _surfaceFar = g.Camera.Far;
         if (from == g.Surface) _surfaceAir ??= g.Suit.Sim.Environment;
         g.Suit.Sim.Environment = Vacuum;
@@ -406,8 +408,10 @@ public partial class Spaceflight : Node
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
         string moved = Ms(watch);
-        Park(from); // orbit waits, wrecks as you left them
-        GD.Print($"[crossing down, ms in all by: surface shown {shown}, woken {woken}, moved {moved}, orbit parked {Ms(watch)}]");
+        from.ProcessMode = ProcessModeEnum.Disabled; // orbit waits, wrecks as you left them
+        string stilled = Ms(watch);
+        from.Visible = false;
+        GD.Print($"[crossing down, ms in all by: surface shown {shown}, woken {woken}, moved {moved}, orbit stilled {stilled}, hidden {Ms(watch)}]");
         _aligned = false;
         if (to == g.Surface)
         {
@@ -438,12 +442,6 @@ public partial class Spaceflight : Node
     {
         zone.ProcessMode = ProcessModeEnum.Inherit;
         zone.Visible = true;
-    }
-
-    static void Park(SurfaceZone zone)
-    {
-        zone.ProcessMode = ProcessModeEnum.Disabled;
-        zone.Visible = false;
     }
 
     // ---- The record, and the crossing's report -------------------------------------------------

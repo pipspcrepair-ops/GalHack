@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -42,7 +42,7 @@ namespace Slice.Tests;
 /// moon, and back over the start world, each time over the same place it first came down on, so
 /// each loop's ground is the same and its figures can be laid against the first loop's.
 ///
-/// Run windowed it is also the climb's timing: full screen, vsync, the owner's settings (--settings=path)
+/// Run windowed it is also the climb's timing: in its window, vsync, the owner's settings (--settings=path)
 /// or the minimum spec's stand-in (--minspec=1: 4 cores, workers sized for 4, the lowest graphics); each
 /// frame's wall, main-thread CPU and GPU time by phase (on a surface, climbing, at the switch, in orbit,
 /// coming down toward a globe), and the threads' share of the run. And it takes a picture of each globe
@@ -93,7 +93,6 @@ public partial class RoundTripTest : Node
         }
         if (Windowed)
         {
-            DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
             DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
             RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
         }
@@ -160,8 +159,8 @@ public partial class RoundTripTest : Node
 
     // ---- Clouds past a cap ------------------------------------------------------------------------
 
-    /// <summary>A thin layer on a globe: within this share of its radius.</summary>
-    const float Thin = 0.03f;
+    /// <summary>A thin layer on a globe: within this share of its radius (batch2's air stood 15 % of it off the ground, its clouds a third).</summary>
+    const float Thin = 0.05f;
 
     int _cloudFrames, _pastCap;
     string _firstCloud;
@@ -470,9 +469,11 @@ public partial class RoundTripTest : Node
         OrbitZone orbit = _game.Orbit;
         if (!_game.InOrbit)
         {
-            // From a surface, the sky draws every other body in its own far look, painted (a headless run paints none).
+            // From a surface, the sky draws every other body in its own far look, painted (a headless run paints none); the
+            // only globe drawn is the one under you, as the far land past its own.
             SkyRig sky = _game.Zone.Sky;
-            Check(orbit.Bodies.All(c => c.Globe == null || !c.Globe.Visible), $"{step}: no globe drawn from the ground");
+            var others = orbit.Bodies.Where(c => c.Globe != null && c.Globe.Visible && c.Surface != _game.Zone).Select(c => c.Name).ToList();
+            Check(others.Count == 0, $"{step}: no other body's globe drawn from the ground{(others.Count > 0 ? ": " + string.Join(", ", others) : "")}");
             if (!Windowed) return;
             var plain = sky.Drawn.Where(d => d.Body.Spec != null && sky.Surfaces.LayerOf(d.Body) < 0).Select(d => d.Body.Name).ToList();
             Check(sky.Surfaces.Finished && plain.Count == 0, $"{step}: the sky draws every world in view in its own paint ({sky.Surfaces.Done} of {sky.Surfaces.Wanted} painted{(plain.Count > 0 ? "; plain: " + string.Join(", ", plain) : "")})");

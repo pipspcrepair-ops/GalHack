@@ -474,7 +474,11 @@ public partial class Globe : Node3D
             vec3 dpx = dFdx(VERTEX), dpy = dFdy(VERTEX);
             vec3 r1 = cross(dpy, NORMAL), r2 = cross(NORMAL, dpx);
             float det = dot(dpx, r1);
-            NORMAL = normalize(abs(det) * NORMAL - sign(det) * (dFdx(h) * r1 + dFdy(h) * r2));
+            vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+            // A cliff a map cell wide is a facet standing on end, black against the sun from any way but one: the slope a
+            // pixel shows is held under about 40 degrees, so a mesa or a crater's wall reads as relief and not as a hole.
+            grad *= min(1.0, 0.85 * abs(det) / max(length(grad), 1e-12));
+            NORMAL = normalize(abs(det) * NORMAL - grad);
             vec4 a = paint(albedo_map, m);
             // The ground near you from its finer paint, eased in from that paint's edge.
             vec2 q = fract(m.uv - near_origin) / max(near_size, vec2(1e-6));
@@ -1064,8 +1068,8 @@ public partial class Globe : Node3D
         return true;
     }
 
-    /// <summary>How much of a world's air shows from outside, 0 to 1, by its sky's density: thin air hardly at all.</summary>
-    public static float AirShare(float density) => 1f - MathF.Exp(-2.5f * MathF.Max(density, 0f));
+    /// <summary>How much of a world's air shows from outside, 0 to 1, by its sky's density: thin air hardly at all, a world with none (vacuum at its feet) none.</summary>
+    public static float AirShare(float density) => density < Slice.Surface.SurfaceWeather.NoAir ? 0f : 1f - MathF.Exp(-2.5f * density);
 
     static MeshInstance3D Instance(string name, Mesh mesh, Material material) => new()
     {

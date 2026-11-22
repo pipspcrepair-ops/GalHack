@@ -205,7 +205,7 @@ public partial class Spaceflight
         Vector3 south = MathX.Rotate(frame, N.Vector3.UnitZ).ToGodot();
         N.Quaternion map = c.Map.Frame(gx, gz);
         float R = c.GlobeRadius;
-        float air = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir ? Globe.AirShare(c.World.Sky.Density) : 0f;
+        float air = c.World != null ? Globe.AirShare(c.World.Sky.Density) : 0f;
         int umbrae = Orbit.Space.Umbrae(Game.Surface.Planet.StarSystem, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
         c.Globe.Draw(new WorldView
         {
