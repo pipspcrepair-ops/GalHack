@@ -122,10 +122,15 @@ public sealed record WorldPalette
         Spectrum stone = spec.Airless && rock != Mineral.Ice ? Spectrum.Lerp(Stone(Mineral.Basalt), Stone(Mineral.Anorthosite), U(15)) : Stone(rock);
         // An iron-rich airless body rusted while it still had air and water, and keeps it (Mars, had it lost all its air).
         if (spec.Airless && iron > 0.75f) stone = Rust(stone, 0.55f, 0.25f);
+        // On a volcanic world the iron in fresh lava oxidises as it cools: glassy black flows where there's little of it,
+        // red-brown scoria where there's much (Mars' and Hawaii's cinder cones).
+        if (spec.Archetype == Archetype.Lava && !spec.Airless) stone = Rust(rock is Mineral.Basalt or Mineral.Andesite ? stone * (1f + 1.5f * iron) : stone, 0.6f * iron, 0.2f * iron); // dark lava's scoria is frothier, so brighter, than its flows
+        // How long an airless surface has lain under the solar wind, from fresh (bright) to fully weathered (Lucey et al. 2000).
+        float maturity = 0.3f + 0.7f * U(16);
         float stain = wet ? iron : 0f;
-        Spectrum bedrock = spec.Airless ? Spaced(stone, iron) : Rust(stone, 0.35f * stain * (spec.Archetype == Archetype.Arid ? 1.6f : 1f), 0.25f * stain);
+        Spectrum bedrock = spec.Airless ? Spaced(stone, iron, maturity) : Rust(stone, 0.35f * stain * (spec.Archetype == Archetype.Arid ? 1.6f : 1f), 0.25f * stain);
         // Grains are brighter than the face they came from (small particles scatter more), and keep its iron.
-        Spectrum fines = (spec.Airless ? Spaced(stone, iron) : stone) * 1.3f;
+        Spectrum fines = (spec.Airless ? Spaced(stone, iron, maturity) : stone) * 1.3f;
         Spectrum sand = spec.Airless ? fines : Rust(fines, 0.3f * stain, 0.2f * stain);
         Spectrum dust = spec.Airless ? fines : Rust(fines, 0.5f * iron, 0.2f * iron); // fine enough to oxidise in any air it rides
         var soils = new Rgb[Grid * Grid];
@@ -146,7 +151,7 @@ public sealed record WorldPalette
         {
             Particles.Haze => (0.5f, Spectrum.Flat(0.99f)),
             Particles.Dust => (0.1f, Albedo(dust)),
-            Particles.Ash => (0.3f, Spectrum.Of(l => 0.58f + 0.14f * (l - 400f) / 300f)),
+            Particles.Ash => (0.3f, Spectrum.Of(l => 0.5f + 0.06f * (l - 400f) / 300f)), // dark, near grey: glass and rock shards
             Particles.Sulfate => (1.1f, Spectrum.Flat(0.99f)), // Venus' clouds: sulfuric acid, nearly white
             _ => (1.3f, Spectrum.Flat(0.96f)),
         };
@@ -225,9 +230,11 @@ public sealed record WorldPalette
 
     /// <summary>
     /// With no air, iron can't rust: space weathering only darkens the grains and reddens their slope (Hapke 2001),
-    /// the more so the more iron there is to make into nanophase metal (iron-rich mare darker than highland).
+    /// the more so the more iron there is to make into nanophase metal (iron-rich mare darker than highland) and the
+    /// longer it has lain exposed (<paramref name="maturity"/>, 0 fresh to 1 mature).
     /// </summary>
-    static Spectrum Spaced(Spectrum r, float iron) => r * Spectrum.Of(l => 0.62f - 0.3f * iron + (0.12f + 0.2f * iron) * (l - 400f) / 300f);
+    static Spectrum Spaced(Spectrum r, float iron, float maturity) =>
+        r * Spectrum.Of(l => 1f - maturity * (0.38f + 0.3f * iron) + maturity * (0.12f + 0.2f * iron) * (l - 400f) / 300f);
 
     /// <summary>A world's rock by its type: lava worlds are basalt, airless bodies mare basalt or bright highland (or ice), the rest any of the common crustal rocks.</summary>
     static Mineral RockOf(PlanetSpec spec, float u)
