@@ -591,7 +591,7 @@ public sealed class StarSystem
         bool first = true;
         foreach (SkyBody b in sky.Bodies)
         {
-            if (b.Kind != BodyKind.Moon) continue;
+            if (b.Kind != BodyKind.Moon || !PlanetSpec.HoldsMoons(widths.GetValueOrDefault(holder, int.MaxValue))) continue; // a smallest world chosen to start on has none
             int size = moonWidth(holder);
             double r = RadiusOf(size);
             double wanted = host != null ? host.Radius * (3.0 + 27.0 * next())
@@ -706,7 +706,7 @@ public sealed class StarSystem
         // The guarantees: added, never rerolled.
         int worlds() => s._bodies.FindAll(b => b.Kind is OrbiterKind.Planet or OrbiterKind.GasGiant or OrbiterKind.Moon).Count;
         var hosts = s._bodies.FindAll(b => b.Kind == OrbiterKind.Planet && b.Habitable >= 0.75 && b != home && PlanetSpec.HoldsMoons(widths[b]));
-        if (hosts.Count == 0) hosts.Add(holder);
+        if (hosts.Count == 0) hosts = s._bodies.FindAll(b => b.Kind == OrbiterKind.GasGiant); // every system has one
         while (worlds() < 8)
         {
             double radii = 12.0 + 28.0 * next();
@@ -736,6 +736,7 @@ public sealed class StarSystem
                     Zone = home.Zone, Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
                 };
             // The smallest kind, so it can be airless (it always is: Dress); a sister round a giant could have rolled any size.
+            // The start's promise outranks "smaller than what it orbits" only on a smallest world chosen to start on.
             ground(near, PlanetSpec.Widths[0]);
         }
         s.FuelMoon = near;
