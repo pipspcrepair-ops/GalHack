@@ -185,6 +185,7 @@ public partial class Globe : Node3D
         uniform float height = 1000.0;
         uniform float reach = 4000.0;
         uniform float local = 0.0;
+        uniform float map_per_metre = 1.0; // map metres to a metre on the sphere: the globe's scale against its map
         varying vec2 offset;
 
         // One point of the globe on the map: the sphere's own look, and up to two others over it.
@@ -204,10 +205,10 @@ public partial class Globe : Node3D
             MapPoint m;
             m.uv = vec2(atan(d.x, d.z) / 6.2831853, acos(clamp(d.y, -1.0, 1.0)) / 3.1415927);
             // Near you: the flat map round the place under you, as the surface has it.
-            m.under_uv = (nadir + o) / map_size;
+            m.under_uv = (nadir + o * map_per_metre) / map_size;
             m.under = local > 0.0 ? 1.0 - smoothstep(local * 0.7, local, s) : 0.0;
             m.cap = smoothstep(0.80, 0.93, abs(d.y)) * (1.0 - m.under);
-            m.cap_uv = (d.y > 0.0 ? vec2(0.25) : vec2(0.75)) + vec2(d.x, d.z) * radius / map_size;
+            m.cap_uv = (d.y > 0.0 ? vec2(0.25) : vec2(0.75)) + vec2(d.x, d.z) * radius * map_per_metre / map_size;
             return m;
         }
 
@@ -321,7 +322,7 @@ public partial class Globe : Node3D
             offset = VERTEX.xz * s;
             // The relief at the grid's own spacing there, or it stands up as spikes.
             float step_m = max(32.0, s * 0.0375);
-            float lod = log2(step_m / 32.0);
+            float lod = log2(max(step_m * map_per_metre / 32.0, 1.0));
             // Past the limb the relief lies down: there the grid's few bearings would stand hills up
             // over it as a fence of posts, a bearing apart.
             float limb = radius * acos(radius / (radius + max(height, 1.0)));
@@ -642,6 +643,7 @@ public partial class Globe : Node3D
     const float TrueHeightUnder = 1500f;
 
     ShaderMaterial _ground, _clouds, _air, _ringMaterial;
+    ShaderMaterial[] _grids, _byRay; // the ground and clouds, laid on the grid; the air and the ring, worked out by each ray
     MeshInstance3D _airMesh, _ring;
     bool _hasRing;
     float _airThickness, _reliefFar;
@@ -660,6 +662,10 @@ public partial class Globe : Node3D
     public float Angular { get; private set; }
     public Vector3 DrawnFrom { get; private set; }
 
+    /// <summary>Its colour map's width in texels, as uploaded (tests: no low-detail skin), and the way to the sun it was last lit from.</summary>
+    public int Detail { get; private set; }
+    public Vector3 LitFrom { get; private set; }
+
     /// <summary>Sets the globe up a piece at a time, each upload on its own frame, so none of them shows as a hitch.</summary>
     public IEnumerable<int> Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules, GlobeMap map)
     {
@@ -672,6 +678,7 @@ public partial class Globe : Node3D
         ArrayMesh grid = PolarGrid(rules.Rings, rules.Segments);
         _ground = new ShaderMaterial { Shader = new Shader { Code = GroundSource } };
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("albedo_map"), ImageTexture.CreateFromImage(paint.Albedo));
+        Detail = paint.Albedo.GetWidth();
         yield return 0;
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_map"), ImageTexture.CreateFromImage(paint.Glow));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
@@ -685,10 +692,12 @@ public partial class Globe : Node3D
         Weather = new GlobeWeather(mapSize);
         Weather.Bind(_clouds, C(look.CloudColor));
         AddChild(Instance("Clouds", grid, _clouds));
-        foreach (ShaderMaterial m in new[] { _ground, _clouds })
+        _grids = new[] { _ground, _clouds };
+        foreach (ShaderMaterial m in _grids)
         {
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), radius);
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_size"), mapSize);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_per_metre"), (float)(map.Width / (Math.Tau * radius)));
         }
         yield return 0;
         (_airMesh, _air) = AirMesh(C(look.Atmosphere));
@@ -702,6 +711,7 @@ public partial class Globe : Node3D
         // The mesh only covers the ring: a shade wider than it, so its straight sides never cut the round edge.
         _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * (RingInner - 0.02f), radius * (RingOuter + 0.03f), 160), MaterialOverride = _ringMaterial, Visible = _hasRing, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_ring);
+        _byRay = new[] { _air, _ringMaterial };
         Visible = false;
     }
 
@@ -722,18 +732,18 @@ public partial class Globe : Node3D
     /// <summary>Lays the globe out for this frame, under the eye.</summary>
     public void Draw(in WorldView v)
     {
-        if (_ground == null) return;
+        if (_byRay == null) return; // still being set up
         Visible = !Hidden;
         if (!Visible) return;
         N.Vector3 q = N.Vector3.Transform((v.Eye - v.Centre).ToNumerics(), N.Quaternion.Conjugate(v.Turn));
         float distance = q.Length(), height = MathF.Max(distance - Radius, 1f);
-        (Angular, DrawnFrom) = (MathF.Asin(MathF.Min(Radius / distance, 1f)), v.Eye);
+        (Angular, DrawnFrom, LitFrom) = (MathF.Asin(MathF.Min(Radius / distance, 1f)), v.Eye, v.ToSun);
         var (gx, gz) = _map.MapPoint(q);
         N.Quaternion map = _map.Frame(gx, gz), frame = N.Quaternion.Normalize(v.Turn * map);
         float lie = Lie(height);
         // The flat map under you reaches as far as the land you'd see from there, and none of it from far off: there the globe is its own map.
         float local = MathF.Min(1.6f * height, 0.6f * Radius) * (1f - Smooth((height - Radius) / (2f * Radius)));
-        foreach (ShaderMaterial m in new[] { _ground, _clouds })
+        foreach (ShaderMaterial m in _grids)
         {
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), MathX.Rotate(frame, N.Vector3.UnitY).ToGodot());
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_east"), MathX.Rotate(frame, N.Vector3.UnitX).ToGodot());
@@ -759,7 +769,7 @@ public partial class Globe : Node3D
             _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_sun"), v.ToSun);
             _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), _ringBasis.Y.Normalized());
         }
-        foreach (ShaderMaterial m in new[] { _air, _ringMaterial }) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("globe_centre"), v.Centre);
+        foreach (ShaderMaterial m in _byRay) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("globe_centre"), v.Centre);
         _airMesh.Visible = Air(_air, (v.Eye - v.Centre).Normalized(), Radius, _airThickness, height, v.Rim, v.ToSun);
     }
 

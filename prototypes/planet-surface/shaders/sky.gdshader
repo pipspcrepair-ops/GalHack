@@ -160,7 +160,7 @@ vec4 over(vec4 front, vec4 back) {
 vec4 surface_at(int layer, vec3 n, vec3 axis, vec3 zero, float radius) {
 	float u = atan(dot(n, cross(axis, zero)), dot(n, zero)) / 6.2831853;
 	float v = acos(clamp(dot(n, axis), -1.0, 1.0)) / 3.1415927;
-	return textureLod(surfaces, vec3(u, v, float(layer)), log2(max(40.7 / (radius * 700.0), 1.0)));
+	return textureLod(surfaces, vec3(u, v, float(layer)), log2(max(float(textureSize(surfaces, 0).x) / 6.2831853 / (radius * 700.0), 1.0)));
 }
 
 // The share of a sun disc of angular radius a that a disc of radius b, c away, hides (small angles):

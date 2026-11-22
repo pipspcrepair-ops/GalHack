@@ -24,7 +24,11 @@ namespace PlanetSurface.Skies;
 /// </summary>
 public sealed class BodySurfaces
 {
-    public const int Width = 256, Height = 128, Layers = 32;
+    /// <summary>Each far look's size, texels: sharp on a moon's disc up to where its own globe takes over (a fifth of the screen high).</summary>
+    public const int Width = 512, Height = 256, Layers = 32;
+
+    /// <summary>The coarse map's cells round the equator: the land's shapes; its colours are drawn finer, at <see cref="Width"/>.</summary>
+    const int MapCells = 256;
 
     /// <summary>What the array holds, mipmaps and all: the same whatever the system.</summary>
     public const long MemoryBytes = Layers * (long)Width * Height * 4 * 4 / 3;
@@ -98,8 +102,8 @@ public sealed class BodySurfaces
         return image;
     }
 
-    /// <summary>A coarse run of the world's own generator: one map cell to a pixel, from the spec it will be visited with.</summary>
-    public static WorldMap Coarse(PlanetSpec spec) => PlanetGenerator.Generate(spec, (float)(spec.WidthMeters / Width));
+    /// <summary>A coarse run of the world's own generator, from the spec it will be visited with.</summary>
+    public static WorldMap Coarse(PlanetSpec spec) => PlanetGenerator.Generate(spec, (float)(spec.WidthMeters / MapCells));
 
     /// <summary>
     /// The land in the colours its own globe and ground are painted in up close (its ground palette's far ground, a
