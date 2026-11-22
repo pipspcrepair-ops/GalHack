@@ -476,7 +476,8 @@ public sealed partial class Town
             step = 0f;
         }
         // (Off the way's line beside another, on the ground where they are, not the line's height.)
-        if (!OnGrid(p.Pos) && _places?.Zone.Planet is PlanetWorld planet) p.Pos.Y = Height(planet, World(p.Pos)) - _origin.Y;
+        // (Up it as a walk climbs, never a hop: off a bank out of the water, say.)
+        if (!OnGrid(p.Pos) && _places?.Zone.Planet is PlanetWorld planet) p.Pos.Y = Mathf.MoveToward(p.Pos.Y, Height(planet, World(p.Pos)) - _origin.Y, Flat(p.Pos - was) + Clamber * dt);
         OnLand(p, was, dt);
         Turn(p, heading, dt);
         p.Sitting = false;
