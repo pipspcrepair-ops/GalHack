@@ -202,7 +202,7 @@ public sealed partial class Town
         town._parts = PlaceParts.Of(m);
         town._fixed = PlaceParts.Fixed(m);
         town._ways = DoorWays.Of(m);
-        town._passages = Passages(m);
+        town.Passages(m);
         m.Bodies.Add(town.BodiesNear);
         return town;
     }

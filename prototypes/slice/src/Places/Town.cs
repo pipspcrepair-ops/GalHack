@@ -193,7 +193,7 @@ public sealed partial class Town : IKeeper
         town._parts = PlaceParts.Of(m);
         town._fixed = PlaceParts.Fixed(m);
         town._ways = DoorWays.Of(m);
-        town._passages = Passages(m);
+        town.Passages(m);
         m.Bodies.Add(town.BodiesNear);
         town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
@@ -234,14 +234,28 @@ public sealed partial class Town : IKeeper
         return Pulled(path);
     }
 
-    /// <summary>The place's doorways, ways out and openings between its parts: a straightened way keeps a point of its own in each it goes through.</summary>
+    /// <summary>
+    /// The place's doorways, ways out and openings between its parts, and the part (or two) each cell is in (-1: none): a
+    /// straightened way stays within a part, and keeps a point of its own in each passage it goes through.
+    /// </summary>
     HashSet<PInt3> _passages;
+    Dictionary<PInt3, (int A, int B)> _modules;
 
-    static HashSet<PInt3> Passages(PlaceMemory m)
+    void Passages(PlaceMemory m)
     {
-        var cells = new HashSet<PInt3>(m.Inst.Layout.Doorways.SelectMany(d => d.Cells).Concat(m.Inst.Layout.ExitCells));
-        foreach (var (a, b) in RoomDecor.Openings(m.Inst)) { cells.Add(a); cells.Add(b); }
-        return cells;
+        _passages = new HashSet<PInt3>(m.Inst.Layout.Doorways.SelectMany(d => d.Cells).Concat(m.Inst.Layout.ExitCells));
+        foreach (var (a, b) in RoomDecor.Openings(m.Inst)) { _passages.Add(a); _passages.Add(b); }
+        _modules = new Dictionary<PInt3, (int, int)>();
+        foreach (PlacedModule mod in m.Inst.Layout.Modules)
+            foreach (PInt3 c in mod.Cells)
+                _modules[c] = _modules.TryGetValue(c, out var was) ? (was.A, was.B < 0 ? mod.Index : was.B) : (mod.Index, -1);
+    }
+
+    /// <summary>Whether two cells are in a part of the place together (or both in none).</summary>
+    bool OnePart(PInt3 a, PInt3 b)
+    {
+        (int A, int B) x = _modules.TryGetValue(a, out var pa) ? pa : (-1, -1), y = _modules.TryGetValue(b, out var pb) ? pb : (-1, -1);
+        return x.A == y.A || x.A >= 0 && x.A == y.B || x.B >= 0 && (x.B == y.A || x.B == y.B);
     }
 
     /// <summary>How many of a route's points ahead are looked along for a straight way to.</summary>
@@ -275,10 +289,11 @@ public sealed partial class Town : IKeeper
         Vector3 d = (b - a) with { Y = 0f };
         float len = d.Length();
         PInt3 ca = Cell(a), cb = Cell(b);
+        if (!OnePart(ca, cb)) return false;
         for (float s = 0.25f; s < len; s += 0.25f)
         {
             PInt3 c = Cell(a + d * (s / len));
-            if (!_nav.Standable(c) || _nav.RampAt(c, out _) || c != ca && c != cb && _passages != null && _passages.Contains(c)) return false;
+            if (!_nav.Standable(c) || _nav.RampAt(c, out _) || c != ca && c != cb && _passages.Contains(c) || !OnePart(ca, c)) return false;
         }
         return _fixed == null || _fixed.Sweep(a, b, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls: Place.WallsOf(_nav), wallRadius: PlaceParts.PersonRadius);
     }
