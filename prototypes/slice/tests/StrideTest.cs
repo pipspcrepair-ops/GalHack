@@ -48,8 +48,6 @@ public partial class StrideTest : Node
         }) { IsBackground = true }.Start();
         ProcessPhysicsPriority = 100; // (after the towns' ticks: a held body is put back after its step)
         ProcessPriority = 100; // (and after their pose pass, to time it)
-        // Frames at a screen's rate (--fps=N, default 60: the slowest screen, a pose a frame), so posing is timed as a frame has it.
-        Engine.MaxFps = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--fps=")) is { } fps ? int.Parse(fps[6..]) : 60;
         if (_shots != null) Directory.CreateDirectory(_shots);
         _run = Scenario().GetEnumerator();
     }
@@ -58,10 +56,13 @@ public partial class StrideTest : Node
     Town _timed;
     int _built;
     readonly List<float> _poses = new();
+    /// <summary>Frames at a screen's rate (--fps=N, default 60: the slowest screen, a pose a frame), so posing is timed as a frame has it.</summary>
+    readonly int _fps = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--fps=")) is { } f ? int.Parse(f[6..]) : 60;
 
     public override void _Process(double delta)
     {
         if (_timed == null) return;
+        Engine.MaxFps = _fps; // (over the game's own frame pacer's cap)
         // (A frame a body was built in times its building, not its posing: left out.)
         int built = _timed.People.Count(p => p.View != null);
         if (built == _built) _poses.Add(_timed.LastPoseMs);
@@ -496,7 +497,7 @@ public partial class StrideTest : Node
         }
         _timed = null;
         _poses.Sort();
-        if (_poses.Count > 0) GD.Print($"  (posing the settlement's people at {Engine.MaxFps} fps: {_poses.Average():F3} ms a frame on average, {_poses[_poses.Count / 2]:F3} median, {_poses[_poses.Count * 95 / 100]:F3} at the 95th, over {_poses.Count} frames with no body built)");
+        if (_poses.Count > 0) GD.Print($"  (posing the settlement's people at {_fps} fps: {_poses.Average():F3} ms a frame on average, {_poses[_poses.Count / 2]:F3} median, {_poses[_poses.Count * 95 / 100]:F3} at the 95th, over {_poses.Count} frames with no body built)");
     }
 
     /// <summary>A shot of one of them from a little off their side, at their knees (windowed only).</summary>
