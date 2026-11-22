@@ -178,14 +178,14 @@ Air warms a world by 30 °C or more, which is why Z4 is comfortable. Use S direc
 - The first outer slot is a giant on the star's giant chance, always in a start system. Later outer slots are giants 55% of the time if a giant already exists. Otherwise they're ice worlds.
 - **Warm giant:** in 20% of G, K and F systems, the first rock slot between h 1.0 and 1.6 becomes a giant that migrated in. This is what makes temperate gas-giant moons possible.
 - Giants split about evenly into banded gas giants and blue ice giants, with ice giants more likely further out. Radius is 8 to 11 times a start world's, so 20 to 28 km.
-- Rock sizes use the four classes from world-themes.md. Moons are S or M only.
+- Rock sizes use the four classes from world-themes.md. A giant's moons can be any size; any other moon is smaller than what it orbits, and a giant's moons can have moons of their own (owner, 22 Nov, section 8).
 
 ### Step 6: moons
 
 | Parent | How many | Where | Notes |
 | --- | --- | --- | --- |
-| Giant | 2 to 5 | First at 3 to 4 parent radii, then ×1.4 to ×1.9 each, up to 30 | Close moons get tides and radiation |
-| Rock in Z3 and beyond, ice world | 0, 0, 1, 1 or 2 | 12 to 40 parent radii | Size S, or M if the parent is L or larger |
+| Giant | 2 to 5 | First at 3 to 4 parent radii, then ×1.4 to ×1.9 each, up to 30 | Close moons get tides and radiation. Any size, at the planet odds; 35% of those with room have a moon of their own (below) |
+| Rock in Z3 and beyond, ice world | 0, 0, 1, 1 or 2 | 12 to 40 parent radii | Smaller than the parent, at the planet odds among the sizes under it; an S world has none |
 | Rock in Z2 | 0 usually, 1 in 25% | As above | |
 | Rock in Z1 | None | | |
 
@@ -199,13 +199,15 @@ Moon rules for giants, by distance in parent radii:
 
 Moon periods are Kepler's own, and they don't depend on scale: 3.8 days × (d / 16 R)^1.5 for rock parents, and 7.6 days × (d / 16 R)^1.5 for giants, in game days.
 
+A giant's moon's own moon stays inside half the moon's Hill sphere, its orbit at most half of d × (r / R) / ∛3 (the moon at d from a giant of radius R, both taken as the same rock), and at least 3 of the moon's radii out. A moon close in to its giant has no room for one. It keeps the 50 m/s moon speed cap and the one clock.
+
 ### Step 7: belts and rings
 
 - **Rock belt:** whenever there's a giant, from 0.40 to 0.63 times the first outer giant's orbit, between its 4:1 and 2:1 resonances. Delete any rock slot in that band unless it's inside h 0.95 to 1.7.
 - **Ice belt:** in 60% of systems, from 1.31 to 1.59 times the outermost slot, between its 3:2 and 2:1 resonances.
 - **Trojans:** in half of systems with a giant, two swarms at ±60° along the first giant's orbit. If a warm giant exists, it can take them instead.
-- **Giant rings:** 45% of giants, from 1.25 to 2.3 radii. Cut one gap at 0.63 times the innermost moon's orbit. No moon inside the ring's outer edge.
-- **Rock rings:** only as the ringed-world type on M or larger worlds, from 1.7 to 2.4 radii. An S moon's orbit shell starts at 1.83 radii, so a ring doesn't fit.
+- **Giant rings:** 45% of giants, from 1.25 to 2.3 radii. Cut one gap at 0.63 times the innermost moon's orbit. No moon inside the ring's outer edge. Their look follows the owner's ring science (section 8, item 12): past the frost line they're pale ice and bright; inside it they're rock and dust at about half the brightness; a giant with three or more moons of 32 km or more keeps a small ring, out to 1.75 radii, at half its brightness again.
+- **Rock rings:** only as the ringed-world type on M or larger worlds, from 1.7 to 2.4 radii. An S moon's orbit shell starts at 1.83 radii, so a ring doesn't fit. Drawn small and faint, as a crowded giant's. Moons have none (owner, 17 Nov).
 - Rings lie in the parent's equator plane, so they're set by its axial tilt, not rolled by themselves.
 
 Section 5 covers what's inside belts.
@@ -341,7 +343,7 @@ Every start system in both runs met the temperate world, belt and 8-world checks
 | Moon size | A giant's moons are tiny against it; a rocky world's rarely match it | A moon can be as big as a start world | Moons are places to stand |
 | Warm giants | Uncommon in the temperate band | 20% | A habitable moon under a giant is a design pillar |
 | Rocky worlds | Above about 2 Earth radii usually aren't rocky | L and XL classes are rock | Bigger maps for play |
-| Gravity | Grows with size | Set by type, not size | Same density would make size XL about 4 g |
+| Gravity | Grows with size | Grows with size: 0.2, 1.0, 2.2 and 5 g for S, M, L and XL (owner, 22 Nov) | Moons light enough to bound across, and the largest worlds a real trap |
 | Star's sky size | Falls as 1 / a | Same, but drawn at 2 times true | A readable sun; matches current code |
 | Giant's size in others' skies | A point of light | A small disc when near | The sky should show the system |
 | Belts | Empty | Dense fields | See section 5 |
@@ -575,12 +577,55 @@ Science:
 
 ## 8. Owner's decisions
 
-A rule for every start system: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold hyperdrive materials, hyperdrive fuel and capital ship materials. A system that fails either rule is fixed or rerolled.
+A rule for every start system: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold fold drive materials, fold fuel and capital ship materials. A system that fails either rule is fixed or rerolled.
 
 Rings on a moon: real rings only survive close inside a body's small zone of gravity (its Hill sphere), so a world orbiting near a bigger ringed planet would rarely hold rings of its own. Treat a ringed moon of a ringed giant as a very rare sight, not a common result. Rings aren't limited to gas giants: any world can have them, for example from a moon that broke apart, though on rocky worlds they're less common and narrower. Rings are real places: from afar they read as smooth bands, and up close they resolve into a field of tumbling rocks, in the manner of Elite Dangerous. Use the same rock field system as asteroid belts, so rings can be flown through and mined.
 
 1. **Planets move.** On rails, from one clock.
 2. **Warps.** About 20 seconds typically, 80 at worst.
-3. **Free flight.** The player can drop out of warp and fly anywhere in a system. Suns and gas giants can't be entered: warp stops at a safe distance from a star, closer means heat damage, and a giant's clouds can be skimmed above a crushing limit. To be tuned in play.
+3. **Free flight.** The player can drop out of warp and fly anywhere in a system. Suns and gas giants can't be entered. (The heat damage and cloud skimming first written here were replaced on 22 Nov: high orbit is the limit, enforced by a push back out; see "Interstellar travel" item 15.)
 4. **Red dwarfs.** About 28% of stars, not the real 76%.
 5. **Star table.** Follows the real rule: red dwarfs have close, often locked worlds under a big dull sun.
+
+### Interstellar travel (owner, 22 Nov 2026)
+
+These replace anything above or in section 4 that disagrees with them.
+
+1. **Small worlds are vacuum.** The smallest worlds (8 × 4 km) are almost all airless, about 95%. They're too light to hold an atmosphere.
+2. **Large worlds have dense air.** The largest worlds (64 × 32 km) always have an atmosphere, and it's a dense one. Air density grows with size in between.
+3. **Gravity comes from size alone.** A start-sized world (16 × 8 km) pulls 1.0 g. The largest world pulls 5 g, and moons go as low as 0.2 g. With four size classes that gives 8 km 0.2 g, 16 km 1.0 g, 32 km 2.2 g (between the two) and 64 km 5 g. It applies to everything that falls or thrusts: walking, falls and fall damage, jetpacks, hover, lift-off, thrusters, people, animals and loose objects. This replaces "set by type, not size" in section 4.
+4. **Giants and stars can't be landed on.** Gas giants and stars are massive, and black holes count as stars. A world of any size can orbit a gas giant or a star.
+5. **Moons of moons.** A world orbiting a gas giant can have moons of its own.
+6. **Moons are smaller than what they orbit.** An 8 km world, the smallest, has no moons.
+7. **Where the drive materials are.** Warp fuel and warp drive materials are found on vacuum worlds. Fold fuel and fold drive materials are found on high-gravity worlds (32 km and up). This agrees with the 13 Nov rules in the playtest list: warp fuel only on vacuum worlds, plus loot in some space places and wrecks.
+8. **Arrivals.** A fold jump to another system arrives in orbit of that system's star. A warp to a world arrives at a point in its highest orbit, the outer edge of the space where that world is the frame you fly in.
+9. **Worlds look detailed from space.** Any trick that does it is fine.
+10. **No shroud.** The air shroud on the crossing between a world and space is removed. This replaces the 17 Nov direction to keep it and fade it out. The crossing is still a scene switch when close enough, and a visible cut is still fine.
+11. **Round trips leave nothing behind.** Going world, space, world, space, world, and so on must leave no after-effects: no low-detail skins, dark discs, lost light, leaked objects, slowdowns or drift.
+12. **Rings are debris fields.** A ring is a field of rock and ice you fly through and mine, not a flat texture. It uses the same rock field system as asteroid belts. The owner first set ring odds by size, then withdrew that the same day, so the ring odds above stand, and moons have no rings (owner, 17 Nov). Reference the owner gave (a Live Science article quoting a NASA planetary scientist):
+   - Rings are ice and small rocks. Past the frost line they're mostly ice and bright. Closer in they're rock and dust, and dust rings are faint.
+   - A giant with several large moons keeps only small, faint rings, because the moons pull them apart.
+   - Rings come from an impact, a moon torn apart, or a captured passing body, so a world's history can explain its ring.
+   - Small bodies, such as dwarf planets and asteroids, can have rings too.
+   - Rings don't last forever.
+13. **Names.** The drive between stars is the fold drive, and its fuel is fold fuel (fold crystal). It used to be called the hyperdrive (owner, 22 Nov). Any Flight structure can carry a warp drive or a fold drive if it fits it and can power it (owner, 22 Nov).
+14. **Sky and water colour come from the air and the star.** A world's sky and water colours follow its air type, how thick its air is (from its size, item 2) and the colour of its star. One model serves the ground sky, the globe's air seen from space and the water, so they always agree. This builds on the 8 Nov palette rule: natural colours come only from the star, air, soil, minerals and life, never the theme. Reference the owner gave:
+   - **Clear sky.** Starlight scattered by small gas molecules (Rayleigh, strongest for short wavelengths) makes the clear sky. Nitrogen and oxygen air under a sunlike star reads blue. Ozone deepens the blue at twilight.
+   - **Haze.** Methane, carbon dioxide and haze shift a sky through grey towards orange, as on a young world before oxygen.
+   - **Fine particles.** Sulfate, volcanic, smoke and dust particles make sunrises and sunsets deeper red and orange, and the sky hazy.
+   - **Clouds.** Large water droplets and ice scatter every colour evenly, so clouds are white or grey. Ice crystals bend sunlight into sundogs and halos.
+   - **Thin dusty air.** Fine rust-red dust in thin carbon dioxide air gives a butterscotch to reddish sky.
+   - **Meteors** glow by their elements: sodium orange-yellow, magnesium blue-green, iron yellow-white. They glow only where there is air.
+15. **Suns, gas giants and black holes up close (owner, 22 Nov: "Go with that").** Empyrion's way: high orbit is as close as you get.
+   - **Suns and gas giants.** A warp to one stops at its high orbit. The body fills the view, huge and detailed: a star's churn and flares, a giant's bands, storms and spots. It has no surface zone. Flying further in, the star's heat or the giant's winds push the ship back out, with a visor warning. There's no heat damage and no crushing (this replaces section 8 item 3's heat damage and skim-and-crush). Heat damage and cloud skimming may be reviewed later, once this baseline is built (owner, 22 Nov). At a giant, the places to go are its moons, their moons, and its ring as a debris field.
+   - **Black holes.** The same high-orbit limit, with the strong pull and warnings of the design doc. The accretion disc lies outside the limit and is the destination: a fast-streaming debris field on the same field system as rings and belts. You match its speed to work inside it, among its rocks, ancient wrecks and rare finds. Each black hole's look rolls from the 8 Nov parts: thin spiral, churning vortex or dusty torus, jets, a companion star being stripped.
+   - **When.** After the fold drive job. The accretion disc comes with the rings and belts debris field job, since it shares that system.
+
+### How the code follows the 22 Nov rules
+
+Where the rules left a choice, the generator (`planet-surface/src/Sky/StarSystem.cs`, tables in `planet-generator/src/Gen/PlanetSpec.cs`) takes these, checked by `SystemsTest` over 4,000 fresh systems a run and `GravityTest` on a forced 8 km and 64 km world:
+
+- **Air.** No air on S worlds 95% of the time, M 60%, L 25%, XL never. A world with air has one thickness from its size: 0.5, 1.0, 1.4 and 2.0 for S to XL. Its air kind's density is multiplied by it, so thin air on an XL world is still the densest of its kind. The thickness sits beside the air kind on the sky (`SkySystem.Thickness`, from `PlanetSpec.AirThickness`), for item 14 to build on.
+- **Moon sizes.** A moon rolls the planet odds (5, 40, 50 and 5%) among the sizes under its parent, so a start world's own moons are all S, and an L world's are S 1 time in 9. A giant's moons roll all four sizes at those odds, so most are L: heavy worlds. The start's fuel moon is always S, even as a sister round a giant, so it can be airless.
+- **Fold drive materials** are marked on one dangerous high-gravity world, which takes the place of the cold rock in the 8 Nov start rule. The warp drive's stay on the fuel moon. Neither fuel is ever marked.
+- **On foot.** Jumps, falls, the jetpack and loose things follow the world's g on their own. Heavy gravity also slows walking (the design doc's on-foot row): speeds go as √(1 g / g), so two thirds at 2.2 g and under half at 5 g. Lighter worlds keep the stride rule they had. A core's artificial gravity stays 1 g on any world, as the design doc's gravity table says.
