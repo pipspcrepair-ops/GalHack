@@ -170,7 +170,7 @@ public partial class FallTest : Node
             GD.Print($"  (the sweep, nothing breaking: {Fell() - fell0} fell meanwhile, {checks / 10f:F1} looks and {rays / 10f:F1} rays a second over {town.People.Count(p => !p.Dead)} people, {town.People.Count(p => !p.Dead && (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() < 60f)} within its reach)");
             // (Any who fell with nothing breaking, told: where, and on what.)
             foreach (Town.Person p in town.People.Where(p => (Get(p, "Falls") is int f ? f : 0) > falls0[p]).Take(4))
-                GD.Print($"    (fell meanwhile: {p.Job} at {p.Pos}, {(place.Memory.Inst.Blocks.InBounds(new Int3((int)MathF.Floor(p.Pos.X), (int)MathF.Floor(p.Pos.Y), (int)MathF.Floor(p.Pos.Z))) ? "in the place's grid" : "off it")}, falls {Get(p, "Falls")}, run {p.Run != null}, swimming {Get(p, "Swimming")}, airborne {Get(p, "Airborne")})");
+                GD.Print($"    (fell meanwhile: {p.Job} at {p.Pos} from {Get(p, "FirmAt")}, sitting {p.Sitting}, asleep {p.Asleep}, spot {p.Spot}, {(place.Memory.Inst.Blocks.InBounds(new Int3((int)MathF.Floor(p.Pos.X), (int)MathF.Floor(p.Pos.Y), (int)MathF.Floor(p.Pos.Z))) ? "in the place's grid" : "off it")}, falls {Get(p, "Falls")}, run {p.Run != null}, swimming {Get(p, "Swimming")}, airborne {Get(p, "Airborne")})");
         }
 
         foreach (int x in Floor(town, place, "standing", p => Free(p) && p.Now < 0.05f && !p.Sitting && !p.Asleep, used, shots && _shots != null)) yield return x;
