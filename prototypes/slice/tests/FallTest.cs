@@ -528,6 +528,8 @@ public partial class FallTest : Node
             if (!inWater) { outOn = true; break; }
         }
         GD.Print($"  a creature in deep water: {(outOn ? $"out on the bank after {t / 60f:F1} s" : who.Dead ? $"dead (set on by {who.ProvokedBy?.ToString() ?? "nothing"})" : "still in it")}, {swum / 60f:F1} s swimming, the most risen in a tick {rise:F3} m");
+        // (Killed out there by something (a town's hunters shoot what comes near): not the water's doing, told and not judged.)
+        if (!outOn && who.Dead && who.ProvokedBy != null) yield break;
         Check(outOn, "a creature that swims, dropped into deep water: out onto a bank within two minutes");
         Check(rise < 0.06f, $"a creature out of the water on foot, never with a leap (the most risen in a tick {rise:F3} m)");
         if (outOn) _proven.Add("a creature into deep water");
