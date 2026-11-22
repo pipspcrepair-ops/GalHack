@@ -122,8 +122,9 @@ public sealed class WorldMap
     }
 
     /// <summary>
-    /// A per-cell field at a point in metres as a cubic B-spline over the 4 by 4 cells round it, wrapping on both axes:
-    /// smooth, so its level lines are curves where bilinear ones trace the grid (a shore drawn from it is no stair of cells).
+    /// A per-cell field at a point in metres as a Catmull-Rom spline over the 4 by 4 cells round it, wrapping on both axes:
+    /// smooth, so its level lines are curves where bilinear ones trace the grid (a shore drawn from it is no stair of cells),
+    /// and through every cell's own value, so a lake keeps the reach it has (a B-spline shrank them off their beaches).
     /// </summary>
     public float SampleSmooth(float[] field, double x, double y)
     {
@@ -139,13 +140,13 @@ public sealed class WorldMap
         return sum;
     }
 
-    /// <summary>The cubic B-spline's weight for cell <paramref name="k"/> (-1 to 2) from a point <paramref name="t"/> past cell 0.</summary>
+    /// <summary>The Catmull-Rom spline's weight for cell <paramref name="k"/> (-1 to 2) from a point <paramref name="t"/> past cell 0.</summary>
     static float Spline(float t, int k) => k switch
     {
-        -1 => (1f - t) * (1f - t) * (1f - t) / 6f,
-        0 => (3f * t * t * t - 6f * t * t + 4f) / 6f,
-        1 => (-3f * t * t * t + 3f * t * t + 3f * t + 1f) / 6f,
-        _ => t * t * t / 6f,
+        -1 => (-t * t * t + 2f * t * t - t) * 0.5f,
+        0 => (3f * t * t * t - 5f * t * t + 2f) * 0.5f,
+        1 => (-3f * t * t * t + 4f * t * t + t) * 0.5f,
+        _ => (t * t * t - t * t) * 0.5f,
     };
 
     /// <summary>Whether the sea is drawn over a point in metres (<see cref="SeaFrom"/>; both axes wrap).</summary>
