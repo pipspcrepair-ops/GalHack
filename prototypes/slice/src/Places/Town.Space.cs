@@ -110,10 +110,13 @@ public sealed partial class Town
     /// <summary>How far into the furniture each of those kept apart stands this tick (NaN: not yet asked).</summary>
     readonly System.Collections.Generic.List<float> _gapAt = new();
 
+    /// <summary>Whether body i of those kept apart may be at a point by the floor: on the place's walking grid, or out on the land if out on a run (or you).</summary>
+    bool Floor(int i, Vector3 at) => OnGrid(at) || (i >= _bodies.Count || _bodies[i].Run != null) && Away(at) > 0f;
+
     /// <summary>Whether body i of those kept apart can be put at a point: on the floor, and no further into the furniture than it is (else the other takes the push).</summary>
     bool Stands(int i, Vector3 at)
     {
-        if (!Open(at)) return false;
+        if (!Floor(i, at)) return false;
         if (i >= _bodies.Count || _parts == null || InUse(_bodies[i])) return true;
         Person p = _bodies[i];
         float r = BodyRadius(p), h = Height(p);
@@ -164,7 +167,7 @@ public sealed partial class Town
             // Someone inside the distance they keep: a step off into the room there is, before they touch.
             p.Clear = b.Clear;
             Vector3 room = b.Room * RoomPace * dt;
-            if (room.LengthSquared() > 1e-10f && Open(b.Pos + room)) by += room;
+            if (room.LengthSquared() > 1e-10f && Floor(i, b.Pos + room)) by += Unpressed(p, b.Pos, b.Pos + room) - b.Pos; // (into nobody else)
             // Parted at a walk at most, over as many ticks as it takes: never shoved across the floor at once.
             bool onYou = new Vector2(was.X - player.X, was.Z - player.Z).Length() < BodyRadius(p) + Slice.Player.Survivor.Radius + 0.15f;
             float most = (onYou ? yourPace + PartPace : PartPace) * dt;
@@ -257,8 +260,10 @@ public sealed partial class Town
                 return;
             }
         }
-        // Every few seconds still held, another way from where they stand (and meanwhile they squeeze by whoever holds them: Move).
+        // Every few seconds still held, another way from where they stand; and one stood about in their way (not at a seat or at work) goes on
+        // about their day, as anyone stood in a doorway moves for someone waiting to get by. Nobody walks through anybody.
         if ((int)(was / HeldWay) == (int)(p.StuckFor / HeldWay)) return;
+        if (InTheWay(p) is { Now: < 0.1f } blocker && Spacing(blocker) > 0f && (blocker.Path == null || blocker.Step >= blocker.Path.Count)) blocker.Wait = MathF.Min(blocker.Wait, 0f);
         if (p.Spot < 0 || p.Spot >= Spots.Count) return;
         System.Collections.Generic.List<Vector3> path = PathFromHere(p, p.Spot, out bool pending);
         if (pending) { p.Path = new System.Collections.Generic.List<Vector3>(); p.Asked = p.Spot; }

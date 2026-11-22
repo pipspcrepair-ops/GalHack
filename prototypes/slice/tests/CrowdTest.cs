@@ -92,7 +92,7 @@ public partial class CrowdTest : Node
     sealed class Tally
     {
         public readonly string What;
-        public int Overlaps, Samples, Flicks, Merged, Beside, Behind;
+        public int Overlaps, Samples, Flicks, Corners, Merged, Beside, Behind;
         public float Worst, Seconds;
         public readonly List<float> Gaps = new();
         public string WorstAt = "";
@@ -108,6 +108,9 @@ public partial class CrowdTest : Node
         public float Yaw, Dir, Amount, Since, Prev, PrevSince, TurnedAt = -9f;
         public bool Counted, Seen;
         public string Note, PrevNote;
+        /// <summary>The way they walked and how far along it, as each swing began: a turn the same way on along it is a corner, not a flick.</summary>
+        public object Way, PrevWay;
+        public int Step, PrevStep;
     }
 
     /// <summary>One tick of a body's facing: true when it completes a flick (a turn one way and straight back).</summary>
@@ -203,7 +206,7 @@ public partial class CrowdTest : Node
         GD.Print($"  ({town.People.Count} people; {crowd.Count} sent to a spot in the open, then on into a building {(town.SpotAt(into) - at).Length():F0} m off; {doors.Count} doorway cells)");
 
         foreach (Town.Person p in crowd) Send(town, p, hub, 60f);
-        foreach (int x in Watch(town, crowd, 30, null, null, shots ? (at, "crowd.png") : default)) yield return x;
+        foreach (int x in Watch(town, crowd, 40, null, null, shots ? (at, "crowd.png") : default)) yield return x;
         // On into the building by the one way, and those inside out to the hub past them.
         var outs = town.People.Where(p => Awake(p) && !crowd.Contains(p) && p.Role != "guard" && !p.Sitting && Roofed(p.Spot)).Take(5).ToList();
         foreach (Town.Person p in crowd) Send(town, p, into, 30f);
@@ -221,6 +224,7 @@ public partial class CrowdTest : Node
     IEnumerable<int> Watch(Town town, List<Town.Person> who, int seconds, List<Vector3> doors, int? route, (Vector3 At, string Name) shot)
     {
         var swings = new Dictionary<Town.Person, Swing>();
+        bool snapped = false;
         float dt = 1f / 60f;
         for (int t = 0; t < seconds * 60; t++)
         {
@@ -236,8 +240,10 @@ public partial class CrowdTest : Node
                 Tally tally = nearDoor ? _doors : _crowd;
                 if (!p.Sitting) tally.Seconds += dt;
                 if (!swings.TryGetValue(p, out Swing s)) swings[p] = s = new Swing();
-                if (!p.Sitting && Flicked(s, p.Yaw, now) && tally.Flicks++ < 8) tally.Notes.Add($"{s.PrevNote} then {s.Note} then {Note(p)}");
-                if (s.Since == now || s.Note == null) (s.PrevNote, s.Note) = (s.Note, Note(p));
+                // (Turned one way and back on along the one way they walk, onward: its corners, as round a doorway, not one deciding.)
+                bool corner = Walking(p) && p.Path == s.PrevWay && p.Step >= s.PrevStep;
+                if (!p.Sitting && Flicked(s, p.Yaw, now) && (corner ? tally.Corners++ < 0 : tally.Flicks++ < 8)) tally.Notes.Add($"{s.PrevNote} then {s.Note} then {Note(p)}");
+                if (s.Since == now || s.Note == null) (s.PrevNote, s.Note, s.PrevWay, s.Way, s.PrevStep, s.Step) = (s.Note, Note(p), s.Way, p.Path, s.Step, p.Step);
                 // Bodies in each other, and the nearest one's gap once a second (standing or walking, not seated at a table).
                 float nearest = float.MaxValue;
                 Town.Person other = null;
@@ -266,7 +272,14 @@ public partial class CrowdTest : Node
                 // (A crowd's spacing is of those standing about in it; two passing on their ways may brush by.)
                 if (t % 60 == 0 && counts && nearest < 3f && (pair == _route || !Walking(p) && !Walking(other))) { pair.Gaps.Add(nearest); pair.Samples++; }
             }
-            if (shot.Name != null && t == 20 * 60 && _shots != null) foreach (int x in Snap(town.World(shot.At), shot.Name)) yield return x;
+            // (The crowd framed once it has gathered: eight or more stood round the spot, or at the last.)
+            int round = shot.Name == null || snapped ? 0 : who.Count(q => Awake(q) && !Walking(q) && (q.Pos - shot.At).Length() < 5f);
+            if (shot.Name != null && !snapped && _shots != null && (round >= 8 || t == seconds * 60 - 1))
+            {
+                snapped = true;
+                GD.Print($"  ({round} of them stood round the spot for the shot)");
+                foreach (int x in Snap(town.World(shot.At), shot.Name)) yield return x;
+            }
         }
     }
 
@@ -360,7 +373,13 @@ public partial class CrowdTest : Node
             TopUp();
             _wildMs.Add(Ms(patch.Sim, "LastApartMs"));
             bool alarmed = t >= 35 * 60;
-            if (alarmed && t % 120 == 0 && h != null) h.Alarm(h.Center + new Vector3(18f, 0f, 0f), patch.Sim.Time);
+            // The sleeper walks right up on them (noticed again): they take fright and run, and are come up on again as they go.
+            if (alarmed && t % (5 * 60) == 0 && h != null)
+            {
+                if (!patch.Sim.Targets.Contains(patch.Player)) patch.Sim.Targets.Add(patch.Player);
+                Vector3 centre = patch.WorldOf(herd[0]) + h.Center - herd[0].Position, from = centre - (h.Velocity.LengthSquared() > 0.25f ? WildSim.Flat(h.Velocity).Normalized() : Vector3.Right) * 6f;
+                _game.Survivor.PlaceOutside((_game.Zone.GroundAt(from.X, from.Z) + Vector3.Up * 0.3f).ToNumerics());
+            }
             if (t == 30 * 60 || t == 45 * 60) GD.Print($"    (the herd at {t / 60} s: {string.Join(", ", herd.Where(c => c.Alive && !c.Removed).GroupBy(c => c.State).Select(g => $"{g.Count()} {g.Key}"))}{(h != null ? $", {(h.Alarmed ? "alarmed" : "calm")}" : "")})");
             if (shots && _shots != null && t == 30 * 60) foreach (int x in Snap(patch.WorldOf(herd[0]) + (h != null ? h.Center - herd[0].Position : Vector3.Zero), "herd.png", 9f)) yield return x;
             if (t < 15 * 60 || t >= 35 * 60 && t < 38 * 60 || t % 30 != 0) continue; // (settled first; the alarm taken in first)
@@ -375,7 +394,7 @@ public partial class CrowdTest : Node
                 if (c.Species.Adult == null && o.Species.Adult == null && (!alarmed || c.State == CState.Flee)) (alarmed ? _alarmed : _calm).Add(nearest);
             }
         }
-        patch.Sim.Targets.Add(patch.Player);
+        if (!patch.Sim.Targets.Contains(patch.Player)) patch.Sim.Targets.Add(patch.Player);
         foreach (Creature c in herd) c.Removed = true;
     }
 
@@ -413,7 +432,7 @@ public partial class CrowdTest : Node
     {
         GD.Print("-- over all worlds --");
         foreach (Tally t in new[] { _crowd, _doors, _route })
-            GD.Print($"  ({t.What}: {t.Seconds / 60f:F1} person-minutes, {t.Flicks} flicks ({t.PerMinute:F2} a minute), {t.Overlaps} overlapping ticks (worst {t.Worst:F2} m{(t.WorstAt != "" ? ", " + t.WorstAt : "")}), nearest gap median {Median(t.Gaps):F2} m, 10% {t.Quantile(0.1f):F2} m over {t.Gaps.Count}{(t == _route ? $"; walking {t.Beside} side by side, {t.Behind} one behind, {t.Merged} as one" : "")})");
+            GD.Print($"  ({t.What}: {t.Seconds / 60f:F1} person-minutes, {t.Flicks} flicks ({t.PerMinute:F2} a minute; {t.Corners} more swings round the corners of a way), {t.Overlaps} overlapping ticks (worst {t.Worst:F2} m{(t.WorstAt != "" ? ", " + t.WorstAt : "")}), nearest gap median {Median(t.Gaps):F2} m, 10% {t.Quantile(0.1f):F2} m over {t.Gaps.Count}{(t == _route ? $"; walking {t.Beside} side by side, {t.Behind} one behind, {t.Merged} as one" : "")})");
         foreach (Tally t in new[] { _crowd, _doors }) foreach (string n in t.Notes) GD.Print($"    (flick {t.What}: {n})");
         GD.Print($"  ({_land.What}: {_land.Seconds:F0} s, {_land.Overlaps} ticks in each other (worst {_land.Worst:F2} m{(_land.WorstAt != "" ? ", " + _land.WorstAt : "")}), gap median {Median(_land.Gaps):F2} m, least {(_land.Gaps.Count > 0 ? _land.Gaps.Min() : float.NaN):F2} m; {_land.Beside} ticks side by side, {_land.Behind} one behind, {_land.Merged} as one)");
         GD.Print($"  (herds: {_herds}, radius {_herdR:F2} m; nearest gap grazing median {Median(_calm):F2} m ({Share(_calm, g => g < 0.15f) * 100f:F0}% within 0.15 m), alarmed median {Median(_alarmed):F2} m; deepest overlap {_herdWorst:F2} m)");
@@ -425,8 +444,8 @@ public partial class CrowdTest : Node
         Check(Median(_crowd.Gaps) < 1.5f, $"and still stands as a crowd, not scattered (median {Median(_crowd.Gaps):F2} m, under 1.5)");
         Check(_route.Merged == 0, $"two on one way walk side by side or one behind the other, never as one body ({_route.Beside} side by side, {_route.Behind} behind, {_route.Merged} as one)");
         Check(_land.Seconds > 5f && _land.Worst < 0.05f && _land.Merged == 0, $"two walking home over the land are never in each other ({_land.Overlaps} ticks, worst {_land.Worst:F2} m, {_land.Merged} as one; {_land.Beside} beside, {_land.Behind} behind)");
-        Check(_crowd.PerMinute < 2f, $"no twitching in a crowd: {_crowd.PerMinute:F2} heading flicks a person a minute (under 2; 12.8 before the fix)");
-        Check(_doors.Seconds < 0.5f || _doors.PerMinute < 5f, $"nor in doorways: {_doors.PerMinute:F2} a person a minute (under 5, over {_doors.Seconds / 60f:F1} person-minutes; 8.6 to 12 before; what is left is lining up to go through)");
+        Check(_crowd.PerMinute < 2f, $"no twitching in a crowd: {_crowd.PerMinute:F2} heading flicks a person a minute (under 2; 12.8 before the fix; corners of a way not counted)");
+        Check(_doors.Seconds < 0.5f || _doors.PerMinute < 2f, $"nor in doorways: {_doors.PerMinute:F2} a person a minute (under 2, over {_doors.Seconds / 60f:F1} person-minutes; 8.6 to 12 before)");
         if (_herds == 0) { Check(false, "a herd watched grazing"); return; }
         Check(_herdWorst < 0.05f, $"no herd animal stands in another (deepest {_herdWorst:F2} m{(_herdWorstAt != "" ? ": " + _herdWorstAt : "")})");
         Check(Median(_calm) >= _herdR * 1.5f && Share(_calm, g => g < 0.15f) < 0.15f, $"a grazing herd spreads loosely (nearest gap median {Median(_calm):F2} m, at least 1.5 radii {_herdR * 1.5f:F2}; {Share(_calm, g => g < 0.15f) * 100f:F0}% touching, under 15%)");

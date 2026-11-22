@@ -847,7 +847,7 @@ public sealed partial class Town : IKeeper
             p.Yield -= dt;
             Vector3 back = new(MathF.Sin(p.Yaw), 0f, MathF.Cos(p.Yaw));
             Vector3 stepped = Unpressed(p, p.Pos, p.Pos + back * 0.5f * dt);
-            if (Open(stepped)) p.Pos = stepped;
+            if (OnGrid(stepped)) p.Pos = stepped;
             p.Now = Mathf.MoveToward(p.Now, 0f, PeopleAccel * 2f * dt);
             return false;
         }
@@ -871,6 +871,9 @@ public sealed partial class Town : IKeeper
         // Pushed or stepped on past a point of their way (in a crowd; a new way from the middle of the cell they stand in): on to
         // the next where a body gets there straight, never turned back for it. (Not out of a seat, nor the last of the way: walked as they lie.)
         while (p.Step < p.Path.Count - 2 && p.Seat < 0 && Passed(p.Pos, p.Path[p.Step], p.Path[p.Step + 1]) && Shortcut(p.Pos, p.Path[p.Step + 1])) p.Step++;
+        // A point of it the furniture leaves no room to stand on, a hand's breadth off: passed too (never pressed into the furniture for it).
+        while (p.Step < p.Path.Count - 1 && p.Seat < 0 && !(ToSeat(p) && p.Step >= p.Path.Count - 2) && _parts != null && Flat(p.Path[p.Step] - p.Pos) < 0.3f
+               && _parts.Gap(p.Path[p.Step], BodyRadius(p), Height(p)) < 0f) p.Step++;
         Vector3 to = p.Path[p.Step];
         Vector3 d = to - p.Pos;
         float flat = new Vector2(d.X, d.Z).Length();
@@ -904,9 +907,7 @@ public sealed partial class Town : IKeeper
         }
         Vector3 was = p.Pos;
         if (p.Sitting) p.GettingUp = true;
-        // Never further into anyone, round them (Town.Space); held a while past another way even, they squeeze by (bodies part them).
-        Vector3 next = p.Pos + new Vector3(d.X, 0f, d.Z) / flat * step;
-        p.Pos = p.StuckFor >= HeldWay ? next : Unpressed(p, was, next);
+        p.Pos = Unpressed(p, was, p.Pos + new Vector3(d.X, 0f, d.Z) / flat * step); // (never further into anyone: round them, Town.Space)
         if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
@@ -914,6 +915,7 @@ public sealed partial class Town : IKeeper
         else if (_clock - p.NoFloorAt > 1f && !Floored(p.Pos)) (p.CheckFor, p.NoFloorAt) = (MathF.Max(p.CheckFor, 0.05f), _clock); // (no floor under them by the blocks: looked under, Town.Falls)
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was, dt);
+        p.Pos = Unpressed(p, was, p.Pos); // (nor held off the furniture into anyone)
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
         if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {

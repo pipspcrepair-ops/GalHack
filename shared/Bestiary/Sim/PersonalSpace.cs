@@ -121,6 +121,7 @@ public sealed class PersonalSpace
             int rings = Math.Clamp((int)MathF.Ceiling((a.Radius + most + MathF.Max(a.Keep > 0f ? keeps : 0f, walks ? 1.2f : 0f)) / Cell), 1, 3);
             Vector3 right = new(-a.Heading.Z, 0f, a.Heading.X);
             int bears = 0;
+            bool rightTaken = false;
             for (int dx = -rings; dx <= rings; dx++)
                 for (int dz = -rings; dz <= rings; dz++)
                 {
@@ -138,13 +139,14 @@ public sealed class PersonalSpace
                         if (!walks) continue;
                         float ahead = a.Heading.Dot(dir);
                         if (dist <= want + 1.2f && ahead >= 0.7f) bears++;
+                        rightTaken |= dist < want + 0.1f && dir.Dot(right) > 0.3f; // (no bearing into one beside)
                         // Face to face at touching on a narrow way (none walks into the other: they meet and stop): the one who gives more waits a moment.
                         if (dist < want + 0.15f && ahead > 0.6f && a.Heading.Dot(b.Heading) < -0.5f && (a.Give > b.Give || a.Give == b.Give && i < j)) a.Wait = MathF.Max(a.Wait, 0.6f);
                         if (ahead > 0.5f && b.Heading.Dot(a.Heading) > 0.5f && (d - a.Heading * (ahead * dist)).Length() < want) a.Clear = MathF.Min(a.Clear, dist - want);
                     }
                 }
             if (a.Room.LengthSquared() > 1f) a.Room = a.Room.Normalized();
-            for (int k = 0; k < bears; k++)
+            for (int k = 0; k < (rightTaken ? 0 : bears); k++)
             {
                 Vector3 step = right * 0.5f * dt;
                 if (open == null || open(i, a.Pos + step)) { a.Pos += step; a.Moved += step; }
