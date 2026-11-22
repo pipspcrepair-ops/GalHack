@@ -537,7 +537,7 @@ public partial class FallTest : Node
     IEnumerable<int> High(Town town, Place place, HashSet<Town.Person> used, float height)
     {
         // (One with nothing over them all the way up: they come down where they stood, the whole height.)
-        bool Open(Town.Person p) => _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(town.World(p.Pos + Vector3.Up * (height + 1f)), town.World(p.Pos + Vector3.Up * 0.3f), Layers.World | Layers.Hull | Layers.Interior)).Count == 0;
+        bool Open(Town.Person p) => new[] { Vector3.Zero, Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }.All(d => _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(town.World(p.Pos + d * 0.35f + Vector3.Up * (height + 1f)), town.World(p.Pos + d * 0.35f + Vector3.Up * 0.3f), Layers.World | Layers.Hull | Layers.Interior)).Count == 0); // (their whole body clear, not only their middle)
         Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep && town.CanStand(p.Pos) && Open(p) && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { p }) is not true).FirstOrDefault(); // (not a lookout set on a roof with no way down)
         if (who == null) { Check(false, $"someone to set {height:F0} m up"); yield break; }
         used.Add(who);
@@ -667,7 +667,7 @@ public partial class FallTest : Node
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell ({h:F2} m)");
         if (start >= 0 && end >= 0 && h > 0.3f) _proven.Add(kind);
         // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
-        Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 1.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
+        Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : who.StepEvery + 0.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
         // (On the land a creature stands on the ground as dug, by the metre.)
         // (A body wider than the hole stands on its rim, on three of its feet: Locomotion.Footing.)
         float feet = who.Space == null ? patch.FromPatch(who.Position with { Y = Footing(patch.Sim, who) }).Y : float.NaN;
