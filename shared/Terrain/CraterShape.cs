@@ -20,7 +20,8 @@ public static class CraterShape
     public static float Profile(float t, float depth, float rim, float reach = 0.5f, float floor = 0f, float peak = 0f)
     {
         if (t >= 1f + reach) return 0f;
-        if (t > 1f) return rim * (1f - (t - 1f) / reach);
+        // The rim falls away steepest at its crest and eases into the land, so no ring marks where it ends.
+        if (t > 1f) return rim * Square(1f - (t - 1f) / reach);
         // A parabolic bowl from the floor up to the rim's crest (a flat floor first, on a big one).
         float u = floor > 0f ? MathF.Max(0f, (t - floor) / (1f - floor)) : t;
         float h = rim - (depth + rim) * (1f - u * u);
@@ -28,4 +29,6 @@ public static class CraterShape
         if (peak > 0f) h += peak * MathF.Exp(-t * t / (floor > 0f ? floor * floor * 0.35f : 0.02f));
         return h;
     }
+
+    static float Square(float v) => v * v;
 }

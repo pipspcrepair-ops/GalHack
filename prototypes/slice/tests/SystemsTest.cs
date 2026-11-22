@@ -83,6 +83,7 @@ public partial class SystemsTest : Node
         MoonSpeeds(systems, daySeconds);
         Gravity(systems);
         Vacuum(systems);
+        Barren(systems);
         Moons(systems);
         Planes(systems);
         Rings(systems);
@@ -91,7 +92,9 @@ public partial class SystemsTest : Node
         DriveMaterials(systems);
         List<StarSystem> mapped = systems.Take(Mapped).ToList();
         StartMoons(mapped, out List<(StarSystem System, WorldMap Moon)> moons);
-        NoWaterOnBareWorlds(Fuels(mapped, moons), moons);
+        var coarse = Fuels(mapped, moons);
+        NoWaterOnBareWorlds(coarse, moons);
+        BarrenMaps(coarse);
         Flyer(mapped);
         Loot();
         NoMarkers(systems);
@@ -581,7 +584,7 @@ public partial class SystemsTest : Node
             }
             bare++;
             if (!Dry(map)) wet++;
-            if (body.Spec.Archetype == Archetype.Ice && map.Deposits.All().Any(d => d.Kind == DepositKind.Water)) ice++;
+            if ((body.Spec.Archetype == Archetype.Ice || body.Spec is { Archetype: Archetype.Barren, Variant: Archetypes.Icy }) && map.Deposits.All().Any(d => d.Kind == DepositKind.Water)) ice++;
         }
         // The same at the game's own resolution, on every start's moon.
         var full = new bool[moons.Count];

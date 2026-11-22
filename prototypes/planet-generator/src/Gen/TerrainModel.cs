@@ -110,9 +110,9 @@ public sealed class TerrainModel
         _duneField = new Fractal(Salt(31), 1300, 2, 0.5f);
         _duneWander = new Fractal(Salt(33), 420, 2, 0.5f);
         _summits = new Fractal(Salt(34), 2600, 2, 0.5f);
-        _rille = new Fractal(Salt(35), def.RilleWavelength, 3, 0.45f);
+        _rille = new Fractal(Salt(35), def.RilleWavelength, 2, 0.45f);
         _rilleWarp = new Fractal(Salt(36), def.RilleWavelength * 0.6, 2, 0.5f);
-        _wrinkle = new Fractal(Salt(37), WrinkleWavelength, 3, 0.45f);
+        _wrinkle = new Fractal(Salt(37), WrinkleWavelength, 2, 0.45f);
         _deltaNoise = new Noise(Salt(32));
         _volcanoGrid = new FeatureGrid(Width, Height, def.VolcanoSpacing, _seed, 21, 0.75f);
         _bare = spec.Airless;
@@ -120,7 +120,7 @@ public sealed class TerrainModel
         // the commonest (every surface saturated with them), the big ones a few to a world.
         var craters = new System.Collections.Generic.List<FeatureGrid>();
         for (double c = def.CraterSpacing; def.CraterSpacing > 0 && c >= CraterFinest; c /= CraterStep)
-            craters.Add(new FeatureGrid(Width, Height, c, _seed, 22 + 1000 * craters.Count, craters.Count == 0 ? 0.7f : 0.85f));
+            craters.Add(new FeatureGrid(Width, Height, c, _seed, 22 + 1000 * craters.Count, craters.Count == 0 ? 0.75f : 0.92f));
         _craterGrids = craters.ToArray();
         _coneGrid = new FeatureGrid(Width, Height, 900, _seed, 23, 0.8f);
         _ringGrid = new FeatureGrid(Width, Height, 2300, _seed, 24, 0.8f);
@@ -676,11 +676,15 @@ public sealed class TerrainModel
     /// <summary>The smallest craters' spacing, m: a few metres across, under the player's feet.</summary>
     const double CraterFinest = 14;
     /// <summary>How much smaller each size of crater is than the one before.</summary>
-    const double CraterStep = 2.6;
+    const double CraterStep = 2.3;
     /// <summary>Over these radii, m, a crater slumps into a complex one: a flat floor, a central peak, shallower for its size.</summary>
     const float ComplexFrom = 220f, ComplexBy = 520f;
-    /// <summary>The most a crater's radius is of its grid's spacing.</summary>
-    const float CraterMost = 0.42f;
+    /// <summary>
+    /// The most a crater's radius is of its grid's spacing, and the farthest its ejecta falls past its rim, in radii. Together
+    /// small enough that no crater reaches 0.65 of a cell from its centre: a feature stands at least that far from the half
+    /// of the next cell away from it, so a point need only look in the four cells nearest it (<see cref="FeatureGrid.Near"/>).
+    /// </summary>
+    const float CraterMost = 0.3f, EjectaMost = 0.85f;
 
     /// <summary>A fresh crater's depth for its radius: a simple bowl a fifth as deep as it is wide, a big complex one under a tenth.</summary>
     float CraterDepth(float radius) => radius * Mathx.Lerp(0.4f, 0.18f, Mathx.Smooth(ComplexFrom, ComplexBy, radius)) * Def.CraterRelief;
@@ -701,20 +705,23 @@ public sealed class TerrainModel
         {
             float seen = Mathx.Smooth((float)spacing * 0.75f, (float)spacing * 2f, (float)grid.Spacing * 0.2f);
             if (seen <= 0f) break;
-            grid.Cell(x, y, out int ix, out int iy);
-            for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
+            grid.Near(x, y, out int ix, out int iy);
+            for (int dy = 0; dy <= 1; dy++)
+            for (int dx = 0; dx <= 1; dx++)
             {
                 if (!grid.Feature(ix + dx, iy + dy, out double fx, out double fy, out ulong h)) continue;
-                float radius = (float)grid.Spacing * Mathx.Lerp(0.1f, CraterMost, MathF.Pow(Hash.Unit(h, 3), 2f));
-                float fresh = Mathx.Lerp(0.3f, 1f, Hash.Unit(h, 4));
-                float reach = Mathx.Lerp(0.5f, 1.2f, fresh);
+                var (radius, fresh) = Impact(grid, h);
+                float reach = Mathx.Lerp(0.45f, EjectaMost, fresh);
                 float ddx = (float)Mathx.WrapDelta(x - fx, Width), ddy = (float)Mathx.WrapDelta(y - fy, Height);
-                float t = MathF.Sqrt(ddx * ddx + ddy * ddy) / radius;
-                if (t >= (1f + reach) * 1.12f) continue;
-                // A lobed outline: impacts come in at an angle and land on uneven ground.
-                float angle = MathF.Atan2(ddy, ddx), phase = Hash.Unit(h, 5) * MathF.Tau;
-                t /= 1f + 0.07f * MathF.Sin(angle * 3f + phase) + 0.04f * MathF.Sin(angle * 7f - phase * 1.3f);
+                float far = (1f + reach) * 1.11f * radius; // its lobes reach out a ninth further at most
+                if (ddx * ddx + ddy * ddy >= far * far) continue;
+                float d = MathF.Sqrt(ddx * ddx + ddy * ddy), t = d / radius;
+                // A lobed outline: impacts come in at an angle and land on uneven ground. Three lobes and two, each
+                // turned its own way, from the way out (c, s) by the multiple-angle identities, no trigonometry.
+                float c = d > 0f ? ddx / d : 1f, s = d > 0f ? ddy / d : 0f;
+                float c2 = c * c - s * s, s2 = 2f * s * c, c3 = c * (4f * c * c - 3f), s3 = s * (3f - 4f * s * s);
+                float u = Hash.Unit(h, 5) * 2f - 1f, w = Hash.Unit(h, 7) * 2f - 1f;
+                t /= 1f + 0.07f * (s3 * u + c3 * w) + 0.04f * (c2 * w - s2 * u);
                 float complex = Mathx.Smooth(ComplexFrom, ComplexBy, radius);
                 float depth = CraterDepth(radius) * fresh, rim = radius * Mathx.Lerp(0.08f, 0.045f, complex) * fresh * Def.CraterRelief;
                 float peak = Hash.Unit(h, 6) < 0.75f ? depth * 0.55f * complex : 0f;
@@ -724,28 +731,52 @@ public sealed class TerrainModel
         return result;
     }
 
+    /// <summary>A crater's radius, m, and how fresh it is (0.3 worn by everything since, 1 sharp), from its grid and its hash.</summary>
+    static (float Radius, float Fresh) Impact(in FeatureGrid grid, ulong h) =>
+        ((float)grid.Spacing * Mathx.Lerp(0.1f, CraterMost, Square(Hash.Unit(h, 3))), Mathx.Lerp(0.3f, 1f, Hash.Unit(h, 4)));
+
+    static float Square(float v) => v * v;
+
+    /// <summary>Every impact crater of at least this radius (its centre, radius and freshness), the biggest sizes first: where views and tests find them.</summary>
+    public System.Collections.Generic.IEnumerable<(double X, double Y, float Radius, float Fresh)> CratersOver(float radius)
+    {
+        foreach (FeatureGrid grid in _craterGrids)
+        {
+            if (grid.Spacing * CraterMost < radius) yield break;
+            for (int c = 0; c < grid.Cells; c++)
+            {
+                if (!grid.Feature(c % grid.Nx, c / grid.Nx, out double fx, out double fy, out ulong h)) continue;
+                var (r, fresh) = Impact(grid, h);
+                if (r >= radius) yield return (Mathx.WrapX(fx, Width), Mathx.Wrap(fy, Height), r, fresh);
+            }
+        }
+    }
+
     /// <summary>
     /// Rilles: narrow winding channels, steep-walled with a rounded floor, coming and going across the plains; with little
     /// warp (an ice sheet's) they run near straight, its cracks. They follow a noise field's zero line, metres off it read from its slope.
     /// </summary>
     float Rilles(in P4 p, double spacing)
     {
-        double warp = Def.RilleWavelength * 0.35 * Def.RilleWarp;
+        // The warp field says where they run too: a rille only where it leans one way.
         float w = _rilleWarp.Fbm(p, spacing);
+        float on = Mathx.Smooth(-0.1f, 0.2f, w) * Mathx.Smooth(Def.RilleWidth, Def.RilleWidth * 0.4f, (float)spacing);
+        if (on <= 0f) return 0f;
+        double warp = Def.RilleWavelength * 0.35 * Def.RilleWarp;
         var q = new P4(p.X + w * warp, p.Y - w * warp, p.Z + w * warp * 0.6, p.W - w * warp * 0.5);
         float off = MathF.Abs(_rille.Fbm(q, spacing)) * Def.RilleWavelength * LineMetres;
         float half = Def.RilleWidth * 0.5f;
         float inside = 1f - Mathx.Smooth(half * 0.45f, half, off);
-        float on = Mathx.Smooth(-0.15f, 0.15f, _rilleWarp.Fbm(p.Swap, spacing)) * Mathx.Smooth(Def.RilleWidth, Def.RilleWidth * 0.4f, (float)spacing);
         return Def.RilleDepth * inside * inside * (3f - 2f * inside) * on;
     }
 
     /// <summary>Low rounded ridges, wrinkles a few hundred metres wide winding over the plains, rising and dying along their length.</summary>
     float Wrinkles(in P4 p, double spacing)
     {
+        float along = Mathx.Smooth(-0.3f, 0.4f, _wrinkle.Fbm(p.Swap, spacing));
+        if (along <= 0f) return 0f;
         float off = MathF.Abs(_wrinkle.Fbm(p, spacing)) * WrinkleWavelength * LineMetres;
         float ridge = 1f - Mathx.Smooth(0f, 150f, off);
-        float along = Mathx.Smooth(-0.3f, 0.4f, _wrinkle.Fbm(p.Swap, spacing));
         return Def.WrinkleHeight * ridge * ridge * (3f - 2f * ridge) * along;
     }
 
@@ -780,8 +811,8 @@ public sealed class TerrainModel
 
         public int Nx => _nx;
         public int Cells => _nx * _ny;
-        /// <summary>A cell's width, m: the spacing asked for, rounded to fit the planet.</summary>
-        public double Spacing => _cw;
+        /// <summary>A cell's shorter side, m: about the spacing asked for, rounded to fit the planet both ways.</summary>
+        public double Spacing => Math.Min(_cw, _ch);
 
         /// <summary>The index of a cell, wrapped onto the planet.</summary>
         public int Wrapped(int ix, int iy) => ((iy % _ny + _ny) % _ny) * _nx + (ix % _nx + _nx) % _nx;
@@ -790,6 +821,13 @@ public sealed class TerrainModel
         {
             ix = (int)Math.Floor(Mathx.WrapX(x, _width) / _cw);
             iy = (int)Math.Floor(Mathx.Wrap(y, _height) / _ch);
+        }
+
+        /// <summary>The first of the two by two cells nearest a point: its own and the neighbours on the sides of it it is nearest.</summary>
+        public void Near(double x, double y, out int ix, out int iy)
+        {
+            ix = (int)Math.Floor(Mathx.WrapX(x, _width) / _cw - 0.5);
+            iy = (int)Math.Floor(Mathx.Wrap(y, _height) / _ch - 0.5);
         }
 
         public bool Feature(int ix, int iy, out double fx, out double fy, out ulong hash)
