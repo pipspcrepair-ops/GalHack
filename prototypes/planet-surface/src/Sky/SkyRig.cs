@@ -600,14 +600,16 @@ public partial class SkyRig : Node3D
 
         // The sun: star-coloured, warming toward the horizon, dimmed by weather and, low down, by
         // the long path its light takes through the air (to under half near the horizon).
-        float low = Smooth(0.35f, 0f, toSun.Y);
+        // With no air (a vacuum world) nothing reddens or dims it on its way down: a hard white disc to the horizon.
+        bool vacuum = s.Thickness <= 0f;
+        float low = vacuum ? 0f : Smooth(0.35f, 0f, toSun.Y);
         Rgb light = Rgb.Lerp(s.StarColor, s.Sunset, low * 0.7f);
         // An eclipse: the light goes with the share of the disc still in sight, cooler as it goes,
         // and the shadows fade as the sun thins to a ring.
         float lit = Eclipses ? SunLit : 1f;
         light = Rgb.Lerp(light, new Rgb(0.6f, 0.68f, 0.86f), (1f - lit) * 0.55f);
         Sun.LightColor = C(light);
-        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * AirMass(toSun.Y) * air.SunScale * lit;
+        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * (vacuum ? 1f : AirMass(toSun.Y)) * air.SunScale * lit;
         Sun.ShadowOpacity = Math.Clamp(0.25f + air.SunScale, 0f, 1f) * Smooth(0.02f, 0.35f, lit);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_lit"), lit);
         // The sun stays the sky's light even below the horizon (the shader reads its direction for
@@ -666,7 +668,22 @@ public partial class SkyRig : Node3D
         float floor = s.Air == AirKind.Ash ? 0.45f : 0.25f;
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
         Environment.AdjustmentSaturation = air.Saturation;
+        // No air, no sky light: a vacuum sky's radiance is black space, its stars and the bodies in it (the planet
+        // overhead lighting the shade). What else reaches a shadow is the sunlit ground's bounce, in the ground's own colour.
+        Environment.AmbientLightSkyContribution = vacuum ? VacuumSkyShare : 1f;
+        if (vacuum && _world != null)
+        {
+            Color ground = _world.Look.Dust.SrgbToLinear();
+            float bounce = GroundBounce * Sun.LightEnergy * Math.Max(0f, toSun.Y) / ((1f - VacuumSkyShare) * Math.Max(0.05f, Environment.AmbientLightEnergy));
+            Environment.AmbientLightColor = new Color(ground.R * light.R * bounce, ground.G * light.G * bounce, ground.B * light.B * bounce).LinearToSrgb();
+        }
     }
+
+    /// <summary>The share of a vacuum world's shade light its sky's radiance gives (the planet overhead), the rest the ground's bounce.</summary>
+    const float VacuumSkyShare = 0.5f;
+
+    /// <summary>How much of the sunlight on the ground comes back up into a shadow: a dim fill, the shade still near black.</summary>
+    const float GroundBounce = 0.08f;
 
     /// <summary>
     /// Pools valley fog below a height: the low ground around the player plus the fog's depth. Godot's

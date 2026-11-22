@@ -120,8 +120,9 @@ public partial class PopRoute : Node
                  $"ground detail {zone.Streamer.VoxelRadius}, detail distance {DetailReach.Distance}, level-0 radius {TerrainStreamer.FarLod0Radius}, far radius {TerrainStreamer.FarRadius}, " +
                  $"sun shadows {sun.DirectionalShadowMaxDistance} m, splits {sun.DirectionalShadowSplit1 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit2 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit3 * sun.DirectionalShadowMaxDistance:F0}, normal bias {sun.ShadowNormalBias}, bias {sun.ShadowBias}, blend splits {sun.DirectionalShadowBlendSplits}, mode {sun.DirectionalShadowMode}");
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");
-        zone.Weather.Bridge.Calm = true;
-        zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        // (An airless world has no weather to calm.)
+        if (zone.Weather.Bridge != null) zone.Weather.Bridge.Calm = true;
+        zone.Weather.Sim?.Snap(Weather.Model.WeatherKind.Clear);
         zone.Wildlife.Frozen = !_args.ContainsKey("live");
         _day = zone.Sky.TimeOfDay;
         Vector3 start = _game.Survivor.WorldFeet;

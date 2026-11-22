@@ -32,7 +32,7 @@ public partial class Screenshot : Node
     /// <summary>One named view: the planet, where to stand, when, and in what weather.</summary>
     public sealed record ViewSpec(PlanetSpec Planet, Func<Main, (Vector3 pos, float heading, float pitch)> Place, double Time,
         WeatherKind? Weather = null, GroundCover? Ground = null, Action<Main> Prepare = null, Action<Main> BeforeCapture = null,
-        Func<Main, double> TimeFor = null, string Force = null, Func<Main, List<Shot>> Series = null);
+        Func<Main, double> TimeFor = null, string Force = null, Func<Main, List<Shot>> Series = null, Func<PlanetSurface.World.PlanetWorld> World = null);
 
     /// <summary>One frame of a series: a name for its file (FILE-name.png) and where the camera stands.</summary>
     public sealed record Shot(string Name, Vector3 Pos, float Heading, float Pitch);
@@ -67,7 +67,7 @@ public partial class Screenshot : Node
         PlanetSurface.Poi.PoiSiting.ForceFamily = _spec.Force;
         _main = new Main { Interactive = false };
         AddChild(_main);
-        _main.Arrive(_spec.Planet);
+        _main.Arrive(_spec.Planet, _spec.World);
     }
 
     ViewSpec Look()
@@ -639,6 +639,7 @@ public static class Views
         _ when name.StartsWith("far:") => FarView(name),
         _ when name.StartsWith("cliff:") => CliffViews.Get(name),
         _ when name.StartsWith("infra:") => InfraViews.Get(name),
+        _ when name.StartsWith("barren:") => BarrenViews.Get(name),
         _ => null,
     };
 

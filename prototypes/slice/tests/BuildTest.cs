@@ -118,8 +118,9 @@ public partial class BuildTest : Node
         _play = new Playthrough(_game);
         _game.Said += (text, _) => _said.Add(text);
         foreach (int x in _drive.UntilPlaying()) yield return x;
-        _game.Zone.Weather.Bridge.Calm = true;
-        _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        // (An airless world, --type barren, has no weather to calm.)
+        if (_game.Zone.Weather.Bridge != null) _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim?.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         GD.Print("  (systems test: items are handed over and the sleeper teleported where a playthrough would spend minutes)");
         CompassAtStart();

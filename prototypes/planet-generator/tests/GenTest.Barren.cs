@@ -56,11 +56,13 @@ public partial class GenTest
                     foreach (var c in some)
                     {
                         double spacing = Math.Clamp(c.Radius / 6.0, 1.0, 16.0);
-                        float floor = sampler.HeightAt(c.X, c.Y, spacing), rim = 0f;
+                        // Its floor half way out (a big one has a peak in its middle) against its rim.
+                        float floor = 0f, rim = 0f;
                         for (int k = 0; k < 12; k++)
                         {
                             double a = k * Math.Tau / 12;
                             rim += sampler.HeightAt(c.X + Math.Cos(a) * c.Radius, c.Y + Math.Sin(a) * c.Radius, spacing) / 12f;
+                            floor += sampler.HeightAt(c.X + Math.Cos(a) * c.Radius * 0.5, c.Y + Math.Sin(a) * c.Radius * 0.5, spacing) / 12f;
                         }
                         // Its floor well under its rim: a tenth of its radius on rock (less on ice and on a heavy world, its own relief).
                         if (rim - floor > c.Radius * 0.1f * map.Def.CraterRelief) bowls++;

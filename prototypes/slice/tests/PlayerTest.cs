@@ -110,8 +110,9 @@ public partial class PlayerTest : Node
                 GD.Print($"  (rescued the sleeper at {_game.Stats.Seconds:F0} s: {r.From} -> {r.To}, inside {r.Inside}; aboard {_game.Survivor.Aboard?.Name}, seated {_game.Survivor.Seated?.Name})");
         };
         // Clear, still weather and calm creatures: the steps are what is tested, not the storms.
-        _game.Zone.Weather.Bridge.Calm = true;
-        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        // (An airless world, --type barren, has no weather to calm.)
+        if (_game.Zone.Weather.Bridge != null) _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim?.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         // The steps are tested at full experience; the pace of levelling (the gain) is BuildTest's.
         _game.Zone.Data.Progress.Xp.Gain = 1;

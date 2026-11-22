@@ -51,8 +51,6 @@ public partial class SystemsTest
         Check(lit == 0 && weather == 0, $"barren: every one has the vacuum sky, black at noon with the stars out ({lit} lit), and no weather, cloud, haze or fog at any hour ({weather} had some)");
     }
 
-    static float Bright(Planets.Look.Rgb c) => 0.2126f * c.R + 0.7152f * c.G + 0.0722f * c.B;
-
     /// <summary>The mapped airless bodies: no dunes or other weathered ground, barren ground only, craters at every size.</summary>
     void BarrenMaps(List<(StarSystem System, Orbiter Body, WorldMap Map)> coarse)
     {
@@ -73,9 +71,11 @@ public partial class SystemsTest
             if (other) ground++;
             // Craters from metres to kilometres: some of every size, a few hundred metres and up seen in the map itself.
             bool sizes = new[] { (3f, 10f), (10f, 40f), (40f, 150f), (150f, 2000f) }.All(band => map.Model.CratersOver(band.Item1).Any(c => c.Radius < band.Item2));
-            var big = map.Model.CratersOver(400f).Where(c => c.Fresh > 0.8f).Take(8).ToList();
-            float Rim((double X, double Y, float Radius, float Fresh) c) => new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Average(d => map.Sample(map.Elevation, c.X + d.Item1 * c.Radius, c.Y + d.Item2 * c.Radius));
-            int bowls = big.Count(c => Rim(c) - map.Sample(map.Elevation, c.X, c.Y) > c.Radius * 0.08f * map.Def.CraterRelief);
+            // The big ones the map's cells can show (four across their radius), their floor (half way out: a big one has a peak in
+            // its middle) well under their rim.
+            var big = map.Model.CratersOver(MathF.Max(250f, map.CellSize * 4f)).Where(c => c.Fresh > 0.7f).OrderByDescending(c => c.Radius).Take(8).ToList();
+            float Ring((double X, double Y, float Radius, float Fresh) c, float t) => new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Average(d => map.Sample(map.Elevation, c.X + d.Item1 * c.Radius * t, c.Y + d.Item2 * c.Radius * t));
+            int bowls = big.Count(c => Ring(c, 1f) - Ring(c, 0.5f) > c.Radius * 0.08f * map.Def.CraterRelief);
             if (sizes && big.Count > 0 && bowls * 10 >= big.Count * 7) cratered++;
         }
         Check(maps > 20 && dunes == 0 && ground == 0, $"barren: none of {maps} mapped barren bodies has dunes or other weathered ground ({dunes} had), or any but barren ground ({ground} had)");
