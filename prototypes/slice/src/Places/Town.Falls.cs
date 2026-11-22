@@ -239,8 +239,9 @@ public sealed partial class Town
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
         p.Pos.Y = y;
         p.FallSpeed = speed;
-        // Clear of what they now pass (a ledge, an eave): a step down eased off it, a long fall held off it before it is into them.
-        OffSides(p, speed > 3f ? 4 : 1);
+        // Clear of what they now pass (a ledge, an eave): a long fall held off it before it is into them; a step down or a landing
+        // eased off it (0.1 m a tick at most with the first).
+        OffSides(p, speed > 3f && !down ? 4 : 1);
         if (!down) return;
         Land(p, speed, wet);
     }
