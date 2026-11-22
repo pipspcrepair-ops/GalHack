@@ -915,7 +915,7 @@ Themes for POIs in planet and moon orbits. Each group opens with the world theme
 - Families: top: mining_outpost. NEW: scoop_rig, tank_farm, tether_node.
 - Inside: Pump halls, cold tank crawls, wind-beaten scoop deck, crew cans with giant-sized views.
 - Occ: EMP 45, MCH 25, SCV 15, GNG 15.
-- Hazards/rewards: Storm surges on the scoop; hyperdrive fuel, a piece of the ladder.
+- Hazards/rewards: Storm surges on the scoop; fold fuel, a piece of the ladder.
 - Fit: pre M/H > post L/M/H | ports any | giants | C | S | from 81
 
 **59. The Fuel Stop** (`fuel_stop`) - Tanks on a truss, a light on top.
@@ -3131,14 +3131,14 @@ Rules for the loader, as for world themes: theme tables are shifted by the apoca
 
 ## 9. Reward and progression fit
 
-The ladder from the design and from `StarSystem`: fuel moon (warp fuel and warp drive materials), then warp drive, then hyperdrive materials and fuel and capital ship materials, then the stars. Deposits are guaranteed as the code has them. Space POIs add routes, never replace them.
+The ladder from the design and from `StarSystem`: fuel moon (warp fuel and warp drive materials), then warp drive, then fold drive materials and fuel and capital ship materials, then the stars. Deposits are guaranteed as the code has them. Space POIs add routes, never replace them.
 
 | Stage | Where | What POIs give | Example themes | Cap |
 | --- | --- | --- | --- | --- |
 | First flight | Low shell of the start world | Scrap, salvage grade, air cells, patch kits, repair kits, first claimable small hull | `holding_pattern`, `jettison_trail`, `lifeboat_raft`, `graveyard_shell`, `national_capsule` | No drives |
 | Fuel moon | The moon, its shells and its L points | Warp cells, a few warp parts, ore stocks, a catcher to claim | `catcher`, `fuel_stop`, `lost_property`, `quarried_moon` | Warp drive parts, never a whole drive |
-| Warp | The rest of the start system | Hyperdrive materials and fuel in stock form, gravium, gold, fold crystal in small amounts | `scoop_rig`, `fuel_stop`, `company_rock`, `trojan_warehouse`, `unfinished_keel` | Capital hull with no core, no drive, no fuel |
-| Capital | First capital hull, claimed or built | Claim targets, components, CPU parts | `alert_fleet`, `unfinished_keel`, `rush_ark`, `founder_carrier`, `breakers_orbit` | Claimed hulls need your own core and your own hyperdrive |
+| Warp | The rest of the start system | Fold drive materials and fuel in stock form, gravium, gold, fold crystal in small amounts | `scoop_rig`, `fuel_stop`, `company_rock`, `trojan_warehouse`, `unfinished_keel` | Capital hull with no core, no drive, no fuel |
+| Capital | First capital hull, claimed or built | Claim targets, components, CPU parts | `alert_fleet`, `unfinished_keel`, `rush_ark`, `founder_carrier`, `breakers_orbit` | Claimed hulls need your own core and your own fold drive |
 | Stars | Neighbouring systems | Emberite, starsilver, faction goods, lattice cores | `sun_tap`, `star_bridge`, `black_yard`, `continuity_vault` | By danger |
 | Frontier | Core, voids, periphery | Precursor alloy, echo shards, unique items | Part 4 | Finite: see below |
 
@@ -3257,7 +3257,7 @@ These override anything above.
 2. **No sleepers wake.** Cryo pods hold corpses. The only pods that ever wake are in the player's starting room. Read every Sleepers (SLP) entry as dead occupants, with no awakening.
 3. **No spin gravity.** Rings and spinning hulls can turn as a look, but gravity is the same core gravity as everywhere else, and it's off when the power's dead.
 4. **POIs don't replenish.** What's looted or destroyed stays that way, and changes to a world last. The only exception is a maintenance sweep of a planet or system that's long unvisited and far behind.
-5. **No paid passage for now.** Hitching needs other systems you can arrive in, and hyperdrive travel, so it waits. Read `route_keeper` and similar as places, with no ride.
+5. **No paid passage for now.** Hitching needs other systems you can arrive in, and fold drive travel, so it waits. Read `route_keeper` and similar as places, with no ride.
 6. **Start system traders** are factionless independents (`trader_anchorage`).
 
 ---

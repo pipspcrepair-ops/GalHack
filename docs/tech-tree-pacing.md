@@ -32,8 +32,8 @@ Nodes are counted once per grid. "Large" = Big Core grid (base and capital), "sm
 | 8 | Large fabricator |
 | 10 | Factory (blueprint factory), large-grid hover block |
 | 12 | Combat armour, warp drive, warp tank |
-| 15 | Advanced fabricator, fold tank, hyperdrive 1 |
-| 20 | Precursor armour (found-only alloy), hyperdrive 2 |
+| 15 | Advanced fabricator, fold tank, fold drive 1 |
+| 20 | Precursor armour (found-only alloy), fold drive 2 |
 
 **Small & Hover (small grid, tabs small and hover)**
 
@@ -95,7 +95,7 @@ Only levels 13 and 17 to 19 are empty in every tab before the data ends (level 1
 
 - **Lumps (Measured).** Level 1 has nine large-grid nodes and level 5 has eleven small-grid nodes. A lump is one reason a tab then goes quiet: the whole set arrives together and the next tier is three levels away.
 - **Tiers are thin (Inferred).** Most categories have only two or three tiers (armour has four, including a found-only one). Once the tiers are used up, the category cannot fill later levels. Thrusters, generators, shields and CPU extenders have one tier each today, so the late game has nothing to upgrade.
-- **Late nodes cluster at the top of the old cap (Measured).** Hyperdrive, advanced fabricator, precursor armour and plasma ammo all sit between 15 and 20, so they need successors to fill levels 21 to 25.
+- **Late nodes cluster at the top of the old cap (Measured).** Fold drive, advanced fabricator, precursor armour and plasma ammo all sit between 15 and 20, so they need successors to fill levels 21 to 25.
 - **The two-tab rule.** Merging base+capital and small+hover is a UI and data change; the cores keep their own nodes (Big Core, Small Core).
 
 ---
@@ -233,17 +233,17 @@ Marks: **E** exists today at that level, **N** new. Nothing that exists moves. N
 | 12 | Combat armour, Warp drive, Warp tank (E); CPU extender T2 (N) | Blueprint factory, Warp drive, Warp tank (E) | Suit scanner (N) | Heavy suit (N) | RF4 Long Glint, GL4 Gum Launcher, SN1 Basslance, CD2 Frost Lance, SK5 Heat Dart, SU3 Weld Beam (N) |
 | 13 | Field repair station, Docking pad (N) | Generator T2, Salvager T1, Fuel tank T2 (N) |  | Armour booster (N) | SM4 Pingback Carbine, GR7 Flash Cracker, RK4 Lock Tube, LS2 Stutter Lamp, LT6 Skycall Rod, CH5 Tangle Gun, HV2 Chain Cannon, HV4 Flak Burst, PS7 Bulk Ward (N) |
 | 14 | Shield extender (N) | Combat armour (E); Hover shield T1 (N) |  | Fusion cell (E); Radiation booster (N) | LG3 Bench Gun, MN6 Remote Satchel, AC3 Stage Rifle, FL6 Jelly Thrower, LV6 Wormspitter, MA3 Crawl Mine, PS12 Ward Post (N) |
-| 15 | Advanced fabricator, Fold tank, Hyperdrive 1 (E) | Hover plate T4, CPU extender T2 (N) | Drill T3 (N) |  | Artillery shells (E); MG4 Spin Gun, AR5 Fortress Howitzer, GV1 Shove Cannon, DF3 Pop Dome, HV5 Torpedo Tube, BT2 Quake Spike (N) |
+| 15 | Advanced fabricator, Fold tank, Fold drive 1 (E) | Hover plate T4, CPU extender T2 (N) | Drill T3 (N) |  | Artillery shells (E); MG4 Spin Gun, AR5 Fortress Howitzer, GV1 Shove Cannon, DF3 Pop Dome, HV5 Torpedo Tube, BT2 Quake Spike (N) |
 | 16 | Repair bay T2, Teleporter, short range, Generator T3 (N) | Advanced fabricator (E); Thruster T3 (N) |  | Mobility booster (N) | PB3 Static Cannon, LT3 Fork Gun, ME10 Hum Blade, SK1 Bend Rounds, EW2 Jam Pod, PS4 Line Ward (N) |
 | 17 | Thruster T3, Fuel tank T3 (N) | Vessel laser drill (N) | Hijack Tool T2 (N) |  | SG5 Shardcaster, GL7 Hop Launcher, RK11 Sky Battery, AC6 Fighter Rail, FL12 Gate Jet, DF6 Needle Curtain, NU1 Hand Bomb (N) |
 | 18 | Shield generator T2 (N) | Warp drive T2, Small shield T2 (N) |  | Large medkit (N) | GR8 Pulse Ball, LS3 Scorch Line, LT4 Storm Rope, PS8 Snap Ward (N) |
 | 19 | CPU extender T3 (lattice cores), Auto-miner, Replicator T3 (N) | Generator T3, CPU extender T3 (lattice cores) (N) |  | Multi booster (N) | SA6 Three-Step Pistol, AC4 Rail Lance, SN3 Resonator, LV7 Sand Swimmer, GV3 Well Launcher, BT7 Demolition Bore (N) |
-| 20 | Precursor armour, Hyperdrive 2 (E); Remote-control console (N) | Precursor armour (E); Hover plate T5 (N) | Drill T4 (N) |  | Plasma charges (E); RK8 Flock Launcher, MN9 Picky Mine, PL2 Ember Rifle, PL5 Strip Battery, ME11 Light Blade, SK3 Needle Swarm, HV6 Overload Torpedo (N) |
+| 20 | Precursor armour, Fold drive 2 (E); Remote-control console (N) | Precursor armour (E); Hover plate T5 (N) | Drill T4 (N) |  | Plasma charges (E); RK8 Flock Launcher, MN9 Picky Mine, PL2 Ember Rifle, PL5 Strip Battery, ME11 Light Blade, SK3 Needle Swarm, HV6 Overload Torpedo (N) |
 | 21 | Generator T4, Thruster T4 (N) | Thruster T4, Salvager T2 (N) |  |  | MG5 Lamp Rotary, LS9 Lance Array, LT9 Coil Tower, CD4 Still Beam, TM1 Slow Bubble, DF7 Thread Laser, SU2 Mender Dart (N) |
 | 22 | Charged armour (echo shards), Teleporter, long range (N) | Charged armour (echo shards), Generator T4 (N) |  | Booster set T2 (N) | RF5 Dial Rifle, LS6 Cook Box, PB2 Marrow Beam, FL8 Star Gel, PH1 Swap Rifle, MI5 Confusion Lens, DS1 Ash Ray, PS5 Lattice Ward (N) |
 | 23 | Shield generator T3, Fold gate (N) | Warp drive T3, Small shield T3 (N) | Hijack Tool T3 (N) |  | AC7 Line Battery, PL7 Bottled Sun, LV3 Cinder Moths, GV4 Lift Beam, NU2 Sun Shell (N) |
 | 24 | CPU extender T4 (lattice arrays), Matter assembler (N) | CPU extender T4 (lattice arrays), Hover shield T2 (N) |  | Booster set T3 (N) | RK13 Long Reach, NA1 Mote Cloud, TM3 Delay Pistol, AM0 Bottle Bay, PS9 Sink Ward (N) |
-| 25 | Hyperdrive 3, Hyperspace gate: capstone (N) | Jet thruster, Warp drive T4: capstone (N) |  |  | AC9 Spinal Lance, AM1 Speck Rifle, SW1 Bow Gun (N) |
+| 25 | Fold drive 3, Hyperspace gate: capstone (N) | Jet thruster, Warp drive T4: capstone (N) |  |  | AC9 Spinal Lance, AM1 Speck Rifle, SW1 Bow Gun (N) |
 
 Node totals by tab, counted once per grid:
 
@@ -283,7 +283,7 @@ Each ladder has as many tiers as 25 levels can use, with no thin, numbered fille
 | CPU extenders | 1 | Large 4, 12, 19, 24. Small 7, 15, 19, 24. The top two need found parts |
 | Fuel tanks | 1 | Large 1, 9, 17. Small 5, 13 |
 | Replicators | 0 | 3, 11, 19 |
-| Warp and jump | warp 1, hyperdrive 2 | Hyperdrive 15, 20, 25. Warp 12 on large; 12, 18, 23, 25 on small. Fold gate 23, hyperspace gate 25 |
+| Warp and jump | warp 1, fold drive 2 | Fold drive 15, 20, 25. Warp 12 on large; 12, 18, 23, 25 on small. Fold gate 23, hyperspace gate 25 |
 | Constructors | Survival, portable, small, large, advanced | Adds the matter assembler at 24 |
 | Hover plates | 1 | 1, 2, 9, 15, 20 |
 | Repair and clone | 0 | Healing booth 5, repair bay 8 and 16, clone chamber 10, field repair station 13 |

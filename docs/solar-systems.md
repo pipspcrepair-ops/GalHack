@@ -575,7 +575,7 @@ Science:
 
 ## 8. Owner's decisions
 
-A rule for every start system: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold hyperdrive materials, hyperdrive fuel and capital ship materials. A system that fails either rule is fixed or rerolled.
+A rule for every start system: the start world has at least one moon reachable under thrusters, about 12 radii out, holding warp fuel and warp drive materials. On a moon start, a sibling moon does this. The rest of the system must hold fold drive materials, fold fuel and capital ship materials. A system that fails either rule is fixed or rerolled.
 
 Rings on a moon: real rings only survive close inside a body's small zone of gravity (its Hill sphere), so a world orbiting near a bigger ringed planet would rarely hold rings of its own. Treat a ringed moon of a ringed giant as a very rare sight, not a common result. Rings aren't limited to gas giants: any world can have them, for example from a moon that broke apart, though on rocky worlds they're less common and narrower. Rings are real places: from afar they read as smooth bands, and up close they resolve into a field of tumbling rocks, in the manner of Elite Dangerous. Use the same rock field system as asteroid belts, so rings can be flown through and mined.
 
@@ -606,4 +606,5 @@ These replace anything above or in section 4 that disagrees with them.
    - Rings come from an impact, a moon torn apart, or a captured passing body, so a world's history can explain its ring.
    - Small bodies, such as dwarf planets and asteroids, can have rings too.
    - Rings don't last forever.
-13. **Later: suns, gas giants and black holes up close.** A black hole you visit has an accretion disc you can explore: a fast-moving cloud of debris. How close you can get to suns and gas giants is still to decide. Empyrion keeps players at high orbit, and the 8 Nov note (not sold on heat damage or skim-and-crush) still stands.
+13. **Names.** The drive between stars is the fold drive, and its fuel is fold fuel (fold crystal). It used to be called the hyperdrive (owner, 22 Nov).
+14. **Later: suns, gas giants and black holes up close.** A black hole you visit has an accretion disc you can explore: a fast-moving cloud of debris. How close you can get to suns and gas giants is still to decide. Empyrion keeps players at high orbit, and the 8 Nov note (not sold on heat damage or skim-and-crush) still stands.

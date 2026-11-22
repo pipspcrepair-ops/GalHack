@@ -139,7 +139,7 @@ The galaxy is generated from a seed, one system at a time when it's first visite
 | Vharn space | The heart of the Dominion, holding back Husks pouring in from the core | Late game |
 | The core | Dense old stars round the central black hole: unexplained phenomena, precursor robots and finds, expedition forces and researchers; in the deep core, precursor ships, Husk worlds, and anomalies on the ground and in space | Endgame expeditions |
 | The accretion disc | Worlds in the disc of the supermassive black hole: the weirdest and most dangerous of all | The end of the road |
-| Mid-galaxy voids | Few stars, long gaps between them | Tests hyperdrive range and fold crystal reserves |
+| Mid-galaxy voids | Few stars, long gaps between them | Tests fold drive range and fold crystal reserves |
 | Periphery and satellite galaxies | Exotic, unclaimed, far from help | Late-game discovery |
 
 **Zones**
@@ -285,7 +285,7 @@ A few planets carry a theme that overrides the usual rules. They're rare enough 
 
 **Celestial bodies are real.** The sun, moons, gas giants and rings are objects in one system, never sky decoration. At any moment each one stands in the same direction, at the same size and in the same phase, whether the player is on the ground, climbing, crossing or in space. Only the air changes how it looks. Nothing vanishes, jumps or gets re-placed at the crossing, and one source of truth gives their positions over time. No moon moves faster than 50 m/s against its planet (owner, 15 Nov), so a ship can always catch one. Planets keep their own speeds round the star. The body whose reach a ship is in holds still as its frame, and everything else moves round it. The stars are the same: every celestial body is a place with a position relative to everything else. The starscape is drawn from the galaxy's real catalogue, seen from where the player is, so every star in the sky is one they can travel to, and it shifts correctly when they jump. Nebulae in the sky are real regions of the galaxy with systems inside them that the player can go to; from within one, it fills the sky around them. Solar systems are real too: a star's class and brightness set its habitable zone, and a planet's type and climate follow from its orbit, so temperate worlds sit in the zone, hot worlds closer in, ice worlds and giants further out, with rare exceptions a world's theme can explain. Every neighbouring world seen from a planet's sky is in its true position and can be flown to. Nothing is painted on.
 
-**One hierarchy, both ways.** Everything nests: the galaxy star map contains every star and nebula, a star's system map contains everything in that system, then high orbit, then the world. It works in both directions. From the galaxy you can drill down to any world, and from any spot on a world you can step back up through each level to see exactly where you are. Every level reads the same real data, so the map, the sky and the places you travel to always agree. The galaxy map is a rotatable 3D map. Lanes link every pair of stars within hyperdrive range of each other, in true 3D distance, out to several jumps, so players can plan routes through the network. Picking a star shows what's there and highlights the shortest route, with jumps, distance and fold crystal needed.
+**One hierarchy, both ways.** Everything nests: the galaxy star map contains every star and nebula, a star's system map contains everything in that system, then high orbit, then the world. It works in both directions. From the galaxy you can drill down to any world, and from any spot on a world you can step back up through each level to see exactly where you are. Every level reads the same real data, so the map, the sky and the places you travel to always agree. The galaxy map is a rotatable 3D map. Lanes link every pair of stars within fold drive range of each other, in true 3D distance, out to several jumps, so players can plan routes through the network. Picking a star shows what's there and highlights the shortest route, with jumps, distance and fold crystal needed.
 
 **Time follows position.** The sky depends on where the player stands on the map, because the map wraps a globe: travelling east moves the sun, the far side of a world is in night, and the poles have polar day and night. So a player can fly into a sunset or round to the day side. The game clock and people's routines stay on one global time. Worlds keep rotating and moving along their orbits as time passes, each at its own rate, so the bodies in the sky and on the system map shift over time.
 
@@ -293,7 +293,7 @@ A few planets carry a theme that overrides the usual rules. They're rare enough 
 
 **Space POIs.** As in Empyrion, POIs in orbit stay fixed in their orbit zone and don't circle the world, while worlds and moons move on rails. They read their parent world's type, theme, apocalypse and tech, so the ruins below and what hangs above tell one story. Cryo pods hold only corpses: the only pods that ever wake are in the player's starting room. Rings and spinning hulls can turn as a look, but gravity is always core gravity, off when the power's dead. POIs don't replenish: what's looted or destroyed stays that way, except for a maintenance sweep of a planet or system long unvisited and far behind. Traders in start systems are factionless independents.
 
-**The first step off the start world.** As a rule, every start world has at least one moon close enough to reach under thrusters alone, and that moon holds warp fuel and the materials to build a warp drive. So the path is: survive, build a vessel, fly to orbit, cross to the moon, gather fuel and parts, build a warp drive, then travel the rest of the system gathering materials for a hyperdrive, hyperdrive fuel and capital ship components. That opens the stars. As with the fuel moon, each start system guarantees those materials somewhere in it, so the path can't dead-end. On a start that is itself a moon, a sibling moon plays this part.
+**The first step off the start world.** As a rule, every start world has at least one moon close enough to reach under thrusters alone, and that moon holds warp fuel and the materials to build a warp drive. So the path is: survive, build a vessel, fly to orbit, cross to the moon, gather fuel and parts, build a warp drive, then travel the rest of the system gathering materials for a fold drive, fold fuel and capital ship components. That opens the stars. As with the fuel moon, each start system guarantees those materials somewhere in it, so the path can't dead-end. On a start that is itself a moon, a sibling moon plays this part.
 
 **Mutagenic worlds.** Something got into these worlds' life (fallout, an escaped biolab agent, the Hollow fungus, or the touch of whatever caused the collapse) and twisted it. Plants grow swollen, tumorous and wrongly coloured, forests fuse into strange masses, and the wildlife carries growths, asymmetry and extra parts while still reading as real, dangerous animals. The mutagen is a warned environmental hazard, like radiation, that the suit protects against; it never gives the player ailments. Biolabs, quarantine zones and Hollow sites are the POIs that explain it, without ever saying it outright.
 
@@ -414,7 +414,7 @@ Structures are ominous and mysterious. For now there are no written logs and no 
 
 | Expedition | Where | The draw | Gate |
 | --- | --- | --- | --- |
-| The Quiet Reach | A dead region of burnt-out stars | Precursor beacons that point to each other, then to a vault | Long hyperdrive range; radiation gear |
+| The Quiet Reach | A dead region of burnt-out stars | Precursor beacons that point to each other, then to a vault | Long fold drive range; radiation gear |
 | The Hive Expanse | A Dominion-held cluster | A Dominion war-hive fortress whose core can be destroyed or hijacked | Capital-tier fleet |
 | The Sealed Gate | The galaxy's edge | A one-way ancient gate to a sealed cluster with its own archetypes | Advanced drive and a full fold crystal tank; no way back except the long route |
 | The Heart | The black hole at the core | A graveyard of ancient derelicts in the accretion disc | Shielding against tidal and radiation damage |
@@ -532,7 +532,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 | 2. Foothold | A safe, powered shelter | Base core, generator, capacitor, small constructor, galley replicator | Night predators, first Vharn scouts |
 | 3. Wheels | Cover the whole planet | Hover vessel, hand drill, detector, portable constructor | Vharn patrols, guarded POIs |
 | 4. Wings | Reach orbit, moons and asteroids | Small vessel, landing gear, large constructor, CPU tier 2 | Space pirates, hostile fighters |
-| 5. Capital | A mobile base that jumps between stars | Capital vessel, hyperdrive, shields, repair bay | Faction warships, higher-danger planets |
+| 5. Capital | A mobile base that jumps between stars | Capital vessel, fold drive, shields, repair bay | Faction warships, higher-danger planets |
 | 6. Frontier | Master the deep galaxy | CPU T3/T4, combat steel, advanced constructor, Hijack Tool T3, charged armor | Heavy capital ships, alien ruins, Husk horrors |
 
 **Character level**
@@ -670,12 +670,12 @@ Resources climb a five-step rarity ladder (common, uncommon, rare, exotic, uniqu
 | Uncommon | Gold | Scattered; richer on volcanic worlds | Advanced electronics, trade value |
 | Uncommon | Gravium | High-gravity worlds | Hardened and combat steel |
 | Uncommon | Pentaxite | Vacuum worlds only, always including the start world's fuel moon, with the warp drive's materials; plus loot in some space places and wrecks (owner, 13 and 22 Nov) | Warp fuel (warp cells) |
-| Rare | Fold crystal | High-gravity worlds (32 km and up), with the hyperdrive's materials (owner, 13 and 22 Nov) | Hyperdrive fuel, shields |
+| Rare | Fold crystal | High-gravity worlds (32 km and up), with the fold drive's materials (owner, 13 and 22 Nov) | Fold fuel, shields |
 | Rare | Emberite | Lava worlds around young and dying stars | Fusion cells, plasma weapons, high-output generators |
-| Rare | Starsilver | Barren metal worlds and dense asteroids near giant stars | Top-tier devices, hyperdrive T2, advanced constructor |
+| Rare | Starsilver | Barren metal worlds and dense asteroids near giant stars | Top-tier devices, fold drive T2, advanced constructor |
 | Exotic | Voidglass | Glass-desert worlds | Long-range scanners, sensor arrays, holographic displays |
 | Exotic | Stormcore | Storm worlds | Capacitors, high-output shields |
-| Exotic | Rimefire | Cryo-fire worlds | Hyperdrive range boosters |
+| Exotic | Rimefire | Cryo-fire worlds | Fold drive range boosters |
 | Unique | Precursor alloy | Alien ruins and ancient derelicts (salvage only) | Prize armor blocks; can't be crafted |
 | Unique | Echo shards | Alien ruins | Charged combat armor, epic gear upgrades |
 | Unique | Lattice cores and lattice arrays | Derelicts, faction strongholds, rare traders | CPU extenders T3 and T4 |
@@ -699,7 +699,7 @@ The generator checks every seed against these rules. If a guarantee fails, it ad
 | Progress stage | Materials it needs | Guarantee |
 | --- | --- | --- |
 | Wake to Wings (everything up to and including small vessels) | Iron, copper, silicon, stone, burnstone, cobalt, magnesium, neodymium | Every planet has deposits of all of them. Uncommon ores are smaller and fewer there, but never absent |
-| Capital (first capital vessel and first hyperdrive jump) | The above, plus gravium, gold and fold crystal | All of them can be gathered inside the start system by small vessel, and the start system's trading station stocks fold crystal |
+| Capital (first capital vessel and first fold drive jump) | The above, plus gravium, gold and fold crystal | All of them can be gathered inside the start system by small vessel, and the start system's trading station stocks fold crystal |
 | Frontier | Emberite, starsilver | At least one system rich in each lies within one T1 jump (about 30 LY) of every start system |
 | Unique items | Precursor alloy, echo shards, lattice cores and arrays | The rare POIs that hold them regenerate, and rare traders sell them at a premium, so a looted site never blocks anyone's progress on a shared server |
 | Exotic upgrades | Voidglass, stormcore, rimefire | Optional upgrades only, never needed to advance; each lives on its themed planet type (section 4) |
@@ -827,7 +827,7 @@ Four structure classes divide the world by where each can go, and two of them (b
 | Base | Large, core in base mode | Fixed, on a planet or in space | Production hub, storage, defence, repair, respawn | Can't move until switched to capital mode | Start |
 | Capital vessel | Large, core in capital mode | Space; can land on planets | Mobile base, warship, interstellar explorer | Needs thrusters, a command chair, and enough thrust to lift its mass | 7 |
 | Hover vessel (HV) | Small | Planet surface only, hovering a few metres up | Rovers, mining crawlers, ground combat, cargo haulers | No flight or space; moves in 2D, so needs forward, reverse and strafe thrust | 1 |
-| Small vessel (SV) | Small | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Warp drive within a system; no hyperdrive, so no jumps between systems | 5 |
+| Small vessel (SV) | Small | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Warp drive within a system; no fold drive, so no jumps between systems | 5 |
 
 **Bases and capital vessels are one thing**
 
@@ -895,7 +895,7 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 | Life support | Healing booth, respawn (clone) chamber; air and gravity are built into the core | Mostly bases and capital vessels |
 | Food | Replicators T1–T3 | Portable (T1); small vessels, bases and capital vessels |
 | Propulsion | Thrusters (small, medium, large, jet), RCS gyros, hover engines, landing gear, docking pads | Per class |
-| Travel | Warp drive; hyperdrive T1/T2 (their fuels sit in core storage) | Warp drive on small and capital vessels; hyperdrive on capital vessels only |
+| Travel | Warp drive; fold drive T1/T2 (their fuels sit in core storage) | Warp drive on small and capital vessels; fold drive on capital vessels only |
 | Production | Constructors (small, large, advanced), deconstructor, blueprint factory | Constructors on all; factory on bases and capital vessels |
 | Storage | Cargo containers in several sizes, all adding to one shared storage | All, with volume caps per class |
 | Defense | Shield generator and extenders, turrets, fixed weapons, detector, spotlights | Per class (section 15) |
@@ -943,7 +943,7 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 
 - **Generators charge capacitors, and everything draws from the capacitors** (owner, 15 Nov). Devices (thrusters, gyros, drives, shields, turrets, machines, lights, and life support such as the climate node) take their power from the structure's capacitors. Life support uses power only, never its own fuel or materials (owner, 15 Nov). Generators burn fuel to keep the capacitors charged, so the burn follows the load: idle devices cost nothing, and a structure at full thrust with shields charging burns fuel fast. Solar panels (bases and capital vessels) also charge the capacitors and are used before fuel. Their output depends on day and night, latitude and weather, which gives the choice of landing site a real cost.
 - **Turrets** draw their power from the capacitors and their ammo from core storage (owner, 15 Nov).
-- **No fuel tanks.** Generator fuel, warp fuel and hyperdrive fuel are all kept in **core storage**, the cargo containers (owner, 15 Nov). Anything that draws materials for use (generators, drives, constructors, turrets, replicators) draws from that one place. The fuel's volume competes with cargo, so a long voyage is a cargo choice.
+- **No fuel tanks.** Generator fuel, warp fuel and fold fuel are all kept in **core storage**, the cargo containers (owner, 15 Nov). Anything that draws materials for use (generators, drives, constructors, turrets, replicators) draws from that one place. The fuel's volume competes with cargo, so a long voyage is a cargo choice.
 - **Tiered generator fuel.** The fuel made early is the least efficient: fewer units per item and per storage unit, so early fuel fills the hold fast. Better fuels come through the tech tree (the tiers follow Empyrion's biofuel, energy cells and fusion cells).
 
 | Fuel item | Fuel units (reference) | Source |
@@ -954,10 +954,10 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 | Large burnstone pack | 150 | Mid-tier recipe |
 | Fusion cell | 300 | High-tier recipe |
 
-**Fold crystal** (a rare crystal that folds space for jumps and feeds shields) is the hyperdrive fuel, kept in core storage like every fuel:
+**Fold crystal** (a rare crystal that folds space for jumps and feeds shields) is the fold fuel, and the drive that burns it is the **fold drive** (named by the owner, 22 Nov; once called the hyperdrive), kept in core storage like every fuel:
 
-- **Three separate fuels** (owner, 15 Nov): generator fuel (above), warp fuel and hyperdrive fuel. Warp fuel and hyperdrive fuel are both gathered, not made from common materials.
-- A hyperdrive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp fuel, gathered as pentaxite ore and refined into warp cells, about 1 per AU. The fuel moon by the start world holds the first warp fuel deposits.
+- **Three separate fuels** (owner, 15 Nov): generator fuel (above), warp fuel and fold fuel. Warp fuel and fold fuel are both gathered, not made from common materials.
+- A fold drive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp fuel, gathered as pentaxite ore and refined into warp cells, about 1 per AU. The fuel moon by the start world holds the first warp fuel deposits.
 - Shields draw power from the capacitors like every device (more while recharging), and also consume dribbles of fold crystal from core storage while they recharge (owner, 15 Nov), never while off. Shields must be down to warp.
 - Fold crystal lies on high-gravity worlds (owner, 22 Nov), so fuelling long voyages pulls players down onto dangerous heavy worlds.
 
@@ -972,7 +972,7 @@ Only blocks that do something cost CPU: devices such as thrusters, drives, shiel
 
 - T3 and T4 extenders need **lattice core** and **lattice array** components, found only in points of interest or bought from traders. CPU growth is therefore gated by exploration, not just by the tech tree.
 - Losing an extender in combat drops the structure a tier mid-fight.
-- Going over budget is a soft limit: efficiency falls as the overshoot grows (reference: 100% over gives 50% efficiency), slowing thrust, RCS and constructor speed. Flight's cost comes from the blocks that do the flying, not from the mode: thrusters, warp drives and hyperdrives are what use CPU and fuel. Warp drives, hyperdrives and shields spike that usage: little at rest, then a sharp, brief peak while a drive engages or a shield recharges, and a peak that goes over budget dips efficiency as any overshoot does. They cost nothing while the core's mode doesn't use them, so thrusters waiting on a base are free until it switches to Capital Mode. Keep this modest, because powering a flyer should never feel exorbitant: a structure right at its limit in a ground mode still flies, just less efficiently, until it's trimmed or given an extender.
+- Going over budget is a soft limit: efficiency falls as the overshoot grows (reference: 100% over gives 50% efficiency), slowing thrust, RCS and constructor speed. Flight's cost comes from the blocks that do the flying, not from the mode: thrusters, warp drives and fold drives are what use CPU and fuel. Warp drives, fold drives and shields spike that usage: little at rest, then a sharp, brief peak while a drive engages or a shield recharges, and a peak that goes over budget dips efficiency as any overshoot does. They cost nothing while the core's mode doesn't use them, so thrusters waiting on a base are free until it switches to Capital Mode. Keep this modest, because powering a flyer should never feel exorbitant: a structure right at its limit in a ground mode still flies, just less efficiently, until it's trimmed or given an extender.
 
 **Mass and volume**
 
@@ -1001,7 +1001,7 @@ Inside a core's area, a player can use everything in that core's storage without
 
 ## 14. Movement, flight and travel
 
-Movement scales with the ladder: feet and jetpack, then hover, then flight, then in-system warp, then hyperdrive jumps between stars. Each step multiplies the space the player can explore.
+Movement scales with the ladder: feet and jetpack, then hover, then flight, then in-system warp, then fold drive jumps between stars. Each step multiplies the space the player can explore.
 
 | Mode | Where | Speed (reference) | Limits |
 | --- | --- | --- | --- |
@@ -1057,7 +1057,7 @@ These rules keep what works in the genre (thrust against mass, big engines, heav
 | Surface to orbit | Fly straight up past the atmosphere ceiling; the game transitions to the orbit playfield | Fuel only |
 | Within a playfield | Fly, or use **short-range warp**: reach 30 m/s, pick a bookmark, planet or radar contact, and jump | Free, on any warp drive |
 | Planet to planet in a system | Small or capital vessel; in-system warp | About 1 warp cell per AU |
-| Star to star | Capital vessel hyperdrive; T1 about 30 LY range, T2 60 LY | About 1 fold crystal per LY |
+| Star to star | Capital vessel fold drive; T1 about 30 LY range, T2 60 LY | About 1 fold crystal per LY |
 | Multi-jump routes | Route planner plots up to 500 LY and previews the fold crystal cost before committing | Sum of jumps |
 | Between owned structures | Networked teleporters and portals in range | Power |
 | Through a wormhole | Fly into its mouth (section 4) | Free; unstable ones can collapse behind you |
@@ -1679,7 +1679,7 @@ The world save is the most important system in the game. Structures, items and p
 | Echo shards | Unique crystals from alien ruins, used for charged armor and epic upgrades |
 | Emberite | Rare ore from lava worlds near young and dying stars; fusion and plasma tech |
 | Expedition | A unique, multi-stage set piece with a long-range goal |
-| Fold crystal | Rare crystal that fuels warp jumps and recharges shields |
+| Fold crystal | Rare crystal that fuels fold jumps and recharges shields |
 | Gravium | Uncommon dense ore from high-gravity worlds, used for heavy armor |
 | Hijack Tool | Handheld device that takes over an enemy core, in three tiers |
 | Hover vessel (HV) | Small-grid surface vehicle that hovers over land and water |

@@ -141,7 +141,7 @@ Footprints don't have to be cubes or even. A thruster can be long, a hover plate
 | Constructors (portable, small, large, advanced), deconstructor | already tiers | already tiers | One part per tier, each with its own footprint. The tier names stop meaning grid size **(check)**. |
 | Light | 1×1×1 | — | A floodlight can be a bigger part later. |
 | Ladder | 1×1×1 | — | Stack them. |
-| Hyperdrive T1 and T2, fold tank | — | 2×2×2 | Large-only today. Hyperdrives might be longer, for example 2×2×4 **(check)**. |
+| Fold drive T1 and T2, fold tank | — | 2×2×2 | Large-only today. Fold drives might be longer, for example 2×2×4 **(check)**. |
 | Factory (blueprint factory) | — | — | **Replaced by the blueprint gun** (section 10). |
 
 **Ids and names go by tier, not size**, for example `thruster-t1` ("Thruster T1") and `thruster-t3`. Each item's `was` list maps the old ids across, so old saves and tests still load:
@@ -317,7 +317,7 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Power** (see also [section 1](#1-one-grid))
 - No CPU and no device caps. Power draw is the limit.
-- Generators burn fuel, and fuel has to be gathered. There are three kinds of fuel: **generator fuel, warp fuel and hyperspace fuel.** **Generator fuel comes in several options, following Empyrion's generator fuel options** (owner, 12 Nov), each its own item with its own energy per unit and source **(check)**. Empyrion's generator fuels, for reference: bio fuel (from plant fibres, the basic one), promethium packs, hydrogen and fusion cells. Its warp fuel is pentaxid.
+- Generators burn fuel, and fuel has to be gathered. There are three kinds of fuel: **generator fuel, warp fuel and fold fuel.** **Generator fuel comes in several options, following Empyrion's generator fuel options** (owner, 12 Nov), each its own item with its own energy per unit and source **(check)**. Empyrion's generator fuels, for reference: bio fuel (from plant fibres, the basic one), promethium packs, hydrogen and fusion cells. Its warp fuel is pentaxid.
 - **No water devices.** Air comes from sealed rooms and the life support block, so there is no water-to-air chain and no pump placed in water (Empyrion's water and O2 devices are not carried over). Ice keeps a place as an ingredient in some fuels.
 - **Bases are cheaper to run** because they don't power hover plates or thrusters. They still pay for life support, forcefields, fridges, fabricators and every other powered device.
 - **Capacitors** form the shared bank. They **leak** (a bank slowly loses charge) and are **volatile** (they explode when destroyed), so stacking them doesn't pay.
@@ -336,7 +336,7 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Welding a loose piece back on.** Aim the tool at a coreless piece touching or resting on your structure and weld. The piece snaps onto your structure's grid at the nearest aligned spot, rounding its position and rotation, so there's no lining it up by hand. The piece moves, never your structure, so Base mode doesn't matter. If it can't snap cleanly (tilted too far, too far off the grid, or the spot is blocked), the tool says why, and you dismantle and re-place the blocks instead.
 
-**Tiered devices** (bigger, heavier and hungrier, but more efficient than lower tiers in the same space): thrusters, generators, storage containers, fuel tanks, landing and docking pads, warp drive, hyperdrive, fabricators, capacitors, shield generators, forcefield emitters, hover plates, gyros or RCS, solar panels, drill modules (T1 mechanical, T2 laser turret, T3 laser turret), and the comms array.
+**Tiered devices** (bigger, heavier and hungrier, but more efficient than lower tiers in the same space): thrusters, generators, storage containers, fuel tanks, landing and docking pads, warp drive, fold drive, fabricators, capacitors, shield generators, forcefield emitters, hover plates, gyros or RCS, solar panels, drill modules (T1 mechanical, T2 laser turret, T3 laser turret), and the comms array.
 
 **Fixed devices:** cloning bay, medical bay, command chairs, gravity generator, life support block, refrigeration, harvester module, scanners (specialist types such as deep-space scanners later), teleporter, spotlights, core, doors, grav lifts, ladders, lights.
 
