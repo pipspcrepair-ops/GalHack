@@ -111,8 +111,8 @@ public partial class Spaceflight
     readonly System.Text.StringBuilder _laps = new();
     long _lapAt;
 
-    /// <summary>All the time each part has taken in orbit, ms, over <see cref="OrbitFrames"/> drawn frames (tests print it per frame, and reset it).</summary>
-    public readonly Dictionary<string, double> SpentInOrbit = new();
+    /// <summary>All the time each part has taken in orbit, ms, over <see cref="OrbitFrames"/> drawn frames, and the most it took in one (tests print them, and reset them).</summary>
+    public readonly Dictionary<string, double> SpentInOrbit = new(), WorstInOrbit = new();
     public int OrbitFrames;
 
     /// <summary>Notes the time since the last lap against a name, for <see cref="WorstSeamParts"/> and <see cref="SpentInOrbit"/>.</summary>
@@ -121,7 +121,11 @@ public partial class Spaceflight
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(_lapAt, now).TotalMilliseconds;
         _lapAt = now;
-        if (Game.InOrbit) SpentInOrbit[name] = SpentInOrbit.GetValueOrDefault(name) + ms;
+        if (Game.InOrbit)
+        {
+            SpentInOrbit[name] = SpentInOrbit.GetValueOrDefault(name) + ms;
+            WorstInOrbit[name] = Math.Max(WorstInOrbit.GetValueOrDefault(name), ms);
+        }
         if (ms >= 0.5) _laps.Append($"{name} {ms:F1}, ");
     }
 
@@ -281,38 +285,18 @@ public partial class Spaceflight
         if (shown == GroundShown) return;
         SurfaceZone s = Below;
         _groundShownOf[s] = shown;
-        if (!_hiddenKidsOf.TryGetValue(s, out List<Node3D> _hiddenKids)) _hiddenKidsOf[s] = _hiddenKids = new List<Node3D>();
+        if (!_hiddenKidsOf.TryGetValue(s, out List<Node3D> hidden)) _hiddenKidsOf[s] = hidden = new List<Node3D>();
         // A turn left unfinished ends now, then this one is laid out a piece at a time (see TurnGround).
-        while (_groundTurns.TryDequeue(out Action turn)) turn();
+        Turn(_groundWork, all: true);
         if (shown)
         {
-            foreach (Node n in s.GetChildren())
-                if (n is Node3D d && n != s.Sky) _groundTurns.Enqueue(() => d.Visible = true);
-            // Branches before their twigs: each is shown once what it hangs on is.
-            for (int i = _hiddenKids.Count - 1; i >= 0; i--)
-            {
-                Node3D kid = _hiddenKids[i];
-                _groundTurns.Enqueue(() => { if (IsInstanceValid(kid)) kid.Visible = true; });
-            }
-            _hiddenKids.Clear();
+            // Branches before their twigs (each is shown once what it hangs on is): the twigs go on first, to come off last.
+            for (int i = hidden.Count - 1; i >= 0; i--) _groundWork.Push(new Piece(hidden[i], Step.Show, 0));
+            hidden.Clear();
         }
-        else
-        {
-            // Big branches go a twig at a time (two levels down), each before the branch it hangs on.
-            void Hide(Node3D d, int depth)
-            {
-                if (depth < 2 && d.GetChildCount() > ManyKids)
-                    foreach (Node k in d.GetChildren())
-                        if (k is Node3D kid && kid.Visible)
-                        {
-                            Hide(kid, depth + 1);
-                            _hiddenKids.Add(kid);
-                        }
-                _groundTurns.Enqueue(() => { if (IsInstanceValid(d)) d.Visible = false; });
-            }
-            foreach (Node n in s.GetChildren())
-                if (n is Node3D d && n != s.Sky) Hide(d, 0);
-        }
+        _hiding = hidden;
+        foreach (Node n in s.GetChildren())
+            if (n is Node3D d && n != s.Sky) _groundWork.Push(new Piece(d, shown ? Step.Show : Step.Hide, 0));
         Game.Camera.Far = shown ? _surfaceFar : Rules.Space.CameraFar;
     }
 
@@ -320,28 +304,83 @@ public partial class Spaceflight
 
     const int ManyKids = 24;
     const double GroundTurnMs = 1.5;
-    readonly Queue<Action> _groundTurns = new();
+
+    /// <summary>What a piece of a turn does to its node: shown or hidden, held parked (once its twigs are), woken.</summary>
+    enum Step { Show, Hide, Hidden, Hold, Held, Wake }
+
+    readonly record struct Piece(Node Node, Step Step, int Depth);
+
+    /// <summary>Where the twigs hidden apart from their branches are noted, to be shown again branch first.</summary>
+    List<Node3D> _hiding;
+
+    /// <summary>The land's showing or hiding, laid out a piece at a time as it goes (the zones' parking and waking: <see cref="ZoneWork"/>).</summary>
+    readonly Stack<Piece> _groundWork = new();
+
+    /// <summary>The longest one piece of a turn has taken, ms, and what it was (tests print them).</summary>
+    public double WorstTurnMs;
+    public string WorstTurn = "";
 
     /// <summary>
     /// Showing or hiding a node visits everything under it, and the land is thousands of nodes: all
     /// at once it cost 80 ms of the crossing's frame. It goes a little a frame, the sheet in front of
     /// it the while, so what's left of the land for those few frames can't be seen. A zone's parking and waking
-    /// (<see cref="Park"/>) go the same way, alongside.
+    /// (<see cref="Park"/>) go the same way, alongside. Even laying the pieces out is done as they come.
     /// </summary>
     void TurnGround()
     {
-        Turn(_modeTurns);
-        Turn(_groundTurns);
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (ZoneWork w in _workOf.Values)
+        {
+            Turn(w.Pieces, w, from: started);
+            if (w.Pieces.Count == 0) Settled(w);
+        }
+        Turn(_groundWork);
     }
 
-    /// <summary>A queue's turns, as many as fit in <see cref="GroundTurnMs"/> (one at the least): the land's showing and the zones' parking each get their share of a frame.</summary>
-    static void Turn(Queue<Action> turns)
+    /// <summary>
+    /// A stack's pieces, as many as fit in <see cref="GroundTurnMs"/> from <paramref name="from"/> (now if 0), one at the least: the
+    /// land's showing and the zones' parking and waking each get their share of a frame.
+    /// </summary>
+    void Turn(Stack<Piece> work, ZoneWork zone = null, bool all = false, long from = 0)
     {
-        long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (turns.TryDequeue(out Action turn))
+        long started = from != 0 ? from : System.Diagnostics.Stopwatch.GetTimestamp(), at = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (work.TryPop(out Piece p))
         {
-            turn();
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) return;
+            if (IsInstanceValid(p.Node)) Do(work, p, zone);
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(at, now).TotalMilliseconds;
+            if (ms > WorstTurnMs && IsInstanceValid(p.Node)) (WorstTurnMs, WorstTurn) = (ms, $"{p.Step} {p.Node.Name} ({p.Node.GetType().Name}, {p.Node.GetChildCount()} children)");
+            at = now;
+            if (!all && System.Diagnostics.Stopwatch.GetElapsedTime(started, now).TotalMilliseconds > GroundTurnMs) return;
+        }
+    }
+
+
+    void Do(Stack<Piece> work, Piece p, ZoneWork zone)
+    {
+        Node n = p.Node;
+        switch (p.Step)
+        {
+            case Step.Show:
+                ((Node3D)n).Visible = true;
+                break;
+            case Step.Hide:
+                // A big branch goes a twig at a time (two levels down), each before the branch it hangs on.
+                work.Push(p with { Step = Step.Hidden });
+                if (p.Depth < 2 && n.GetChildCount() > ManyKids)
+                    foreach (Node k in n.GetChildren())
+                        if (k is Node3D kid && kid.Visible)
+                        {
+                            _hiding.Add(kid);
+                            work.Push(new Piece(kid, Step.Hide, p.Depth + 1));
+                        }
+                break;
+            case Step.Hidden:
+                ((Node3D)n).Visible = false;
+                break;
+            default:
+                ModeStep(zone, p);
+                break;
         }
     }
 
@@ -419,7 +458,7 @@ public partial class Spaceflight
         // What stands in front of what. It looks the same wherever it stands on its eye rays.
         float over = OverLand(y), near, far;
         if (y >= BandTop) near = far = 0f;
-        else if (orbit && y >= cap && _groundTurns.Count == 0) (near, far) = (16000f, 38000f);
+        else if (orbit && y >= cap && _groundWork.Count == 0) (near, far) = (16000f, 38000f);
         else if (over > 0f)
         {
             float clear = MathF.Max(60f, y - Highest) * 0.9f;

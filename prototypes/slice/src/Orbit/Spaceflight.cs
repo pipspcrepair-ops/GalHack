@@ -172,8 +172,20 @@ public partial class Spaceflight : Node
     void OrbitComing()
     {
         if (Orbit == null) return;
-        if (Orbit.IsInsideTree()) Orbit.BuildStep();
-        else if (Orbit.Prepared) Game.AddChild(Orbit);
+        if (!Orbit.IsInsideTree())
+        {
+            if (Orbit.Prepared) Game.AddChild(Orbit);
+            return;
+        }
+        Orbit.BuildStep();
+        if (!Orbit.Ready || _prepared.Contains(Orbit)) return;
+        Prepare(Orbit);
+        // Its wrecks wait hidden, as they are left on every way down: they fade in up the band, never all at once at the crossing.
+        foreach (Vessel w in Orbit.Wrecks)
+        {
+            w.Node.Visible = false;
+            _wreckFadeOf[w] = 0f;
+        }
     }
 
     int _chartTick;
@@ -444,45 +456,159 @@ public partial class Spaceflight : Node
     // ---- Parking -------------------------------------------------------------------------------
 
     /// <summary>
-    /// A zone waits (ProcessMode, which takes its colliders out of the physics too) or runs again at once, without one
-    /// frame paying for all of it: a hull of two thousand shapes cost 10 to 15 ms to take out or put back, and a crossing
-    /// parks one zone and wakes another. Its big branches (more than <see cref="ManyKids"/> children) are held apart from
-    /// the zone's own mode for that moment, which costs nothing while their mode doesn't change, and follow it a frame or
-    /// so each after (see <see cref="TurnGround"/>): parking, they run on those few frames; waking, they wait them out.
+    /// A zone waits (ProcessMode Disabled, which takes its colliders out of the physics) or runs again, a piece a frame
+    /// (<see cref="TurnGround"/>): all at once a zone's mode reaches thousands of nodes and colliders, and a crossing parks one
+    /// zone and wakes another. Parking, its physics stops at once and the rest goes from the twigs in, a node a turn and each
+    /// branch after its twigs, the zone itself last; until its turn a node runs on. Waking, the zone and its small branches
+    /// run at once (its physics, sky, camera, loose bodies), the rest from the trunk out, a node a turn. What its physics moves
+    /// never leaves the physics space, or it couldn't be moved (<see cref="Shelve"/>); a hull of two thousand shapes cost 10
+    /// to 15 ms to take out or put back.
     /// </summary>
     void Park(SurfaceZone zone)
     {
-        foreach (Node c in Branches(zone))
+        ZoneWork w = WorkOf(zone);
+        w.Held.Clear();
+        Hold(w, zone.Host); // nothing in it moves from here on
+        foreach (BodyBinding b in zone.Host.Bindings)
         {
-            c.ProcessMode = ProcessModeEnum.Always; // as it was, under a running zone
-            _held.Add(c);
-            _modeTurns.Enqueue(() => { if (IsInstanceValid(c) && c.GetParent() == zone) c.ProcessMode = ProcessModeEnum.Disabled; });
+            if (b.Collider is RigidBody3D loose) Hold(w, loose); // out of the physics with the physics that moves it: few, and small
+            else if (b.Collider is { } body && IsInstanceValid(body) && body.CanProcess()) Shelve(body);
         }
-        zone.ProcessMode = ProcessModeEnum.Disabled;
+        w.Pieces.Push(new Piece(zone, Step.Hold, 0));
     }
 
     void Run(SurfaceZone zone)
     {
-        while (_modeTurns.TryDequeue(out Action turn)) turn(); // a park still under way finishes first
-        _held.RemoveWhere(n => !IsInstanceValid(n));
-        foreach (Node c in Branches(zone))
+        ZoneWork w = WorkOf(zone);
+        // Its physics wakes now, and whatever it moves that is out of the physics space (and every branch that hangs from):
+        // out of it, it couldn't be moved.
+        w.Now = new HashSet<Node> { zone.Host };
+        foreach (BodyBinding b in zone.Host.Bindings)
+            if (b.Collider is { } body && IsInstanceValid(body) && !_shelved.ContainsKey(body))
+                for (Node n = body; n != null && n != zone && w.Now.Add(n); n = n.GetParent()) { }
+        foreach (CollisionObject3D body in _shelved.Keys.Where(b => !IsInstanceValid(b) || zone.IsAncestorOf(b)).ToList())
         {
-            c.ProcessMode = ProcessModeEnum.Disabled;
-            _held.Add(c);
+            _shelved.Remove(body, out var was);
+            if (!IsInstanceValid(body)) continue;
+            (body.CollisionLayer, body.CollisionMask) = (was.Layer, was.Mask);
+            w.Unshelved.Add((body, was.Mode));
         }
+        // Made parked (never held twig by twig): its branches held now, while it is still off (only their mode changes, nothing is told).
+        if (w.Held.Count == 0)
+            foreach (Node c in zone.GetChildren()) if (c != zone.Streamer) Hold(w, c);
         zone.ProcessMode = ProcessModeEnum.Inherit;
-        foreach (Node c in zone.GetChildren())
-            if (_held.Remove(c)) _modeTurns.Enqueue(() => { if (IsInstanceValid(c) && c.ProcessMode == ProcessModeEnum.Disabled) c.ProcessMode = ProcessModeEnum.Inherit; });
+        // Held twigs before branches: woken from the trunk out (the last held comes off the stack first). The small branches
+        // that are the zone at work (its sky, camera, weather) wake now too; bodies and big branches a piece each.
+        bool Now(Node n) => w.Now.Contains(n) || n.GetParent() == zone && n is not CollisionObject3D && n.GetChildCount() <= ManyKids;
+        for (int i = w.Held.Count - 1; i >= 0; i--)
+            if (IsInstanceValid(w.Held[i]) && Now(w.Held[i])) ModeStep(w, new Piece(w.Held[i], Step.Wake, 0));
+        foreach (Node n in w.Held)
+            if (IsInstanceValid(n) && n.ProcessMode == ProcessModeEnum.Disabled) w.Pieces.Push(new Piece(n, Step.Wake, 0));
+        w.Held.Clear();
     }
 
-    /// <summary>A zone's big branches that go by its mode (its streamer's mode is the descent's to set: <see cref="StreamAhead"/>).</summary>
-    static List<Node> Branches(SurfaceZone zone) =>
-        zone.GetChildren().Where(c => c.ProcessMode == ProcessModeEnum.Inherit && c != zone.Streamer && c.GetChildCount() > ManyKids).ToList();
+    /// <summary>A zone's parking or waking, a piece at a time: one zone's never waits on another's, nor finishes it.</summary>
+    sealed class ZoneWork
+    {
+        public readonly Stack<Piece> Pieces = new();
+        /// <summary>What its parking held, in the order it went (twigs before branches), to be woken.</summary>
+        public readonly List<Node> Held = new();
+        /// <summary>Waking: what must run at once (its physics, and what that moves out of the physics space).</summary>
+        public HashSet<Node> Now = new();
+        /// <summary>Bodies given their layers back, to be turned off their own way again once it has woken.</summary>
+        public readonly List<(CollisionObject3D Body, CollisionObject3D.DisableModeEnum Mode)> Unshelved = new();
+    }
 
-    /// <summary>Branches held parked by <see cref="Park"/> or <see cref="Run"/>, to let go when their zone runs.</summary>
-    readonly HashSet<Node> _held = new();
-    readonly Queue<Action> _modeTurns = new();
+    /// <summary>A zone's work, what was still to come of it (the other way) done now: a crossing starts from its zone settled.</summary>
+    ZoneWork WorkOf(SurfaceZone zone)
+    {
+        if (!_workOf.TryGetValue(zone, out ZoneWork w)) _workOf[zone] = w = new ZoneWork();
+        Turn(w.Pieces, w, all: true);
+        Settled(w);
+        return w;
+    }
 
+    static void Hold(ZoneWork w, Node n)
+    {
+        if (n.ProcessMode != ProcessModeEnum.Inherit) return;
+        n.ProcessMode = ProcessModeEnum.Disabled;
+        w.Held.Add(n);
+    }
+
+    /// <summary>A piece of a zone's parking or waking (see <see cref="TurnGround"/>).</summary>
+    void ModeStep(ZoneWork w, Piece p)
+    {
+        Node n = p.Node;
+        switch (p.Step)
+        {
+            case Step.Hold:
+                // The zone and its big branches go a twig at a time, each twig (with its own small branches) a piece, the branch
+                // after them; its own mode stops the zone's reaching a node (the streamer's is the descent's to set: StreamAhead).
+                w.Pieces.Push(p with { Step = Step.Held });
+                if (p.Depth == 0 || p.Depth == 1 && !Shelved(n) && n.GetChildCount() > ManyKids)
+                    foreach (Node k in n.GetChildren())
+                        if (k.ProcessMode == ProcessModeEnum.Inherit && k is not PlanetSurface.Terrain.TerrainStreamer) w.Pieces.Push(new Piece(k, Step.Hold, p.Depth + 1));
+                break;
+            case Step.Held:
+                if (p.Depth == 0) n.ProcessMode = ProcessModeEnum.Disabled; // the zone itself, last
+                else Hold(w, n);
+                break;
+            case Step.Wake:
+                if (n.ProcessMode != ProcessModeEnum.Disabled) break;
+                // A big branch made parked (never held twig by twig) holds its twigs first, each woken on a piece of its own.
+                if (!Shelved(n) && n.GetChildCount() > ManyKids)
+                    foreach (Node k in n.GetChildren())
+                        if (k.ProcessMode == ProcessModeEnum.Inherit && !w.Now.Contains(k))
+                        {
+                            k.ProcessMode = ProcessModeEnum.Disabled;
+                            w.Pieces.Push(new Piece(k, Step.Wake, 0));
+                        }
+                n.ProcessMode = ProcessModeEnum.Inherit;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A body the physics moves, parked: it stays in the physics space, touching nothing and seen by no query (no layer, no
+    /// mask), so the zone's mode never takes it out or puts it back, and waking it is its layers. Its own way of being turned
+    /// off comes back once its zone has woken.
+    /// </summary>
+    void Shelve(CollisionObject3D body)
+    {
+        if (_shelved.ContainsKey(body)) return;
+        _shelved[body] = (body.CollisionLayer, body.CollisionMask, body.DisableMode);
+        (body.CollisionLayer, body.CollisionMask) = (0, 0);
+        body.DisableMode = CollisionObject3D.DisableModeEnum.KeepActive; // parked already, this puts it into the physics, still touching nothing
+    }
+
+    bool Shelved(Node n) => n is CollisionObject3D body && _shelved.ContainsKey(body);
+
+    /// <summary>Once a zone has woken its bodies are turned off their own way again (none is off by then but by its own doing).</summary>
+    static void Settled(ZoneWork w)
+    {
+        foreach (var (body, mode) in w.Unshelved)
+            if (IsInstanceValid(body)) body.DisableMode = mode;
+        w.Unshelved.Clear();
+    }
+
+    /// <summary>
+    /// A zone made parked, ready before it is first woken (the orbit on the loading screen, a moon once it has arrived): what its
+    /// physics moves goes into the physics shelved, so the crossing doesn't put a hull's thousands of shapes in. Once.
+    /// </summary>
+    void Prepare(SurfaceZone zone)
+    {
+        if (!_prepared.Add(zone)) return;
+        foreach (BodyBinding b in zone.Host.Bindings)
+            if (b.Collider is { } body && body is not RigidBody3D && IsInstanceValid(body)) Shelve(body);
+        // Its branches held now too, as waking a zone made parked holds them: each tells everything under it whose mode it goes by.
+        ZoneWork w = WorkOf(zone);
+        if (w.Held.Count == 0)
+            foreach (Node c in zone.GetChildren()) if (c != zone.Streamer) Hold(w, c);
+    }
+
+    readonly Dictionary<SurfaceZone, ZoneWork> _workOf = new();
+    readonly Dictionary<CollisionObject3D, (uint Layer, uint Mask, CollisionObject3D.DisableModeEnum Mode)> _shelved = new();
+    readonly HashSet<SurfaceZone> _prepared = new();
     // ---- The record, and the crossing's report -------------------------------------------------
 
     /// <summary>Everything's record and the crosser's new zone start for the disk; the crossing happens once they've landed.</summary>

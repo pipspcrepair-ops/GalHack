@@ -98,7 +98,9 @@ public partial class Spaceflight
             if (!c.Surface.Making && (c == Here || eye.DistanceTo(c.Centre) - c.GlobeRadius < Rules.Space.MakeMoonWithin)) c.Surface.Make();
         SurfaceZone m = Below;
         if (Here.IsHome || m.Arrived) return;
-        if (m.TryArrive()) GD.Print($"[{Here.Name}'s surface arrived, a piece a frame: {m.ArriveSteps}]");
+        if (!m.TryArrive()) return;
+        GD.Print($"[{Here.Name}'s surface arrived, a piece a frame: {m.ArriveSteps}]");
+        Prepare(m);
     }
 
     /// <summary>
