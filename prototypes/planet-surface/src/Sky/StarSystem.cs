@@ -472,7 +472,7 @@ public sealed class StarSystem
 
         // Every body's seed is its place in the list, given as it is added; every world with ground has its size from
         // the start, so its moons are sized smaller and spaced round its true radius (owner, 22 Nov).
-        var widths = new Dictionary<Orbiter, int>();
+        var widths = new Dictionary<Orbiter, int>(ReferenceEqualityComparer.Instance); // by the body itself: a record's value changes as it is dressed
         ulong upcoming() => Hash.Of(seed, 0x424F4459, s._bodies.Count);
         Orbiter add(Orbiter b)
         {
