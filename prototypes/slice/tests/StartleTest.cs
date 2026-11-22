@@ -63,15 +63,14 @@ public partial class StartleTest : Node
         _run = Scenario().GetEnumerator();
     }
 
-    /// <summary>When the last drawn frame was, the real time the drawn frames since the last tick looked span, ms; how many frames took over 50 ms.</summary>
-    double _frameAt, _span;
+    /// <summary>When the last drawn frame was, ms; how many frames took over 50 ms.</summary>
+    double _frameAt;
     int _slow;
 
     public override void _Process(double delta)
     {
         double now = Time.GetTicksUsec() / 1000.0;
         if (_frameAt > 0 && now - _frameAt > 50) _slow++;
-        if (_frameAt > 0) _span += now - _frameAt;
         _frameAt = now;
     }
 
@@ -260,14 +259,16 @@ public partial class StartleTest : Node
         var kinds = new Dictionary<string, int>();
         var traced = new Dictionary<Town.Person, Trace>();
         int slow = _slow;
+        double framed = _frameAt;
         void Note(string kind, string s) { if ((kinds[kind] = kinds.GetValueOrDefault(kind) + 1) <= _notes) notes.Add(s); }
         for (int t = 0; t < seconds * 60; t++)
         {
             TopUp();
             if (face is { } f) _drive.Face(town.World(f + Vector3.Up));
             yield return 0;
-            double frame = _span;
-            _span = 0;
+            // (The real time between the frames last drawn before this look and the last: what is drawn moved over it.)
+            double frame = _frameAt - framed;
+            framed = _frameAt;
             Vector3 you = _game.Survivor.WorldFeet;
             foreach (Town.Person p in people)
             {
@@ -303,7 +304,7 @@ public partial class StartleTest : Node
                 if (t >= 30 && vis && d is { } now && drawn[p] is { } then && new Vector2(now.X - then.X, now.Z - then.Z).Length() is var flat && flat > DrawnMove + RunPace * MathF.Max(0f, (float)frame / 1000f - 1f / 60f) && InView(now) && InView(then))
                 {
                     drawnJumps++;
-                    Note("drawn", $"{p.Job} drawn {flat:F1} m on in a tick at {t / 60f:F1} s ({near:F0} m off, the view's own move {(p.View.GlobalPosition - placed[p]).Length():F1} m, eased {p.View.Easing().Apart:F2} m, the body piece {(now - p.View.GlobalPosition - (then - placed[p])).Length():F1} m within it, sim {town.World(p.Pos).DistanceTo(now):F1} m off it, {tr.Since(traced.GetValueOrDefault(p))}, drawn frames over {frame:F0} ms (town tick {town.LastTickMs:F0} ms, posing {town.LastPoseMs:F0} ms), act {p.Act} {p.ActAmount:F2}, raised {p.Raised:F2}, crouched {p.Crouched:F2}, down {p.Down:F2}, slept {p.Slept:F2}, seated {p.Seated:F2}, bent {p.Bent:F2}, hurt {p.Hurt:F2}, owed {p.PoseOwed:F2}, was {before[p]})");
+                    Note("drawn", $"{p.Job} drawn {flat:F1} m on in a tick at {t / 60f:F1} s ({near:F0} m off, the view's own move {(p.View.GlobalPosition - placed[p]).Length():F1} m, eased {p.View.Easing().Apart:F2} m, the body piece {(now - p.View.GlobalPosition - (then - placed[p])).Length():F1} m within it, sim {town.World(p.Pos).DistanceTo(now):F1} m off it, {tr.Since(traced.GetValueOrDefault(p))}, drawn {frame:F0} ms apart (town tick {town.LastTickMs:F0} ms, posing {town.LastPoseMs:F0} ms), act {p.Act} {p.ActAmount:F2}, raised {p.Raised:F2}, crouched {p.Crouched:F2}, down {p.Down:F2}, slept {p.Slept:F2}, seated {p.Seated:F2}, bent {p.Bent:F2}, hurt {p.Hurt:F2}, owed {p.PoseOwed:F2}, was {before[p]})");
                 }
                 traced[p] = tr;
                 drawn[p] = d;
@@ -395,10 +396,10 @@ public partial class StartleTest : Node
     /// What moved a body between two looks (a jump's trace): drawn frames and real time between, its poses, frames a carried pose
     /// went on, the smoother's cuts and corrections, the blend's leaps, a body rebuilt, and how far its rig has the torso from its feet.
     /// </summary>
-    readonly record struct Trace(Wildlife.PersonView View, ulong Frame, double Ms, int Poses, int Carries, int Cuts, int Overs, int Leaps, float Off, float RigOff)
+    readonly record struct Trace(Wildlife.PersonView View, ulong Frame, double Ms, int Poses, int Carries, int Cuts, int Overs, int Leaps, float Off, float RigOff, float Gap)
     {
         public string Since(Trace was) => was.View == null ? "untraced" :
-            $"{(View != was.View ? "rebuilt, " : "")}{Frame - was.Frame} frames {Ms - was.Ms:F0} ms: {Poses - was.Poses} poses, {Carries - was.Carries} carried, {Cuts - was.Cuts} cuts, {Overs - was.Overs} corrections, {Leaps - was.Leaps} leaps, eased {was.Off:F2} to {Off:F2} m, the rig's torso {was.RigOff:F2} to {RigOff:F2} m from the feet";
+            $"{(View != was.View ? "rebuilt, " : "")}{Frame - was.Frame} frames {Ms - was.Ms:F0} ms: {Poses - was.Poses} poses, {Carries - was.Carries} carried, {Cuts - was.Cuts} cuts, {Overs - was.Overs} corrections, {Leaps - was.Leaps} leaps, posed {Gap * 1000f:F0} ms after the pose before, eased {was.Off:F2} to {Off:F2} m, the rig's torso {was.RigOff:F2} to {RigOff:F2} m from the feet";
     }
 
     static Trace Traced(Town.Person p, Town town)
@@ -407,7 +408,7 @@ public partial class StartleTest : Node
         int body = p.Rig.Layout.Pieces.FindIndex(q => q.Name == "body");
         Vector3 torso = p.Rig.Pose[body].Origin;
         return new Trace(v, Engine.GetProcessFrames(), Time.GetTicksUsec() / 1000.0, v.Poses, v.Carries, v.Smoother.Cuts, v.Smoother.Overs, v.Blend.Leaps, v.Easing().Apart,
-            new Vector2(torso.X - p.Pos.X, torso.Z - p.Pos.Z).Length());
+            new Vector2(torso.X - p.Pos.X, torso.Z - p.Pos.Z).Length(), v.Gap);
     }
 
     bool InView(Vector3 at)
