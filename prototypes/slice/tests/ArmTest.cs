@@ -114,6 +114,28 @@ public partial class ArmTest : Node
         }
     }
 
+    /// <summary>
+    /// The hips' height over the feet, frame to frame (the whole upper body hangs from them): a dip is a frame more than
+    /// <see cref="Dip"/> off the middle of the frames either side of it (a stride's bob is a few millimetres off it).
+    /// </summary>
+    sealed class Hips
+    {
+        float _before, _then;
+        int _n;
+        public float Sample(float y)
+        {
+            float dip = _n >= 2 ? MathF.Abs(_then - 0.5f * (_before + y)) : 0f;
+            (_before, _then, _n) = (_then, y, _n + 1);
+            return dip;
+        }
+    }
+
+    const float Dip = 0.015f;
+    int _dips, _hipFrames;
+    float _worstDip;
+    readonly Dictionary<string, int> _dipWhy = new();
+    readonly Queue<string> _hipRing = new();
+
     /// <summary>The pieces watched: each arm's upper arm, forearm and hand, and what is held.</summary>
     static readonly string[] Names = { "left upper arm", "left forearm", "left hand", "right upper arm", "right forearm", "right hand", "held thing" };
 
@@ -168,6 +190,8 @@ public partial class ArmTest : Node
         GD.Print($"  (posing: {_poseMs * 1000.0 / Math.Max(1, _poses):F1} µs a pose over {_poses})");
         Report("as posed", _posed);
         Report("as drawn", _drawn);
+        if (_dipWhy.Count > 0) GD.Print($"  (hips dipped while {Tally.Top(_dipWhy)})");
+        Check(_hipFrames > 10000 && _dips == 0, $"the hips never dip for a frame, posed or drawn (over {Dip * 100f:F1} cm off the frames either side: {_dips} of {_hipFrames} frames, worst {_worstDip * 100f:F1} cm)");
         if (_shots != null && (_shotOf ?? _firstFlip) is { } f)
             foreach (int x in Shots(f.S, f.Seed, f.Frame)) yield return x;
     }
@@ -213,6 +237,7 @@ public partial class ArmTest : Node
             for (int k = 0; k < 3; k++) hands[i * 3 + k] = pieces.FindIndex(p => p.Name == HandMake.PieceName((HandShape)k, i));
         var posedW = new Watch(Names.Length);
         var drawnW = new Watch(Names.Length);
+        var (hipsPosed, hipsDrawn) = (new Hips(), new Hips());
         Vector3 at = Vector3.Zero;
         float yaw = 0f, walked = 0f, clock = 0f, speed = 0f, act = 0f, aim = 0f, sit = 0f, crouch = 0f, work = 0f, reach = 0f, sip = 0f;
         BodyAct now = BodyAct.None;
@@ -263,6 +288,23 @@ public partial class ArmTest : Node
                     string Arm(int i) => $"{P(rig.Pose[bones[i * 3]].Origin)} {P(rig.Pose[bones[i * 3 + 1]].Origin)} {P(rig.Pose[hands[i * 3 + (int)rig.HandOf(i).shape]].Origin)}";
                     _ring.Enqueue($"      t{tick}: L {Arm(0)} | R {Arm(1)} | grips {P(rig.GripRight)} {rig.GripRightOn:F2} {P(rig.GripLeft)} {rig.GripLeftOn:F2} | line {rig.WeaponLine.X:F2} {rig.WeaponLine.Y:F2} {rig.WeaponLine.Z:F2}");
                     if (_ring.Count > 4) _ring.Dequeue();
+                }
+                // The hips in the world (the ground is level here): no dip for a frame, posed or drawn.
+                _hipFrames++;
+                if (Trace)
+                {
+                    var h = rig.HipTrace;
+                    _hipRing.Enqueue($"      t{tick}: hips {rig.Pose[torso].Origin.Y - at.Y:F3} bob {h.Bob:F3} drop {h.Drop:F3} apart {h.Apart:F3} duty {h.Duty:F2} half {h.Half:F2} phase {h.Phase:F3} planted {rig.FootPlanted(0)} {rig.FootPlanted(1)} settle {h.Settle0:F2} {h.Settle1:F2} moving {speed:F2} feet {rig.Pose[pieces.FindIndex(p => p.Name == "leg0f")].Origin - at:F2} {rig.Pose[pieces.FindIndex(p => p.Name == "leg1f")].Origin - at:F2}");
+                    if (_hipRing.Count > 3) _hipRing.Dequeue();
+                }
+                foreach (float dip in new[] { hipsPosed.Sample(rig.Pose[torso].Origin.Y - at.Y), hipsDrawn.Sample(drawn[torso].Origin.Y - at.Y) })
+                {
+                    _worstDip = MathF.Max(_worstDip, dip);
+                    if (dip <= Dip) continue;
+                    _dips++;
+                    string doing = $"{beat}{(now != BodyAct.None ? $" ({now})" : "")}";
+                    if ((_dipWhy[doing] = _dipWhy.GetValueOrDefault(doing) + 1) == 1 && _dipWhy.Count <= 12) { GD.Print($"    hips dipped {dip * 100f:F1} cm for a frame: {who}, {doing}, tick {tick - 1}, speed {speed:F1}"); foreach (string l in _hipRing) GD.Print(l); }
+                    break;
                 }
                 // (In the torso's frame: the arms as they hang from it, whatever the hips and back do.)
                 Transform3D back = rig.Pose[torso].AffineInverse(), backDrawn = drawn[torso].AffineInverse();

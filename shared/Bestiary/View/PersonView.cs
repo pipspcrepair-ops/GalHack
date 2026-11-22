@@ -151,6 +151,11 @@ public partial class PersonView : Node3D
     Transform3D _root;
     double _synced = double.MinValue;
 
+    /// <summary>Trace (tests): what moved the body, counted: poses, frames a carried pose was posed on, and the smoother's and blend's own.</summary>
+    internal int Poses, Carries;
+    internal DrawSmoother Smoother => _smooth;
+    internal PoseBlend Blend => _blend;
+
     /// <summary>
     /// The longest span between poses carried across the frames between them, s: a body posed every tick on a screen faster than
     /// the ticks. One posed less often is far off and small, and a 60 Hz screen draws each pose of a near one: nothing to carry.
@@ -166,6 +171,7 @@ public partial class PersonView : Node3D
     public void Sync(Vector3 feet, float yaw, float speed, int key)
     {
         double now = DrawSmoother.Clock();
+        Poses++;
         _smooth.Note(feet, yaw, speed, now);
         _root = new Transform3D(new Basis(Vector3.Up, yaw), feet);
         float span = (float)(now - _synced);
@@ -183,6 +189,7 @@ public partial class PersonView : Node3D
         double now = DrawSmoother.Clock();
         Place(now);
         if (!_blend.Carrying(now)) return false;
+        Carries++;
         Write(_blend.Apply(_rig.Pose, _root, now));
         return true;
     }

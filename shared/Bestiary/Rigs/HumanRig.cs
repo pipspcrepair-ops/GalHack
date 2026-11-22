@@ -453,6 +453,8 @@ public sealed partial class HumanRig : Rig
         return false;
     }
 
+    internal (float Bob, float Drop, float Apart, float Duty, float Half, float Phase, float Settle0, float Settle1) HipTrace;
+
     void DriveAlive(in Gesture g)
     {
         Figure f = _f;
@@ -518,6 +520,7 @@ public sealed partial class HumanRig : Rig
         _aslant = Ease(_aslant, g.Travels && went.LengthSquared() > 0.04f ? Math.Clamp(Geo.WrapAngle(MathF.Atan2(-went.X, -went.Z) - g.Yaw), -0.8f, 0.8f) : 0f, 3f);
         Vector3 along = new Basis(Vector3.Up, g.Yaw + _aslant) * Vector3.Forward;
         float apart = PlaceFeet(g, hip, recoil, fwd, along, right, phase, duty, half, moving, run, stalk, staggerSide, keyed, hitFlat, stagger, husk, most);
+        HipTrace = (bob, MathF.Max(0f, hipUp - MathF.Sqrt(MathF.Max(0f, legReach * legReach - apart * apart))), apart, duty, half, phase - MathF.Floor(phase), _settle[0], _settle[1]);
         hipY -= MathF.Max(0f, hipUp - MathF.Sqrt(MathF.Max(0f, legReach * legReach - apart * apart)));
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         hip += Vector3.Up * hipY;
