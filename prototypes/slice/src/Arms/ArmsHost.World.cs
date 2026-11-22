@@ -36,6 +36,7 @@ public partial class ArmsHost
             if (places.Resolve(collider, at, n, out PoiPlaces.Hit h, hit.CellX)) { places.Struck(h, amount); PlaceHits++; }
             else if (places.SalvageOf(collider) is { } wreck) { places.Work(wreck, amount); WreckHits++; }
             else if (Zone.StandingOf(collider, at) is { } standing) { Zone.WearStanding(standing, amount * Table.Rules.PlantRound, dir with { Y = 0f }); PlantHits++; } // a pole or a post is shot through as a trunk is
+            else if (Zone.Infra.UnderAt(collider, at, n) is { } lining) { Zone.Infra.WearUnder(lining, amount); PlaceHits++; } // the under-town's lining, block by block as a place's
         }
         else if (hit.Thing is Rid body && Zone.TreeAt((body, hit.CellX), out long tree, out _) && Zone.Sighting(tree, at, out TerrainStreamer.PlantSighting plant))
         {
@@ -72,6 +73,7 @@ public partial class ArmsHost
             if (Zone.Planet.Felled.Contains(s.Id)) PlantsBlasted++;
         }
         Zone.BlastStanding(p, r, damage);
+        Zone.Infra.BlastUnder(p, r, damage);
         PlantsMs = Math.Max(PlantsMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
         if (hulls || places?.PlaceAt(p) != null) return;
         t = System.Diagnostics.Stopwatch.GetTimestamp();

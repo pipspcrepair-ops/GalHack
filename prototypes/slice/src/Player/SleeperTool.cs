@@ -130,6 +130,8 @@ public sealed class SleeperTool
     Deposit? _tell;
     /// <summary>The standing thing under the crosshair that is cut as a trunk is (a power pole or pylon, a lamp post, a sign post, a mast), if that is what it is on.</summary>
     Surface.SurfaceZone.Standing? _standing;
+    /// <summary>The under-town lining block under the crosshair (its world cell), if that is what it is on: worn block by block as a place's.</summary>
+    PoiGenerator.Gen.Int3? _under;
     readonly Dictionary<(double, double), int> _tellsWorked = new();
     /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
     public const int TellPulses = 4, TellOrePerPulse = 1;
@@ -206,6 +208,7 @@ public sealed class SleeperTool
         _wreck = null;
         _tell = null;
         _standing = null;
+        _under = null;
         if (!OnBlock && Places != null && WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Props | Place.SceneryLayer, out LookHit p)
             && (!HasTarget || p.Distance < ground + 0.05f))
         {
@@ -215,7 +218,7 @@ public sealed class SleeperTool
             if (!OnPlace && p.Collider is Node solid && _zone.Infra.IsAncestorOf(solid))
             {
                 _standing = _zone.StandingOf(p.Collider, p.Point); // a power pole or pylon, a post or mast: cut as a trunk is
-                if (_standing == null) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
+                if (_standing == null && (_under = _zone.Infra.UnderAt(p.Collider, p.Point, p.Normal)) == null) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
             }
             if (OnPlace)
             {
@@ -585,6 +588,12 @@ public sealed class SleeperTool
             _suit.Worked();
             _zone.WearStanding(standing, BlastWear, _placePoint - _survivor.WorldEye());
             Strike(_placePoint, Vector3.One * 0.3f, 2);
+        }
+        else if (!OnBlock && _under is { } lining)
+        {
+            _suit.Worked();
+            _zone.Infra.WearUnder(lining, BlastWear);
+            Strike(_placePoint, Vector3.One * 0.35f, 2);
         }
         else if (!OnBlock && CutPlant(out Vector3 plant)) Strike(plant, Vector3.One * 0.3f, 2);
         else if (!OnBlock && HasTarget && Dig() is { } edit)

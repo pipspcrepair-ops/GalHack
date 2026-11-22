@@ -157,6 +157,40 @@ public sealed partial class Staging
             if (!ok) Faults++;
             GD.Print($"  {(ok ? "ok   " : "FAIL ")} a sewer junction by day with no lamp reads {dark:F3} (under 0.040; the sky field says {_game.Zone.Light.LightAt(mid):F3} there)");
         }
+
+        // A lining block breaks as a place's does: an exposed one shot from in front until it goes, seen before and after.
+        if (faces.Where(f => f.Dir is not (Dir.Up or Dir.Down)).OrderBy(f => world.NearestCopy(new Vector3(f.Cell.X, f.Cell.Y, f.Cell.Z), _game.Survivor.WorldFeet).DistanceTo(_game.Survivor.WorldFeet))
+            .Cast<(PInt3 Cell, Dir Dir, bool Dark)?>().FirstOrDefault() is { } target)
+        {
+            PInt3 v = target.Dir.Vec();
+            Vector3 block = world.NearestCopy(new Vector3(target.Cell.X + 0.5f, target.Cell.Y + 0.5f, target.Cell.Z + 0.5f), _game.Survivor.WorldFeet), out_ = new Vector3(v.X, 0f, v.Z);
+            Vector3 eye = block + out_ * 7f + out_.Cross(Vector3.Up) * 2f;
+            eye.Y = Mathf.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.6f);
+            IEnumerable<int> Look(string tag)
+            {
+                _game.Survivor.PlaceOutside((eye - Vector3.Up * 1.6f).ToNumerics());
+                for (int i = 0; i < 600; i++)
+                {
+                    _game.FixedCamera = new Transform3D(Basis.LookingAt(block - eye, Vector3.Up), eye);
+                    _game.Zone.Sky.TimeOfDay = LocalDay();
+                    yield return 0;
+                    if (i > 200 && _game.Zone.Streamer.Settled && !_game.Zone.Infra.PartsPending) break;
+                }
+                Snap(tag);
+            }
+            foreach (int x in Look("lining-before")) yield return x;
+            int broken = _game.Zone.Infra.UnderBroken, shots = 0;
+            GalHack.Arms.WeaponDef gun = _game.Zone.Data.Arms.OfItem(Wildlife.Weapons.ItemOf("rifle"));
+            for (; shots < 200 && _game.Zone.Infra.UnderBroken == broken; shots++)
+            {
+                WorldFire.Fire(_game, gun, block + out_ * 4f, block);
+                foreach (int x in _drive.Wait(5)) yield return x;
+            }
+            foreach (int x in Look("lining-after")) yield return x;
+            bool gone = _game.Zone.Infra.UnderBroken > broken && !built.Blocks.ContainsKey(target.Cell);
+            if (!gone) Faults++;
+            GD.Print($"  {(gone ? "ok   " : "FAIL ")} an exposed lining block ({Lines(target.Cell)}) at {target.Cell} broke after {shots} rifle shots, as a place's block does ({_game.Zone.Infra.UnderBroken - broken} broken, its patch built again)");
+        }
         _game.FixedCamera = null;
     }
 

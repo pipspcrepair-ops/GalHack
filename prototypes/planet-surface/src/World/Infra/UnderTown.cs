@@ -29,6 +29,35 @@ public sealed class UnderTown
 
     public const int MeshTile = 48, StampTile = 32;
 
+    /// <summary>The patch of <see cref="MeshTile"/> metres a cell is drawn in.</summary>
+    public static (int X, int Z) TileOf(PInt3 c) => ((int)Math.Floor(c.X / (double)MeshTile), (int)Math.Floor(c.Z / (double)MeshTile));
+
+    /// <summary>Damage each lining block has taken (world cells), toward its hit points: a place block's (<see cref="BlockInfo.HitPoints"/>).</summary>
+    public readonly Dictionary<PInt3, float> Worn = new();
+
+    /// <summary>
+    /// Wears one lining block (a shot's, a blast's, the tool's damage), as a place's blocks are worn; spent, it is gone and its
+    /// cell open (true then). Locked against the patches drawn on workers (<see cref="Built"/> is what they read).
+    /// </summary>
+    public bool Wear(PInt3 c, float damage)
+    {
+        lock (Built)
+        {
+            if (damage <= 0f || !Built.Blocks.TryGetValue(c, out Block b)) return false;
+            float done = Worn.GetValueOrDefault(c) + damage;
+            if (done < BlockInfo.HitPoints(b))
+            {
+                Worn[c] = done;
+                return false;
+            }
+            Worn.Remove(c);
+            Built.Blocks.Remove(c);
+            Built.Open.Add(c);
+            if (Tiles.TryGetValue(TileOf(c), out var cells)) cells.Remove(c);
+            return true;
+        }
+    }
+
     UnderSite _site;
 
     /// <summary>A town's underground before its ground is known: which lots it needs. Plan it once the roads are down.</summary>

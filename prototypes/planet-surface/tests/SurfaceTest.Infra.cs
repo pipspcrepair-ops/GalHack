@@ -18,6 +18,15 @@ namespace PlanetSurface;
 /// <summary>The world around the places: the profile, and the old world's infrastructure.</summary>
 public partial class SurfaceTest
 {
+    /// <summary>
+    /// The roads' tiles' kinds of piece that take damage and break: tells broken, the under-town's lining block by block, poles and pylons felled as trees are (their wires
+    /// and drops falling with them), wrecks worn apart; the dressing's posts and masts fell, the rest of it (and a ruin's front)
+    /// is dressing, no structure. A ruin itself is a place. Every other kind is a structure nothing breaks yet.
+    /// </summary>
+    static readonly HashSet<string> Breaking = new() { "OreTellPiece", "PolePiece", "WirePiece", "DropPiece", "WreckPiece", "DressPiece", "RuinPiece", "UnderPiece" };
+    /// <summary>Pieces of the kinds nothing breaks, by kind, over the sweep's worlds.</summary>
+    readonly Dictionary<string, int> _unbroken = new();
+
     // ---- the world profile ------------------------------------------------------------------
 
     async Task ProfileChecks()
@@ -537,6 +546,8 @@ public partial class SurfaceTest
             spanned += power.Wires.Count(wire => wire.Spanned && power.Poles[wire.A].Pylon);
             // Solid: each emits collision into its tile.
             var pieces = PlanetSurface.Infra.InfraLayer.Plan(w);
+            foreach (var piece in pieces.Values.SelectMany(l => l))
+                if (!Breaking.Contains(piece.GetType().Name)) _unbroken[piece.GetType().Name] = _unbroken.GetValueOrDefault(piece.GetType().Name) + 1;
             int tested = 0;
             foreach (var piece in pieces.Values.SelectMany(l => l).Where(p => p.GetType().Name == "PolePiece"))
             {
@@ -547,6 +558,7 @@ public partial class SurfaceTest
             }
             await Frames(1);
         }
+        Check(_unbroken.Count == 0, $"every non-POI structure takes damage and breaks, block by block or felled as a tree (owner, 22 Nov): on {sweepWorlds} fresh worlds, pieces of kinds that nothing breaks: {(_unbroken.Count == 0 ? "none" : string.Join(", ", _unbroken.OrderByDescending(k => k.Value).Select(k => $"{k.Value} {k.Key}")))}");
         Check(paved > 0 && tight == 0, $"paved roads sweep: {paved} roads and highways, {pavedKm:F1} km, none tighter than its class's least (road {InfraNetwork.LeastRadius(RouteKind.Road)} m, highway {InfraNetwork.LeastRadius(RouteKind.Highway)} m; tightest {Math.Min(tightest, 1e6):F0} m), {tight} too tight ({string.Join(", ", tightHow.Select(k => $"{k.Value} {(k.Key.Length > 0 ? k.Key : "unlaid")}"))}){firstTight}");
         Check(elbows == 0, $"no road has a hard elbow: {elbowRoutes} roads, streets and tracks on {sweepWorlds} fresh worlds, none turning more than 60 degrees over 8 m (a town corner's curve); sharpest {worstElbow:F0}, {elbows} over ({elbowsAtEnds} within 40 m of an end: {string.Join("; ", elbowNotes)}){firstElbow}");
         Check(tracks > 0 && flatBacks == 0, $"tracks follow the land, switching back only on steep ground: {tracks} tracks, {trackKm:F1} km on {sweepWorlds} fresh worlds, {switchbacks} switchbacks, {flatBacks} on flat ground{firstFlatBack}; {graded} graded dirt roads");
