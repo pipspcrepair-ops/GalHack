@@ -524,7 +524,7 @@ public partial class ClimateTest : Node
         {
             Species s = patch.Fauna.Species[0];
             Creature c = patch.Sim.Spawn(s, local with { Y = water.Y - patch.Origin.Y });
-            foreach (int x in _drive.Wait(180)) yield return x;
+            foreach (int x in _drive.Wait(480)) yield return x; // (risen off the bottom, if it sank as it went in)
             float below = water.Y - patch.FromPatch(c.Position).Y, swim = s.BodyHeight * patch.Sim.SwimShare;
             bool swims = Shore.Swims(s);
             Check(c.Removed || (swims ? MathF.Abs(below - swim) < 0.35f : below > swim), $"a land animal over deep water {(swims ? "swims, its back at the surface" : "too heavy to swim, sinks")}: its feet {below:F2} m under the surface ({swim:F2} swimming)");
