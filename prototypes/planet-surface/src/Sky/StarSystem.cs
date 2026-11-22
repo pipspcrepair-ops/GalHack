@@ -68,9 +68,7 @@ public sealed record Orbiter
     public Rgb Band { get; init; }
     public bool Rings { get; internal set; }
     public Rgb RingColor { get; internal set; }
-    /// <summary>How bright and solid its ring is, 0 to 1: bright ice past the frost line, faint dust in (<see cref="StarSystem.DressRing"/>).</summary>
-    public float RingBrightness { get; internal set; } = 1f;
-    /// <summary>Its ring's outer edge, in its own radii (the inner edge is 1.45).</summary>
+    /// <summary>Its ring's outer edge, in its own radii (the inner edge is 1.45): the model's, for the views to draw (today they draw every ring to 2.42).</summary>
     public double RingOuter { get; internal set; } = 2.42;
     /// <summary>The ring plane's normal, in the system's frame.</summary>
     public D3 RingNormal { get; init; } = new(0, 1, 0);
@@ -772,8 +770,8 @@ public sealed class StarSystem
         if (!b.Rings) return;
         bool ice = b.Habitable > FrostLine;
         bool small = b.Kind != OrbiterKind.GasGiant || Under(b).Count(m => widths.TryGetValue(m, out int w) && PlanetSpec.Heavy(w)) >= CrowdingMoons;
-        b.RingColor = ice ? Rgb.Lerp(Rgb.Hex("eef2f6"), tint, 0.15f) : Rgb.Lerp(Rgb.Hex("9a8672"), tint, 0.3f);
-        b.RingBrightness = (ice ? 1f : 0.55f) * (small ? 0.5f : 1f);
+        // Its brightness is in its colour, the one value every view draws a ring in.
+        b.RingColor = (ice ? Rgb.Lerp(Rgb.Hex("eef2f6"), tint, 0.15f) : Rgb.Lerp(Rgb.Hex("9a8672"), tint, 0.3f) * 0.55f) * (small ? 0.5f : 1f);
         b.RingOuter = small ? 1.75 : ice ? 2.42 : 2.1;
     }
 

@@ -260,6 +260,9 @@ public partial class SystemsTest : Node
 
     // ---- 4. Rings ---------------------------------------------------------------------------------------
 
+    /// <summary>A colour's brightness: its brightest channel.</summary>
+    static float Bright(Rgb c) => MathF.Max(c.R, MathF.Max(c.G, c.B));
+
     void Rings(List<StarSystem> systems)
     {
         int moonRings = 0, moonLooks = 0, giants = 0, ringed = 0, rockRings = 0, rockWrong = 0, iceRings = 0, rockRingsIn = 0;
@@ -285,8 +288,8 @@ public partial class SystemsTest : Node
                 if (b.Habitable > StarSystem.FrostLine) iceRings++;
                 else rockRingsIn++;
                 bool crowded = s.Under(b).Count(m => m.Spec.HighGravity) >= StarSystem.CrowdingMoons;
-                if (b.Habitable > StarSystem.FrostLine && !crowded) iceBright = MathF.Min(iceBright, b.RingBrightness);
-                if (b.Habitable <= StarSystem.FrostLine && !crowded) rockBright = MathF.Max(rockBright, b.RingBrightness);
+                if (b.Habitable > StarSystem.FrostLine && !crowded) iceBright = MathF.Min(iceBright, Bright(b.RingColor));
+                if (b.Habitable <= StarSystem.FrostLine && !crowded) rockBright = MathF.Max(rockBright, Bright(b.RingColor));
                 if (crowded) crowdedOuter = MathF.Max(crowdedOuter, (float)b.RingOuter);
                 else openOuter = MathF.Min(openOuter, (float)b.RingOuter);
             }

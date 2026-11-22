@@ -303,7 +303,7 @@ public partial class GlobeTest : Node
 
     /// <summary>
     /// No two worlds share an orbit: on fresh worlds of every type, neighbours round the star stand a
-    /// clear step apart (a giant that near is the one this world is a moon of), a moon holds no moons,
+    /// clear step apart (a giant that near is the one this world is a moon of), only a giant's moon holds moons,
     /// moons of one parent keep apart, and no world sits in a belt but in the temperate band.
     /// </summary>
     void OrbitsStandApart()
@@ -328,7 +328,7 @@ public partial class GlobeTest : Node
                 }
                 foreach (var b in s.Bodies)
                 {
-                    if (b.Kind == PlanetSurface.Skies.OrbiterKind.Moon && b.Parent.Kind == PlanetSurface.Skies.OrbiterKind.Moon) moonsOfMoons++;
+                    if (b.Kind == PlanetSurface.Skies.OrbiterKind.Moon && b.Parent.Kind == PlanetSurface.Skies.OrbiterKind.Moon && b.Parent.Parent.Kind != PlanetSurface.Skies.OrbiterKind.GasGiant) moonsOfMoons++;
                     if (b.Kind == PlanetSurface.Skies.OrbiterKind.Belt)
                         inBelts += round.Count(w => w.Habitable is < 0.95 or > 1.7 && Math.Abs(w.Orbit - b.Orbit) < b.BeltWidth * 0.5);
                     var moons = s.Under(b).Where(m => m.Kind == PlanetSurface.Skies.OrbiterKind.Moon && m != s.FuelMoon || (m == s.FuelMoon && m.Orbit != s.Home.Orbit)).OrderBy(m => m.Orbit).ToList();
@@ -338,7 +338,7 @@ public partial class GlobeTest : Node
             }
         Check(closest >= PlanetSurface.Skies.StarSystem.LeastOrbitStep * 0.999, $"globe: no two worlds share an orbit round the star in {cases} fresh systems: the closest neighbours stand {closest:F2} times apart ({closestAt}); {asMoons} homes are a giant's moon");
         Check(closestMoons >= PlanetSurface.Skies.StarSystem.LeastMoonStep * 0.999, $"globe: moons of one parent keep apart, the closest {closestMoons:F2} times ({moonAt}), and only a start's sister moon shares its orbit");
-        Check(moonsOfMoons == 0, $"globe: a moon holds no moons of its own ({moonsOfMoons} did)");
+        Check(moonsOfMoons == 0, $"globe: only a giant's moon holds moons of its own (owner, 22 Nov; {moonsOfMoons} others did)");
         Check(inBelts == 0, $"globe: no world sits in a belt outside the temperate band ({inBelts} did)");
     }
 

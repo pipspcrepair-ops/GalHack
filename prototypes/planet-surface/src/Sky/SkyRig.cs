@@ -306,8 +306,6 @@ public partial class SkyRig : Node3D
             _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("giant_band"), C(giant.Band));
             _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("rings"), giant.Rings);
             _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_color"), C(giant.RingColor));
-            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_brightness"), giant.RingBrightness);
-            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_outer"), (float)giant.RingOuter);
         }
         FindLitPlaces(world);
         Surfaces = surfaces ?? new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
