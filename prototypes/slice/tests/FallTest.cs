@@ -572,6 +572,16 @@ public partial class FallTest : Node
                         if (s.Sim.Creatures.FirstOrDefault(c => !c.Dead && !c.Removed && c.Space != null && !c.Species.Climbs && !c.Species.Flies && !c.Falling && !c.InWalls && Under(place, place.FromWorld(patch.WorldOf(c)))) is { } c) { (who, site) = (c, s); break; }
                 yield return 0;
             }
+            // (None of the settlement's own on a floor of its blocks: one of the land's walkers let in, on a floor with room under it.)
+            if (k == -1 && who == null && home.Memory.Fauna is { Site: { } fs, Space: { } space } && home.Memory.Town is { } town
+                && patch.Fauna.Species.FirstOrDefault(s => !s.Flies && !s.Climbs && !s.Rooted && s.Rig is RigKind.Legged or RigKind.Hopper && s.Body.Size <= 1.2f) is { } kind
+                && town.People.FirstOrDefault(p => !p.Dead && !p.Gone && Under(home, p.Pos) && DropUnder(town, p.Pos) >= 1f) is { } by)
+            {
+                Creature c = fs.Sim.SpawnIn(kind, space, fs.Local(town.World(by.Pos + Vector3.Up * 0.3f)));
+                for (int i = 0; i < 30; i++) { TopUp(); yield return 0; }
+                if (!c.Removed && !c.InWalls && !c.Falling && Under(home, home.FromWorld(patch.WorldOf(c)))) { (who, site) = (c, fs); GD.Print($"  (one of the land's {kind.Name} let into the place, by a {by.Job})"); }
+                else c.Removed = true;
+            }
         }
         if (who == null) { GD.Print("  (none of the creatures of the settlement or the places nearest it on a floor of their blocks: not tried here)"); yield break; }
         Vector3 feet = place.FromWorld(patch.WorldOf(who));
