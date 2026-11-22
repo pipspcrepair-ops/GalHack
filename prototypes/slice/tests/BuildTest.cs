@@ -404,6 +404,7 @@ public partial class BuildTest : Node
             _site = _play.FlatSpot(_game.Start, 70f + attempt * 30f, 0.6f + attempt * 1.7f, 0.4f, span: 14f);
             foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
             LevelSite(14f);
+            Playthrough.Clearing(_game.Zone, _site, 16f); // boulders too (a fresh crater throws them round its rim): they stand between you and the blocks
             foreach (int x in _drive.UntilSettled()) yield return x;
             _site = Ground(_site);
             float ridge = 0f;
