@@ -107,6 +107,12 @@ public partial class PopRoute
                 sky.Apply();
                 if (MathF.Asin(sun.GlobalBasis.Z.Y) * 180f / MathF.PI >= want) break;
             }
+            float elevation = MathF.Asin(sun.GlobalBasis.Z.Y) * 180f / MathF.PI;
+            if (elevation < want - 1f || !sun.ShadowEnabled || sky.SunLit < 0.9f)
+            {
+                GD.Print($"ROUTE edges [{variant}] sun {want:F0} deg: never so high here (at most {elevation:F1}), or eclipsed ({sky.SunLit:P0} of the disc); left out");
+                continue;
+            }
             Vector3 toSun = new Vector3(sun.GlobalBasis.Z.X, 0f, sun.GlobalBasis.Z.Z).Normalized(), across = toSun.Cross(Vector3.Up);
             // Across the sun (long shadows lie across the view), toward the rougher side; then over the land, and over the trees.
             Vector3 side0 = across.Dot(rough) < 0f ? -across : across;
