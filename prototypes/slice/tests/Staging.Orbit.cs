@@ -41,6 +41,7 @@ public sealed partial class Staging
         "bodies" => BodiesView(),
         "moon" => MoonView(),
         "moon2" => MoonView(second: true),
+        "sizes" => SizesView(),
         "moonlight" => MoonLightView(),
         "orbitweather" => OrbitWeatherView(),
         "map-world" => MapView(Slice.Ui.MapLevel.World),
