@@ -86,6 +86,10 @@ public partial class FallTest : Node
     static void Set(object o, string name, object v) => o?.GetType().GetField(name)?.SetValue(o, v);
     float G => _game.Zone.Physics.Zone.Strength;
 
+    /// <summary>Whether a creature swims, and what its feet stand on (read by name: a build from before had neither, and nothing swam: the ground under its middle).</summary>
+    static bool Swims(Species s) => typeof(Creature).Assembly.GetType("Wildlife.Shore")?.GetMethod("Swims")?.Invoke(null, new object[] { s }) is not false;
+    static float Footing(WildSim w, Creature c) => typeof(Locomotion).GetMethod("Footing")?.Invoke(null, new object[] { w, c, c.Position.X, c.Position.Z }) is float f ? f : w.Terrain.Height(c.Position.X, c.Position.Z);
+
     /// <summary>Physics ticks since a frame count: the sim's own time, whatever the test does between (a shot taken).</summary>
     static int Frame(ulong from) => (int)(Engine.GetPhysicsFrames() - from);
 
@@ -480,7 +484,7 @@ public partial class FallTest : Node
         for (int i = 0; i < 240; i++) { TopUp(); yield return 0; }
         WildlifePatch patch = _game.Zone.Wildlife;
         Creature who = patch.Sim.Creatures.Where(c => !c.Dead && !c.Removed && c.Space == null && !c.Species.Flies && c.Species.Rig is not (RigKind.GasBag or RigKind.Swarm or RigKind.Hopper)
-            && c.Species.Domestic == DomesticKind.None && Shore.Swims(c.Species)).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
+            && c.Species.Domestic == DomesticKind.None && Swims(c.Species)).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
         if (who == null) { GD.Print("  (no creature that swims in the patch: none dropped in)"); yield break; }
         GD.Print($"  -- a creature dropped into deep water ({who.Species.Name}, {who.Species.BodyLength:F1} m; {top - floor:F1} m deep) --");
         who.Position = patch.PatchLocal(at with { Y = top + 3f });
@@ -627,7 +631,7 @@ public partial class FallTest : Node
         Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 1.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
         // (On the land a creature stands on the ground as dug, by the metre.)
         // (A body wider than the hole stands on its rim, on three of its feet: Locomotion.Footing.)
-        float feet = who.Space == null ? patch.FromPatch(who.Position with { Y = Locomotion.Footing(patch.Sim, who, who.Position.X, who.Position.Z) }).Y : float.NaN;
+        float feet = who.Space == null ? patch.FromPatch(who.Position with { Y = Footing(patch.Sim, who) }).Y : float.NaN;
         Check(float.IsNaN(ground) || MathF.Abs(w.Y - ground) < 0.35f || MathF.Abs(w.Y - feet) < 0.35f && feet >= ground, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2}, its feet' footing {feet:F2})");
         Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
         Vector3 at = who.Position;
