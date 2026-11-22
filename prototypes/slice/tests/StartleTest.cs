@@ -286,11 +286,11 @@ public partial class StartleTest : Node
                 }
                 drawn[p] = d;
                 placed[p] = p.View?.GlobalPosition ?? default;
-                // Fleeing faster than a walk (posed every tick, near): as upright as the same body running with no act at all.
+                // Fleeing faster than a walk (posed every tick, near): as upright as the same body in a plain panicked run.
                 if (p.Fleeing && p.Now > RunFrom && vis && near < 30f && p.Rig != null)
                 {
                     HumanRig twin = upright.TryGetValue(p, out var u) ? u : upright[p] = new HumanRig(p.Looks);
-                    twin.Drive(p.Posed with { Act = BodyAct.None, ActAmount = 0f });
+                    twin.Drive(p.Posed with { Act = BodyAct.Panic, ActAmount = 1f });
                     ran++;
                     if (Slumped(p.Figure, p.Rig, twin) is { } how) { slumped++; Note("slump", $"{p.Job} fleeing at {p.Now:F1} m/s: {how}, act {p.Act} {p.ActAmount:F2}"); }
                 }
@@ -310,9 +310,10 @@ public partial class StartleTest : Node
     const float RunFrom = 1.6f;
 
     /// <summary>
-    /// How a body is lower or more bent than the same one running with no act (owner, 23 Nov: "Why do people crouch when
-    /// they're running away?"): its hips sunk or its torso tilted over past that; null when it runs upright. A cower drops the
-    /// hips a fifth of the leg and bends the back half a radian over.
+    /// How a body is lower or more bent than the same one in a plain panicked run, hands to its head (owner, 23 Nov: "Why do
+    /// people crouch when they're running away?"): its torso tilted over past that, or its hips sunk by more than the two rigs'
+    /// own stride state parts them (a tenth of the leg); null when it runs upright. A cower bends the back half a radian over
+    /// (its sunk hips are no lower than a panicked run's wide stance already takes them).
     /// </summary>
     static string Slumped(Figure f, Rig drawn, Rig upright)
     {
@@ -320,7 +321,7 @@ public partial class StartleTest : Node
         static float Tilt(Transform3D b) => MathF.Acos(Math.Clamp(b.Basis.Y.Normalized().Y, -1f, 1f));
         Transform3D body = drawn.Pose[at], run = upright.Pose[at];
         float sunk = run.Origin.Y - body.Origin.Y, over = Tilt(body) - Tilt(run);
-        return sunk > 0.06f * f.LegLength || over > 0.15f ? $"hips {sunk:F2} m under a plain run's, torso {over:F2} rad further over" : null;
+        return sunk > 0.2f * f.LegLength || over > 0.15f ? $"hips {sunk:F2} m under a panicked run's, torso {over:F2} rad further over" : null;
     }
 
     /// <summary>
@@ -343,7 +344,7 @@ public partial class StartleTest : Node
             sim.Targets.Add(you);
             List<Creature> band = sim.SpawnGroup(s, Vector3.Zero, 4);
             var rigs = band.ToDictionary(c => c, c => new HumanRig(c.Species));
-            var plain = band.ToDictionary(c => c, c => new HumanRig(c.Species)); // (the same body with no act: a plain run)
+            var plain = band.ToDictionary(c => c, c => new HumanRig(c.Species)); // (the same body in a plain panicked run)
             foreach (Creature c in band) { c.Nerve = 0.1f; rigs[c].Reset(sim, c); plain[c].Reset(sim, c); }
             const float dt = 1f / 60f;
             for (int t = 0; t < 60 * 8; t++)
@@ -355,7 +356,7 @@ public partial class StartleTest : Node
                     if (!c.Alive || c.Removed) continue;
                     rigs[c].Update(sim, c, dt);
                     BodyAct act = c.Act;
-                    c.Act = BodyAct.None;
+                    c.Act = BodyAct.Panic;
                     plain[c].Update(sim, c, dt);
                     c.Act = act;
                     float speed = WildSim.Flat(c.Velocity).Length();
