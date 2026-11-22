@@ -161,17 +161,54 @@ public partial class SurfaceZone : IFloraField
         return dealt / max;
     }
 
-    // ---- Power poles and pylons: felled as trees are (owner, 22 Nov: "treat them like trees") -----------------------
+    // ---- What stands and is felled as trees are (owner, 22 Nov: "treat them like trees"): power poles and pylons, and the
+    // dressing's posts and masts (lamp posts, sign posts, beacons, flag and banner poles) --------------------------------
 
-    /// <summary>A pole's place in the worn hit points, apart from every plant's.</summary>
-    static long PoleKey(int pole) => long.MinValue + pole;
+    /// <summary>Something standing that is felled as a tree is: a power pole or pylon, or a post or mast of the world's dressing (its index on that list).</summary>
+    public readonly record struct Standing(int Index, bool Post);
 
-    /// <summary>The pole or pylon a collider is part of (its own node in a roads' tile), or null.</summary>
-    public int? PoleOf(GodotObject collider)
+    /// <summary>A pole's or a post's place in the worn hit points, apart from every plant's and each other's.</summary>
+    static long StandingKey(Standing s) => long.MinValue + (s.Post ? 1L << 32 : 0L) + s.Index;
+
+    /// <summary>How tall a post or mast may stand, m (what a hit on it may reach up to).</summary>
+    const float PostTall = 9f;
+
+    /// <summary>
+    /// What standing thing a hit on a collider at <paramref name="at"/> struck (a roads' tile's standing things are one body: the
+    /// one whose reach holds the point), or null (a substation's yard, or nothing standing there).
+    /// </summary>
+    public Standing? StandingOf(GodotObject collider, Vector3 at)
     {
-        for (Node n = collider as Node; n != null && n != Infra; n = n.GetParent())
-            if (PlanetSurface.Infra.InfraLayer.PoleIndex(n.Name) is int pole) return pole;
-        return null;
+        if (collider is not Node body || body.GetParent()?.Name != PlanetSurface.Infra.InfraLayer.StandingPart) return null;
+        Standing? best = null;
+        float nearest = 0.5f; // (m outside its reach: a glancing hit on its edge)
+        void Consider(Standing s, Vector3 foot, float reach, float height)
+        {
+            float off = new Vector2(at.X - foot.X, at.Z - foot.Z).Length() - reach;
+            if (off < nearest && at.Y > foot.Y - 1f && at.Y < foot.Y + height + 1f) (best, nearest) = (s, off);
+        }
+        PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
+        for (int i = 0; i < lines.Poles.Count; i++)
+            if (lines.Poles[i] is { Fallen: false, Role: PlanetSurface.Infra.PowerRole.Line } p)
+                // Its reach about its foot: a pole's crossarm, a pylon's base or its arms, whichever is wider.
+                Consider(new(i, false), FootOf(p, at), p.Pylon ? Mathf.Max(p.Height * 0.13f, lines.WiresOn(p) / 2 * 4.2f + 0.6f) : 1.4f, p.Height);
+        var items = Planet.Dress.Items;
+        for (int k = 0; k < items.Count; k++)
+            if (!items[k].Felled && PlanetSurface.Infra.TileBuilder.Stands(items[k]))
+                Consider(new(k, true), FootOf(items[k], at), Mathf.Max(0.4f, items[k].Part.Reach * 0.75f), PostTall);
+        return best;
+    }
+
+    /// <summary>A pole's foot, or a post's, the copy of it nearest a point.</summary>
+    Vector3 FootOf(PlanetSurface.Infra.PowerPole p, Vector3 near) => Planet.NearestCopy(new Vector3((float)p.X, p.Ground, (float)p.Z), near);
+    Vector3 FootOf(PlanetSurface.Infra.DressItem it, Vector3 near) => Planet.NearestCopy(new Vector3((float)it.X, Planet.Source.SurfaceHeight(it.X, it.Z), (float)it.Z), near);
+
+    /// <summary>Wears something standing (a shot, a blast, the tool), as a plant is worn: a post a tree's hit points, a pole or pylon <see cref="PoleMax"/>.</summary>
+    public float WearStanding(Standing s, float damage, Vector3 away)
+    {
+        if (!s.Post) return WearPole(s.Index, damage, away);
+        PlanetSurface.Infra.DressItem it = Planet.Dress.Items[s.Index];
+        return it.Felled ? 0f : Wear(StandingKey(s), Mathf.Max(1f, Data.Rules.Plants.Tree), damage, () => FellPost(it, away));
     }
 
     /// <summary>A pole's hit points whole: a tree's, a pylon's four times over (data/slice.json plants).</summary>
@@ -182,39 +219,53 @@ public partial class SurfaceZone : IFloraField
     {
         PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
         if (pole < 0 || pole >= lines.Poles.Count || lines.Poles[pole] is not { Fallen: false, Role: PlanetSurface.Infra.PowerRole.Line } p) return 0f;
-        return Wear(PoleKey(pole), PoleMax(p), damage, () => FellPole(pole, away));
+        return Wear(StandingKey(new(pole, false)), PoleMax(p), damage, () => FellPole(pole, away));
     }
 
-    /// <summary>The poles and pylons in a blast's reach, worn as its plants are.</summary>
-    public void BlastPoles(Vector3 at, float radius, float damage)
+    /// <summary>The poles, pylons, posts and masts in a blast's reach, worn as its plants are.</summary>
+    public void BlastStanding(Vector3 at, float radius, float damage)
     {
+        void Blast(Standing s, Vector3 foot, float wide, float height)
+        {
+            Vector3 away = foot - at;
+            float d = new Vector2(away.X, away.Z).Length();
+            if (d >= radius + wide || at.Y > foot.Y + height + radius) return;
+            away.Y = 0f;
+            WearStanding(s, damage * (1f - Mathf.Min(d, radius) / radius * 0.75f), away.LengthSquared() > 1e-4f ? away : Vector3.Right);
+        }
         PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
         for (int i = 0; i < lines.Poles.Count; i++)
-        {
-            PlanetSurface.Infra.PowerPole p = lines.Poles[i];
-            Vector3 foot = Planet.NearestCopy(new Vector3((float)p.X, p.Ground, (float)p.Z), at), away = foot - at;
-            float d = new Vector2(away.X, away.Z).Length();
-            if (d >= radius + (p.Pylon ? p.Height * 0.13f : 0f) || at.Y > foot.Y + p.Height + radius) continue;
-            away.Y = 0f;
-            WearPole(i, damage * (1f - Mathf.Min(d, radius) / radius * 0.75f), away.LengthSquared() > 1e-4f ? away : Vector3.Right);
-        }
+            Blast(new(i, false), FootOf(lines.Poles[i], at), lines.Poles[i].Pylon ? lines.Poles[i].Height * 0.13f : 0f, lines.Poles[i].Height);
+        var items = Planet.Dress.Items;
+        for (int k = 0; k < items.Count; k++)
+            if (!items[k].Felled && PlanetSurface.Infra.TileBuilder.Stands(items[k])) Blast(new(k, true), FootOf(items[k], at), 0f, PostTall);
     }
 
-    /// <summary>Poles and pylons felled so far (tests).</summary>
+    /// <summary>Poles and pylons felled so far, and posts and masts (tests).</summary>
     public int PolesFelled { get; private set; }
+    public int PostsFelled { get; private set; }
+
+    /// <summary>A post or mast felled: it goes over as a tree does, its own drawing the body that falls and lies; its tiles are built again without it.</summary>
+    void FellPost(PlanetSurface.Infra.DressItem it, Vector3 away)
+    {
+        var (body, height) = PlanetSurface.Infra.InfraLayer.DressMesh(Planet, it); // (standing: drawn before it is down)
+        Infra.Felled(it);
+        Color look = new(0.42f, 0.43f, 0.44f);
+        Trees.Fell(FootOf(it, Focus()), away, Mathf.Max(1f, height), 0.08f, look, crown: false, look, body, Basis.Identity, stump: false, own: true);
+        PostsFelled++;
+    }
 
     /// <summary>
     /// A pole or pylon felled: it goes over as a tree does (<see cref="TreeFx.Fell"/>, its own drawing the body that falls and lies),
-    /// a pole's stump left; its drawing goes from its tile, and its wires drop to hang from the poles that still hold them.
+    /// a pole's stump left; its drawing goes from its tile, and its wires drop to hang from the poles that still hold them (<see cref="PlanetSurface.Infra.InfraLayer.Felled"/>).
     /// </summary>
     void FellPole(int pole, Vector3 away)
     {
         PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
         PlanetSurface.Infra.PowerPole p = lines.Poles[pole];
         Mesh body = PlanetSurface.Infra.InfraLayer.PoleMesh(Planet, lines, pole); // (standing: drawn before it is down)
-        p.Fallen = true;
         Infra.Felled(pole);
-        Vector3 root = Planet.NearestCopy(new Vector3((float)p.X, p.Ground, (float)p.Z), Focus());
+        Vector3 root = FootOf(p, Focus());
         Color look = p.Pylon ? new Color(0.43f, 0.44f, 0.45f) : new Color(0.31f, 0.24f, 0.17f);
         Trees.Fell(root, away, p.Height, p.Pylon ? 0.3f : 0.14f, look, crown: false, look, body, Basis.Identity, stump: !p.Pylon, own: true);
         PolesFelled++;

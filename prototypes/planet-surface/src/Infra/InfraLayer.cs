@@ -36,7 +36,15 @@ public partial class InfraLayer : Node3D
         /// <summary>A world point (canonical or continuous) the piece is drawn round: it decides the tile.</summary>
         public double X, Z;
         public abstract void Emit(TileBuilder b);
+        /// <summary>
+        /// The tile's part it is drawn in (null: the tile's own mesh): a part is one mesh and one body of its own, built again
+        /// without the rest of the tile when something in it changes (a tell broken, a pole felled).
+        /// </summary>
+        public virtual string Part => null;
     }
+
+    /// <summary>The tile parts: its ore tells; and what stands as a tree does and is felled as one, its power lines (poles, pylons, substations, wires, house drops) and the dressing that stands so (lamp posts, sign posts, masts).</summary>
+    public const string TellsPart = "Tells", StandingPart = "Standing";
 
     sealed class Tile
     {
@@ -50,9 +58,9 @@ public partial class InfraLayer : Node3D
         public bool Done => Node != null && Steps != null && Steps.Count == 0;
         /// <summary>It's close enough to touch, and its colliders aren't all in.</summary>
         public bool SolidsDue;
-        /// <summary>A tell here was broken: its rocks are built again, and this is that job.</summary>
-        public bool TellsStale;
-        public Task<TileBuilder> TellJob;
+        /// <summary>Its parts (<see cref="Piece.Part"/>) to build again, something in them having changed, and the one being built.</summary>
+        public readonly HashSet<string> Stale = new();
+        public Task<(string Name, TileBuilder Built)> PartJob;
         public readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
     }
 
@@ -166,7 +174,7 @@ public partial class InfraLayer : Node3D
         tile.Building = Task.Run(() => GalHack.Testing.AllocMeter.Measure("roads and ruins", () =>
         {
             var b = new TileBuilder(world, ox, oz);
-            foreach (Piece p in list) p.Emit(b);
+            foreach (Piece p in list) p.Emit(p.Part is string part ? b.PartOf(part) : b);
             // What the tile lays on what (markings on roads, plates on pads) stands off it: no two faces fight.
             GalHack.Deco.DecoStandoff.Apply(b.Mesh, new GalHack.Deco.DecoStandoff.Parts(b.Mesh), null, floor: false);
             return b;
@@ -275,7 +283,7 @@ public partial class InfraLayer : Node3D
                 tile.SolidsDue = tile.Solids.Count > 0;
             }
             if (waiting && tile.Done && TileLog.Count < 4096) TileLog.Add((tile.Clock.Elapsed.TotalSeconds, TileDistance(tile.Ix, tile.Iz, cx, cz)));
-            if (tile.Done) UpdateTells(tile, key);
+            if (tile.Done) UpdateParts(tile, key);
             if (tile.Node != null)
             {
                 // Written only when it changes: a same-spot write still tells every body and mesh under the node.
@@ -293,23 +301,46 @@ public partial class InfraLayer : Node3D
         }
     }
 
-    /// <summary>Swaps a tile's tells for a build without the ones broken since, and starts that build when one is due.</summary>
-    void UpdateTells(Tile tile, long key)
+    /// <summary>Swaps a tile's part for a build of it as it now stands (a tell broken, a pole felled), and starts that build when one is due.</summary>
+    void UpdateParts(Tile tile, long key)
     {
-        if (tile.TellJob is { IsCompleted: true })
+        if (tile.PartJob is { IsCompleted: true })
         {
-            TileBuilder built = tile.TellJob.Result;
-            tile.TellJob = null;
-            if (tile.Node.GetNodeOrNull("Tells") is Node old)
+            var (name, built) = tile.PartJob.Result;
+            tile.PartJob = null;
+            if (tile.Node.GetNodeOrNull(name) is Node old)
             {
-                old.Name = "Tells gone"; // the old node stays in the tree to the end of the frame
+                old.Name = name + " gone"; // the old node stays in the tree to the end of the frame
                 old.QueueFree();
             }
-            if (built.HasContent) tile.Node.AddChild(built.ToNode("Tells"));
+            if (built.HasContent) tile.Node.AddChild(built.ToNode(name));
+            PartsRebuilt++;
         }
-        if (!tile.TellsStale || tile.TellJob != null || !_pieces.TryGetValue(key, out var pieces)) return;
-        tile.TellsStale = false;
-        tile.TellJob = Task.Run(() => TellsOf(tile, pieces));
+        if (tile.Stale.Count == 0 || tile.PartJob != null || !_pieces.TryGetValue(key, out var pieces)) return;
+        string part = tile.Stale.First();
+        tile.Stale.Remove(part);
+        double ox = tile.Ix * TileSize, oz = tile.Iz * TileSize;
+        PlanetWorld world = _world;
+        tile.PartJob = Task.Run(() =>
+        {
+            var b = new TileBuilder(world, ox, oz);
+            foreach (Piece p in pieces)
+                if (p.Part == part) p.Emit(b);
+            return (part, b);
+        });
+    }
+
+    /// <summary>Tile parts built again and swapped in so far (tests).</summary>
+    public int PartsRebuilt { get; private set; }
+
+    /// <summary>Whether any tile still has a part waiting to be built again (tests).</summary>
+    public bool PartsPending => _tiles.Values.Any(t => t.Stale.Count > 0 || t.PartJob != null);
+
+    /// <summary>Marks a part stale in every standing tile holding a piece of it that <paramref name="touched"/> says changed.</summary>
+    void Restale(string part, Func<Piece, bool> touched)
+    {
+        foreach (var (key, tile) in _tiles)
+            if (_pieces.TryGetValue(key, out var list) && list.Any(p => p.Part == part && touched(p))) tile.Stale.Add(part);
     }
 
     double TileDistance(int ix, int iz, double cx, double cz)
@@ -359,10 +390,10 @@ public partial class InfraLayer : Node3D
         PowerLines power = net.Power;
         for (int i = 0; i < power.Poles.Count; i++)
             if (power.Poles[i].Role != PowerRole.Plant) yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
-        for (int i = 0; i < power.Wires.Count; i++)
-            yield return new WirePiece { Lines = power, Wire = power.Wires[i], Index = i, X = power.Poles[power.Wires[i].A].X, Z = power.Poles[power.Wires[i].A].Z };
-        for (int i = 0; i < power.Drops.Count; i++)
-            yield return new DropPiece { Lines = power, Drop = power.Drops[i], Index = i, X = power.Poles[power.Drops[i].Pole].X, Z = power.Poles[power.Drops[i].Pole].Z };
+        foreach (PowerWire wire in power.Wires)
+            yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
+        foreach (ServiceDrop drop in power.Drops)
+            yield return new DropPiece { Lines = power, Drop = drop, X = power.Poles[drop.Pole].X, Z = power.Poles[drop.Pole].Z };
         // A station at each end of a line: a platform, a shelter and the buffers the track stops at.
         foreach (InfraRoute r in net.Routes)
         {
@@ -615,84 +646,50 @@ public partial class InfraLayer : Node3D
         return feet;
     }
 
-    /// <summary>The names of a pole's and a wire's own nodes in their tile (the game finds them by these).</summary>
-    public static string PoleNode(int pole) => $"Pole {pole}";
-    public static string WireNode(int wire) => $"Wire {wire}";
-    public static string DropNode(int drop) => $"Drop {drop}";
-
-    /// <summary>Which pole a node of a tile is (<see cref="PoleNode"/>), or null.</summary>
-    public static int? PoleIndex(string name) => name.StartsWith("Pole ", StringComparison.Ordinal) && int.TryParse(name.AsSpan(5), out int i) ? i : null;
-
     /// <summary>A standing pole or pylon as drawn, about its own foot (what goes over when it is felled, as a tree's own mesh does).</summary>
     public static Mesh PoleMesh(PlanetWorld world, PowerLines lines, int pole)
     {
         PowerPole p = lines.Poles[pole];
         var b = new TileBuilder(world, p.X, p.Z) { BaseY = p.Ground };
-        new PolePiece { Lines = lines, Index = pole }.Draw(b);
+        new PolePiece { Lines = lines, Index = pole }.Emit(b);
         return DecoGodot.ToMesh(b.Mesh);
     }
 
     /// <summary>
-    /// A pole or pylon felled in play (<c>PowerPole.Fallen</c> set): its drawing goes from its tile, and each wire it held drops,
-    /// hanging from the pole that still holds it to the ground (as a snapped wire hangs): nothing is left in the air.
+    /// A pole or pylon felled in play (<c>PowerPole.Felled</c>): the game draws it going over and lying, as a felled tree; every
+    /// wire strung to it now hangs from the pole at its other end, one already hanging from it goes, and a house's drop from it
+    /// hangs from the wall (or lies, if it hung from the pole): nothing is left in the air. The power lines of each tile
+    /// holding any of that are built again.
     /// </summary>
     public void Felled(int pole)
     {
         PowerLines lines = _world.Infra.Power;
-        foreach (Tile t in _tiles.Values)
-            if (t.Node?.GetNodeOrNull<Node3D>(PoleNode(pole)) is { } drawn) drawn.Visible = false;
-        for (int i = 0; i < lines.Wires.Count; i++)
+        PowerPole felled = lines.Poles[pole];
+        (felled.Fallen, felled.Felled) = (true, true);
+        foreach (PowerWire w in lines.Wires)
+            if (w.Spanned && (w.A == pole || w.B == pole)) (w.A, w.B, w.Spanned) = (w.A == pole ? w.B : w.A, pole, false);
+        foreach (ServiceDrop d in lines.Drops)
+            if (d.Pole == pole) d.State = d.State switch { DropState.Strung => DropState.FromHouse, DropState.FromPole => DropState.Lying, _ => d.State };
+        Restale(StandingPart, p => p switch
         {
-            PowerWire w = lines.Wires[i];
-            // One already snapped and hanging from it goes down with it.
-            if (!w.Spanned && w.A == pole)
-                foreach (Tile t in _tiles.Values)
-                    if (t.Node?.GetNodeOrNull<Node3D>(WireNode(i)) is { } hung) hung.Visible = false;
-            if (!w.Spanned || w.A != pole && w.B != pole) continue;
-            (w.A, w.B, w.Spanned) = (w.A == pole ? w.B : w.A, pole, false);
-            int k = i;
-            Redraw(WireNode(i), b => new WirePiece { Lines = lines, Wire = w, Index = k }.Draw(b));
-        }
-        // A house's drop from it: now hanging from the wall that still holds it.
-        for (int i = 0; i < lines.Drops.Count; i++)
-        {
-            if (lines.Drops[i].Pole != pole) continue;
-            int k = i;
-            Redraw(DropNode(i), b => new DropPiece { Lines = lines, Drop = lines.Drops[k], Index = k }.Draw(b));
-        }
+            PolePiece q => q.Index == pole,
+            WirePiece q => q.Wire.A == pole || q.Wire.B == pole,
+            DropPiece q => q.Drop.Pole == pole,
+            _ => false,
+        });
     }
 
-    /// <summary>A piece's own node drawn again where its tile stands.</summary>
-    void Redraw(string name, Action<TileBuilder> draw)
-    {
-        foreach (Tile t in _tiles.Values)
-        {
-            if (t.Node?.GetNodeOrNull<Node3D>(name) is not { } old) continue;
-            var b = new TileBuilder(_world, t.Ix * TileSize, t.Iz * TileSize);
-            draw(b);
-            old.Name = name + " (gone)"; // (freed at the frame's end; its name is the new one's)
-            old.QueueFree();
-            t.Node.AddChild(b.ToNode(name));
-        }
-    }
-
-    /// <summary>A pole or pylon, standing, or fallen flat along the line.</summary>
+    /// <summary>A pole or pylon, standing, or fallen flat along the line (felled in play: nothing, the game draws it).</summary>
     sealed class PolePiece : Piece
     {
         public PowerLines Lines;
         public int Index;
+        public override string Part => StandingPart;
 
-        /// <summary>Each pole a node of its own (<see cref="PoleNode"/>): the game stands it up as blocks near, and hides this drawing.</summary>
-        public override void Emit(TileBuilder tile)
-        {
-            var b = new TileBuilder(tile.World, tile.OriginX, tile.OriginZ);
-            Draw(b);
-            tile.Extra.Add(() => b.ToNode(PoleNode(Index)));
-        }
-
-        internal void Draw(TileBuilder b)
+        public override void Emit(TileBuilder b)
         {
             PowerPole p = Lines.Poles[Index];
+            if (p.Felled) return;
             NV foot = b.Local(p.X, p.Ground, p.Z), side = new(p.SideX, 0, p.SideZ), along = new(-p.SideZ, 0, p.SideX);
             float h = p.Height;
             if (p.Role == PowerRole.Substation)
@@ -841,17 +838,9 @@ public partial class InfraLayer : Node3D
     {
         public PowerLines Lines;
         public ServiceDrop Drop;
-        public int Index;
+        public override string Part => StandingPart;
 
-        /// <summary>Each drop a node of its own (<see cref="DropNode"/>): when its pole is felled it is drawn anew, hanging from the wall.</summary>
-        public override void Emit(TileBuilder tile)
-        {
-            var b = new TileBuilder(tile.World, tile.OriginX, tile.OriginZ);
-            Draw(b);
-            tile.Extra.Add(() => b.ToNode(DropNode(Index)));
-        }
-
-        internal void Draw(TileBuilder b)
+        public override void Emit(TileBuilder b)
         {
             PowerPole p = Lines.Poles[Drop.Pole];
             var pts = Lines.DropPath(Drop, b.Ground).Select(q => b.Local(q.X, q.Y, q.Z)).ToList();
@@ -873,18 +862,12 @@ public partial class InfraLayer : Node3D
     {
         public PowerLines Lines;
         public PowerWire Wire;
-        public int Index;
+        public override string Part => StandingPart;
 
-        /// <summary>Each wire a node of its own (<see cref="WireNode"/>): when a pole it hangs from goes over, the game hides it and drapes it anew.</summary>
-        public override void Emit(TileBuilder tile)
+        public override void Emit(TileBuilder b)
         {
-            var b = new TileBuilder(tile.World, tile.OriginX, tile.OriginZ);
-            Draw(b);
-            tile.Extra.Add(() => b.ToNode(WireNode(Index)));
-        }
-
-        internal void Draw(TileBuilder b)
-        {
+            // Hanging from a pole that is down itself, nothing holds it up: it went with that pole.
+            if (!Wire.Spanned && Lines.Poles[Wire.A].Fallen) return;
             bool pylon = Lines.Poles[Wire.A].Pylon, sleek = !pylon && b.World.Profile.Before == TechLevel.High;
             // A high world's street lines are sheathed conduit, pale and thick; the rest bare dark wire.
             float radius = pylon ? 0.04f : sleek ? 0.045f : 0.022f;
@@ -1000,8 +983,9 @@ public sealed partial class TileBuilder
     public readonly List<Func<Node3D>> Extra = new();
     /// <summary>Colliders a piece wants added (made on the main thread, when something comes near enough to touch them).</summary>
     public readonly List<Action> Solid = new();
-    /// <summary>The tile's ore tells, on their own: a broken one takes its rock and collider with it, and the rest of the tile stands.</summary>
-    public TileBuilder Tells;
+    /// <summary>The tile's parts (<see cref="InfraLayer.Piece.Part"/>), each on its own: built again alone when something in it changes, the rest of the tile standing.</summary>
+    public readonly Dictionary<string, TileBuilder> Parts = new();
+    public TileBuilder PartOf(string name) => Parts.TryGetValue(name, out TileBuilder part) ? part : Parts[name] = new TileBuilder(World, OriginX, OriginZ);
     public bool HasContent => Mesh.Triangles > 0 || Collision.Count > 0;
 
     public TileBuilder(PlanetWorld world, double ox, double oz)
@@ -1183,7 +1167,8 @@ public sealed partial class TileBuilder
         var steps = new Queue<Func<Node3D>>();
         if (Mesh.Triangles > 0) steps.Enqueue(() => new MeshInstance3D { Mesh = DecoGodot.ToMesh(Mesh), Name = "Mesh" });
         if (Collision.Count > 0) steps.Enqueue(() => _body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 });
-        if (Tells is { HasContent: true }) steps.Enqueue(() => Tells.ToNode("Tells"));
+        foreach (var (name, part) in Parts)
+            if (part.HasContent) steps.Enqueue(() => part.ToNode(name));
         foreach (var make in Extra) steps.Enqueue(make);
         return steps;
     }

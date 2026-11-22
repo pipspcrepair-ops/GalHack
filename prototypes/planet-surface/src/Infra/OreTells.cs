@@ -54,7 +54,7 @@ public partial class InfraLayer
     {
         if (_world == null || !_world.Felled.Add(TellId(d))) return;
         long key = Key((int)(Mathx.WrapX(d.X, _world.Width) / TileSize), (int)(Mathx.Wrap(d.Y, _world.Height) / TileSize));
-        if (_tiles.TryGetValue(key, out Tile tile)) tile.TellsStale = true;
+        if (_tiles.TryGetValue(key, out Tile tile)) tile.Stale.Add(TellsPart);
     }
 
     /// <summary>The ground under a tell was dug away: nothing holds it up, so it goes too.</summary>
@@ -85,15 +85,6 @@ public partial class InfraLayer
         }
     }
 
-    /// <summary>The tile's tells as they stand, on their own builder (nothing if none are left).</summary>
-    TileBuilder TellsOf(Tile tile, List<Piece> pieces)
-    {
-        var b = new TileBuilder(_world, tile.Ix * TileSize, tile.Iz * TileSize);
-        foreach (Piece p in pieces)
-            if (p is OreTellPiece t) t.Rock(b);
-        return b;
-    }
-
     /// <summary>The kind of tell a deposit shows, by how deep it lies.</summary>
     public static DecoTellKind TellOf(Deposit d) => d.Depth <= 0.01f ? DecoTellKind.Outcrop : d.Depth < 3f ? DecoTellKind.Scree : DecoTellKind.Fracture;
 
@@ -101,9 +92,9 @@ public partial class InfraLayer
     {
         public Deposit Deposit;
 
-        public override void Emit(TileBuilder b) => Rock(b.Tells ??= new TileBuilder(b.World, b.OriginX, b.OriginZ));
+        public override string Part => TellsPart;
 
-        public void Rock(TileBuilder b)
+        public override void Emit(TileBuilder b)
         {
             Deposit d = Deposit;
             if (b.World.Felled.Contains(TellId(d))) return;

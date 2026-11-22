@@ -35,7 +35,7 @@ public partial class ArmsHost
         {
             if (places.Resolve(collider, at, n, out PoiPlaces.Hit h, hit.CellX)) { places.Struck(h, amount); PlaceHits++; }
             else if (places.SalvageOf(collider) is { } wreck) { places.Work(wreck, amount); WreckHits++; }
-            else if (Zone.PoleOf(collider) is int pole) { Zone.WearPole(pole, amount * Table.Rules.PlantRound, dir with { Y = 0f }); PlantHits++; } // a pole is shot through as a trunk is
+            else if (Zone.StandingOf(collider, at) is { } standing) { Zone.WearStanding(standing, amount * Table.Rules.PlantRound, dir with { Y = 0f }); PlantHits++; } // a pole or a post is shot through as a trunk is
         }
         else if (hit.Thing is Rid body && Zone.TreeAt((body, hit.CellX), out long tree, out _) && Zone.Sighting(tree, at, out TerrainStreamer.PlantSighting plant))
         {
@@ -71,7 +71,7 @@ public partial class ArmsHost
             Zone.WearPlant(s, damage * (1f - d / r * 0.75f), away.LengthSquared() > 1e-4f ? away : Vector3.Right, batch: true);
             if (Zone.Planet.Felled.Contains(s.Id)) PlantsBlasted++;
         }
-        Zone.BlastPoles(p, r, damage);
+        Zone.BlastStanding(p, r, damage);
         PlantsMs = Math.Max(PlantsMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
         if (hulls || places?.PlaceAt(p) != null) return;
         t = System.Diagnostics.Stopwatch.GetTimestamp();

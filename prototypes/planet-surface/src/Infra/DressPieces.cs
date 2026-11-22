@@ -22,7 +22,27 @@ public partial class InfraLayer
     sealed class DressPiece : Piece
     {
         public DressItem Item;
-        public override void Emit(TileBuilder b) => b.Dress(Item);
+        /// <summary>A post or mast stands as a tree does and is felled as one (<see cref="Felled(DressItem)"/>): drawn with the tile's standing things.</summary>
+        public override string Part => TileBuilder.Stands(Item) ? StandingPart : null;
+        public override void Emit(TileBuilder b)
+        {
+            if (!Item.Felled) b.Dress(Item);
+        }
+    }
+
+    /// <summary>A post or mast felled in play: the game draws it going over, as a felled tree; the tiles holding it are built again without it.</summary>
+    public void Felled(DressItem it)
+    {
+        it.Felled = true;
+        Restale(StandingPart, p => p is DressPiece d && d.Item == it);
+    }
+
+    /// <summary>A piece of dressing as drawn, about its own foot (what goes over when it is felled), and how tall it stands.</summary>
+    public static (Godot.Mesh Mesh, float Height) DressMesh(PlanetWorld world, DressItem it)
+    {
+        var b = new TileBuilder(world, it.X, it.Z) { BaseY = world.Source.SurfaceHeight(it.X, it.Z) };
+        b.Dress(it);
+        return (GalHack.Deco.Engine.DecoGodot.ToMesh(b.Mesh), b.Mesh.Max.Y);
     }
 }
 
@@ -35,6 +55,10 @@ public sealed partial class TileBuilder
         "mannequins", "telescope", "memorial", "hitch_rail", "water_barrels", "planters", "timber_frame", "queue_rails", "scarves", "soup_kitchen",
         "washing_line", "picket", "burn_barrel", "spikes", "fence", "wire", "survey_stakes", "dust_sheets", "garden_table", "tape",
     };
+
+    /// <summary>The dressing that stands as a tree does (posts and masts, solid), and is felled as one: shot, blasted or cut through, it goes over.</summary>
+    static readonly HashSet<string> Falls = new(StringComparer.Ordinal) { "lamp", "sign_post", "banner", "beacon", "bell_post", "two_flags" };
+    public static bool Stands(DressItem it) => it.Part.Solid && it.Site != DressSite.Span && Falls.Contains(it.Model);
 
     /// <summary>A piece of the world's dressing, drawn into the tile: its model by era, painted in the world's paint and worn by its age.</summary>
     public void Dress(DressItem it)

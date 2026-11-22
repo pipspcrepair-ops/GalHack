@@ -22,6 +22,8 @@ public sealed class PowerPole
     public bool Pylon;
     /// <summary>Fallen over (lying on the ground toward <see cref="SideX"/>, <see cref="SideZ"/> rotated a quarter): its wires hang from the poles either side.</summary>
     public bool Fallen;
+    /// <summary>Felled in play (also <see cref="Fallen"/>): the game draws it going over and lying, as a felled tree; the roads' tiles draw none of it.</summary>
+    public bool Felled;
     /// <summary>A pylon's height: 30 to 50 m, as tall as its spans need.</summary>
     public float Tall = 36f;
     /// <summary>A pole or pylon on a line; or a substation (its yard: <see cref="Ground"/> is its slab's top); or a plant, which is a place of its own and draws nothing here.</summary>

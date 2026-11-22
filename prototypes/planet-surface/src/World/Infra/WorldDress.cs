@@ -28,6 +28,8 @@ public sealed class DressItem
     public bool Lit;
     /// <summary>Kept by the living: put up fresh and kept up.</summary>
     public bool Kept;
+    /// <summary>Felled in play (a post or mast shot, blasted or cut through): the game draws it going over; the roads' tiles draw none of it.</summary>
+    public bool Felled;
     public ulong Seed;
     /// <summary>The house whose front or garden it is on (null elsewhere).</summary>
     public FlavourRuin Ruin;
