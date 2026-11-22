@@ -82,7 +82,6 @@ public sealed partial class Town
         // Swimming, the head clear at the surface; wading, on its floor; a step too high to stride up out of it, clambered.
         next.Y = p.Swimming ? Mathf.MoveToward(p.Pos.Y, MathF.Max(top - SwimDepth(p), under), 2f * dt) : under;
         if (!p.Swimming && next.Y - p.Pos.Y > Clamber * dt) next = p.Pos with { Y = p.Pos.Y + Clamber * dt }; // (up anything steeper than a walk up the bed: a clamber, never a hop)
-        p.Gait += p.Now * dt;
         p.Pos = next;
         return true;
     }
