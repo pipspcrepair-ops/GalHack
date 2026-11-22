@@ -1,6 +1,6 @@
 # GalHack — Game Design Document
 
-> This is a published copy of GalHack's living design document, last refreshed from revision 844. The design doc is the authority on how the game should work; the code may lag behind it.
+> This is a published copy of GalHack's living design document, last refreshed from revision 890. The design doc is the authority on how the game should work; the code may lag behind it.
 
 ## 1. Overview
 
@@ -79,7 +79,7 @@ Five pillars, led by discovery, carry one player fantasy, "from sleeper to capta
 | --- | --- | --- | --- |
 | 1. Discover the unknown (primary) | The galaxy is the main attraction; the next system should hold something the player has never seen | Procedural star systems and planet archetypes, varied landscapes and biomes, generated and handcrafted structures, points of interest, space anomalies, rare one-off set pieces | Does it give the player something new to find, or a reason to go and look? |
 | 2. Survive the frontier | The universe is indifferent and hostile; safety is earned and always local | Vitals, environmental hazards, scarce early resources, hostile factions, danger-graded planets | Does it create pressure the player must plan around? |
-| 3. Build what you fly | Player-made structures are the main game objects, and a build's layout decides how it performs | Block building, functional devices, mass and thrust, power, CPU budget, block-level damage | Does the player's build choice change the outcome? |
+| 3. Build what you fly | Player-made structures are the main game objects, and a build's layout decides how it performs | Block building, functional devices, mass and thrust, power, block-level damage | Does the player's build choice change the outcome? |
 | 4. Escalating scale | Each tier opens a bigger frame: on foot, base, hover vessel, small vessel, capital vessel, interstellar | Tech tree gating, structure classes, material tiers, warp travel | Does it open a bigger space or hand over a bigger tool? |
 | 5. Freedom of approach | No forced path; several valid routes to every resource and goal | Mine, salvage, loot, trade or raid; board and hijack enemy bases and ships; build by hand or from blueprints | Can the player solve it at least two ways? |
 | Foundation: smooth, persistent and shared | Play is smooth and bug-free; worlds and builds persist; players share servers and blueprints | Saves, Steam co-op, one shared player faction, blueprint sharing | Is it reliable and annoyance-free, does it persist, and can everyone share in it? |
@@ -88,7 +88,7 @@ Five pillars, led by discovery, carry one player fantasy, "from sleeper to capta
 
 - Not a narrative game: no system is gated behind story beats; PDA tutorials teach systems but never lock them.
 - Not a flight simulator: flight is assisted (inertial dampening; only Hover Mode holds a craft above the ground, and small vessels never auto-hover), and difficulty comes from the ship's build, not the controls.
-- Not a pure creative builder: in Survival, every block costs material and every device costs power and CPU.
+- Not a pure creative builder: in Survival, every block costs material and every device costs power.
 - Not a competitive shooter: gunplay should feel satisfying, but there's no PvP and no competitive balance to chase.
 
 **Guiding rules**
@@ -99,7 +99,7 @@ Five pillars, led by discovery, carry one player fantasy, "from sleeper to capta
 
 ## 3. Core gameplay loop
 
-The core loop is **explore → gather → craft → build → expand reach**, and every turn of it ends at a harder frontier with rarer resources, which starts the next turn. Survival pressure pushes the player through the loop; XP unlocks and better ores pull them forward; power, mass and CPU limits add friction that makes each build a decision.
+The core loop is **explore → gather → craft → build → expand reach**, and every turn of it ends at a harder frontier with rarer resources, which starts the next turn. Survival pressure pushes the player through the loop; XP unlocks and better ores pull them forward; power and mass limits add friction that makes each build a decision.
 
 &#91;embedded content: core loop · 5 steps, 3 forces, 1 loop back\]
 
@@ -114,7 +114,7 @@ The core loop is **explore → gather → craft → build → expand reach**, an
 
 - **Push (survival):** food, oxygen, temperature and radiation drain constantly; raiders, patrols and wildlife attack the player and their structures. Standing still costs resources.
 - **Pull (progression and discovery):** XP grants unlock points for the tech tree; harder planets and deep space hold the ores that higher tiers need, plus landscapes, structures and anomalies the player has never seen.
-- **Friction (constraints):** every device draws power, adds mass and consumes CPU budget. A bigger ship needs better thrusters, generators and CPU extenders, which need rarer ores, which sit in more dangerous places.
+- **Friction (constraints):** every device draws power and adds mass. A bigger ship needs better thrusters and generators, which need rarer ores, which sit in more dangerous places.
 - **Anchor (the base):** each expansion step repeats the arc in miniature: land, build a foothold, exploit, move on. Bases are the safe hub where loot turns into components.
 
 **Fail states are soft.** Death drops the backpack at the corpse and respawns the player at a healing booth or clone chamber or a fallback spawn point. The cost is time and a risky corpse run, never the save. Being stranded works the same way: there's always a way back (section 14).
@@ -192,7 +192,7 @@ Real astronomy gives the galaxy its landmarks, and a few science-fiction anomali
 | Supernova remnant | The expanding shell of an exploded star | High radiation, rare and exotic materials, shattered planets |
 | Pulsar | A spinning neutron star sweeping beams of radiation | Pulses arrive on a steady beat; move between the sweeps |
 | Magnetar | A neutron star with a crushing magnetic field | Magnetic storms knock out shields and scanners for a few seconds |
-| Black hole | A gravity well with a glowing accretion disc | A strong pull near the horizon, with warnings; ancient wrecks in the disc, which can be explored as a fast-moving cloud of debris (owner, 22 Nov; later) |
+| Black hole | A gravity well with a glowing accretion disc | A strong pull near the horizon, with warnings; ancient wrecks in the disc. The accretion disc lies outside the high-orbit limit and is the destination: a fast-streaming debris field on the same field system as rings and belts, and you match its speed to work inside it (owner, 22 Nov) |
 | Binary and trinary stars | Stars orbiting each other | Double shadows and sunsets, shifting temperatures, mixed planet types |
 | Globular cluster | A dense ball of ancient stars near the core | Many short jumps, old civilisations, precursor sites |
 | Rogue planet | A planet with no star | Pitch dark and frozen, lit only by its own geology; unique finds |
@@ -291,9 +291,7 @@ A few planets carry a theme that overrides the usual rules. They're rare enough 
 
 **Time follows position.** The sky depends on where the player stands on the map, because the map wraps a globe: travelling east moves the sun, the far side of a world is in night, and the poles have polar day and night. So a player can fly into a sunset or round to the day side. The game clock and people's routines stay on one global time. Worlds keep rotating and moving along their orbits as time passes, each at its own rate, so the bodies in the sky and on the system map shift over time.
 
-**Flying in a system.** A typical warp takes about 20 seconds, 80 at worst. The player can drop out of warp and fly anywhere in a system, but suns and gas giants are real places they can never enter or land on, and black holes count as stars. How close players can get to suns and gas giants is still open (owner, 22 Nov; 8 Nov: not sold on heat damage or skim-and-crush); Empyrion stops players at high orbit. A world of any size can orbit a gas giant or a star, a world orbiting a gas giant can have moons of its own, and moons are always smaller than what they orbit (owner, 22 Nov). A fold jump arrives in orbit of the destination's star, and a warp to a world arrives in its highest orbit (owner, 22 Nov). Any world can have rings, not only giants, but moons never do (owner, 17 Nov). Rings are debris fields of rock and ice, flown through and mined, on the same field system as asteroid belts: smooth bands from afar, tumbling rocks up close (owner, 22 Nov). Past the frost line they are mostly bright ice; closer in, rock and dust, and dust rings are faint; a giant with several large moons keeps only small, faint rings. Worlds that can't be landed on yet stop at high orbit. Getting near them should be fun, but it can break the illusion, so the limits sit where a body still looks right up close, and they get tuned in play.
-
-**Open (owner, 8 Nov 2026):** the owner isn't sold on approaching suns and gas giants (heat damage, skimming, crushing). The alternative is Empyrion's way: a sun or gas giant has an orbit zone you can fly in and explore the POIs of, but the body itself stays out of reach however far you fly, a huge object in the sky. The owner would like real approaches to gas giants, suns and black holes eventually, depending on how hard they are; Empyrion's way comes first and stays the fallback.
+**Flying in a system.** A typical warp takes about 20 seconds, 80 at worst. The player can drop out of warp and fly anywhere in a system, but suns and gas giants are real places they can never enter or land on, and black holes count as stars. High orbit is as close as anyone gets to a sun, gas giant or black hole, as in Empyrion: a warp stops there, the body fills the view huge and detailed with no surface zone, and flying further in, the star's heat or the giant's winds push the ship back out with a visor warning; there is no heat damage and no crushing (owner, 22 Nov). At a giant, the places to go are its moons, their moons and its ring. A world of any size can orbit a gas giant or a star, a world orbiting a gas giant can have moons of its own, and moons are always smaller than what they orbit (owner, 22 Nov). A fold jump arrives in orbit of the destination's star, and a warp to a world arrives in its highest orbit (owner, 22 Nov). Any world can have rings, not only giants, but moons never do (owner, 17 Nov). Rings are debris fields of rock and ice, flown through and mined, on the same field system as asteroid belts: smooth bands from afar, tumbling rocks up close (owner, 22 Nov). Past the frost line they are mostly bright ice; closer in, rock and dust, and dust rings are faint; a giant with several large moons keeps only small, faint rings. Worlds that can't be landed on yet stop at high orbit. Getting near them should be fun, but it can break the illusion, so the limits sit where a body still looks right up close, and they get tuned in play.
 
 **Black holes vary.** A black hole is more than a hole that light bends round: each one is rolled from parts, so no two look alike (owner, 8 Nov 2026, with reference art kept locally). Its disc: a thin bright spiral, a thick churning vortex, or a dusty torus that hides the centre. Its jets: none, one or two, blue-white or green, straight or kinked, knotted along their length. Feeding: a companion star being stripped, its gas streaming into the disc, or a star torn apart in a swirl. Magnetic field loops arching over the inner disc. Never the familiar lensed look, a thin disc bent up over and under a black sphere: a black hole reads as a thick, dusty, churning accretion cloud round a glowing heart, with its jets, and that cloud is a place you can fly into and visit, with its gas, debris and derelicts (owner, 9 Nov 2026; reference art kept locally). They come in sizes: a small black hole has a small accretion cloud with planets orbiting outside it, and a supermassive one has whole star systems inside its accretion cloud. The heart at the galaxy's core is the largest, and the eye of the thing in the sky.
 
@@ -544,9 +542,9 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 | 1. Wake | Stay alive | Sleeper tool (attack/gather and repair modes), suit constructor, survival replicator, O2 bottles, medkits | Exposure, hunger, wildlife |
 | 2. Foothold | A safe, powered shelter | Base core, generator, capacitor, small constructor, galley replicator | Night predators, first Vharn scouts |
 | 3. Wheels | Cover the whole planet | Hover vessel, hand drill, detector, portable constructor | Vharn patrols, guarded POIs |
-| 4. Wings | Reach orbit, moons and asteroids | Small vessel, landing gear, large constructor, CPU tier 2 | Space pirates, hostile fighters |
+| 4. Wings | Reach orbit, moons and asteroids | Small vessel, landing gear, large constructor | Space pirates, hostile fighters |
 | 5. Capital | A mobile base that jumps between stars | Capital vessel, fold drive, shields, repair bay | Faction warships, higher-danger planets |
-| 6. Frontier | Master the deep galaxy | CPU T3/T4, combat steel, advanced constructor, Hijack Tool T3, charged armor | Heavy capital ships, alien ruins, Husk horrors |
+| 6. Frontier | Master the deep galaxy | combat steel, advanced constructor, Hijack Tool T3, charged armor | Heavy capital ships, alien ruins, Husk horrors |
 
 **Character level**
 
@@ -557,7 +555,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 
 **Exploration-gated items** (no recipe; found or bought only)
 
-- CPU T3/T4 components (lattice cores, lattice arrays), precursor alloy, echo shards and epic-tier gear.
+- Lattice cores and lattice arrays, precursor alloy, echo shards and epic-tier gear.
 - Unique weapons and boosters from faction rewards and rare containers.
 - This keeps pillar 1 driving progression: the best gear comes from where the player has been, not from grinding one deposit.
 
@@ -693,7 +691,7 @@ Resources climb a five-step rarity ladder (common, uncommon, rare, exotic, uniqu
 | Exotic | Rimefire | Cryo-fire worlds | Fold drive range boosters |
 | Unique | Precursor alloy | Alien ruins and ancient derelicts (salvage only) | Prize armor blocks; can't be crafted |
 | Unique | Echo shards | Alien ruins | Charged combat armor, epic gear upgrades |
-| Unique | Lattice cores and lattice arrays | Derelicts, faction strongholds, rare traders | CPU extenders T3 and T4 |
+| Unique | Lattice cores and lattice arrays | Derelicts, faction strongholds, rare traders | Use to be decided (owner, 12 Nov: no CPU, so no extenders) |
 
 Rarity has one colour each in every inventory, map and loot pop-up: common grey, uncommon green, rare blue, exotic purple, unique gold.
 
@@ -767,7 +765,7 @@ Building costs are based on Empyrion's, whose costs are well balanced: what a bl
 
 ## 11. Building system
 
-Every structure the player owns is built block by block on a grid. Blocks carry hit points and mass, components are the functional parts, and a structure's function comes from which blocks are attached to its core: devices work whichever way they face and wherever they sit, except thrusters, which push along their facing. A vessel's heading is set by the seat of whoever holds the pilot role: forward is whichever way that seat faces. Roles can be reassigned to any player in a command chair, so handing the pilot role to someone in a seat facing another way turns the ship's forward with it. There is no separate ship editor: the player builds in the world, in either game mode. In Survival, as in Empyrion, blocks are craftable items: constructors make them from materials, players carry them in stacks on the toolbar and in their bag, each placement uses one (from the player's own stack, or, when building on a structure, from that structure's shared storage: still one storage per core, kept separate from the player's own storage, and usable only while the player is within the structure's area radius, for bases, small vessels and capital ships alike; the player selects which source they're taking from, as in Empyrion), a crafted block of a family can be placed in any of that family's shapes, and taking a block down with the tool returns it to the inventory. A new base or vessel starts with its crafted core block placed from the inventory; everything else is built onto that structure, and only blocks compatible with its class can be placed (base and capital-vessel blocks, small-vessel blocks, and so on, as in Empyrion); building happens under threat; in Creative placing is free and unlimited, with every block available.
+Every structure the player owns is built block by block on a grid. Blocks carry hit points and mass, components are the functional parts, and a structure's function comes from which blocks are attached to its core: devices work whichever way they face and wherever they sit, except thrusters, which push along their facing. A vessel's heading is set by the seat of whoever holds the pilot role: forward is whichever way that seat faces. Roles can be reassigned to any player in a command chair, so handing the pilot role to someone in a seat facing another way turns the ship's forward with it. There is no separate ship editor: the player builds in the world, in either game mode. In Survival, as in Empyrion, blocks are craftable items: constructors make them from materials, players carry them in stacks on the toolbar and in their bag, each placement uses one (from the player's own stack, or, when building on a structure, from that structure's shared storage: still one storage per core, kept separate from the player's own storage, and usable only while the player is within the structure's area (12 m plus its size share of half its longest side, one rule for every structure); the player selects which source they're taking from, as in Empyrion), a crafted block of a family can be placed in any of that family's shapes, and taking a block down with the tool returns it to the inventory. A new base or vessel starts with its crafted core block placed from the inventory; everything else is built onto that structure, and only blocks compatible with its class can be placed (base and capital-vessel blocks, small-vessel blocks, and so on, as in Empyrion); building happens under threat; in Creative placing is free and unlimited, with every block available.
 
 **One grid**
 
@@ -779,7 +777,7 @@ Reference cap: about 250 blocks per axis per structure, for performance.
 
 **Placing and shaping**
 
-- Each structure starts from a **starter block** that contains its **core**. The starter block fixes the structure's class and owner and provides CPU tier 1 and artificial gravity. Gravity works whenever the core has power and costs no energy; it's on by default and can be toggled in the control panel. There is no separate gravity generator. The core can't be removed, only destroyed or hijacked (section 16).
+- Each structure starts from a **starter block** that contains its **core**. The starter block fixes the structure's class and owner and provides artificial gravity. Gravity works whenever the core has power and costs no energy; it's on by default and can be toggled in the control panel. There is no separate gravity generator. The core can't be removed, only destroyed or hijacked (section 16).
 - Blocks snap to the grid with a ghost preview, mirror symmetry on up to three axes, and rotation on every axis.
 - A **shape picker** turns any armor block into slopes, corners, wedges, rounds, cylinders, connectors and thin plates (100+ shapes). Shapes cost the same as cubes but have fewer hit points.
 - A **paint sprayer** is a cheap handheld tool, craftable from the start, that sprays colour, texture, patterns, stencils and grime onto any face, so players can detail ships however they like. It has a copy-colour picker, plus livery decals (stripes, chevrons, checkerboards, hull numbers) for the bold cover-art look. Greeble and oversized engine blocks help builders hit the same style.
@@ -795,7 +793,6 @@ Ships and structures are built from blocks and components: blocks form the hull 
 | Armor | Flat reduction per hit, so light guns barely scratch heavy plating |
 | Resistances | Percentage reduction against kinetic, explosive and energy damage |
 | Mass | Adds to the structure's mass, and so to how it handles (section 13) |
-| CPU cost | Counts against the structure's CPU budget (section 13) |
 
 - Shapes keep their material's armor and resistances; hit points and mass scale with the shape's volume.
 - Each material leans toward a damage type: hardened steel shrugs off kinetic fire, combat steel resists explosives, charged armor resists energy weapons.
@@ -809,7 +806,7 @@ Ships and structures are built from blocks and components: blocks form the hull 
 | Wood, plastic, concrete | Low (concrete higher) | Varies | Early recipes | Cheap shelters and bunkers |
 | Steel | 500 | Light | Starting recipe | Default hull |
 | Hardened steel | 1,000 | 2 t | Mid-tier unlock | Workhorse armor |
-| Combat steel | 2,000 | 4 t | High-tier unlock; costs more CPU | Warship armor |
+| Combat steel | 2,000 | 4 t | High-tier unlock | Warship armor |
 | Charged combat armor | 2,000 plus a shield bonus | 4 t | Upgrade using echo shards from alien ruins | Endgame armor that strengthens shields |
 | Precursor alloy | 2,750 | Heavy | Salvage only, from alien structures; can't be crafted | Prize armor; mildly radioactive |
 | Windows | Light and heavy variants | Light | Early to mid unlocks | Visibility; weak points |
@@ -841,18 +838,18 @@ Four structure classes divide the world by where each can go, and two of them (b
 | Base | Core in base mode | Fixed, on a planet or in space | Production hub, storage, defence, repair, respawn | Can't move until switched to capital mode | Start |
 | Capital vessel | Core in capital mode | Space; can land on planets | Mobile base, warship, interstellar explorer | Needs thrusters, a command chair, and enough thrust to lift its mass | 7 |
 | Hover vessel (HV) | Core in hover mode | Planet surface only, hovering a few metres up | Rovers, mining crawlers, ground combat, cargo haulers | No flight or space; moves in 2D, so needs forward, reverse and strafe thrust | 1 |
-| Small vessel (SV) | Core in vessel mode | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Warp drive within a system; no fold drive, so no jumps between systems | 5 |
+| Small vessel (SV) | Core in vessel mode | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Any Flight structure can carry a warp drive or a fold drive, as long as it fits the drive and can power it (owner, 22 Nov) | 5 |
 
 **Bases and capital vessels are one thing**
 
 Bases and capital vessels share every block and component, and both are built on the core; only the core's mode differs, and a core console switches it. Every material, block and recipe works the same in both modes, so nothing ever needs rebuilding when a core changes mode. A capital vessel is a floating base: it burns fuel to maintain lift and wind can buffet it. A base anchors to the ground instead.
 
-**One core.** Every structure is built on one unified 1 m core with three modes: Base, Hover and Flight (owner, 12 Nov 2026; docs/one-metre-grid.md). Older wording in this document maps onto these: Capital Mode and Vessel Mode are Flight, and a base is a structure in Base Mode. Hover works for every structure: hover plates give lift only close to the ground, thrusters push the craft along, and it can't reach orbit, which makes hover tanks, land carriers and mobile bases. In the tech tree hover tech is a branch in parallel with flight tech. Nothing is labelled small, large or by any other size class. Beyond scale and mass, what sets Large apart is that only Large can be a base and only Large carries a fold drive; everything on a capital ship is costed up, powered up and stronger than its small-craft counterpart, with more capacity. Mass, thrust, gyro torque, cost, power draw, fuel use and every other figure for blocks and devices follow Empyrion's own figures closely, under GalHack's own names.
+**One core.** Every structure is built on one unified 1 m core with three modes: Base, Hover and Flight (owner, 12 Nov 2026; docs/one-metre-grid.md). Older wording in this document maps onto these: Capital Mode and Vessel Mode are Flight, and a base is a structure in Base Mode. Hover works for every structure: hover plates give lift only close to the ground, thrusters push the craft along, and it can't reach orbit, which makes hover tanks, land carriers and mobile bases. In the tech tree hover tech is a branch in parallel with flight tech. Nothing is labelled small, large or by any other size class. Any Flight structure can carry a warp drive or a fold drive, as long as it fits the drive and can power it, the same as every other device on the 1 m grid (owner, 22 Nov). Mass, thrust, gyro torque, cost, power draw, fuel use and every other figure for blocks and devices follow Empyrion's own figures closely, under GalHack's own names.
 
 - **Ship to base:** allowed at any time. The structure anchors where it comes to rest: on the ground, or holding still in space (it becomes a station). Switched in the air, it falls until it lands, then anchors and stops simulating physics.
 - **Base to ship:** allowed at any time, but it only flies with thrusters, a command chair, and enough thrust to lift its mass. Those blocks can sit on a base beforehand and do nothing until the core is switched.
 - **Clean liftoff:** terrain the hull is embedded in at liftoff crumbles away in a burst of rock and dust as the structure rises, so a half-buried building pulls free and leaves its crater behind. Rock overhead is cut too: the cut is planned once along the hull's straight climb and runs during a few seconds of engine spool-up, with the ground shaking and crumbling as the hull strains to break free, before it moves (reference limits until that's built and tested: 100 m of climb, 20,000 cells, never bedrock). Past those limits lift-off is refused, the console says why, and the player digs the hull out by hand. Only blocks connected to the core lift off.
-- One CPU budget covers both modes, though flying costs more, because active thrusters and drives use CPU and fuel (section 13).
+- Power draw is the one limit in both modes, though flying costs more, because active thrusters and drives draw power and fuel (section 13).
 
 **Small and hover vessels are one thing**
 
@@ -867,7 +864,7 @@ Small vessels and hover vessels work the same way: the same core with Vessel Mod
 - **Mass.** Heavy armour makes a flyer cumbersome. Hover plates carry it with no slowdown, up to their lift limit.
 - **Roles.** A hover craft suits ground assault, combining heavy armour, heavy weapons, strafing and speed. A flyer can still carry those, just badly, and the player can choose that.
 - **The core, same logic.** A base has no thrusters drawing power and no flight to disturb its aim, so the heaviest guns and armour work best there. A capital ship can land and switch to Base Mode to bring heavy guns to full power.
-- **Relocating.** A heavy base or hover tank isn't stuck: with enough thrusters, CPU and power it can switch mode and move, slowly.
+- **Relocating.** A heavy base or hover tank isn't stuck: with enough thrusters and power it can switch mode and move, slowly.
 
 **The capital-to-base loop is the heart of building.** Landing a capital ship on a planet, switching it to base mode, running it as a base and lifting off clean is the loop players should do most. When it lifts off, terrain it was built into breaks free so it never snags, and vessels parked on it ride along.
 
@@ -905,13 +902,13 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 | Category | Devices | Available on |
 | --- | --- | --- |
 | Control | Core, command chairs, remote-control console | All |
-| Power | Generators sized per class, capacitors and solar panels (no fuel tanks: fuel sits in core storage) | All; solar on bases and capital vessels |
+| Power | Generators sized per class, capacitors and solar panels (no fuel tanks: fuel sits in core storage) | All; solar on any structure |
 | Life support | Healing booth, respawn (clone) chamber; air and gravity are built into the core | Mostly bases and capital vessels |
 | Food | Replicators T1–T3 | Portable (T1); small vessels, bases and capital vessels |
 | Propulsion | Thrusters (small, medium, large, jet), RCS gyros, hover engines, landing gear, docking pads | Per class |
-| Travel | Warp drive; fold drive T1/T2 (their fuels sit in core storage) | Warp drive on small and capital vessels; fold drive on capital vessels only |
+| Travel | Warp drive; fold drive T1/T2 (their fuels sit in core storage) | Any Flight structure that fits the drive and can power it (owner, 22 Nov) |
 | Production | Constructors (small, large, advanced), deconstructor, blueprint factory | Constructors on all; factory on bases and capital vessels |
-| Storage | Cargo containers in several sizes, all adding to one shared storage | All, with volume caps per class |
+| Storage | Cargo containers in several sizes, all adding to one shared storage | All, with one volume cap |
 | Defense | Shield generator and extenders, turrets, fixed weapons, detector, spotlights | Per class (section 15) |
 | Force fields | Force field component (one block makes a field of any size, with corner emitters) | All |
 | Repair | Repair bay T1/T2 with console, field repair station | Bases and capital vessels |
@@ -949,13 +946,13 @@ This keeps the good part of the genre's air systems (sealed rooms that matter in
 - **Field repair station** (bases and capital vessels): the player uses it in person to restore the structure. It won't run under attack, with shields up or with turrets firing, so repair is a between-fights activity.
 - Repairs consume materials from the structure's shared storage.
 
-## 13. Power, fuel, CPU and mass
+## 13. Power, fuel and mass
 
-Three budgets (power, CPU and mass) make every device a trade-off. Without them the best ship is simply "more of everything"; with them, a scout, a hauler and a gunship are different answers to the same limits.
+Two budgets (power and mass; there is no CPU, owner, 12 Nov) make every device a trade-off. Without them the best ship is simply "more of everything"; with them, a scout, a hauler and a gunship are different answers to the same limits.
 
 **Power and fuel**
 
-- **Generators charge capacitors, and everything draws from the capacitors** (owner, 15 Nov). Devices (thrusters, gyros, drives, shields, turrets, machines, lights, and life support such as the climate node) take their power from the structure's capacitors. Life support uses power only, never its own fuel or materials (owner, 15 Nov). Generators burn fuel to keep the capacitors charged, so the burn follows the load: idle devices cost nothing, and a structure at full thrust with shields charging burns fuel fast. Solar panels (bases and capital vessels) also charge the capacitors and are used before fuel. Their output depends on day and night, latitude and weather, which gives the choice of landing site a real cost.
+- **Generators charge capacitors, and everything draws from the capacitors** (owner, 15 Nov). Devices (thrusters, gyros, drives, shields, turrets, machines, lights, and life support such as the climate node) take their power from the structure's capacitors. Life support uses power only, never its own fuel or materials (owner, 15 Nov). Generators burn fuel to keep the capacitors charged, so the burn follows the load: idle devices cost nothing, and a structure at full thrust with shields charging burns fuel fast. Solar panels also charge the capacitors and are used before fuel. Their output depends on day and night, latitude and weather, which gives the choice of landing site a real cost.
 - **Turrets** draw their power from the capacitors and their ammo from core storage (owner, 15 Nov).
 - **No fuel tanks.** Generator fuel, warp fuel and fold fuel are all kept in **core storage**, the cargo containers (owner, 15 Nov). Anything that draws materials for use (generators, drives, constructors, turrets, replicators) draws from that one place. The fuel's volume competes with cargo, so a long voyage is a cargo choice.
 - **Tiered generator fuel.** The fuel made early is the least efficient: fewer units per item and per storage unit, so early fuel fills the hold fast. Better fuels come through the tech tree (the tiers follow Empyrion's biofuel, energy cells and fusion cells).
@@ -975,25 +972,15 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 - Shields draw power from the capacitors like every device (more while recharging), and also consume dribbles of fold crystal from core storage while they recharge (owner, 15 Nov), never while off. Shields must be down to warp.
 - Fold crystal lies on high-gravity worlds (owner, 22 Nov), so fuelling long voyages pulls players down onto dangerous heavy worlds.
 
-**CPU budget**
+**Power draw is the limit**
 
-Only blocks that do something cost CPU: devices such as thrusters, drives, shields, turrets and machines. Plain armour and structural blocks cost none, so size alone never uses up the budget. Faction and POI structures follow the same budget, so anything captured can actually be run. A structure's CPU ceiling rises in tiers, and each tier needs a set number of **CPU extenders** placed on the structure.
-
-| Class | T1 (core) | T2 (1 extender) | T3 (2 extenders) | T4 (4 extenders) |
-| --- | --- | --- | --- | --- |
-| Small or hover vessel (either core mode) | 6,000 | 15,000 | 40,000 | 100,000 |
-| Base or capital vessel (either core mode) | 200,000 | 500,000 | 1,500,000 | 10,000,000 |
-
-- T3 and T4 extenders need **lattice core** and **lattice array** components, found only in points of interest or bought from traders. CPU growth is therefore gated by exploration, not just by the tech tree.
-- Losing an extender in combat drops the structure a tier mid-fight.
-- Going over budget is a soft limit: efficiency falls as the overshoot grows (reference: 100% over gives 50% efficiency), slowing thrust, RCS and constructor speed. Flight's cost comes from the blocks that do the flying, not from the mode: thrusters, warp drives and fold drives are what use CPU and fuel. Warp drives, fold drives and shields spike that usage: little at rest, then a sharp, brief peak while a drive engages or a shield recharges, and a peak that goes over budget dips efficiency as any overshoot does. They cost nothing while the core's mode doesn't use them, so thrusters waiting on a base are free until it switches to Capital Mode. Keep this modest, because powering a flyer should never feel exorbitant: a structure right at its limit in a ground mode still flies, just less efficiently, until it's trimmed or given an extender.
+There is no CPU (owner, 12 Nov): no CPU costs, CPU tiers or CPU extenders. Power draw is the limit on what a structure can run. Generators cost fuel, mass and space, with bigger tiers burning more; devices draw while working (thrusters firing, shields absorbing, fabricators running) and little or nothing idle; generators and solar panels fill one capacitor bank and every device draws from it. When draw outruns supply the bank drains, and once it is empty the whole system stutters while it waits for power to bank up again, with no priority list. When the power goes out completely, everything goes with it: gravity, life support, thrusters, all of it. Performance stays capped by blocks per axis.
 
 **Mass and volume**
 
 - Every item has mass and volume. Volume is measured in storage units (SU): a small cargo block holds 125 SU, a large one 8,000 SU.
-- A **structure's storage** is the total of all its containers, capped at 320,000 SU on the large grid and 32,000 SU on the small grid.
+- A **structure's storage** is the total of all its containers, capped at 320,000 SU (owner, 12 Nov).
 - Structure mass is blocks, devices, cargo and docked craft. Acceleration is thrust over mass; on a planet, vertical thrust must beat mass times local gravity, so a ship that flies on a moon may not lift off a heavy world.
-- Heavy vessels reach a lower top speed first, then climb slowly toward the technical maximum.
 
 **Remote storage and the remote toolbar**
 
@@ -1022,9 +1009,8 @@ Movement scales with the ladder: feet and jetpack, then hover, then flight, then
 | On foot | Anywhere | Walk, sprint (stamina), crouch (hold Ctrl: lower, quieter, fits under overhangs) | Fall damage; heavy gravity slows; swimming in water |
 | Jetpack | Anywhere with light armor or better | Short bursts | Can't sprint while active; boosters extend it; EVA booster for vacuum |
 | Hoverbike | Planet surface | Fast | Treats water as ground |
-| Hover vessel | Planet surface, over land and water | Moderate | 2D movement; can't climb sheer cliffs or fly |
-| Small vessel | Atmosphere and space in one system | 50 m/s level, 90 m/s vertical in atmosphere; up to 200 m/s in space | Thrust must beat mass × gravity to lift off |
-| Capital vessel | Space; can land | Up to 200 m/s in space, slow to get there | Heavy; slow to turn; needs RCS |
+| Hover mode | Planet surface, over land and water | 50 m/s (owner, 16 Nov) | 2D movement; can't climb sheer cliffs or fly |
+| Flight mode | Atmosphere and space | 70 m/s below the 1,060 m crossing, 200 m/s above it (owner, 15 and 16 Nov) | Thrust must beat mass × gravity to lift off; heavy structures turn slowly and need RCS |
 
 **Flight model**
 
@@ -1048,7 +1034,7 @@ Ships handle like their build, but the rules are simple and the numbers readable
 
 **Hover vessels**
 
-- Hover engines hold a set ride height (reference: 1.5 m for small engines, 3 m for large) and read the ground ahead of the vessel as well as beneath it, so they rise over rocks early instead of snagging. A hover vessel moves with the same thrusters as a ship, in every direction, except that thrust upward works as a jump, never as flight: only its hover engines hold it off the ground, so coming in at a sharp angle or dropping off a cliff can bump it into the ground before they catch. The engines push away along the command chair's down, so the repulsion follows how the chair is mounted (owner, 9 Nov 2026).
+- Hover engines hold a set ride height (reference: 1.5 m for the 1×1×1 plate, 3 m for the 2×1×2) and read the ground ahead of the vessel as well as beneath it, so they rise over rocks early instead of snagging. A hover vessel moves with the same thrusters as a ship, in every direction, except that thrust upward works as a jump, never as flight: only its hover engines hold it off the ground, so coming in at a sharp angle or dropping off a cliff can bump it into the ground before they catch. The engines push away along the command chair's down, so the repulsion follows how the chair is mounted (owner, 9 Nov 2026).
 - They ride at full height over water and never sink.
 - They level themselves within a second after a bump or a jump, and can't climb slopes steeper than a set angle.
 
@@ -1070,8 +1056,8 @@ These rules keep what works in the genre (thrust against mass, big engines, heav
 | --- | --- | --- |
 | Surface to orbit | Fly straight up past the atmosphere ceiling; the game transitions to the orbit playfield | Fuel only |
 | Within a playfield | Fly, or use **short-range warp**: reach 30 m/s, pick a bookmark, planet or radar contact, and jump | Free, on any warp drive |
-| Planet to planet in a system | Small or capital vessel; in-system warp | About 1 warp cell per AU |
-| Star to star | Capital vessel fold drive; T1 about 30 LY range, T2 60 LY | About 1 fold crystal per LY |
+| Planet to planet in a system | Any Flight structure with a warp drive (owner, 22 Nov); in-system warp | About 1 warp cell per AU |
+| Star to star | Any Flight structure with a fold drive (owner, 22 Nov); T1 about 30 LY range, T2 60 LY | About 1 fold crystal per LY |
 | Multi-jump routes | Route planner plots up to 500 LY and previews the fold crystal cost before committing | Sum of jumps |
 | Between owned structures | Networked teleporters and portals in range | Power |
 | Through a wormhole | Fly into its mouth (section 4) | Free; unstable ones can collapse behind you |
@@ -1185,7 +1171,7 @@ Hostile fire is deadly when it lands: a capital-class turret will vaporise a pla
 
 **Disabling instead of destroying**
 
-Targeted destruction sets up capture: kill thrusters to stop a ship, generators to drop its shields and turrets, and CPU extenders to cut its efficiency. A disabled ship is a boarding target (section 16); a ship whose core is destroyed goes derelict.
+Targeted destruction sets up capture: kill thrusters to stop a ship and generators to drop its shields and turrets. A disabled ship is a boarding target (section 16); a ship whose core is destroyed goes derelict.
 
 **Collisions and crashes**
 
@@ -1257,7 +1243,7 @@ Any enemy structure with a core (an outpost, a fortress, a small vessel or a cap
 **Progression guardrails** (so capture doesn't skip pillar 4)
 
 - Hacked components (captured with a structure or recovered from one) can be fitted and used at full output without unlocking them first. The player can't craft new ones until the recipe is unlocked, so the supply is limited to what they take.
-- A captured structure still counts against the player's CPU and size-class limits. Over the limit, it flies, but sluggishly.
+- A captured structure still counts against the player's size-class limits.
 - Heavy capital ships appear only in high-danger sectors. A squad realistically needs capital-tier gear just to survive the boarding.
 
 **Multiplayer**
@@ -1368,7 +1354,7 @@ The economy is a shortcut, not a second game: a rare trade token turns surplus i
 - **Auto-miners** hold their ore until a player collects it (section 10).
 - **Teleporters and portals** link the player's structures within range.
 
-**Home and auto-transmit.** The player flags exactly one base or capital ship as Home; flagging a new one clears the old. Vessels carry an auto-transmit toggle (a vessel component): with it on, materials the vessel farms go straight into Home's storage while the vessel is within transmit range of Home and Home has space. Otherwise they stay in the vessel's own cargo and transfer automatically once it's back in range or Home frees space. When Home is part full, what fits transfers and the rest waits aboard; nothing is ever deleted. The vessel's console shows the link: in range, out of range, or Home full. The range is a data value, and a moving capital-ship Home works the same way.
+**Home and auto-transmit.** The player flags exactly one structure as Home; flagging a new one clears the old. Vessels carry an auto-transmit toggle (a vessel component): with it on, materials the vessel farms go straight into Home's storage while the vessel is within transmit range of Home and Home has space. Otherwise they stay in the vessel's own cargo and transfer automatically once it's back in range or Home frees space. When Home is part full, what fits transfers and the rest waits aboard; nothing is ever deleted. The vessel's console shows the link: in range, out of range, or Home full. The range is a data value, and a moving capital-ship Home works the same way.
 
 **Toggles and triggers**
 
@@ -1391,7 +1377,7 @@ GalHack plays the same alone, or in co-op over Steam, and every player belongs t
 - **Everything is shared:** every player structure belongs to the faction. Any player can enter, fly, build on, repair or deconstruct any of them; there are no locks, per-device permissions or ownership transfers. On ships, players split the work through station roles (section 12).
 - **Shared standing:** standing with NPC factions belongs to the player faction, so one player's raid changes everyone's prices and welcome.
 - **No PvP.** The only player-versus-player setting is optional friendly fire, off by default.
-- **Server settings:** host and admin controls, structure count and block limits, and the CPU, mass and volume rules (on by default).
+- **Server settings:** host and admin controls, structure count and block limits, and the mass and volume rules (on by default).
 
 **Game modes**
 
@@ -1425,7 +1411,7 @@ GalHack plays the same alone, or in co-op over Steam, and every player belongs t
 | Enemy presence | Off, low, normal, high |
 | Base invasion frequency | Off, low, normal, high |
 | Crafting and blueprint build time | Faster, normal, slower |
-| CPU, mass, volume and block limits | On or off |
+| Mass, volume and block limits | On or off |
 
 ## 20. Diegetic UI and onboarding
 
@@ -1438,7 +1424,7 @@ GalHack plays the same alone, or in co-op over Steam, and every player belongs t
 
 **Where everything lives**
 
-GalHack's interface **looks like part of the world** without being built into it. Every panel is styled as the suit's or ship's own tech (screen glass, scanlines, bold paperback colours), but it's an ordinary on-screen interface, not a screen you walk up to. Everything the player manages lives in **one full-screen menu on Tab**. A minimal helmet-visor HUD covers what matters moment to moment, and the game never pauses for the menu. The HUD's layout follows Empyrion's (owner, 9 Nov 2026), in GalHack's own look. The gauges, icon row and temperature are laid out as in the Visor HUD layout below (owner, 15 Nov), which is later. On foot: the toolbar along the bottom with the empty hand last, and the clock and a 3D radar grid at the top right. In a vessel: a heading tape across the top, a pitch ladder and an altitude bar, and speed against the vessel's maximum. Every flying vessel handles the same way to control, whatever its class: the same keys, mouse steering and response, mouse turning as it already feels (no settle curve added), and pitch, roll and yaw sensitivity on its control panel. How quick it is still comes from its thrusters, gyros and mass, but turning has a ceiling as well as a floor, so a light ship is nimble without being twitchy. The Tab menu follows Empyrion's too: a ribbon of icon tabs across the top with the screen's name at the top left and close at the top right, and each screen laid out as Empyrion lays it out, with GalHack's own content: the planet map (a gridded globe with a planet info panel and its deposits), the system map (orbit lines, a sector info panel), the galaxy map (warp lines, names, map markers by distance), blueprints (library list, resources required, an info panel with size and counts), the vessel statistics for the vessel piloted or in range (power and fuel, oxygen, defence, thrust in each direction drawn round the hull, cargo, thrusters), the vessel control panel (name, faction, mass, energy and CPU, switches for power, oxygen, shield, lights, thrusters, auto brake and pilot mode, and gauges for its tanks with fill buttons; device groups and signal logic come later), a constructor (one shared container, never separate input and output, with its queue and template grid) and logistics (moving items between your bag and a vessel's or base's containers, with mass and volume). Traders come last, with trading (owner, 9 Nov 2026).
+GalHack's interface **looks like part of the world** without being built into it. Every panel is styled as the suit's or ship's own tech (screen glass, scanlines, bold paperback colours), but it's an ordinary on-screen interface, not a screen you walk up to. Everything the player manages lives in **one full-screen menu on Tab**. A minimal helmet-visor HUD covers what matters moment to moment, and the game never pauses for the menu. The HUD's layout follows Empyrion's (owner, 9 Nov 2026), in GalHack's own look. The gauges, icon row and temperature are laid out as in the Visor HUD layout below (owner, 15 Nov), which is later. On foot: the toolbar along the bottom with the empty hand last, and the clock and a 3D radar grid at the top right. In a vessel: a heading tape across the top, a pitch ladder and an altitude bar, and speed against the vessel's maximum. Every flying vessel handles the same way to control, whatever its class: the same keys, mouse steering and response, mouse turning as it already feels (no settle curve added), and pitch, roll and yaw sensitivity on its control panel. How quick it is still comes from its thrusters, gyros and mass, but turning has a ceiling as well as a floor, so a light ship is nimble without being twitchy. The Tab menu follows Empyrion's too: a ribbon of icon tabs across the top with the screen's name at the top left and close at the top right, and each screen laid out as Empyrion lays it out, with GalHack's own content: the planet map (a gridded globe with a planet info panel and its deposits), the system map (orbit lines, a sector info panel), the galaxy map (warp lines, names, map markers by distance), blueprints (library list, resources required, an info panel with size and counts), the vessel statistics for the vessel piloted or in range (power and fuel, oxygen, defence, thrust in each direction drawn round the hull, cargo, thrusters), the vessel control panel (name, faction, mass and energy, switches for power, oxygen, shield, lights, thrusters, auto brake and pilot mode, and gauges for its tanks with fill buttons; device groups and signal logic come later), a constructor (one shared container, never separate input and output, with its queue and template grid) and logistics (moving items between your bag and a vessel's or base's containers, with mass and volume). Traders come last, with trading (owner, 9 Nov 2026).
 
 | Need | Where | Notes |
 | --- | --- | --- |
@@ -1447,7 +1433,7 @@ GalHack's interface **looks like part of the world** without being built into it
 | Built-in manufacturing | Tab menu: **You** | The suit's own fabricator for the bare minimum: the survival tool, food, drink, heals, oxygen, a tent, a basic radar and a placeable survival constructor. That survival constructor, set down on the ground, makes your first core and early blocks |
 | Containers, bodies and loot | Two-pane view from **You** (E on a container, body or creature opens it) | Your pack beside the container; take all and store all |
 | Game stats | Tab menu: **Stats** | The game's stats |
-| Any nearby core's systems | Tab menu: **Core** | The base or vessel you're in or next to: its manufacturing (constructors, replicators, factory, ammo restock), storage, core mode, gravity, Home flag, auto-transmit, device toggles, power, CPU and mass, station roles |
+| Any nearby core's systems | Tab menu: **Core** | The base or vessel you're in or next to: its manufacturing (constructors, replicators, factory, ammo restock), storage, core mode, gravity, Home flag, auto-transmit, device toggles, power and mass, station roles |
 | Tech tree, codex, tutorials | Tab menu | Locked nodes show what they need; codex entries fill in on discovery |
 | Map | Tab menu: Map, plus a visor mini-map | Discovered places marked; unknown space stays dark |
 | Trade | Tab menu: Trade, when at a trader | Buy and sell lists beside your and nearby ship storage; sell-all buttons |
@@ -1485,7 +1471,7 @@ The Tab menu is the primary way to do everything. Machines and consoles in the w
 **Build-mode aids**
 
 - The multi-tool projects ghost blocks as holograms, and the visor shows an airtight overlay of where rooms leak.
-- Live power, CPU and mass readouts on the visor update with every block placed, with a warning before a placement crosses a CPU tier.
+- Live power and mass readouts on the visor update with every block placed.
 - Symmetry planes, shape picker and paint sprayer are one keypress away.
 
 **Comfort**
@@ -1505,7 +1491,7 @@ The biggest risk is the primary pillar itself: if worlds and POIs blur together,
 | Walkable moving ships | Reference-frame physics and networking are hard; jitter breaks the fantasy | Ship-relative positions on the network; prototype in multiplayer from day one |
 | Guards inside ships | NPC pathfinding on destructible block interiors is fragile | Every ship and base is a block grid, so guards path with plain A\* on the structure's own grid (section 22) |
 | Punishing early game | Players quit before discovery pays off | Ten-minute rule, start-system guarantee, PDA tutorials, relaxed survival mode |
-| Constraint overload | Power, CPU, mass and size class confuse builders | Live readouts while building; size class hidden; CPU is a soft limit |
+| Constraint overload | Power, mass and size class confuse builders | Live readouts while building; size class hidden |
 | Capture skips progression | Hijacking a heavy capital ship early could end the ladder | Progression guardrails (section 16) |
 | Shared-everything griefing | Any player can deconstruct any structure | Friendly fire off by default; automatic blueprint snapshots so the host can restore a lost build |
 | Performance | Large ships, many zones and many NPCs strain servers | Lazy system generation, per-zone entity caps, baked structure lighting |
@@ -1611,7 +1597,7 @@ The world save is the most important system in the game. Structures, items and p
 
 - Blocks, components, materials, recipes, ships, POIs, faction kits, planet archetypes, factions and loot tables all live in text files with schemas.
 - Ships and POIs are stored as block lists that agents can write and edit directly. The in-game builder saves to the same format, so a human or an agent can author either way.
-- Validators check every data change: schema, CPU and mass budgets, a reachable core, all four states for every POI family, loot that respects rarity.
+- Validators check every data change: schema, power and mass budgets, a reachable core, all four states for every POI family, loot that respects rarity.
 - Tuning values (damage, speeds, drain rates, prices) live in data too, so adjusting feel is a one-line change.
 
 **Automated testing**
@@ -1688,7 +1674,6 @@ The world save is the most important system in the game. Structures, items and p
 | Capital vessel (CV) | A structure with its core in capital mode: it flies, warps between stars and carries smaller craft. Switch the core to base mode once landed |
 | Component | A functional part of a ship or structure (engine, generator, turret, shield, command chair and so on), with its own structural stats; also called a device |
 | Core | The block that defines a structure's owner; destroy it to make a derelict, hijack it to capture |
-| CPU tier and extender | A structure's complexity budget, raised in four tiers by placing extenders |
 | Danger grade | Easy, medium, hard or extreme, shown on the map before travel |
 | Echo shards | Unique crystals from alien ruins, used for charged armor and epic upgrades |
 | Emberite | Rare ore from lava worlds near young and dying stars; fusion and plasma tech |
@@ -1697,7 +1682,7 @@ The world save is the most important system in the game. Structures, items and p
 | Gravium | Uncommon dense ore from high-gravity worlds, used for heavy armor |
 | Hijack Tool | Handheld device that takes over an enemy core, in three tiers |
 | Hover vessel (HV) | Surface vehicle that hovers over land and water |
-| Lattice core and lattice array | Unique components needed for CPU tiers 3 and 4 |
+| Lattice core and lattice array | Unique components (their CPU use is gone; use to be decided, owner, 12 Nov) |
 | Modifier | A trait rolled onto a planet that changes its look and play (ringed sky, perpetual storm...) |
 | Organics | Plant matter, creature meat and other biomass, kept in storage to feed replicators |
 | PDA | The tutorial and hint system |
