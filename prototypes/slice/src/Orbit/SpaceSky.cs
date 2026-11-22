@@ -198,6 +198,7 @@ public partial class SpaceSky : Node3D
             GlowIntensity = 0.5f,
             GlowBloom = 0.02f,
             GlowHdrThreshold = 2f,
+            GlowHdrLuminanceCap = 2f, // as on the ground (SkyRig)
         };
         World = new WorldEnvironment { Name = "Space" }; // no environment until space is what you see
         AddChild(World);
