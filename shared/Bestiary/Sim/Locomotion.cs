@@ -249,6 +249,8 @@ public static class Locomotion
         if (c.Position.Y - p.Y > StrideDrop) p.Y = c.Position.Y;
         KeepOffFaces(w, c, ref p, ref v);
         if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
+        // Nor turned off a face or out of the solid into another body: along it, or where it stood if that takes it up a face.
+        if (w.Unpressed(c, c.Position, p) is var clear && clear != p) p = Face(w, c.Position, clear, Brain.GaitOf(c.Species)) ? c.Position : clear with { Y = Footing(w, c, clear.X, clear.Z) };
         c.Velocity = v;
         c.Position = p;
     }
