@@ -606,7 +606,7 @@ These replace anything above or in section 4 that disagrees with them.
    - Rings come from an impact, a moon torn apart, or a captured passing body, so a world's history can explain its ring.
    - Small bodies, such as dwarf planets and asteroids, can have rings too.
    - Rings don't last forever.
-13. **Names.** The drive between stars is the fold drive, and its fuel is fold fuel (fold crystal). It used to be called the hyperdrive (owner, 22 Nov).
+13. **Names.** The drive between stars is the fold drive, and its fuel is fold fuel (fold crystal). It used to be called the hyperdrive (owner, 22 Nov). Any Flight structure can carry a warp drive or a fold drive if it fits it and can power it (owner, 22 Nov).
 14. **Sky and water colour come from the air and the star.** A world's sky and water colours follow its air type, how thick its air is (from its size, item 2) and the colour of its star. One model serves the ground sky, the globe's air seen from space and the water, so they always agree. This builds on the 8 Nov palette rule: natural colours come only from the star, air, soil, minerals and life, never the theme. Reference the owner gave:
    - **Clear sky.** Starlight scattered by small gas molecules (Rayleigh, strongest for short wavelengths) makes the clear sky. Nitrogen and oxygen air under a sunlike star reads blue. Ozone deepens the blue at twilight.
    - **Haze.** Methane, carbon dioxide and haze shift a sky through grey towards orange, as on a young world before oxygen.
