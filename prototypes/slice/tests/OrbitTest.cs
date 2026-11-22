@@ -266,6 +266,8 @@ public partial class OrbitTest : Node
         Check(up.Audit.Count == 0, $"the crossing lost and doubled nothing: the ledger's totals and zones match the game's ({string.Join("; ", up.Audit)})");
         Check(_game.Spaceflight.Ledger.ZoneOf("sleeper")?.StartsWith("cabin/") == true && _game.Spaceflight.Ledger.ZoneOf(IdOf(v)) == ZoneLedger.Orbit,
             $"on disk the Skiff is in orbit and the sleeper in its cabin (crossing committed before anything moved: {_game.Spaceflight.Ledger.LastCommit?.Written} record written)");
+        // A zone is parked a piece a frame (Spaceflight.Park): the surface's last piece is the zone itself.
+        for (int i = 0; i < 300 && _game.Surface.ProcessMode != ProcessModeEnum.Disabled; i++) yield return 0;
         Check(_game.Surface.ProcessMode == ProcessModeEnum.Disabled && _game.Surface.Vessels.Contains(_game.Bunker.Ruin),
             "the surface waits, frozen, everything on it as it was left (the bunker among it)");
     }
@@ -554,6 +556,7 @@ public partial class OrbitTest : Node
         Check(offMap < 60, $"it came in over the point it was over on the globe: {offMap:F1} m from the chosen map point");
         Check(HeadingError(down.HeadingDegrees, heading) < 3, $"heading kept: {down.HeadingDegrees:F1}° (north-east over the globe, north stays north)");
         Check(down.Audit.Count == 0, $"nothing lost or doubled on the way down ({string.Join("; ", down.Audit)})");
+        for (int i = 0; i < 300 && orbit.ProcessMode != ProcessModeEnum.Disabled; i++) yield return 0; // parked a piece a frame
         Check(surface.ProcessMode == ProcessModeEnum.Inherit && orbit.ProcessMode == ProcessModeEnum.Disabled && !orbit.Visible && v.Zone == surface,
             "the surface is live again and orbit waits, parked");
 
