@@ -302,25 +302,6 @@ public partial class StartTest : Node
         // Nothing standing round the start leaves out the sky's light, the haze or the sun: it would draw black by day, clear through fog.
         var unlit = Unpainted.Near(game.Zone, game.Survivor.WorldFeet, 600f, (x, z) => game.Zone.GroundAt(x, z).Y).Where(f => f.Kind == "unlit").ToList();
         Check(unlit.Count == 0, $"{world}: nothing round the start drawn without the sky's light, the haze or the sun{(unlit.Count == 0 ? "" : ": " + string.Join("; ", unlit.Take(3)))}");
-        // The roadside ruins (houses, farms, sheds, fuel stops) are places like any: the nearest stands, and a block of its wall
-        // takes a shot's damage, then breaks away (the tool's blast and every weapon go the same way, PoiPlaces.Struck).
-        if (game.Zone.Planet.Sites.Any(PlanetSurface.Infra.FlavourRuin.IsFlavour))
-        {
-            Slice.Places.Place ruin = null;
-            var wait = Stopwatch.StartNew();
-            while ((ruin = game.Places.Standing.FirstOrDefault(p => p.Ready && PlanetSurface.Infra.FlavourRuin.IsFlavour(p.Site))) == null && wait.Elapsed.TotalSeconds < 60) yield return 0;
-            var wall = ruin?.Inst.Blocks.Blocks().Where(b => b.Block.Role == PoiGenerator.Gen.Role.Wall && PoiGenerator.Gen.BlockInfo.IsFullCube(b.Block.Type)).Select(b => (PoiGenerator.Gen.Int3?)b.Cell).FirstOrDefault();
-            bool chipped = false, broken = false;
-            if (ruin != null && wall is { } cell)
-            {
-                var hit = new Slice.Places.PoiPlaces.Hit(ruin, cell, null, null);
-                game.Places.Struck(hit, 1f);
-                chipped = !ruin.Inst.Blocks.Get(cell).IsAir && ruin.Memory.BlockDamage.ContainsKey(cell);
-                game.Places.Struck(hit, 1e6f);
-                broken = ruin.Inst.Blocks.Get(cell).IsAir;
-            }
-            Check(chipped && broken, $"{world}: a roadside ruin stands as a place ({ruin?.Site.Name ?? "none within a minute"}), and a block of its wall takes a shot's damage, then breaks");
-        }
         // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.
         if (game.Zone.Planet.Infra.Wrecks.Count > 0 && game.Places.SalvageSites.FirstOrDefault() is Slice.Places.SalvageSite wreck)
         {
@@ -385,6 +366,27 @@ public partial class StartTest : Node
               && b.Poi.Instance?.State != PoiGenerator.Gen.PoiState.Active,
             $"{world.Name}, seed {world.Seed}: from the way out, {b.Poi?.Name} ({b.Poi?.Instance?.State}) in clear view {(b.Landmark is Vector3 lm ? new Vector2(lm.X - b.Outside.X, lm.Z - b.Outside.Z).Length() : 0):F0} m off");
         GD.Print($"  ({b.Steps} steps; {game.Stats.Seconds:F0} s of play)");
+        // The roadside ruins (houses, farms, sheds, fuel stops) are places like any: walked up to, the nearest stands, and a block
+        // of its wall takes a shot's damage, then breaks away (the tool's blast and every weapon go the same way, PoiPlaces.Struck).
+        if (game.Zone.Planet.Sites.Where(PlanetSurface.Infra.FlavourRuin.IsFlavour).MinBy(s => game.Places.DistanceTo(s, game.Survivor.WorldFeet)) is { } near)
+        {
+            Vector3 by = game.Zone.Planet.NearestCopy(new Vector3(near.Entrance.X + 0.5f, 0f, near.Entrance.Z + 0.5f), game.Survivor.WorldFeet);
+            game.Survivor.PlaceOutside((game.Zone.GroundAt(by.X + 6f, by.Z + 6f) + Vector3.Up).ToNumerics());
+            var wait = Stopwatch.StartNew();
+            while (game.Places.PlaceOf(near) is not { Ready: true } && wait.Elapsed.TotalSeconds < 120) yield return 0;
+            Slice.Places.Place ruin = game.Places.PlaceOf(near);
+            var wall = ruin?.Inst.Blocks.Blocks().Where(b => b.Block.Role == PoiGenerator.Gen.Role.Wall && PoiGenerator.Gen.BlockInfo.IsFullCube(b.Block.Type)).Select(b => (PoiGenerator.Gen.Int3?)b.Cell).FirstOrDefault();
+            bool chipped = false, broken = false;
+            if (ruin is { Ready: true } && wall is { } cell)
+            {
+                var hit = new Slice.Places.PoiPlaces.Hit(ruin, cell, null, null);
+                game.Places.Struck(hit, 1f);
+                chipped = !ruin.Inst.Blocks.Get(cell).IsAir && ruin.Memory.BlockDamage.ContainsKey(cell);
+                game.Places.Struck(hit, 1e6f);
+                broken = ruin.Inst.Blocks.Get(cell).IsAir;
+            }
+            Check(chipped && broken, $"{world}: walked up to, the nearest roadside ruin ({near.Name}) stands as a place{(ruin is { Ready: true } ? "" : " (not within two minutes)")}, and a block of its wall takes a shot's damage, then breaks");
+        }
         if (_failures > failuresBefore) _failedWorlds.Add($"{world.Key} {world.Seed}");
         game.QueueFree();
         for (int i = 0; i < 10; i++) yield return 0;
