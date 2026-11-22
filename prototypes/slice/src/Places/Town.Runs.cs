@@ -460,7 +460,6 @@ public sealed partial class Town
         wanted = Following(p, wanted, pace);
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
-        p.Gait += step;
         Vector3 heading = next, was = p.Pos;
         while (step > 0f && r.Leg < way.Count)
         {

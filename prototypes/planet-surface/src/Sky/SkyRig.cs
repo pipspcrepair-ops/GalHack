@@ -259,18 +259,9 @@ public partial class SkyRig : Node3D
         };
         AddChild(new WorldEnvironment { Environment = Environment });
 
-        Sun = new DirectionalLight3D
-        {
-            Name = "Sun", ShadowEnabled = true,
-            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits,
-            DirectionalShadowMaxDistance = 320f,
-        };
-        AddChild(Sun);
-        NightLight = new DirectionalLight3D
-        {
-            Name = "NightLight", ShadowEnabled = false, LightEnergy = 0f, SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly,
-            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits, DirectionalShadowMaxDistance = 320f,
-        };
+        AddChild(Sun = SunShadows.Light("Sun", true));
+        NightLight = SunShadows.Light("NightLight", false);
+        (NightLight.LightEnergy, NightLight.SkyMode) = (0f, DirectionalLight3D.SkyModeEnum.LightOnly);
         AddChild(NightLight);
         Air = Atmosphere.Compute(SkySystem.For(new Planets.Gen.PlanetSpec(1, Planets.Gen.Archetype.Temperate, 0, 0)), Atmosphere.Clear(), 0.5f);
     }
