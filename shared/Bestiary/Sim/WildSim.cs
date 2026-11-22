@@ -668,9 +668,10 @@ public sealed class WildSim
     /// <summary>
     /// Whether a body keeps its personal space: one on the ground or a floor (not one closing to strike or seize: an attack
     /// needs its reach; in a cave or a place, not a climber holding its walls; not a swarm, a cloud, nor a gas bag, which floats).
+    /// One asleep for being far from you is a body too, one that is not moved: others awake keep off it.
     /// </summary>
     public static bool Spaced(Creature c) =>
-        !(c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
+        !(c.Removed || c.Dead || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
           || c.Space != null && (c.Species.Climbs || c.Falling)
           || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed && c.Space == null);
 
@@ -690,7 +691,7 @@ public sealed class WildSim
             c.Spaced = _spaced.Count;
             inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
-            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Dormant ? 0f : c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
             _spaced.Add(c);
         }
         if (_spaced.Count == 0) return;
