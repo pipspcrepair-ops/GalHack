@@ -10,7 +10,8 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Weapons on the world (--view=shotdamage): the nearest place's outside wall holed by rifle rounds and rockets (an NPC's), and a
-/// rocket's crater in open ground beside it, each seen from a few metres off.
+/// rocket's crater in open ground beside it, each seen from a few metres off (the wall before the shots too). --flavour=1: the
+/// nearest roadside ruin's wall (a house, a farm, a shed, a fuel stop) instead.
 /// </summary>
 public sealed partial class Staging
 {
@@ -20,7 +21,7 @@ public sealed partial class Staging
         _game.Visor.Visible = false;
         var rng = new Random();
         Vector3 from = _game.Survivor.WorldFeet;
-        var site = _game.Zone.Planet.Pois.Where(s => s.Instance != null && !s.Family.Tags.Contains("underground"))
+        var site = (_args.ContainsKey("flavour") ? _game.Zone.Planet.Sites.Where(PlanetSurface.Infra.FlavourRuin.IsFlavour) : _game.Zone.Planet.Pois.AsEnumerable()).Where(s => s.Instance != null && !s.Family.Tags.Contains("underground"))
             .OrderBy(s => _game.Zone.Planet.NearestCopy(new Vector3(s.Entrance.X, s.Entrance.Y, s.Entrance.Z), from).DistanceTo(from)).FirstOrDefault();
         if (site == null) { GD.Print("(shotdamage: no place on this world)"); yield break; }
         Vector3 gate = _game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), from);
@@ -31,6 +32,8 @@ public sealed partial class Staging
         Vector3 outward = new(o.X, o.Y, o.Z), face = place.WorldOf(cell) + outward * 0.5f, across = outward.Cross(Vector3.Up);
         _game.Survivor.PlaceOutside((face + outward * 14f + across * 8f).ToNumerics());
         foreach (int x in _drive.Wait(60)) yield return x;
+        Vector3 wallEye = face + outward * 7f + across * 3f + Vector3.Up * 0.8f;
+        foreach (int x in View("wall-before", wallEye, face)) yield return x;
         GalHack.Arms.WeaponDef rifle = _game.Zone.Data.Arms.OfItem(Wildlife.Weapons.ItemOf("rifle")), rocket = WorldFire.Rocket(_game);
         for (int i = 0; i < 12; i++)
         {
@@ -46,9 +49,13 @@ public sealed partial class Staging
         WorldFire.Fire(_game, rocket, spot + new Vector3(2f, 6f, 1f), spot);
         foreach (int x in _drive.Wait(60)) yield return x;
         GD.Print($"(shotdamage: {site.Name}, wall {place.Inst.Blocks.Get(cell).Material}; {_game.Places.BlocksBroken} blocks broken, {_game.Places.BlocksFallen} fallen; craters {_game.Arms.Craters})");
-        _game.Zone.Sky.TimeOfDay = HighSun(_game); // (by day: the setting-up can run into the night)
-        foreach (var (tag, eye, look) in new[] { ("wall", face + outward * 7f + across * 3f + Vector3.Up * 0.8f, face), ("crater", spot + (outward + across * 0.5f).Normalized() * 6f + Vector3.Up * 3.5f, spot) })
+        foreach (var (tag, eye, look) in new[] { ("wall", wallEye, face), ("crater", spot + (outward + across * 0.5f).Normalized() * 6f + Vector3.Up * 3.5f, spot) })
+            foreach (int x in View(tag, eye, look)) yield return x;
+        _game.FixedCamera = null;
+
+        IEnumerable<int> View(string tag, Vector3 eye, Vector3 look)
         {
+            _game.Zone.Sky.TimeOfDay = HighSun(_game); // (by day: the setting-up can run into the night)
             for (int i = 0; i < 600; i++)
             {
                 _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
@@ -58,6 +65,5 @@ public sealed partial class Staging
             foreach (int x in _drive.Wait(20)) yield return x;
             Snap(tag);
         }
-        _game.FixedCamera = null;
     }
 }
