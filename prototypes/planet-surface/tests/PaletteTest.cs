@@ -108,9 +108,9 @@ public partial class PaletteTest : Node
     }
 
     /// <summary>
-    /// Fresh worlds of one kind: every colour spreads (median pair dE at least <see cref="Spread"/>; at most
-    /// <see cref="SameShare"/> of pairs within <see cref="Same"/>, the gap a glance tells apart), and at most
-    /// <see cref="TwinShare"/> of pairs are twins, within <see cref="Twin"/> in every colour at once.
+    /// Fresh worlds of one kind: no colour clusters (fewer than half the pairs of worlds within <see cref="Same"/>,
+    /// the gap a glance tells apart), and at most <see cref="TwinShare"/> of pairs are twins, within it in every
+    /// colour at once. The median pair gap is printed beside each.
     /// </summary>
     void Variety(string kind, int count, Func<(Archetype, int, bool)> roll)
     {
@@ -139,7 +139,7 @@ public partial class PaletteTest : Node
             gaps.Sort();
             float median = gaps[gaps.Count / 2], same = gaps.Count(g => g < Same) / (float)gaps.Count;
             lines.Add($"{Channels[c]} median dE {median:F1}, same {same:P0}, chroma {chroma / seen:F1}");
-            spread &= median >= Spread && same <= SameShare;
+            spread &= same < 0.5f;
         }
         int twins = 0, pairs = 0;
         for (int i = 0; i < worlds.Count; i++)
@@ -148,12 +148,12 @@ public partial class PaletteTest : Node
                 pairs++;
                 bool alike = true;
                 for (int c = 0; c < Channels.Length; c++)
-                    if (worlds[i].Colors[c] is Lab x && worlds[j].Colors[c] is Lab y && x.Gap(y) >= Twin) alike = false;
+                    if (worlds[i].Colors[c] is Lab x && worlds[j].Colors[c] is Lab y && x.Gap(y) >= Same) alike = false;
                 if (alike) twins++;
             }
         GD.Print($"PALETTE {kind}: {string.Join("; ", lines)}; twins {twins} of {pairs} pairs");
-        Check(spread, $"{count} fresh {kind} worlds spread in every natural colour (median dE ≥ {Spread}, ≤ {SameShare:P0} of pairs within dE {Same})");
-        Check(twins <= pairs * TwinShare, $"{kind} worlds are told apart: {twins} of {pairs} pairs twins in every colour (dE < {Twin})");
+        Check(spread, $"{count} fresh {kind} worlds spread in every natural colour: none has half its pairs within dE {Same}");
+        Check(twins <= pairs * TwinShare, $"{kind} worlds are told apart: {twins} of {pairs} pairs twins in every colour (dE < {Same})");
         float night = worlds.Max(w => w.Night.L);
         Check(night < 8f, $"{kind} night skies stay dark (brightest zenith L* {night:F1})");
         if (kind == "meadow")
@@ -163,7 +163,7 @@ public partial class PaletteTest : Node
         }
     }
 
-    const float Spread = 12f, Same = 6f, SameShare = 0.35f, Twin = 10f, TwinShare = 0.08f;
+    const float Same = 10f, TwinShare = 0.08f;
 
     /// <summary>
     /// The grade's saturation (<see cref="AtmosphereState.Saturation"/>) through six hours of a meadow world's

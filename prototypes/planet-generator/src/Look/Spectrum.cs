@@ -115,12 +115,39 @@ public readonly struct Spectrum
     /// fiftieth as bright as they are, and colours look less colourful the dimmer they are (the Hunt effect):
     /// their chroma is raised by <see cref="Hunt"/> so the screen shows them as colourful as the eye saw them.
     /// </summary>
-    public Rgb Light(float scale = 1f)
+    public Rgb Light(float scale = 1f, Eye eye = default)
     {
-        var (r, g, b) = Linear(this, WhiteY / scale);
-        (r, g, b) = (r / WhiteRgb.R, g / WhiteRgb.G, b / WhiteRgb.B);
+        var (r, g, b) = Balanced(this, eye);
+        (r, g, b) = (r * scale, g * scale, b * scale);
         float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
         return Encode(y + (r - y) * Hunt, y + (g - y) * Hunt, y + (b - y) * Hunt);
+    }
+
+    /// <summary>Linear sRGB against white light of luminance 1, 6504 K neutral, through an eye's adaptation.</summary>
+    static (float R, float G, float B) Balanced(Spectrum s, Eye eye)
+    {
+        var (r, g, b) = Linear(s, WhiteY);
+        if (eye.R == 0f) eye = new Eye(1f, 1f, 1f);
+        return (r / WhiteRgb.R * eye.R, g / WhiteRgb.G * eye.G, b / WhiteRgb.B * eye.B);
+    }
+
+    /// <summary>An eye's gain on each of red, green and blue (linear): what adapting to a light does.</summary>
+    public readonly record struct Eye(float R, float G, float B);
+
+    /// <summary>
+    /// An eye adapted <paramref name="degree"/> of the way to this light (von Kries): it turns the light's own cast that
+    /// far toward white, keeping its brightness. Adaptation to light far from daylight is incomplete, so a red dwarf's
+    /// world still looks warm to those who live under it, though less than a daylight camera shows it (Fairchild 2013,
+    /// Color Appearance Models, 3rd ed., ch. 8).
+    /// </summary>
+    public Eye Adapted(float degree)
+    {
+        var (r, g, b) = Balanced(this, default);
+        float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+        (r, g, b) = (r / y, g / y, b / y);
+        (r, g, b) = (1f / (degree * r + 1f - degree), 1f / (degree * g + 1f - degree), 1f / (degree * b + 1f - degree));
+        float k = 1f / (0.2126f * r + 0.7152f * g + 0.0722f * b);
+        return new Eye(r * k, g * k, b * k);
     }
 
     /// <summary>
@@ -130,10 +157,10 @@ public readonly struct Spectrum
     const float Hunt = 1.35f;
 
     /// <summary>The colour of a light at its brightest channel 1: its hue alone (a star, a glow).</summary>
-    public Rgb Hue()
+    public Rgb Hue(Eye eye = default)
     {
-        var (r, g, b) = Linear(this, WhiteY);
-        (r, g, b) = (MathF.Max(r / WhiteRgb.R, 0f), MathF.Max(g / WhiteRgb.G, 0f), MathF.Max(b / WhiteRgb.B, 0f));
+        var (r, g, b) = Balanced(this, eye);
+        (r, g, b) = (MathF.Max(r, 0f), MathF.Max(g, 0f), MathF.Max(b, 0f));
         float m = MathF.Max(r, MathF.Max(g, b));
         return m > 0f ? Encode(r / m, g / m, b / m) : default;
     }

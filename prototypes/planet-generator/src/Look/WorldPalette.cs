@@ -4,7 +4,7 @@ using Planets.Gen;
 namespace Planets.Look;
 
 /// <summary>What a world's rock is, under its soil and in its sand: the mineral every ground colour starts from.</summary>
-public enum Mineral { Granite, Basalt, Sandstone, Limestone, Shale, Anorthosite, Ice }
+public enum Mineral { Granite, Basalt, Andesite, Sandstone, Limestone, Shale, Anorthosite, Ice }
 
 /// <summary>What hangs in a world's air besides its gas: sea salt and sulfate (clean), water haze, the ground's own dust, volcanic ash, sulfuric acid with sulfur.</summary>
 public enum Particles { Clean, Haze, Dust, Ash, Sulfate }
@@ -114,10 +114,14 @@ public sealed record WorldPalette
 
         Spectrum light = Spectrum.Blackbody(kelvin);
         light *= 1f / light.Y;
+        // Lights (the sun, the sky) are seen by an eye adapted partway to the star: a red dwarf's world stays warm, not tungsten orange.
+        Spectrum.Eye eye = light.Adapted(Adaptation);
 
         // ---- Minerals and soils ----
         // An airless body's regolith is its dark mare basalt and bright highland anorthosite in its own mix (the Moon's).
         Spectrum stone = spec.Airless && rock != Mineral.Ice ? Spectrum.Lerp(Stone(Mineral.Basalt), Stone(Mineral.Anorthosite), U(15)) : Stone(rock);
+        // An iron-rich airless body rusted while it still had air and water, and keeps it (Mars, had it lost all its air).
+        if (spec.Airless && iron > 0.75f) stone = Rust(stone, 0.55f, 0.25f);
         float stain = wet ? iron : 0f;
         Spectrum bedrock = spec.Airless ? Spaced(stone, iron) : Rust(stone, 0.35f * stain * (spec.Archetype == Archetype.Arid ? 1.6f : 1f), 0.25f * stain);
         // Grains are brighter than the face they came from (small particles scatter more), and keep its iron.
@@ -170,11 +174,11 @@ public sealed record WorldPalette
         Rgb zenith = default, horizon = default, haze = default, sunset = default, limb = default;
         if (column > 0f)
         {
-            zenith = Sky(1f, 1f, 0.8f).Light(SkyGain); // the sun higher than 45° at midday: further from its glare
-            horizon = Sky(10f, 0.8f, 0.5f).Light(SkyGain);
-            haze = Sky(40f, 0.8f, 0.5f).Light(SkyGain);
-            sunset = (light * Spectrum.Exp(extinction * -12f)).Hue(); // the sun about 5° up
-            limb = (light * scatter).Hue();
+            zenith = Sky(1f, 1f, 0.8f).Light(SkyGain, eye); // the sun higher than 45° at midday: further from its glare
+            horizon = Sky(10f, 0.8f, 0.5f).Light(SkyGain, eye);
+            haze = Sky(40f, 0.8f, 0.5f).Light(SkyGain, eye);
+            sunset = (light * Spectrum.Exp(extinction * -12f)).Hue(eye); // the sun about 5° up
+            limb = (light * scatter).Hue(eye);
         }
 
         // ---- Plants ----
@@ -194,7 +198,7 @@ public sealed record WorldPalette
         return new WorldPalette
         {
             Kelvin = kelvin, Air = air, Rock = rock, Iron = iron, Life = life, Plankton = plankton,
-            Star = light.Hue(),
+            Star = light.Hue(eye),
             Zenith = zenith, Horizon = horizon, Haze = haze, Sunset = sunset, Limb = limb,
             CloudTint = Rgb.Lerp(new Rgb(1f, 1f, 1f), Albedo(albedo).Reflectance(), Math.Clamp(air.Aerosol * 0.35f, 0f, 0.55f)),
             Dust = dust.Reflectance(),
@@ -205,6 +209,9 @@ public sealed record WorldPalette
             _soils = soils,
         };
     }
+
+    /// <summary>How far an eye adapts to its star's light: half the way, never all of it (<see cref="Spectrum.Adapted"/>).</summary>
+    const float Adaptation = 0.5f;
 
     /// <summary>How bright a sky is against its sunlight: Earth's clear zenith comes out at Earth's (luminance about 0.22 of white).</summary>
     const float SkyGain = 1.4f;
@@ -230,7 +237,7 @@ public sealed record WorldPalette
             : new[] { (Mineral.Basalt, 0.5f), (Mineral.Anorthosite, 0.5f) } // the more of the two in its mix: Make blends them
             : spec.Archetype switch
             {
-                Archetype.Lava => new[] { (Mineral.Basalt, 0.65f), (Mineral.Granite, 0.35f) }, // granite's volcanic twin, rhyolite: pale and pink
+                Archetype.Lava => new[] { (Mineral.Basalt, 0.45f), (Mineral.Andesite, 0.3f), (Mineral.Granite, 0.25f) }, // granite's volcanic twin, rhyolite: pale and pink
                 Archetype.Arid => new[] { (Mineral.Sandstone, 0.4f), (Mineral.Granite, 0.25f), (Mineral.Basalt, 0.2f), (Mineral.Limestone, 0.15f) },
                 Archetype.Ice => new[] { (Mineral.Granite, 0.35f), (Mineral.Basalt, 0.35f), (Mineral.Shale, 0.3f) },
                 _ => new[] { (Mineral.Granite, 0.25f), (Mineral.Basalt, 0.2f), (Mineral.Sandstone, 0.2f), (Mineral.Limestone, 0.15f), (Mineral.Shale, 0.2f) },
@@ -243,12 +250,13 @@ public sealed record WorldPalette
     /// <summary>
     /// Fresh rock's reflectance, 400 to 700 nm (from USGS spectral library shapes, simplified): granite pale with
     /// feldspar's pink, basalt dark, quartz sandstone bright before its iron coat, limestone near white, shale
-    /// grey, lunar-highland anorthosite bright, ice near white with a little red absorbed.
+    /// grey, andesite (between basalt and rhyolite) mid-grey, lunar-highland anorthosite bright, ice near white with a little red absorbed.
     /// </summary>
     static Spectrum Stone(Mineral m) => m switch
     {
         Mineral.Granite => Spectrum.Of(l => 0.26f + 0.14f * (l - 400f) / 300f),
         Mineral.Basalt => Spectrum.Of(l => 0.065f + 0.025f * (l - 400f) / 300f),
+        Mineral.Andesite => Spectrum.Of(l => 0.15f + 0.05f * (l - 400f) / 300f),
         Mineral.Sandstone => Spectrum.Of(l => 0.34f + 0.16f * (l - 400f) / 300f),
         Mineral.Limestone => Spectrum.Of(l => 0.5f + 0.1f * (l - 400f) / 300f),
         Mineral.Shale => Spectrum.Of(l => 0.11f + 0.05f * (l - 400f) / 300f),
