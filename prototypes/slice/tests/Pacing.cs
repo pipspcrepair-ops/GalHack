@@ -64,6 +64,12 @@ public partial class Pacing : Node
     {
         bool more;
         int code = 0;
+        if (_storm != null)
+        {
+            _storm.Position = S.WorldFeet + _stormOffset;
+            _storm.Strength = 1f;
+            _storm.Age = 0f;
+        }
         try { more = _run.MoveNext(); }
         catch (Exception e)
         {
@@ -74,6 +80,23 @@ public partial class Pacing : Node
         if (more) return;
         SetPhysicsProcess(false);
         Wildlife.Shutdown.Quit(this, code);
+    }
+
+    Weather.Model.DustStorm _storm;
+    Vector3 _stormOffset;
+
+    /// <summary>
+    /// --storm=inside|edge|outside: a dust storm held round the routes that way, coming from the way the walk goes: the eye at
+    /// its middle, 150 m in from its leading edge, or watching its wall 3 km off. It keeps its place to the sleeper all along.
+    /// </summary>
+    void HoldStorm(string where, Vector3 ahead)
+    {
+        Vector3 way = new Vector3(ahead.X, 0f, ahead.Z).Normalized();
+        var sim = _game.Zone.Weather.Sim;
+        _storm = sim.AddDustStorm(S.WorldFeet, 1f, new Vector2(-way.X, -way.Z) * sim.Data.State(WeatherKind.DustStorm).WindSpeed);
+        float h = _storm.HalfLength;
+        _stormOffset = way * (where switch { "inside" => 0f, "edge" => h - 150f, "outside" => 3000f + h, _ => throw new ArgumentException($"--storm={where}") });
+        GD.Print($"PACING storm {where}: {_storm.HalfWidth * 2f:F0} x {h * 2f:F0} m, {_storm.Height:F0} m tall");
     }
 
     /// <param name="drive">what moves you meanwhile, if not <paramref name="each"/> tick by tick</param>
@@ -113,7 +136,7 @@ public partial class Pacing : Node
                  $"delta smoothing {ProjectSettings.GetSetting("application/run/delta_smoothing")}, .NET processors {System.Environment.ProcessorCount}, worker pool {ProjectSettings.GetSetting("threading/worker_pool/max_threads")}, trees {PlanetSurface.Terrain.PlanetFlora.TreeDensity}; world {_game.World}");
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
-        zone.Weather.Sim.Snap(_args.ContainsKey("storm") ? WeatherKind.DustStorm : WeatherKind.Clear);
+        zone.Weather.Sim.Snap(WeatherKind.Clear);
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(40)) yield return x;
         foreach (int x in _drive.WalkTo(_game.Bunker.CryoFront, 0.3f, 10f)) yield return x;
@@ -133,6 +156,7 @@ public partial class Pacing : Node
         }
         foreach (int x in _drive.LookAt(town with { Y = S.WorldEye().Y }, 10)) yield return x;
         _drive.Controls.Look = Vector2.Zero;
+        if (_args.TryGetValue("storm", out string storm)) HoldStorm(storm, town - S.WorldFeet);
 
         foreach (int x in Measure("standing", 600)) yield return x;
         _mouse = new Vector2(360f, 0f);

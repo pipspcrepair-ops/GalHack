@@ -92,8 +92,8 @@ public sealed class DustStormRules
     /// <summary>Its length along its way as a share of its width.</summary>
     public float LengthMin { get; set; } = 0.5f;
     public float LengthMax { get; set; } = 0.75f;
-    public float HeightMin { get; set; } = 300f;
-    public float HeightMax { get; set; } = 650f;
+    public float HeightMin { get; set; } = 500f;
+    public float HeightMax { get; set; } = 900f;
     public float Edge { get; set; } = 350f;
 
     /// <summary>It forms this far upwind of the observer, metres (its leading edge's distance), so its wall is watched coming.</summary>

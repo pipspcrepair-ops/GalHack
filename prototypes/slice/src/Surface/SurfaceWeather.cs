@@ -192,6 +192,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
 
     readonly Dictionary<int, PlanetSurface.Fx.Volume> _storms = new();
     readonly List<int> _gone = new();
+    float? _aerial;
 
     /// <summary>The drawn body of a dust storm (tests and screenshots), or null.</summary>
     public PlanetSurface.Fx.Volume StormOf(int id) => _storms.GetValueOrDefault(id);
@@ -212,8 +213,13 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         Color sun = Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy;
         Color sky = haze.SrgbToLinear() * env.AmbientLightEnergy;
         Color dust = _planet.Look.Dust;
-        Color deep = dust.SrgbToLinear() * (sky * 0.55f + sun * 0.12f); // as the body is lit deep inside (volume.gdshader)
-        env.FogLightColor = haze.Lerp(deep.LinearToSrgb(), Sim.DustDepth(camera) * open);
+        Color deep = dust.SrgbToLinear() * (sky * 0.45f + sun * 0.05f); // as the body is lit deep inside, at its foot (volume.gdshader)
+        // Deep in it the murk hides the sky and everything far off alike, in its own colour.
+        float inside = Sim.DustDepth(camera) * open;
+        _aerial ??= env.FogAerialPerspective;
+        env.FogLightColor = haze.Lerp(deep.LinearToSrgb(), inside);
+        env.FogSkyAffect = Mathf.Lerp(env.FogSkyAffect, 1f, inside);
+        env.FogAerialPerspective = Mathf.Lerp(_aerial.Value, 0f, inside);
 
         _gone.Clear();
         foreach (int id in _storms.Keys) _gone.Add(id);
@@ -243,7 +249,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             v.Shape(new Vector2(at.X, at.Z), d.Heading, new Vector2(d.HalfLength, d.HalfWidth), floor, middle + d.Height - floor, 0.5f, billow);
             // As thick inside as its weather's visibility makes the fog (Atmosphere's rule), thinner up top; its heaps ride
             // on it a little faster than it moves, climbing its face, so its front rolls.
-            v.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, d.Edge, 380f, d.Velocity * 1.15f, 2.5f, d.Strength);
+            // Its outline drawn crisper than the model's ramp: the wall is seen as a wall, and the eye's fog takes over inside.
+            v.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, MathF.Min(d.Edge, 150f), 380f, d.Velocity * 1.15f, 2.5f, d.Strength);
             v.Light(ToSun, sun, sky, env.FogLightColor, env.FogDensity, StormSteps);
         }
         foreach (int id in _gone)

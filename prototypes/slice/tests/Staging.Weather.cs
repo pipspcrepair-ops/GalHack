@@ -387,18 +387,59 @@ public partial class Staging
         return near;
     }
 
-    /// <summary>Desert wind: a dust storm from a hilltop.</summary>
+    /// <summary>
+    /// A dust storm's wall rolling over open ground toward a lookout in daylight, the sun at the eye's back: from 3 km and
+    /// 1 km off, at its edge, inside it, and watched from the highest ground near by, outside it (--dir=folder for the five
+    /// frames; --bearing turns the way it comes from). The liberty: the storm is placed for each frame (the weather's own
+    /// form upwind and roll in the same way).
+    /// </summary>
     IEnumerable<int> DustShot()
     {
-        _game.Zone.Sky.Paused = true;
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
-        _game.Zone.Weather.Sim.Snap(WeatherKind.DustStorm);
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        sky.TimeOfDay = Num("time", 0.42);
+        var sim = _game.Zone.Weather.Sim;
+        sim.Snap(WeatherKind.Clear);
         _game.Visor.Visible = false;
         _game.Hands.Visible = false;
         foreach (int x in _drive.UntilSettled()) yield return x;
-        Vector3 eye = _game.Survivor.WorldEye() + Vector3.Up * 2f;
-        _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(1f, -0.08f, 0.2f).Normalized(), Vector3.Up), eye);
-        foreach (int x in _drive.Wait(150)) yield return x;
+        Vector3 s = sky.ToSun;
+        Vector3 toward = new Vector3(-s.X, 0f, -s.Z).Normalized().Rotated(Vector3.Up, Mathf.DegToRad((float)Num("bearing", 0)));
+        Vector3 ground = Lookout(_game.Survivor.WorldFeet, toward);
+        DustStorm d = sim.AddDustStorm(ground, 1f, new Vector2(-toward.X, -toward.Z) * sim.Data.State(WeatherKind.DustStorm).WindSpeed);
+        string dir = _args.GetValueOrDefault("dir", "screenshots/dust");
+        System.IO.Directory.CreateDirectory(dir);
+
+        // Stands the sleeper (and so the streaming) at a spot, the storm's leading edge `ahead` metres off the way the eye looks
+        // (negative: the eye that far inside it), and frames the eye there, looking `turn` degrees off toward it.
+        IEnumerable<int> Frame(string name, Vector3 at, float ahead, float eyeUp, float turn, float pitch)
+        {
+            _game.Survivor.PlaceOutside((at - toward * 3f + Vector3.Up).ToNumerics()); // just behind the eye, out of the frame
+            foreach (int x in _drive.UntilSettled()) yield return x;
+            Vector3 eye = _game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * eyeUp;
+            d.Position = new Vector3(eye.X, 0f, eye.Z) + toward * (ahead + d.HalfLength);
+            Vector3 look = toward.Rotated(Vector3.Up, Mathf.DegToRad(turn));
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(look * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch), Vector3.Up), eye);
+            foreach (int x in _drive.Wait(60)) yield return x;
+            d.Position = new Vector3(eye.X, 0f, eye.Z) + toward * (ahead + d.HalfLength);
+            foreach (int x in _drive.Wait(2)) yield return x;
+            GD.Print($"dust: {name}: {d.Inside(eye, sim.WorldSize):F0} m inside its outline, depth {sim.DustDepth(eye):F2}, visibility {sim.LocalAt(eye).Visibility:F0} m, " +
+                     $"fog {sky.Environment.FogDensity:F4}, storm {d.HalfWidth * 2f:F0} x {d.HalfLength * 2f:F0} m, {d.Height:F0} m tall");
+            foreach (int x in Shot($"{dir}/{name}.png")) yield return x;
+        }
+        foreach (int x in Frame("1-wall-3km", ground, 3000f, 1.7f, 0f, 0.06f)) yield return x;
+        foreach (int x in Frame("2-wall-1km", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
+        foreach (int x in Frame("3-edge", ground, -40f, 1.7f, 60f, 0.04f)) yield return x;
+        foreach (int x in Frame("4-inside", ground, -d.HalfLength, 1.7f, 0f, 0.02f)) yield return x;
+        // The highest ground within a kilometre and a half, looking out over the storm two kilometres off.
+        Vector3 high = ground;
+        for (int i = 0; i < 400; i++)
+        {
+            float r = 200f + i * 3.2f, a = i * 0.7f;
+            Vector3 g = _game.Zone.GroundAt(ground.X + MathF.Cos(a) * r, ground.Z + MathF.Sin(a) * r);
+            if (g.Y > high.Y && !_game.Zone.Water.LiquidAt(g.X, g.Z, out _)) high = g;
+        }
+        foreach (int x in Frame("5-high-ground", high, 2200f, 6f, 0f, -0.02f)) yield return x;
     }
 
     /// <summary>A dig's dust: a handful of puffs, seen a moment after.</summary>
