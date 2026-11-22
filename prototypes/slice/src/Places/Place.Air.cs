@@ -14,8 +14,8 @@ public partial class Place
     /// <summary>The most cells a closed room may have: past it the space is taken as open (a hall that size is all draughts).</summary>
     public const int ClosedRoomCells = 20000;
 
-    /// <summary>What stops air: a full block, glass, a sealed door, the slopes a roof is made of, the shapes a wall is (a half, a thin wall, a chamfer) and a round thing's cut rim.</summary>
-    static bool StopsAir(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Pane or BlockType.SealedDoor
+    /// <summary>What stops air: a full block, glass, the slopes a roof is made of, the shapes a wall is (a half, a thin wall, a chamfer) and a round thing's cut rim.</summary>
+    static bool StopsAir(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Pane
         or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Half or BlockType.Partition
         or BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner || BlockInfo.IsRoundCut(t);
 

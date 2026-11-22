@@ -30,28 +30,7 @@ public static class Decay
             l.Fog = 0.008f + 0.05f * l.Wrongness + (l.Depth > 0 ? 0.006f : 0f);
             l.Tier = (int)rarity + (int)MathF.Round(l.Wrongness * 2f);
         }
-        // Wrong on purpose, deep down: doors that open onto rock, set in the far ends of corridors.
-        foreach (var m in c.Modules.Where(m => m.Kind == ModuleKind.Corridor))
-        {
-            var lvl = levels.FirstOrDefault(l => l.Storey == m.Storey);
-            if (lvl == null || lvl.Wrongness < 0.45f || !rng.Chance(0.6f)) continue;
-            // Find a stretch of the corridor's side wall with rock behind it.
-            foreach (Int3 cell in m.Cells.Where(p => p.Y == lvl.WalkY).OrderBy(p => Hash.Cell(p, 7)))
-            {
-                foreach (Dir h in Dirs.Horizontal)
-                {
-                    Int3 w = cell + h.Vec(), behind = w + h.Vec();
-                    if (c.Get(w).Role != Role.Wall || c.Occ.Contains(behind) || behind.Y > Assembler.GroundY) continue;
-                    // The standard door's height (DoorSize), its head the wall over it.
-                    if (Enumerable.Range(1, DoorSize.Tall - 1).Any(k => c.Get(w + Int3.Up * k).Role != Role.Wall) || !BlockInfo.Collides(c.Get(w + Int3.Up * DoorSize.Tall).Type)) continue;
-                    var color = c.Style.AccentColor.Scale(0.5f);
-                    for (int k = 0; k < DoorSize.Tall; k++) c.Set(w + Int3.Up * k, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, h.Opposite(), 1));
-                    c.X.Story.Add(new StoryProp("door to nowhere", w, "A welded door in a wall with nothing but rock behind it. Scratched from the other side."));
-                    goto nextCorridor;
-                }
-            }
-            nextCorridor:;
-        }
+        // (No welded doors to nowhere: every door opens by hand, owner's rule.)
         // The deepest walls bruise where the Bloom has been feeding on them.
         foreach (var (p, b) in c.Blocks.ToList())
         {

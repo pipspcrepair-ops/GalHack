@@ -736,7 +736,7 @@ public static class Structure
         {
             Block b = g.Get(c);
             if (b.IsAir) return !layout.Extras.InSpace && c.Y <= Assembler.GroundY && !occupied[c];
-            return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Lattice or BlockType.Tank or BlockType.Machine or BlockType.SealedDoor or BlockType.Shelf or BlockType.Growth;
+            return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Lattice or BlockType.Tank or BlockType.Machine or BlockType.Shelf or BlockType.Growth;
         }
         int turned = 0;
         foreach (var (c, b) in g.Blocks().ToList())

@@ -22,7 +22,7 @@ public enum BlockType : byte
     Lattice,    // open cube frame (Kessari)
     Spike,      // tapered spike pointing up
     Door,       // door panel in a socket; never blocks a path
-    SealedDoor, // a welded door in a capped socket; something is behind it
+    SealedDoor, // no longer made (every door opens by hand); kept so the values after it keep their meaning
     Terminal,
     Cache,      // loot container
     Core,       // the base's core: hijack it or destroy it
@@ -164,7 +164,7 @@ public static class BlockInfo
     /// Doors, glass, lattices and rails keep their own rules.
     /// </summary>
     public static bool IsPart(BlockType t) => Collides(t) && !IsFullCube(t) && !IsSlope(t) && !IsCornerSlope(t) && !IsShaped(t)
-        && t is not (BlockType.SealedDoor or BlockType.Growth or BlockType.Pane or BlockType.Lattice or BlockType.Rail or BlockType.Door);
+        && t is not (BlockType.Growth or BlockType.Pane or BlockType.Lattice or BlockType.Rail or BlockType.Door);
 
     /// <summary>
     /// The places' own shaped structure (half and quarter cubes, thin walls, beams, hung slopes, round columns): part of

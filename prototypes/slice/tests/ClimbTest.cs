@@ -265,7 +265,7 @@ public partial class ClimbTest : Node
     {
         P.Block b = place.Inst.Blocks.Get(c);
         if (b.IsAir) return nav.IsRock(c);
-        return P.BlockInfo.IsFullCube(b.Type) || b.Type is P.BlockType.Lattice or P.BlockType.Tank or P.BlockType.Machine or P.BlockType.SealedDoor or P.BlockType.Shelf or P.BlockType.Growth;
+        return P.BlockInfo.IsFullCube(b.Type) || b.Type is P.BlockType.Lattice or P.BlockType.Tank or P.BlockType.Machine or P.BlockType.Shelf or P.BlockType.Growth;
     }
 
     /// <summary>A floor to step off onto at a ladder's top that the place's routes refuse only for low debris lying on it (the walk steps over it).</summary>

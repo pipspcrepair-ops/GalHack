@@ -109,9 +109,9 @@ public static class Ornament
         }
         // Out of doors: open air not in a room (below ground, the place's air is all rooms and the rest rock).
         bool Outside(Int3 q) => (space || q.Y > Assembler.GroundY) && g.Get(q).IsAir && !(occ[q] && Roofed(q));
-        static bool Way(Block b) => b.Type is BlockType.Door or BlockType.SealedDoor or BlockType.Ladder or BlockType.Stair or BlockType.Pane
+        static bool Way(Block b) => b.Type is BlockType.Door or BlockType.Ladder or BlockType.Stair or BlockType.Pane
             || b.Role is Role.Window or Role.Door or Role.Traverse || BlockInfo.IsTransparent(b.Material);
-        static bool Door(Block b) => b.Type is BlockType.Door or BlockType.SealedDoor or BlockType.Ladder or BlockType.Stair || b.Role is Role.Door or Role.Traverse;
+        static bool Door(Block b) => b.Type is BlockType.Door or BlockType.Ladder or BlockType.Stair || b.Role is Role.Door or Role.Traverse;
         // A cell an ornament may take: open air, no one's feet, body or (but for a beam under its cell's top) head in it,
         // no lamp, and nothing anyone goes through or climbs beside it.
         var mine = new HashSet<Int3>();

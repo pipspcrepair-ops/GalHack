@@ -8,7 +8,7 @@ namespace PoiGenerator.Gen;
 /// <summary>
 /// What the years did to the plan, for every state the place is found in: a corridor's roof come down, with a
 /// way round dug by whoever came after if there wasn't one; a natural cave the diggers broke into; a squatters'
-/// tunnel through the rock between two rooms; a door welded shut, with the section behind it reached another way.
+/// tunnel through the rock between two rooms; a section shut behind a heavy blast door, opened by hand like any.
 /// How much of it there is goes by the purpose, the world's age and how violently it fell.
 /// </summary>
 internal sealed partial class Depths
@@ -95,7 +95,7 @@ internal sealed partial class Depths
         var joints = new Dictionary<int, List<DJoint>>();
         foreach (var j in Joints)
         {
-            if (j == without || j.Kind is "secret" or "sealed") continue;
+            if (j == without || j.Kind == "secret") continue;
             (joints.TryGetValue(j.A.Id, out var la) ? la : joints[j.A.Id] = new List<DJoint>()).Add(j);
             (joints.TryGetValue(j.B.Id, out var lb) ? lb : joints[j.B.Id] = new List<DJoint>()).Add(j);
         }
@@ -290,23 +290,10 @@ internal sealed partial class Depths
 
     // ---- a section sealed --------------------------------------------------------------------------
 
-    /// <summary>A door welded shut, so long as what's behind it is still reached another way; if nothing reaches it, squatters dug one first.</summary>
+    /// <summary>A section shut behind a heavy blast door (opened by hand like any door: no door is ever locked or welded).</summary>
     void Seal()
     {
-        var doors = Joints.Where(j => j.Kind == "door" && !j.A.Secret && !j.B.Secret && j.B != _vaultSpace && j.A != _vaultSpace).OrderBy(_ => R.Float()).ToList();
-        foreach (var j in doors.Take(5))
-        {
-            if (!AllReached(_blocked, without: j))
-            {
-                // A way round, then try again.
-                var lv = Levels.FirstOrDefault(l => l.Index == j.B.Level);
-                if (lv == null) continue;
-                int before = Joints.Count;
-                Squat(lv);
-                if (Joints.Count == before || !AllReached(_blocked, without: j)) continue;
-            }
-            j.Kind = "sealed";
-            return;
-        }
+        if (Joints.Where(j => j.Kind == "door" && !j.A.Secret && !j.B.Secret && j.B != _vaultSpace && j.A != _vaultSpace).OrderBy(_ => R.Float()).FirstOrDefault() is { } door)
+            door.Kind = "sealed";
     }
 }

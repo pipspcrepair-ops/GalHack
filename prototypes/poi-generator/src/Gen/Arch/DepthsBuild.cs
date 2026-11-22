@@ -344,13 +344,14 @@ internal sealed partial class Depths
             case "open":
                 P.C.Link(a, b);
                 break;
-            case "door" or "hazard" or "hatch" or "blast":
+            // (A sealed section's door is a blast door, shut heavy: opened by hand like any door, as every door is.)
+            case "door" or "hazard" or "hatch" or "blast" or "sealed":
             {
                 if (a < 0 || b < 0) return;
                 Frame(j);
                 int d = P.Door(j.I, j.J, j.K, j.AlongI, a, b);
                 if (j.Kind is "hazard" or "blast") P.C.Doorways[d].Hazard = true;
-                if (j.Kind == "blast") P.C.X.BlastDoors.Add(d);
+                if (j.Kind is "blast" or "sealed") P.C.X.BlastDoors.Add(d);
                 RecordDoor(j);
                 break;
             }
@@ -365,18 +366,6 @@ internal sealed partial class Depths
                 P.Dig(j.I, j.J, j.K, j.I, j.J, j.K);
                 P.C.Link(a, b);
                 RecordDoor(j);
-                break;
-            }
-            case "sealed":
-            {
-                // Welded shut in its socket: a door you can see and never open.
-                for (int s = 0; s < 2; s++)
-                    for (int y = 2 * j.J; y < 2 * j.J + DoorSize.Tall; y++)
-                    {
-                        int u = j.AlongI ? 2 * j.I + s : 2 * j.I, v = j.AlongI ? 2 * j.K : 2 * j.K + s;
-                        P.Put(u, y, v, new Block(BlockType.SealedDoor, Material.Steel, new Rgb(0x5a, 0x5e, 0x62), Role.Wall, j.AlongI ? Dir.South : Dir.East));
-                    }
-                P.C.X.Story.Add(new StoryProp("sealed", P.Cell(2 * j.I, 2 * j.J, 2 * j.K), "Welded shut from this side. Whatever was behind it, someone wanted it to stay there."));
                 break;
             }
         }

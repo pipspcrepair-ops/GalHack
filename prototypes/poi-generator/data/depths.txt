@@ -35,7 +35,7 @@
 #     feature ops        an operations hall with a gallery over it on one of the levels
 #     size m             the least it spans across, in metres: a large place reaches out with another wing until it does
 #     age <kind p>...    collapse (a corridor's roof down, a way dug round it), cave (broken into), squat (a
-#                        squatters' tunnel), sealed (a door welded, the section reached another way), breach
+#                        squatters' tunnel), sealed (a section shut behind a blast door, opened by hand like any), breach
 #                        (the ground fallen in from the surface): their chance a century after the fall; the
 #                        world's age and how violently it fell scale them
 

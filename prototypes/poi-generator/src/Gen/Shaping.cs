@@ -49,7 +49,7 @@ public static class Shaping
         || b.Role == Role.Debris && !BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Cable or BlockType.Tendril or BlockType.Vine or BlockType.Rebar); // (what hangs or juts needs its hold)
 
     /// <summary>A way through a wall: a window, a door, glass.</summary>
-    public static bool Opening(Block b) => b.Role == Role.Window || b.Type is BlockType.Door or BlockType.SealedDoor || BlockInfo.IsTransparent(b.Material) && b.Type is BlockType.Cube or BlockType.Pane;
+    public static bool Opening(Block b) => b.Role == Role.Window || b.Type is BlockType.Door || BlockInfo.IsTransparent(b.Material) && b.Type is BlockType.Cube or BlockType.Pane;
 
     /// <summary>Furniture standing on the floor: a panel or a thin wall may stand behind it, as nothing hangs on it.</summary>
     public static bool Standing(BlockType t) => t is BlockType.Crate or BlockType.Locker or BlockType.Shelf or BlockType.Table or BlockType.Meal or BlockType.Bench
@@ -133,7 +133,7 @@ public static class Shaping
         bool NearDoor(Int3 q)
         {
             for (int y = -3; y <= 0; y++) for (int z = -2; z <= 2; z++) for (int x = -2; x <= 2; x++)
-                if (g.Get(q + new Int3(x, y, z)).Type is BlockType.Door or BlockType.SealedDoor) return true;
+                if (g.Get(q + new Int3(x, y, z)).Type is BlockType.Door) return true;
             return false;
         }
         // A cell may take a shape: a plain cube, nothing against it, under building or rock (or a roof's or a wall's top

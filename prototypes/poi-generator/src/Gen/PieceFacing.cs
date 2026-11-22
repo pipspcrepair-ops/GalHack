@@ -82,12 +82,12 @@ public static class PieceFacing
         return null;
     }
 
-    /// <summary>What a piece can back onto: a full block, glass, a lattice, a sealed door, a post, or the rock.</summary>
+    /// <summary>What a piece can back onto: a full block, glass, a lattice, a post, or the rock.</summary>
     public static bool Wall(BlockGrid g, CellMask occupied, Int3 p, bool space = false)
     {
         Block b = g.Get(p);
         if (b.IsAir) return !space && p.Y <= Assembler.GroundY && !occupied[p];
-        return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Pane or BlockType.Lattice or BlockType.SealedDoor or BlockType.Pillar or BlockType.Rib
+        return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Pane or BlockType.Lattice or BlockType.Pillar or BlockType.Rib
             || (BlockInfo.IsShaped(b.Type) || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner) && b.Role == Role.Wall; // (a shaped wall: set back, thin or coved)
     }
 }

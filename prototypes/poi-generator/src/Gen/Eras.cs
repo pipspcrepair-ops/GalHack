@@ -126,7 +126,7 @@ public static class EraPass
     static readonly HashSet<BlockType> Fabric = new()
     {
         BlockType.Cube, BlockType.Ramp, BlockType.Corner, BlockType.InvCorner, BlockType.Pillar, BlockType.Rib, BlockType.Stair,
-        BlockType.Rail, BlockType.Lattice, BlockType.Door, BlockType.SealedDoor, BlockType.Breakable, BlockType.Ladder, BlockType.Plate,
+        BlockType.Rail, BlockType.Lattice, BlockType.Door, BlockType.Breakable, BlockType.Ladder, BlockType.Plate,
         BlockType.Pane, BlockType.Machine, BlockType.Tank, BlockType.Pump, BlockType.Pipe, BlockType.Spike,
     };
 
@@ -218,7 +218,7 @@ public static class EraPass
             for (int dx = -1; dx <= 1; dx++)
                 for (int dz = -1; dz <= 1; dz++)
                     for (int dy = -1; dy <= 1; dy++)
-                        if (g.Get(p + new Int3(dx, dy, dz)).Type is BlockType.Door or BlockType.SealedDoor) return true;
+                        if (g.Get(p + new Int3(dx, dy, dz)).Type is BlockType.Door) return true;
             return layout.ExitCells.Any(e => Math.Abs(e.X - p.X) <= 1 && Math.Abs(e.Z - p.Z) <= 1 && Math.Abs(e.Y - p.Y) <= 2);
         }
 

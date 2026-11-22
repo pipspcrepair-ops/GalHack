@@ -400,16 +400,6 @@ public static class Dressing
                 : "Plates still out, half eaten. The chairs were pushed back in a hurry.");
         }
 
-        // Welded doors. Something has been at them from the other side.
-        foreach (var cap in layout.Capped)
-        {
-            if (!rng.Chance(0.5f)) continue;
-            var color = (kit.BySymbol('k') ?? kit.Palette[0]).Colors[0].Scale(0.6f);
-            foreach (Int3 c in cap.Cells)
-                g.Set(c, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, cap.Facing.Opposite(), (byte)(quiet ? 1 : 0)));
-            if (quiet) Add("sealed door", cap.Cells[0], "Welded shut from this side. The scratches are on the other.");
-        }
-
         if (!quiet) return;
 
         // Scorched barricades in rooms on the path.

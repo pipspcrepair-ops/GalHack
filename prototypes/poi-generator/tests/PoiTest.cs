@@ -1287,8 +1287,18 @@ public partial class PoiTest : Node
                     }
                 }
             }
+        // Nor a welded door anywhere, in any family (the kits' too): every door opens by hand (owner).
+        int welded = 0, scanned = 0;
+        foreach (var f in _lib.Families)
+            for (int i = 0; i < 2; i++)
+            {
+                var p = PoiFactory.Generate(_lib, f, i, Rarity.Rare, (PoiState)((i * 2 + 1) % 4), (ulong)Random.Shared.NextInt64(), Hash.Combine(fresh, (ulong)i + 17, Hash.Of(f.Id)));
+                scanned++;
+                foreach (Int3 c in p.Blocks.Cells())
+                    if (p.Blocks.Get(c).Type == BlockType.SealedDoor) { welded++; if (notes.Count < 4) notes.Add($"{f.Id}: a welded door at {c}"); }
+            }
         foreach (string n in notes) GD.PrintErr("      " + n);
-        Check(odd == 0 && shut == 0, $"no locks: {doors} doors in {places} fresh places, every one an ordinary door ({odd} odd) and every room on foot from the way in ({shut} cut off)");
+        Check(odd == 0 && shut == 0 && welded == 0, $"no locks: {doors} doors in {places} fresh places, every one an ordinary door ({odd} odd) and every room on foot from the way in ({shut} cut off); {welded} welded door blocks in {scanned} places of every family");
     }
 
     // ---- placement (the kit engine's per-planet rules) -------------------------------------

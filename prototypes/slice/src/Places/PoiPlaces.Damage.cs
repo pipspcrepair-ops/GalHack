@@ -87,7 +87,7 @@ public partial class PoiPlaces
 
     /// <summary>
     /// Damage to one block; spent, it is air and listed in <paramref name="gone"/>. Every block takes it, a cache's, a terminal's,
-    /// a welded door's and a core's too (a core is only ever destroyed, never taken: <see cref="CoreDestroyed"/>); a door leaf is
+    /// and a core's too (a core is only ever destroyed, never taken: <see cref="CoreDestroyed"/>); a door leaf is
     /// worn as a whole (<see cref="Wear"/>) and a hidden wall's panel breaks as one (<see cref="Hurt(Place, SecretRoom, float)"/>).
     /// </summary>
     void Hurt(Place p, Int3 c, float damage, List<Int3> gone)

@@ -679,7 +679,7 @@ public static class Mesher
         /// <summary>How many of a block's boxes are drawn from further off (the structural ones first in each shape); none for the small things.</summary>
         static int BoxesWhenMerged(BlockType t) => t switch
         {
-            BlockType.Pillar or BlockType.Pane or BlockType.Door or BlockType.SealedDoor or BlockType.Tank => 1,
+            BlockType.Pillar or BlockType.Pane or BlockType.Door or BlockType.Tank => 1,
             BlockType.Rib or BlockType.Machine or BlockType.Pipe or BlockType.Barricade or BlockType.Statue or BlockType.Pump => 2,
             BlockType.Rail or BlockType.Lattice => 4,
             BlockType.Half or BlockType.Quarter or BlockType.Partition or BlockType.Beam => 1,
@@ -1514,7 +1514,7 @@ public static class Shapes
     {
         BlockType.Pillar => (new V3(0.3f, 0, 0.3f), new V3(0.7f, 1, 0.7f)),
         BlockType.Rib => (new V3(0.15f, 0, 0.15f), new V3(0.85f, 1, 0.85f)),
-        BlockType.Pane or BlockType.Lattice or BlockType.SealedDoor or BlockType.Growth => (new V3(0, 0, 0), new V3(1, 1, 1)),
+        BlockType.Pane or BlockType.Lattice or BlockType.Growth => (new V3(0, 0, 0), new V3(1, 1, 1)),
         BlockType.Spike => (new V3(0.25f, 0, 0.25f), new V3(0.75f, 1, 0.75f)),
         BlockType.Rubble => (new V3(0.05f, 0, 0.05f), new V3(0.95f, Debris.Top(b.Variant), 0.95f)),
         BlockType.Core => (new V3(0.2f, 0, 0.2f), new V3(0.8f, 1.8f, 0.8f)),
@@ -2106,13 +2106,6 @@ public static class Shapes
                 if (bottom && !plainDoor) l.Add(Box(0, 0.35f, 0.38f, 1, 0.5f, 0.62f, new Rgb(0xe0, 0xa8, 0x00), Surface.Metal, b.Facing));
                 break;
             }
-            case BlockType.SealedDoor:
-                l.Add(Box(0, 0, 0.3f, 1, 1, 0.7f, c, Surface.Metal, b.Facing));
-                l.Add(Box(0.45f, 0, 0.25f, 0.55f, 1, 0.75f, new Rgb(0xd0, 0x90, 0x40), Surface.Metal, b.Facing)); // weld seam
-                if (b.Variant == 1)
-                    for (int i = 0; i < 3; i++)
-                        l.Add(Box(0.15f + i * 0.12f, 0.2f + R(i) * 0.3f, 0.22f, 0.2f + i * 0.12f, 0.6f + R(i) * 0.3f, 0.3f, new Rgb(0x10, 0x08, 0x08), Surface.Matte, b.Facing));
-                break;
             case BlockType.Terminal:
             {
                 Rgb screen = b.Material == Material.DeadLumen ? ScreenDim : ScreenOn;
