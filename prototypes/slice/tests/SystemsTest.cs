@@ -164,7 +164,7 @@ public partial class SystemsTest : Node
         var total = new SortedDictionary<int, int>();
         var airless = new SortedDictionary<int, int>();
         var thick = new SortedDictionary<int, (float Min, float Max)>();
-        int wrongKind = 0, fuelMoons = 0, fuelMoonsBare = 0, homeMoons = 0, homeMoonsBare = 0, kindsThinner = 0;
+        int wrongKind = 0, stormy = 0, fuelMoons = 0, fuelMoonsBare = 0, homeMoons = 0, homeMoonsBare = 0, kindsThinner = 0;
         foreach (StarSystem s in systems)
             foreach (Orbiter b in Landable(s))
             {
@@ -178,6 +178,7 @@ public partial class SystemsTest : Node
                 {
                     airless[w] = airless.GetValueOrDefault(w) + 1;
                     if (!PlanetSpec.Craters(b.Spec.Archetype)) wrongKind++;
+                    if (b.Spec.Has(Modifier.PerpetualStorm)) stormy++;
                     continue;
                 }
                 // The air's thickness is the world's size's, and its density the same kind's grows with it.
@@ -198,7 +199,7 @@ public partial class SystemsTest : Node
         bool thicker = sized.Count == 4 && thick.Values.All(t => t.Min == t.Max);
         for (int i = 1; i < sized.Count; i++) thicker &= thick[sized[i]].Min > thick[sized[i - 1]].Max;
         Check(thicker && kindsThinner == 0, $"air: one thickness for each size, thicker the bigger, the largest's the densest ({string.Join(", ", thick.Select(p => $"{p.Key} km {p.Value.Min:F1}"))}); the same kind of air is denser on a bigger world ({kindsThinner} were not)");
-        Check(wrongKind == 0, $"vacuum: every airless body is bare rock, ice or lava, never a living world ({wrongKind} were not)");
+        Check(wrongKind == 0 && stormy == 0, $"vacuum: every airless body is bare rock, ice or lava, never a living world ({wrongKind} were not), and has no storm ({stormy} had)");
         Check(fuelMoons == systems.Count && fuelMoonsBare == fuelMoons, $"vacuum: every start's thruster moon is airless ({fuelMoonsBare} of {fuelMoons})");
         // The owner's bug (17 Nov): three small moons round a start world, every one with air. A start world's own
         // moons are smaller than it, so 8 km, and those are almost all airless.
@@ -321,7 +322,7 @@ public partial class SystemsTest : Node
                 if (b.Kind == OrbiterKind.Moon)
                 {
                     if (b.Rings) moonRings++;
-                    if (b != s.Home && b.Spec != null && ArchetypeLook.For(b.Spec).Ring) moonLooks++;
+                    if (b != s.Home && b.Spec != null && (ArchetypeLook.For(b.Spec).Ring || b.Spec.Has(Modifier.RingedSky))) moonLooks++;
                     continue;
                 }
                 if (b.Kind == OrbiterKind.Planet && b.Rings)

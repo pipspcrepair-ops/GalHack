@@ -872,7 +872,7 @@ public sealed class StarSystem
             PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width);
             // Its sky is the system's, so a ringed sky is no modifier here: a ring is the body's own (below).
             Modifier mods = spec.Modifiers & ~Modifier.RingedSky;
-            if (PlanetSpec.Craters(type)) mods = vacuum ? mods | Modifier.Cratered : mods & ~Modifier.Cratered;
+            if (PlanetSpec.Craters(type)) mods = vacuum ? (mods | Modifier.Cratered) & ~Modifier.PerpetualStorm : mods & ~Modifier.Cratered; // no air, no storm
             b.Spec = spec with { Modifiers = mods };
             // A rocky world's ring: rare (only the ringed kinds, start-sized or bigger); a moon never has one (owner, 17 Nov).
             ArchetypeLook look = ArchetypeLook.For(b.Spec);

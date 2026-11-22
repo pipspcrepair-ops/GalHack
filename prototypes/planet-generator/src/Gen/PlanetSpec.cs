@@ -152,6 +152,12 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
             result &= ~Modifier.Cratered;
             result |= pool[rng.Next(pool.Count)];
         }
+        // An airless world has no weather: a perpetual storm needs air (the next of the rest takes its place).
+        if ((result & Modifier.Cratered) != 0 && (result & Modifier.PerpetualStorm) != 0 && archetype is Archetype b && Craters(b))
+        {
+            result &= ~Modifier.PerpetualStorm;
+            result |= pool[rng.Next(pool.Count)];
+        }
         return result;
     }
 
