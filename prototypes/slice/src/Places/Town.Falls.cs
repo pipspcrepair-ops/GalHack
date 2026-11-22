@@ -101,7 +101,7 @@ public sealed partial class Town
     {
         PInt3 c = Cell(p.Pos);
         if (!Memory.Inst.Blocks.InBounds(new PInt3(c.X, Memory.Inst.Blocks.Min.Y, c.Z))) return p.Pos.Y - LandAt(p.Pos) < FootSlack + 0.05f; // (out on the land, on it)
-        if (Ground(p.Pos) is float ground && MathF.Abs(p.Pos.Y - ground) < FootSlack + 0.05f) return true;
+        if (Ground(p.Pos) is float ground && MathF.Abs(p.Pos.Y - ground) < FootSlack + 0.05f || _nav.RampAt(c, out _) || _nav.RampAt(c + PInt3.Down, out _)) return true; // (on a stair, whose steps the rays may miss)
         foreach (Aabb box in _gone) if (box.HasPoint(p.Pos)) return false;
         for (int dz = -1; dz <= 1; dz++)
             for (int dx = -1; dx <= 1; dx++)
