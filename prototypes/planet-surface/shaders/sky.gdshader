@@ -149,7 +149,7 @@ vec4 over(vec4 front, vec4 back) {
 vec4 surface_at(int layer, vec3 n, vec3 axis, vec3 zero, float radius) {
 	float u = atan(dot(n, cross(axis, zero)), dot(n, zero)) / 6.2831853;
 	float v = acos(clamp(dot(n, axis), -1.0, 1.0)) / 3.1415927;
-	return textureLod(surfaces, vec3(u, v, float(layer)), log2(max(40.7 / (radius * 700.0), 1.0)));
+	return textureLod(surfaces, vec3(u, v, float(layer)), log2(max(81.5 / (radius * 700.0), 1.0))); // 81.5: BodySurfaces.Width's texels a radian
 }
 
 // The share of a sun disc of angular radius a that a disc of radius b, c away, hides (small angles):
@@ -697,6 +697,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 // the orbit's sky draws (planet-generator's space shader), so when it takes over nothing changes.
 
 uniform float space_fade = 0.0;        // 0 the planet's sky, 1 space
+uniform float space_under = 0.0;       // 1: under the level is space (over the cap the world below is a globe, its air its own rim)
 uniform mat3 space_turn = mat3(1.0);   // the world's directions into the backdrop's
 uniform vec3 space_sun = vec3(0.0, 1.0, 0.0);
 
@@ -822,6 +823,8 @@ void sky() {
 		// The air under the level goes first: nothing is left there to light but the world's own rim.
 		if (space_fade > 0.0) {
 			float gone = mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y));
+			// Past the cap the land curves away from under the level: what shows there is space round the globe, not a wall of haze.
+			gone = max(gone, space_under * smoothstep(0.02, -0.06, dir.y));
 			float dark = smoothstep(0.78, 1.0, space_fade);
 			// The air goes; the sun and everything else up there stays, in front of the backdrop's stars;
 			// and any cloud still over you stays in front of all of it: the backdrop's dark where they

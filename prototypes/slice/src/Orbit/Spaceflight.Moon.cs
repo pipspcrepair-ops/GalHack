@@ -20,7 +20,7 @@ namespace Slice.Orbit;
 /// Gravity frames hand over: in the orbit zone you fly in the frame of the body you are near (the
 /// zone's anchor). As you come within a moon's reach it takes over: it holds still and the world
 /// you left moves round it, so its ground waits where you see it. The descent onto it and the climb
-/// off it are the start world's, the same seam over its own map, with no air to shroud it.
+/// off it are the start world's, the same seam over its own map.
 /// </summary>
 public partial class Spaceflight
 {

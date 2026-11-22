@@ -24,7 +24,12 @@ namespace PlanetSurface.Skies;
 /// </summary>
 public sealed class BodySurfaces
 {
-    public const int Width = 256, Height = 128, Layers = 32;
+    /// <summary>
+    /// A moon's far look hands over to its own globe about 9 km off, where its disc is a couple of hundred
+    /// pixels across, and the start world seen from its moon is as big: half this width is the hemisphere
+    /// in view, so at those sizes it is about a texel to a pixel, never smeared (owner, 17 Nov).
+    /// </summary>
+    public const int Width = 512, Height = 256, Layers = 32;
 
     /// <summary>What the array holds, mipmaps and all: the same whatever the system.</summary>
     public const long MemoryBytes = Layers * (long)Width * Height * 4 * 4 / 3;

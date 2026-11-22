@@ -6,16 +6,23 @@
     // The globe's radius against the map: the map's width is the length of its equator, so 1 is
     // true scale (radius = width / 2π, about 2.5 km for a 16 km world).
     "radiusScale": 1.0,
-    // How high the rim of air drawn round the globe reaches, as a share of its radius. It thins
-    // away to nothing by there, and has to stay under the orbit's lowest height.
-    "atmosphere": 0.15,
+    // How high the rim of air drawn round the globe reaches, as a share of its radius: a thin layer
+    // hugging the globe from space, as a real world's is (owner, 22 Nov: no big shell round it).
+    "atmosphere": 0.04,
     // The sheet's polar grid: bearings and rings, spread closest under you.
     "segments": 256,
     "rings": 160,
-    // The colour map's width in pixels (planet-generator's ColorMap; half as tall) and the clouds'.
-    "textureWidth": 2048,
+    // The colour map: a texel this many metres round the equator, a power of two at most this many
+    // pixels wide (planet-generator's ColorMap; half as tall), and the clouds' width.
+    "texelMetres": 4,
+    "textureWidth": 4096,
     "cloudWidth": 1024,
-    // Clouds sit this share of the radius over the ground, at this share of the generator's
+    // The ground near you, painted finer while you are low over it (a square this many texels wide,
+    // this many metres each, on worker threads), so it is never blocky at the switch.
+    "nearMetres": 2,
+    "nearTexels": 2048,
+    // Clouds sit this share of the curve's radius over the ground (never over the clouds you climbed
+    // through), at this share of the generator's
     // cover (its cloud map is a stormy day's; thinned, the land under it reads from orbit).
     "cloudHeight": 0.012,
     // The share of the map's relief the true globe draws (it is a small world: at full height its
@@ -43,8 +50,8 @@
 
   // Crossing between the surface and orbit is seamless: no loading, position, heading and velocity
   // carried straight across. What you see is set from your height alone, the same both ways: the
-  // air thickens to the cap in the world's own colours, the land hands over to the globe's sheet
-  // behind it, and it thins away to black space with the world curving away below.
+  // land hands over to the globe's sheet just under the cap, and the air thins away to black space
+  // with the world curving away below.
   "crossing": {
     // The cap, m: orbit starts here on every world, low, on Empyrion's scale, just over the clouds
     // (their tops are about 1,000 m). The design keeps the land under it (peaks to about 900 m).
@@ -61,14 +68,8 @@
     // The band, m over the cap: the surface's sky turning into space's, the star's light taking over.
     // The land is already gone: at its foot the sheet is all the ground there is.
     "band": 1000,
-    // The shroud: the air round you, from this height up to the cap (m), holding a little over it
-    // and thinning away over this many metres. Its thickness is this share at the most, times the
-    // share the world's air allows.
-    "shroudFrom": 760,
-    "shroudHolds": 30,
-    "shroudThins": 620,
-    "shroudThickness": 0.9,
-    // The swap, m: the sheet comes over the land from here up to the cap, behind the shroud.
+    // The swap, m: the sheet comes over the land from here up to the cap. Nothing covers it
+    // (owner, 22 Nov: no shrouding): it is the same land in the same place.
     "swapFrom": 960,
     // The sheet's curve: its radius (m) up to the cap, nearly flat, tightening up the band to the
     // true globe at the band's top, so in space every body is drawn at its true size. The map wraps

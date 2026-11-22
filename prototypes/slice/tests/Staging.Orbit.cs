@@ -56,6 +56,7 @@ public sealed partial class Staging
     {
         _pilot = new Pilot(_game, _drive);
         _game.Said += (text, _) => _said = text;
+        if (_args.ContainsKey("time")) _game.Zone.Sky.TimeOfDay = Num("time", 0.5); // the same moment for a before-and-after pair
         foreach (int x in Build(half: false)) yield return x;
         Vessel v = Skiff;
         foreach (int x in _pilot.Board(v)) yield return x;
@@ -206,7 +207,6 @@ public sealed partial class Staging
         foreach (int x in Seated()) yield return x;
         Vessel v = Skiff;
         _game.Visor.Visible = false;
-        if (_args.TryGetValue("time", out string clock)) _game.Zone.Sky.TimeOfDay = double.Parse(clock, System.Globalization.CultureInfo.InvariantCulture);
         bool cabin = _args.GetValueOrDefault("cam", "cabin") == "cabin";
         float pitch = (float)Num("pitch", 8) * Mathf.Pi / 180f;
         float[] yaws = _args.GetValueOrDefault("yaws", "0").Split(',').Select(y => float.Parse(y, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
@@ -273,7 +273,7 @@ public sealed partial class Staging
                 string name = float.IsNaN(yaw) ? $"{tag}-down" : yaws.Length > 1 || !cabin ? $"{tag}-y{yaw:0}" : tag;
                 Snap(name);
                 if (_game.InOrbit && _game.Surface.Planet.StarSystem.Home.Rings) GD.Print($"(ring fit {name}: {_game.Orbit.Globe.RingFit.Off:F1} m off the sheet's centre, inner edge {_game.Orbit.Globe.RingFit.Inner:F2} radii of the sheet)");
-                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, shroud {_game.Spaceflight.Shrouded:F2}, screen {(_game.InOrbit ? "orbit" : "surface")})");
+                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, screen {(_game.InOrbit ? "orbit" : "surface")})");
             }
         }
         float[] heights = _args.GetValueOrDefault("heights", "500,700,850,950,1000,1040,1058,1062,1100,1160,1250,1405,1600,1800,2100,2600,3300,4300,5600,7500")

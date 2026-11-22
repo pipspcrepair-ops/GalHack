@@ -12,29 +12,25 @@ using Survivor = Slice.Player.Survivor;
 namespace Slice.Orbit;
 
 /// <summary>
-/// The seam between the surface and orbit: the air thickens round you to the cap, the land hands
-/// over behind it, and it thins away to black space with the world curving away below.
+/// The seam between the surface and orbit: the land hands over to the globe's sheet just under the
+/// cap, and the air thins away to black space with the world curving away below.
 ///
 /// The crossing itself changes nothing you can see: the orbit is laid out in the surface's own
 /// coordinates (<see cref="OrbitZone.Align"/>). What you see is set from your height alone, the
-/// same both ways:
+/// same both ways, and nothing stands round the eye to hide any of it (owner, 22 Nov: no shrouding):
 ///
 /// - From the ground up the sheet (<see cref="Globe"/>) is the far land past the surface's own, in
 ///   every direction, so the land and its sea never end at an edge.
-/// - The shroud thickens from under the clouds, in the world's own sky colours, thickest at the
-///   cap. Behind it the sheet comes over the land just under the cap, at the same size and in the
+/// - Just under the cap the sheet comes over the land, the same land at the same size and in the
 ///   same place, and at the cap the land is gone. Nothing of it is left over the cap.
-/// - Over the cap the shroud thins, the sheet curves away, and the sky fades into space's own
-///   backdrop (the same galaxy the orbit's sky draws, from the same catalogue, in the same
-///   directions), so when the orbit's sky takes over at the top of the band nothing changes. Wind and haze go with the air, and the star's
-///   light takes over from the planet's sun.
-///
-/// Air thin enough to have little shroud has little to hide the swap, and needs little: its sheet
-/// is the same land in the same place, under the same black sky.
+/// - Over the cap the sheet curves away and the sky fades into space's own backdrop (the same
+///   galaxy the orbit's sky draws, from the same catalogue, in the same directions), so when the
+///   orbit's sky takes over at the top of the band nothing changes. Wind and haze go with the air,
+///   and the star's light takes over from the planet's sun.
 ///
 /// Coming down it all runs backward: at the band's top the orbit is aligned to the place under
 /// you (rigidly, the sky too, so nothing shows), the surface's streamer has been running ahead
-/// of you for a while, and the crossing itself falls just under the cap, behind the shroud.
+/// of you for a while, and the crossing itself falls just under the cap.
 /// </summary>
 public partial class Spaceflight
 {
@@ -217,11 +213,14 @@ public partial class Spaceflight
         Godot.Environment env = s.Sky.Environment;
         _sky ??= env.Sky.SkyMaterial as ShaderMaterial;
         _sky.SetShaderParameter("space_fade", gone);
+        // Past the cap the sheet curves away from under the level: the sky there, and the fog's wash over the sky, give way to space.
+        float overCap = Smooth((y - Ceiling) / 200f);
+        _sky.SetShaderParameter("space_under", overCap);
         env.FogDensity = _fogDensity * (1f - gone);
         // Height fog thickens with height over the clouds' base: left to itself it would fog your own hull.
-        env.FogHeightDensity = _fogHeight * (1f - Smooth((y - Rules.Crossing.ShroudFrom) / 150f));
+        env.FogHeightDensity = _fogHeight * (1f - Smooth((y - Rules.Crossing.FadeFrom) / 150f));
         env.FogSunScatter = _fogScatter * (1f - gone);
-        env.FogSkyAffect = _fogSky * (1f - gone);
+        env.FogSkyAffect = _fogSky * (1f - gone) * (1f - overCap);
         env.AmbientLightEnergy = _ambient * (1f - gone) + Rules.Space.Ambient[1] * gone;
         s.Sky.CloudDeckFade = (1f - gone) * (1f - OverLand(y));
     }
@@ -351,18 +350,8 @@ public partial class Spaceflight
     /// <summary>The sheet over the land (0 to 1): complete at the cap, the land still there under it until then.</summary>
     float OverLand(float y) => Smooth((y - Rules.Crossing.SwapFrom) / (Ceiling - Rules.Crossing.SwapFrom));
 
-    /// <summary>How thick the air round you stands, 0 to 1, whatever the world's air: it peaks at the cap, and thins away over it.</summary>
-    float ShroudAt(float y)
-    {
-        var r = Rules.Crossing;
-        return Smooth((y - r.ShroudFrom) / (Ceiling - r.ShroudFrom)) * (1f - Smooth((y - Ceiling - r.ShroudHolds) / r.ShroudThins));
-    }
-
-    /// <summary>The world's share of the shroud by how much air it has: thick air closes in, thin air hardly at all.</summary>
+    /// <summary>How much of the world's air its rim shows from outside: thick air glows, thin air hardly at all.</summary>
     float AirShare => Globe.AirShare(Below.Planet?.Sky.Density ?? 0f);
-
-    /// <summary>The shroud's thickness where you are (tests read this).</summary>
-    public float Shrouded { get; private set; }
 
     /// <summary>Lays the world below out for this drawn frame, from your height.</summary>
     void DrawWorld(float y)
@@ -404,6 +393,8 @@ public partial class Spaceflight
             height = Mathf.Lerp(height, o.SurfaceHeight(q.Length()), onGlobe);
         }
         N.Quaternion map = o.Map.Frame(nx, nz);
+        // Low over it, as far up as a descent streams the ground ahead, the ground under you is painted finer.
+        if (y < cap + r.Band * r.StreamAhead) o.Globe.Near(nx, nz);
 
         // What stands in front of what. It looks the same wherever it stands on its eye rays.
         float over = OverLand(y), near, far;
@@ -450,7 +441,9 @@ public partial class Spaceflight
             Local = Mathf.Clamp(MathF.Min((float)nz, (float)(h - nz)) * 0.8f, 300f, 3000f),
             Relief = Mathf.Lerp(1f, (float)Rules.Globe.ReliefFar, climb),
             CloudBend = cloudBend,
-            CloudLift = Mathf.Lerp(s.Sky.Air.CloudBase + s.Sky.Air.CloudThickness * 0.45f, (float)Rules.Globe.CloudHeight * R, Smooth((y - cap) / 400f)),
+            // A thin layer on the curve you see, whatever it is: the clouds you climbed through while the sheet is the flat
+            // land, the same share of its radius as it closes to the globe, never a shell standing off it (owner, 22 Nov).
+            CloudLift = MathF.Min(s.Sky.Air.CloudBase + s.Sky.Air.CloudThickness * 0.45f, (float)Rules.Globe.CloudHeight / bend),
             OverLand = over,
             Near = near, Far = far,
             ToSun = s.Sky.ToSun,
@@ -465,12 +458,6 @@ public partial class Spaceflight
         // running on past it would stand over the sheet's curve: a ring of water with no land in it.
         s.Streamer.FarFieldBehind = o.Globe.Visible;
         s.SeaRim = o.Globe.Visible ? s.Streamer.HorizonRim : PlanetSurface.Terrain.TerrainStreamer.NoRim;
-
-        // The shroud, in this world's own air as it is lit now.
-        Color high = new(sky.Zenith.R * day, sky.Zenith.G * day, sky.Zenith.B * day);
-        Color glow = new(sky.StarColor.R * day, sky.StarColor.G * day, sky.StarColor.B * day);
-        Shrouded = ShroudAt(y) * r.ShroudThickness * share;
-        o.Globe.Shroud(Shrouded, fog.Lerp(high, 0.3f), high, glow, s.Sky.ToSun);
     }
 
     // ---- The band ------------------------------------------------------------------------------

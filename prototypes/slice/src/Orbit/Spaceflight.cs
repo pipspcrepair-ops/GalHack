@@ -333,11 +333,14 @@ public partial class Spaceflight : Node
         to.Align(body, x, z, p.X, p.Z);
         _aligned = true;
         HoldSurfaceBehind();
+        string laid = Ms(watch);
         Wake(to);
+        string woken = Ms(watch);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
-        from.ProcessMode = ProcessModeEnum.Disabled;
-        GD.Print($"[lap disabled {watch.Elapsed.TotalMilliseconds:F1}]"); // the surface waits, exactly as it was left (still on screen: the seam)
+        string moved = Ms(watch);
+        from.ProcessMode = ProcessModeEnum.Disabled; // the surface waits, exactly as it was left (still on screen: the seam)
+        GD.Print($"[crossing up, ms in all by: laid out {laid}, orbit woken {woken}, moved {moved}, surface parked {Ms(watch)}]");
         _surfaceFar = g.Camera.Far;
         if (from == g.Surface) _surfaceAir ??= g.Suit.Sim.Environment;
         g.Suit.Sim.Environment = Vacuum;
@@ -396,12 +399,15 @@ public partial class Spaceflight : Node
         var totals = ZoneLedger.Totals(Holders());
 
         ReleaseSurface();
+        string shown = Ms(watch);
         Wake(to);
         to.Use();
+        string woken = Ms(watch);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
-        Park(from);
-        GD.Print($"[lap park {watch.Elapsed.TotalMilliseconds:F1}]"); // orbit waits, wrecks as you left them
+        string moved = Ms(watch);
+        Park(from); // orbit waits, wrecks as you left them
+        GD.Print($"[crossing down, ms in all by: surface shown {shown}, woken {woken}, moved {moved}, orbit parked {Ms(watch)}]");
         _aligned = false;
         if (to == g.Surface)
         {
@@ -418,6 +424,9 @@ public partial class Spaceflight : Node
         Crossings.Add(new Crossing(false, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, from.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));
         Report();
     }
+
+    /// <summary>A crossing's time so far, for its printed steps: where its frame goes, which must not show as a hitch.</summary>
+    static string Ms(Stopwatch watch) => watch.Elapsed.TotalMilliseconds.ToString("F1");
 
     string Where(double x, double z)
     {
