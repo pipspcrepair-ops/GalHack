@@ -339,7 +339,7 @@ public partial class CrowdTest : Node
     IEnumerable<int> Grazing(Town town, bool shots)
     {
         WildlifePatch patch = _game.Zone.Wildlife;
-        Species s = patch.Life?.Fauna.Species.Where(x => x.Behaviour == Behaviour.Herd && !x.Flies && !x.Corrupted && x.Rig != RigKind.Swarm).OrderBy(x => (x.Stats.Retaliates || x.Stats.Hunts ? 2 : 0) + (x.Activity is Wildlife.Activity.Diurnal or Wildlife.Activity.Cathemeral ? 0 : 1)).FirstOrDefault(); // (one that runs from you, not at you)
+        Species s = patch.Life?.Fauna.Species.Where(x => x.Behaviour == Behaviour.Herd && x.Domestic == DomesticKind.None && !x.Flies && !x.Corrupted && x.Rig != RigKind.Swarm).OrderBy(x => (x.Stats.Retaliates || x.Stats.Hunts ? 2 : 0) + (x.Activity is Wildlife.Activity.Diurnal or Wildlife.Activity.Cathemeral ? 0 : 1)).FirstOrDefault(); // (one that runs from you, not at you)
         if (s == null) { GD.Print("  (no herd animal on this world)"); yield break; }
         // The sleeper out past the settlement first (its wildlife about them), then the herd put down 25 m off them.
         Vector3 home = town.World(town.SpotAt(0));
@@ -392,7 +392,7 @@ public partial class CrowdTest : Node
                 Creature o = live.Where(x => x != c).OrderBy(x => WildSim.Flat(x.Position - c.Position).Length() - x.Radius).FirstOrDefault();
                 if (o == null) continue;
                 float nearest = WildSim.Flat(o.Position - c.Position).Length() - c.Radius - o.Radius;
-                if (-nearest > _herdWorst) (_herdWorst, _herdWorstAt) = (-nearest, $"{c.State}{(c.Species.Adult != null ? " young" : "")} and {o.State}{(o.Species.Adult != null ? " young" : "")}, {(alarmed ? "alarmed" : "grazing")}");
+                if (-nearest > _herdWorst) (_herdWorst, _herdWorstAt) = (-nearest, $"{c.State}{(c.Species.Adult != null ? " young" : "")} and {o.State}{(o.Species.Adult != null ? " young" : "")}, {(alarmed ? "alarmed" : "grazing")}; spaced {c.Spaced}/{o.Spaced}, step every {c.StepEvery}/{o.StepEvery}, kept {c.Keeper != null}/{o.Keeper != null}, room {c.Room.Length():F2}/{o.Room.Length():F2}, speed {WildSim.Flat(c.Velocity).Length():F2}/{WildSim.Flat(o.Velocity).Length():F2}, dormant {c.Dormant}/{o.Dormant}");
                 // (The young at their mothers' sides are not the herd's spacing.)
                 if (c.Species.Adult == null && o.Species.Adult == null && (!alarmed || c.State == CState.Flee)) (alarmed ? _alarmed : _calm).Add(nearest);
             }
