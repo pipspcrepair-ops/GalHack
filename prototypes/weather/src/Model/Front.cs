@@ -5,17 +5,14 @@ namespace Weather.Model;
 
 public enum FrontKind
 {
-    /// <summary>A line of thunderstorms with a shelf cloud along its leading edge.</summary>
+    /// <summary>A line of thunderstorms with a shelf cloud along its leading edge. (A dust storm is no front: it is a place, <see cref="DustStorm"/>.)</summary>
     Storm,
-    /// <summary>The same outflow over dry loose ground: a wall of lifted dust.</summary>
-    Dust,
 }
 
 /// <summary>
 /// A storm front: a long line advancing on the wind. Its cells line up just behind the leading
 /// edge, the storm's deck trails behind it, and the air ahead stays open until it arrives, so it is
-/// in sight before it does. A thunderstorm's carries a shelf cloud along that edge (some a roll
-/// cloud ahead of it); over dry loose ground the outflow lifts a wall of dust instead.
+/// in sight before it does. It carries a shelf cloud along that edge, some a roll cloud ahead of it.
 ///
 /// The world is a torus, so the line runs along one of its own lattice directions and closes on
 /// itself (<see cref="Period"/> long), and it comes round again every <see cref="Spacing"/> metres
@@ -55,7 +52,7 @@ public sealed class Front
     /// <summary>How far behind the leading edge the storm reaches, metres.</summary>
     public float Depth { get; init; }
 
-    /// <summary>How strong it is when fully grown, 0.5..1 (a dust wall's thickness inside, a shelf's drop).</summary>
+    /// <summary>How strong it is when fully grown, 0.5..1 (a shelf's drop).</summary>
     public float Severity { get; init; }
 
     /// <summary>It carries a roll cloud: a long low tube ahead of its edge, turning on its long axis.</summary>

@@ -39,6 +39,13 @@ public partial class Pacing : Node
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
+        // --minspec=1: the minimum spec's stand-in, as PopRoute's (4 cores, workers for 4, the lowest graphics unless --settings says otherwise).
+        if (_args.ContainsKey("minspec"))
+        {
+            System.Diagnostics.Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
+            _args.TryAdd("settings", "res://tests/minspec.cfg");
+        }
         if (_args.TryGetValue("screen", out string sc)) DisplayServer.WindowSetCurrentScreen(int.Parse(sc));
         DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen); // the owner's borderless, at the screen's own size
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
@@ -106,7 +113,7 @@ public partial class Pacing : Node
                  $"delta smoothing {ProjectSettings.GetSetting("application/run/delta_smoothing")}, .NET processors {System.Environment.ProcessorCount}, worker pool {ProjectSettings.GetSetting("threading/worker_pool/max_threads")}, trees {PlanetSurface.Terrain.PlanetFlora.TreeDensity}; world {_game.World}");
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
-        zone.Weather.Sim.Snap(WeatherKind.Clear);
+        zone.Weather.Sim.Snap(_args.ContainsKey("storm") ? WeatherKind.DustStorm : WeatherKind.Clear);
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(40)) yield return x;
         foreach (int x in _drive.WalkTo(_game.Bunker.CryoFront, 0.3f, 10f)) yield return x;

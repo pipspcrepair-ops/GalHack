@@ -64,7 +64,7 @@ public sealed class RegionRules
     public FogGround Fog { get; set; } = new();
     public WindGround Wind { get; set; } = new();
 
-    /// <summary>What a weather becomes where its own can't form: a dust storm over wet woods is a windy overcast.</summary>
+    /// <summary>What a weather becomes where its own can't form: a blizzard on warm low ground is rain. A dust storm is its fallback everywhere but inside its own storms (<see cref="DustStorm"/>).</summary>
     public Dictionary<WeatherKind, WeatherKind> Fallback { get; set; } = new();
 
     /// <summary>The map's landforms that are mountain country (by name): high ground on any world, however low its peaks.</summary>

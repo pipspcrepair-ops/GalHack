@@ -42,7 +42,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     public Vector3 ToSun => Zone.Sky.ToSun;
     public float CloudBaseY => Zone.Sky.Air.CloudBase;
     public IReadOnlyList<Hazard> Hazards => Sim?.Hazards ?? (IReadOnlyList<Hazard>)Array.Empty<Hazard>();
-    public Vector2 Wind2D => Sim?.Current.Wind ?? Vector2.Zero;
+    public Vector2 Wind2D => Sim?.Here.Wind ?? Vector2.Zero; // the observer's: a dust storm's gale only inside it
 
     PlanetWorld _planet;
     LightningFx _lightning;
@@ -188,6 +188,69 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         Vector3 c = _planet.NearestCopy(_planet.Canonical(f.Centre), camera);
         Zone.Sky.SetFront(new Vector4(c.X, c.Z, f.Heading.X, f.Heading.Y), new Vector4(f.Strength, f.Period, f.Spacing, f.Depth),
             new Vector4(f.Shear, f.Bow, f.Bows, f.Bays), new Vector4(f.Kind == FrontKind.Storm ? 1f : 0f, f.Roll ? 1f : 0f, f.Seed, f.Severity));
+    }
+
+    readonly Dictionary<int, PlanetSurface.Fx.Volume> _storms = new();
+    readonly List<int> _gone = new();
+
+    /// <summary>The drawn body of a dust storm (tests and screenshots), or null.</summary>
+    public PlanetSurface.Fx.Volume StormOf(int id) => _storms.GetValueOrDefault(id);
+
+    /// <summary>Steps a dust storm's body is drawn in: enough for its heaps near the eye, few enough for the frame.</summary>
+    const int StormSteps = 28;
+
+    /// <summary>
+    /// Each dust storm as a body of dust in the ground's own colour, lit by the sun, standing on the
+    /// land up to its height (planet-surface's general volume, Fx.Volume), and the eye's fog turning to
+    /// its murk as deep as the eye is in one: the fog draws the haze inside it, the body its wall and
+    /// billows, so going in and coming out are one smooth change.
+    /// </summary>
+    void SyncDust(Vector3 camera, float open)
+    {
+        Godot.Environment env = Zone.Sky.Environment;
+        Color haze = env.FogLightColor;
+        Color sun = Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy;
+        Color sky = haze.SrgbToLinear() * env.AmbientLightEnergy;
+        Color dust = _planet.Look.Dust;
+        Color deep = dust.SrgbToLinear() * (sky * 0.55f + sun * 0.12f); // as the body is lit deep inside (volume.gdshader)
+        env.FogLightColor = haze.Lerp(deep.LinearToSrgb(), Sim.DustDepth(camera) * open);
+
+        _gone.Clear();
+        foreach (int id in _storms.Keys) _gone.Add(id);
+        foreach (DustStorm d in Sim.DustStorms)
+        {
+            if (d.Strength < 0.005f) continue;
+            _gone.Remove(d.Id);
+            if (!_storms.TryGetValue(d.Id, out PlanetSurface.Fx.Volume v))
+            {
+                v = new PlanetSurface.Fx.Volume { Name = $"DustStorm{d.Id}" };
+                AddChild(v);
+                _storms[d.Id] = v;
+            }
+            Vector3 at = _planet.NearestCopy(_planet.Canonical(d.Position), camera);
+            // It stands on the land: its floor under the lowest ground of its footprint, its top its height over the middle's.
+            var along = new Vector3(d.Heading.X, 0f, d.Heading.Y) * d.HalfLength;
+            var across = new Vector3(-d.Heading.Y, 0f, d.Heading.X) * d.HalfWidth;
+            float middle = Sim.GroundHeight(at.X, at.Z), floor = middle;
+            for (int i = -1; i <= 1; i++)
+            for (int j = -1; j <= 1; j++)
+            {
+                Vector3 p = at + along * i + across * j;
+                floor = MathF.Min(floor, Sim.GroundHeight(p.X, p.Z));
+            }
+            floor -= 40f;
+            const float billow = 220f;
+            v.Shape(new Vector2(at.X, at.Z), d.Heading, new Vector2(d.HalfLength, d.HalfWidth), floor, middle + d.Height - floor, 0.5f, billow);
+            // As thick inside as its weather's visibility makes the fog (Atmosphere's rule), thinner up top; its heaps ride
+            // on it a little faster than it moves, climbing its face, so its front rolls.
+            v.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, d.Edge, 380f, d.Velocity * 1.15f, 2.5f, d.Strength);
+            v.Light(ToSun, sun, sky, env.FogLightColor, env.FogDensity, StormSteps);
+        }
+        foreach (int id in _gone)
+        {
+            _storms[id].QueueFree();
+            _storms.Remove(id);
+        }
     }
 
     (MeshInstance3D, ShaderMaterial) AddShaft()
@@ -842,6 +905,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         KeepStops(camera, dt);
         SyncCells(dt, camera);
         SyncFront(camera);
+        SyncDust(camera, open);
         Rumble(dt, camera);
 
         Vector2 w = c.Wind;
