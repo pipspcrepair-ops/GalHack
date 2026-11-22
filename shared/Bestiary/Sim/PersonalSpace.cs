@@ -13,6 +13,10 @@ namespace Wildlife;
 /// on someone ahead bear to their own right, so two on a path pass on one side; where there is no
 /// room to bear off (a doorway) the one who gives more waits a moment. A move that would put a
 /// body somewhere it can't stand (each body's own say) is not made: the other takes the whole push.
+/// Past touching, each keeps a distance of its kind (an arm's length for people, more from a stranger; a grazing herd loose,
+/// a frightened one close): who is inside it is told which way there is room (<see cref="Body.Room"/>), to step that way
+/// before anyone touches, and one coming up behind another going its way is told the gap left (<see cref="Body.Clear"/>), to
+/// follow on at it rather than walk into them.
 /// </summary>
 public sealed class PersonalSpace
 {
@@ -23,10 +27,19 @@ public sealed class PersonalSpace
         public float Radius;
         public Vector3 Heading;
         public float Give;
+        /// <summary>The distance it keeps past touching, m (0: none, it holds where it is).</summary>
+        public float Keep;
         /// <summary>Out: how long it should wait before going on (a doorway), and the push it was given.</summary>
         public float Wait;
         public Vector3 Moved;
+        /// <summary>Out: which way there is room from those inside the distance it keeps (flat, length 0 to 1: how far in they are).</summary>
+        public Vector3 Room;
+        /// <summary>Out: walking, the gap left to the one ahead going its way, m (MaxValue: nobody).</summary>
+        public float Clear;
     }
+
+    /// <summary>The distance people keep from each other past touching, m: about an arm's length.</summary>
+    public const float ArmsLength = 0.3f;
 
     public readonly List<Body> Bodies = new();
     readonly Dictionary<long, List<int>> _grid = new();
@@ -99,29 +112,47 @@ public sealed class PersonalSpace
                 Bodies[i] = a;
             }
         }
-        // Coming up on someone ahead: bear right, so a path is shared on one side.
+        // Past touching: the room from those inside the distance each keeps; coming up on someone ahead, a bearing to the right
+        // (so a path is shared on one side), and behind one going the same way in its line, the gap left to follow at.
         Index();
+        float most = 0f, keeps = 0f;
+        foreach (Body b in Bodies) (most, keeps) = (MathF.Max(most, b.Radius), MathF.Max(keeps, b.Keep));
         for (int i = 0; i < n; i++)
         {
             Body a = Bodies[i];
-            if (a.Heading.LengthSquared() < 0.01f || a.Give <= 0f) continue;
+            (a.Room, a.Clear) = (Vector3.Zero, float.MaxValue);
+            bool walks = a.Heading.LengthSquared() > 0.01f && a.Give > 0f;
+            if (!walks && a.Keep <= 0f) { Bodies[i] = a; continue; }
             int cx = (int)MathF.Floor(a.Pos.X / Cell), cz = (int)MathF.Floor(a.Pos.Z / Cell);
+            int rings = Math.Clamp((int)MathF.Ceiling((a.Radius + most + MathF.Max(a.Keep > 0f ? keeps : 0f, walks ? 1.2f : 0f)) / Cell), 1, 3);
             Vector3 right = new(-a.Heading.Z, 0f, a.Heading.X);
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dz = -1; dz <= 1; dz++)
+            int bears = 0;
+            for (int dx = -rings; dx <= rings; dx++)
+                for (int dz = -rings; dz <= rings; dz++)
                 {
                     if (!_grid.TryGetValue(Key(cx + dx, cz + dz), out List<int> near)) continue;
                     foreach (int j in near)
                     {
                         if (j == i) continue;
-                        Vector3 d = Bodies[j].Pos - a.Pos;
-                        d.Y = 0f;
-                        float dist = d.Length();
-                        if (dist > a.Radius + Bodies[j].Radius + 1.2f || dist < 1e-3f || a.Heading.Dot(d / dist) < 0.7f) continue;
-                        Vector3 step = right * 0.5f * dt;
-                        if (open == null || open(i, a.Pos + step)) { a.Pos += step; a.Moved += step; }
+                        Body b = Bodies[j];
+                        Vector3 d = new(b.Pos.X - a.Pos.X, 0f, b.Pos.Z - a.Pos.Z);
+                        float dist = d.Length(), want = a.Radius + b.Radius;
+                        if (dist < 1e-3f || MathF.Abs(a.Pos.Y - b.Pos.Y) > 1.5f) continue;
+                        Vector3 dir = d / dist;
+                        float keep = a.Keep > 0f ? MathF.Max(a.Keep, b.Keep) : 0f;
+                        if (dist < want + keep) a.Room -= dir * MathF.Min(1.5f, (want + keep - dist) / keep);
+                        if (!walks) continue;
+                        float ahead = a.Heading.Dot(dir);
+                        if (dist <= want + 1.2f && ahead >= 0.7f) bears++;
+                        if (ahead > 0.5f && b.Heading.Dot(a.Heading) > 0.5f && (d - a.Heading * (ahead * dist)).Length() < want) a.Clear = MathF.Min(a.Clear, dist - want);
                     }
                 }
+            if (a.Room.LengthSquared() > 1f) a.Room = a.Room.Normalized();
+            for (int k = 0; k < bears; k++)
+            {
+                Vector3 step = right * 0.5f * dt;
+                if (open == null || open(i, a.Pos + step)) { a.Pos += step; a.Moved += step; }
+            }
             Bodies[i] = a;
         }
         // How deep anything still sits in anything else.

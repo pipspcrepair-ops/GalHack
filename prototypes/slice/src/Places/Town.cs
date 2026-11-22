@@ -74,7 +74,10 @@ public sealed partial class Town : IKeeper
         public CitizenSpawn Spawn;
         public string Role => Spawn.Role;
         public Vector3 Pos;                // local feet
-        public float Yaw;
+        /// <summary>Which way they face, and how fast they are turning (eased: Town.Turn).</summary>
+        public float Yaw, Spin;
+        /// <summary>Walking, the gap left to someone ahead going their way, m (Town.Space; MaxValue: nobody).</summary>
+        public float Clear = float.MaxValue;
         public int Spot, Home;
         /// <summary>The spot they are bound for while its way is worked out on a worker (-1: none).</summary>
         public int Asked = -1;
@@ -119,7 +122,7 @@ public sealed partial class Town : IKeeper
         /// <summary>Making headway on their way (Town.Headway): where they last got a quarter metre on from, and how long since.</summary>
         public Vector3 ProgressAt;
         public float StuckFor;
-        /// <summary>Held again: this second's way past it is a step aside, the next's another way (Town.Headway).</summary>
+        /// <summary>Held up on this way and stepped aside for it once already: next time held, another way (Town.Headway).</summary>
         public bool Held;
         /// <summary>Frightened: the spot they make for to get in (their own home unless what frightened them is that way), and where it was, when last seen (local).</summary>
         public int Refuge = -1;
@@ -586,6 +589,7 @@ public sealed partial class Town : IKeeper
             _step = 1;
             for (int who = 0; who < People.Count; who++)
                 if (People[who].Run != null) Step(People[who], who, player, eye, look, tickDt, night, time);
+            if (!standing) KeepApart(player, tickDt, all: false); // (the place down: only they are about to keep apart)
             Miss();
             LastRunsMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
         }
@@ -790,6 +794,10 @@ public sealed partial class Town : IKeeper
         }
         // The doors ahead opened as they come (a door they may not open: they wait where they are).
         if (!ThroughDoors(p)) { p.Now = 0f; return true; }
+        // Pushed or stepped on past a point of their way (in a crowd; a new way from the middle of the cell they stand in): on to
+        // the next, never turned back for it. (Not out of a seat, nor the last of the way or a gap among the furniture: those are walked as they lie.)
+        while (p.Step < p.Path.Count - 2 && p.Seat < 0 && Passed(p.Pos, p.Path[p.Step], p.Path[p.Step + 1]) && Straight(p, p.Path[p.Step + 1])
+               && (_fixed == null || !_fixed.Touches(p.Path[p.Step], PlaceParts.PersonRadius, PlaceParts.PersonHeight))) p.Step++;
         Vector3 to = p.Path[p.Step];
         Vector3 d = to - p.Pos;
         float flat = new Vector2(d.X, d.Z).Length();
@@ -797,6 +805,8 @@ public sealed partial class Town : IKeeper
         bool last = p.Step >= p.Path.Count - 1;
         float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
+        // Behind someone going their way: on at their pace an arm's length back, never into them (Town.Space).
+        wanted = Following(p, wanted, pace);
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
         p.Gait += step;
@@ -834,16 +844,37 @@ public sealed partial class Town : IKeeper
             if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
         }
         Headway(p, dt);
-        p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
+        Turn(p, d, dt);
         p.Sitting = false;
         return false;
     }
 
     const float PeopleAccel = 3f;
 
+    /// <summary>A point of a way is behind someone already: within a metre of it and on past it toward the next.</summary>
+    static bool Passed(Vector3 at, Vector3 point, Vector3 next) => Flat(at - point) < 1f && (at - point).Dot(next - point) > 0f;
+
+    /// <summary>How fast someone turns at most, rad/s; how much faster the nearer they are off the way they want; how quickly a turn gets going, and settles, rad/s².</summary>
+    const float TurnRate = 4.5f, TurnGain = 6f, TurnUp = 14f, TurnDown = 30f;
+
+    /// <summary>
+    /// Turns someone toward a way (flat) at a natural rate: eased into the turn and out of it, never snapped round, so a way that
+    /// changes by a little now and then is a sway, not a flick (a point less than a step off is no way to turn to).
+    /// </summary>
+    static void Turn(Person p, Vector3 way, float dt)
+    {
+        if (Flat(way) < 0.25f) return;
+        float off = Mathf.AngleDifference(p.Yaw, MathF.Atan2(-way.X, -way.Z));
+        float want = Math.Clamp(off * TurnGain, -TurnRate, TurnRate);
+        p.Spin = Mathf.MoveToward(p.Spin, want, (want * p.Spin >= 0f && MathF.Abs(want) > MathF.Abs(p.Spin) ? TurnUp : TurnDown) * dt);
+        float by = p.Spin * dt;
+        if (by * off >= 0f && MathF.Abs(by) >= MathF.Abs(off)) (by, p.Spin) = (off, 0f);
+        p.Yaw += by;
+    }
+
     void GoTo(Person p, int spot)
     {
-        p.StuckFor = 0f;
+        (p.StuckFor, p.Held, p.Spin) = (0f, false, 0f);
         p.ProgressAt = p.Pos;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - At(spot)).Length() < 1.5f) return;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)

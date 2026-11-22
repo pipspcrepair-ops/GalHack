@@ -669,19 +669,23 @@ public sealed class WildSim
           || c.Space != null && (c.Species.Climbs || c.Falling)
           || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed && c.Space == null);
 
+    /// <summary>The last step's keeping apart, ms (measurements).</summary>
+    public float LastApartMs { get; private set; }
+
     void KeepApart(float dt)
     {
+        long from = Stopwatch.GetTimestamp();
         Space.Bodies.Clear();
         _spaced.Clear();
         ISolidSpace inside = null;
         foreach (Creature c in Creatures)
         {
-            c.Spaced = -1;
+            (c.Spaced, c.Room) = (-1, Vector3.Zero);
             if (!Spaced(c)) continue;
             c.Spaced = _spaced.Count;
             inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
-            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
             _spaced.Add(c);
         }
         if (_spaced.Count == 0) return;
@@ -690,8 +694,10 @@ public sealed class WildSim
             if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
         // Where each body can be put (its own say, so that of two the one that can't be moved, the other takes the whole push).
         Space.Resolve(dt, _stands ??= (i, p) => i >= _spaced.Count || Stands(_spaced[i], p), 4);
+        LastApartMs = (float)Stopwatch.GetElapsedTime(from).TotalMilliseconds;
         for (int i = 0; i < _spaced.Count; i++)
         {
+            _spaced[i].Room = Space.Bodies[i].Room;
             Vector3 moved = Space.Bodies[i].Moved;
             if (moved.LengthSquared() <= 1e-8f) continue;
             Creature c = _spaced[i];
