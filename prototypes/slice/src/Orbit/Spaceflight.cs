@@ -149,7 +149,9 @@ public partial class Spaceflight : Node
         GameNode g = Game;
         if (g.Phase != Phase.Playing || g.Survivor == null) return;
         OrbitComing();
+        long aloft = Stopwatch.GetTimestamp();
         WeatherAloft(delta);
+        if (g.InOrbit) SpentInOrbit["weather aloft (a tick)"] = SpentInOrbit.GetValueOrDefault("weather aloft (a tick)") + Stopwatch.GetElapsedTime(aloft).TotalMilliseconds;
         if (g.Suit.Dead) return;
         if (++_chartTick % 30 == 0) Chart();
         // Afloat in a structure you right yourself with its decks, so a door in a tilted hull fits you.

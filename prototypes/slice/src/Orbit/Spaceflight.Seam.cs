@@ -96,6 +96,7 @@ public partial class Spaceflight
         TimeSpan paused = GC.GetTotalPauseDuration();
         _frameDelta = (float)delta;
         ProcessSeam(delta);
+        if (Game.InOrbit) OrbitFrames++;
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (ms > WorstSeamMs)
         {
@@ -110,12 +111,17 @@ public partial class Spaceflight
     readonly System.Text.StringBuilder _laps = new();
     long _lapAt;
 
-    /// <summary>Notes the time since the last lap against a name, for <see cref="WorstSeamParts"/>.</summary>
+    /// <summary>All the time each part has taken in orbit, ms, over <see cref="OrbitFrames"/> drawn frames (tests print it per frame, and reset it).</summary>
+    public readonly Dictionary<string, double> SpentInOrbit = new();
+    public int OrbitFrames;
+
+    /// <summary>Notes the time since the last lap against a name, for <see cref="WorstSeamParts"/> and <see cref="SpentInOrbit"/>.</summary>
     void Lap(string name)
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(_lapAt, now).TotalMilliseconds;
         _lapAt = now;
+        if (Game.InOrbit) SpentInOrbit[name] = SpentInOrbit.GetValueOrDefault(name) + ms;
         if (ms >= 0.5) _laps.Append($"{name} {ms:F1}, ");
     }
 

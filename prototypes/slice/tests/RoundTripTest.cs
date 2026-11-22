@@ -151,6 +151,7 @@ public partial class RoundTripTest : Node
             if (Windowed) Check(P(f => f.Cpu, 0.99) < 16.7 * 0.8, $"{phase}: the main thread keeps the 16.7 ms budget with headroom, p99 {P(f => f.Cpu, 0.99):F1} ms of CPU");
         }
         Spaceflight sf = _game.Spaceflight;
+        GD.Print($"  (in orbit the seam's parts took, ms a drawn frame: {string.Join(", ", sf.SpentInOrbit.OrderByDescending(p => p.Value).Take(8).Select(p => $"{p.Key} {p.Value / Math.Max(sf.OrbitFrames, 1):F2}"))})");
         GD.Print($"  (the seam and skies took at most {sf.WorstSeamMs:F1} ms of a frame: {sf.WorstSeamParts}; moons arrived a piece a frame: {string.Join("; ", _game.Orbit.Moons.Where(c => c.Surface.Arrived).Select(c => $"{c.Name}: {c.Surface.ArriveSteps}"))})");
         var process = Process.GetCurrentProcess();
         double wall = _clock.Elapsed.TotalSeconds - wallAtStart, used = (process.TotalProcessorTime - cpuAtStart).TotalSeconds;
