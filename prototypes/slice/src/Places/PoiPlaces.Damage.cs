@@ -85,17 +85,22 @@ public partial class PoiPlaces
         _fuses.Add((q, h.Room.Module, h.Index, _now + ChainDelay * (1f + 0.3f * (_fuses.Count % 3))));
     }
 
-    /// <summary>Damage to one block; spent, it is air and listed in <paramref name="gone"/>. Caches, terminals, cores, doors and hidden walls have their own rules.</summary>
+    /// <summary>
+    /// Damage to one block; spent, it is air and listed in <paramref name="gone"/>. Every block takes it, a cache's, a terminal's,
+    /// a welded door's and a core's too (a core is only ever destroyed, never taken: <see cref="CoreDestroyed"/>); a door leaf is
+    /// worn as a whole (<see cref="Wear"/>) and a hidden wall's panel breaks as one (<see cref="Hurt(Place, SecretRoom, float)"/>).
+    /// </summary>
     void Hurt(Place p, Int3 c, float damage, List<Int3> gone)
     {
         Block b = p.Inst.Blocks.Get(c);
-        if (b.IsAir || b.Role is Role.Loot or Role.Terminal or Role.Core or Role.Secret || b.Type is BlockType.Door or BlockType.Core or BlockType.SealedDoor) return;
+        if (b.IsAir || b.Type == BlockType.Door) return;
         PlaceMemory m = p.Memory;
         float done = m.BlockDamage.GetValueOrDefault(c) + damage;
         if (done < BlockInfo.HitPoints(b)) { m.BlockDamage[c] = done; return; }
         m.BlockDamage.Remove(c);
         p.Inst.Blocks.Set(c, Block.Air);
         gone.Add(c);
+        if (b.Type == BlockType.Core) CoreDestroyed?.Invoke(p);
     }
 
     /// <summary>

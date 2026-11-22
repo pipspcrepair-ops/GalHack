@@ -122,7 +122,8 @@ public partial class PoiPlaces
     /// <summary>What one block gives back, before the return rate (null: the tool can't take it).</summary>
     public Dictionary<string, double> Yield(Block b)
     {
-        if (b.IsAir || b.Type is BlockType.Door or BlockType.Cache or BlockType.Core or BlockType.Terminal or BlockType.SealedDoor) return null;
+        // (A door leaf is worn as a whole; a core is never taken, only destroyed: shot, or blasted.)
+        if (b.IsAir || b.Type is BlockType.Door or BlockType.Core) return null;
         if (!Rules.Salvage.Materials.TryGetValue(b.Material.ToString().ToLowerInvariant(), out var per)) return null;
         float share = b.Type switch
         {
@@ -314,18 +315,11 @@ public partial class PoiPlaces
             if (hurt >= h.Piece.Piece.Hp) Detonate(h.Place, h.Piece);
             return false;
         }
-        Block b = h.Place.Inst.Blocks.Get(h.Cell);
-        if (b.Type == BlockType.Core)
+        if (h.Place.Inst.Blocks.Get(h.Cell).Type == BlockType.Core)
         {
-            PlaceMemory m = h.Place.Memory;
-            float done = m.BlockDamage.GetValueOrDefault(h.Cell) + damage;
-            m.BlockDamage[h.Cell] = done;
-            if (done >= BlockInfo.HitPoints(b))
-            {
-                h.Place.Inst.Blocks.Set(h.Cell, Block.Air);
-                Removed(h.Place, new List<Int3> { h.Cell });
-                CoreDestroyed?.Invoke(h.Place);
-            }
+            var gone = new List<Int3>(1);
+            Hurt(h.Place, h.Cell, damage, gone);
+            Removed(h.Place, gone);
             return false;
         }
         return h.Place.SecretAt(h.Cell) is SecretRoom s && Hurt(h.Place, s, damage);
