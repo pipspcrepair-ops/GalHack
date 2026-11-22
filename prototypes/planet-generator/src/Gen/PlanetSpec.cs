@@ -4,7 +4,8 @@ using System.Linq;
 
 namespace Planets.Gen;
 
-public enum Archetype { Temperate, Arid, Ice, Lava, Alien }
+/// <summary>A world's kind. Barren: a body with no air at all (regolith, icy or metal, <see cref="Archetypes.BarrenVariant"/>), every airless moon and small world.</summary>
+public enum Archetype { Temperate, Arid, Ice, Lava, Alien, Barren }
 
 /// <summary>
 /// Planet modifiers. The first five change the terrain; the last three only change the look
@@ -83,15 +84,16 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
     public bool HighGravity => Heavy(WidthKm);
 
     /// <summary>
-    /// Whether natural impact craters stay on a kind of world: barren rock with no air or water to wear
-    /// them away (the generator's airless bodies are cratered arid, ice and lava worlds). A living world
-    /// with air, weather and seas erodes and fills its old impacts, so it never rolls <see cref="Modifier.Cratered"/>.
+    /// Whether natural impact craters stay on a kind of world: one with no air or water to wear them away.
+    /// A barren body always keeps them; an ice or lava world only when it lost its air (a tidally heated moon,
+    /// <see cref="Modifier.Cratered"/>). A desert is never airless (owner, 22 Nov: an airless moon is a grey
+    /// cratered moonscape, never dunes), nor is a living world: air, weather and seas erode and fill old impacts.
     /// A war's blast craters are something else: they go on the war's targets (the POI generator's strikes).
     /// </summary>
-    public static bool Craters(Archetype archetype) => archetype is Archetype.Arid or Archetype.Ice or Archetype.Lava;
+    public static bool Craters(Archetype archetype) => archetype is Archetype.Barren or Archetype.Ice or Archetype.Lava;
 
     /// <summary>
-    /// No air to speak of: a cratered barren body, the Barren of the design doc as far as the generator has one.
+    /// No air to speak of: a barren body, or an ice or lava world that kept its craters for want of air.
     /// The one rule the flora, the creatures and the slice all read, so they can't disagree.
     /// </summary>
     public bool Airless => Has(Modifier.Cratered) && Craters(Archetype);
@@ -134,6 +136,8 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
     /// </summary>
     public static Modifier RollModifiers(ulong seed, int reroll, Archetype? archetype = null)
     {
+        // A barren body is its craters: no mesas, canyons or seas (there was never weather or water to make them), no storm in its black sky.
+        if (archetype == Archetype.Barren) return Modifier.Cratered;
         var rng = new Rng(Hash.Of(seed, 0x6D6F64, reroll));
         var all = (Modifier[])Enum.GetValues(typeof(Modifier));
         var pool = new List<Modifier>();

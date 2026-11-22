@@ -27,7 +27,7 @@ static class BiomeRules
             {
                 float patch = map.Model.Patches(map.CellX(i), map.CellY(j));
                 var cell = new Cell(e, t, map.Humidity[k], map.Slope[k], map.Special[k], patch, (flags & CellFlags.Coast) != 0);
-                biome = Hint(def, (Landform)map.Landform[k], cell) ?? Land(def, cell);
+                biome = def.Archetype == Archetype.Barren ? Barren(def.Variant, (Landform)map.Landform[k], cell) : Hint(def, (Landform)map.Landform[k], cell) ?? Land(def, cell);
             }
             map.Biome[k] = (byte)biome;
         }
@@ -145,6 +145,20 @@ static class BiomeRules
         (Archetype.Alien, 0) => Crystal(c),
         _ => Fungal(c),
     };
+
+    /// <summary>
+    /// Barren ground by what it is: on regolith, dark mare basalt on the low plains and bright highland on the
+    /// hills, plain grey regolith on steep crater walls, and frost in the coldest polar ground; on an ice moon
+    /// frost with dirty regolith on its steepest walls; on a metal world iron-rich ground with regolith patches.
+    /// </summary>
+    static Biome Barren(int variant, Landform landform, Cell c)
+    {
+        if (variant == Archetypes.Icy) return c.Slope > 0.75f ? Biome.Regolith : Biome.Frost;
+        if (variant == Archetypes.Metal) return c.Patch > 0.45f && c.Slope < 0.4f ? Biome.Regolith : Biome.Ironstone;
+        if (c.T < 0.08f) return Biome.Frost;
+        if (c.Slope > 0.7f) return Biome.Regolith;
+        return landform is Landform.Plains ? Biome.Mare : Biome.Highland;
+    }
 
     static Biome Meadow(Cell c)
     {

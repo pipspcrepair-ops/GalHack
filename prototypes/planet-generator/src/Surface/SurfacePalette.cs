@@ -39,6 +39,7 @@ sealed class SurfacePalette
             (Archetype.Ice, _) => (BiomeLook.Color(Biome.BlueIce), Rgb.Hex("40fff0")),
             (Archetype.Lava, _) => (BiomeLook.Color(Biome.Obsidian), Rgb.Hex("ff4a10")),
             (Archetype.Alien, 0) => (BiomeLook.Color(Biome.CrystalSpires), Rgb.Hex("e070ff")),
+            (Archetype.Barren, _) => (BiomeLook.Color(Biome.Regolith), Rgb.Hex("ffffff")),
             _ => (BiomeLook.Color(Biome.Mycelium), Rgb.Hex("30ffc0")),
         };
         Seabed = Rgb.Lerp(look.DeepSea, Rgb.Hex("c8b890"), 0.35f) * 0.8f;

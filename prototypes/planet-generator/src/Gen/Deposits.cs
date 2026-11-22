@@ -201,13 +201,13 @@ public sealed class DepositField
     public static bool IceAllowed(WorldMap map, int cell)
     {
         Archetype a = map.Spec.Archetype;
-        if (a == Archetype.Ice) return true;
+        if (a == Archetype.Ice || a == Archetype.Barren && map.Spec.Variant == Archetypes.Icy) return true;
         if (a is Archetype.Arid or Archetype.Lava) return false;
         return IceCap((Biome)map.Biome[cell]);
     }
 
-    /// <summary>The biomes that make an ice cap: snow and glacier land and the cold ground round it.</summary>
-    public static bool IceCap(Biome b) => b is Biome.Snow or Biome.Glacier or Biome.Snowfield or Biome.BlueIce or Biome.IceTundra or Biome.Tundra;
+    /// <summary>The biomes that make an ice cap: snow and glacier land and the cold ground round it (on a barren body, its polar frost).</summary>
+    public static bool IceCap(Biome b) => b is Biome.Snow or Biome.Glacier or Biome.Snowfield or Biome.BlueIce or Biome.IceTundra or Biome.Tundra or Biome.Frost;
 
     bool Allowed(DepositKind kind, int cell) => kind != DepositKind.Water || IceAllowed(_map, cell);
 
