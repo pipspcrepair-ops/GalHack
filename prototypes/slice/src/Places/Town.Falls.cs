@@ -94,7 +94,7 @@ public sealed partial class Town
 
     /// <summary>
     /// Whether the blocks hold them where they stand: their feet on the walking grid's floor or stair under them (out on the land, on
-    /// the land as it stands). Where nothing has gone, a standing cell beside them at their height holds them too (a corner cut by a
+    /// the land as it stands). Where nothing has gone, the way they walk holds them, and a standing cell beside them at their height (a corner cut by a
     /// stairwell's edge: the place stands as it was built). Only otherwise do the colliders say (<see cref="Footed"/>: a bed, rubble).
     /// </summary>
     bool AsBuilt(Person p)
@@ -103,6 +103,7 @@ public sealed partial class Town
         if (!Memory.Inst.Blocks.InBounds(new PInt3(c.X, Memory.Inst.Blocks.Min.Y, c.Z))) return p.Pos.Y - LandAt(p.Pos) < FootSlack + 0.05f; // (out on the land, on it)
         if (Ground(p.Pos) is float ground && MathF.Abs(p.Pos.Y - ground) < FootSlack + 0.05f || _nav.RampAt(c, out _) || _nav.RampAt(c + PInt3.Down, out _)) return true; // (on a stair, whose steps the rays may miss)
         foreach (Aabb box in _gone) if (box.HasPoint(p.Pos)) return false;
+        if (p.Path != null && p.Step < p.Path.Count) return true; // (on a way the walking grid gave them, up a flight it knows)
         for (int dz = -1; dz <= 1; dz++)
             for (int dx = -1; dx <= 1; dx++)
                 if (_nav.Standable(new PInt3(c.X + dx, c.Y, c.Z + dz)) || _nav.RampAt(new PInt3(c.X + dx, c.Y, c.Z + dz), out _) || _nav.RampAt(new PInt3(c.X + dx, c.Y - 1, c.Z + dz), out _)) return true;
