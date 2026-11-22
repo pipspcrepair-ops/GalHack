@@ -71,6 +71,7 @@ public partial class Spaceflight
             {
                 zone.Ground.Ceiling = ceiling;
                 LightBodies(zone);
+                Unlit(zone);
                 Mute(zone);
                 GD.Print($"{Charts.Tidy(moon.Name)} is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s²");
             };

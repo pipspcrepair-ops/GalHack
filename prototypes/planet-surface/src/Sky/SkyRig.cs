@@ -306,20 +306,21 @@ public partial class SkyRig : Node3D
         Sun.LightColor = C(s.StarColor);
     }
 
-    /// <summary>The world's ground on average, as its globe paints it: what the sky shows of the flat ground past the land's reach.</summary>
+    /// <summary>The world's ground on average, in its globe's colours: what the sky shows of the flat ground past the land's reach. A sparse grid of it, so it costs nothing to set up.</summary>
     static Color FarGround(PlanetWorld world)
     {
-        const int width = 64;
-        var colors = Planets.Look.ColorMap.Build(world.Map, Planets.Look.ArchetypeLook.For(world.Spec), width, (x, z) => world.Palette.FarGround(x, z, 64f));
-        float r = 0f, g = 0f, b = 0f;
-        int n = colors.Width * colors.Height;
-        for (int k = 0; k < n; k++)
-        {
-            r += colors.Albedo[k * 4];
-            g += colors.Albedo[k * 4 + 1];
-            b += colors.Albedo[k * 4 + 2];
-        }
-        return new Color(r / (n * 255f), g / (n * 255f), b / (n * 255f));
+        var look = Planets.Look.ArchetypeLook.For(world.Spec);
+        Rgb sum = default;
+        const int across = 32, down = 16;
+        for (int j = 0; j < down; j++)
+            for (int i = 0; i < across; i++)
+            {
+                double x = (i + 0.5) * world.Width / across, z = (j + 0.5) * world.Height / down;
+                float e = world.Map.Sample(world.Map.Elevation, x, z);
+                sum += e < 0f ? look.Sea(Planets.Gen.Biome.ShallowSea, -e) : world.Palette.FarGround(x, z, 64f);
+            }
+        sum *= 1f / (across * down);
+        return new Color(sum.R, sum.G, sum.B);
     }
 
     // ---- Lamps under the clouds ---------------------------------------------------------------------

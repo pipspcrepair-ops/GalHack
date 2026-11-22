@@ -148,6 +148,11 @@ public partial class Spaceflight : Node
     {
         GameNode g = Game;
         if (g.Phase != Phase.Playing || g.Survivor == null) return;
+        if (_parkNext != null)
+        {
+            Park(_parkNext);
+            _parkNext = null;
+        }
         OrbitComing();
         WeatherAloft(delta);
         if (g.Suit.Dead) return;
@@ -251,9 +256,10 @@ public partial class Spaceflight : Node
         float cover = MathF.Max(s.Sky.Air.CloudCover, (float)Rules.Globe.CloudCoverAtLeast), w = (float)s.Planet.Width, h = (float)s.Planet.Height;
         Vector2 drift = s.Sky.CloudDrift, scale = s.Sky.CloudScale;
         Func<float, float, float> coverage = clouds == null ? null : (u, v) => clouds.Coverage(u * w, v * h, cover, drift, scale);
+        DrawSpaceApart();
         Orbit = new OrbitZone(s.Planet, s.Data, Rules, s.Planet.StarSystem.StarKey, Ceiling, coverage)
         {
-            ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = s.Sky.Surfaces,
+            ProcessMode = ProcessModeEnum.Disabled, Surfaces = s.Sky.Surfaces,
         };
         Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}"));
         Orbit.Home.Surface = s;
@@ -293,6 +299,7 @@ public partial class Spaceflight : Node
         if (y < Ceiling)
         {
             HighestInAir = MathF.Max(HighestInAir, y);
+            ReadyAbove(carrier, y);
             return;
         }
         // The cap: nothing stands in the atmosphere over it, ever. It crosses here.
@@ -301,6 +308,40 @@ public partial class Spaceflight : Node
         if (carrier?.Structure.Mode == CoreMode.Hover) return;
         if (Orbit?.Ready == true) BeginCrossing(carrier, up: true);
         else TicksHeldAtCap++;
+    }
+
+    /// <summary>
+    /// Just under the cap the orbit is laid out over the point under you and starts running, a frame
+    /// apart, so the crossing's own frame has neither to do (each visits much of the zone). It is
+    /// all rigid and out of sight; dropping back down parks it again.
+    /// </summary>
+    void ReadyAbove(Vessel carrier, float y)
+    {
+        if (Orbit?.Ready != true || Below != Game.Zone) return;
+        float under = Ceiling - y;
+        if (under > 2f * ReadyUnder)
+        {
+            if (Orbit.ProcessMode != ProcessModeEnum.Disabled) Park(Orbit);
+            _aligned = false;
+            return;
+        }
+        if (under > ReadyUnder) return;
+        Vector3 p = carrier != null ? carrier.Body.Position.ToGodot() : Game.Survivor.WorldFeet;
+        if (!_aligned || new Vector2(p.X - _alignedOver.X, p.Z - _alignedOver.Z).Length() > RealignFrom) AlignOver(p);
+        else if (Orbit.ProcessMode == ProcessModeEnum.Disabled) Orbit.ProcessMode = ProcessModeEnum.Inherit;
+    }
+
+    /// <summary>How far under the cap the orbit gets ready, m, and how far you may drift from where it was laid out before it is laid out again.</summary>
+    const float ReadyUnder = 40f, RealignFrom = 150f;
+    Vector3 _alignedOver;
+
+    /// <summary>Lays the orbit out over the surface point under a position on the surface: nothing about it changes to the eye.</summary>
+    void AlignOver(Vector3 p)
+    {
+        double x = Mathx.WrapX(p.X, Below.Planet.Width), z = Mathx.Wrap(p.Z, Below.Planet.Height);
+        Orbit.Align(Here, x, z, p.X, p.Z);
+        _aligned = true;
+        _alignedOver = p;
     }
 
     /// <summary>What you are in stands at the cap, moving on: it keeps its speed for the crossing, which carries it on over.</summary>
@@ -327,18 +368,16 @@ public partial class Spaceflight : Node
         double x = Mathx.WrapX(p.X, from.Planet.Width), z = Mathx.Wrap(p.Z, from.Planet.Height);
         var totals = ZoneLedger.Totals(Holders());
 
-        // The orbit is laid out over the point under you: nothing about you changes.
-        Celestial body = Here;
-        _leftAt[body] = new Vector3(p.X, p.Y, p.Z);
-        to.Align(body, x, z, p.X, p.Z);
-        _aligned = true;
+        // The orbit is laid out over the point under you (just under the cap, as a rule): nothing about you changes.
+        _leftAt[Here] = new Vector3(p.X, p.Y, p.Z);
+        if (!_aligned || new Vector2(p.X - _alignedOver.X, p.Z - _alignedOver.Z).Length() > RealignFrom) AlignOver(p.ToGodot());
         Wake(to);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
-        from.ProcessMode = ProcessModeEnum.Disabled;
-        GD.Print($"[lap disabled {watch.Elapsed.TotalMilliseconds:F1}]"); // the surface waits, exactly as it was left
+        _parkNext = from; // the surface waits, exactly as it was left, from the next tick
         _surfaceFar = g.Camera.Far;
         AllSpace();
+        GD.Print($"[lap crossed up {watch.Elapsed.TotalMilliseconds:F1}]");
         if (from == g.Surface) _surfaceAir ??= g.Suit.Sim.Environment;
         g.Suit.Sim.Environment = Vacuum;
         g.Suit.Beyond = Space;
@@ -400,8 +439,8 @@ public partial class Spaceflight : Node
         to.Use();
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
-        Park(from);
-        GD.Print($"[lap park {watch.Elapsed.TotalMilliseconds:F1}]"); // orbit waits, wrecks as you left them
+        _parkNext = from; // orbit waits, wrecks as you left them, from the next tick
+        GD.Print($"[lap crossed down {watch.Elapsed.TotalMilliseconds:F1}]");
         _aligned = false;
         if (to == g.Surface)
         {
@@ -425,16 +464,57 @@ public partial class Spaceflight : Node
         return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
     }
 
+    /// <summary>A zone running again (the orbit is never hidden: <see cref="DrawSpaceApart"/>).</summary>
     static void Wake(SurfaceZone zone)
     {
         zone.ProcessMode = ProcessModeEnum.Inherit;
-        zone.Visible = true;
+        if (zone is not OrbitZone) zone.Visible = true;
     }
 
     static void Park(SurfaceZone zone)
     {
         zone.ProcessMode = ProcessModeEnum.Disabled;
-        zone.Visible = false;
+        if (zone is not OrbitZone) zone.Visible = false;
+    }
+
+    /// <summary>The zone just left, parked a tick after the crossing: each half of a crossing visits much of a zone, and they take a frame each.</summary>
+    SurfaceZone _parkNext;
+
+    /// <summary>
+    /// Everything drawn in the orbit zone is on a layer of its own, which the camera sees only in space:
+    /// showing or hiding a whole zone visits every node in it, and the orbit's wrecks made that a hitch
+    /// at every crossing. A thing that crosses takes the layer of the zone it lands in; one with a layer
+    /// of its own (the sleeper's body and head) keeps it.
+    /// </summary>
+    void DrawSpaceApart()
+    {
+        GetTree().NodeAdded += Layered;
+        Game.Camera.SetCullMaskValue(SpaceLayer, false);
+        foreach (SurfaceZone z in Game.GetChildren().OfType<SurfaceZone>()) Unlit(z);
+    }
+
+    /// <summary>The render layer the orbit zone draws on (1 to 20).</summary>
+    public const int SpaceLayer = 20;
+    const uint SpaceBit = 1u << (SpaceLayer - 1);
+
+    void Layered(Node n)
+    {
+        if (n is not VisualInstance3D v) return;
+        bool space = Orbit != null && (n == Orbit || Orbit.IsAncestorOf(n));
+        if (space && v.Layers == 1u) v.Layers = SpaceBit;
+        else if (!space && v.Layers == SpaceBit) v.Layers = 1u;
+    }
+
+    /// <summary>A surface's sun and night light cast no shadows of what is drawn on the space layer (the wrecks overhead).</summary>
+    static void Unlit(SurfaceZone z)
+    {
+        if (z.Sky == null) return;
+        foreach (DirectionalLight3D l in new[] { z.Sky.Sun, z.Sky.NightLight }) if (l != null) l.LightCullMask &= ~SpaceBit;
+    }
+
+    public override void _ExitTree()
+    {
+        if (Orbit != null) GetTree().NodeAdded -= Layered;
     }
 
     // ---- The record, and the crossing's report -------------------------------------------------

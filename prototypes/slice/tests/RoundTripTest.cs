@@ -19,7 +19,7 @@ namespace Slice.Tests;
 /// <summary>
 /// Round trips leave nothing behind (owner, 22 Nov: "Going from world to space to world to space to
 /// world, shouldn't have any buggy after effects", and cleanup thorough from world to world). On a
-/// fresh world, in the Skiff, three times over: up off the start world into orbit, out to the
+/// fresh world, in the Skiff, four times over: up off the start world into orbit, out to the
 /// thruster moon and down onto its surface, back up into orbit, back to the start world and down onto
 /// it; and up into orbit once more at the end.
 ///
@@ -30,10 +30,13 @@ namespace Slice.Tests;
 /// gravity, the suit's air and the clock read the zone you are in, and nothing is held down. After a
 /// forced collection: the engine's object, node, orphan and resource counts, its texture, buffer and
 /// static memory, the managed heap, the physics bodies and the worker queues, each step's against the
-/// same step's in the first loop, all within a small tolerance from loop 2 on; and the frame times.
+/// same step's in the second loop, all within a small tolerance from loop 3 on (the first loop makes
+/// what a first visit makes: the moon's surface, the ground streamed where you come down); and the
+/// frame times.
 ///
-/// The two cruises between the worlds are the one shortcut, printed: the Skiff is set inside the
-/// moon's reach, and back over the start world.
+/// The two cruises between the worlds are the one shortcut, printed: the Skiff is set over the
+/// moon, and back over the start world, each time over the same place it first came down on, so
+/// each loop's ground is the same and its figures can be laid against the first loop's.
 ///
 /// Run windowed it is also the climb's timing: full screen, vsync, the owner's settings (--settings=path)
 /// or the minimum spec's stand-in (--minspec=1: 4 cores, workers sized for 4, the lowest graphics); each
@@ -45,7 +48,10 @@ namespace Slice.Tests;
 /// </summary>
 public partial class RoundTripTest : Node
 {
-    const int WatchdogMinutes = 45, Loops = 3;
+    const int WatchdogMinutes = 45, Loops = 4;
+
+    /// <summary>The loop every later one is laid against: the first after everything has been visited once.</summary>
+    const int Settled = 2;
     Game.Game _game;
     Driver _drive;
     Pilot _pilot;
@@ -231,24 +237,28 @@ public partial class RoundTripTest : Node
             yield break;
         }
         Vessel v = _skiff;
-        Vector3 inside = moon.Centre + (v.Body.Position.ToGodot() - moon.Centre).Normalized() * (moon.Reach - 400f);
-        GD.Print($"  (shortcut: the cruise out to {moon.Name} skipped: the Skiff set {moon.Height(inside):F0} m over it, just inside its reach)");
-        Place(v, inside);
-        for (int i = 0; i < 60 * 300 && !(orbit.Anchor == moon && moon.Surface.Arrived); i++) yield return 0;
-        var (tx, tz) = moon.Map.MapPoint(moon.ToGlobe(v.Body.Position));
+        // Over the place it first came down on, or the near side to begin with.
+        _moonAt ??= moon.Map.MapPoint(moon.ToGlobe(v.Body.Position));
+        var (tx, tz) = _moonAt.Value;
         Vector3 Above() => moon.ToWorld(moon.Map.Direction(tx, tz) * moon.RadiusFor(moon.Ceiling + orbit.Rules.Crossing.Band + 400f)).ToGodot();
+        GD.Print($"  (shortcut: the cruise out to {moon.Name} skipped: the Skiff set over its map point ({tx:F0}, {tz:F0}), {moon.Height(Above()):F0} m up)");
+        Place(v, Above());
+        for (int i = 0; i < 60 * 300 && !(orbit.Anchor == moon && moon.Surface.Arrived); i++) yield return 0;
         foreach (int x in _pilot.FlyTo(v, Above, 30f, 400f)) yield return x;
         Check(orbit.Anchor == moon && moon.Surface.Arrived, $"{moon.Name} took over as the frame, its surface there for the descent");
         found(moon);
     }
 
-    /// <summary>Back over the start world on the moon's side, out of the moon's reach (the cruise skipped, printed).</summary>
+    (double X, double Z)? _moonAt;
+
+    /// <summary>Back over the start world where it first left it (the cruise skipped, printed).</summary>
     IEnumerable<int> BackHome()
     {
         OrbitZone orbit = _game.Orbit;
-        Celestial home = orbit.Home, moon = orbit.Moon;
-        Vector3 over = home.Centre + (moon.Centre - home.Centre).Normalized() * (home.GlobeRadius + home.Ceiling + orbit.Rules.Crossing.Band + 600f);
-        GD.Print($"  (shortcut: the cruise back skipped: the Skiff set {home.Height(over):F0} m over the start world, on the moon's side)");
+        Celestial home = orbit.Home;
+        Crossing first = _game.Spaceflight.Crossings[0];
+        Vector3 over = home.ToWorld(home.Map.Direction(first.MapX, first.MapZ) * home.RadiusFor(home.Ceiling + orbit.Rules.Crossing.Band + 600f)).ToGodot();
+        GD.Print($"  (shortcut: the cruise back skipped: the Skiff set {home.Height(over):F0} m over the start world, over the place it first left)");
         Place(_skiff, over);
         for (int i = 0; i < 60 * 10 && orbit.Anchor != home; i++) yield return 0;
         Check(orbit.Anchor == home, "the start world took the frame back");
@@ -302,7 +312,7 @@ public partial class RoundTripTest : Node
         Anomalies(step);
         Globes(step, loop);
         TheSky(step);
-        if (Windowed && (loop == 1 || loop == Loops) && _game.InOrbit) foreach (int x in Pictures(loop, step)) yield return x;
+        if (Windowed && (loop == 1 || loop == Loops - 1) && _game.InOrbit) foreach (int x in Pictures(loop, step)) yield return x;
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
@@ -327,8 +337,10 @@ public partial class RoundTripTest : Node
         SurfaceZone here = _game.Zone;
         OrbitZone orbit = _game.Orbit;
         bool space = here is OrbitZone;
-        // Every other zone parked by design (out of the physics and hidden): the start world's, the moons' and the orbit.
-        var awake = Zones().Where(z => z != here && (z.ProcessMode != ProcessModeEnum.Disabled || z.Visible)).Select(z => z.Name.ToString()).ToList();
+        // Every other zone parked by design (out of the physics and hidden): the start world's, the moons' and the orbit
+        // (drawn on a layer of its own, which the camera sees only in space).
+        bool seen(SurfaceZone z) => z is OrbitZone ? _game.Camera.GetCullMaskValue(Spaceflight.SpaceLayer) : z.Visible;
+        var awake = Zones().Where(z => z != here && (z.ProcessMode != ProcessModeEnum.Disabled || seen(z))).Select(z => z.Name.ToString()).ToList();
         Check(awake.Count == 0 && here.ProcessMode != ProcessModeEnum.Disabled, $"{step}: in {here.Name}, every other zone parked and hidden ({string.Join(", ", Zones().Where(z => z != here).Select(z => z.Name.ToString()))}){(awake.Count > 0 ? "; awake: " + string.Join(", ", awake) : "")}");
         // One sky lit, and it is this zone's.
         var skies = _game.FindChildren("*", "WorldEnvironment", true, false).OfType<WorldEnvironment>().Where(w => w.Environment != null && w.GetViewport() == GetViewport()).ToList();
@@ -337,14 +349,17 @@ public partial class RoundTripTest : Node
         // Every sun or night light that lights anything is this zone's.
         var lights = _game.FindChildren("*", "DirectionalLight3D", true, false).OfType<DirectionalLight3D>()
             .Where(l => l.GetViewport() == GetViewport() && l.IsVisibleInTree() && l.LightEnergy > 0f && l.SkyMode != DirectionalLight3D.SkyModeEnum.SkyOnly).ToList();
-        Check(lights.Count > 0 && lights.All(l => here.IsAncestorOf(l)), $"{step}: the lights that light the scene are this zone's ({string.Join(", ", lights.Select(l => $"{l.GetPath()} {l.LightEnergy:F2}"))})");
+        bool eclipsed = space && orbit.Space.SunLit < 0.01f;
+        Check((lights.Count > 0 || eclipsed) && lights.All(l => here.IsAncestorOf(l)), $"{step}: the lights that light the scene are this zone's ({string.Join(", ", lights.Select(l => $"{l.GetPath()} {l.LightEnergy:F2}"))}{(eclipsed ? "; the sun eclipsed from here" : "")})");
         // No sound plays from a zone you left.
         var heard = _game.FindChildren("*", "", true, false).Where(n => n is AudioStreamPlayer { Playing: true, StreamPaused: false } or AudioStreamPlayer3D { Playing: true, StreamPaused: false })
             .Where(n => n.CanProcess() && Zones().Any(z => z != here && z.IsAncestorOf(n))).Select(n => n.GetPath().ToString()).ToList();
         Check(heard.Count == 0, $"{step}: nothing plays from a zone you left{(heard.Count > 0 ? ": " + string.Join(", ", heard.Take(4)) : "")}");
         // The camera, the gravity, the suit's air and the clock: this zone's.
         float far = _game.Camera.Far;
-        Check(space ? far == orbit.Rules.Space.CameraFar : far < orbit.Rules.Space.CameraFar, $"{step}: the camera sees as far as {(space ? "space" : "a surface")} does ({far:F0} m)");
+        bool spaceSeen = _game.Camera.GetCullMaskValue(Spaceflight.SpaceLayer);
+        Check((space ? far == orbit.Rules.Space.CameraFar : far < orbit.Rules.Space.CameraFar) && spaceSeen == space,
+            $"{step}: the camera sees as far as {(space ? "space" : "a surface")} does ({far:F0} m), and sees what is drawn in space {(spaceSeen ? "too" : "not at all")}");
         Check(_skiff.Zone == here && _game.Survivor.Zone == here && _game.Survivor.Seated == _skiff && (space ? here.Physics.Zone.Strength == 0f : here.Physics.Zone.Strength > 0f),
             $"{step}: the Skiff and the sleeper in it are in this zone, under its gravity ({here.Physics.Zone.Strength:F1} m/s²)");
         bool vacuum = space || here.Planet.Sky.Density < SurfaceWeather.NoAir;
@@ -381,8 +396,9 @@ public partial class RoundTripTest : Node
             int want = GlobePaint.WidthFor(c.Map.Width, orbit.Rules.Globe);
             Check(c.Globe.Visible && c.Globe.Detail == want && (c.IsHome || orbit.Space.FadeOf(c.Body) < 0.002f),
                 $"{step}: {c.Name} is its own globe at full paint, {c.Globe.Detail} of {want} texels round, its far look {(c.IsHome ? "none" : orbit.Space.FadeOf(c.Body).ToString("P0"))}, {ground / 1000:F1} km off");
-            Check(c.Globe.LitFrom.AngleTo(toSun) < Mathf.DegToRad(0.5f) && orbit.Space.Sun.LightEnergy > 0.1f && orbit.Space.Sun.GlobalBasis.Z.AngleTo(toSun) < Mathf.DegToRad(0.5f),
-                $"{step}: {c.Name}'s lit side faces the sun the system has ({Mathf.RadToDeg(c.Globe.LitFrom.AngleTo(toSun)):F2} degrees off; space's sun {orbit.Space.Sun.LightEnergy:F2} strong)");
+            float sun = orbit.Space.SunEnergy * orbit.Space.SunLit;
+            Check(c.Globe.LitFrom.AngleTo(toSun) < Mathf.DegToRad(0.5f) && MathF.Abs(orbit.Space.Sun.LightEnergy - sun) < 0.01f && orbit.Space.Sun.GlobalBasis.Z.AngleTo(toSun) < Mathf.DegToRad(0.5f),
+                $"{step}: {c.Name}'s lit side faces the sun the system has ({Mathf.RadToDeg(c.Globe.LitFrom.AngleTo(toSun)):F2} degrees off; space's sun {orbit.Space.Sun.LightEnergy:F2} strong, {orbit.Space.SunLit:P0} of it in sight from here)");
         }
     }
 
@@ -401,7 +417,7 @@ public partial class RoundTripTest : Node
             model = _game.Surface.Planet.StarSystem;
             toGlobe = N.Quaternion.Conjugate(o.Home.Turn);
             eye = o.Home.ToGlobe(cam.ToNumerics());
-            drawn = o.Space.Drawn.ToList();
+            drawn = o.Space.Drawn.Where(d => o.Space.FadeOf(d.Body) > 0.002f).ToList(); // a body near enough is its own globe instead (checked above)
             days = _game.Surface.Sky.Days;
         }
         else
@@ -490,15 +506,15 @@ public partial class RoundTripTest : Node
     static string Row(Level l) =>
         $"{l.Objects:F0} objects, {l.Nodes:F0} nodes, {l.Orphans:F0} orphans, {l.Resources:F0} resources, textures {l.TextureMb:F1} MB, buffers {l.BufferMb:F1} MB, static {l.StaticMb:F1} MB, managed {l.ManagedMb:F1} MB, {l.Bodies} bodies, {l.Pending} pool items waiting on {l.Threads} threads, frames {l.P50:F1} / {l.P99:F1} ms";
 
-    /// <summary>From loop 2 on, every step's figures back at the same step's in loop 1, within a small tolerance.</summary>
+    /// <summary>From loop 3 on, every step's figures back at the same step's in loop 2, within a small tolerance.</summary>
     void Levels()
     {
         GD.Print("  loop | step | objects | nodes | orphans | resources | textures MB | buffers MB | static MB | managed MB | bodies | pool waiting | threads | frame p50 / p99 ms");
         foreach (Level l in _levels)
             GD.Print($"  {l.Loop} | {l.Step} | {l.Objects:F0} | {l.Nodes:F0} | {l.Orphans:F0} | {l.Resources:F0} | {l.TextureMb:F1} | {l.BufferMb:F1} | {l.StaticMb:F1} | {l.ManagedMb:F1} | {l.Bodies} | {l.Pending} | {l.Threads} | {l.P50:F1} / {l.P99:F1}");
-        foreach (Level l in _levels.Where(l => l.Loop > 1))
+        foreach (Level l in _levels.Where(l => l.Loop > Settled))
         {
-            Level first = _levels.FirstOrDefault(f => f.Loop == 1 && f.Step == l.Step);
+            Level first = _levels.FirstOrDefault(f => f.Loop == Settled && f.Step == l.Step);
             if (first == null) continue;
             var drifts = new List<string>();
             void Near(string what, double now, double was, double share, double plus)
@@ -515,7 +531,7 @@ public partial class RoundTripTest : Node
             Near("managed heap", l.ManagedMb, first.ManagedMb, 0.1, 24);
             Near("physics bodies", l.Bodies, first.Bodies, 0, 2);
             Near("pool items waiting", l.Pending, first.Pending, 0, 8);
-            Check(drifts.Count == 0, $"loop {l.Loop}, {l.Step}: everything back at loop 1's level{(drifts.Count > 0 ? ": " + string.Join(", ", drifts) : "")}");
+            Check(drifts.Count == 0, $"loop {l.Loop}, {l.Step}: everything back at loop {Settled}'s level{(drifts.Count > 0 ? ": " + string.Join(", ", drifts) : "")}");
             Check(l.P99 <= first.P99 * 1.3 + 3, $"loop {l.Loop}, {l.Step}: frame times level, p99 {l.P99:F1} ms against {first.P99:F1} (p50 {l.P50:F1} against {first.P50:F1}; CPU time, headless, machine shared)");
         }
     }

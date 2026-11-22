@@ -247,6 +247,7 @@ public partial class Spaceflight
         s.Light.Active = shown;
         foreach (WorldEnvironment w in s.Sky.GetChildren().OfType<WorldEnvironment>()) w.Environment = shown ? s.Sky.Environment : null;
         Game.Camera.Far = shown ? _surfaceFar : Rules.Space.CameraFar;
+        Game.Camera.SetCullMaskValue(SpaceLayer, !shown);
     }
 
     /// <summary>Whether the surface below is drawn, as it was left (the start world's is, to begin with).</summary>
