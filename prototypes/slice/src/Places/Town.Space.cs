@@ -236,6 +236,8 @@ public sealed partial class Town
         float was = p.StuckFor;
         if ((p.StuckFor += dt) < HeldLook) return;
         if (Settles(p)) return;
+        // Held a hand's breadth short of the end of their way (by the furniture, or someone): as near as they get is there.
+        if (p.Path is { Count: > 0 } way && p.Step >= way.Count - 1 && Flat(way[^1] - p.Pos) < 0.3f && !ToSeat(p)) { (p.Step, p.StuckFor) = (way.Count, 0f); return; }
         // Someone in the way: stood still a moment, looking at them, rather than pressing on into them. (Held by the furniture: aside at once.)
         if (p.StuckFor < HeldAside && InTheWay(p) is { } o)
         {

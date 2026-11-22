@@ -918,8 +918,6 @@ public sealed partial class Town : IKeeper
         if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {
             p.Blocked = 0f;
-            // (Held a hand's breadth short of the end of their way: as near as the furniture lets them is there.)
-            if (last && flat < 0.3f && !ToSeat(p)) { p.Step = p.Path.Count; return true; }
             if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
         }
         Headway(p, dt);
