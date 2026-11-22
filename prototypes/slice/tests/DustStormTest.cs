@@ -86,7 +86,7 @@ public partial class DustStormTest : Node
         {
             World w = Roll(Archetype.Arid);
             WeatherSim sim = Sim(w);
-            if (sim.Share(WeatherKind.DustStorm) <= 0f || DryPoint(w) is not Vector3 observer)
+            if (w.Spec.Airless || sim.Share(WeatherKind.DustStorm) <= 0f || DryPoint(w) is not Vector3 observer)
             {
                 GD.Print("  (no dust storms or no dry loose ground on this one: another)");
                 continue;
@@ -168,6 +168,19 @@ public partial class DustStormTest : Node
                 Check(depth > 0.99f && visIn < 60f && sim.DustStorms.Count == 0 && visOut > 5000f,
                     $"a jump into a dust storm stands one over you (depth {depth:F2}, visibility {visIn:F0} m); a jump out of it leaves none ({sim.DustStorms.Count}, visibility {visOut:F0} m)");
             }
+        }
+
+        // ---- Worlds with no air: the game makes no weather on them (SurfaceWeather.SetWorld), so never a storm ----
+        {
+            int airless = 0, aired = 0;
+            for (int k = 0; k < 4000 && airless < 3; k++)
+            {
+                var spec = PlanetSpec.Roll((ulong)_rng.NextInt64(), (Archetype)_rng.Next(Enum.GetValues<Archetype>().Length), 0, PlanetSpec.Widths[_rng.Next(PlanetSpec.Widths.Length)]);
+                if (!spec.Airless) continue;
+                airless++;
+                if (PlanetSurface.Skies.SkySystem.Vacuum(PlanetSurface.Skies.SkySystem.For(spec)).Density >= SurfaceWeather.NoAir) aired++;
+            }
+            Check(airless > 0 && aired == 0, $"worlds with no air have too little for any weather, so no dust storm ({airless} rolled, {aired} with air enough)");
         }
 
         // ---- Worlds whose weather never has a dust storm ----

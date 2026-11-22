@@ -449,6 +449,9 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     public void SetWorld(PlanetWorld planet)
     {
         _planet = planet;
+        // The last world's dust storms go with it (a world with no air has no weather to draw them again).
+        foreach (Storm s in _storms.Values) s.Body.QueueFree();
+        _storms.Clear();
         WeatherData data = Zone.Data.Weather;
         string archetype = ArchetypeFor(planet.Spec);
         World = WorldOf(data, planet);
