@@ -472,7 +472,7 @@ public partial class Spaceflight : Node
         foreach (BodyBinding b in zone.Host.Bindings)
         {
             if (b.Collider is RigidBody3D loose) Hold(w, loose); // out of the physics with the physics that moves it: few, and small
-            else if (b.Collider is { } body && IsInstanceValid(body) && body.CanProcess()) Shelve(body);
+            else if (b.Collider is { } body && IsInstanceValid(body) && body.CanProcess()) Shelve(body, cabins: true);
         }
         w.Pieces.Push(new Piece(zone, Step.Hold, 0));
     }
@@ -573,8 +573,10 @@ public partial class Spaceflight : Node
     /// mask), so the zone's mode never takes it out or puts it back, and waking it is its layers. Its own way of being turned
     /// off comes back once its zone has woken.
     /// </summary>
-    void Shelve(CollisionObject3D body)
+    void Shelve(CollisionObject3D body, bool cabins = false)
     {
+        // A hull's cabin is its own world's body of as many shapes (the inside you walk in): it waits the same way.
+        if (cabins && body.GetNodeOrNull<CabinWorld>("CabinWorld") is { } cabin) Shelve(cabin.Cabin);
         if (_shelved.ContainsKey(body)) return;
         _shelved[body] = (body.CollisionLayer, body.CollisionMask, body.DisableMode);
         (body.CollisionLayer, body.CollisionMask) = (0, 0);
@@ -599,7 +601,7 @@ public partial class Spaceflight : Node
     {
         if (!_prepared.Add(zone)) return;
         foreach (BodyBinding b in zone.Host.Bindings)
-            if (b.Collider is { } body && body is not RigidBody3D && IsInstanceValid(body)) Shelve(body);
+            if (b.Collider is { } body && body is not RigidBody3D && IsInstanceValid(body)) Shelve(body, cabins: true);
         // Its branches held now too, as waking a zone made parked holds them: each tells everything under it whose mode it goes by.
         ZoneWork w = WorkOf(zone);
         if (w.Held.Count == 0)

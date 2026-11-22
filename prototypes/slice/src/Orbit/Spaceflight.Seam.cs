@@ -349,7 +349,7 @@ public partial class Spaceflight
             if (IsInstanceValid(p.Node)) Do(work, p, zone);
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             double ms = System.Diagnostics.Stopwatch.GetElapsedTime(at, now).TotalMilliseconds;
-            if (ms > SlowTurnMs && SlowTurns.Count < 40 && IsInstanceValid(p.Node)) SlowTurns.Add($"{p.Step} {p.Node.Name} ({p.Node.GetType().Name}, {p.Node.GetChildCount()} children) {ms:F1} ms");
+            if (ms > SlowTurnMs && SlowTurns.Count < 40 && IsInstanceValid(p.Node)) SlowTurns.Add($"{p.Step} {p.Node.Name} ({p.Node.GetType().Name}, {p.Node.GetChildCount()} children{(p.Depth == 0 && p.Step == Step.Held ? $": {string.Join(", ", p.Node.GetChildren().Where(k => k.ProcessMode != ProcessModeEnum.Disabled).Select(k => $"{k.Name} {k.ProcessMode} {k.GetChildCount()}"))} not held" : "")}) {ms:F1} ms");
             at = now;
             if (!all && System.Diagnostics.Stopwatch.GetElapsedTime(started, now).TotalMilliseconds > GroundTurnMs) return;
         }
