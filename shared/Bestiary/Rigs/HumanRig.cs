@@ -427,6 +427,11 @@ public sealed partial class HumanRig : Rig
 
         // Legs: a foot on the ground moves back under the body at walking speed, one in the air comes through high.
         float duty = Mathf.Lerp(0.62f, 0.4f, run);
+        // A foot is down no further ahead or behind than the leg reaches from the hip (or it is dragged, the knee snapping
+        // straight): a longer stride is on the ground for less of it, as a sprinter's.
+        float hipUp = hipY - f.HipW * 0.1f - f.Ankle, legReach = (f.UpperLeg + f.LowerLeg) * 0.97f;
+        float under = MathF.Sqrt(MathF.Max(0f, legReach * legReach - hipUp * hipUp));
+        duty = Math.Clamp(2f * under / MathF.Max(1e-3f, strideLength * moving), Mathf.Lerp(0.5f, 0.22f, run), duty);
         int stepper = hitFlat.Dot(right) > 0f ? 1 : 0;
         for (int i = 0; i < 2; i++)
         {
@@ -469,7 +474,7 @@ public sealed partial class HumanRig : Rig
             bool grounded = stance || moving <= 0f;
             if (grounded && !_planted[i]) Steps++;
             _planted[i] = grounded;
-            (Vector3 knee, Vector3 drawn) = LeggedRig.SolveIK(hipJoint, foot, f.UpperLeg, f.LowerLeg, fwd + right * side * 0.12f);
+            (Vector3 knee, Vector3 drawn) = LeggedRig.SolveIK(hipJoint, foot, f.UpperLeg, f.LowerLeg, fwd + right * side * 0.12f, LeggedRig.SoftKnee);
             _knee[i] = knee;
             _drawn[i] = drawn;
             Pose[_legU[i]] = Geo.Segment(hipJoint, knee, right);

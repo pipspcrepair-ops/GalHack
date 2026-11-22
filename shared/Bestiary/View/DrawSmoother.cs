@@ -178,10 +178,10 @@ public sealed class PoseBlend
     {
         float v = 1f - w;
         Vector3 a0 = a.Basis.Column0, a1 = a.Basis.Column1, a2 = a.Basis.Column2, b0 = b.Basis.Column0, b1 = b.Basis.Column1, b2 = b.Basis.Column2;
-        var basis = new Basis(
-            (a0 * v + b0 * w).Normalized() * (a0.Length() * v + b0.Length() * w),
-            (a1 * v + b1 * w).Normalized() * (a1.Length() * v + b1.Length() * w),
-            (a2 * v + b2 * w).Normalized() * (a2.Length() * v + b2.Length() * w));
+        // (Squared up again, so a bone takes it as a rotation: the blended Z, as the two have it, keeps a mirrored piece mirrored.)
+        Vector3 x = (a0 * v + b0 * w).Normalized(), n = x.Cross(a1 * v + b1 * w).Normalized(), y = n.Cross(x);
+        Vector3 z = n.Dot(a2 * v + b2 * w) < 0f ? -n : n;
+        var basis = new Basis(x * (a0.Length() * v + b0.Length() * w), y * (a1.Length() * v + b1.Length() * w), z * (a2.Length() * v + b2.Length() * w));
         return new Transform3D(basis, a.Origin * v + b.Origin * w);
     }
 

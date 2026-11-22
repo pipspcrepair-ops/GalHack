@@ -80,8 +80,14 @@ public partial class StrideTest : Node
     {
         public int Samples, Jumps, Windows, Slides, Spikes, Held, HeldWalking;
         public float WorstJump, WorstSlide, WorstCadence, WorstHeld;
-        public readonly List<string> Notes = new();
-        public void Note(string s) { if (Notes.Count < 3) Notes.Add(s); }
+        /// <summary>The first few of each kind of fault, told.</summary>
+        public readonly Dictionary<string, List<string>> Notes = new();
+        public void Note(string kind, string s) { if (!Notes.TryGetValue(kind, out var l)) Notes[kind] = l = new List<string>(); if (l.Count < 3) l.Add(s); }
+        public string Told(string kind) => Notes.TryGetValue(kind, out var l) ? "; e.g. " + string.Join("; ", l) : "";
+        /// <summary>What they were doing at each jump and slide, counted.</summary>
+        public readonly Dictionary<string, int> JumpWhy = new(), SlideWhy = new();
+        public void Why(Dictionary<string, int> d, string s) => d[s] = d.GetValueOrDefault(s) + 1;
+        public static string Top(Dictionary<string, int> d) => string.Join(", ", d.OrderByDescending(k => k.Value).Take(6).Select(k => $"{k.Value} {k.Key}"));
     }
 
     /// <summary>
@@ -98,15 +104,15 @@ public partial class StrideTest : Node
         Vector3[] _was = Array.Empty<Vector3>(), _plantedWas = Array.Empty<Vector3>();
         bool[] _plantedThen = Array.Empty<bool>();
         bool _has;
-        float _win, _slide;
+        float _win, _slide, _path, _yaw, _turned;
         int _slideN, _steps0;
-        Vector3 _at0;
+        Vector3 _at0, _last;
         bool _wanted = true;
 
         public Gait(string who, int legs, float legLen, bool human)
         {
             (Who, _legs, _legLen, _human) = (who, Math.Max(1, legs), legLen, human);
-            // (A stride's swing carries a foot about the body at under three times the body's run: 0.15 m a frame for a person.)
+            // (A stride's swing carries a foot about the body at under three times a person's run: 0.15 m a frame, more for a long leg.)
             _jump = human ? 0.15f : 0.15f + 0.08f * legLen;
             // A gait's natural cadence: a person's 2 strides a second (240 steps a minute, a sprint), a child's faster by its shorter
             // legs; a beast's step of a leg 5 a second.
@@ -119,30 +125,36 @@ public partial class StrideTest : Node
         /// One tick: the drawn feet and knees and body (world), the rig's own feet (world) and which are planted, the root and heading
         /// the rig posed at, its steps so far, and whether it means to walk (a held body that does should stand, not walk on).
         /// </summary>
-        public void Sample(Tally t, Vector3[] drawn, Vector3 body, Vector3[] feet, bool[] planted, Vector3 root, float yaw, int steps, bool wants)
+        public void Sample(Tally t, Vector3[] drawn, Vector3 body, Vector3[] feet, bool[] planted, Vector3 root, float yaw, int steps, bool wants, Func<string> doing)
         {
             if (_was.Length != drawn.Length) { _was = new Vector3[drawn.Length]; _has = false; }
             if (_plantedWas.Length != feet.Length) { _plantedWas = new Vector3[feet.Length]; _plantedThen = new bool[feet.Length]; _has = false; }
             var turn = new Basis(Vector3.Up, yaw).Inverse();
             if (!_has)
             {
-                for (int i = 0; i < drawn.Length; i++) _was[i] = drawn[i] - body;
+                for (int i = 0; i < drawn.Length; i++) _was[i] = turn * (drawn[i] - body);
+                (_yaw, _turned) = (yaw, 0f);
                 for (int i = 0; i < feet.Length; i++) (_plantedWas[i], _plantedThen[i]) = (turn * (feet[i] - root), planted[i]);
-                (_has, _win, _slide, _slideN, _steps0, _at0, _wanted) = (true, 0f, 0f, 0, steps, root, wants);
+                (_has, _win, _slide, _slideN, _steps0, _at0, _wanted, _path, _last) = (true, 0f, 0f, 0, steps, root, wants, 0f, root);
                 return;
             }
+            // (Set down somewhere else in a tick (a fall's landing, a clamber, a test's move): not a stride, begun again.)
+            if (WildSim.Flat(root - _last).Length() > 0.5f) { _has = false; return; }
             t.Samples++;
-            float worst = 0f;
+            // Each piece about the body in the body's own frame, over and above what the body's move and turn carry a planted foot.
+            float worst = 0f, moved = WildSim.Flat(root - _last).Length(), turned = MathF.Abs(Geo.WrapAngle(yaw - _yaw));
+            int which = 0;
             for (int i = 0; i < drawn.Length; i++)
             {
-                Vector3 rel = drawn[i] - body;
-                worst = MathF.Max(worst, (rel - _was[i]).Length());
+                Vector3 rel = turn * (drawn[i] - body);
+                float jump = (rel - _was[i]).Length() - moved - turned * rel.Length();
+                if (jump > worst) (worst, which) = (jump, i);
                 _was[i] = rel;
             }
+            (_yaw, _turned) = (yaw, _turned + turned);
             t.WorstJump = MathF.Max(t.WorstJump, worst);
-            if (worst > _jump) { t.Jumps++; t.Note($"{Who}: a foot or knee jumped {worst:F2} m about the body in a frame"); }
+            if (worst > _jump) { t.Jumps++; t.Why(t.JumpWhy, doing()); t.Note("jump", $"{Who}: {(which % 2 == 0 ? "a knee" : "a foot")} jumped {worst:F2} m about the body in a frame ({doing()})"); }
             // A planted foot over the ground: its move in the body's own turning frame, plus the body's (turning on the spot is no slide).
-            Vector3 move = root - _at0;
             for (int i = 0; i < feet.Length; i++)
             {
                 Vector3 local = turn * (feet[i] - root);
@@ -154,6 +166,8 @@ public partial class StrideTest : Node
                 (_plantedWas[i], _plantedThen[i]) = (local, planted[i]);
             }
             _wanted &= wants;
+            _path += WildSim.Flat(root - _last).Length();
+            _last = root;
             _win += Dt;
             if (_win < 1f) return;
             // Over the second: the stride rate (a leg's steps a second) against the body's real speed over the ground.
@@ -161,31 +175,33 @@ public partial class StrideTest : Node
             float speed = WildSim.Flat(root - _at0).Length() / _win;
             float cadence = (steps - _steps0) / (float)_legs / _win;
             // (A planted foot goes back under a body going on at the body's speed: any more or less is a slide over the ground.)
-            float slide = _slideN > 0 ? MathF.Abs(_slide / (_slideN * Dt) - speed) : 0f;
+            float slide = _slideN > 0 ? MathF.Abs(_slide / (_slideN * Dt) - _path / _win) : 0f;
             t.WorstCadence = MathF.Max(t.WorstCadence, cadence);
             t.WorstSlide = MathF.Max(t.WorstSlide, slide);
-            if (cadence > _cap) { t.Spikes++; t.Note($"{Who}: {cadence:F1} steps a leg a second (natural at most {_cap:F1}) at {speed:F2} m/s"); }
-            if (_human && slide > 0.6f) { t.Slides++; t.Note($"{Who}: planted feet slid {slide:F2} m/s faster than it went ({speed:F2} m/s, {cadence:F1} strides a second)"); }
-            // Held still while it meant to walk: standing, or a shuffle, never a walk on (a person's walk is a stride a second).
-            if (_wanted && speed < 0.1f)
+            // (A second's steps are counted whole: one landing more than its rate is the count's, not the legs'.)
+            if (cadence > _cap + 1f / _legs / _win) { t.Spikes++; t.Note("spike", $"{Who}: {cadence:F1} steps a leg a second (natural at most {_cap:F1}) at {speed:F2} m/s"); }
+            if (_human && slide > 0.6f) { t.Slides++; t.Why(t.SlideWhy, doing()); t.Note("slide", $"{Who}: planted feet slid {slide:F2} m/s faster than it went ({speed:F2} m/s, {cadence:F1} strides a second)"); }
+            // Held still while it meant to walk: standing, or a shuffle (a step or two a second), never a walk on (a person's walk is a stride a second).
+            // (Turning where it stands is a move of its own, stepped round.)
+            if (_wanted && speed < 0.1f && _turned < 0.5f)
             {
                 t.Held++;
                 t.WorstHeld = MathF.Max(t.WorstHeld, cadence);
-                if (cadence > 0.6f) { t.HeldWalking++; t.Note($"{Who}: held still ({speed:F2} m/s) its legs walked on at {cadence:F1} steps a leg a second"); }
+                if (cadence > 1f) { t.HeldWalking++; t.Note("held", $"{Who}: held still ({speed:F2} m/s, turned {_turned:F2} rad, gone {_path:F2} m) its legs walked on at {cadence:F1} steps a leg a second ({doing()})"); }
             }
-            (_win, _slide, _slideN, _steps0, _at0, _wanted) = (0f, 0f, 0, steps, root, true);
+            (_win, _slide, _slideN, _steps0, _at0, _wanted, _path, _turned) = (0f, 0f, 0, steps, root, true, 0f, 0f);
         }
     }
 
     void Report(string what, Tally t)
     {
-        string e = t.Notes.Count > 0 ? "; e.g. " + string.Join("; ", t.Notes) : "";
         GD.Print($"  {what}: {t.Samples} frames, {t.Windows} seconds watched; worst jump {t.WorstJump:F3} m a frame, worst slide {t.WorstSlide:F2} m/s, top cadence {t.WorstCadence:F2}, {t.Held} seconds held, top cadence held {t.WorstHeld:F2}");
+        if (t.JumpWhy.Count + t.SlideWhy.Count > 0) GD.Print($"  ({what}: jumps while {Tally.Top(t.JumpWhy)}; slides while {Tally.Top(t.SlideWhy)})");
         Check(t.Samples > 600, $"{what}: walkers watched ({t.Samples} frames)");
-        Check(t.Jumps == 0, $"{what}: no foot or knee jumps about the body from one frame to the next ({t.Jumps} frames, worst {t.WorstJump:F2} m){e}");
-        Check(t.Slides == 0, $"{what}: planted feet keep to the ground: the stride follows the body's real speed ({t.Slides} seconds sliding, worst {t.WorstSlide:F2} m/s)");
-        Check(t.Spikes == 0, $"{what}: the stride rate never goes over a gait's natural cadence ({t.Spikes} seconds over, top {t.WorstCadence:F2})");
-        Check(t.HeldWalking == 0, $"{what}: held still while meaning to walk on, a body stands or shuffles ({t.HeldWalking} of {t.Held} seconds walking on, top {t.WorstHeld:F2} steps a leg a second)");
+        Check(t.Jumps == 0, $"{what}: no foot or knee jumps about the body from one frame to the next ({t.Jumps} frames, worst {t.WorstJump:F2} m){t.Told("jump")}");
+        Check(t.Slides == 0, $"{what}: planted feet keep to the ground: the stride follows the body's real speed ({t.Slides} seconds sliding, worst {t.WorstSlide:F2} m/s){t.Told("slide")}");
+        Check(t.Spikes == 0, $"{what}: the stride rate never goes over a gait's natural cadence ({t.Spikes} seconds over, top {t.WorstCadence:F2}){t.Told("spike")}");
+        Check(t.HeldWalking == 0, $"{what}: held still while meaning to walk on, a body stands or shuffles ({t.HeldWalking} of {t.Held} seconds walking on, top {t.WorstHeld:F2} steps a leg a second){t.Told("held")}");
     }
 
     /// <summary>A rig's leg pieces (knees and feet: each lower leg's top, each foot) and its body.</summary>
@@ -261,6 +277,7 @@ public partial class StrideTest : Node
         var held = new Dictionary<Creature, (Vector3 At, int Until)>();
         Vector3 goal = Inside();
         GD.Print($"  (the pen: {walkers.Count} walkers, {string.Join(", ", walkers.GroupBy(c => c.Species.CommonName).Select(g => $"{g.Count()} {g.Key}"))})");
+        _penMs = 0.0;
         for (int step = 0; step < 30 * 60; step++)
         {
             // The intruder walks from point to point about the pen, and is never hurt (it is there to be fled from and gone for).
@@ -285,7 +302,9 @@ public partial class StrideTest : Node
                 }
                 if (step % 150 == 75) live[rng.Next(live.Count)].StunFor = 0.5f;
             }
+            long from = Stopwatch.GetTimestamp();
             sim.Step(Dt);
+            _penMs += Stopwatch.GetElapsedTime(from).TotalMilliseconds;
             foreach (Creature c in walkers)
             {
                 if (c.Dead || c.Removed || c.Rig == null) { gaits[c].Cut(); continue; }
@@ -296,7 +315,8 @@ public partial class StrideTest : Node
                 var planted = new bool[feet.Length];
                 for (int i = 0; i < feet.Length; i++) (feet[i], planted[i]) = (c.Rig.FootDrawn(i), c.Rig.FootPlanted(i));
                 bool wants = held.ContainsKey(c) || WildSim.Flat(c.Desired).Length() > 0.3f && c.StunFor <= 0f;
-                gaits[c].Sample(c.Rig is HumanRig ? folk : wild, at, body >= 0 ? c.Rig.Pose[body].Origin : c.Position, feet, planted, c.Position, c.Yaw, c.Rig.Steps, wants);
+                gaits[c].Sample(c.Rig is HumanRig ? folk : wild, at, body >= 0 ? c.Rig.Pose[body].Origin : c.Position, feet, planted, c.Position, c.Yaw, c.Rig.Steps, wants,
+                    () => $"{c.State}/{c.Phase}{(held.ContainsKey(c) ? " held" : "")}{(c.StunFor > 0f ? " stunned" : "")}{(c.Falling ? " falling" : "")} {WildSim.Flat(c.Velocity).Length():F1} m/s");
             }
             // Held: back where it was as it goes (a wall's say, after its step), meaning to go on all the while.
             foreach (Creature c in held.Keys.ToList())
@@ -305,7 +325,10 @@ public partial class StrideTest : Node
                 c.Position = held[c].At;
             }
         }
+        GD.Print($"  (the pen's sim: {_penMs / (30 * 60):F3} ms a step for {walkers.Count} walkers)");
     }
+
+    double _penMs;
 
     // ---- A settlement: its people as drawn -------------------------------------------------------------
 
@@ -348,6 +371,7 @@ public partial class StrideTest : Node
         var parts = new Dictionary<Town.Person, (int[] Legs, int Body)>();
         var held = new Dictionary<Town.Person, (Vector3 At, int Until)>();
         int heldShot = -1, bumpShot = -1;
+        float poseMs = 0f, poseTop = 0f;
         Town.Person shotHeld = null, shotBumped = null;
         for (int tick = 0; tick < 30 * 60; tick++)
         {
@@ -374,6 +398,7 @@ public partial class StrideTest : Node
             }
             if (tick % 60 == 45 && going.Count > 0) going[_rng.Next(going.Count)].Yield = 0.7f; // (letting someone by: a stop, and off again)
             yield return 0;
+            (poseMs, poseTop) = (poseMs + town.LastPoseMs, MathF.Max(poseTop, town.LastPoseMs));
             foreach (Town.Person p in held.Keys.ToList())
             {
                 if (tick >= held[p].Until || p.Dead || p.Gone) { held.Remove(p); continue; }
@@ -381,7 +406,8 @@ public partial class StrideTest : Node
             }
             foreach (Town.Person p in town.People)
             {
-                if (!Up(p) || p.Sitting || p.Seated > 0f || p.Down > 0f || p.Slept > 0f || p.Swimming || p.View.Drawn is not { } pose || (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() > 25f)
+                // (Only a body posed since the last tick: one out of the view waits for it, as it stood, and is drawn on from there.)
+                if (!Up(p) || p.PoseOwed > Dt * 1.5f || p.Sitting || p.Seated > 0f || p.Down > 0f || p.Slept > 0f || p.Swimming || p.View.Drawn is not { } pose || (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() > 25f)
                 {
                     gaits.GetValueOrDefault(p)?.Cut();
                     continue;
@@ -395,7 +421,8 @@ public partial class StrideTest : Node
                 var planted = new bool[2];
                 for (int i = 0; i < 2; i++) (feet[i], planted[i]) = (p.Rig.FootDrawn(i), p.Rig.FootPlanted(i));
                 bool wants = held.ContainsKey(p) || p.Path != null && p.Step < p.Path.Count && p.Yield <= 0f;
-                g.Sample(t, at, view * pose[body].Origin, feet, planted, p.Pos, p.Yaw, p.Rig.Steps, wants);
+                g.Sample(t, at, view * pose[body].Origin, feet, planted, p.Pos, p.Yaw, p.Rig.Steps, wants,
+                    () => $"{(held.ContainsKey(p) ? "held " : "")}{(p.Engaged ? "fighting " : "")}{(p.Fleeing ? "fleeing " : "")}{(p.Yield > 0f ? "giving way " : "")}{(p.Raised > 0.05f ? "raised " : "")}{(p.Strike > 0f ? "striking " : "")}{(p.StunFor > 0f ? "stunned " : "")}{(p.Act != BodyAct.None ? p.Act + " " : "")}{(p.Crouched > 0.05f ? "crouched " : "")}{p.Now:F1} m/s meant");
             }
             if (_shots != null)
             {
@@ -404,6 +431,7 @@ public partial class StrideTest : Node
                 if (tick == heldShot + 9 || tick == bumpShot + 9) { _game.FixedCamera = null; _game.Visor.Visible = true; }
             }
         }
+        GD.Print($"  (posing the settlement's people: {poseMs / (30 * 60):F3} ms a frame on average, {poseTop:F2} ms at most)");
     }
 
     /// <summary>A shot of one of them from a little off their side, at their knees (windowed only).</summary>

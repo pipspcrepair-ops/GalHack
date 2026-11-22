@@ -214,7 +214,8 @@ public sealed class LeggedRig : Rig
             drop = MathF.Max(drop, hipW.Y - maxHip);
         }
         drop = MathF.Min(drop, legLen * 0.5f);
-        _sag = drop > _sag ? drop : Geo.Smooth(_sag, drop, 6f, dt);
+        // (Down onto them quickly, never in one frame: a leg left out of reach meanwhile steps.)
+        _sag = drop > _sag ? Mathf.MoveToward(_sag, drop, legLen * 6f * dt) : Geo.Smooth(_sag, drop, 6f, dt);
         bodyT.Origin += Vector3.Down * _sag;
         Pose[_body] = bodyT;
         BodyClearance = bodyT.Origin.Y - groundMid;
@@ -274,7 +275,7 @@ public sealed class LeggedRig : Rig
                     float k = Math.Clamp(c.PhaseTime / MathF.Max(0.05f, c.PhaseLength), 0f, 1f);
                     stompFoot = _stompLifted.Lerp(c.StrikePoint, k * k);
                 }
-                (Vector3 sKnee, Vector3 sDrawn) = SolveIK(hipW, stompFoot, leg.Upper, leg.Lower, bodyT.Basis * leg.Pole);
+                (Vector3 sKnee, Vector3 sDrawn) = SolveIK(hipW, stompFoot, leg.Upper, leg.Lower, bodyT.Basis * leg.Pole, SoftKnee);
                 leg.Drawn = sDrawn;
                 Pose[leg.UpPiece] = Geo.Segment(hipW, sKnee, bodyT.Basis.X);
                 Pose[leg.LoPiece] = Geo.Segment(sKnee, sDrawn, bodyT.Basis.X);
@@ -299,9 +300,10 @@ public sealed class LeggedRig : Rig
                 float stretch = (leg.Foot - hipW).Length();
                 bool overstretched = stretch > reach * 0.97f;
                 bool myTurn = speed < 0.1f || leg.Group == activeGroup || err > threshold * 1.8f;
-                if (err > legLen * 3f)
+                // Teleported or knocked far: snap rather than skate. (Not a fast run's feet left behind: they step, however quickly.)
+                if (err > legLen * 3f + speed * duration * 2f)
                 {
-                    leg.Foot = home; // teleported or knocked far: snap rather than skate
+                    leg.Foot = home;
                 }
                 else if ((err > threshold && myTurn || overstretched) && NeighboursDown(leg) || stretch > reach * 0.995f)
                 {
@@ -321,7 +323,7 @@ public sealed class LeggedRig : Rig
             }
 
             Vector3 pole = bodyT.Basis * leg.Pole;
-            (Vector3 knee, Vector3 drawn) = SolveIK(hipW, foot, leg.Upper, leg.Lower, pole);
+            (Vector3 knee, Vector3 drawn) = SolveIK(hipW, foot, leg.Upper, leg.Lower, pole, SoftKnee);
             leg.Drawn = drawn;
             Vector3 side = bodyT.Basis.X;
             Pose[leg.UpPiece] = Geo.Segment(hipW, knee, side);
@@ -336,12 +338,21 @@ public sealed class LeggedRig : Rig
         return true;
     }
 
-    /// <summary>Two-bone IK in the plane of hip, foot and pole. The foot is drawn at full reach if it is too far.</summary>
-    internal static (Vector3 knee, Vector3 foot) SolveIK(Vector3 hip, Vector3 target, float a, float b, Vector3 pole)
+    /// <summary>How much of a leg's reach its last straightening is eased over (<see cref="SolveIK"/>'s soft).</summary>
+    internal const float SoftKnee = 0.06f;
+
+    /// <summary>
+    /// Two-bone IK in the plane of hip, foot and pole. The foot is drawn at full reach if it is too far. With
+    /// <paramref name="soft"/> above 0 (a leg's), the last of that share of the reach is eased into, never quite reached: near
+    /// straight a knee swings far for a small move of the foot, and a stride through it snaps the knee straight and back.
+    /// </summary>
+    internal static (Vector3 knee, Vector3 foot) SolveIK(Vector3 hip, Vector3 target, float a, float b, Vector3 pole, float soft = 0f)
     {
         Vector3 d = target - hip;
         float len = d.Length();
         Vector3 u = len > 1e-4f ? d / len : Vector3.Down;
+        float ease = (a + b) * soft, from = a + b - ease;
+        if (soft > 0f && len > from) len = from + ease * (1f - MathF.Exp(-(len - from) / ease));
         float dist = Math.Clamp(len, MathF.Abs(a - b) + 0.01f, a + b - 0.001f);
         float cosA = Math.Clamp((a * a + dist * dist - b * b) / (2f * a * dist), -1f, 1f);
         float sinA = MathF.Sqrt(1f - cosA * cosA);
