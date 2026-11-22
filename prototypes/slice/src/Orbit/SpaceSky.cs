@@ -11,8 +11,8 @@ namespace Slice.Orbit;
 /// Space round the start world: planet-generator's space sky (the galaxy's stars and nebulae, from
 /// the one catalogue, and the sun's glare), the sun as the one light (hard shadows, so a dead hull's
 /// inside is dark), a faint ambient, and every body in the system, read from the same
-/// <see cref="StarSystem"/> as the surface's sky at the same moment, so nothing moves or changes at
-/// the top of the band.
+/// <see cref="StarSystem"/> as the surface's sky at the same moment, so nothing moves at the
+/// switch.
 ///
 /// The bodies are drawn at their true place when it is near, and otherwise along the true direction
 /// at the distance the camera reaches, at the true apparent size. Each is lit by the star at its own
@@ -22,8 +22,8 @@ namespace Slice.Orbit;
 /// lights: one lights the scene from the sun's direction in the world, and the other, never
 /// lighting anything, tells the sky's shader where the sun stands in the star field.
 ///
-/// Its environment is only active over the top of the band; below that the surface's own
-/// sky is what you see. The tone mapping and glow are the surface's, so nothing shifts when one
+/// Its environment is only active in space; under the cap the surface's own sky is what you
+/// see. The tone mapping and glow are the surface's, so nothing shifts when one
 /// sky gives way to the other.
 /// </summary>
 public partial class SpaceSky : Node3D
@@ -88,7 +88,6 @@ public partial class SpaceSky : Node3D
         render_mode world_vertex_coords, unshaded, blend_mix, depth_draw_always, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
         uniform vec3 band : source_color;
-        uniform float behind = 0.0;
         uniform vec3 to_light = vec3(0.0, 1.0, 0.0);
         uniform vec3 axis = vec3(0.0, 1.0, 0.0);
         uniform bool banded = false;
@@ -106,11 +105,6 @@ public partial class SpaceSky : Node3D
         varying vec3 view_w;
         void vertex() {
             normal_w = NORMAL;
-            if (behind > 0.0) {
-                vec3 to = VERTEX - CAMERA_POSITION_WORLD;
-                float d = length(to), from = behind * 1.02;
-                VERTEX = CAMERA_POSITION_WORLD + to / d * (from + (59000.0 - from) * d / (d + 20000.0));
-            }
             view_w = VERTEX - CAMERA_POSITION_WORLD;
         }
         void fragment() {
@@ -150,17 +144,11 @@ public partial class SpaceSky : Node3D
         uniform vec3 color : source_color;
         uniform vec3 to_light = vec3(0.0, 1.0, 0.0);
         uniform vec3 axis = vec3(0.0, 1.0, 0.0);
-        uniform float behind = 0.0;
         uniform vec3 centre = vec3(0.0);   // its giant's, as drawn
         uniform float radius = 1.0;
         varying vec3 from_giant;           // where on the ring, from the giant's centre in its radii
         void vertex() {
             from_giant = (VERTEX - centre) / radius;
-            if (behind > 0.0) {
-                vec3 to = VERTEX - CAMERA_POSITION_WORLD;
-                float d = length(to), from = behind * 1.02;
-                VERTEX = CAMERA_POSITION_WORLD + to / d * (from + (59000.0 - from) * d / (d + 20000.0));
-            }
         }
         void fragment() {
             // The giant's own shadow across its ring, soft at the edge (the sky's ring has the same).
@@ -230,7 +218,6 @@ public partial class SpaceSky : Node3D
             {
                 Name = b.Name.Replace(" ", ""), MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 Mesh = sphere, Visible = false, CustomAabb = new Aabb(new Vector3(-3f, -3f, -3f), new Vector3(6f, 6f, 6f)),
-                ExtraCullMargin = 16384f, // the sheet's height moves it along its eye rays, past where its box stands
             };
             AddChild(node);
             _bodies.Add((node, b, material));
@@ -270,8 +257,7 @@ public partial class SpaceSky : Node3D
     /// world) at <paramref name="eyeGlobe"/> (the same point in the globe's frame, m).
     /// <paramref name="turn"/> takes the globe's directions to the world's.
     /// </summary>
-    /// <param name="behind">While the sheet is drawn elsewhere along its eye rays, the farthest it stands, m: every body is behind it from under the true globe's height, so each stands past that, unmoved to the eye. 0: where it really is.</param>
-    public void Track(StarSystem model, double days, Basis turn, D3 eyeGlobe, Vector3 eye, float behind = 0f)
+    public void Track(StarSystem model, double days, Basis turn, D3 eyeGlobe, Vector3 eye)
     {
         _eye = eye;
         // An eclipse from up here: the one answer the ground's sky takes too (StarSystem.EclipseAt).
@@ -320,11 +306,10 @@ public partial class SpaceSky : Node3D
             // air, so the far look's depth hides none of it and what stands in front of the body stands in front of its air too.
             if (air && s.Angular > AirFrom && Globe.Air(a.Material, -dir, 1f, a.Thickness, (float)(s.Distance / body.Radius) - 1f, fade * a.Share, light))
             {
-                a.Material.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), MathF.Max(d * (1f - sine * (1f + a.Thickness)) - 1f, MathF.Max(behind, 1f)));
+                a.Material.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), MathF.Max(d * (1f - sine * (1f + a.Thickness)) - 1f, 1f));
                 a.Node.Visible = true;
             }
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_light"), light);
-            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("behind"), behind);
             var (bodyAxis, bodyZero) = model.Turned(body, days);
             Vector3 axis = W(o.ToGlobe(bodyAxis)).Normalized();
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), axis);
@@ -347,7 +332,6 @@ public partial class SpaceSky : Node3D
                 var m = (ShaderMaterial)ring.MaterialOverride;
                 m.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_light"), light);
                 m.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), axis);
-                m.SetShaderParameter(PlanetSurface.Fx.Names.Of("behind"), behind);
                 m.SetShaderParameter(PlanetSurface.Fx.Names.Of("centre"), node.GlobalPosition);
                 m.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), node.Scale.X);
             }
@@ -392,7 +376,7 @@ public partial class SpaceSky : Node3D
     /// <summary>How much of a body the far look draws now, 0 to 1.</summary>
     public float FadeOf(Orbiter body) => _fade.TryGetValue(body, out float f) ? f : 1f;
 
-    /// <summary>The bodies are drawn here (over the top of the band), not by a surface's sky.</summary>
+    /// <summary>The bodies are drawn here (in space), not by a surface's sky.</summary>
     public bool BodiesShown => _bodiesShown;
 
     readonly Dictionary<Orbiter, float> _fade = new();
@@ -444,7 +428,7 @@ public partial class SpaceSky : Node3D
                 yield return (body, ring.GlobalPosition.DistanceTo(node.GlobalPosition), RingInner * ring.GlobalBasis.Scale.X / node.GlobalBasis.Scale.X);
     }
 
-    /// <summary>The bodies drawn here or not: under the top of the band the surface's sky is drawing them, at the same places.</summary>
+    /// <summary>The bodies drawn here or not: under the cap the surface's sky is drawing them, at the same places.</summary>
     public void ShowBodies(bool shown)
     {
         if (shown == _bodiesShown) return;

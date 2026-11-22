@@ -125,7 +125,6 @@ public partial class FarLights : Node3D
         var m = new ShaderMaterial { Shader = new Shader { Code = code } };
         m.SetShaderParameter(Fx.Names.Of("world_size"), size);
         m.SetShaderParameter(Fx.Names.Of("hand_off"), new Vector2(FadeBegin, FadeLength));
-        m.SetShaderParameter(Fx.Names.Of("round"), new Vector2(Terrain.TerrainStreamer.RoundFrom, Terrain.TerrainStreamer.RoundRadius));
         return m;
     }
 
@@ -287,18 +286,15 @@ public partial class FarLights : Node3D
 
     // ---- Shaders --------------------------------------------------------------------------------
 
-    /// <summary>Shared by the three: an instance's canonical position wrapped to the copy nearest the eye, and sunk over the round horizon.</summary>
+    /// <summary>Shared by the three: an instance's canonical position wrapped to the copy nearest the eye.</summary>
     const string PlaceCode = """
         uniform vec2 world_size = vec2(16000.0, 8000.0);
         uniform vec2 hand_off = vec2(500.0, 120.0);
-        uniform vec2 round = vec2(2000.0, 300000.0);
         uniform float night = 1.0;
         uniform float fog_density = 0.0;
         uniform float clock = 0.0;
         vec3 near_copy(vec3 at, vec3 eye) {
             at.xz = eye.xz + mod(at.xz - eye.xz + world_size * 0.5, world_size) - world_size * 0.5;
-            float d = max(length(at.xz - eye.xz) - round.x, 0.0);
-            at.y -= d * d / (2.0 * round.y);
             return at;
         }
         // A lamp is brighter than what it lights: it shows through more of the haze than the ground does.

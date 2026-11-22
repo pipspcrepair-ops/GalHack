@@ -15,7 +15,7 @@ public static class DetailReach
     /// <summary>The detail distance a game starts at, m: large growth stands to about here, the far rings run to it.</summary>
     public const float Default = 1280f;
 
-    /// <summary>The most it can be: the horizon, where the far field takes over (<see cref="TerrainStreamer.HorizonDistance"/>).</summary>
+    /// <summary>The most it can be: the horizon, as far as the land is always whole (<see cref="TerrainStreamer.HorizonDistance"/>).</summary>
     public const float Most = TerrainStreamer.HorizonDistance;
 
     public static float Distance { get; private set; }

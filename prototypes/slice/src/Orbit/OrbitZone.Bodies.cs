@@ -111,7 +111,7 @@ public partial class OrbitZone
             }
             if (!c.Painting.IsCompleted) continue;
             if (c.Painting.IsFaulted) throw new InvalidOperationException($"{c.Name}'s globe failed to paint", c.Painting.Exception);
-            c.SettingUp ??= c.Globe.Setup(c.Painting.Result, c.GlobeRadius, c.AtmosphereRadius, Rules.Globe, new Vector2((float)c.Map.Width, (float)c.Map.Height)).GetEnumerator();
+            c.SettingUp ??= c.Globe.Setup(c.Painting.Result, c.GlobeRadius, c.AtmosphereRadius, Rules.Globe, c.Map).GetEnumerator();
             if (!c.SettingUp.MoveNext())
             {
                 c.Ready = true;

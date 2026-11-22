@@ -311,7 +311,7 @@ public partial class MoonTest : Node
         // On up through the band, the readout the world's altitude the whole way.
         bool altInBand = true;
         float bandTop = _game.Surface.Physics.Zone.Ceiling + OrbitRules.Shared.Crossing.Band;
-        for (int i = 0; i < 60 * 60 && _game.InOrbit && _game.Spaceflight.Band < 1f; i++)
+        for (int i = 0; i < 60 * 60 && _game.InOrbit && !_game.Spaceflight.PastBand; i++)
         {
             if (_game.Orbit.Home.Height(v.Body.Position.ToGodot()) < bandTop - 5f) altInBand &= _game.Spaceflight.FlightLine(v).Contains("ALT");
             yield return 0;
@@ -407,7 +407,7 @@ public partial class MoonTest : Node
                 Solid("as the moon took over");
             }
             if (tick % 1200 == 0)
-                GD.Print($"  ({tick / 60} s: {v.Body.Position.ToGodot().DistanceTo(Above()):F0} m to go at {v.Body.Velocity.Length():F0} m/s, {moon.Height(v.Body.Position.ToGodot()):F0} m over the moon, frame {orbit.Anchor.Name}, band {_game.Spaceflight.Band:F2}, aligned {_game.Spaceflight.Aligned}, in {_game.Zone.Name}, cpu {probe.LastCpuMs:F1} ms)");
+                GD.Print($"  ({tick / 60} s: {v.Body.Position.ToGodot().DistanceTo(Above()):F0} m to go at {v.Body.Velocity.Length():F0} m/s, {moon.Height(v.Body.Position.ToGodot()):F0} m over the moon, frame {orbit.Anchor.Name}, past the band {_game.Spaceflight.PastBand}, aligned {_game.Spaceflight.Aligned}, in {_game.Zone.Name}, cpu {probe.LastCpuMs:F1} ms)");
             yield return fly.Current;
         }
         double seconds = watch.Elapsed.TotalSeconds;
@@ -539,7 +539,7 @@ public partial class MoonTest : Node
         for (int i = 0; i < 60 * 120 && _game.Spaceflight.Crossings.Count == crossings; i++)
         {
             _game.Controls.Hold(Key.Ctrl, -v.Body.Velocity.ToGodot().Dot((v.Body.Position.ToGodot() - moon.Centre).Normalized()) < 40f);
-            if (alt == null && _game.InOrbit && _game.Spaceflight.Band < 0.5f) alt = $"'{_game.Spaceflight.FlightLine(v)}' at {moon.Height(v.Body.Position.ToGodot()):F0} m over the moon";
+            if (alt == null && _game.InOrbit && _game.Spaceflight.Aligned) alt = $"'{_game.Spaceflight.FlightLine(v)}' at {moon.Height(v.Body.Position.ToGodot()):F0} m over the moon";
             yield return 0;
         }
         _game.Controls.ReleaseAll();
@@ -666,7 +666,7 @@ public partial class MoonTest : Node
         if (!_game.InOrbit) yield break;
         Check(_game.Spaceflight.Crossings[^1].Audit.Count == 0, "nothing lost or doubled on the way up");
         // On out over the band's top and back toward the world, round the moon if it stands between.
-        for (int i = 0; i < 60 * 30 && _game.Spaceflight.Band < 1f; i++)
+        for (int i = 0; i < 60 * 30 && !_game.Spaceflight.PastBand; i++)
         {
             _game.Controls.Hold(Key.Space);
             yield return 0;

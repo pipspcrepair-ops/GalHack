@@ -8,7 +8,7 @@
 // pattern; small growth shrinks into the ground over the last band of its reach, and a thinning share
 // of it (instance alpha past 1) sooner, so it thins out rather than ending in a line. Each plant's reach
 // is a little its own. Nothing swaps drawings or appears whole. The reaches come from TerrainStreamer
-// (DetailReach), and past 2 km plants sink over the round world's horizon with the land. Keep in step
+// (DetailReach). Keep in step
 // with TerrainStreamer.FloraShows.
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
@@ -72,7 +72,6 @@ void vertex() {
 		float strength = min(weather_wind.z, 30.0) * 0.012 * (0.4 + 0.6 * gust);
 		float flutter = sin(TIME * 2.3 + world.x * 0.3 + world.z * 0.2) * 0.04;
 		vec3 push = vec3(weather_wind.x, 0.0, weather_wind.y) * (strength + flutter) * sway * max(COLOR.a, 0.8) * 3.0;
-		push.y -= round_sink(to_eye); // over the round world's horizon, with the far land
 		VERTEX += (inverse(MODEL_MATRIX) * vec4(push, 0.0)).xyz;
 	}
 }

@@ -34,7 +34,7 @@ public partial class OrbitTest
         double width = _game.Surface.Planet.Width;
         var map = new GlobeMap(width, _game.Surface.Planet.Height, width / Math.Tau);
         Vector3 cam = _game.Camera.GlobalPosition;
-        bool space = _game.InOrbit && _game.Spaceflight.Band >= 1f;
+        bool space = _game.InOrbit && _game.Spaceflight.PastBand;
         N.Quaternion toGlobe;
         N.Vector3 eye;
         if (_game.InOrbit)
@@ -79,12 +79,12 @@ public partial class OrbitTest
         if (_skyStep < 0 || _skyStep > 3) return;
         float y = _game.Camera.GlobalPosition.Y;
         var flight = _game.Spaceflight;
-        _highTicks = _game.InOrbit && flight.Band >= 1f ? _highTicks + 1 : 0;
+        _highTicks = _game.InOrbit && flight.PastBand ? _highTicks + 1 : 0;
         switch (_skyStep)
         {
             case 0: SampleSky("on the ground"); _skyStep++; break;
             case 1 when !_game.InOrbit && y > 1030f: SampleSky("just under the cap"); _skyStep++; break;
-            case 2 when _game.InOrbit && flight.Band is > 0.01f and < 0.2f: SampleSky("just over the cap"); _skyStep++; break;
+            case 2 when _game.InOrbit && y - 1060f < 200f: SampleSky("just over the cap"); _skyStep++; break;
             case 3 when _highTicks > 10:
                 SampleSky("high in space");
                 _skyStep++;

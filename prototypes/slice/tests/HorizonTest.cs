@@ -13,10 +13,11 @@ using Slice.Game;
 namespace Slice.Tests;
 
 /// <summary>
-/// The far land reaches the horizon at every height: on a fresh random world, the eye is held at
+/// The flat land reaches its horizon at every height: on a fresh random world, the eye is held at
 /// 100, 300, 600 and 900 m over a fresh coast on a clear day, and at each height
-/// - real ground (the land's own mesh, then the far field drawn from the same map) reaches the
-///   round world's horizon all the way round, or falls short of it by under 5 %;
+/// - the land's own mesh is whole out to its reach round the eye, and that reach is never past half
+///   the map either way, so no place is drawn twice however small the world (the sky's far ground
+///   goes on past it);
 /// - the haze leaves the horizon band at least 15 % of the land's own colour, so it is never erased;
 /// - the band under the horizon, as it stands hazed, is not one flat colour: land and sea round
 ///   it differ from each other and from the haze.
@@ -28,9 +29,6 @@ public partial class HorizonTest : Node
 {
     const int WatchdogMinutes = 8;
     static readonly float[] Heights = { 100f, 300f, 600f, 900f };
-
-    /// <summary>How far short of the horizon real ground may stop, as a share of the way there.</summary>
-    const float ShortBy = 0.05f;
 
     /// <summary>The least of the land's own colour the haze leaves at the horizon.</summary>
     const float LeastLeft = 0.15f;
@@ -116,25 +114,14 @@ public partial class HorizonTest : Node
     {
         var world = _game.Surface.Planet;
         var streamer = _game.Zone.Streamer;
-        var globe = _game.Orbit?.Globe;
         float h = eye.Y;
-        float horizon = TerrainStreamer.RoundFrom + MathF.Sqrt(2f * TerrainStreamer.RoundRadius * MathF.Max(h, 1f));
-
-        // Real ground's reach: the land's own mesh to where it thins away, then the far field past it.
-        Vector3 rim = streamer.HorizonRim;
-        float land = float.MaxValue;
-        for (int a = 0; a < 64; a++)
-        {
-            var way = new Vector2(MathF.Cos(a * MathF.Tau / 64f), MathF.Sin(a * MathF.Tau / 64f));
-            float tx = MathF.Abs(way.X) > 1e-4f ? ((way.X > 0 ? rim.X + rim.Z : rim.X - rim.Z) - eye.X) / way.X : float.MaxValue;
-            float tz = MathF.Abs(way.Y) > 1e-4f ? ((way.Y > 0 ? rim.Y + rim.Z : rim.Y - rim.Z) - eye.Z) / way.Y : float.MaxValue;
-            land = MathF.Min(land, MathF.Min(tx, tz) - 600f);
-        }
-        if (rim.Z <= 0f) land = 0f;
-        bool farField = globe is { Visible: true } && streamer.FarFieldBehind;
-        float reach = MathF.Max(land, farField ? globe.Reach : 0f);
-        Check(reach >= horizon * (1f - ShortBy),
-            $"at {h:F0} m real ground reaches the horizon: the land's own mesh to {land:F0} m, {(farField ? $"the far field to {globe.Reach:F0} m" : "no far field behind it")}; the horizon {horizon:F0} m off");
+        // The land drawn round the eye: its mesh whole out to the reach each way, the reach at most half the map.
+        Vector2 reach = streamer.LandReach;
+        var (mesh, at) = streamer.DrawnHorizon();
+        float spareX = TerrainStreamer.HorizonReach - MathF.Abs(at.X - eye.X) - reach.X, spareZ = TerrainStreamer.HorizonReach - MathF.Abs(at.Z - eye.Z) - reach.Y;
+        Check(mesh != null && spareX >= 0f && spareZ >= 0f && reach.X <= world.Width / 2 + 0.01 && reach.Y <= world.Height / 2 + 0.01 && MathF.Min(reach.X, reach.Y) >= MathF.Min(TerrainStreamer.HorizonDistance, (float)world.Height / 2f),
+            $"at {h:F0} m the land is whole to its reach round the eye, {reach.X:F0} m east and west and {reach.Y:F0} m north and south, none of the {world.Width / 1000:F0} x {world.Height / 1000:F0} km map drawn twice (the mesh {spareX:F0} and {spareZ:F0} m past it)");
+        float horizon = MathF.Min(reach.X, reach.Y), land = horizon;
 
         // The haze, as set for this eye.
         var env = _game.Zone.Sky.Environment;

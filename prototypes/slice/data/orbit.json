@@ -9,21 +9,22 @@
     // How high the rim of air drawn round the globe reaches, as a share of its radius. It thins
     // away to nothing by there, and has to stay under the orbit's lowest height.
     "atmosphere": 0.15,
-    // The sheet's polar grid: bearings and rings, spread closest under you.
+    // The globe's polar grid: bearings and rings, spread closest under you.
     "segments": 256,
     "rings": 160,
-    // The colour map's width in pixels (planet-generator's ColorMap; half as tall) and the clouds'.
-    "textureWidth": 2048,
+    // The colour map: a texel to this many metres of the map, a power of two wide (planet-generator's
+    // ColorMap; half as tall), at most this wide; and the clouds' width.
+    "texelMetres": 4,
+    "textureWidth": 4096,
     "cloudWidth": 1024,
-    // Clouds sit this share of the radius over the ground, at this share of the generator's
-    // cover (its cloud map is a stormy day's; thinned, the land under it reads from orbit).
-    "cloudHeight": 0.012,
-    // The share of the map's relief the true globe draws (it is a small world: at full height its
-    // peaks would stand a quarter of its radius high). All of it at the cap, thinning up the climb.
+    // The cloud deck's height over sea level, m, on a world whose sky isn't running (the one below
+    // has its own); at this share of the generator's cover (its cloud map is a stormy day's;
+    // thinned, the land under it reads from orbit).
+    "cloudHeight": 700,
+    // The share of the map's relief (and of the cloud deck's height) the globe draws from far off (it
+    // is a small world: at full height its peaks would stand a quarter of its radius high). All of
+    // it near the ground, where it is what you land on.
     "reliefFar": 0.12,
-    // How far round the globe the sheet shows the sphere's map, degrees from the point under you.
-    // Past it (only low down, where the sheet is far wider than the globe) it is the flat map.
-    "sphereReach": 105,
     // How many days' worth of sun a trip round the map's equator is. 1 is the true globe: the same
     // sun in the sky from the ground and from space. Under 1 softens the time zones on the surface,
     // and the sun then jumps at the crossing by what was softened away.
@@ -41,10 +42,10 @@
     "cloudOpacity": 0.55
   },
 
-  // Crossing between the surface and orbit is seamless: no loading, position, heading and velocity
-  // carried straight across. What you see is set from your height alone, the same both ways: the
-  // air thickens to the cap in the world's own colours, the land hands over to the globe's sheet
-  // behind it, and it thins away to black space with the world curving away below.
+  // Crossing between the surface and orbit: a scene switch at the cap (owner, 17 and 22 Nov: a
+  // visible cut is fine, no shroud, no curving ground), with position, heading and velocity carried
+  // straight across. On the surface the ground is flat to the horizon and the air thins away with
+  // height, the sky darkening to space's own by the cap; in space the world is its true globe.
   "crossing": {
     // The cap, m: orbit starts here on every world, low, on Empyrion's scale, just over the clouds
     // (their tops are about 1,000 m). The design keeps the land under it (peaks to about 900 m).
@@ -55,26 +56,12 @@
     // The gap between the two edges, m: a climb crosses at the cap and a descent this far
     // under it, so a crossing never bounces straight back.
     "gap": 80,
-    // The air fades away with height from here (m): the sky darkens into space's own backdrop and
-    // the wind dies away, over this and the band.
-    "fadeFrom": 700,
-    // The band, m over the cap: the surface's sky turning into space's, the star's light taking over.
-    // The land is already gone: at its foot the sheet is all the ground there is.
+    // The air fades away with height from here (m) to the cap: the sky darkens into space's own
+    // backdrop, the stars come out and the wind dies away.
+    "fadeFrom": 600,
+    // The descent's band, m over the cap: coming down through it the ground under you streams in,
+    // and no other body takes over as the frame you fly in.
     "band": 1000,
-    // The shroud: the air round you, from this height up to the cap (m), holding a little over it
-    // and thinning away over this many metres. Its thickness is this share at the most, times the
-    // share the world's air allows.
-    "shroudFrom": 760,
-    "shroudHolds": 30,
-    "shroudThins": 620,
-    "shroudThickness": 0.9,
-    // The swap, m: the sheet comes over the land from here up to the cap, behind the shroud.
-    "swapFrom": 960,
-    // The sheet's curve: its radius (m) up to the cap, nearly flat, tightening up the band to the
-    // true globe at the band's top, so in space every body is drawn at its true size. The map wraps
-    // from the flat map onto the sphere over this many metres above the cap.
-    "flatCurve": 300000,
-    "mapWrapsBy": 2400,
     // A descent starts streaming the ground under it this many bands over the cap.
     "streamAhead": 1.5
   },
@@ -127,6 +114,6 @@
     "takesOverWithin": 2500,
     // The moon's own globe, painted from the map you land on, fades in over its far look
     // (the sky's coarse paint of it) between these distances from its ground, m.
-    "moonGlobeFrom": [ 9000, 7000 ]
+    "moonGlobeFrom": [ 30000, 26000 ]
   }
 }

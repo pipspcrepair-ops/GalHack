@@ -88,18 +88,6 @@ public partial class SurfaceZone : Node3D
     public UnderwaterView Underwater { get; protected set; }
 
     ShaderMaterial _seaMaterial, _riverMaterial;
-    Vector3 _seaRim = PlanetSurface.Terrain.TerrainStreamer.NoRim;
-
-    /// <summary>Where the sea plane ends: at the land's own rim while the far field stands behind it (<see cref="PlanetSurface.Terrain.TerrainStreamer.HorizonRim"/>).</summary>
-    public Vector3 SeaRim
-    {
-        get => _seaRim;
-        set
-        {
-            _seaRim = value;
-            (Sea.MaterialOverride as ShaderMaterial)?.SetShaderParameter(PlanetSurface.Fx.Names.Of("rim"), value);
-        }
-    }
 
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
     public PlanetSurface.Fx.Sfx Sfx { get; protected set; }
@@ -151,9 +139,8 @@ public partial class SurfaceZone : Node3D
         AddChild(Streamer);
         Sea = new MeshInstance3D
         {
-            // Subdivided so its far side can sink over the horizon with the land (round_sink in the water shader).
-            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 95, SubdivideDepth = 95 },
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, ExtraCullMargin = PlanetSurface.Terrain.TerrainStreamer.RoundSink(17000f),
+            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(Sea);
         Sfx = new PlanetSurface.Fx.Sfx { Name = "Sfx" };
@@ -264,6 +251,7 @@ public partial class SurfaceZone : Node3D
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         foreach (string part in Streamer.Setting(Planet, landing, _riverMaterial = WaterMaterial(sea: false))) yield return part;
         Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), Streamer.LandReach); // the sea ends where the land does
         yield return "sea";
         Sky.SetWorld(Planet, SkySurfaces);
         yield return "sky";

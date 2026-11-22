@@ -27,7 +27,7 @@ uniform vec3 glow_color : source_color = vec3(1.0, 0.32, 0.06);
 uniform float glow_strength = 3.0;
 uniform vec3 dust_color : source_color = vec3(0.62, 0.5, 0.36);
 
-uniform vec3 rim = vec3(0.0, 0.0, -1.0);  // the horizon mesh's edge thins into the far field: see past_rim
+uniform vec2 reach = vec2(0.0);  // the far land thins away past half the map round the eye: see past_reach
 
 // The roads, as segments (RoadField.cs): the nearest one to a pixel paints it, from its exact distance.
 uniform sampler2D road_segments : filter_nearest;
@@ -932,26 +932,13 @@ void vertex() {
 	}
 	if (hole_sink > 0.0 && inside_hole(VERTEX.xz) >= hole_sink_from) VERTEX.y -= hole_sink;
 	wpos = VERTEX;
-	// The horizon mesh eases onto the far field's smoother ground (UV2.x) over the last of its reach,
-	// so where it thins away past its rim the sheet behind stands where it did.
-	if (far_ring && rim.z > 0.0) {
-		float out_by = max(abs(VERTEX.x - rim.x), abs(VERTEX.z - rim.y));
-		VERTEX.y = mix(VERTEX.y, UV2.x + MODEL_MATRIX[3].y, smoothstep(rim.z - 2400.0, rim.z - 600.0, out_by));
-		wpos = VERTEX;
-	}
-	// The far land sinks over the round world's horizon (round_sink); the voxels are all well inside it.
-	if (far_ring) {
-		float sink = round_sink(wpos.xz - CAMERA_POSITION_WORLD.xz);
-		VERTEX.y -= sink;
-		wpos.y -= sink;
-	}
 	wnormal = normalize(NORMAL);
 }
 
 void fragment() {
 	far_sun = far_lit(wpos, CAMERA_POSITION_WORLD);
 	if (far_ring && inside_hole(wpos.xz) > hole_cut) discard;
-	if (far_ring && past_rim(wpos.xz, rim, FRAGCOORD.xy)) discard;
+	if (far_ring && past_reach(wpos.xz - CAMERA_POSITION_WORLD.xz, reach, FRAGCOORD.xy)) discard;
 
 	vec3 base = srgb_to_linear(COLOR.rgb);
 	float up = wnormal.y;

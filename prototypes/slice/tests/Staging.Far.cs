@@ -223,26 +223,24 @@ public sealed partial class Staging
     }
 
     /// <summary>
-    /// What the band under the horizon holds, looking one way from an eye: how far the land's own mesh
-    /// reaches that way and how far the horizon is (where the round world's curve takes the ground out of sight), the haze at each, and in
-    /// the frame, from the land's rim up to the horizon, how much the colour varies along each row
-    /// (a flat smear of haze varies hardly at all) and how far it stands from the haze's own colour.
+    /// What the band under the horizon holds, looking one way from an eye: how far the land reaches
+    /// that way (half the map at most, the sky's far ground past it), the haze there, and in the frame,
+    /// from the land's rim up to the horizon, how much the colour varies along each row (a flat smear
+    /// of haze varies hardly at all) and how far it stands from the haze's own colour.
     /// </summary>
     string HorizonBand(Vector3 eye, Vector3 way, Image frame)
     {
-        var s = _game.Zone.Streamer;
-        Vector3 rim = s.HorizonRim;
+        Vector2 reach = _game.Zone.Streamer.LandReach;
         float h = eye.Y;
-        float horizon = PlanetSurface.Terrain.TerrainStreamer.RoundFrom + MathF.Sqrt(2f * PlanetSurface.Terrain.TerrainStreamer.RoundRadius * MathF.Max(h, 1f));
-        // Out along the way to the square's edge, less the 600 m it thins away over.
-        float tx = MathF.Abs(way.X) > 1e-4f ? ((way.X > 0 ? rim.X + rim.Z : rim.X - rim.Z) - eye.X) / way.X : float.MaxValue;
-        float tz = MathF.Abs(way.Z) > 1e-4f ? ((way.Z > 0 ? rim.Y + rim.Z : rim.Y - rim.Z) - eye.Z) / way.Z : float.MaxValue;
-        float land = rim.Z > 0f ? MathF.Min(tx, tz) - 600f : float.NaN;
+        // Out along the way to where the land thins away, less the 600 m it thins over.
+        float tx = MathF.Abs(way.X) > 1e-4f ? reach.X / MathF.Abs(way.X) : float.MaxValue;
+        float tz = MathF.Abs(way.Z) > 1e-4f ? reach.Y / MathF.Abs(way.Z) : float.MaxValue;
+        float land = MathF.Min(tx, tz) - 600f;
         var env = _game.Zone.Sky.Environment;
         float Haze(float d) => 1f - MathF.Exp(-env.FogDensity * d);
         Camera3D cam = _game.Camera;
-        float Row(float d) => cam.UnprojectPosition(eye + way * d + Vector3.Down * (h + PlanetSurface.Terrain.TerrainStreamer.RoundSink(d))).Y;
-        int top = (int)Row(horizon), bottom = (int)Row(MathF.Min(land, horizon * 0.9f));
+        float Row(float d) => cam.UnprojectPosition(eye + way * d + Vector3.Down * h).Y;
+        int top = (int)Row(land), bottom = (int)Row(land * 0.6f);
         string band = "";
         if (frame != null && top > 0 && bottom > top + 2 && bottom < frame.GetHeight())
         {
@@ -266,7 +264,7 @@ public sealed partial class Staging
             }
             band = $", band rows {top}-{bottom}: spread {spread / rows * 255f:F1}/255, off the haze {off / rows * 255f:F1}/255";
         }
-        return $"eye {h:F0} m, land's mesh to {land:F0} m, horizon {horizon:F0} m ({land / horizon:P0}), far field to {_game.Orbit?.Globe.Reach ?? 0f:F0} m; haze {Haze(MathF.Min(land, horizon)):P0} at the land's rim, {Haze(horizon):P0} at the horizon (density {env.FogDensity * 1e6f:F0}e-6){band}";
+        return $"eye {h:F0} m, the land to {land:F0} m that way (its reach {reach.X:F0} by {reach.Y:F0} m); haze {Haze(land):P0} at the land's rim (density {env.FogDensity * 1e6f:F0}e-6){band}";
     }
 
     float[] Floats(string key, string fallback) =>

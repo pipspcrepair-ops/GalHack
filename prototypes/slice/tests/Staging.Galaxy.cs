@@ -91,10 +91,10 @@ public sealed partial class Staging
     {
         Hurry(4);
         _game.Controls.Hold(Key.Space);
-        for (int i = 0; i < 60 * 240 && _game.Spaceflight.Band < 1f; i++) yield return 0;
+        for (int i = 0; i < 60 * 240 && !_game.Spaceflight.PastBand; i++) yield return 0;
         _game.Controls.ReleaseAll();
         Hurry(1);
-        GD.Print($"(galaxy: climbed, {(_game.InOrbit ? "in orbit" : "still on the surface")}, band {_game.Spaceflight.Band:F2})");
+        GD.Print($"(galaxy: climbed, {(_game.InOrbit ? "in orbit" : "still on the surface")}, past the band {_game.Spaceflight.PastBand})");
         for (int i = 0; i < 30; i++) yield return 0;
     }
 
@@ -329,7 +329,7 @@ public sealed partial class Staging
             _game.Camera.Fov = zoom;
             _game.FixedCamera = new Transform3D(Basis.LookingAt(toSun, MathF.Abs(toSun.Y) > 0.95f ? Vector3.Forward : Vector3.Up), eye);
             for (int i = 0; i < 20; i++) yield return 0;
-            GD.Print($"(sun: {tag} at {v.Body.Position.Y:F0} m, the air {_game.Spaceflight.AirGone:P0} gone, {(_game.InOrbit ? $"in orbit, band {_game.Spaceflight.Band:F2}" : "the surface's sky")}; the sun {Mathf.RadToDeg(MathF.Asin(Math.Clamp(toSun.Y, -1f, 1f))):F0} degrees up)");
+            GD.Print($"(sun: {tag} at {v.Body.Position.Y:F0} m, the air {_game.Spaceflight.AirGone:P0} gone, {(_game.InOrbit ? $"in orbit, past the band {_game.Spaceflight.PastBand}" : "the surface's sky")}; the sun {Mathf.RadToDeg(MathF.Asin(Math.Clamp(toSun.Y, -1f, 1f))):F0} degrees up)");
             Snap(tag);
             _game.FixedCamera = null;
             _game.Settings.Fov = wide;
@@ -342,7 +342,7 @@ public sealed partial class Staging
         foreach (int x in Shoot("b-climb", false)) yield return x;
         Hurry(4);
         _game.Controls.Hold(Key.Space);
-        for (int i = 0; i < 60 * 240 && _game.Spaceflight.Band < 1f; i++) yield return 0;
+        for (int i = 0; i < 60 * 240 && !_game.Spaceflight.PastBand; i++) yield return 0;
         for (int i = 0; i < 30; i++) yield return 0;
         foreach (int x in Shoot("c-orbit", true)) yield return x;
     }

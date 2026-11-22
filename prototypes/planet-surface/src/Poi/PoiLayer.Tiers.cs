@@ -192,14 +192,6 @@ public partial class PoiLayer
         return Mathf.Sqrt(dx * dx + dz * dz);
     }
 
-    /// <summary>A far mesh (or merged blocks, at a long detail distance) sinks with the ground under it over the round world's horizon (<see cref="Terrain.TerrainStreamer.RoundSink"/>), or it would stand over it.</summary>
-    static void SinkFar(Node3D low, float distance)
-    {
-        if (low == null) return;
-        var at = new Vector3(0f, -Terrain.TerrainStreamer.RoundSink(distance), 0f);
-        if (low.Position != at) low.Position = at;
-    }
-
     /// <summary>How long a place's far mesh and its merged blocks take to dissolve one into the other, s.</summary>
     public const float BlendSeconds = 0.7f;
 
@@ -273,14 +265,12 @@ public partial class PoiLayer
         {
             t.Distance = float.MaxValue;
             foreach (Place p in t.Members) t.Distance = Mathf.Min(t.Distance, Away(p, camera));
-            SinkFar(t.Low, t.Distance);
         }
         foreach (Place p in _places)
         {
             if (p.Node == null) continue;
             Tile tile = _tileOf.GetValueOrDefault(p);
             float d = tile?.Distance ?? Away(p, camera);
-            SinkFar(p.Mid, d);
             float radius = (tile != null ? cityRadius : midRadius) + ahead, drop = (tile != null ? cityDrop : midDrop) + ahead;
             if (tile == null)
             {
@@ -297,7 +287,6 @@ public partial class PoiLayer
                         p.Low.Visible = low;
                     }
                 }
-                SinkFar(p.Low, d);
             }
             if (p.Mid == null && !Building(p) && d < radius && p.Way == 0)
             {

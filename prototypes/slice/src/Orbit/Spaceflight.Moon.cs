@@ -20,7 +20,7 @@ namespace Slice.Orbit;
 /// Gravity frames hand over: in the orbit zone you fly in the frame of the body you are near (the
 /// zone's anchor). As you come within a moon's reach it takes over: it holds still and the world
 /// you left moves round it, so its ground waits where you see it. The descent onto it and the climb
-/// off it are the start world's, the same seam over its own map, with no air to shroud it.
+/// off it are the start world's, the same switch at its own cap.
 /// </summary>
 public partial class Spaceflight
 {
@@ -76,7 +76,6 @@ public partial class Spaceflight
             };
             Orbit.AddMoon(moon, zone, ceiling);
             _surfaceShownOf[zone] = false;
-            _groundShownOf[zone] = true;
         }
     }
 
@@ -108,7 +107,7 @@ public partial class Spaceflight
     void HandOverFrames(Vector3 at)
     {
         OrbitZone o = Orbit;
-        if (o.Bodies.Count < 2 || _aligned || _band < 1f) return;
+        if (o.Bodies.Count < 2 || _aligned) return;
         Celestial owner = o.OwnerOf(at);
         if (owner == o.Anchor) return;
         // Leaving a moon's reach takes a little more than coming into it, so the frame never flickers at the edge.
@@ -120,14 +119,13 @@ public partial class Spaceflight
         GD.Print($"[frame: {owner.Name} takes over]");
     }
 
-    /// <summary>The body below changed: the one you left is hidden as it was, the new one starts hidden, its clock the one clock.</summary>
+    /// <summary>The body below changed: its clock is the one clock, and its sky the one the air thins in.</summary>
     void Took(SurfaceZone before)
     {
         SurfaceZone now = Below;
         if (now == before) return;
         now.Sky.Days = before.Sky.Days;
         _sky = null;
-        ShowGround(false); // its land waits hidden (its zone is still), ready for the band
     }
 
     /// <summary>The one clock: every body's sky tells the same days as the one you are under.</summary>
@@ -137,42 +135,6 @@ public partial class Spaceflight
         SurfaceZone s = Below;
         foreach (Celestial c in Orbit.Bodies)
             if (c.Surface is { Sky: not null } other && other != s) other.Sky.Days = s.Sky.Days;
-    }
-
-    /// <summary>
-    /// The other bodies with ground, drawn by their own globes at their true places where that shows
-    /// (the start world always; the moon fading in over the sky's far look of it as you come near),
-    /// and nowhere while a surface's sky is the one drawing them (under the top of the band).
-    /// </summary>
-    void DrawOthers()
-    {
-        OrbitZone o = Orbit;
-        if (o == null || o.Bodies.Count < 2) return;
-        Vector3 eye = Game.Camera.GlobalPosition;
-        bool space = Game.InOrbit && _band >= 1f;
-        foreach (Celestial c in o.Bodies)
-        {
-            if (c.IsHome && c == Here || c.Globe == null) continue;
-            float show = 0f;
-            if (space && c.Ready)
-            {
-                if (c.IsHome) show = 1f;
-                else
-                {
-                    float[] from = Rules.Space.MoonGlobeFrom;
-                    float ground = eye.DistanceTo(c.Centre) - c.GlobeRadius;
-                    show = Smooth((from[0] - ground) / MathF.Max(from[0] - from[1], 1f));
-                }
-            }
-            if (!c.IsHome) o.Space.Fade(c.Body, space ? 1f - show : 1f);
-            if (c == Here) continue; // its own globe is drawn by the seam (DrawWorld), once it is set up
-            if (show <= 0f)
-            {
-                c.Globe.Visible = false;
-                continue;
-            }
-            DrawFar(c, eye, show);
-        }
     }
 
     /// <summary>The moon is drawn this frame, by a surface's sky, the far look of it or its own globe (tests: it never vanishes). Why not, if not.</summary>
@@ -185,56 +147,11 @@ public partial class Spaceflight
             why = "there is no moon";
             return false;
         }
-        if (!Game.InOrbit || _band < 1f) return true; // a surface's sky draws it, at the same place
+        if (!Game.InOrbit) return true; // a surface's sky draws it, at the same place
         bool globe = m.Globe != null && m.Globe.Visible && !m.Globe.Hidden;
         float fade = Orbit.Space.FadeOf(m.Body);
         if (globe || (Orbit.Space.BodiesShown && fade > 0.002f)) return true;
         why = $"its globe {(globe ? "shown" : "hidden")} ({(m == Here ? "the frame" : "another body")}), its far look at {fade:P0}, space's bodies {(Orbit.Space.BodiesShown ? "shown" : "hidden")}";
         return false;
-    }
-
-    /// <summary>A body you are not near, drawn as a whole globe at its true place; its air as much as it shows (<paramref name="shown"/>: the far look's air the rest).</summary>
-    void DrawFar(Celestial c, Vector3 eye, float shown)
-    {
-        N.Vector3 q = c.ToGlobe(eye.ToNumerics());
-        float distance = q.Length();
-        var (gx, gz) = c.Map.MapPoint(q);
-        N.Quaternion frame = N.Quaternion.Normalize(c.Turn * c.Map.Frame(gx, gz));
-        Vector3 up = MathX.Rotate(frame, N.Vector3.UnitY).ToGodot();
-        Vector3 east = MathX.Rotate(frame, N.Vector3.UnitX).ToGodot();
-        Vector3 south = MathX.Rotate(frame, N.Vector3.UnitZ).ToGodot();
-        N.Quaternion map = c.Map.Frame(gx, gz);
-        float R = c.GlobeRadius;
-        float air = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir ? Globe.AirShare(c.World.Sky.Density) : 0f;
-        int umbrae = Orbit.Space.Umbrae(Game.Surface.Planet.StarSystem, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
-        c.Globe.Draw(new WorldView
-        {
-            Umbra = _umbra, UmbraCount = umbrae, UmbraSun = umbraSun,
-            Up = up, East = east, South = south,
-            MapUp = MathX.Rotate(map, N.Vector3.UnitY).ToGodot(),
-            MapEast = MathX.Rotate(map, N.Vector3.UnitX).ToGodot(),
-            MapSouth = MathX.Rotate(map, N.Vector3.UnitZ).ToGodot(),
-            Nadir = new Vector2((float)gx, (float)gz),
-            Height = MathF.Max(distance - R, 2f),
-            Bend = 1f / R,
-            FlatFrom = 0f,
-            Eye = eye,
-            RingRadius = R,
-            RingShown = 1f,
-            Flat = 0f,
-            Taper = 1f,
-            Local = 3000f,
-            Relief = (float)Rules.Globe.ReliefFar,
-            CloudBend = 1f / R,
-            CloudLift = (float)Rules.Globe.CloudHeight * R,
-            OverLand = 1f,
-
-            ToSun = (Orbit.Home.Turn.ToBasis() * Orbit.Space.ToSun).Normalized(),
-            FogDensity = 0f,
-            FogColor = Colors.Black,
-            Rim = air * shown,
-            TrueDepth = true,
-            TrueCentre = c.Centre,
-        });
     }
 }

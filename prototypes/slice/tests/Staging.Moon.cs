@@ -29,7 +29,7 @@ public sealed partial class Staging
         OrbitZone o = _game.Orbit;
         Hurry(4);
         _game.Controls.Hold(Key.Space);
-        for (int i = 0; i < 60 * 60 && _game.Spaceflight.Band < 1f; i++) yield return 0;
+        for (int i = 0; i < 60 * 60 && !_game.Spaceflight.PastBand; i++) yield return 0;
         _game.Controls.ReleaseAll();
         foreach (int x in _pilot.Stop()) yield return x;
         for (int i = 0; i < 60 * 300 && (o.Moon?.Ready != true || _game.Spaceflight.MoonSurface?.Made == null); i++) yield return 0;
@@ -218,7 +218,7 @@ public sealed partial class Staging
         return ((float)lit.Count / inside.Count, lit.Count > 0 ? lit.Average() : 0f, inside.Average());
     }
 
-    void Where(string what) => GD.Print($"(screenshot: {what}: in {_game.Zone.Name}, frame {_game.Orbit?.Anchor?.Name}, band {_game.Spaceflight.Band:F2}, landed {Skiff.Controller?.Frozen})");
+    void Where(string what) => GD.Print($"(screenshot: {what}: in {_game.Zone.Name}, frame {_game.Orbit?.Anchor?.Name}, past the band {_game.Spaceflight.PastBand}, landed {Skiff.Controller?.Frozen})");
 
     /// <summary>The cruise out to a moon skipped (printed): the Skiff set this far from its centre, on the side it is on, stopped.</summary>
     void SetBy(Vessel v, Celestial moon, float off)

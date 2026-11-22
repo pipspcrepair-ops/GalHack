@@ -215,7 +215,7 @@ public partial class OrbitZone : SurfaceZone
         var (paint, wrecks) = _preparing.Result;
         Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces, (float)Rules.Globe.Atmosphere);
         yield return 0;
-        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
+        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, Map)) yield return x;
         Home.Ready = true;
         foreach (DerelictPlan p in wrecks)
         {

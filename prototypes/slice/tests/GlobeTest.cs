@@ -27,9 +27,9 @@ public partial class GlobeTest : Node
         const double width = 16000, height = 8000;
         foreach (var (ok, text) in GlobeChecks.Run(width, height)) Check(ok, text);
         SphereMeshAgrees(width, height);
-        SheetLooksUpTheMap(width, height);
+        GlobeLooksUpTheMap(width, height);
         TheCap();
-        TheSheetNeverWraps();
+        TheGridReachesTheLimb();
         OneSystem();
         RingsCrossInOrder();
         OrbitsStandApart();
@@ -77,8 +77,8 @@ public partial class GlobeTest : Node
         Check(north.Y > 0.999f, $"globe: the map's top row is the north pole ({north.Y:F4} up)");
     }
 
-    /// <summary>The sheet's shader finds the map point of a direction by this same sum: it must be the mapping's own inverse.</summary>
-    void SheetLooksUpTheMap(double width, double height)
+    /// <summary>The globe's shader finds the map point of a direction by this same sum: it must be the mapping's own inverse.</summary>
+    void GlobeLooksUpTheMap(double width, double height)
     {
         var globe = new GlobeMap(width, height, width / Math.Tau);
         var rng = new Random();
@@ -91,7 +91,7 @@ public partial class GlobeTest : Node
             double dx = Math.Abs(u - Math.Round(u - x / width) - x / width) * width;
             worst = Math.Max(worst, Math.Max(dx, Math.Abs(v * height - z)));
         }
-        Check(worst < 3, $"globe: the sheet's lookup of a direction is the map point it came from, within {worst:F2} m at 400 random places");
+        Check(worst < 3, $"globe: the globe's lookup of a direction is the map point it came from, within {worst:F2} m at 400 random places");
     }
 
     /// <summary>The cap: orbit starts at 1,060 m on every world, and the land stands under it on fresh worlds of every type, tall or not.</summary>
@@ -109,25 +109,24 @@ public partial class GlobeTest : Node
     }
 
     /// <summary>
-    /// The sheet is far wider than the globe low down. Past the far side a lookup that keeps going
-    /// shows the globe over again, and everything at the far side smears into rings: its rim must
-    /// stand short of that at every height, at the map's scale under you, and on the true sphere
-    /// it must be the sphere.
+    /// The globe's grid, centred under the eye, reaches over the limb at every height from the cap
+    /// to far out (so the disc is whole), and never round to the far side (where the whole grid's
+    /// rim would close up behind the world), on worlds of every size.
     /// </summary>
-    void TheSheetNeverWraps()
+    void TheGridReachesTheLimb()
     {
-        OrbitRules rules = OrbitRules.Shared;
-        var c = rules.Crossing;
-        float radius = 16000f / MathF.Tau, worst = 0f;
-        for (float y = 1060f; y <= 1060f + c.Band; y += 40f)
+        float worstShort = float.MaxValue, worstOver = 0f;
+        foreach (float width in new[] { 8000f, 16000f, 32000f, 64000f })
         {
-            float climb = (y - 1060f) / c.Band;
-            float rho = 1f / Mathf.Lerp(1f / (float)c.FlatCurve, 1f / radius, climb);
-            worst = MathF.Max(worst, Globe.RimOf(rho, y) / Globe.ArcAt(MathF.PI * 0.99f, rho, radius));
+            float radius = width / MathF.Tau;
+            for (float h = 1060f; h <= 60000f; h *= 1.1f)
+            {
+                float reach = Globe.RimOf(radius, h), limb = radius * MathF.Acos(radius / (radius + h));
+                worstShort = MathF.Min(worstShort, reach - limb);
+                worstOver = MathF.Max(worstOver, reach / (MathF.PI * radius));
+            }
         }
-        Check(worst < 1f, $"globe: the sheet's rim stands short of the far side of the globe at every height ({worst * 100f:F0}% of the way there at worst)");
-        float under = Globe.ArcAt(0.01f, 300000f, radius) / (0.01f * radius), round = Globe.ArcAt(1.5f, radius, radius) / (1.5f * radius);
-        Check(MathF.Abs(under - 1f) < 0.01f && MathF.Abs(round - 1f) < 0.001f, $"globe: the sheet's lookup is at the map's scale under you ({under:F3}) and is the sphere itself on the sphere ({round:F3})");
+        Check(worstShort > 0f && worstOver < 0.6f, $"globe: the grid reaches over the limb at every height ({worstShort:F0} m past it at the least) and never round to the far side ({worstOver:P0} of the way at the most)");
     }
 
     /// <summary>
@@ -203,7 +202,7 @@ public partial class GlobeTest : Node
         Check(misplaced == 0, $"globe: a world's type agrees with its orbit round its star ({misplaced} did not{(misplaced > 0 ? ": " + misplacedWorld : "")})");
         Check(worstNoon < 0.002, $"globe: the clock's noon is the sun on the meridian at the map's middle ({worstNoon:F4} off)");
         Check(moved == moving, $"globe: everything moves along its orbit from one day to the next ({moved} of {moving})");
-        Check(unfit == 0, $"globe: every start has a vacuum moon in reach of thrusters with the drive's materials, and hyperdrive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
+        Check(unfit == 0, $"globe: every start has a vacuum moon in reach of thrusters with the drive's materials, and fold drive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
         Check(unresolved == 0, $"globe: any point on a world resolves up to its orbit, its place in the system and its star ({unresolved} did not)");
     }
 
@@ -269,27 +268,9 @@ public partial class GlobeTest : Node
         Check(worstMs < 3000, $"globe: a surface takes {totalMs / Math.Max(picked.Count, 1):F0} ms on its own thread, {worstMs:F0} ms at worst");
     }
 
-    /// <summary>
-    /// A ring stands on its sphere: same centre, its inner edge clear of the surface. For a world's
-    /// ring that is the sphere you can see at every height through the crossing and the sheet's
-    /// curve, and the true globe from the true globe's height; for a giant's, one mesh and the
-    /// sky's shader, from the same radii.
-    /// </summary>
+    /// <summary>A ring stands on its sphere: same centre, its inner edge clear of the surface; for a giant's, one mesh and the sky's shader, from the same radii.</summary>
     void RingsFitTheirSpheres()
     {
-        OrbitRules.CrossingRules c = OrbitRules.Shared.Crossing;
-        const float radius = 16000f / MathF.Tau, cap = 1060f;
-        float worst = float.MaxValue, trueOff = 0f, under = 0f;
-        for (float y = cap + Globe.RingFitsBy; y <= 12000f; y += 20f)
-        {
-            float climb = Mathf.Clamp((y - cap) / c.Band, 0f, 1f);
-            float sheet = 1f / Mathf.Lerp(1f / c.FlatCurve, 1f / radius, climb), ring = Globe.RingSphere(sheet, radius, y - cap);
-            worst = MathF.Min(worst, Globe.RingInner * ring / sheet);
-            if (y >= cap + c.Band) trueOff = MathF.Max(trueOff, MathF.Abs(ring - radius));
-        }
-        for (float y = 0f; y <= cap; y += 20f) under = MathF.Max(under, MathF.Abs(Globe.RingSphere(300000f, radius, y - cap) - radius));
-        Check(worst > 1.4f, $"globe: from {cap + Globe.RingFitsBy:F0} m up a world's ring stands round the sheet you can see: its inner edge at {worst:F2} radii at the least, never inside the disc");
-        Check(trueOff < 0.01f && under < 0.01f, $"globe: and it is the true globe's ring on the ground and in true orbit ({under:F2}, {trueOff:F2} m off)");
         foreach (var (inner, outer, what) in new[] { (Globe.RingInner, Globe.RingOuter, "a world's"), (SpaceSky.RingInner, SpaceSky.RingOuter, "a giant's") })
         {
             var vertices = Globe.RingMesh(inner, outer, 160).GetFaces();

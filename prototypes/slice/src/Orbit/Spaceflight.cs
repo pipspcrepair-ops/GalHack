@@ -30,8 +30,8 @@ public sealed record Crossing(bool Up, double MapX, double MapZ, double HeadingD
 
 /// <summary>
 /// Climbing out of the atmosphere into orbit and coming back down, and what is different in space.
-/// To the player the crossing is seamless: no loading screen, fade or effect, the destination made
-/// ahead of them, their position, heading and velocity carried straight across.
+/// The crossing is a scene switch with no loading screen, fade or effect, the destination made
+/// ahead of the player, their position, heading and velocity carried straight across.
 ///
 /// <para><b>Up.</b> Once a climb passes part of the way to the atmosphere's top (the physics'
 /// ceiling, where weight and air end), the orbit zone starts being made on worker threads, enters
@@ -47,8 +47,8 @@ public sealed record Crossing(bool Up, double MapX, double MapZ, double HeadingD
 /// the surface's frame. Landing: you come down where you crossed into the atmosphere; to land
 /// somewhere, fly over it in orbit first (the design's rule).</para>
 ///
-/// <para><b>The seam</b> is in <c>Spaceflight.Seam.cs</c>: the air thickens to the cap, the land hands over behind it,
-/// and it thins to black space with the world curving away below.</para>
+/// <para><b>The seam</b> is in <c>Spaceflight.Seam.cs</c>: the air thins away up to the cap, where the scene
+/// switches to space and the world below is its true globe.</para>
 ///
 /// <para><b>In space</b> the suit breathes from its own oxygen (in vacuum the helmet seals and the
 /// air runs down; a cockpit refills it), the Sleeper tool's gather mode salvages a wreck's blocks
@@ -332,13 +332,13 @@ public partial class Spaceflight : Node
         _leftAt[body] = new Vector3(p.X, p.Y, p.Z);
         to.Align(body, x, z, p.X, p.Z);
         _aligned = true;
-        HoldSurfaceBehind();
         Wake(to);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
         from.ProcessMode = ProcessModeEnum.Disabled;
-        GD.Print($"[lap disabled {watch.Elapsed.TotalMilliseconds:F1}]"); // the surface waits, exactly as it was left (still on screen: the seam)
+        GD.Print($"[lap disabled {watch.Elapsed.TotalMilliseconds:F1}]"); // the surface waits, exactly as it was left
         _surfaceFar = g.Camera.Far;
+        AllSpace();
         if (from == g.Surface) _surfaceAir ??= g.Suit.Sim.Environment;
         g.Suit.Sim.Environment = Vacuum;
         g.Suit.Beyond = Space;

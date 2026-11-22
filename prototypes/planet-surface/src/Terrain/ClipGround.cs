@@ -404,7 +404,7 @@ public sealed partial class ClipGround : Node3D
                     var (low2, high2) = Range(l + 1, FloorDiv(gx, 2), FloorDiv(gz, 2), Block / 2);
                     (low, high) = (MathF.Min(low, low2), MathF.Max(high, high2));
                 }
-                float room = 4f + TerrainStreamer.RoundSink(Half * s * 1.5f);
+                const float room = 4f;
                 m.CustomAabb = new Aabb(new Vector3(0f, (low - room) / s, 0f), new Vector3(Block, (high - low + 2f * room) / s, Block));
             }
         }

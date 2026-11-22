@@ -114,7 +114,7 @@ public sealed partial class Staging
         string o = _args.GetValueOrDefault("out", "seam.png");
         string path = System.IO.Path.ChangeExtension(o, null) + "-" + tag + ".png";
         Error e = _game.GetViewport().GetTexture().GetImage().SavePng(path);
-        GD.Print($"(screenshot: {tag}, band {_game.Spaceflight.Band:F2}, air gone {_game.Spaceflight.AirGone:F2}, {(_game.InOrbit ? "orbit" : "surface")}: {e})");
+        GD.Print($"(screenshot: {tag}, past the band {_game.Spaceflight.PastBand}, air gone {_game.Spaceflight.AirGone:F2}, {(_game.InOrbit ? "orbit" : "surface")}: {e})");
     }
 
     /// <summary>
@@ -272,8 +272,7 @@ public sealed partial class Staging
                 }
                 string name = float.IsNaN(yaw) ? $"{tag}-down" : yaws.Length > 1 || !cabin ? $"{tag}-y{yaw:0}" : tag;
                 Snap(name);
-                if (_game.InOrbit && _game.Surface.Planet.StarSystem.Home.Rings) GD.Print($"(ring fit {name}: {_game.Orbit.Globe.RingFit.Off:F1} m off the sheet's centre, inner edge {_game.Orbit.Globe.RingFit.Inner:F2} radii of the sheet)");
-                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, shroud {_game.Spaceflight.Shrouded:F2}, screen {(_game.InOrbit ? "orbit" : "surface")})");
+                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, screen {(_game.InOrbit ? "orbit" : "surface")})");
             }
         }
         float[] heights = _args.GetValueOrDefault("heights", "500,700,850,950,1000,1040,1058,1062,1100,1160,1250,1405,1600,1800,2100,2600,3300,4300,5600,7500")

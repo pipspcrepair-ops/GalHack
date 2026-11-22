@@ -62,35 +62,28 @@ public partial class TerrainStreamer : Node3D
     public static int FarLod0Radius => DetailReach.Lod0Radius;
     public static int FarLod1Radius => DetailReach.Lod1Radius;
 
-    /// <summary>The horizon, m: from here out the far field is solid (<see cref="HorizonReach"/>, less a rebuild's way and the rim's thinning).</summary>
+    /// <summary>The horizon, m: as far as the land is always whole (<see cref="HorizonReach"/>, less a rebuild's way and the rim's thinning).</summary>
     public const float HorizonDistance = HorizonReach - HorizonRebuild - 600f;
     const float HorizonSpacing = 64f, HorizonRebuild = 1200f, HorizonSink = 1000f;
 
     /// <summary>
-    /// How far the horizon mesh runs from its centre, m. Whatever lies past it is the far field a game
-    /// draws behind the land (the globe's sheet): from 600 m inside this edge land and sea thin away
-    /// into it (past_rim in noise.gdshaderinc). The mesh is at most <see cref="HorizonRebuild"/> off
-    /// the eye, so the far field has to be solid from 5,800 m out.
+    /// How far the horizon mesh runs from its centre, m. The mesh is at most <see cref="HorizonRebuild"/>
+    /// off the eye, so it always covers <see cref="LandReach"/>.
     /// </summary>
     public const float HorizonReach = 7600f;
 
     /// <summary>
-    /// Where the world starts to be round, m from the eye: past it the far land, the sea, the far
-    /// field and the clouds all sink over the horizon together on the far land's curve
-    /// (<see cref="RoundRadius"/>; round_sink in noise.gdshaderinc, the sky's clouds, the sheet). It is
-    /// past everything drawn in full or that collides (the far rings, places' near blocks, roads'
-    /// furniture: under 1,400 m), so nothing that stands on the ground moves but the far meshes of
-    /// places, which sink with it (PoiLayer.SinkFar). Any further out and the horizon would stand
-    /// further off, deeper in the haze.
+    /// How far the land is drawn round the eye, m east and south: the horizon mesh's reach, and never
+    /// more than half the map, so no place is drawn twice (the map wraps both ways, and on a small
+    /// world its far side would stand on the horizon again). The ground is flat to the horizon (owner,
+    /// 22 Nov); over its last 600 m land and sea thin away into the sky's far ground (past_reach in
+    /// noise.gdshaderinc).
     /// </summary>
-    public const float RoundFrom = 2000f, RoundRadius = 300000f;
+    public Vector2 LandReach { get; private set; }
 
-    /// <summary>How far ground this far from the eye has sunk over the round world's horizon, m.</summary>
-    public static float RoundSink(float distance)
-    {
-        float d = MathF.Max(distance - RoundFrom, 0f);
-        return d * d / (2f * RoundRadius);
-    }
+    /// <summary>The land's reach on a map of this size, m east and south of the eye.</summary>
+    public static Vector2 ReachOn(double width, double height) =>
+        new(MathF.Min(HorizonReach - HorizonRebuild, (float)width * 0.5f), MathF.Min(HorizonReach - HorizonRebuild, (float)height * 0.5f));
 
     /// <summary>How far inside the voxel square the far rings still draw: past the wall they dive under it by.</summary>
     const float FarHoleCut = 8f;
@@ -273,6 +266,8 @@ public partial class TerrainStreamer : Node3D
         FarMaterial = TerrainMaterial(far: true);
         yield return "far ground material";
         _horizonMaterial = TerrainMaterial(far: true);
+        LandReach = ReachOn(world.Width, world.Height);
+        foreach (ShaderMaterial m in new[] { FarMaterial, _horizonMaterial }) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), LandReach);
         // Inside the square the far rings cover, the horizon's vertices a whole grid step or more in
         // drop far below any ground, so its triangles across the square's edge become walls diving
         // under the far rings: where the horizon is higher than the rings' edge, the wall fills the
@@ -1141,8 +1136,6 @@ public partial class TerrainStreamer : Node3D
         if (_horizon.Mesh != null)
         {
             _horizon.Position = new Vector3((float)NearestCopy(_horizonX, 0, Focus.X, w), 0, (float)NearestCopy(_horizonZ, 0, Focus.Z, h));
-            HorizonRim = new Vector3(_horizon.Position.X, _horizon.Position.Z, HorizonReach);
-            _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("rim"), FarFieldBehind ? HorizonRim : NoRim);
         }
         _sections[2] = Stopwatch.GetElapsedTime(horizonStart).TotalMilliseconds;
     }
@@ -1349,15 +1342,6 @@ public partial class TerrainStreamer : Node3D
     public (ArrayMesh Mesh, Vector3 At) DrawnHorizon() => (_horizon.Mesh as ArrayMesh, _horizon.Position);
 
     public ShaderMaterial HorizonMaterial => _horizonMaterial;
-
-    /// <summary>Where the land's own mesh ends, for what has to end with it: its centre (x, z in the frame) and how far it reaches. <see cref="NoRim"/> until it's built.</summary>
-    public Vector3 HorizonRim { get; private set; } = NoRim;
-
-    /// <summary>A rim that cuts nothing.</summary>
-    public static readonly Vector3 NoRim = new(0f, 0f, -1f);
-
-    /// <summary>A far field stands behind the land out to the horizon, so the mesh's edge thins away into it.</summary>
-    public bool FarFieldBehind;
 
     static int Mod(int v, int m) => (v % m + m) % m;
     static double Mod(double v, double m)

@@ -47,9 +47,6 @@ public partial class SkyRig : Node3D
     /// <summary>Toward the star in the star field's frame.</summary>
     public Vector3 StarInField { get; private set; } = Vector3.Up;
 
-    /// <summary>The radius of the sphere this world's own ring stands round, m: 0 for the true globe. Over the cap that is the curved sheet you can see.</summary>
-    public float RingRadius;
-
     /// <summary>What every other body looks like from afar.</summary>
     public BodySurfaces Surfaces { get; private set; }
 
@@ -156,12 +153,6 @@ public partial class SkyRig : Node3D
     public MeshInstance3D CloudDeck { get; private set; }
     ShaderMaterial _deck;
 
-    /// <summary>How much of the cloud deck shows, on top of what the eye's height over it allows, 0 to 1 (the air thinning away).</summary>
-    public float CloudDeckFade = 1f;
-
-    /// <summary>How the cloud layer curves, 1 / m: nothing from the ground and at flight heights, then the ground's own bend as the climb brings the globe in.</summary>
-    public float CloudBend;
-
     /// <summary>
     /// Keeps the cloud deck under an eye: it sits in the layer, shows once the eye is climbing
     /// through it, and is lit as the sky's clouds are.
@@ -169,13 +160,12 @@ public partial class SkyRig : Node3D
     public void PlaceCloudDeck(Vector3 eye)
     {
         AtmosphereState air = Air;
-        float seen = Smooth(air.CloudBase, air.CloudBase + air.CloudThickness * 0.7f, eye.Y) * CloudDeckFade;
+        float seen = Smooth(air.CloudBase, air.CloudBase + air.CloudThickness * 0.7f, eye.Y);
         CloudDeck.Visible = seen > 0.002f && air.CloudCover > 0.02f;
         InCloud(eye, air, seen);
         if (!CloudDeck.Visible) return;
         CloudDeck.GlobalPosition = new Vector3(eye.X, air.CloudBase + air.CloudThickness * 0.45f, eye.Z);
         _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("seen"), seen);
-        _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("bend"), CloudBend);
         _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("cover"), air.CloudCover);
         _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("dark"), air.CloudDarkness);
         _deck.SetShaderParameter(PlanetSurface.Fx.Names.Of("drift"), _cloudDrift);
@@ -290,6 +280,7 @@ public partial class SkyRig : Node3D
         ShowSun(_sky, world.StarSystem, s);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_energy"), s.SunEnergy);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("density"), s.Density);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("far_ground"), FarGround(world));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("stars_by_day"), s.StarsByDay);
         // The game's seed is the galaxy's; the world found its home star in it when it was built.
         world.ChartStars();
@@ -313,6 +304,22 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring"), world.StarSystem.Home.Rings);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_color"), C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
+    }
+
+    /// <summary>The world's ground on average, as its globe paints it: what the sky shows of the flat ground past the land's reach.</summary>
+    static Color FarGround(PlanetWorld world)
+    {
+        const int width = 64;
+        var colors = Planets.Look.ColorMap.Build(world.Map, Planets.Look.ArchetypeLook.For(world.Spec), width, (x, z) => world.Palette.FarGround(x, z, 64f));
+        float r = 0f, g = 0f, b = 0f;
+        int n = colors.Width * colors.Height;
+        for (int k = 0; k < n; k++)
+        {
+            r += colors.Albedo[k * 4];
+            g += colors.Albedo[k * 4 + 1];
+            b += colors.Albedo[k * 4 + 2];
+        }
+        return new Color(r / (n * 255f), g / (n * 255f), b / (n * 255f));
     }
 
     // ---- Lamps under the clouds ---------------------------------------------------------------------
@@ -520,9 +527,8 @@ public partial class SkyRig : Node3D
         Skew();
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("star_turn"), Stars.Field * SkyToStars);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_to_globe"), _skyToGlobe);
-        // The eye against the sphere the ring stands round, at the height it really is over it.
-        double ringSphere = RingRadius > 0f ? RingRadius : m.Home.Radius;
-        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_eye"), V(_eye.Normalized * (1.0 + (_eye.Length - m.Home.Radius) / ringSphere)));
+        // The eye against the globe the ring stands round, in its radii.
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_eye"), V(_eye * (1.0 / m.Home.Radius)));
 
         _seen.Clear();
         foreach (Orbiter b in m.Bodies)

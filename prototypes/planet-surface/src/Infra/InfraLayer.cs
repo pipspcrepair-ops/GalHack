@@ -279,9 +279,7 @@ public partial class InfraLayer : Node3D
             if (tile.Node != null)
             {
                 // Written only when it changes: a same-spot write still tells every body and mesh under the node.
-                // Far out (a long detail distance) it sinks over the round world's horizon with the land under it.
                 Vector3 at = _world.NearestCopy(new Vector3((float)(tile.Ix * TileSize), 0f, (float)(tile.Iz * TileSize)), camera);
-                at.Y = -PlanetSurface.Terrain.TerrainStreamer.RoundSink((float)TileDistance(tile.Ix, tile.Iz, cx, cz));
                 if (tile.Node.Position != at) tile.Node.Position = at;
             }
         }

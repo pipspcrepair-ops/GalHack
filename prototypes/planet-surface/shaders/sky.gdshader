@@ -26,6 +26,7 @@ uniform vec3 haze : source_color;
 uniform vec3 star_color : source_color;
 uniform float sun_energy = 1.3;
 uniform float density = 1.0;
+uniform vec3 far_ground : source_color = vec3(0.3); // the world's ground on average, as its globe paints it (SkyRig.SetWorld)
 uniform float stars_by_day = 0.0;
 uniform mat3 star_turn = mat3(1.0);   // world directions into the galaxy catalogue's
 uniform float overcast = 0.0;          // weather greying the whole sky
@@ -95,6 +96,12 @@ float sun_air(float sun_h) {
 	return 0.45 + 0.55 * smoothstep(0.02, 0.3, sun_h);
 }
 
+// The far ground as the sun and the sky light it: the land's own Burley-lit look, near enough at that distance.
+vec3 ground_lit(vec3 sun) {
+	float day = smoothstep(-0.2, 0.15, sun.y) * (0.04 + 0.96 * sun_lit);
+	return far_ground * (sun_energy * max(sun.y, 0.0) * sun_air(sun.y) * day + zenith_day * 0.35 * day + zenith_night * 0.5);
+}
+
 vec3 sky_color(vec3 dir, vec3 sun) {
 	float up = dir.y;
 	float sun_h = sun.y;
@@ -125,8 +132,12 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	vec3 halo = mix(sunset, star_color, smoothstep(0.03, 0.38, sun_h));
 	col += halo * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5 * sun_through * sun_through) * day * density;
 
-	// Below the horizon: the haze, darker downward.
-	if (up < 0.0) col = mix(col, haze * bright * day * 0.55 + zenith_night, clamp(-up * 6.0, 0.0, 1.0));
+	// Below the horizon: the flat ground going on past the land's reach (TerrainStreamer.LandReach),
+	// the world's own ground lit as the land is, deep in the haze toward the horizon.
+	if (up < 0.0) {
+		float far = exp(up * 40.0 / max(density, 0.05)) * min(density, 1.0);
+		col = mix(col, mix(ground_lit(sun), hor, far), clamp(-up * 30.0, 0.0, 1.0));
+	}
 	return col;
 }
 
@@ -505,23 +516,14 @@ vec3 place_glow(vec2 xz) {
 	return g;
 }
 
-// The round world's sink of far clouds (the march's own, below): 1 / 300 km past 2,000 m.
-const float CLOUD_SINK = 1.667e-6;
-
-// Past the march's reach the layer goes on to the horizon: on a round world every ray climbing from
-// under it meets it within about 20 km. Its look has long faded into the haze there, but it still hides
-// what is behind it: seen edge-on a broken layer is cloud nearly all the way along, and a storm's or a
-// front's deck is as solid there as overhead. Large-scale only, never the far clouds' own grain (which,
-// squeezed against the horizon, drew steps along it).
+// Past the march's reach the layer goes on to the horizon. Its look has long faded into the haze
+// there, but it still hides what is behind it: seen edge-on a broken layer is cloud nearly all the
+// way along, and a storm's or a front's deck is as solid there as overhead. Large-scale only, never
+// the far clouds' own grain (which, squeezed against the horizon, drew steps along it).
 float far_cover(vec3 ro, vec3 rd) {
-	if (ro.y >= cloud_base) return 0.0;
+	if (ro.y >= cloud_base || rd.y <= 0.0) return 0.0;
 	float h = cloud_base + cloud_thick * 0.2;
-	float rise = h - ro.y;
-	// Where the ray, rising over a ground that falls away, meets that height: t * y + (t - 2000)^2 * sink = rise.
-	float a = CLOUD_SINK, b = rd.y - 4000.0 * CLOUD_SINK, c = 4.0e6 * CLOUD_SINK - rise;
-	float t = rd.y > 0.0 && rise < rd.y * 2000.0 ? rise / rd.y // within its first 2 km the ground is flat
-		: (-b + sqrt(max(b * b - 4.0 * a * c, 0.0))) / (2.0 * a);
-	vec3 p = ro + rd * t;
+	vec3 p = ro + rd * ((h - ro.y) / rd.y);
 	p.y = h;
 	float cover = smoothstep(0.05, 0.4, cloud_cover);
 	if (tower_count > 0) cover = max(cover, storm_at(p).x);
@@ -594,11 +596,6 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 	float short_left = 64.0;
 	for (int i = 0; i < most && t < t1; i++) {
 		vec3 p = ro + rd * t;
-		// The world is round: far clouds follow the land over the horizon (the same slow curve from the
-		// same distance as the far land, round_sink in noise.gdshaderinc: 1 / 300 km past 2,000 m), so
-		// distant bases sink out of sight and only the upper bulk shows. Overhead it is flat.
-		float away = max(length(p.xz - ro.xz) - 2000.0, 0.0);
-		p.y += away * away * 1.667e-6;
 		float step_t = dt;
 		vec3 fr = vec3(0.0);
 		if (fronted) {
@@ -830,6 +827,8 @@ void sky() {
 			vec3 behind = space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS) * (1.0 - solid.a) + solid.rgb;
 			vec3 spaced = max(clouded - (plain - night) * (1.0 - laid), vec3(0.0)) + (behind - night) * through_clouds;
 			col = mix(col, spaced, gone);
+			// Under the horizon the flat ground goes on, its haze going with the air.
+			col = mix(col, ground_lit(sun), gone * smoothstep(0.0, -0.02, dir.y));
 		}
 		COLOR = col;
 	}
