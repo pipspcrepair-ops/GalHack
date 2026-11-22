@@ -372,9 +372,18 @@ public static class Underground
         return o;
     }
 
+    /// <summary>Ground over a junction's vault under a street at the sewer's cover, metres: every room keeps at least as much.</summary>
+    const int Earth = Cover - JunctionHeight - 1;
+
     static void AddJunction(UnderPlan plan, UnderSite s, int along, int across, int y, UnderSpaceKind kind, UnderKind network, int half, int height, bool flooded)
     {
         var (x, z) = s.At(along, across);
+        // Wider than the bores, a room reaches out under ground that may lie lower (the street's edge falling away, the
+        // town's end): its vault comes down to keep its earth over it there, never below the sewers that join it.
+        float ground = float.MaxValue;
+        for (int dz = -half - 1; dz <= half + 1; dz++)
+            for (int dx = -half - 1; dx <= half + 1; dx++) ground = MathF.Min(ground, s.Ground(x + dx, z + dz));
+        height = Math.Clamp((int)MathF.Floor(ground) - Earth - 1 - y, SewerHeight, height);
         plan.Rooms.Add(new UnderRoom { Kind = kind, Network = network, Min = new Int3(x - half, y, z - half), Max = new Int3(x + half, y + height - 1, z + half), Flooded = flooded });
     }
 
@@ -396,8 +405,9 @@ public static class Underground
             {
                 int cx = sx + dx * d, cz = sz + dz * d, y = sump.Y - 1 - d / OutfallFall;
                 if (y < 1 || s.Avoid(cx, cz)) break;
-                // Under the bank the pipe has its cover; where the ground comes down to it, it's out.
-                if (s.Ground(cx, cz) > y + 2.5f) continue;
+                // Under the bank the pipe keeps a metre of earth over its roof; where the ground gives it less, the
+                // headwall stands, and the pit before it is cut down to its floor (else the roof shows behind the wall).
+                if (s.Ground(cx, cz) >= y + UnderOutfall.Height + 2f) continue;
                 if (d >= SumpHalf + 12 && (best == null || d < best.Value.Len)) best = (d, dx, dz, cx, cz, y);
                 break;
             }

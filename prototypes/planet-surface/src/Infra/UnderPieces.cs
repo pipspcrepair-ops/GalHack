@@ -4,7 +4,6 @@ using Godot;
 using PlanetSurface.World;
 using PoiGenerator;
 using PoiGenerator.Gen;
-using Material = Godot.Material;
 using NV = System.Numerics.Vector3;
 using PInt3 = PoiGenerator.Gen.Int3;
 
@@ -12,7 +11,7 @@ namespace PlanetSurface.Infra;
 
 public partial class InfraLayer
 {
-    /// <summary>What runs under a town: a piece for each patch of it, drawn with the tiles over it, and the dark it stands in.</summary>
+    /// <summary>What runs under a town: a piece for each patch of it, drawn with the tiles over it.</summary>
     public static IEnumerable<Piece> UnderPieces(PlanetWorld world)
     {
         UnderTown under = world.Infra.Town?.Under;
@@ -54,94 +53,28 @@ public partial class InfraLayer
                         if (built.Open.Contains(world) || built.Daylight.Contains(world) || built.Blocks.ContainsKey(world))
                             mask[new PInt3(lo.X + x, lo.Y + y, lo.Z + z)] = true;
                     }
-            // Underground it's dark, whatever the sky is doing; what the daylight reaches (a culvert's
-            // headwall, the head of the stairs) is drawn like anything else out in the open.
-            bool Outdoors(PInt3 c)
-            {
-                PInt3 world = new(c.X, c.Y + shift, c.Z);
-                foreach (Dir d in Dirs.All)
-                {
-                    PInt3 n = world + d.Vec();
-                    if (built.Daylight.Contains(n)) return true;
-                }
-                return false;
-            }
-            MeshOptions Options(Func<PInt3, bool> only)
-            {
-                MeshOptions o = MeshOptions.OnPlanet(lo);
-                o.Only = only;
-                return o;
-            }
-            List<ChunkMesh> dark = Mesher.Build(grid, mask, Options(c => !Outdoors(c)));
-            List<ChunkMesh> lit = Mesher.Build(grid, mask, Options(Outdoors));
+            // Drawn as a place's blocks are, lit and hazed like anything in the open: how dark it is down here is the
+            // sky field's to say (the game's SkyLit), so a block that comes up out of the ground is lit like the ground
+            // round it. (A material of its own that took no sun, sky or fog once drew such blocks black in daylight.)
+            List<ChunkMesh> meshes = Mesher.Build(grid, mask, MeshOptions.OnPlanet(lo));
             // The node puts the mesh's world cells in the tile's frame, the short way round the seams.
             NV at = b.Local(lo.X, shift, lo.Z) - new NV(lo.X, 0, lo.Z);
             string name = $"Under{TileX}_{TileZ}";
             var place = new Vector3(at.X, at.Y, at.Z);
-            b.Blocks($"{name} dark", place, dark, () => DarkMaterials);
-            b.Blocks($"{name} lit", place, lit, () => Materials.BySurface);
-            // The water standing in its runs: a surface over the floor, never a block. Wet and dark down here,
-            // the game's water where the daylight reaches it.
-            var wetDark = new List<PInt3>();
-            var wetLit = new List<PInt3>();
+            b.Blocks(name, place, meshes, () => Materials.BySurface);
+            // The water standing in its runs: a surface over the floor, never a block, the still water a place has.
+            var wet = new List<PInt3>();
             foreach (PInt3 c in built.Water)
-            {
-                if ((int)Math.Floor(c.X / (double)UnderTown.MeshTile) != TileX || (int)Math.Floor(c.Z / (double)UnderTown.MeshTile) != TileZ) continue;
-                PInt3 cell = new(c.X, c.Y - shift, c.Z);
-                (Outdoors(cell) ? wetLit : wetDark).Add(cell);
-            }
-            foreach (var (wet, down) in new[] { (wetDark, true), (wetLit, false) })
-                if (wet.Count > 0)
-                    b.Extra.Add(() =>
-                    {
-                        MeshInstance3D water = MeshBuild.Water(wet, down ? DarkMaterials[3] : MeshBuild.StillWater());
-                        water.Name = $"{name} water{(down ? "" : " lit")}";
-                        water.Position = place;
-                        return water;
-                    });
-        }
-    }
-
-    const string DarkShader = @"
-shader_type spatial;
-render_mode ambient_light_disabled, fog_disabled, cull_back;
-uniform float rough = 0.85;
-uniform float wet = 0.0;
-void fragment() {
-    vec3 c = COLOR.rgb;
-    ALBEDO = c * c;
-    ROUGHNESS = mix(rough, 0.12, wet);
-    SPECULAR = mix(0.3, 0.7, wet);
-    EMISSION = ALBEDO * 0.01;
-}
-void light() {
-    if (!LIGHT_IS_DIRECTIONAL) {
-        DIFFUSE_LIGHT += clamp(dot(NORMAL, LIGHT), 0.0, 1.0) * ATTENUATION * LIGHT_COLOR / 3.14159;
-        vec3 h = normalize(VIEW + LIGHT);
-        SPECULAR_LIGHT += pow(clamp(dot(NORMAL, h), 0.0, 1.0), mix(8.0, 90.0, wet)) * ATTENUATION * LIGHT_COLOR * (0.04 + 0.5 * wet) / 3.14159;
-    }
-}";
-
-    static Material[] _dark;
-    /// <summary>
-    /// Underground blocks answer only to lamps and torches: no sky and no sun reach down here (shadows
-    /// from the terrain wouldn't reach far enough to stop them), so with your torch off it's black.
-    /// </summary>
-    static Material[] DarkMaterials
-    {
-        get
-        {
-            if (_dark != null) return _dark;
-            var shader = new Shader { Code = DarkShader };
-            ShaderMaterial Make(float rough, float wet)
-            {
-                var m = new ShaderMaterial { Shader = shader };
-                m.SetShaderParameter("rough", rough);
-                m.SetShaderParameter("wet", wet);
-                return m;
-            }
-            Material matte = Make(0.9f, 0f), metal = Make(0.5f, 0f), water = Make(0.3f, 1f);
-            return _dark = new Material[] { matte, metal, Materials.BySurface[2], water, matte };
+                if ((int)Math.Floor(c.X / (double)UnderTown.MeshTile) == TileX && (int)Math.Floor(c.Z / (double)UnderTown.MeshTile) == TileZ)
+                    wet.Add(new PInt3(c.X, c.Y - shift, c.Z));
+            if (wet.Count > 0)
+                b.Extra.Add(() =>
+                {
+                    MeshInstance3D water = MeshBuild.Water(wet, MeshBuild.StillWater());
+                    water.Name = $"{name} water";
+                    water.Position = place;
+                    return water;
+                });
         }
     }
 }

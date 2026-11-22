@@ -1063,7 +1063,7 @@ public sealed partial class TileBuilder
             node = new Node3D { Name = name, Position = at };
             body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
             node.AddChild(body);
-            node.AddChild(new MeshInstance3D { Name = "Blocks", Mesh = mesh = new ArrayMesh() });
+            mesh = new ArrayMesh();
             return node;
         });
         for (int s = 0; s < surfaces.Length; s++)
@@ -1076,6 +1076,13 @@ public sealed partial class TileBuilder
                 return null;
             });
         }
+        // The mesh joins the tree once all its surfaces are on it: what adapts materials as nodes come in (the game's sky
+        // light, which darkens what the sky can't reach) sees none of a mesh that was still empty then.
+        Extra.Add(() =>
+        {
+            node.AddChild(new MeshInstance3D { Name = "Blocks", Mesh = mesh });
+            return null;
+        });
         foreach (PoiGenerator.Gen.ChunkMesh chunk in meshes)
             if (chunk.Collision.Count > 0) Solid.Add(() => body.AddChild(new CollisionShape3D { Shape = PoiGenerator.MeshBuild.ToShape(chunk) }));
     }

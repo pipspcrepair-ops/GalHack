@@ -94,20 +94,22 @@ public sealed class UnderTown
             if (!Tiles.TryGetValue(key, out var list)) Tiles[key] = list = new List<PInt3>();
             list.Add(c);
         }
-        // Small level pads where it comes up: the head of the station stairs and the culvert's apron.
+        // Small level pads where it comes up: the head of the station stairs, and the pit before the culvert's headwall (all of
+        // it in front of the wall). Their banks ease out over a few metres only, so they never take the cover off the tunnels
+        // round them, which were laid on the ground before them.
         foreach (UnderStairs s in Scheme.Stairs)
         {
             PInt3 d = s.Down.Vec();
             Stamps.Add(Pad("Station entrance", s.X - d.X * 3 - 4, s.Z - d.Z * 3 - 4, 9, 9, s.TopY, w, h, StampSurface.Concrete));
         }
         foreach (UnderOutfall o in Scheme.Outfalls)
-            Stamps.Add(Pad("Outfall", o.X + o.DirX * 4 - 6, o.Z + o.DirZ * 4 - 6, 13, 13, o.Y, w, h, StampSurface.Natural));
+            Stamps.Add(Pad("Outfall", o.X + o.DirX * 7 - 6, o.Z + o.DirZ * 7 - 6, 13, 13, o.Y, w, h, StampSurface.Natural));
     }
 
     static TerrainStamp Pad(string name, int x, int z, int sx, int sz, int y, double w, double h, StampSurface surface)
     {
         int cx = WrapCell(x, w), cz = WrapCell(z, h);
-        return new TerrainStamp(name, cx, cz, cx + sx, cz + sz, y, 1f, 8f, w, h) { Surface = surface, Wear = 0.9f };
+        return new TerrainStamp(name, cx, cz, cx + sx, cz + sz, y, 1f, 3f, w, h) { Surface = surface, Wear = 0.9f };
     }
 
     static int WrapCell(int v, double size) => (int)Math.Floor(Mathx.Wrap(v + 0.5, size));

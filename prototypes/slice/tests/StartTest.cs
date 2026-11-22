@@ -299,6 +299,9 @@ public partial class StartTest : Node
             GD.Print($"  every place within {builds.Range:F0} m built {(allIn < 0 ? "never" : $"{allIn:F1} s")} and drawn as itself {(shown < 0 ? "never" : $"{shown:F1} s")} after standing ({plainAtStanding} plain blocks or unbuilt city tiles in view at standing; {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} places built, {builds.Built} by the builder); frames over {since.Elapsed.TotalSeconds:F0} s: {frames}");
         }
         Check(game.WorldStanding, $"{world}: at waking everything round the start stands: {game.Zone.Infra.TileCount} tiles of ruins, wrecks and bridges, {game.Zone.Planet.Pois.Count} places");
+        // Nothing standing round the start leaves out the sky's light, the haze or the sun: it would draw black by day, clear through fog.
+        var unlit = Unpainted.Near(game.Zone, game.Survivor.WorldFeet, 600f, (x, z) => game.Zone.GroundAt(x, z).Y).Where(f => f.Kind == "unlit").ToList();
+        Check(unlit.Count == 0, $"{world}: nothing round the start drawn without the sky's light, the haze or the sun{(unlit.Count == 0 ? "" : ": " + string.Join("; ", unlit.Take(3)))}");
         // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.
         if (game.Zone.Planet.Infra.Wrecks.Count > 0 && game.Places.SalvageSites.FirstOrDefault() is Slice.Places.SalvageSite wreck)
         {

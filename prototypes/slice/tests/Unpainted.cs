@@ -45,6 +45,7 @@ public static class Unpainted
                 string what = Describe(mat);
                 if (mat == null) faults.Add(new Fault("no material", path, mesh.GetClass(), what, box, over, 0));
                 else if (Living(path)) continue; // (people and creatures: their own flat-coloured style)
+                else if (Unlit(mat)) faults.Add(new Fault("unlit", path, mesh.GetClass(), what, box, over, 0));
                 else if (mat is StandardMaterial3D { AlbedoTexture: null, VertexColorUseAsAlbedo: false, Transparency: BaseMaterial3D.TransparencyEnum.Disabled }) faults.Add(new Fault("flat standard", path, mesh.GetClass(), what, box, over, 0));
                 else if (mat is ShaderMaterial { Shader: { } sh } && mesh is ArrayMesh am && g is MeshInstance3D && Flat(sh.Code) is { } flat)
                 {
@@ -82,6 +83,17 @@ public static class Unpainted
         foreach (var k in faults.GroupBy(f => (f.Kind, Pattern(f.Path))).OrderByDescending(k => k.Count()).Take(40))
             GD.Print($"    {k.Count()} x {k.First()}");
     }
+
+    /// <summary>
+    /// A lit surface that leaves out the sky's light, the haze or the sun: in daylight it draws black where everything round it
+    /// is lit, and clear through any fog (the under-town's own dark material did that). Unshaded ones are glows and the sky: theirs.
+    /// </summary>
+    static bool Unlit(Material m) => m switch
+    {
+        ShaderMaterial { Shader: { } sh } => !sh.Code.Contains("unshaded") && (sh.Code.Contains("fog_disabled") || sh.Code.Contains("ambient_light_disabled") || sh.Code.Contains("!LIGHT_IS_DIRECTIONAL")),
+        BaseMaterial3D b => b.ShadingMode != BaseMaterial3D.ShadingModeEnum.Unshaded && (b.DisableFog || b.DisableAmbientLight),
+        _ => false,
+    };
 
     /// <summary>A shader's test for a vertex drawn flat, or null for a shader with no such case.</summary>
     static Func<Color, Vector2, bool> Flat(string code)

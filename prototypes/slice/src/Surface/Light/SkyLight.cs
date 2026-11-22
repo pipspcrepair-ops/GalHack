@@ -149,6 +149,9 @@ public partial class SkyLight : Node
         public readonly List<(BlockGrid Grid, CellMask Occupied, int X, int Y, int Z)> Sites = new();
         public readonly List<(int X, int Y, int Z)> OpenDoors = new();
         public readonly List<(N.Vector3[] Cells, Transform3D At, float Size)> Structures = new();
+        /// <summary>The under-town and how far its copy of the planet lies from the field's (whole planets).</summary>
+        public UnderBuilt Under;
+        public int UnderX, UnderZ;
     }
 
     void Start(int x, int y, int z)
@@ -173,6 +176,12 @@ public partial class SkyLight : Node
             int ox = Mathf.RoundToInt(at.X), oy = s.Origin.Y, oz = Mathf.RoundToInt(at.Z);
             if (ox + g.Max.X < x || ox + g.Min.X >= x + SkyField.SizeX || oz + g.Max.Z < z || oz + g.Min.Z >= z + SkyField.SizeZ) continue;
             snap.Sites.Add((g, s.Layout.Occupied, ox, oy, oz));
+        }
+        if (Zone.Planet.StartTown?.Under?.Built is { } under)
+        {
+            var mid = new Vector3((under.Min.X + under.Max.X) / 2, 0f, (under.Min.Z + under.Max.Z) / 2);
+            Vector3 copy = Zone.Planet.NearestCopy(mid, near);
+            (snap.Under, snap.UnderX, snap.UnderZ) = (under, Mathf.RoundToInt(copy.X - mid.X), Mathf.RoundToInt(copy.Z - mid.Z));
         }
         foreach (Place p in Standing())
         {
@@ -199,6 +208,7 @@ public partial class SkyLight : Node
         f.Clear(s.X, s.Y, s.Z);
         FillTerrain(f, s);
         FillSites(f, s);
+        FillUnder(f, s);
         foreach (var (cells, at, size) in s.Structures) FillStructure(f, cells, at, size);
         foreach (var (x, y, z) in s.OpenDoors)
             if (f.Holds(x, y, z)) f.Solid[SkyField.Index(x - f.MinX, y - f.MinY, z - f.MinZ)] = 0;
@@ -274,6 +284,21 @@ public partial class SkyLight : Node
                         f.Roofed[(z - f.MinZ) * SkyField.SizeX + x - f.MinX] = true;
                         break;
                     }
+        }
+    }
+
+    /// <summary>
+    /// The under-town's lining: it stands in cells carved out of the ground, so the terrain alone lets the sky in through any
+    /// of it the ground over it no longer covers (and the sewers lit up by day).
+    /// </summary>
+    static void FillUnder(SkyField f, Snapshot s)
+    {
+        UnderBuilt u = s.Under;
+        if (u == null || u.Max.X + s.UnderX < f.MinX || u.Min.X + s.UnderX >= f.MinX + SkyField.SizeX || u.Max.Z + s.UnderZ < f.MinZ || u.Min.Z + s.UnderZ >= f.MinZ + SkyField.SizeZ) return;
+        foreach (var (c, b) in u.Blocks)
+        {
+            int x = c.X + s.UnderX, z = c.Z + s.UnderZ;
+            if (f.Holds(x, c.Y, z) && Stops(b)) f.Solid[SkyField.Index(x - f.MinX, c.Y - f.MinY, z - f.MinZ)] = 1;
         }
     }
 
