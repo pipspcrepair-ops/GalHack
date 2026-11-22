@@ -116,6 +116,9 @@ public sealed partial class Staging
         _game.Visor.Visible = true;
         _game.ThirdPerson = true;
         foreach (int x in _drive.LookAt(v.Body.Position.ToGodot() + Vector3.Up * 6f, 30)) yield return x;
+        if (_args.GetValueOrDefault("barren") != "1") yield break;
+        Snap("standing");
+        foreach (int x in BarrenShots()) yield return x; // --barren=1: its ground's own shots, the world it came from in its sky
     }
 
     /// <summary>
