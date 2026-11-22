@@ -997,10 +997,10 @@ public sealed partial class Town : IKeeper
         // (Off a bench or a counter they stood pressed up to at their work, as out of a seat: clear of it as they go.)
         if (_parts != null && _parts.Gap(p.Pos, BodyRadius(p), Height(p)) < 0f) p.GettingUp = true;
         p.Step = 0;
-        if (p.Far && !p.Fleeing && (path[^1] - _you).Length() > FarSchedule)
+        if (p.Far && !p.Fleeing && (path[^1] - _you).Length() > FarSchedule && !Taken(p, path[^1]))
         {
             // Far from you there and back: there already, their day kept as a schedule. (Running from a fright, or coming
-            // nearer you, they go on foot: nobody frightened turns up somewhere new.)
+            // nearer you, they go on foot: nobody frightened turns up somewhere new; nor does anyone where another already stands.)
             p.Pos = path[^1];
             p.Path = new List<Vector3>();
             return;
