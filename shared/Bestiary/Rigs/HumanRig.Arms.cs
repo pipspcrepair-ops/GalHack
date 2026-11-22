@@ -138,8 +138,18 @@ public sealed partial class HumanRig
     /// <summary>How far each arm's shoulder and hand were moved off where they were asked last frame to keep the arm out of the body (body frame; shoulder, hand, by arm).</summary>
     readonly Vector3[] _shift = new Vector3[4];
 
+    /// <summary>Each arm's hinge as last posed (body frame), and how fast an arm rolls about its own length, radians a second.</summary>
+    readonly Vector3[] _hinge = new Vector3[2];
+    const float ArmRoll = 15f;
+
     /// <summary>How fast those moves change, m a second.</summary>
     const float Shift = 2f;
+
+    /// <summary>How much of an arm's reach its last straightening is eased over: near straight an elbow swings far for a small move of the hand.</summary>
+    const float SoftElbow = 0.04f;
+
+    /// <summary>Shoulder to hand by two-bone IK, the elbow toward the pole, its last straightening eased (<see cref="SoftElbow"/>).</summary>
+    static (Vector3 elbow, Vector3 wrist) ArmIK(Vector3 shoulder, Vector3 hand, float upper, float fore, Vector3 pole) => LeggedRig.SolveIK(shoulder, hand, upper, fore, pole, SoftElbow);
 
     /// <summary>The part of <paramref name="v"/> square to <paramref name="axis"/> (a unit vector), unit length; zero if it has none.</summary>
     static Vector3 Square(Vector3 v, Vector3 axis)
@@ -203,10 +213,19 @@ public sealed partial class HumanRig
                 if (MathF.Abs(a) > step) way = was.Rotated(along, MathF.Sign(a) * step);
             }
             if (way != Vector3.Zero) _way[arm] = bi * way;
-            h = way != Vector3.Zero ? way.Cross(along) : outward;
-            return LeggedRig.SolveIK(sh, hd, upper, fore, way);
+            // The hinge, rolled from the last no faster than an arm rolls: where the elbow's way is barely off the arm's line (a
+            // straight arm turning about its own length) it has no side of its own, and the bones keep to the one they had.
+            h = way != Vector3.Zero ? way.Cross(along) : Square(outward, along);
+            Vector3 hadHinge = Square(b * _hinge[arm], along);
+            if (hadHinge != Vector3.Zero && _dt > 0f)
+            {
+                float a = MathF.Atan2(along.Dot(hadHinge.Cross(h)), hadHinge.Dot(h)), step = ArmRoll * _dt;
+                if (MathF.Abs(a) > step) h = hadHinge.Rotated(along, MathF.Sign(a) * step);
+            }
+            _hinge[arm] = bi * h;
+            return ArmIK(sh, hd, upper, fore, way);
         }
-        (Vector3 e, Vector3 w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
+        (Vector3 e, Vector3 w) = ArmIK(shoulder, hand, upper, fore, pole);
         if (held)
         {
             // On a grip it stays on it, give or take a hand's clearance of the body (never more than 3 cm).
@@ -215,7 +234,7 @@ public sealed partial class HumanRig
                 Vector3 nudge = Free(e, w);
                 if (nudge.LengthSquared() < 1e-6f) break;
                 hand += nudge.Length() > 0.03f ? nudge.Normalized() * 0.03f : nudge;
-                (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
+                (e, w) = ArmIK(shoulder, hand, upper, fore, pole);
             }
             return Done(shoulder, (e, w), pole, out hinge, out shoulder);
         }
@@ -226,7 +245,7 @@ public sealed partial class HumanRig
             clear = push.LengthSquared() < 1e-6f;
             if (clear) break;
             hand += push;
-            (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
+            (e, w) = ArmIK(shoulder, hand, upper, fore, pole);
         }
         if (Shell == null) return Done(shoulder, (e, w), pole, out hinge, out shoulder);
         float least = Through(shoulder, e, w, !clear);
@@ -248,7 +267,7 @@ public sealed partial class HumanRig
             bool Clears(float a, out (Vector3, Vector3) r, out Vector3 p)
             {
                 p = b1 * MathF.Cos(a) + b2 * MathF.Sin(a);
-                r = LeggedRig.SolveIK(sh, hd, upper, fore, p);
+                r = ArmIK(sh, hd, upper, fore, p);
                 float sunk = Through(sh, r.Item1, r.Item2, true);
                 if (sunk > 0f && sunk < least) (least, fallback, fallbackShoulder, fallbackWay) = (sunk, r, sh, p);
                 return sunk <= 0f;

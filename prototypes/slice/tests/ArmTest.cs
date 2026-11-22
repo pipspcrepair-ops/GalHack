@@ -126,6 +126,8 @@ public partial class ArmTest : Node
     int _poses;
     (Species S, ulong Seed, int Frame)? _firstFlip, _shotOf;
     /// <summary>--at=body:tick (bodies counted from 0 over the worlds): with --shots, that body at that tick is shot instead of the first flip, nothing measured.</summary>
+    /// <summary>--bodies=a:b:...: only those bodies watched (a closer look, with --trace).</summary>
+    readonly int[] _only = Args.FirstOrDefault(a => a.StartsWith("--bodies=")) is { } b ? b[9..].Split(':').Select(int.Parse).ToArray() : null;
     readonly (int Body, int Tick)? _at = Args.FirstOrDefault(a => a.StartsWith("--at=")) is { } at ? (int.Parse(at[5..].Split(':')[0]), int.Parse(at[5..].Split(':')[1])) : null;
 
     IEnumerable<int> Scenario()
@@ -156,7 +158,10 @@ public partial class ArmTest : Node
             for (int i = 0; i < bodies.Count; i++)
             {
                 if (_at is { } at && at.Body == round * bodies.Count + i) _shotOf = (bodies[i], seed + (ulong)i, at.Tick);
-                if (_at == null) Run(bodies[i], seed + (ulong)i, null);
+                if (_at != null || _only != null && !_only.Contains(round * bodies.Count + i)) continue;
+                (int flips, int flicks) = (_drawn.Pops, _drawn.Jumps);
+                Run(bodies[i], seed + (ulong)i, null);
+                GD.Print($"  ({round * bodies.Count + i} {Who(bodies[i])}: {_drawn.Pops - flips} flips, {_drawn.Jumps - flicks} flicks as drawn)");
                 yield return 0;
             }
         }

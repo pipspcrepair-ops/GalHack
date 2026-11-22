@@ -25,7 +25,7 @@ public readonly record struct HandSpec(Vector3 Palm, HandShape Shape, Vector3 Fi
     /// A palm's way turned from <paramref name="a"/> toward <paramref name="b"/> (unit, in the arm's frame) by <paramref name="t"/>, the
     /// short way round: a palm up turning down turns over about the arm's ahead (or failing that its up), never through nothing.
     /// </summary>
-    static Vector3 Turn(Vector3 a, Vector3 b, float t)
+    internal static Vector3 Turn(Vector3 a, Vector3 b, float t)
     {
         Vector3 axis = a.Cross(b);
         if (axis.LengthSquared() < 1e-6f) axis = Vector3.Back - a * a.Z;

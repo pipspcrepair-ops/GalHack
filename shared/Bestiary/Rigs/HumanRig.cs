@@ -740,7 +740,7 @@ public sealed partial class HumanRig : Rig
                 axis = PropAxis(g, torso, fwd, right, sip, sipAxis);
                 gripW = axis.Length() * (1f - rightOff);
             }
-            Vector3 gripFore = Vector3.Zero;
+            Vector3 gripFore = Vector3.Zero, leanFore = Vector3.Zero; // (the forearm's way to the grip itself: which way round the hand goes is never its own say)
             if (gripW > 0f)
             {
                 // The fist closes on the grip, not the wrist: the wrist goes back from it by the length of the hand (twice round, as the forearm moves with it;
@@ -748,13 +748,14 @@ public sealed partial class HumanRig : Rig
                 Vector3 want = hand;
                 for (int pass = 0, passes = g.Far ? 1 : 2; pass < passes; pass++)
                 {
-                    (Vector3 e0, Vector3 w0) = LeggedRig.SolveIK(shoulder, want, upperArm, forearm, pole);
+                    (Vector3 e0, Vector3 w0) = ArmIK(shoulder, want, upperArm, forearm, pole);
                     gripFore = (w0 - e0).Normalized();
+                    if (pass == 0) leanFore = gripFore;
                     want = hand - HandGrip(i, axis.Normalized(), gripFore, ahead, -F.Out, F.Mix(spec.Palm), _gripTurn[i]) * (HandMake.Fist * _handSize[i]) * gripW;
                 }
                 hand = want;
             }
-            TurnGrip(i, gripW, axis, gripFore, F, spec);
+            TurnGrip(i, gripW, axis, leanFore, F, spec);
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
             if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f) * f.Padding) * on; // (a thick coat's shoulder rolls further forward)
@@ -1027,16 +1028,19 @@ public sealed partial class HumanRig : Rig
         // The fist the hand has made: where it closes, which way the fingers go, where the thumb is.
         Vector3 fist = FistOf(1), along = _handAt[1].Basis.Y, thumb = _handAt[1].Basis.X;
         if (kind == HoldKind.Bow) return h.Prop;
-        // A gun, a spear or a blade in a blow goes with the fist (a butt stroke, a thrust, a swing).
-        // (Turned to it in the hand's own frame: what the fist holds it by turns with the fist, never the long way round.)
+        // Along the fist, whichever end of it the thing lay toward last frame: what the fist holds turns with it and never swaps ends.
+        Vector3 was = Pose[_prop].Basis.Y;
+        Vector3 Ends(Vector3 v) => v.Dot(was) < 0f ? -v : v;
+        // A gun, a spear or a blade in a blow goes with the fist (a butt stroke, a thrust, a swing): turned to it in the hand's own frame.
         if (kind != HoldKind.None && busy > 0f)
         {
+            Vector3 lead = Ends(kind == HoldKind.Blade ? thumb : along);
             Transform3D hand = new(_handAt[1].Basis, fist), back = hand.AffineInverse();
-            return hand * (back * h.Prop).InterpolateWith(back * new Transform3D(kind == HoldKind.Blade ? Geo.AlongY(thumb, right) : Geo.AlongY(along, thumb.Cross(along)), fist), busy);
+            return hand * (back * h.Prop).InterpolateWith(back * new Transform3D(Geo.AlongY(lead, kind == HoldKind.Blade ? right : thumb.Cross(lead)), fist), busy);
         }
         if (kind != HoldKind.None) return h.Prop;
-        Vector3 axis = PropAxis(g, torso, fwd, right, sip, sipAxis);
+        Vector3 axis = PropAxis(g, torso, fwd, right, sip, sipAxis), line = axis.LengthSquared() > 0f ? Ends(thumb) : thumb; // (a thing with no way of its own to lie goes the thumb's way)
         float firm = axis.Length() * (1f - busy);
-        return new Transform3D(Geo.AlongY(firm > 0f ? thumb.Lerp(axis / axis.Length(), firm).Normalized() : thumb, right), fist);
+        return new Transform3D(Geo.AlongY(firm > 0f ? HandSpec.Turn(line, axis / axis.Length(), firm) : line, right), fist); // (turned to its axis the short way, never through nothing)
     }
 }
