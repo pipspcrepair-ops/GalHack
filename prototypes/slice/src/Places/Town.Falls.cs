@@ -220,7 +220,7 @@ public sealed partial class Town
         float y = p.Pos.Y, speed = p.FallSpeed;
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
         p.Pos.Y = y;
-        OffSides(p);
+        OffSides(p, p.FallSpeed > 3f ? 4 : 2); // (a step down eased off slowly; a long fall past a wall, held off it as it comes)
         p.FallSpeed = speed;
         if (down)
         {
@@ -410,15 +410,15 @@ public sealed partial class Town
     };
 
     /// <summary>
-    /// Landed where the walking grid has no way out (a pit, a hole in a floor): the rim beside them, a cell or two up, that a way
-    /// goes on from, with clear air over them to climb by; null if there is none. Only on landing.
+    /// Landed where the walking grid has no way out (a pit, a hole in a floor): the rim beside them, up to five cells up (back up
+    /// the hole they fell through), that a way goes on from, with clear air over them to climb by; null if there is none. On landing.
     /// </summary>
     Vector3? WayUp(Person p)
     {
         PInt3 c = Cell(p.Pos);
         int tries = 0;
         for (int reach = 1; reach <= 3; reach++)
-            for (int dy = 1; dy <= 2; dy++)
+            for (int dy = 1; dy <= 5; dy++)
             {
                 // (Clear over them, up to a head over the rim.)
                 bool clear = true;
