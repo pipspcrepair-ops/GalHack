@@ -10,7 +10,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Shadow edges by numbers (the owner, 22 Nov: "pixelation around edges of shadows; flickering around edges of shadows;
-/// flickering of shadows"), at a dusk sun (6 degrees: long grazing shadows) and a day sun (25), standing on the ground and hovering 40 m over the trees. Judge it on bare land (--type=dune, or a barren world):
+/// flickering of shadows"), at a dusk sun (6 degrees: long grazing shadows) and a day sun (25), standing on the ground and 25 m over it looking across the sun, and hovering 40 m over the trees. Judge it on bare land (--type=dune, or a barren world):
 /// <list type="bullet">
 /// <item>where the edges are: each view drawn with the sun's shadows and the far shade, then without either; a pixel's
 /// shadow is the one over the other, and an edge pixel is one whose shadow changes by 0.12 or more across its 3 x 3
@@ -53,12 +53,16 @@ public partial class PopRoute
             float rise = h.Zip(h.Skip(1), (p, q) => MathF.Abs(q - p)).Sum();
             if (rise > most) (most, rough) = (rise, d);
         }
+        // The sleeper held out of view casts nothing: its shadow would stray into the frame, and move as it settles.
+        var figure = _game.Figure.FindChildren("*", nameof(GeometryInstance3D), true, false).Cast<GeometryInstance3D>().ToDictionary(g => g, g => g.CastShadow);
+        foreach (GeometryInstance3D g in figure.Keys) g.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         foreach (string variant in _args.GetValueOrDefault("variants", "as set").Split('|'))
         {
             _game.ApplySettings();
             Vary(variant);
             foreach (int x in EdgeViews(start, rough, Densest(start), variant, dir)) yield return x;
         }
+        foreach (var (g, cast) in figure) if (IsInstanceValid(g)) g.CastShadow = cast;
         zone.Sky.TimeScale = 1f;
         _game.FixedCamera = null;
         foreach (CanvasLayer l in layers) l.Visible = true;
@@ -104,7 +108,9 @@ public partial class PopRoute
                 if (MathF.Asin(sun.GlobalBasis.Z.Y) * 180f / MathF.PI >= want) break;
             }
             Vector3 toSun = new Vector3(sun.GlobalBasis.Z.X, 0f, sun.GlobalBasis.Z.Z).Normalized(), across = toSun.Cross(Vector3.Up);
-            foreach (var (view, eye, look, pitch) in new[] { ("walk", Lift(start, 1.7f), rough, -6f), ("hover", Lift(trees - across * 60f, 40f), across, -25f) })
+            // Across the sun (long shadows lie across the view), toward the rougher side; then over the land, and over the trees.
+            Vector3 side0 = across.Dot(rough) < 0f ? -across : across;
+            foreach (var (view, eye, look, pitch) in new[] { ("walk", Lift(start, 1.7f), side0, -6f), ("land", Lift(start, 25f), side0, -15f), ("hover", Lift(trees - across * 60f, 40f), across, -25f) })
             {
                 Vector3 side = look.Cross(Vector3.Up).Normalized();
                 var pose = new Transform3D(Basis.LookingAt(look, Vector3.Up).Rotated(side, Mathf.DegToRad(pitch)), eye);
@@ -120,7 +126,7 @@ public partial class PopRoute
                 // One frame of a pose, with the shadows or without (the sun's casters off, the far shade out past reach).
                 IEnumerable<int> Shoot(Transform3D at, bool shadows)
                 {
-                    sun.ShadowCasterMask = shadows ? Casting : 0u;
+                    sun.ShadowCasterMask = shadows ? uint.MaxValue : 0u;
                     float reach = zone.Streamer.ShadowReach;
                     if (!shadows) zone.Streamer.ShadowReach = 1e7f;
                     for (int i = 0; i < 3; i++)
@@ -286,9 +292,6 @@ public partial class PopRoute
     static string Tidy(string variant) => new(variant.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
 
     int _w, _h;
-
-    /// <summary>Every caster but the sleeper held out of view (its own shadow would stray into the frame and move).</summary>
-    const uint Casting = ~((1u << (Slice.Player.CharacterModel.BodyLayer - 1)) | (1u << (Slice.Player.CharacterModel.HeadLayer - 1)));
 
     /// <summary>A frame's brightness a pixel, 0 to 1.</summary>
     static float[] Luma(Image img, out int w, out int h)
