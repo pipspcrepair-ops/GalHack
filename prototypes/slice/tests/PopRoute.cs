@@ -52,6 +52,7 @@ public partial class PopRoute : Node
         if (_args.ContainsKey("minspec"))
         {
             Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            GD.Print($"ROUTE min-spec: affinity read back 0x{(long)Process.GetCurrentProcess().ProcessorAffinity:X}, {System.Environment.ProcessorCount} logical CPUs on the machine");
             if (!_args.ContainsKey("screen")) // the slowest screen
                 _args["screen"] = Enumerable.Range(0, DisplayServer.GetScreenCount()).MinBy(DisplayServer.ScreenGetRefreshRate).ToString(CultureInfo.InvariantCulture);
             TerrainStreamer.Cores = 4;
@@ -96,6 +97,7 @@ public partial class PopRoute : Node
         }
         if (more) return;
         SetPhysicsProcess(false);
+        if (_args.ContainsKey("minspec")) GD.Print($"ROUTE min-spec: affinity at the end 0x{(long)Process.GetCurrentProcess().ProcessorAffinity:X} (held for the run)");
         if (_args.ContainsKey("check")) GD.Print(_gateFails == 0 && !_failed ? "ALL PASSED (the moving picture is within its limits)" : $"{_gateFails} CHECK(S) FAILED");
         Wildlife.Shutdown.Quit(this, _failed || _gateFails > 0 ? 1 : 0);
     }
