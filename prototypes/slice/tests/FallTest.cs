@@ -587,7 +587,7 @@ public partial class FallTest : Node
         Vector3 feet = place.FromWorld(patch.WorldOf(who));
         _game.Survivor.PlaceOutside((patch.WorldOf(who) + Vector3.Back * 5f + Vector3.Up * 0.3f).ToNumerics());
         GD.Print($"  -- the floor broken under one of the place's creatures ({who.Species.Name}, {who.Species.BodyLength:F1} m) --");
-        Break(place, feet, 1);
+        Break(place, feet, 1 + (int)MathF.Ceiling(who.Species.BodyLength * 0.5f)); // (wide enough under all its feet)
         foreach (int x in WatchCreature(who, $"the place's {who.Species.Name}", () => site.Sim.Creatures.Contains(who), "one of a place's creatures")) yield return x;
     }
 
