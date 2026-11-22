@@ -82,6 +82,14 @@ public sealed class OrbitRules
         public float MakeMoonWithin { get; set; } = 45000f;
     }
 
+    public FoldRules Fold { get; set; } = new();
+
+    public sealed class FoldRules
+    {
+        /// <summary>A star's high orbit, in its radii: where a fold arrives, as close as you come.</summary>
+        public double HighOrbit { get; set; } = 1.6;
+    }
+
     static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

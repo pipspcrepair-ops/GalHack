@@ -11,10 +11,11 @@ public partial class Spaceflight
     /// <summary>The direction to look, in the world, to see a direction of the catalogue.</summary>
     public Vector3 LookAlong(N.Vector3 catalogue)
     {
+        if (AtStar is { } here) return here.LookAlong(catalogue);
         SkyRig sky = Game.Surface.Sky;
         return (sky.Stars.Field * sky.SkyToStars).Inverse() * new Vector3(catalogue.X, catalogue.Y, catalogue.Z);
     }
 
     /// <summary>The direction to look, in the world, to see a catalogue star.</summary>
-    public Vector3 LookToward(int star) => LookAlong(Game.Surface.Sky.Stars.View.Direction[star]);
+    public Vector3 LookToward(int star) => LookAlong(Stars.View.Direction[star]);
 }

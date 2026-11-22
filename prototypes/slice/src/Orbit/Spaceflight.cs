@@ -156,6 +156,9 @@ public partial class Spaceflight : Node
         Survivor s = g.Survivor;
         if (s.Seated == null && s.Body.Frame != null && s.Legs.Floating) Riding.SetUp(s.Body, N.Vector3.UnitY);
         JetpackInZeroG(s);
+        FoldTick();
+        // Round a star there is no world to cross to (the warp to one is the way on).
+        if (AtStar != null) return;
         if (_pending != null)
         {
             if (Ledger.Committing) HoldAtCap(Carrier());
@@ -200,7 +203,8 @@ public partial class Spaceflight : Node
         GameNode g = Game;
         Vector3 at = g.Survivor.WorldFeet;
         // Where you are is charted, and with it everything a jump away.
-        if (g.Surface.Sky.Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
+        if (Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
+        if (AtStar != null) return;
         if (g.InOrbit)
         {
             OrbitZone o = Orbit;
@@ -479,18 +483,20 @@ public partial class Spaceflight : Node
         Vessel aboard = s.Seated ?? (s.Body.Frame != null ? s.Aboard : null);
         string sleeperZone = aboard != null ? ZoneLedger.Cabin(IdOf(aboard)) : ZoneName(s.Zone);
         yield return new Holder(ZoneLedger.Sleeper, "sleeper", sleeperZone, aboard != null ? IdOf(aboard) : null, "Sleeper", g.Pack.Storage.Contents, 0);
-        foreach (SurfaceZone zone in Orbit == null ? new[] { g.Surface } : Orbit.Bodies.Select(c => c.Surface).Prepend(Orbit))
+        IEnumerable<SurfaceZone> zones = Orbit == null ? new[] { g.Surface } : Orbit.Bodies.Select(c => c.Surface).Prepend(Orbit);
+        foreach (SurfaceZone zone in AtStar != null ? zones.Append(AtStar) : zones)
         {
             if (zone?.Physics == null) continue;
             string name = ZoneName(zone);
+            bool freed = zone is StarZone; // freed when it is left: where each thing is goes in its record, to be put back
             foreach (Vessel v in zone.Vessels)
             {
                 Bill items = v.Storage.Contents;
                 foreach (var c in v.Machines.Values) Add(items, c.Tray);
-                yield return new Holder(IdOf(v), "structure", name, null, v.Name, items, v.Structure.Count);
+                yield return new Holder(IdOf(v), "structure", name, null, v.Name, items, v.Structure.Count, freed ? PlacingOf(v) : null);
             }
             foreach (Lootable l in zone.Loot.All)
-                yield return new Holder(IdOf(l), "container", name, null, l.Name, l.Storage.Contents, 0);
+                yield return new Holder(IdOf(l), "container", name, null, l.Name, l.Storage.Contents, 0, freed ? PlacingOf(l) : null);
             foreach (Device d in zone.Devices)
             {
                 Bill items = d.Storage?.Contents ?? new Bill();
@@ -505,7 +511,8 @@ public partial class Spaceflight : Node
         foreach (var (id, n) in from) to.Add(id, n);
     }
 
-    string ZoneName(SurfaceZone z) => z is OrbitZone ? ZoneLedger.Orbit : z == Game.Surface ? ZoneLedger.Surface : ZoneLedger.Moon + Orbit.Bodies.FindIndex(c => c.Surface == z);
+    string ZoneName(SurfaceZone z) => z is StarZone star ? ZoneLedger.StarZoneOf(star.StarId) : z is OrbitZone ? ZoneLedger.Orbit : z == Game.Surface ? ZoneLedger.Surface
+        : ZoneLedger.Moon + Orbit.Bodies.FindIndex(c => c.Surface == z);
 
     /// <summary>A record id that stays with a thing for the game.</summary>
     string IdOf(object thing)

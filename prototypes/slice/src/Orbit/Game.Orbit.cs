@@ -17,6 +17,9 @@ public partial class Game
     /// <summary>In orbit (not on the planet's surface).</summary>
     public bool InOrbit => Zone is OrbitZone;
 
+    /// <summary>Out in space: a world's orbit, or round a star.</summary>
+    public bool InSpace => Zone is OrbitZone or StarZone;
+
     /// <summary>Climbing out, coming down, and everything that differs in space.</summary>
     public Spaceflight Spaceflight { get; private set; }
 

@@ -62,7 +62,7 @@ public partial class Game
     /// </summary>
     public bool Scan(Vector3 from, float range)
     {
-        if (ScanWait > 0 || InOrbit || Zone?.Planet == null) return false;
+        if (ScanWait > 0 || InSpace || Zone?.Planet == null) return false;
         _scanReady = Stats.Seconds + ScanCooldown;
         _pings.Clear();
         _pings.AddRange(PlacesInScan(from, range, Stats.Seconds + MarkSeconds));

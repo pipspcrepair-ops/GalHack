@@ -61,7 +61,7 @@
 
     // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
     { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",
-      "mass": 1.2, "volume": 1, "where": "Irradiated ice worlds; asteroids near dead and irradiated stars", "uses": "Fold crystal: fold fuel, shields" },
+      "mass": 1.2, "volume": 1, "where": "High-gravity worlds, 32 km and up", "uses": "Fold crystal: fold fuel, shields" },
     { "id": "emberite-ore", "name": "Emberite ore", "short": "EMBER", "category": "raw", "rarity": "rare", "source": "mine",
       "mass": 2.8, "volume": 1, "where": "Lava worlds around young and dying stars", "uses": "Fusion cells · plasma charges · fusion cores" },
     { "id": "starsilver-ore", "name": "Starsilver ore", "short": "STARSLV", "category": "raw", "rarity": "rare", "source": "mine",

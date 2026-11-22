@@ -13,11 +13,8 @@ namespace Slice.Orbit;
 /// </summary>
 public sealed class Lanes
 {
-    /// <summary>One jump, light years: the base drive's reach (<see cref="Galaxy.JumpT1"/>). A fitted fold drive would set this from its tier.</summary>
+    /// <summary>One jump, light years: the base drive's reach (<see cref="Galaxy.JumpT1"/>), where no fitted fold drive says otherwise.</summary>
     public static float Range = Galaxy.JumpT1;
-
-    /// <summary>Fold crystal per jump per this many light years, rounded up: the route planner's preview of what a route burns.</summary>
-    public const float LyPerCrystal = 10f;
 
     /// <summary>How far out the network is drawn, in jumps.</summary>
     public const int Jumps = 3;
@@ -102,11 +99,11 @@ public sealed class Lanes
         return sum;
     }
 
-    /// <summary>Fold crystal a route burns: each jump costs its length over <see cref="LyPerCrystal"/>, rounded up.</summary>
-    public static int Crystal(Galaxy galaxy, IReadOnlyList<int> route)
+    /// <summary>Fold crystal a route burns: each jump what the fold drive burns for its length (design: about 1 a light year).</summary>
+    public static int Crystal(Galaxy galaxy, IReadOnlyList<int> route, GalHack.Items.Bridge.DriveFuel fold)
     {
         int sum = 0;
-        for (int i = 1; i < route.Count; i++) sum += (int)MathF.Ceiling(V.Distance(galaxy.Stars[route[i - 1]].Position, galaxy.Stars[route[i]].Position) / LyPerCrystal);
+        for (int i = 1; i < route.Count; i++) sum += fold.Burn(V.Distance(galaxy.Stars[route[i - 1]].Position, galaxy.Stars[route[i]].Position));
         return sum;
     }
 }

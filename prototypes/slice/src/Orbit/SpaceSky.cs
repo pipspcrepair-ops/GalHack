@@ -65,6 +65,7 @@ public partial class SpaceSky : Node3D
     }
 
     Vector3 _eye;
+    float _sunAngular;
 
     /// <summary>Where the bodies were last drawn from.</summary>
     public Vector3 Eye => _eye;
@@ -275,12 +276,19 @@ public partial class SpaceSky : Node3D
         Sun.LightEnergy = SunEnergy * _share * SunLit;
         StarSystem.Orientation o = model.Orient(days);
         Vector3 W(D3 d) => turn * new Vector3((float)d.X, (float)d.Y, (float)d.Z);
-        ToSun = V(model.See(model.Star, days, eyeGlobe, o).Direction);
+        Sighting star = model.See(model.Star, days, eyeGlobe, o);
+        ToSun = V(star.Direction);
         Sun.Basis = Facing((turn * ToSun).Normalized());
+        // Its disc as big as it stands from the eye: the same from a world's orbit as from its ground, filling the view at its own high orbit.
+        if (MathF.Abs(star.Angular - _sunAngular) > _sunAngular * 0.002f)
+        {
+            _sunAngular = star.Angular;
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_radius"), _sunAngular);
+        }
         // The star field stands in the system's frame: the world turns under it with the day.
         Environment.SkyRotation = (turn * new Basis(V(o.X), V(o.Y), V(o.Z)).Transposed()).GetEuler();
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_time"), SkyRig.SunTime);
-        Vector3 field = V(model.Position(model.Star, days) - model.Position(model.Home, days)).Normalized();
+        Vector3 field = V(model.Position(model.Star, days) - model.Position(model.Home, days) - o.ToSystem(eyeGlobe)).Normalized();
         if (field.Dot(_fieldSun) < 0.99995f) // the sky's shader is worked again whenever its light moves
         {
             _fieldSun = field;

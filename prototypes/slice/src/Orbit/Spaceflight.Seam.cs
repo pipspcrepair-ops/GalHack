@@ -126,6 +126,15 @@ public partial class Spaceflight
 
     void ProcessSeam(double delta)
     {
+        if (AtStar is { } star)
+        {
+            // Round a star: its own sky from the eye; the start system's clock runs on while it waits.
+            star.Track(Game.Camera.GlobalPosition, delta);
+            Lap("the star's sky");
+            Game.Surface.Sky.RunClock(delta);
+            KeepOneClock();
+            return;
+        }
         TurnGround();
         Lap("ground turning");
         if (Game.InOrbit)

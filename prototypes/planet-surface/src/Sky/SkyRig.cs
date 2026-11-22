@@ -779,6 +779,16 @@ public partial class SkyRig : Node3D
         _ => StarKind.BlueGiant,
     };
 
+    /// <summary>The star class the system model builds for a catalogue kind (the model has five; the special kinds take the nearest).</summary>
+    public static StarClass ClassOf(StarKind k) => k switch
+    {
+        StarKind.BrownDwarf or StarKind.RedDwarf or StarKind.Protostar => StarClass.RedDwarf,
+        StarKind.OrangeDwarf or StarKind.RedGiant => StarClass.Orange,
+        StarKind.YellowDwarf => StarClass.Yellow,
+        StarKind.WhiteStar or StarKind.WhiteDwarf => StarClass.White,
+        _ => StarClass.BlueWhite,
+    };
+
     static float Smooth(float e0, float e1, float x)
     {
         float t = Math.Clamp((x - e0) / (e1 - e0), 0f, 1f);

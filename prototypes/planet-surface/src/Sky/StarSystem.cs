@@ -821,6 +821,29 @@ public sealed class StarSystem
         return s;
     }
 
+    /// <summary>
+    /// The system of any star of the galaxy's catalogue but a start's, from its catalogue seed and class: the same
+    /// recipe as a start system's (<see cref="For"/>), round an anchor world rolled from the seed (the body its frames
+    /// hang on, as a start world anchors its own) of a type its star suits. The same star always gives the same system.
+    /// </summary>
+    public static StarSystem ForStar(ulong seed, StarClass star)
+    {
+        var rng = new Rng(Hash.Of(seed, 0x414E43));
+        Archetype[] suits = AnchorTypes(star);
+        PlanetSpec anchor = PlanetSpec.Roll(seed, suits[rng.Next(suits.Length)], rng.Next(PlanetSpec.VariantCount));
+        return For(anchor, SkySystem.For(anchor, star), anchor.WidthMeters, seed);
+    }
+
+    /// <summary>The world types a star of this class lights (the other way round from the sky's own pick of a star for a type).</summary>
+    static Archetype[] AnchorTypes(StarClass star) => star switch
+    {
+        StarClass.RedDwarf => new[] { Archetype.Lava, Archetype.Alien },
+        StarClass.Orange => new[] { Archetype.Temperate, Archetype.Lava, Archetype.Ice },
+        StarClass.Yellow => new[] { Archetype.Temperate, Archetype.Arid, Archetype.Alien },
+        StarClass.White => new[] { Archetype.Arid, Archetype.Ice, Archetype.Alien },
+        _ => new[] { Archetype.Ice, Archetype.Alien },
+    };
+
     /// <summary>The chance a giant's moon, with room for one, has a moon of its own.</summary>
     public const double MoonOfMoonChance = 0.35;
 

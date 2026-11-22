@@ -114,7 +114,7 @@ public partial class SliceMusic : Node
             _mix.Ground = Scene;
             return;
         }
-        if (!Game.InOrbit) _mix.Ground = _ground.Feed(MusicScenes.Ground(Game), ReadEvery);
+        if (!Game.InSpace) _mix.Ground = _ground.Feed(MusicScenes.Ground(Game), ReadEvery);
         if (_mix.Space > 0f) _mix.Sky = _sky.Feed(MusicScenes.Sky(Game), ReadEvery);
     }
 

@@ -65,9 +65,19 @@ public sealed class BodySurfaces
         new Thread(() => Work(order)) { IsBackground = true, Name = "Body surfaces", Priority = ThreadPriority.BelowNormal }.Start();
     }
 
+    /// <summary>Lets go of the array now and stops its thread after the surface it is on (a system left for good).</summary>
+    public void Release()
+    {
+        _released = true;
+        while (_painted.TryDequeue(out _)) { }
+        Texture?.Dispose();
+    }
+
+    volatile bool _released;
+
     void Work(List<Orbiter> order)
     {
-        for (int i = 0; i < order.Count; i++)
+        for (int i = 0; i < order.Count && !_released; i++)
         {
             long started = Stopwatch.GetTimestamp();
             Image image = Paint(order[i]);
@@ -78,7 +88,7 @@ public sealed class BodySurfaces
     /// <summary>Uploads one finished surface: call it once a frame.</summary>
     public void Pump()
     {
-        if (!_painted.TryDequeue(out var p)) return;
+        if (_released || !_painted.TryDequeue(out var p)) return;
         Texture.UpdateLayer(p.Image, p.Layer);
         _ready[p.Body] = p.Layer;
         Done++;

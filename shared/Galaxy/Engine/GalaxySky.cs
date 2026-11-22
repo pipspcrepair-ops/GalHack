@@ -132,6 +132,22 @@ public sealed class GalaxySky
         });
     }
 
+    /// <summary>
+    /// Lets go of this sky now (a system folded away from): its textures, whatever a worker still has on its way, and the
+    /// materials it feeds. Nothing waits for the collector to find them.
+    /// </summary>
+    public void Release()
+    {
+        _bound.Clear();
+        _baking = null;
+        _uploading = null;
+        foreach (GodotObject t in new GodotObject[] { _cells, _stars, _glow, _newCells, _newStars, _newGlow })
+            t?.Dispose();
+        (_cells, _stars, _glow, _newCells, _newStars, _newGlow) = (null, null, null, null, null, null);
+        View = null;
+        Ready = false;
+    }
+
     /// <summary>RGB floats as RGBA half floats (alpha 1): the glow cubemap's own format.</summary>
     static byte[] HalfRgba(float[] rgb)
     {

@@ -8,8 +8,11 @@ using GalHack.Persistence;
 
 namespace Slice.Orbit;
 
-/// <summary>Something the ledger keeps a record of: the sleeper, a structure, a container on the ground or a device.</summary>
-public readonly record struct Holder(string Id, string Type, string Zone, string Ship, string Name, Bill Items, int Blocks);
+/// <summary>
+/// Something the ledger keeps a record of: the sleeper, a structure, a container on the ground or a device. In a zone that
+/// is freed when it is left (a star's), where it is too (<see cref="ZoneLedger.Placing"/>), so it can be put back.
+/// </summary>
+public readonly record struct Holder(string Id, string Type, string Zone, string Ship, string Name, Bill Items, int Blocks, ZoneLedger.Placing Place = null);
 
 /// <summary>
 /// Where everything is, on disk, kept with saves' persistence core (prototypes/saves,
@@ -28,6 +31,20 @@ public sealed class ZoneLedger
 {
     public const string Surface = "surface", Orbit = "orbit", Moon = "moon";
     public const string Sleeper = "sleeper";
+
+    /// <summary>The zone round a catalogue star (<c>StarZone</c>): one per star, freed when it is left.</summary>
+    public const string Star = "star";
+
+    public static string StarZoneOf(int star) => Star + star;
+
+    /// <summary>Where a holder in a freed zone was, to be put back: a structure's blueprint and its turn (x, y, z, w), and its place in its zone's world.</summary>
+    public sealed record Placing(string Blueprint, float[] At, float[] Turn);
+
+    /// <summary>
+    /// Records in zones out of play now (a star's zone folded away from), by zone: kept as they are, never taken for
+    /// gone, and counted in the totals, until their zone is in play again.
+    /// </summary>
+    public Func<string, bool> Kept = _ => false;
 
     /// <summary>The zone of anything riding in a vessel's cabin (saves' convention).</summary>
     public static string Cabin(string shipId) => "cabin/" + shipId;
@@ -67,9 +84,10 @@ public sealed class ZoneLedger
         public string Name { get; set; }
         public Dictionary<string, int> Items { get; set; } = new();
         public int Blocks { get; set; }
+        public Placing Place { get; set; }
     }
 
-    static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
 
     static (int Items, int Blocks) Count(string payload)
     {
@@ -79,7 +97,7 @@ public sealed class ZoneLedger
 
     static SaveRecord Make(Holder h)
     {
-        var p = new Payload { Name = h.Name, Blocks = h.Blocks };
+        var p = new Payload { Name = h.Name, Blocks = h.Blocks, Place = h.Place };
         foreach (var (id, n) in h.Items) if (n > 0) p.Items[id] = n;
         return new SaveRecord
         {
@@ -105,12 +123,17 @@ public sealed class ZoneLedger
             if (Table.TryGet(r.Id, out SaveRecord old) && old == r) continue;
             Table.Put(r);
         }
-        // Holders that are gone (a body emptied, a wreck taken apart) are removed empty.
-        foreach (string gone in Table.All.Select(r => r.Id).Where(id => !seen.Contains(id)).ToList())
+        // Holders that are gone (a body emptied, a wreck taken apart) are removed empty; those in a zone out of play wait.
+        foreach (SaveRecord r in Table.All.Where(r => !seen.Contains(r.Id)).ToList())
         {
-            SaveRecord r = Table.Get(gone);
+            if (Kept(r.ZoneId))
+            {
+                items += r.Items;
+                blocks += r.Blocks;
+                continue;
+            }
             Table.Put(r with { Items = 0, Blocks = 0, Payload = JsonSerializer.Serialize(new Payload { Name = "gone" }, Json) });
-            Table.Remove(gone);
+            Table.Remove(r.Id);
         }
         var (expectItems, expectBlocks) = Table.ExpectedTotals;
         Table.Declare(items - expectItems, blocks - expectBlocks);
@@ -223,12 +246,35 @@ public sealed class ZoneLedger
         return (items, blocks);
     }
 
+    /// <summary>The totals of what waits in zones out of play (<see cref="Kept"/>), by their records.</summary>
+    public (int Items, int Blocks) KeptTotals()
+    {
+        int items = 0, blocks = 0;
+        foreach (SaveRecord r in Table.All)
+            if (Kept(r.ZoneId)) (items, blocks) = (items + r.Items, blocks + r.Blocks);
+        return (items, blocks);
+    }
+
+    /// <summary>What the ledger holds in a zone with its place: each record's id, type, place and items (to be put back there).</summary>
+    public IEnumerable<(string Id, string Type, Placing Place, Bill Items)> KeptIn(string zone)
+    {
+        foreach (SaveRecord r in Table.InZone(zone))
+        {
+            Payload p = JsonSerializer.Deserialize<Payload>(r.Payload, Json);
+            if (p.Place == null) continue;
+            var bill = new Bill();
+            foreach (var (id, n) in p.Items) bill.Add(id, n);
+            yield return (r.Id, r.Type, p.Place, bill);
+        }
+    }
+
     /// <summary>
     /// The game's own counts and zones right after a move, against the counts just before it and
     /// the zones on disk: every difference is something the move lost, doubled or put in the wrong
-    /// zone. Empty when all is well.
+    /// zone. Empty when all is well. <paramref name="now"/>: the totals now, when they count more than
+    /// the holders in play (what waits in the ledger for a zone out of play).
     /// </summary>
-    public List<string> Audit(IEnumerable<Holder> holders, (int Items, int Blocks) before)
+    public List<string> Audit(IEnumerable<Holder> holders, (int Items, int Blocks) before, (int Items, int Blocks)? now = null)
     {
         var problems = new List<string>();
         var list = holders.ToList();
@@ -238,7 +284,7 @@ public sealed class ZoneLedger
             else if (r.ZoneId != h.Zone && !(h.Zone.StartsWith("cabin/") && r.ZoneId.StartsWith("cabin/")))
                 problems.Add($"{h.Id} is in {h.Zone} but its record says {r.ZoneId}");
         }
-        var (items, blocks) = Totals(list);
+        var (items, blocks) = now ?? Totals(list);
         if (items != before.Items) problems.Add($"{items} items where there were {before.Items}");
         if (blocks != before.Blocks) problems.Add($"{blocks} blocks where there were {before.Blocks}");
         return problems;
