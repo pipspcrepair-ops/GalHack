@@ -346,7 +346,7 @@ public sealed partial class HumanRig : Rig
         {
             float side = i == 0 ? -1f : 1f;
             bool stance = StepAt(phase + i * 0.5f, duty, out float reach, out float lift);
-            // Where the gait and the stance have it (a wide stance or a crouch stepped into, standing), and what a moment throws it by.
+            // Where the gait and the stance have it (a wide stance or a crouch taken up with the next step), and what a moment throws it by.
             Vector3 at = g.Feet + along * (moving * reach * half) + fwd * (g.Crouch * 0.05f * side + stalk * 0.08f * side) + right * side * (f.HipW * 0.7f + g.Crouch * 0.06f + wide);
             Vector3 foot = at + recoil * 0.6f + fwd * (g.Sit * f.UpperLeg * 0.8f) + right * side * (staggerSide * 0.6f + g.Sit * 0.04f);
             // Staggered: one foot steps out along the hit to catch the weight, the other follows a little.
@@ -376,7 +376,7 @@ public sealed partial class HumanRig : Rig
     }
 
     /// <summary>How long a step taken standing lasts, and how quickly a lifted foot's stray from the gait's place for it fades, s; how far a foot strays from that place before a step taken standing (a share of the leg).</summary>
-    const float SettleTime = 0.3f, Fade = 0.07f, SettleAt = 0.1f;
+    const float SettleTime = 0.3f, Fade = 0.07f, SettleAt = 0.25f;
 
     /// <summary>
     /// Travelling (<paramref name="on"/>), a foot down stays where it was set down while the body goes on over it, is pushed or

@@ -177,7 +177,7 @@ public partial class StrideTest : Node
             }
             (_yaw, _turned) = (yaw, _turned + turned);
             t.WorstJump = MathF.Max(t.WorstJump, worst);
-            if (worst > 0f) { t.Jumps++; t.Why(t.JumpWhy, doing()); t.Note("jump", $"{Who}: {(which % 2 == 0 ? "a knee" : "a foot")} jumped {worst:F2} m about the body in a frame, the body going {_movedThen:F2} m and turning {_turnedThen:F2} rad ({doing()})"); }
+            if (worst > 0f) { t.Jumps++; t.Why(t.JumpWhy, doing()); t.Note("jump", $"{Who}: {(which % 2 == 0 ? "a knee" : "a foot")} {(which / 2 < planted.Length && planted[which / 2] ? "down" : "lifted")} jumped {worst:F2} m about the body in a frame, the body going {_movedThen:F2} m and turning {_turnedThen:F2} rad ({doing()})"); }
             (_movedThen, _turnedThen) = (moved, turned);
             // A planted foot over the ground: its move (a foot pivoted round a body turning on the spot slides too).
             for (int i = 0; i < feet.Length; i++)
