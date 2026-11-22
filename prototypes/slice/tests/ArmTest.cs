@@ -238,6 +238,7 @@ public partial class ArmTest : Node
         var posedW = new Watch(Names.Length);
         var drawnW = new Watch(Names.Length);
         var (hipsPosed, hipsDrawn) = (new Hips(), new Hips());
+        int[] feet = { pieces.FindIndex(p => p.Name == "leg0f"), pieces.FindIndex(p => p.Name == "leg1f") };
         Vector3 at = Vector3.Zero;
         float yaw = 0f, walked = 0f, clock = 0f, speed = 0f, act = 0f, aim = 0f, sit = 0f, crouch = 0f, work = 0f, reach = 0f, sip = 0f;
         BodyAct now = BodyAct.None;
@@ -293,8 +294,7 @@ public partial class ArmTest : Node
                 _hipFrames++;
                 if (Trace)
                 {
-                    var h = rig.HipTrace;
-                    _hipRing.Enqueue($"      t{tick}: hips {rig.Pose[torso].Origin.Y - at.Y:F3} bob {h.Bob:F3} drop {h.Drop:F3} apart {h.Apart:F3} duty {h.Duty:F2} half {h.Half:F2} phase {h.Phase:F3} planted {rig.FootPlanted(0)} {rig.FootPlanted(1)} settle {h.Settle0:F2} {h.Settle1:F2} moving {speed:F2} feet {rig.Pose[pieces.FindIndex(p => p.Name == "leg0f")].Origin - at:F2} {rig.Pose[pieces.FindIndex(p => p.Name == "leg1f")].Origin - at:F2}");
+                    _hipRing.Enqueue($"      t{tick}: hips {rig.Pose[torso].Origin.Y - at.Y:F3}, planted {rig.FootPlanted(0)} {rig.FootPlanted(1)}, feet {rig.Pose[feet[0]].Origin - at:F2} {rig.Pose[feet[1]].Origin - at:F2}");
                     if (_hipRing.Count > 3) _hipRing.Dequeue();
                 }
                 foreach (float dip in new[] { hipsPosed.Sample(rig.Pose[torso].Origin.Y - at.Y), hipsDrawn.Sample(drawn[torso].Origin.Y - at.Y) })
