@@ -591,6 +591,7 @@ public partial class FallTest : Node
                 else
                 {
                     Creature c = fs.Sim.SpawnIn(kind, space, fs.Local(town.World(by.Pos + Vector3.Up * 0.3f)));
+                    fs.Sim.Keep(c, town); // (theirs, as a kennelled beast is: not one they set on)
                     for (int i = 0; i < 30; i++) { TopUp(); yield return 0; }
                     if (!c.Removed && !c.InWalls && !c.Falling && Under(home, home.FromWorld(patch.WorldOf(c)))) { (who, site) = (c, fs); GD.Print($"  (one of the land's {kind.Name} let into the place, by a {by.Job})"); }
                     else { GD.Print($"  (the land's {kind.Name} let in did not stand on a floor of the place's blocks)"); c.Removed = true; }
