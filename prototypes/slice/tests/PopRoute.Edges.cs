@@ -56,11 +56,12 @@ public partial class PopRoute
         // The sleeper held out of view casts nothing: its shadow would stray into the frame, and move as it settles.
         var figure = _game.Figure.FindChildren("*", nameof(GeometryInstance3D), true, false).Cast<GeometryInstance3D>().ToDictionary(g => g, g => g.CastShadow);
         foreach (GeometryInstance3D g in figure.Keys) g.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+        Vector3 trees = Densest(start); // once: every variant from the same eye
         foreach (string variant in _args.GetValueOrDefault("variants", "as set").Split('|'))
         {
             _game.ApplySettings();
             Vary(variant);
-            foreach (int x in EdgeViews(start, rough, Densest(start), variant, dir)) yield return x;
+            foreach (int x in EdgeViews(start, rough, trees, variant, dir)) yield return x;
         }
         foreach (var (g, cast) in figure) if (IsInstanceValid(g)) g.CastShadow = cast;
         zone.Sky.TimeScale = 1f;
