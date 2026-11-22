@@ -918,7 +918,6 @@ public sealed partial class Town : IKeeper
         else if (_clock - p.NoFloorAt > 1f && !Floored(p.Pos)) (p.CheckFor, p.NoFloorAt) = (MathF.Max(p.CheckFor, 0.05f), _clock); // (no floor under them by the blocks: looked under, Town.Falls)
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was, dt);
-        p.Pos = Unpressed(p, was, p.Pos); // (nor held off the furniture into anyone)
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
         if (!byBody && (p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {

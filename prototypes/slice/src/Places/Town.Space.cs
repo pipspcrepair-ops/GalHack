@@ -87,11 +87,11 @@ public sealed partial class Town
         Vector3 to = _parts.PushOut(p.Pos, r, h);
         to.Y = p.Pos.Y;
         float after = _parts.Gap(to, r, h);
-        if (after >= 0f && OnGrid(to)) { p.Pos = p.Pos.MoveToward(to, PartPace * dt); return; }
+        if (after >= 0f && OnGrid(to)) { p.Pos = Unpressed(p, p.Pos, p.Pos.MoveToward(to, PartPace * dt)); return; } // (never out into anyone)
         // No way clear: never deeper in than it was (one set down in a piece gets out of it by any way not further in).
         Vector3 best = p.Pos;
         float most = gap;
-        if (after > most && OnGrid(to)) { best = p.Pos.MoveToward(to, PartPace * dt); most = _parts.Gap(best, r, h); }
+        if (after > most && OnGrid(to)) { best = Unpressed(p, p.Pos, p.Pos.MoveToward(to, PartPace * dt)); most = _parts.Gap(best, r, h); }
         p.Pos = most >= _parts.Gap(was, r, h) ? best : was;
     }
 
