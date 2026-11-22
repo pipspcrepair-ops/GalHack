@@ -787,7 +787,8 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_base.ToWorld(Face(new Int3(0, 0, 2))), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(!_base.Structure.Has(new Int3(0, 0, 2)) && _base.Storage.Count(steel) == stored + 1 && Pack[steel] == bag + 1, "with a full bag, it goes to the structure's storage");
+        Check(!_base.Structure.Has(new Int3(0, 0, 2)) && _base.Storage.Count(steel) == stored + 1 && Pack[steel] == bag + 1,
+            $"with a full bag, it goes to the structure's storage (taken down {!_base.Structure.Has(new Int3(0, 0, 2))}, storage {stored} -> {_base.Storage.Count(steel)} steel, bag {bag + 1} -> {Pack[steel]})");
 
         // Both full: a container on the ground.
         double room = _base.Storage.FreeSu;
@@ -806,7 +807,7 @@ public partial class BuildTest : Node
     /// <summary>No creature spawns within the clearance of a base, from its footprint's edge; a vessel keeps nothing away.</summary>
     void NoSpawnsByBases()
     {
-        if (_base == null) return;
+        if (_base == null || _play.Lifeless("no creature spawns near a base")) return;
         GD.Print("-- no creature spawns near a base --");
         var patch = _game.Zone.Wildlife;
         patch.SyncBases();
