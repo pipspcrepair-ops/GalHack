@@ -73,7 +73,9 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// <summary>
     /// The gravity the walk is tuned for, m/s². In less, a stride scales as a person's does (by its Froude number): the
     /// speeds by the square root of the share of it, the feet's push along the ground by the share, so a stride let go
-    /// stops in the same distance, and a hop off a bump carries as far, as under the tuned gravity. In more it stays as tuned.
+    /// stops in the same distance, and a hop off a bump carries as far, as under the tuned gravity. In more it slows (the
+    /// design: heavy gravity slows; Empyrion's wiki speaks only of jumps shrinking): the speeds by the square
+    /// root of the tuned over the pull, so 2.2 g walks at two thirds and 5 g at under half.
     /// </summary>
     public float TunedGravity = 9.8f;
 
@@ -216,7 +218,8 @@ public sealed class WalkController : IBodyController, IForceReactor
             if (JetpackSpent && JetpackFuel >= MathF.Min(JetpackMinRefill, JetpackFuelMax)) JetpackSpent = false;
         }
         float g = world.GravityAt(body).Length(), share = g > 1e-3f ? MathF.Min(g / TunedGravity, 1f) : 1f;
-        float speed = (Crouch ? CrouchSpeed : Sprint ? SprintSpeed : WalkSpeed) * MathF.Sqrt(share);
+        float heavy = g > TunedGravity ? MathF.Sqrt(TunedGravity / g) : 1f;
+        float speed = (Crouch ? CrouchSpeed : Sprint ? SprintSpeed : WalkSpeed) * MathF.Sqrt(share) * heavy;
         Vector2 move = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
         Vector3 wishDir = MathX.Rotate(heading, new Vector3(move.X, 0f, move.Y));
         Vector3 h = v - up * Vector3.Dot(v, up); // velocity along the face underfoot

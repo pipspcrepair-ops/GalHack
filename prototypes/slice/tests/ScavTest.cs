@@ -20,7 +20,7 @@ namespace Slice.Tests;
 /// walking, never appearing in view. Nobody is removed except by death, and the far walking is cheap.
 /// (Members new with the runs are read by name, so the same test runs on a build from before them, and fails there.)
 ///
-/// -- --worlds=N: worlds to try for a settlement with scavengers and something in reach to pick over (default 6).
+/// -- --worlds=N: worlds to try for a settlement with scavengers and something in reach to pick over (default 6); --seed=N the first world's.
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ScavTest.tscn
 /// </summary>
 public partial class ScavTest : Node
@@ -95,6 +95,11 @@ public partial class ScavTest : Node
     // ---- What the runs added, read by name ---------------------------------------------------------
 
     static object Get(object o, string name) => o?.GetType().GetField(name)?.GetValue(o) ?? o?.GetType().GetProperty(name)?.GetValue(o);
+
+    /// <summary>--seed=N: the first world's seed (a failure's world again, for an A/B; never pinned in a run).</summary>
+    static ulong? Seeded(string name) =>
+        OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith($"--{name}=")) is { } a && ulong.TryParse(a[(name.Length + 3)..], out ulong v) ? v : null;
+    int _rounds;
     static void SetStatic(string name, float v) => typeof(Town).GetField(name)?.SetValue(null, v);
     /// <summary>Out of town on a run (or, before the runs, leaving for one or away on it).</summary>
     static bool OnRun(Town.Person p) => Get(p, "Run") != null || Get(p, "Leaving") is true || Get(p, "Away") is true;
@@ -119,7 +124,7 @@ public partial class ScavTest : Node
     {
         const string family = "survivor_town";
         PlanetSurface.Poi.PoiSiting.ForceFamily = family;
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.Fresh("temperate", _rounds++ == 0 ? Seeded("seed") : null);
         _game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(_game);
         _drive = new Driver(_game);

@@ -106,7 +106,7 @@ public partial class CoreTest : Node
         Check(cores.SequenceEqual(new[] { ("core", "Core") }) && PlayerInventory.Core == "core", $"the core block has one item: {string.Join(", ", cores)}");
         string[] gone = { "big-core", "small-core", "base-core", "capital-core", "vessel-core", "hover-core" };
         Check(!items.Items.Any(i => gone.Contains(i.Id)), "no old core is an item of its own");
-        var named = items.Items.Where(i => i.Id != "core" && i.Id != "fusion-core" && i.Id != "lattice-core" && i.Name.EndsWith(" core", StringComparison.OrdinalIgnoreCase)).Select(i => i.Name).ToList();
+        var named = items.Items.Where(i => i.Id != "core" && i.Id != "fusion-core" && i.Name.EndsWith(" core", StringComparison.OrdinalIgnoreCase)).Select(i => i.Name).ToList();
         Check(named.Count == 0, $"nothing else calls itself a structure's core{(named.Count > 0 ? ": " + string.Join(", ", named) : "")}");
         var tree = new Progress(Data.Progress, items, Data.Catalogue);
         var nodes = tree.Nodes.Where(n => n.BlockId == "core").Select(n => (n.Id, n.Tab)).ToList();

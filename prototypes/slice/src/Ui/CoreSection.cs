@@ -418,7 +418,7 @@ public sealed class StructureSection : IMenuSection
         string burning = p.Burning is string id && v.Storage.Catalogue.TryGet(id, out ItemDef fuel) ? $" · {(fuel.Short ?? fuel.Name).ToUpperInvariant()}" : "";
         Row("FUEL", $"{p.FuelUnits:F0} U · {time}{burning}", p.FuelUnits <= 0 ? C.Danger : left < 300 ? C.Warn : C.Text);
         // The drives' reach on the jump fuel in storage (the drives themselves come in phase 2).
-        foreach (var (function, label) in new[] { ("warp-drive", "WARP"), ("hyperdrive", "HYPERDRIVE") })
+        foreach (var (function, label) in new[] { ("warp-drive", "WARP"), ("fold-drive", "FOLD DRIVE") })
             if (p.Range(function) is { } r) Row(label, $"{r.Reach:F0} {r.Unit}", r.Reach >= 1 ? C.Text : C.Danger);
         Row("STORAGE", $"{v.Storage.UsedSu:F0} / {st.StorageCapacity:F0} SU", C.Text);
         if (v.Stats is HandlingStats h && !v.IsBase)

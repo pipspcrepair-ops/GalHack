@@ -95,7 +95,7 @@ public sealed class ChainRig : Rig
         if (dt <= 0f) return;
         SmoothIntents(c, dt);
         Proportions b = Species.Body;
-        Vector3 vel = WildSim.Flat(c.Velocity);
+        Vector3 vel = WildSim.Flat(Pace.Velocity);
         float speed = vel.Length();
         float moving = Math.Clamp(speed / MathF.Max(0.3f, Species.Stats.WalkSpeed), 0f, 1.5f);
         Basis yaw = new(Vector3.Up, c.Yaw);

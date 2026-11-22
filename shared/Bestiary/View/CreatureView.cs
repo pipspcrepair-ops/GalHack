@@ -651,6 +651,6 @@ public partial class WildlifeView : Node3D
         foreach (Creature c in _gone) _views.Remove(c);
     }
 
-    /// <summary>Stirred up (fighting, wary, hurt lately, held, thrown): awake and drawn wherever it is.</summary>
-    bool Stirred(Creature c) => c.Attacking || c.Alert > 0f || c.HeldBy != null || c.Holding != null || c.Thrown || c.ProvokedBy != null && _sim.Time - c.ProvokedAt < 10f;
+    /// <summary>Stirred up (fighting, wary, hurt lately, held, thrown), falling, or in the water till it is out (never left on its bed): awake and drawn wherever it is.</summary>
+    bool Stirred(Creature c) => c.Attacking || c.Alert > 0f || c.HeldBy != null || c.Holding != null || c.Thrown || c.Falling || c.ShorewardReach > 0f || c.ProvokedBy != null && _sim.Time - c.ProvokedAt < 10f;
 }

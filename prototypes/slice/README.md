@@ -145,7 +145,7 @@ Orbit starts at **1,060 m** on every world, a hard cap on Empyrion's scale (`dat
 
 **The pilot role** (`src/Vessels/VesselRoles.cs`): every seat is a control seat; one player flies. A vessel's heading is set by the seat of whoever holds the role: `FlightState.Seat` is the control frame, and thrust, strafe, pitch, yaw, roll, cruise and the hover frame all work in it, with thrusters still pushing along their own facing. Alone, you hold it when you sit. It can go to anyone in a seat (`Roles.Assign`, or PILOT on Tab, CORE), which turns what counts as forward at once and nothing else.
 
-**The map** (Tab, MAP) has four levels: HERE (the old 300 and 600 m view), WORLD (the generator's map, wrapping both ways, drag to move, wheel to zoom, right click to mark), SYSTEM (the star's bodies, wrecks found, a destination with a route line; the warp drive isn't fitted) and STARS (home and its neighbours one hyperdrive jump away; not fitted). Each shows only what has been discovered (`Charts`): places within 500 m, deposits the compass finds, wrecks within 3 km.
+**The map** (Tab, MAP) has four levels: HERE (the old 300 and 600 m view), WORLD (the generator's map, wrapping both ways, drag to move, wheel to zoom, right click to mark), SYSTEM (the star's bodies, wrecks found, a destination with a route line; the warp drive isn't fitted) and STARS (home and its neighbours one fold drive jump away; not fitted). Each shows only what has been discovered (`Charts`): places within 500 m, deposits the compass finds, wrecks within 3 km.
 
 **Clouds** sit at 600 to 1,000 m and are flown through: a white-out from one sample of the sky's cloud at the eye (it applies on a peak in cloud too), a fog gathering up from the cloud base softens peaks standing into the layer, and from above a cloud deck draws what is under you from the same coverage. The globe's cloud layer is painted from that coverage too.
 
@@ -397,7 +397,7 @@ The owner asked "how did Empyrion do it?" for the inventory, the tech tree and t
 - **Lava and ice worlds** start like any other (the test climbs out and walks 50 m on each), but the slice hasn't tuned survival on them beyond that.
 - **Deco items** craft and unlock but can't be placed by hand yet: the slice's build tool places building's blocks, and deco pieces aren't among them.
 - **Flight Mode** has no clean lift-off (terrain over the hull isn't cut, so a buried base can snag), and wind reaches it only while it is awake.
-- **Warp and hyperdrive** spool on their power and burn their fuel (`StructurePower.Engage`, `Jumped`), but nothing moves the ship yet: the slice has no in-system warp or star-to-star travel, and nothing in the game engages a drive. The map and the chair's WARP and FOLD gauges read their reach.
+- **Warp and fold drive** spool on their power and burn their fuel (`StructurePower.Engage`, `Jumped`), but nothing moves the ship yet: the slice has no in-system warp or star-to-star travel, and nothing in the game engages a drive. The map and the chair's WARP and FOLD gauges read their reach.
 - **Turrets** switch on and off from the chair bar but have no aim of their own, so they never track or fire and draw nothing.
 - **Blueprints:** the menu's one entry projects the Skiff; there is no save or library here yet.
 - **Equipment is read-only**: the paperdoll's armour and booster slots show the survival suit's; there are no armour items to drag in yet.

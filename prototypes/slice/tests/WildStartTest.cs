@@ -94,7 +94,7 @@ public partial class WildStartTest : Node
             yield return 0;
             yield break;
         }
-        game.Zone.Weather.Bridge.Calm = true;
+        if (game.Zone.Weather.Bridge is { } weather) weather.Calm = true; // an airless world has no weather to calm
         game.Zone.Wildlife.Frozen = true;
         Bunker b = game.Bunker;
         game.Survivor.PlaceOutside(new System.Numerics.Vector3(b.Outside.X, b.Outside.Y, b.Outside.Z));

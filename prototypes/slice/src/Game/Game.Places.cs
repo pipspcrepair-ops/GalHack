@@ -51,6 +51,7 @@ public partial class Game
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;
+        Zone.Edits.Edited += edit => Places.Dug(edit.Removed); // a town's people over it fall in
         Hulks = new Hulks { Name = "Hulks", Zone = Zone, Focus = Focus, Places = Places };
         Zone.AddChild(Hulks);
         Sky = new SkyTraffic { Name = "SkyTraffic", Zone = Zone, Focus = () => Survivor.WorldFeet, Eye = () => Camera.GlobalPosition };

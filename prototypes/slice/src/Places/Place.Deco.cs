@@ -684,5 +684,8 @@ public partial class Place
             n.ProcessMode = ProcessModeEnum.Disabled;
         }
         Memory.Modified = true;
+        // Whoever sat or lay on it, or stood on it, comes down (Town.Falls).
+        var reach = new Vector3(1.5f, 1f, 1.5f);
+        Memory.Town?.Unfloored(hit.Node.GlobalPosition - reach, hit.Node.GlobalPosition + reach);
     }
 }

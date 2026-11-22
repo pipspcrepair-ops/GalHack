@@ -131,9 +131,9 @@ public sealed partial class TreeFx : Node3D
     /// lands. <paramref name="body"/> and <paramref name="turn"/> are the plant's own mesh and its standing
     /// turn and scale, so it flies as itself, full size.
     /// </summary>
-    public FlungTree Throw(Vector3 root, Vector3 velocity, float height, float radius, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default, Color custom = default)
+    public FlungTree Throw(Vector3 root, Vector3 velocity, float height, float radius, Color leaf, Func<float, float, float> ground, float gravity, Mesh body = null, Basis turn = default, Color custom = default)
     {
-        var tree = new FlungTree(root, velocity, height, radius, new Color(0.36f, 0.25f, 0.16f), leaf, ground, body, turn, custom);
+        var tree = new FlungTree(root, velocity, height, radius, new Color(0.36f, 0.25f, 0.16f), leaf, ground, gravity, body, turn, custom);
         AddChild(tree);
         return tree;
     }
@@ -224,8 +224,9 @@ public sealed partial class FallingTree : Node3D
 /// </summary>
 public sealed partial class FlungTree : Node3D
 {
-    const float LieTime = 90f, FadeTime = 4f, Gravity = 9.8f;
+    const float LieTime = 90f, FadeTime = 4f;
     readonly Func<float, float, float> _ground;
+    readonly float _gravity;
     readonly Vector3 _spinAxis;
     readonly float _spin, _height;
     readonly StandardMaterial3D _bark, _leaf;
@@ -238,11 +239,12 @@ public sealed partial class FlungTree : Node3D
     /// <summary>The size it flies at, as drawn: its own mesh at its own scale.</summary>
     public Vector3 Bounds { get; }
 
-    public FlungTree(Vector3 root, Vector3 velocity, float height, float radius, Color bark, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default, Color custom = default)
+    public FlungTree(Vector3 root, Vector3 velocity, float height, float radius, Color bark, Color leaf, Func<float, float, float> ground, float gravity, Mesh body = null, Basis turn = default, Color custom = default)
     {
         Position = root + Vector3.Up * (height * 0.5f);
         _velocity = velocity;
         _ground = ground;
+        _gravity = gravity; // the world's own: it comes down sooner on a heavy one
         _height = height;
         var flat = new Vector3(velocity.X, 0f, velocity.Z);
         _spinAxis = flat.LengthSquared() > 0.01f ? Vector3.Up.Cross(flat).Normalized() : Vector3.Right;
@@ -282,7 +284,7 @@ public sealed partial class FlungTree : Node3D
         float dt = (float)delta;
         if (_lying < 0f)
         {
-            _velocity += Vector3.Down * Gravity * dt;
+            _velocity += Vector3.Down * _gravity * dt;
             Position += _velocity * dt;
             Basis = new Basis(_spinAxis, _spin * dt) * Basis;
             float ground = _ground(Position.X, Position.Z);

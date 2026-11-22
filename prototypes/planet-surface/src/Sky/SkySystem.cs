@@ -47,7 +47,10 @@ public sealed record SkySystem
     public Rgb StarColor { get; init; }
     public float SunEnergy { get; init; }
     public AirKind Air { get; init; }
-    public float Density { get; init; }          // 0.3 thin .. 2 thick: haze, horizon brightness, sunset strength
+    /// <summary>How thick its air is, from the world's size (<see cref="PlanetSpec.AirThickness"/>): 0 in vacuum, 0.5 thin to 2 dense.</summary>
+    public float Thickness { get; init; }
+    /// <summary>Its air kind's own density at that thickness: haze, horizon brightness, sunset strength, the air shell seen from space.</summary>
+    public float Density { get; init; }
     public Rgb Zenith { get; init; }             // clear midday sky straight up
     public Rgb Horizon { get; init; }            // clear midday sky at the horizon
     public Rgb Sunset { get; init; }             // the glow toward a low sun
@@ -84,7 +87,7 @@ public sealed record SkySystem
         {
             AirKind.Thin => 0.45f, AirKind.Breathable => 1f, AirKind.Humid => 1.35f, AirKind.Dusty => 1.1f,
             AirKind.Ash => 1.7f, AirKind.Sulfurous => 1.5f, _ => 1.2f,
-        };
+        } * spec.AirThickness;
         Rgb zenith = rayleigh * 0.62f, horizon = Rgb.Lerp(rayleigh, starColor, 0.55f) * 0.95f;
         Rgb haze = Rgb.Lerp(horizon, starColor, 0.3f);
         Rgb sunset = Rgb.Lerp(starColor, new Rgb(1f, 0.42f, 0.16f), 0.65f);
@@ -156,7 +159,7 @@ public sealed record SkySystem
         return new SkySystem
         {
             Star = star, StarColor = starColor, SunEnergy = energy, // its disc's size is the system's (StarSystem.SunAngular)
-            Air = air, Density = density, Zenith = zenith, Horizon = horizon, Sunset = sunset, Haze = haze,
+            Air = air, Thickness = spec.AirThickness, Density = density, Zenith = zenith, Horizon = horizon, Sunset = sunset, Haze = haze,
             NightZenith = Rgb.Lerp(new Rgb(0.01f, 0.012f, 0.025f), zenith * 0.05f, 0.5f),
             CloudTint = cloudTint,
             StarsByDay = air == AirKind.Thin ? 0.35f : 0f,
@@ -175,7 +178,7 @@ public sealed record SkySystem
         var black = new Rgb(0.004f, 0.004f, 0.006f);
         return star with
         {
-            Air = AirKind.Thin, Density = 0.02f, Zenith = black, Horizon = black, Haze = black, Sunset = black,
+            Air = AirKind.Thin, Thickness = 0f, Density = 0.02f, Zenith = black, Horizon = black, Haze = black, Sunset = black,
             NightZenith = black, StarsByDay = 1f, Nebula = star.Nebula,
             Summary = $"{StarName(star.Star)} star · no air",
         };

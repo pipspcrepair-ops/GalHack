@@ -168,7 +168,8 @@ public static partial class Brain
         }
         Passed(c, c.Position);
         Vector3 to = WildSim.Flat(c.Path[c.PathIndex] - c.Position);
-        if (to.LengthSquared() > 1e-4f) c.Desired = to.Normalized() * speed;
+        // (Bent off any it keeps its distance from: a herd on the move spread as it walks, PersonalSpace.)
+        if (to.LengthSquared() > 1e-4f) c.Desired = (to.Normalized() + c.Room * 0.5f).Normalized() * speed;
     }
 
     /// <summary>On the ground: a waypoint is passed once it is near (nearer on a fine way among walls, whose corners are doorways).</summary>

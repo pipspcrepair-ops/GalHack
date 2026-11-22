@@ -117,6 +117,7 @@ public sealed partial class Staging
             "sleeperface" => SleeperFaceView(),
             "folk" => FolkView(),
             "crowd" => CrowdView(),
+            "flee" => FleeView(),
             "peoples" => PeoplesView(),
             "outfits" => OutfitsView(),
             "townnight" => TownNightView(),

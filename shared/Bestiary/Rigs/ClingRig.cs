@@ -43,7 +43,7 @@ public sealed class ClingRig : ZeroGRig
         float seg = SegLength(s), r = s.Body.Width * 0.5f;
         Basis B = c.Facing;
         Vector3 F = -B.Z, U = B.Y, S = B.X, P = c.Position;
-        float speed = c.Velocity.Length();
+        float speed = Pace.Velocity.Length();
         _phase += dt * (0.9f + speed / MathF.Max(0.05f, seg) * 0.9f + Lunging * 4f) * (1f - 0.9f * Dead);
 
         Span<Vector3> joints = stackalloc Vector3[n + 1];

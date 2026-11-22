@@ -100,6 +100,7 @@ public partial class DeepSite : Node3D
     public static DeepSite Create(WildlifePatch patch, WildSim sim, string name)
     {
         var site = new DeepSite { Name = name, Patch = patch, Sim = sim };
+        patch.Rule(sim);
         site._creatures = new Node3D { Name = "Creatures" };
         site.AddChild(site._creatures);
         site._lairs = new Node3D { Name = "Lairs" };
@@ -333,7 +334,7 @@ public partial class DeepSite : Node3D
             // re-posed its body every tick though nobody could see it (the patch's own views go to 12 too).
             c.RigInterval = d < NearDistance ? 1 : d < FarDistance * 0.6f ? 2 : d < FarDistance ? 4 : 12;
             // The harmless (a room's insects) are drawn and about only near you, the nearest few of them in sight.
-            bool ambient = c.Species.Importance == Importance.Ambient, stirred = Sim.Time - c.ProvokedAt <= 10f;
+            bool ambient = c.Species.Importance == Importance.Ambient, stirred = Sim.Time - c.ProvokedAt <= 10f || c.Falling; // (a fall is stepped through, never slept in)
             float far = ambient ? AmbientReach : FarDistance;
             // Behind a wall from the eye it needs no more than the far rate: a full place is hundreds of
             // bodies within a few rooms. (Looked at again every few frames, so turning a corner shows it moving.)

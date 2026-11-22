@@ -160,7 +160,7 @@ public partial class SurfaceZone : Node3D
         AddChild(Sfx);
 
         Physics = new PhysicsWorld(Data.Physics);
-        Physics.Zone.Strength = p.Gravity;
+        Physics.Zone.Strength = p.Gravity * Spec.GravityScale; // the start world's 1 g, scaled by this world's size (PlanetSpec.Gravities)
         Physics.Zone.Ceiling = p.Ceiling;
         Host = new PhysicsHost(Physics);
         AddChild(Host);
@@ -248,6 +248,7 @@ public partial class SurfaceZone : Node3D
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
         Edits.Edited += edit => DugDry(edit.Removed);
+        Edits.Edited += edit => Wildlife?.Dug(edit.Removed); // what stood over it falls in
         Edits.Edited += _ => Light.Touch();
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };

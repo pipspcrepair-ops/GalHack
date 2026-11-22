@@ -46,7 +46,7 @@ public static class DeviceDetail
             case "door": Door(k); break;
             case "light": Light(k); break;
             case "warp-drive":
-            case "hyperdrive": Drive(k, t); break;
+            case "fold-drive": Drive(k, t); break;
             case "gear": Leg(k); break;
             case "weapon": Weapon(k, t); break;
             case "turret": Turret(k); break;
@@ -397,7 +397,7 @@ public static class DeviceDetail
             k.Box(new Vector3(x - 0.012f, -e + b, z0 + 0.004f), new Vector3(x + 0.012f, e - b, z0 + 0.02f), PartStyle.Dark, Bare);
     }
 
-    /// <summary>A warp drive or hyperdrive: field coils round it, a framed emitter on its front, a status screen; heavier drives carry more coils, lit between.</summary>
+    /// <summary>A warp drive or fold drive: field coils round it, a framed emitter on its front, a status screen; heavier drives carry more coils, lit between.</summary>
     static void Drive(Kit k, BlockType t)
     {
         float heft = Heft(t, 10f, 12f);
