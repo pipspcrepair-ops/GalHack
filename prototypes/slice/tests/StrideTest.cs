@@ -22,7 +22,7 @@ namespace Slice.Tests;
 /// cadence, and a body held still stands or shuffles, its legs never walking on.
 ///
 /// -- --rounds=N worlds (default 2); --seeds=a:b:... rolls a failing run's worlds again (an A/B; never pinned); --shots=dir
-/// (windowed) saves a held walker and a bumped pair, a few frames apart; --fps=N caps the frame rate (default 60) the posing is timed at.
+/// (windowed) saves a held walker and a bumped pair over their first second; --fps=N caps the frame rate (default 60) the posing is timed at.
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/StrideTest.tscn
 /// </summary>
 public partial class StrideTest : Node
@@ -96,7 +96,7 @@ public partial class StrideTest : Node
     /// <summary>Everything watched of one kind of walker, over the run.</summary>
     sealed class Tally
     {
-        public int Samples, Jumps, Windows, Slides, Spikes, Held, HeldWalking;
+        public int Samples, Jumps, Windows, Slides, Spikes, Held, HeldWalking, Lunges;
         public float WorstJump, WorstSlide, WorstCadence, WorstHeld;
         /// <summary>The first few of each kind of fault, told.</summary>
         public readonly Dictionary<string, List<string>> Notes = new();
@@ -125,7 +125,10 @@ public partial class StrideTest : Node
         (float Before, float Then)[] _moves = Array.Empty<(float, float)>();
         const float Pop = 0.5f;
         bool _has;
-        float _win, _slide, _path, _yaw, _turned, _movedThen, _turnedThen;
+        float _win, _slide, _path, _yaw, _turned, _movedThen, _turnedThen, _lunge;
+        /// <summary>How far apart fore and aft (of a leg) a stance is at most, and for how long a body standing may have them further, s.</summary>
+        public const float Lunge = 0.35f, LungeFor = 0.6f;
+        int _heldFor;
         int _slideN, _steps0;
         Vector3 _at0, _last;
         bool _wanted = true;
@@ -189,6 +192,12 @@ public partial class StrideTest : Node
                 }
                 (_plantedWas[i], _plantedThen[i]) = (feet[i], planted[i]);
             }
+            // Standing, both feet down: no further apart fore and aft than a stance (a third of a leg) for more than 0.6 s.
+            if (_human && feet.Length == 2 && planted[0] && planted[1] && moved < 0.005f && turned < 0.01f && MathF.Abs((turn * (feet[0] - feet[1])).Z) > Lunge * _legLen)
+            {
+                if ((_lunge += Dt) > LungeFor && _lunge - Dt <= LungeFor) { t.Lunges++; t.Note("lunge", $"{Who}: stood {LungeFor:F1} s with its feet {MathF.Abs((turn * (feet[0] - feet[1])).Z):F2} m apart fore and aft (a leg {_legLen:F2} m; {doing()})"); }
+            }
+            else _lunge = 0f;
             _wanted &= wants;
             _path += WildSim.Flat(root - _last).Length();
             _last = root;
@@ -206,7 +215,9 @@ public partial class StrideTest : Node
             if (_human && slide > 0.6f) { t.Slides++; t.Why(t.SlideWhy, doing()); t.Note("slide", $"{Who}: planted feet slid {slide:F2} m/s over the ground ({speed:F2} m/s, {cadence:F1} strides a second)"); }
             // Held still while it meant to walk: standing, or a shuffle (a step or two a second), never a walk on (a person's walk is a stride a second).
             // (Turning where it stands, or jostled to and fro, is a move of its own, stepped round.)
-            if (_wanted && _path / _win < 0.15f && _turned < 0.5f)
+            // (Its first second held is its stop: a step or two, and its feet brought together.)
+            _heldFor = _wanted && _path / _win < 0.15f && _turned < 0.5f ? _heldFor + 1 : 0;
+            if (_heldFor > 1)
             {
                 t.Held++;
                 t.WorstHeld = MathF.Max(t.WorstHeld, cadence);
@@ -216,7 +227,7 @@ public partial class StrideTest : Node
         }
     }
 
-    void Report(string what, Tally t)
+    void Report(string what, Tally t, bool people = true)
     {
         GD.Print($"  {what}: {t.Samples} frames, {t.Windows} seconds watched; worst jump {t.WorstJump:F3} m a frame, worst slide {t.WorstSlide:F2} m/s, top cadence {t.WorstCadence:F2}, {t.Held} seconds held, top cadence held {t.WorstHeld:F2}");
         if (t.JumpWhy.Count + t.SlideWhy.Count > 0) GD.Print($"  ({what}: jumps while {Tally.Top(t.JumpWhy)}; slides while {Tally.Top(t.SlideWhy)})");
@@ -224,6 +235,8 @@ public partial class StrideTest : Node
         Check(t.Jumps == 0, $"{what}: no foot or knee pops about the body from one frame to the next ({t.Jumps} frames, worst {t.WorstJump:F2} m){t.Told("jump")}");
         Check(t.Slides == 0, $"{what}: planted feet keep to the ground: the stride follows the body's real speed ({t.Slides} seconds sliding, worst {t.WorstSlide:F2} m/s){t.Told("slide")}");
         Check(t.Spikes == 0, $"{what}: the stride rate never goes over a gait's natural cadence ({t.Spikes} seconds over, top {t.WorstCadence:F2}){t.Told("spike")}");
+        if (people)
+            Check(t.Lunges == 0, $"{what}: a body standing comes to a stance, its feet no further than {Gait.Lunge} of a leg apart fore and aft within {Gait.LungeFor} s ({t.Lunges} times){t.Told("lunge")}");
         Check(t.HeldWalking == 0, $"{what}: held still while meaning to walk on, a body stands or shuffles ({t.HeldWalking} of {t.Held} seconds walking on, top {t.WorstHeld:F2} steps a leg a second){t.Told("held")}");
     }
 
@@ -249,7 +262,7 @@ public partial class StrideTest : Node
             foreach (int x in Round(wild, folk, town)) yield return x;
         GD.Print($"  (posing a person walked steadily: {_poseUs / Math.Max(1, _posed):F2} µs a pose over {_posed})");
         Report("people walked steadily", _steady);
-        Report("beasts in the sim", wild);
+        Report("beasts in the sim", wild, false);
         Report("people in the sim", folk);
         Report("a settlement's people as drawn", town);
     }
@@ -451,7 +464,7 @@ public partial class StrideTest : Node
             {
                 Town.Person p = going[_rng.Next(going.Count)];
                 held[p] = (p.Pos, tick + 150);
-                if (shotHeld == null) (shotHeld, heldShot) = (p, tick + 60);
+                if (shotHeld == null) (shotHeld, heldShot) = (p, tick + 3);
             }
             if (tick % 90 == 30 && going.Count > 1)
             {
@@ -495,8 +508,12 @@ public partial class StrideTest : Node
             }
             if (_shots != null)
             {
-                if (tick - heldShot is 0 or 4 or 8 && shotHeld != null) Snap(town, shotHeld, $"held-{_round}-{tick - heldShot}.png");
-                if (tick - bumpShot is 0 or 4 or 8 && shotBumped != null) Snap(town, shotBumped, $"bumped-{_round}-{tick - bumpShot}.png");
+                // A few shots over the first second of each, the camera on them every frame between (as they settle).
+                bool held = shotHeld != null && tick - heldShot is >= 0 and <= Shots, bumped = !held && shotBumped != null && tick - bumpShot is >= 0 and <= Shots;
+                if (held || bumped) Aim(town, held ? shotHeld : shotBumped, tick == heldShot || tick == bumpShot);
+                else if (_game.FixedCamera != null && _owed == 0) (_game.FixedCamera, _game.Visor.Visible) = (null, true);
+                if (held && (tick - heldShot) % 15 == 0) Capture(Path.Combine(_shots, $"held-{_round}-{tick - heldShot}.png"));
+                if (bumped && (tick - bumpShot) % 15 == 0) Capture(Path.Combine(_shots, $"bumped-{_round}-{tick - bumpShot}.png"));
             }
         }
         _timed = null;
@@ -504,17 +521,25 @@ public partial class StrideTest : Node
         if (_poses.Count > 0) GD.Print($"  (posing the settlement's people at {_fps} fps: {_poses.Average():F3} ms a frame on average, {_poses[_poses.Count / 2]:F3} median, {_poses[_poses.Count * 95 / 100]:F3} at the 95th, over {_poses.Count} frames with no body built)");
     }
 
-    /// <summary>A shot of one of them from a little off their side, at their knees (windowed only).</summary>
-    void Snap(Town town, Town.Person who, string name)
+    /// <summary>Ticks a subject's shots run over (every 15th shot), the camera on them all the while.</summary>
+    const int Shots = 45;
+
+    /// <summary>The camera on one of them from off their side as the sequence began (the side clear of walls), at their knees (windowed only).</summary>
+    void Aim(Town town, Town.Person who, bool first)
     {
-        Vector3 at = town.World(who.Pos + Vector3.Up * 0.7f), side = new(MathF.Cos(who.Yaw), 0f, -MathF.Sin(who.Yaw));
-        Vector3 eye = at + side * 2.6f + Vector3.Up * 0.5f;
-        _game.FixedCamera = new Transform3D(Basis.LookingAt(at - eye, Vector3.Up), eye);
-        _game.Visor.Visible = false;
-        Capture(Path.Combine(_shots, name));
+        Vector3 at = town.World(who.Pos + Vector3.Up * 0.7f);
+        if (first)
+        {
+            Vector3 side = new(MathF.Cos(who.Yaw), 0f, -MathF.Sin(who.Yaw));
+            _side = town.CanStand(who.Pos + side * 2f) || !town.CanStand(who.Pos - side * 2f) ? side : -side;
+        }
+        Vector3 eye = at + _side * 2.6f + Vector3.Up * 0.5f;
+        (_game.FixedCamera, _game.Visor.Visible) = (new Transform3D(Basis.LookingAt(at - eye, Vector3.Up), eye), false);
     }
 
-    /// <summary>Shots asked for and not yet saved: the view goes back to the sleeper's once the last is (a slow frame takes a few ticks).</summary>
+    Vector3 _side;
+
+    /// <summary>Shots asked for and not yet saved.</summary>
     int _owed;
 
     async void Capture(string file)
@@ -524,6 +549,6 @@ public partial class StrideTest : Node
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         Error err = GetViewport().GetTexture().GetImage().SavePng(file);
         GD.Print(err == Error.Ok ? $"  (saved {file})" : $"  (could not save {file}: {err})");
-        if (--_owed == 0) (_game.FixedCamera, _game.Visor.Visible) = (null, true);
+        _owed--;
     }
 }

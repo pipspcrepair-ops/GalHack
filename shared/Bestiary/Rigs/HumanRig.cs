@@ -379,9 +379,9 @@ public sealed partial class HumanRig : Rig
     /// <summary>
     /// How long a step taken standing lasts, and how quickly a lifted foot's stray from the gait's place for it fades, s; how far
     /// a foot strays from that place before a step taken standing, to the side and fore and aft (shares of the leg: stopped
-    /// mid-stride it stays), and how far the body turns over it first, radians.
+    /// mid-stride, the trailing foot comes in, then the other), and how far the body turns over it first, radians.
     /// </summary>
-    const float SettleTime = 0.3f, Fade = 0.07f, SettleAside = 0.15f, SettleAhead = 0.4f, SettleTurn = 0.5f;
+    const float SettleTime = 0.25f, Fade = 0.07f, SettleAside = 0.15f, SettleAhead = 0.15f, SettleTurn = 0.5f;
 
     /// <summary>
     /// Travelling (<paramref name="on"/>), a foot down stays where it was set down while the body goes on over it, is pushed or
@@ -405,7 +405,8 @@ public sealed partial class HumanRig : Rig
         }
         // (Standing and strayed, or barely going and left further from the hip than a leg gives: walking on, its stride takes it up.)
         float ahead = off.Dot(fwd);
-        bool strayed = _moving <= 0f && (MathF.Abs(ahead) > SettleAhead * leg || (off - fwd * ahead).Length() > SettleAside * leg || MathF.Abs(Geo.WrapAngle(yaw - _downYaw[i])) > SettleTurn);
+        bool trailing = MathF.Abs((_ground[i] - hip).Dot(fwd)) + 0.02f >= MathF.Abs((_ground[1 - i] - hip).Dot(fwd)) || !_kept[1 - i];
+        bool strayed = _moving <= 0f && (MathF.Abs(ahead) > SettleAhead * leg && trailing || (off - fwd * ahead).Length() > SettleAside * leg || MathF.Abs(Geo.WrapAngle(yaw - _downYaw[i])) > SettleTurn);
         bool behind = _moving < 0.5f && WildSim.Flat(_ground[i] - hip).LengthSquared() > most * most;
         if (on && _settle[i] <= 0f && down && _kept[i] && _settle[1 - i] <= 0f && (strayed || behind))
             (_settle[i], _lifted[i]) = (1e-4f, off);
@@ -422,7 +423,8 @@ public sealed partial class HumanRig : Rig
             // (Set down where it came to; further from the hip than a leg gives, it is dragged: never left behind.)
             if (!_kept[i]) (_kept[i], _downYaw[i]) = (true, yaw);
             Vector3 from = WildSim.Flat(_ground[i] - hip);
-            if (from.LengthSquared() > most * most) _ground[i] = WildSim.Flat(hip) + from.Normalized() * most;
+            // (At a body's pace at most: a hip coming up out of a crouch draws it on, never snaps it.)
+            if (from.LengthSquared() > most * most) _ground[i] = _ground[i].MoveToward(WildSim.Flat(hip) + from.Normalized() * most, 3f * _dt);
         }
         else
         {
@@ -455,7 +457,8 @@ public sealed partial class HumanRig : Rig
         Figure f = _f;
         float stalk = Math.Clamp(g.Stalk, 0f, 1f);
         float run = _run = Ease(_run, Math.Clamp((g.Speed - 2f) / 1.4f, 0f, 1f), 3f);
-        float moving = _moving = Ease(_moving, Math.Clamp((g.Speed - 0.04f) / 0.41f, 0f, 1f), 4f); // (a jostle's drift is standing)
+        // (A jostle's drift, or the last of a stop, is standing: its feet come together.)
+        float walking = Math.Clamp((g.Speed - 0.15f) / 0.35f, 0f, 1f), moving = _moving = Ease(_moving, walking, walking < _moving ? 8f : 4f);
         float strideLength = f.LegLength * Mathf.Lerp(1.36f, 2.5f, run) * (1f - 0.35f * stalk);
         // Legs swing no faster than they naturally do (as a pendulum: a child's quicker); going faster than that, the stride lengthens.
         float cap = MaxCadence * MathF.Sqrt(0.9f / MathF.Max(0.3f, f.LegLength));
