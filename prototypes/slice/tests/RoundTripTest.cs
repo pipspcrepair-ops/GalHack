@@ -188,7 +188,7 @@ public partial class RoundTripTest : Node
         foreach (var (n, c) in _crossingWorst)
             GD.Print($"  timing crossing {n} ({(c.Up ? "up" : "down")}): worst frame {c.Cpu:F1} ms of main thread CPU, {c.At} frames after");
         Spaceflight sf = _game.Spaceflight;
-        GD.Print($"  (the longest piece of a turn (parking, waking, the land shown or hidden): {sf.WorstTurnMs:F1} ms, {sf.WorstTurn})");
+        GD.Print($"  (pieces of a turn (parking, waking, the land shown or hidden) over 4 ms: {(sf.SlowTurns.Count == 0 ? "none" : string.Join("; ", sf.SlowTurns))})");
         GD.Print($"  (in orbit the seam's parts took, ms a drawn frame: {string.Join(", ", sf.SpentInOrbit.OrderByDescending(p => p.Value).Take(8).Select(p => $"{p.Key} {p.Value / Math.Max(sf.OrbitFrames, 1):F2}"))}; the most in one frame: {string.Join(", ", sf.WorstInOrbit.OrderByDescending(p => p.Value).Take(8).Select(p => $"{p.Key} {p.Value:F1}"))})");
         GD.Print($"  (the seam and skies took at most {sf.WorstSeamMs:F1} ms of a frame: {sf.WorstSeamParts}; moons arrived a piece a frame: {string.Join("; ", _game.Orbit.Moons.Where(c => c.Surface.Arrived).Select(c => $"{c.Name}: {c.Surface.ArriveSteps}"))})");
         var process = Process.GetCurrentProcess();

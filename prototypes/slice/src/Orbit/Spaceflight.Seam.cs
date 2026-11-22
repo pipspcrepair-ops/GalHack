@@ -316,9 +316,9 @@ public partial class Spaceflight
     /// <summary>The land's showing or hiding, laid out a piece at a time as it goes (the zones' parking and waking: <see cref="ZoneWork"/>).</summary>
     readonly Stack<Piece> _groundWork = new();
 
-    /// <summary>The longest one piece of a turn has taken, ms, and what it was (tests print them).</summary>
-    public double WorstTurnMs;
-    public string WorstTurn = "";
+    /// <summary>The pieces of a turn that took more than <see cref="SlowTurnMs"/> each, the first few (tests print them).</summary>
+    public readonly List<string> SlowTurns = new();
+    const double SlowTurnMs = 4.0;
 
     /// <summary>
     /// Showing or hiding a node visits everything under it, and the land is thousands of nodes: all
@@ -349,7 +349,7 @@ public partial class Spaceflight
             if (IsInstanceValid(p.Node)) Do(work, p, zone);
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             double ms = System.Diagnostics.Stopwatch.GetElapsedTime(at, now).TotalMilliseconds;
-            if (ms > WorstTurnMs && IsInstanceValid(p.Node)) (WorstTurnMs, WorstTurn) = (ms, $"{p.Step} {p.Node.Name} ({p.Node.GetType().Name}, {p.Node.GetChildCount()} children)");
+            if (ms > SlowTurnMs && SlowTurns.Count < 40 && IsInstanceValid(p.Node)) SlowTurns.Add($"{p.Step} {p.Node.Name} ({p.Node.GetType().Name}, {p.Node.GetChildCount()} children) {ms:F1} ms");
             at = now;
             if (!all && System.Diagnostics.Stopwatch.GetElapsedTime(started, now).TotalMilliseconds > GroundTurnMs) return;
         }
