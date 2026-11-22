@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using GalHack.Structures;
 using Godot;
+using PhysicsSandbox.Bridges;
 using ShipHandling.Handling;
 using Slice.Game;
 using Slice.Vessels;
+using N = System.Numerics;
 
 namespace Slice.Tests;
 
@@ -48,6 +51,8 @@ public partial class SeatTest : Node
         try
         {
             Chairs();
+            GettingUp();
+            BlueprintChairs();
             Flying();
             Hover();
             Roles();
@@ -57,9 +62,9 @@ public partial class SeatTest : Node
         GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
-    static Structure Blocks()
+    static Structure Blocks(string hull = Hull)
     {
-        Structure s = Blueprint.Load(Hull, GameData.Shared.Catalogue, out List<string> errors);
+        Structure s = Blueprint.Load(hull, GameData.Shared.Catalogue, out List<string> errors);
         if (s == null || errors.Count > 0) throw new InvalidOperationException(string.Join("; ", errors));
         return s;
     }
@@ -71,6 +76,70 @@ public partial class SeatTest : Node
         Check((-ahead.Z).IsEqualApprox(Vector3.Forward), $"a chair set the default way faces the hull's forward ({-ahead.Z})");
         Check((-side.Z).IsEqualApprox(Vector3.Right), $"a chair turned to face +x faces the hull's right ({-side.Z})");
         Check(side.Y.IsEqualApprox(Vector3.Up) && Mathf.IsEqualApprox(side.Determinant(), 1f), "its up is still the hull's, and its frame is a true rotation");
+    }
+
+    /// <summary>Getting up puts you straight behind the chair, whichever way it is turned: in the cell past its rear, clear of it, and at its sides only after that.</summary>
+    void GettingUp()
+    {
+        Structure s = Blocks();
+        foreach (Int3 chair in new[] { One, Two })
+        {
+            s.TryGetBlock(chair, out Int3 anchor, out Block block);
+            N.Vector3[] spots = Vessel.StandSpotsOf(s, anchor, block);
+            Basis facing = VesselRoles.BasisOf(s, chair);
+            Vector3 back = facing.Z, right = facing.X;
+            Check(spots.Length == 5, $"a chair at {chair} has five places to get up to: behind it twice, each side, in front ({spots.Length})");
+            if (spots.Length != 5) continue;
+            Vector3 Level(N.Vector3 o) => new Vector3(o.X, 0f, o.Z).Normalized();
+            N.Vector3 seat = StructureBridge.SeatPoint(s, anchor, block), step = new(back.X, 0f, back.Z);
+            Check(Level(spots[0]).IsEqualApprox(back), $"the first is straight behind it, which is {back} for the chair at {chair} ({Level(spots[0])})");
+            Int3 stand = StructureBridge.CellAt(s, seat + spots[0]), last = StructureBridge.CellAt(s, seat + spots[0] - step * s.Grid.CellSize);
+            List<Int3> cells = s.CellsOf(anchor, block).ToList();
+            Check(!cells.Contains(stand) && cells.Contains(last), $"in the cell just past its rear, clear of the chair (standing in {stand}, one cell closer is {last})");
+            Check(Vessel.CanStandAt(s, seat + spots[0] - N.Vector3.UnitY * SeatDrop), "and there is room to stand there");
+            Check(Level(spots[1]).IsEqualApprox(back) && spots[1].Length() < spots[0].Length() && cells.Contains(StructureBridge.CellAt(s, seat + spots[1])), "the second is also straight behind it, but short of the chair's rear, in its own box");
+            Check(Level(spots[2]).IsEqualApprox(right) && Level(spots[3]).IsEqualApprox(-right), "then its right and left");
+            Check(Level(spots[4]).IsEqualApprox(-back), "and last, in front of it");
+        }
+
+        // Machinery right behind the chair (the pod's generator and lockers): you still get up behind it, in the room past its backrest, not at its side.
+        Structure walled = Blocks(Hull + "\nblock 2 1 2 base-block\nblock 2 2 2 base-block");
+        walled.TryGetBlock(One, out Int3 at, out Block chairBlock);
+        N.Vector3[] options = Vessel.StandSpotsOf(walled, at, chairBlock);
+        N.Vector3 sat = StructureBridge.SeatPoint(walled, at, chairBlock), feet = sat - N.Vector3.UnitY * SeatDrop;
+        int pick = Array.FindIndex(options, o => Vessel.CanStandAt(walled, feet + o));
+        Check(!Vessel.CanStandAt(walled, feet + options[0]), "with a block right behind a chair, the cell past its rear is no place to stand");
+        Check(pick == 1, $"and it is the room just behind the backrest that is chosen, not a side (option {pick})");
+        Check(options.Length == 5 && walled.CellsOf(at, chairBlock).Contains(StructureBridge.CellAt(walled, sat + options[pick])), "which is inside the chair's own box");
+    }
+
+    /// <summary>Where a seated person's feet are under the seat, m (a chair box's bottom: this chair's seat is half a metre up in it).</summary>
+    const float SeatDrop = 0.5f;
+
+    /// <summary>Every chair in the shipped blueprints has room to get up straight behind it (not at its side), so none is boxed in by what is built behind it.</summary>
+    void BlueprintChairs()
+    {
+        int chairs = 0, boxedIn = 0;
+        foreach (string path in System.IO.Directory.GetFiles(ProjectSettings.GlobalizePath("res://data/blueprints"), "*.gbp"))
+        {
+            Structure s = Blueprint.Load(System.IO.File.ReadAllText(path), GameData.Shared.Catalogue, out List<string> errors);
+            if (s == null) { Check(false, $"{System.IO.Path.GetFileName(path)} loads ({string.Join("; ", errors)})"); continue; }
+            foreach (var (pos, b) in s.Blocks().ToList())
+            {
+                if (!s.TypeOf(b).IsCommandChair) continue;
+                s.TryGetBlock(pos, out Int3 anchor, out Block block);
+                N.Vector3[] spots = Vessel.StandSpotsOf(s, anchor, block);
+                N.Vector3 feet = StructureBridge.SeatPoint(s, anchor, block) - N.Vector3.UnitY * SeatDrop;
+                int pick = Array.FindIndex(spots, o => Vessel.CanStandAt(s, feet + o));
+                chairs++;
+                if (pick is < 0 or > 1)
+                {
+                    boxedIn++;
+                    GD.Print($"  {System.IO.Path.GetFileName(path)}: the chair at {pos} gets you up at option {pick}, not behind it");
+                }
+            }
+        }
+        Check(chairs > 5 && boxedIn == 0, $"every chair in the shipped blueprints lets you get up behind it ({chairs} chairs, {boxedIn} boxed in)");
     }
 
     /// <summary>A thruster on every face of a hull, each with its own strength, so a direction's thrust says which thruster pushed.</summary>
