@@ -667,9 +667,10 @@ public partial class FallTest : Node
         GD.Print($"  {what}: began {(start < 0 ? "never" : $"{start * Tick:F2} s after")}, down {h:F2} m in {took:F3} s (a free fall {free:F3} s), lost {lost:F1} health (the rule {expect:F1}), feet {w.Y:F2} (from {y0:F2}, in its sim {here()}){(float.IsNaN(ground) ? "" : $", the ground {ground:F2}")}");
         Check(start >= 0 && start * Tick < 1.5f && h > 0.3f, $"{what}: fell ({h:F2} m)");
         if (start >= 0 && end >= 0 && h > 0.3f) _proven.Add(kind);
-        // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
+        // (A place's creature is stepped up to every third tick till it falls, and its first step of the fall takes the ticks it
+        // missed: within three and a half ticks.)
         bool setOn = who.ProvokedAt != provoked && who.ProvokedBy != null; // (set on meanwhile, a hazard's blast by the hole: its fall and its hurt are not the fall's own)
-        if (!setOn) Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : who.StepEvery + 0.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
+        if (!setOn) Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 3.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
         // (On the land a creature stands on the ground as dug, by the metre.)
         // (A body wider than the hole stands on its rim, on three of its feet: Locomotion.Footing.)
         float feet = who.Space == null ? patch.FromPatch(who.Position with { Y = Footing(patch.Sim, who) }).Y : float.NaN;
