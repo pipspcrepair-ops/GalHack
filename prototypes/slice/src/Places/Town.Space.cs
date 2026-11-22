@@ -105,7 +105,7 @@ public sealed partial class Town
     static float Following(Person p, float wanted, float pace) => p.Clear < PersonalSpace.ArmsLength ? MathF.Min(wanted, pace * MathF.Max(0f, p.Clear) / PersonalSpace.ArmsLength) : wanted;
 
     /// <summary>How fast someone steps off into room when another is inside the distance they keep, m/s (a shuffle, not a shove).</summary>
-    const float RoomPace = 0.35f;
+    const float RoomPace = 0.5f;
 
     /// <summary>How far into the furniture each of those kept apart stands this tick (NaN: not yet asked).</summary>
     readonly System.Collections.Generic.List<float> _gapAt = new();
