@@ -996,6 +996,8 @@ public sealed partial class Town : IKeeper
         }
         p.Left = p.Spot;
         p.Spot = spot;
+        // (Off a bench or a counter they stood pressed up to at their work, as out of a seat: clear of it as they go.)
+        if (_parts != null && _parts.Gap(p.Pos, BodyRadius(p), Height(p)) < 0f) p.GettingUp = true;
         p.Step = 0;
         if (p.Far && !p.Fleeing && (path[^1] - _you).Length() > FarSchedule)
         {
