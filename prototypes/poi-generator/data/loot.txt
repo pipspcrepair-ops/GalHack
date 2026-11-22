@@ -74,7 +74,4 @@ rimefire-injector   exotic    ship,ice                   Rimefire injector
 # ---- unique: only from explored places ---------------------------------------------------------
 precursor-alloy     unique    alien,precursor,vault      Precursor alloy
 echo-shard          unique    alien,precursor            Echo shard
-lattice-core        unique    tech,ship,vault            Lattice core
-lattice-array       unique    tech,ship                  Lattice array
-lattice-processor   unique    tech,science               Lattice processor
 charge-plating      unique    military,ship              Charge plating
