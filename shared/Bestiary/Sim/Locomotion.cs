@@ -147,8 +147,11 @@ public static class Locomotion
         w.Landed(c, wet ? 0f : speed);
     }
 
+    /// <summary>Water no deeper than this (or than it wades) it goes about in as on land, at the edge to drink; deeper, it makes for the bank, m.</summary>
+    const float Paddle = 0.3f;
+
     /// <summary>
-    /// In water over the depth it wades in: a swimmer swims (its back at the surface) for the nearest bank it can climb out on and
+    /// In water deeper than it paddles in (<see cref="Paddle"/>): a swimmer swims (its back at the surface) for the nearest bank it can climb out on and
     /// walks up out of it; what can't swim walks the bottom for it where its head is clear, and drowns where it isn't. Out of its
     /// depth with no bank in reach, it treads water and looks again. True while the water has it (and its own mind waits).
     /// </summary>
@@ -160,7 +163,7 @@ public static class Locomotion
             return false;
         }
         float bottom = Footing(w, c, c.Position.X, c.Position.Z), depth = top - bottom, h = c.Species.BodyHeight;
-        if (c.Shoreward == null && depth <= h * w.WadeShare) return false; // (wading: on its feet as on land)
+        if (c.Shoreward == null && depth <= MathF.Min(h * w.WadeShare, Paddle)) return false; // (paddling at the edge, drinking: on its feet as on land)
         bool swims = Shore.Swims(c.Species), deep = depth > h * w.SwimShare;
         if (c.Shoreward == null && w.Time - c.ShorewardAt > 5f)
         {

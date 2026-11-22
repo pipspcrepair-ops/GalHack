@@ -503,7 +503,7 @@ public partial class FallTest : Node
         Creature who = patch.Sim.Creatures.Where(c => !c.Dead && !c.Removed && c.Space == null && !c.Species.Flies && c.Species.Rig is not (RigKind.GasBag or RigKind.Swarm or RigKind.Hopper)
             && c.Species.Domestic == DomesticKind.None && Swims(c.Species)).MinBy(c => (patch.WorldOf(c) - at).LengthSquared());
         if (who == null) { GD.Print("  (no creature that swims in the patch: none dropped in)"); yield break; }
-        GD.Print($"  -- a creature dropped into deep water ({who.Species.Name}, {who.Species.BodyLength:F1} m; {top - floor:F1} m deep) --");
+        GD.Print($"  -- a creature dropped into deep water ({who.Species.Name}, {who.Species.BodyLength:F1} m, health {who.Health:F0} of {who.Stats.MaxHealth:F0}; {top - floor:F1} m deep) --");
         who.Position = patch.PatchLocal(at with { Y = top + 3f });
         who.Velocity = Vector3.Zero;
         float last = who.Position.Y, rise = 0f;
