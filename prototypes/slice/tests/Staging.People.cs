@@ -285,7 +285,8 @@ public sealed partial class Staging
     {
         string dir = Folder("flee");
         foreach (int x in _drive.UntilSettled()) yield return x;
-        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null).OrderBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0).ThenBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).FirstOrDefault();
+        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null).OrderBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0)
+            .ThenByDescending(s => s.Instance.Townsfolk.People.Count).ThenBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).FirstOrDefault();
         if (site == null) { GD.Print("(no town on this world)"); yield break; }
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
@@ -293,8 +294,10 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(300)) yield return x;
         Place p = _game.Places.PlaceOf(site);
         Town town = p.Memory.Town;
-        var people = town.People.Where(q => !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
-        if (people.Count < 2) { GD.Print("(nobody out in the open)"); yield break; }
+        var people = town.People.Where(q => !q.Dead && q.Looks != null && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
+        if (people.Count < 3) people = town.People.Where(q => !q.Dead && q.Looks != null).ToList();
+        GD.Print($"(town: {site.Name}, {town.People.Count} people, {people.Count} in view)");
+        if (people.Count < 2) yield break;
         Town.Person busy = people.OrderByDescending(q => people.Count(o => o.Pos.DistanceTo(q.Pos) < 12f)).First();
         Vector3 at = p.ToWorld(busy.Pos), eye = at + new Vector3(7f, 0f, 7f);
         eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f;

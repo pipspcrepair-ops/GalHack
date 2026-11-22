@@ -239,7 +239,6 @@ public partial class StartleTest : Node
         static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
         var before = people.ToDictionary(p => p, Flags);
         int settled = town.Settled, rerouted = town.Rerouted, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0, bare = 0, ran = 0, slumped = 0;
-        var upright = new Dictionary<Town.Person, HumanRig>();
         var notes = new List<string>();
         var kinds = new Dictionary<string, int>();
         void Note(string kind, string s) { if ((kinds[kind] = kinds.GetValueOrDefault(kind) + 1) <= 3) notes.Add(s); }
@@ -286,13 +285,12 @@ public partial class StartleTest : Node
                 }
                 drawn[p] = d;
                 placed[p] = p.View?.GlobalPosition ?? default;
-                // Fleeing faster than a walk (posed every tick, near): as upright as the same body in a plain panicked run.
+                // Fleeing faster than a walk (posed every tick, near): the body is given no slumped act to draw. (A town body is
+                // posed through hits, staggers and its own stride state, so a twin rig can't stand in for it as it does for wild folk.)
                 if (p.Fleeing && p.Now > RunFrom && vis && near < 30f && p.Rig != null)
                 {
-                    HumanRig twin = upright.TryGetValue(p, out var u) ? u : upright[p] = new HumanRig(p.Looks);
-                    twin.Drive(p.Posed with { Act = BodyAct.Panic, ActAmount = 1f });
                     ran++;
-                    if (Slumped(p.Figure, p.Rig, twin) is { } how) { slumped++; Note("slump", $"{p.Job} fleeing at {p.Now:F1} m/s: {how}, act {p.Act} {p.ActAmount:F2}"); }
+                    if (p.Posed.Act is BodyAct.Cower or BodyAct.Grieve or BodyAct.Startle && p.Posed.ActAmount > 0.1f) { slumped++; Note("slump", $"{p.Job} fleeing at {p.Now:F1} m/s posed in {p.Posed.Act} {p.Posed.ActAmount:F2}"); }
                 }
             }
         }
@@ -303,7 +301,7 @@ public partial class StartleTest : Node
         Check(bare == 0, $"after {what}, everyone within {Town.SolidRange - 0.5f} m has a body to bump into ({bare} person-ticks without)");
         Check(jumps == 0, $"after {what}, nobody moved more than {TickMove} m in a tick in the sim ({jumps} jumps)");
         Check(drawnJumps == 0, $"after {what}, nobody was drawn more than {DrawnMove} m on in a tick ({drawnJumps} jumps)");
-        Check(slumped == 0, $"after {what}, everyone fleeing faster than a walk runs upright, never crouched in a cower ({slumped} of {ran} person-ticks low or bent)");
+        Check(slumped == 0, $"after {what}, everyone fleeing faster than a walk runs upright, never posed in a cower, grief or start ({slumped} of {ran} person-ticks)");
     }
 
     /// <summary>Faster than this a person is past a walk, m/s.</summary>
