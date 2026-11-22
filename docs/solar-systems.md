@@ -606,6 +606,14 @@ These replace anything above or in section 4 that disagrees with them.
    - Rings come from an impact, a moon torn apart, or a captured passing body, so a world's history can explain its ring.
    - Small bodies, such as dwarf planets and asteroids, can have rings too.
    - Rings don't last forever.
+
+   A second reference the owner gave, on how rings and moons live together:
+   - Rings sit close in, inside the Roche limit, where tides tear big bodies apart and stop rubble clumping into a moon. Moons orbit farther out, where their own gravity holds them together. Step 7's ring bands and "no moon inside the ring's outer edge" already follow this.
+   - Moons can orbit just outside a ring or near it, as round Saturn and Uranus. Small shepherd moons can hold a narrow ring's edges or keep a gap open.
+   - Round a rocky, Earth-sized world a ring fades fast. Its rubble falls into the air, clumps into a moon, or is thrown out by the moons.
+   - A giant impact can make a ring and a moon from the same debris, but only for a short, violent time.
+
+   My reading for the ring field job, which the owner can correct: a giant's ring is old and full. A rocky world's ring is young and thinning, so it's patchier and sheds rocks into the air below. Its history can also explain a young moon just outside it. A narrow ring or a gap can hold one or two small shepherd moonlets: big rocks in the field, not moons you land on.
 13. **Names.** The drive between stars is the fold drive, and its fuel is fold fuel (fold crystal). It used to be called the hyperdrive (owner, 22 Nov). Any Flight structure can carry a warp drive or a fold drive if it fits it and can power it (owner, 22 Nov).
 13b. **Orbits aren't one flat plane.** Planets and moons tilt away from the system plane in the spread given under "Orbit plane" in section 4 (owner, 22 Nov).
 14. **Sky and water colour come from the air and the star; whole natural palettes vary widely, with a basis (owner, 22 Nov: "I hope we end up with a more widely varied palettes with some basis. Right now every meadow planet has a similar desaturated palette").** Sky, water, plants, soil and rock all take their colours from the star's light, the air, the ground's minerals and the world's life, each with a real reason behind it. Plant pigments follow the starlight they evolved under, soil and rock follow their minerals, and water follows the sky, its depth, its sediment and what lives in it. So two meadow worlds under different stars and on different ground look clearly different. Nothing global greys every world. A world's sky and water colours follow its air type, how thick its air is (from its size, item 2) and the colour of its star. One model serves the ground sky, the globe's air seen from space and the water, so they always agree. This builds on the 8 Nov palette rule: natural colours come only from the star, air, soil, minerals and life, never the theme. Reference the owner gave:
