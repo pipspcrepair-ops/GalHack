@@ -579,14 +579,20 @@ public partial class FallTest : Node
                 yield return 0;
             }
             // (None of the settlement's own on a floor of its blocks: one of the land's walkers let in, on a floor with room under it.)
-            if (k == -1 && who == null && home.Memory.Fauna is { Site: { } fs, Space: { } space } && home.Memory.Town is { } town
-                && patch.Fauna.Species.FirstOrDefault(s => !s.Flies && !s.Climbs && !s.Rooted && s.Rig is RigKind.Legged or RigKind.Hopper && s.Body.Size <= 1.2f) is { } kind
-                && town.People.FirstOrDefault(p => !p.Dead && !p.Gone && Under(home, p.Pos) && DropUnder(town, p.Pos) >= 1f) is { } by)
+            if (k == -1 && who == null)
             {
-                Creature c = fs.Sim.SpawnIn(kind, space, fs.Local(town.World(by.Pos + Vector3.Up * 0.3f)));
-                for (int i = 0; i < 30; i++) { TopUp(); yield return 0; }
-                if (!c.Removed && !c.InWalls && !c.Falling && Under(home, home.FromWorld(patch.WorldOf(c)))) { (who, site) = (c, fs); GD.Print($"  (one of the land's {kind.Name} let into the place, by a {by.Job})"); }
-                else c.Removed = true;
+                Species kind = patch.Fauna.Species.Where(s => !s.Flies && !s.Climbs && !s.Rooted && s.Rig is RigKind.Legged or RigKind.Hopper).MinBy(s => s.Body.Size);
+                Town town = home.Memory.Town;
+                Town.Person by = town?.People.FirstOrDefault(p => !p.Dead && !p.Gone && Under(home, p.Pos) && DropUnder(town, p.Pos) >= 1f);
+                if (home.Memory.Fauna is not { Site: { } fs, Space: { } space } || kind == null || by == null)
+                    GD.Print($"  (none of the land's walkers let in: {(home.Memory.Fauna?.Site == null ? "no creatures' site in the place" : kind == null ? "no walker on the land" : "nobody on a floor with room under it")})");
+                else
+                {
+                    Creature c = fs.Sim.SpawnIn(kind, space, fs.Local(town.World(by.Pos + Vector3.Up * 0.3f)));
+                    for (int i = 0; i < 30; i++) { TopUp(); yield return 0; }
+                    if (!c.Removed && !c.InWalls && !c.Falling && Under(home, home.FromWorld(patch.WorldOf(c)))) { (who, site) = (c, fs); GD.Print($"  (one of the land's {kind.Name} let into the place, by a {by.Job})"); }
+                    else { GD.Print($"  (the land's {kind.Name} let in did not stand on a floor of the place's blocks)"); c.Removed = true; }
+                }
             }
         }
         if (who == null) { GD.Print("  (none of the creatures of the settlement or the places nearest it on a floor of their blocks: not tried here)"); yield break; }
