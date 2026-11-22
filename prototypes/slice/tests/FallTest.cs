@@ -417,7 +417,7 @@ public partial class FallTest : Node
         who.Pos = way[0];
         (who.Path, who.Step, who.Sitting, who.Asleep) = (null, 0, false, false);
         who.Run = new ScavRun { Out = way, Round = new List<Vector3> { way[^1] }, Way = way, Find = way[^1] + dir * 3f, Leg = 1 };
-        _game.Survivor.PlaceOutside(town.World(way[0] + Vector3.Left * 5f + Vector3.Up * 0.5f).ToNumerics());
+        _game.Survivor.PlaceOutside(town.World(way[0] + Vector3.Left * 9f + Vector3.Up * 0.5f).ToNumerics());
         for (int i = 0; i < 120; i++) { TopUp(); _drive.Face(town.World(who.Pos + Vector3.Up)); yield return 0; }
         if (who.Dead) { GD.Print($"  (the one sent out died out there before the ground was dug ({Get(who, "Falls")} falls): not tried)"); yield break; }
         if (who.Run == null) { Check(false, "the one sent out stays out on the land"); yield break; }
