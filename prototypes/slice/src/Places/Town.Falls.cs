@@ -218,13 +218,17 @@ public sealed partial class Town
         // (On what is under their middle when there is something; else the highest of the rest, if under three of them.)
         float ground = float.NegativeInfinity, rest = float.NegativeInfinity;
         int under = 0;
+        Vector3 aside = Vector3.Zero;
         for (int i = 0; i < 5; i++)
         {
             if (Top(p.Pos + Foot(p, i), 0.5f, reach) is not float top) continue;
             if (i == 0) { ground = top; break; } // (on what is under their middle: the rest need not be looked at)
-            else (rest, under) = (MathF.Max(rest, top), under + 1);
+            else (rest, under, aside) = (MathF.Max(rest, top), under + 1, aside - Foot(p, i));
         }
         if (float.IsNegativeInfinity(ground) && under >= 3) ground = rest;
+        // (Falling past something under one side of them: off it, away from it, before they are into it.)
+        else if (float.IsNegativeInfinity(ground) && under > 0 && p.FallSpeed > 3f && aside.LengthSquared() > 1e-4f && new Vector2(p.Pos.X - p.FirmAt.X, p.Pos.Z - p.FirmAt.Z).Length() < 0.9f)
+            p.Pos += aside.Normalized() * 0.05f;
         // (Off the place's grid the land is under them as it stands, built to collide with or not.)
         if (!Memory.Inst.Blocks.InBounds(Cell(p.Pos)) && _places?.Zone.Planet is { } planet && World(p.Pos) is var w)
             ground = MathF.Max(ground, planet.Terrain.GroundNow(w.X, w.Z) - _origin.Y);
