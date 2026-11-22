@@ -99,7 +99,7 @@ public sealed record SkySystem
         // sulfuric acid and sulfur gas in sulfurous air (Venus).
         (Particles particles, float aerosol) = air switch
         {
-            AirKind.Humid => (Particles.Haze, 0.12f), AirKind.Dusty => (Particles.Dust, 0.45f), AirKind.Thin => (Particles.Dust, 0.3f),
+            AirKind.Humid => (Particles.Haze, 0.12f), AirKind.Dusty => (Particles.Dust, 0.25f), AirKind.Thin => (Particles.Dust, 0.3f),
             AirKind.Ash => (Particles.Ash, 2.5f), AirKind.Sulfurous => (Particles.Sulfate, 1.2f), _ => (Particles.Clean, 0.04f),
         };
         AirMix mix = spec.Airless ? AirMix.None : new AirMix(density, particles, aerosol * spec.AirThickness, air is AirKind.Breathable or AirKind.Humid);

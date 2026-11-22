@@ -242,6 +242,9 @@ public sealed class Herbarium
         // green under a sunlike star, gold under a hot one, near black under a red dwarf). Alien chemistry may be
         // anything, and only that earns odd hues.
         (float H, float S, float V) p = c.Pigment.ToHsv();
+        // The two rolls the old pigment tables took, so every world's plants keep the forms and sizes they had.
+        if (Familiar(c)) d.Unit();
+        d.Unit();
         p.H += d.Range(-9f, 9f);
         if (c.Alien > 0.4f)
         {

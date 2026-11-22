@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -836,7 +836,8 @@ public partial class SkyTest : Node
     {
         // A scorched world's sun is meant big and angry. One that is a close giant's moon sees it swell through its month (it
         // passes between the giant and the star, as much as a third nearer), so the top reaches past a lone planet's 15.
-        foreach (var (type, least, most) in new[] { (Archetype.Lava, 6f, 21f), (Archetype.Arid, 2.8f, 7f), (Archetype.Temperate, 2.4f, 4.6f), (Archetype.Ice, 0.9f, 3f) })
+        // A temperate world can circle a red dwarf now (owner, 22 Nov: meadows under different stars), whose sun looks half again as wide.
+        foreach (var (type, least, most) in new[] { (Archetype.Lava, 6f, 21f), (Archetype.Arid, 2.8f, 7f), (Archetype.Temperate, 2.4f, 5.4f), (Archetype.Ice, 0.9f, 3f) })
         {
             var sizes = new List<float>();
             for (int i = 0; i < 24; i++)
