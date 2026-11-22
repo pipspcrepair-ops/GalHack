@@ -316,12 +316,18 @@ public partial class FallTest : Node
             if (start >= 0 && !(touching && y0 - who.Pos.Y < 0.5f) && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
             last = y;
         }
-        if (start < 0)
+        if (start < 0 || from - who.Pos.Y < 0.3f)
         {
-            // (Never off their feet: what holds them, told.)
+            // (Never off their feet, or caught at once: what holds them, told.)
             Vector3 mid = town.World(who.Pos + Vector3.Up * 0.5f);
             var held = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(mid, mid + Vector3.Down * 0.8f, Layers.World | Layers.Hull | Layers.Interior));
             GD.Print($"    (held up by {(held.Count == 0 ? "nothing under their middle" : $"{(held["collider"].AsGodotObject() as Node)?.GetPath()} shape {held["shape"]} at {held["position"]}")}, asleep {who.Asleep}, sitting {who.Sitting}, check {Get(who, "CheckFor")})");
+            if (held.Count > 0 && _game.Places.PlaceOf(town.Memory.Site) is { } pl && pl.PieceOf(held["collider"].AsGodotObject(), (int)held["shape"]) is { } piece)
+            {
+                Int3 at = pl.CellAt(piece.Node.GlobalPosition + Vector3.Up * 0.05f);
+                var placed = piece.Room.Plan.Placements[piece.Index];
+                GD.Print($"    (a piece: {piece.Piece.Id}, on {placed.Support}, {placed.Y:F2} up, in {at} ({(pl.Inst.Blocks.Get(at).IsAir ? "air" : "a block")}), over {(pl.Inst.Blocks.Get(at + Int3.Down).IsAir ? "air" : "a block")})");
+            }
         }
         float h = from - who.Pos.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
         // (A shot taken in the fall holds this watch a few ticks: their own count of the fall's ticks then.)
