@@ -395,8 +395,9 @@ public partial class Spaceflight
             height = Mathf.Lerp(height, o.SurfaceHeight(q.Length()), onGlobe);
         }
         N.Quaternion map = o.Map.Frame(nx, nz);
-        // Low over it, as far up as a descent streams the ground ahead, the ground under you is painted finer.
-        if (y < cap + r.Band * r.StreamAhead) o.Globe.Near(nx, nz);
+        // Under the band's top, where the ground is near enough for a texel of the whole paint to be metres on the screen,
+        // the ground under you is painted finer (a descent is aligned there, with the band still to come down).
+        if (y < BandTop) o.Globe.Near(nx, nz);
         Lap("near ground");
 
         // What stands in front of what. It looks the same wherever it stands on its eye rays.

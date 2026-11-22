@@ -471,11 +471,15 @@ public partial class Globe : Node3D
             // The land's own slopes, a pixel at a time and at their true height whatever share of it the mesh stands
             // up (it lies low from space): far off the grid's points are hundreds of metres apart, and lit by them
             // alone the relief from space was a smear. Worked from the height's change across the pixel as drawn.
-            float h = relief_seen(m) * stand(distance) / max(distance, 1.0);
-            vec3 dpx = dFdx(VERTEX), dpy = dFdy(VERTEX);
+            // Low sun stands a slope's shade on end: toward the terminator the relief eases off, or every mesa and crater
+            // there is a black hole in a lit disc.
+            float sun_up = dot(normalize(round_normal), sun_dir);
+            float h = relief_seen(m) * stand(distance) / max(distance, 1.0) * mix(0.25, 1.0, smoothstep(0.05, 0.45, sun_up));
+            // Each pixel's own differences, not its quad's: by quads the shading stepped in blocks two pixels wide.
+            vec3 dpx = dFdxFine(VERTEX), dpy = dFdyFine(VERTEX);
             vec3 r1 = cross(dpy, NORMAL), r2 = cross(NORMAL, dpx);
             float det = dot(dpx, r1);
-            vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+            vec3 grad = sign(det) * (dFdxFine(h) * r1 + dFdyFine(h) * r2);
             // A cliff a map cell wide is a facet standing on end, black against the sun from any way but one: the slope a
             // pixel shows is held under about 30 degrees, so a mesa or a crater's wall reads as relief and not as a hole.
             grad *= min(1.0, 0.58 * abs(det) / max(length(grad), 1e-12));
