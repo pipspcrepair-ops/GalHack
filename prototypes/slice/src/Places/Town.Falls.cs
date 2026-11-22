@@ -203,7 +203,7 @@ public sealed partial class Town
         for (int i = 0; i < 5; i++)
         {
             if (Top(p.Pos + Foot(p, i), 0.5f, reach) is not float top) continue;
-            if (i == 0) ground = top;
+            if (i == 0) { ground = top; break; } // (on what is under their middle: the rest need not be looked at)
             else (rest, under) = (MathF.Max(rest, top), under + 1);
         }
         if (float.IsNegativeInfinity(ground) && under >= 3) ground = rest;
@@ -220,7 +220,7 @@ public sealed partial class Town
         float y = p.Pos.Y, speed = p.FallSpeed;
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
         p.Pos.Y = y;
-        OffSides(p, p.FallSpeed > 3f ? 4 : 2); // (a step down eased off slowly; a long fall past a wall, held off it as it comes)
+        OffSides(p, p.FallSpeed > 3f ? 4 : 1); // (a step down eased off slowly; a long fall past a wall, held off it as it comes)
         p.FallSpeed = speed;
         if (down)
         {
