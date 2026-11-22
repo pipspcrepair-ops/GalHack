@@ -58,7 +58,7 @@ public sealed partial class Staging
             // A pylon is cut at one of its legs and shot with rockets.
             foreach (int x in Fell(cut, pylon, pylon ? foot + (side + along) * (p.Height * 0.13f) : foot, pylon ? side : along, side, () => _game.Zone.PolesFelled > felled)) yield return x;
             blows = _blows;
-            float lean = _game.Zone.Trees.GetChildren().OfType<FallingTree>().Select(t => t.Basis.Y.AngleTo(Vector3.Up)).DefaultIfEmpty(0f).Max();
+            float lean = (_game.Zone.Trees.GetChildren().OfType<FallingTree>().LastOrDefault()?.Basis.Y.AngleTo(Vector3.Up) ?? 0f);
             bool drawn = !p.Felled || _game.Zone.Infra.PartsRebuilt == rebuilt || _game.Zone.Infra.PartsPending;
             // Each wire it held: hanging from the pole at its other end, its top on that pole's insulator, its tail on the ground.
             int strung = 0, hanging = 0, loose = 0;
@@ -102,7 +102,7 @@ public sealed partial class Staging
             foreach (int x in Shot($"post-{how}-before", eye, look)) yield return x;
             int felled = _game.Zone.PostsFelled, rebuilt = _game.Zone.Infra.PartsRebuilt;
             foreach (int x in Fell(cut, false, foot, along, side, () => _game.Zone.PostsFelled > felled)) yield return x;
-            float lean = _game.Zone.Trees.GetChildren().OfType<FallingTree>().Select(t => t.Basis.Y.AngleTo(Vector3.Up)).DefaultIfEmpty(0f).Max();
+            float lean = (_game.Zone.Trees.GetChildren().OfType<FallingTree>().LastOrDefault()?.Basis.Y.AngleTo(Vector3.Up) ?? 0f);
             bool drawn = _game.Zone.Infra.PartsRebuilt == rebuilt || _game.Zone.Infra.PartsPending;
             bool ok = it.Felled && lean > 1.3f && !drawn;
             if (!ok) Faults++;
@@ -136,7 +136,8 @@ public sealed partial class Staging
                     foreach (int x in _drive.Wait(rockets ? 20 : 5)) yield return x;
                 }
             }
-            foreach (int x in _drive.Wait(150)) yield return x; // its fall, a tree's
+            // Its fall (the newest falling tree is it), a tree's, slower under a light world's gravity: till it lies, or 15 s.
+            for (int i = 0; i < 900 && (i < 30 || (_game.Zone.Trees.GetChildren().OfType<FallingTree>().LastOrDefault()?.Basis.Y.AngleTo(Vector3.Up) ?? 0f) < 1.5f); i++) yield return 0;
             for (int i = 0; i < 300 && _game.Zone.Infra.PartsPending; i++) yield return 0;
         }
 

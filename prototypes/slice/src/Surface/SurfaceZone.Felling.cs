@@ -24,7 +24,7 @@ public partial class SurfaceZone : IFloraField
     {
         get
         {
-            if (_trees == null) AddChild(_trees = new TreeFx());
+            if (_trees == null) AddChild(_trees = new TreeFx { Gravity = () => Physics.Zone.Strength });
             return _trees;
         }
     }

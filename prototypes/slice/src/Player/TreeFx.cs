@@ -18,6 +18,9 @@ public sealed partial class TreeFx : Node3D
 
     public TreeFx() { Name = "TreeFx"; }
 
+    /// <summary>The zone's gravity, m/s² (what a felled tree or pole falls under: slower on a light world).</summary>
+    public Func<float> Gravity = () => GalHack.Physics.Units.StandardGravity;
+
     public override void _Ready()
     {
         AddChild(_stumps);
@@ -85,7 +88,7 @@ public sealed partial class TreeFx : Node3D
     /// a stump stays.
     /// </summary>
     /// <param name="own">The body keeps its own look (a power pole's or a pylon's, felled the same way: SurfaceZone.FellPole), not a plant's.</param>
-    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default, bool stump = true, Color custom = default, bool own = false)
+    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default, bool stump = true, Color custom = default, bool own = false, float gravity = GalHack.Physics.Units.StandardGravity)
     {
         away.Y = 0f;
         away = away.LengthSquared() < 1e-4f ? Vector3.Forward : away.Normalized();
@@ -97,7 +100,7 @@ public sealed partial class TreeFx : Node3D
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = bark, Roughness = 0.95f },
                 Position = root + Vector3.Up * 0.2f,
             });
-        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn, stump ? 0f : radius * 1.5f, custom, own));
+        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn, stump ? 0f : radius * 1.5f, custom, own, Gravity()));
     }
 
     /// <summary>Root holes left where trees were torn out whole (tests).</summary>
@@ -160,15 +163,18 @@ public sealed partial class FallingTree : Node3D
 
     static Shader _shader;
 
+    /// <summary>How long a fall takes under a standard gravity, s (under the zone's: as the square root of their ratio, as a toppling body's), and how long it lies and fades.</summary>
     const float FallTime = 1.5f, LieTime = 90f, FadeTime = 4f;
+    readonly float _fallTime;
     readonly Vector3 _axis;
     readonly StandardMaterial3D _bark, _leaf;
     readonly ShaderMaterial _body;
     float _t;
 
-    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default, float roots = 0f, Color custom = default, bool own = false)
+    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default, float roots = 0f, Color custom = default, bool own = false, float gravity = GalHack.Physics.Units.StandardGravity)
     {
         Position = root;
+        _fallTime = FallTime * MathF.Sqrt(GalHack.Physics.Units.StandardGravity / MathF.Max(0.2f, gravity));
         _axis = Vector3.Up.Cross(away).Normalized();
         if (roots > 0f)
             AddChild(new MeshInstance3D // torn out by its root plate: the plate comes up with it
@@ -203,13 +209,13 @@ public sealed partial class FallingTree : Node3D
     public override void _Process(double delta)
     {
         _t += (float)delta;
-        float fall = Mathf.Clamp(_t / FallTime, 0f, 1f);
+        float fall = Mathf.Clamp(_t / _fallTime, 0f, 1f);
         // Slow at first, faster as it goes, and a small settle at the end.
-        float angle = Mathf.Pi / 2f * (fall * fall) - (fall >= 1f ? 0.04f * MathF.Exp(-(_t - FallTime) * 6f) * MathF.Sin((_t - FallTime) * 18f) : 0f);
+        float angle = Mathf.Pi / 2f * (fall * fall) - (fall >= 1f ? 0.04f * MathF.Exp(-(_t - _fallTime) * 6f) * MathF.Sin((_t - _fallTime) * 18f) : 0f);
         Basis = new Basis(_axis, angle);
-        if (_t > FallTime + LieTime)
+        if (_t > _fallTime + LieTime)
         {
-            float a = 1f - (_t - FallTime - LieTime) / FadeTime;
+            float a = 1f - (_t - _fallTime - LieTime) / FadeTime;
             _body?.SetShaderParameter(PlanetSurface.Fx.Names.Of("fade"), MathF.Max(0f, a));
             if (_bark != null) _bark.AlbedoColor = new Color(_bark.AlbedoColor, MathF.Max(0f, a));
             if (_leaf != null) _leaf.AlbedoColor = new Color(_leaf.AlbedoColor, MathF.Max(0f, a));

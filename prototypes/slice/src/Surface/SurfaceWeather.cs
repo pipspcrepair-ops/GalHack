@@ -644,7 +644,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         TreesTorn++;
         if (_trees == null)
         {
-            _trees = new TreeFx();
+            _trees = new TreeFx { Gravity = () => Zone.Physics.Zone.Strength };
             Zone.AddChild(_trees);
         }
         away = root - from;
