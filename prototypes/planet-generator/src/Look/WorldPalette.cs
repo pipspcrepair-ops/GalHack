@@ -44,8 +44,10 @@ public sealed record WorldPalette
     public float Plankton { get; init; }
 
     // ---- Light and sky ----
-    /// <summary>The starlight's colour at its brightest channel 1: a red dwarf's orange to a hot star's blue-white.</summary>
+    /// <summary>The starlight's colour at its brightest channel 1, as the adapted eye sees it on the ground: a faint warmth under a red dwarf, a faint chill under a hot star.</summary>
     public Rgb Star { get; init; }
+    /// <summary>The star's disc as it is: a small bright source no eye adapts to, so a red dwarf's disc stays red-orange.</summary>
+    public Rgb Disc { get; init; }
     /// <summary>Clear midday sky straight up: starlight scattered by the gas, more for short waves (Rayleigh), and by the particles.</summary>
     public Rgb Zenith { get; init; }
     /// <summary>Clear sky at the horizon: so long a path that every wave is scattered almost fully, paler than the zenith.</summary>
@@ -115,7 +117,9 @@ public sealed record WorldPalette
 
         Spectrum light = Spectrum.Blackbody(kelvin);
         light *= 1f / light.Y;
-        // Lights (the sun, the sky) are seen by an eye adapted partway to the star: a red dwarf's world stays warm, not tungsten orange.
+        // Every light here (the sun on the ground, the sky, the sunset) is seen by an eye adapted most of the way to its star, so
+        // grey rock reads grey under any star with only a faint cast; the star's colour still shows where the light differs
+        // from its own (the sky's scattering, the sunset's reddening, leaf pigments) and in its own disc (Disc).
         Spectrum.Eye eye = light.Adapted(Adaptation);
 
         // ---- Minerals and soils ----
@@ -205,7 +209,7 @@ public sealed record WorldPalette
         return new WorldPalette
         {
             Kelvin = kelvin, Air = air, Rock = rock, Iron = iron, Life = life, Plankton = plankton,
-            Star = light.Hue(eye),
+            Star = light.Hue(eye), Disc = light.Hue(),
             Zenith = zenith, Horizon = horizon, Haze = haze, Sunset = sunset, Limb = limb,
             CloudTint = Rgb.Lerp(new Rgb(1f, 1f, 1f), Albedo(albedo).Reflectance(), Math.Clamp(air.Aerosol * 0.35f, 0f, 0.55f)),
             Dust = dust.Reflectance(),
@@ -217,8 +221,8 @@ public sealed record WorldPalette
         };
     }
 
-    /// <summary>How far an eye adapts to its star's light: half the way, never all of it (<see cref="Spectrum.Adapted"/>).</summary>
-    const float Adaptation = 0.5f;
+    /// <summary>How far an eye adapts to its star's light: most of the way, never all of it (<see cref="Spectrum.Adapted"/>).</summary>
+    const float Adaptation = 0.85f;
 
     /// <summary>How bright a sky is against its sunlight: Earth's clear zenith comes out at Earth's (luminance about 0.22 of white).</summary>
     const float SkyGain = 1.4f;

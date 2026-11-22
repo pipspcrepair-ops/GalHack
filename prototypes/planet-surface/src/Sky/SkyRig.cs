@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using GalHack.Stars;
 using Godot;
@@ -706,7 +706,8 @@ public partial class SkyRig : Node3D
     public static void ShowSun(ShaderMaterial sky, StarSystem model, SkySystem system)
     {
         sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_radius"), model.SunAngular);
-        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_disc_light"), new Vector3(system.StarColor.R, system.StarColor.G, system.StarColor.B) * system.SunEnergy * DiscEnergy);
+        Rgb disc = system.Palette?.Disc ?? system.StarColor; // the disc in its own colour: the eye adapts to its light, not to it
+        sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_disc_light"), new Vector3(disc.R, disc.G, disc.B) * system.SunEnergy * DiscEnergy);
         sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_rim"), RimOf(system.Star));
         sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_heat"), model.SunHeat);
     }

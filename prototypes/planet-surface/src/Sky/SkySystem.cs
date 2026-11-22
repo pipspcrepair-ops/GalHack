@@ -76,6 +76,9 @@ public sealed record SkySystem
         }
     }
 
+    /// <summary>Tests and shots: every world rolled from here on circles this star (null: its own).</summary>
+    public static StarClass? ForceStar;
+
     /// <summary>The real skies: every world's palette in the game is its sky's, made with its own star and air (a generator alone has none).</summary>
     [System.Runtime.CompilerServices.ModuleInitializer]
     internal static void UseRealSkies() => WorldPalette.Of = spec => For(spec).Palette;
@@ -85,7 +88,7 @@ public sealed record SkySystem
     {
         var rng = new Rng(Hash.Of(spec.Seed, 0x534B59, (long)spec.Archetype, spec.Variant));
         StarClass picked = PickStar(spec, ref rng);
-        StarClass sun = star ?? picked;
+        StarClass sun = star ?? ForceStar ?? picked;
         AirKind air = AirOf(spec);
         float density = air switch
         {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -15,7 +15,7 @@ namespace PlanetSurface;
 ///   godot --path prototypes/planet-surface res://tests/Screenshot.tscn -- --view=NAME --out=FILE.png
 /// Named views are in <see cref="Views"/>; "look" takes everything from arguments:
 ///   --archetype=0-4 --variant=0|1 --seed=N --x= --z= (metres) --up= (above ground) --heading= --pitch= (degrees)
-///   --time=0..1 --weather=Kind [--hud=1]
+///   --time=0..1 --weather=Kind [--hud=1] [--star=RedDwarf|Orange|Yellow|White|BlueWhite] [--coast=1]
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -73,6 +73,7 @@ public partial class Screenshot : Node
     ViewSpec Look()
     {
         int a = Int("archetype", 0), variant = Int("variant", 0);
+        if (_args.TryGetValue("star", out string star)) PlanetSurface.Skies.SkySystem.ForceStar = Enum.Parse<StarClass>(star); // --star=RedDwarf..BlueWhite: the same world under another star
         ulong seed = (ulong)Int("seed", 1);
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
