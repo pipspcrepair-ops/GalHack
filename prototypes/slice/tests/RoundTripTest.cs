@@ -109,7 +109,7 @@ public partial class RoundTripTest : Node
     int _unmeasured;
     bool _comingDown;
     int _crossingsSeen, _sinceCrossing = int.MaxValue;
-    readonly Dictionary<string, List<(double Wall, double Cpu, double Gpu)>> _phases = new();
+    readonly Dictionary<string, List<(double Wall, double Cpu, double Gpu, double Gc, double Render)>> _phases = new();
 
     /// <summary>Every drawn frame, by what is happening: on a surface, climbing to the cap, at the switch (a second either side), in orbit, coming down toward a globe.</summary>
     public override void _Process(double delta)
@@ -121,37 +121,75 @@ public partial class RoundTripTest : Node
         {
             _unmeasured = Math.Max(_unmeasured - 1, 0);
             _last = now;
+            _paused = GC.GetTotalPauseDuration(); // the test's own collections are not the game's
             return;
         }
         int crossings = _game.Spaceflight.Crossings.Count;
-        if (crossings != _crossingsSeen) (_crossingsSeen, _sinceCrossing) = (crossings, 0);
+        if (crossings != _crossingsSeen)
+        {
+            (_crossingsSeen, _sinceCrossing) = (crossings, 0);
+            // --profile=1: what each kind of node costs over the second after a crossing (laying the profile out is the test's).
+            if (_args.ContainsKey("profile") && _crossingProfile == null)
+            {
+                _crossingProfile = new ProcessProfiler(_probe, GetTree().Root, 60, this);
+                _unmeasured = 2;
+            }
+        }
         else if (_sinceCrossing < int.MaxValue) _sinceCrossing++;
+        if (_crossingProfile != null)
+        {
+            _crossingProfile.Step();
+            if (_crossingProfile.Done)
+            {
+                GD.Print($"  (profile the second after crossing {crossings}: {string.Join("; ", _crossingProfile.Report().Take(7))})");
+                _crossingProfile = null;
+            }
+        }
         float y = _game.InOrbit ? _game.Orbit.Anchor.Height(_game.Camera.GlobalPosition) : _game.Camera.GlobalPosition.Y;
         string phase = _sinceCrossing < 60 || MathF.Abs(y - _game.Surface.Physics.Zone.Ceiling) < 120f ? "at the switch"
             : _game.InOrbit ? (_comingDown ? "coming down to a globe" : "in orbit") : y > 300f ? "climbing" : "on a surface";
         if (_last != 0)
         {
             if (!_phases.TryGetValue(phase, out var list)) _phases[phase] = list = new();
-            list.Add(((now - _last) * 1000.0 / Stopwatch.Frequency, _probe.LastCpuMs, RenderingServer.ViewportGetMeasuredRenderTimeGpu(GetViewport().GetViewportRid())));
+            TimeSpan paused = GC.GetTotalPauseDuration();
+            list.Add(((now - _last) * 1000.0 / Stopwatch.Frequency, _probe.LastCpuMs, RenderingServer.ViewportGetMeasuredRenderTimeGpu(GetViewport().GetViewportRid()), (paused - _paused).TotalMilliseconds,
+                RenderingServer.ViewportGetMeasuredRenderTimeCpu(GetViewport().GetViewportRid())));
+            if ((paused - _paused).TotalMilliseconds > 20.0 && GC.GetGCMemoryInfo(GCKind.Any) is { } gc)
+                GD.Print($"  (a {(paused - _paused).TotalMilliseconds:F0} ms GC pause {phase}: generation {gc.Generation}, {(gc.Compacted ? "compacting" : "not compacting")}, {(gc.Concurrent ? "background" : "blocking")}, heap {gc.HeapSizeBytes / 1048576.0:F0} MB, promoted {gc.PromotedBytes / 1048576.0:F0} MB)");
+            _paused = paused;
+            // A crossing's worst frame: the main thread's CPU over the second after it (the probe reads a frame behind).
+            if (_sinceCrossing <= 60 && crossings > 0)
+            {
+                var c = _crossingWorst.TryGetValue(crossings, out var w) ? w : (Up: _game.Spaceflight.Crossings[^1].Up, Cpu: 0.0, At: 0);
+                if (_probe.LastCpuMs > c.Cpu) (c.Cpu, c.At) = (_probe.LastCpuMs, _sinceCrossing);
+                _crossingWorst[crossings] = c;
+            }
         }
         _last = now;
     }
+
+    readonly SortedDictionary<int, (bool Up, double Cpu, int At)> _crossingWorst = new();
+    ProcessProfiler _crossingProfile;
+    TimeSpan _paused;
 
     /// <summary>The frame times by phase, mean and 99th percentile, and how the run's work spread over the threads.</summary>
     void Timing(TimeSpan cpuAtStart, double wallAtStart)
     {
         foreach (var (phase, frames) in _phases)
         {
-            double P(Func<(double Wall, double Cpu, double Gpu), double> of, double q)
+            double P(Func<(double Wall, double Cpu, double Gpu, double Gc, double Render), double> of, double q)
             {
                 var sorted = frames.Select(of).OrderBy(v => v).ToList();
                 return sorted[Math.Min(sorted.Count - 1, (int)(sorted.Count * q))];
             }
-            GD.Print($"  timing {phase}: {frames.Count} frames; wall mean {frames.Average(f => f.Wall):F2} p99 {P(f => f.Wall, 0.99):F2} ms; main thread CPU mean {frames.Average(f => f.Cpu):F2} p99 {P(f => f.Cpu, 0.99):F2} ms; GPU mean {frames.Average(f => f.Gpu):F2} p99 {P(f => f.Gpu, 0.99):F2} ms");
+            GD.Print($"  timing {phase}: {frames.Count} frames; wall mean {frames.Average(f => f.Wall):F2} p99 {P(f => f.Wall, 0.99):F2} ms; main thread CPU mean {frames.Average(f => f.Cpu):F2} p99 {P(f => f.Cpu, 0.99):F2} ms; GPU mean {frames.Average(f => f.Gpu):F2} p99 {P(f => f.Gpu, 0.99):F2} ms; rendering on the CPU mean {frames.Average(f => f.Render):F2} p99 {P(f => f.Render, 0.99):F2} ms; GC pauses {frames.Sum(f => f.Gc):F0} ms in all, {frames.Count(f => f.Gc > 1.0)} frames, the longest {frames.Max(f => f.Gc):F1} ms");
             if (Windowed) Check(P(f => f.Cpu, 0.99) < 16.7 * 0.8, $"{phase}: the main thread keeps the 16.7 ms budget with headroom, p99 {P(f => f.Cpu, 0.99):F1} ms of CPU");
         }
+        foreach (var (n, c) in _crossingWorst)
+            GD.Print($"  timing crossing {n} ({(c.Up ? "up" : "down")}): worst frame {c.Cpu:F1} ms of main thread CPU, {c.At} frames after");
         Spaceflight sf = _game.Spaceflight;
-        GD.Print($"  (in orbit the seam's parts took, ms a drawn frame: {string.Join(", ", sf.SpentInOrbit.OrderByDescending(p => p.Value).Take(8).Select(p => $"{p.Key} {p.Value / Math.Max(sf.OrbitFrames, 1):F2}"))})");
+        GD.Print($"  (the longest piece of a turn (parking, waking, the land shown or hidden): {sf.WorstTurnMs:F1} ms, {sf.WorstTurn})");
+        GD.Print($"  (in orbit the seam's parts took, ms a drawn frame: {string.Join(", ", sf.SpentInOrbit.OrderByDescending(p => p.Value).Take(8).Select(p => $"{p.Key} {p.Value / Math.Max(sf.OrbitFrames, 1):F2}"))}; the most in one frame: {string.Join(", ", sf.WorstInOrbit.OrderByDescending(p => p.Value).Take(8).Select(p => $"{p.Key} {p.Value:F1}"))})");
         GD.Print($"  (the seam and skies took at most {sf.WorstSeamMs:F1} ms of a frame: {sf.WorstSeamParts}; moons arrived a piece a frame: {string.Join("; ", _game.Orbit.Moons.Where(c => c.Surface.Arrived).Select(c => $"{c.Name}: {c.Surface.ArriveSteps}"))})");
         var process = Process.GetCurrentProcess();
         double wall = _clock.Elapsed.TotalSeconds - wallAtStart, used = (process.TotalProcessorTime - cpuAtStart).TotalSeconds;
@@ -243,13 +281,14 @@ public partial class RoundTripTest : Node
         if (_skiff?.Structure.Count != _game.StarterPlan.Count) yield break;
         foreach (int x in _pilot.Board(_skiff)) yield return x;
         if (_game.Survivor.Seated != _skiff) yield break;
+        if (_args.ContainsKey("profile")) foreach (int x in Profile("on the surface")) yield return x;
         for (int loop = 1; loop <= Loops; loop++)
         {
             GD.Print($"-- loop {loop} --");
             foreach (int x in Up()) yield return x;
             if (!_game.InOrbit) yield break;
             foreach (int x in Settle(loop, "orbit over the start world")) yield return x;
-            if (loop == 1 && _args.ContainsKey("profile")) foreach (int x in Profile()) yield return x;
+            if (loop == 1 && _args.ContainsKey("profile")) foreach (int x in Profile("in orbit")) yield return x;
             Celestial moon = null;
             foreach (int x in ToTheMoon(m => moon = m)) yield return x;
             if (moon == null) yield break;
@@ -333,11 +372,16 @@ public partial class RoundTripTest : Node
         foreach (int x in MoonTest.Upright(_pilot, body, v)) yield return x;
         int crossings = _game.Spaceflight.Crossings.Count;
         _comingDown = true;
+        // --profile=1: the first descent onto the start world, what each kind of node costs on the way down.
+        ProcessProfiler profiler = _args.ContainsKey("profile") && body == _game.Orbit.Home && crossings < 4 ? new ProcessProfiler(_probe, GetTree().Root, int.MaxValue, this) : null;
         for (int i = 0; i < 60 * 120 && _game.Spaceflight.Crossings.Count == crossings; i++)
         {
             _game.Controls.Hold(Key.Ctrl, -v.Body.Velocity.ToGodot().Dot((v.Body.Position.ToGodot() - body.Centre).Normalized()) < 40f);
+            profiler?.Step();
             yield return 0;
         }
+        profiler?.Restore();
+        if (profiler != null) foreach (string line in profiler.Report()) GD.Print($"  (profile coming down: {line})");
         _comingDown = false;
         Arrived();
         _game.Controls.ReleaseAll();
@@ -386,18 +430,18 @@ public partial class RoundTripTest : Node
         v.Binding.Teleport();
     }
 
-    /// <summary>What each kind of node costs the main thread in orbit, the Skiff holding still.</summary>
-    IEnumerable<int> Profile()
+    /// <summary>What each kind of node costs the main thread, the Skiff holding still (on the surface, in orbit), and what the physics holds there.</summary>
+    IEnumerable<int> Profile(string where)
     {
         _unmeasured = int.MaxValue;
-        var profiler = new ProcessProfiler(_probe, GetTree().Root, 40, this);
+        var profiler = new ProcessProfiler(_probe, GetTree().Root, 600, this);
         while (!profiler.Done)
         {
             profiler.Step();
             yield return 0;
         }
-        profiler.Restore();
-        foreach (string line in profiler.Report()) GD.Print($"  (profile in orbit: {line})");
+        foreach (string line in profiler.Report()) GD.Print($"  (profile {where}: {line})");
+        GD.Print($"  (physics {where}: {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects)} active bodies, {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs)} pairs, {Performance.GetMonitor(Performance.Monitor.Physics3DIslandCount)} islands; bodies by zone: {string.Join(", ", Zones().Select(z => $"{z.Name} {z.Physics?.Bodies.Count ?? 0}"))})");
         _unmeasured = 0;
     }
 
