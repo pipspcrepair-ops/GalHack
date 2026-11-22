@@ -220,13 +220,11 @@ public sealed partial class Town
         float y = p.Pos.Y, speed = p.FallSpeed;
         bool down = Drop.Step(ref y, ref speed, ground, Pull, dt);
         p.Pos.Y = y;
-        OffSides(p, p.FallSpeed > 3f ? 4 : 1); // (a step down eased off slowly; a long fall past a wall, held off it as it comes)
+        // (Held off what is beside them, a step down eased off it slowly, a long fall or a landing by a step or a wall's foot a little
+        // more: 0.1 m a tick at most, never thrown.)
+        OffSides(p, down || speed > 3f ? 2 : 1);
         p.FallSpeed = speed;
-        if (down)
-        {
-            OffSides(p, 3); // (down beside a step or a wall's foot: stood clear of it)
-            Land(p, speed, wet);
-        }
+        if (down) Land(p, speed, wet);
     }
 
     readonly CapsuleShape3D _body = new();
