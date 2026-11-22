@@ -581,7 +581,7 @@ Rings on a moon: real rings only survive close inside a body's small zone of gra
 
 1. **Planets move.** On rails, from one clock.
 2. **Warps.** About 20 seconds typically, 80 at worst.
-3. **Free flight.** The player can drop out of warp and fly anywhere in a system. Suns and gas giants can't be entered: warp stops at a safe distance from a star, closer means heat damage, and a giant's clouds can be skimmed above a crushing limit. To be tuned in play.
+3. **Free flight.** The player can drop out of warp and fly anywhere in a system. Suns and gas giants can't be entered. (The heat damage and cloud skimming first written here were replaced on 22 Nov: high orbit is the limit, enforced by a push back out; see "Interstellar travel" item 15.)
 4. **Red dwarfs.** About 28% of stars, not the real 76%.
 5. **Star table.** Follows the real rule: red dwarfs have close, often locked worlds under a big dull sun.
 
@@ -614,4 +614,7 @@ These replace anything above or in section 4 that disagrees with them.
    - **Clouds.** Large water droplets and ice scatter every colour evenly, so clouds are white or grey. Ice crystals bend sunlight into sundogs and halos.
    - **Thin dusty air.** Fine rust-red dust in thin carbon dioxide air gives a butterscotch to reddish sky.
    - **Meteors** glow by their elements: sodium orange-yellow, magnesium blue-green, iron yellow-white. They glow only where there is air.
-15. **Later: suns, gas giants and black holes up close.** A black hole you visit has an accretion disc you can explore: a fast-moving cloud of debris. How close you can get to suns and gas giants is still to decide. Empyrion keeps players at high orbit, and the 8 Nov note (not sold on heat damage or skim-and-crush) still stands.
+15. **Suns, gas giants and black holes up close (owner, 22 Nov: "Go with that").** Empyrion's way: high orbit is as close as you get.
+   - **Suns and gas giants.** A warp to one stops at its high orbit. The body fills the view, huge and detailed: a star's churn and flares, a giant's bands, storms and spots. It has no surface zone. Flying further in, the star's heat or the giant's winds push the ship back out, with a visor warning. There's no heat damage and no crushing (this replaces section 8 item 3's heat damage and skim-and-crush). At a giant, the places to go are its moons, their moons, and its ring as a debris field.
+   - **Black holes.** The same high-orbit limit, with the strong pull and warnings of the design doc. The accretion disc lies outside the limit and is the destination: a fast-streaming debris field on the same field system as rings and belts. You match its speed to work inside it, among its rocks, ancient wrecks and rare finds. Each black hole's look rolls from the 8 Nov parts: thin spiral, churning vortex or dusty torus, jets, a companion star being stripped.
+   - **When.** After the fold drive job. The accretion disc comes with the rings and belts debris field job, since it shares that system.
