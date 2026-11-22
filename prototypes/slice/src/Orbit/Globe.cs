@@ -69,7 +69,7 @@ public sealed class GlobePaint
         return new GlobePaint
         {
             Look = look,
-            NearAt = (x0, z0) => Near(map, look, land, x0, z0, rules.NearMetres, rules.NearTexels),
+            NearAt = new NearPainter(map, look, land, rules.NearMetres, rules.NearTexels).Paint,
             Albedo = Mipmapped(colors.Width, colors.Height, Image.Format.Rgba8, colors.Albedo),
             Glow = glow,
             Clouds = Mipmapped(rules.CloudWidth, cloudHeight, Image.Format.Rgba8, clouds),
@@ -78,9 +78,24 @@ public sealed class GlobePaint
         };
     }
 
-    /// <summary>The ground of a square of the map from (x0, z0), m, painted finer: the colour map's own paint, <paramref name="metres"/> a texel (any thread).</summary>
-    public static Image Near(WorldMap map, ArchetypeLook look, Func<double, double, Rgb> land, double x0, double z0, double metres, int size) =>
-        Mipmapped(size, size, Image.Format.Rgba8, ColorMap.Build(map, look, x0, z0, metres, size, size, land).Albedo);
+    /// <summary>
+    /// The ground of a square of the map from a corner (x0, z0), m, painted finer: the colour map's own paint, a texel
+    /// <c>metres</c> across, one square at a time on any thread. The map's per-cell paint is worked out once and the square's
+    /// buffers are kept, so painting it again as you fly leaves the collector nothing (it was 30 MB a square).
+    /// </summary>
+    sealed class NearPainter(WorldMap map, ArchetypeLook look, Func<double, double, Rgb> land, double metres, int size)
+    {
+        ColorMap.Cells _cells;
+        readonly byte[] _albedo = new byte[size * size * 4];
+        readonly float[] _rivers = new float[size * size];
+
+        public Image Paint(double x0, double z0)
+        {
+            _cells ??= new ColorMap.Cells(map, look);
+            ColorMap.Paint(_cells, map, look, x0, z0, metres, size, size, land, _albedo, null, _rivers);
+            return Mipmapped(size, size, Image.Format.Rgba8, _albedo);
+        }
+    }
 
     /// <summary>The night lights map: a soft splat for each lived-in place by its lamps, and a wider one for each town's glow.</summary>
     static Image LightsOf(IReadOnlyList<PlanetSurface.Poi.PoiSite> sites, double width, double height)

@@ -46,26 +46,51 @@ public sealed class ColorMap
     public static ColorMap Build(WorldMap map, ArchetypeLook look, double x0, double y0, double metres, int width, int height, Func<double, double, Rgb> land = null)
     {
         var result = new ColorMap(width, height);
-        int n = map.Count;
+        Paint(new Cells(map, look), map, look, x0, y0, metres, width, height, land, result.Albedo, result.Glow, new float[width * height]);
+        return result;
+    }
 
-        // Per-cell inputs, so per-pixel work is just blending.
-        Rgb[] color = CellColors(map, look, out Rgb[] glow);
-        var shade = new float[n];
-        float flat = Light.z;
-        for (int k = 0; k < n; k++)
+    /// <summary>
+    /// The paint's per-cell inputs, so per-pixel work is just blending: biome colour and glow spread across borders, and the
+    /// relief's shade. The same for every window of a map, so a painter that paints windows again and again works them out once.
+    /// </summary>
+    public sealed class Cells
+    {
+        public readonly Rgb[] Color, Glow;
+        public readonly float[] Shade;
+
+        public Cells(WorldMap map, ArchetypeLook look)
         {
-            int i = k % map.Width, j = k / map.Width;
-            float east = map.Elevation[map.Index(i + 1, j)], west = map.Elevation[map.Index(i - 1, j)];
-            float south = map.Elevation[map.Index(i, Math.Min(j + 1, map.Height - 1))];
-            float north = map.Elevation[map.Index(i, Math.Max(j - 1, 0))];
-            float gx = Math.Max(east, 0f) - Math.Max(west, 0f), gy = Math.Max(south, 0f) - Math.Max(north, 0f);
-            var nrm = Normalize(-gx * Relief / (2f * map.CellSize), -gy * Relief / (2f * map.CellSize), 1f);
-            float s = nrm.x * Light.x + nrm.y * Light.y + nrm.z * Light.z;
-            shade[k] = Math.Clamp(1f + (s - flat) * 1.5f, 0.5f, 1.35f);
+            Color = CellColors(map, look, out Glow);
+            int n = map.Count;
+            var shade = new float[n];
+            float flat = Light.z;
+            for (int k = 0; k < n; k++)
+            {
+                int i = k % map.Width, j = k / map.Width;
+                float east = map.Elevation[map.Index(i + 1, j)], west = map.Elevation[map.Index(i - 1, j)];
+                float south = map.Elevation[map.Index(i, Math.Min(j + 1, map.Height - 1))];
+                float north = map.Elevation[map.Index(i, Math.Max(j - 1, 0))];
+                float gx = Math.Max(east, 0f) - Math.Max(west, 0f), gy = Math.Max(south, 0f) - Math.Max(north, 0f);
+                var nrm = Normalize(-gx * Relief / (2f * map.CellSize), -gy * Relief / (2f * map.CellSize), 1f);
+                float s = nrm.x * Light.x + nrm.y * Light.y + nrm.z * Light.z;
+                shade[k] = Math.Clamp(1f + (s - flat) * 1.5f, 0.5f, 1.35f);
+            }
+            Shade = Soften(map, shade, 2); // a cliff one cell wide would otherwise shade as a stair of cells
         }
-        shade = Soften(map, shade, 2); // a cliff one cell wide would otherwise shade as a stair of cells
+    }
 
-        float[] rivers = RasterizeRivers(map, x0, y0, metres, width, height);
+    /// <summary>
+    /// A window of the paint (as <see cref="Build(WorldMap, ArchetypeLook, double, double, double, int, int, Func{double, double, Rgb})"/>)
+    /// into buffers the caller keeps: <paramref name="albedo"/> RGBA8, <paramref name="glowOut"/> RGB8 (null: none wanted),
+    /// <paramref name="rivers"/> a pixel's worth of scratch each.
+    /// </summary>
+    public static void Paint(Cells cells, WorldMap map, ArchetypeLook look, double x0, double y0, double metres, int width, int height,
+        Func<double, double, Rgb> land, byte[] albedo, byte[] glowOut, float[] rivers)
+    {
+        Rgb[] color = cells.Color, glow = cells.Glow;
+        float[] shade = cells.Shade;
+        RasterizeRivers(map, x0, y0, metres, width, height, rivers);
         var jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), BorderWave, 4);
         Rgb riverColor = Rgb.Lerp(look.ShallowSea, look.DeepSea, 0.25f);
         bool lava = map.Def.Liquid == Liquid.Lava;
@@ -145,17 +170,17 @@ public sealed class ColorMap
                 }
 
                 int o = (py * width + px) * 4;
-                result.Albedo[o] = Rgb.Byte(col.R);
-                result.Albedo[o + 1] = Rgb.Byte(col.G);
-                result.Albedo[o + 2] = Rgb.Byte(col.B);
-                result.Albedo[o + 3] = liquid ? (byte)255 : (byte)0;
+                albedo[o] = Rgb.Byte(col.R);
+                albedo[o + 1] = Rgb.Byte(col.G);
+                albedo[o + 2] = Rgb.Byte(col.B);
+                albedo[o + 3] = liquid ? (byte)255 : (byte)0;
+                if (glowOut == null) continue;
                 int g = (py * width + px) * 3;
-                result.Glow[g] = Rgb.Byte(emit.R);
-                result.Glow[g + 1] = Rgb.Byte(emit.G);
-                result.Glow[g + 2] = Rgb.Byte(emit.B);
+                glowOut[g] = Rgb.Byte(emit.R);
+                glowOut[g + 1] = Rgb.Byte(emit.G);
+                glowOut[g + 2] = Rgb.Byte(emit.B);
             }
         });
-        return result;
     }
 
     /// <summary>
@@ -256,9 +281,9 @@ public sealed class ColorMap
     }
 
     /// <summary>Draws river polylines as anti-aliased lines over a window of the map (as <see cref="Build(WorldMap, ArchetypeLook, double, double, double, int, int, Func{double, double, Rgb})"/>); small streams fade out rather than vanish.</summary>
-    static float[] RasterizeRivers(WorldMap map, double fromX, double fromY, double metres, int width, int height)
+    static void RasterizeRivers(WorldMap map, double fromX, double fromY, double metres, int width, int height, float[] mask)
     {
-        var mask = new float[width * height];
+        Array.Clear(mask, 0, width * height);
         double s = 1.0 / metres, w = map.WidthMeters, h = map.HeightMeters;
         // The whole map wraps its pixels round; a window cuts off what falls outside it.
         bool whole = width * metres >= w - 1e-6;
@@ -290,7 +315,6 @@ public sealed class ColorMap
                 }
             }
         }
-        return mask;
     }
 
     static (float x, float y, float z) Normalize(float x, float y, float z)
