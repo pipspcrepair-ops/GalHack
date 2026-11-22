@@ -907,7 +907,11 @@ public sealed partial class Town : IKeeper
         }
         Vector3 was = p.Pos;
         if (p.Sitting) p.GettingUp = true;
-        p.Pos = Unpressed(p, was, p.Pos + new Vector3(d.X, 0f, d.Z) / flat * step); // (never further into anyone: round them, Town.Space)
+        // Never further into anyone: round them (Town.Space); held by one, at the pace they really go (no walking on the spot).
+        Vector3 meant = p.Pos + new Vector3(d.X, 0f, d.Z) / flat * step;
+        p.Pos = Unpressed(p, was, meant);
+        bool byBody = (p.Pos - meant).LengthSquared() > 1e-8f;
+        if (byBody && dt > 0f) p.Now = MathF.Min(p.Now, Flat(p.Pos - was) / dt);
         if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
@@ -917,7 +921,7 @@ public sealed partial class Town : IKeeper
         OffParts(p, was, dt);
         p.Pos = Unpressed(p, was, p.Pos); // (nor held off the furniture into anyone)
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
-        if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
+        if (!byBody && (p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {
             p.Blocked = 0f;
             if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
