@@ -198,7 +198,8 @@ public sealed record WorldPalette
         float plankton = life * MathF.Pow(10f, -1.5f + 2.5f * U(12));
         float tannin = 0.01f + 0.5f * U(13) * U(13) * U(13) * (0.3f + life);
         float silt = wet ? 0.4f + 10f * U(14) * U(14) : 0f;
-        (Spectrum deep, Spectrum shallow) = Water(plankton, tannin, silt, leaf, dust, sand);
+        // The open sea holds a tenth of the silt the shore does; a desert's sea takes wind-blown dust too (the Sahara's falls on the Atlantic).
+        (Spectrum deep, Spectrum shallow) = Water(plankton, tannin, silt, silt * (spec.Archetype == Archetype.Arid ? 0.45f : 0.1f), leaf, dust, sand);
         Spectrum snow = Spectrum.Of(l => 0.93f - 0.08f * (l - 400f) / 300f);
 
         return new WorldPalette
@@ -335,7 +336,7 @@ public sealed record WorldPalette
     /// (Morel 1974): blue. Plankton absorb as the land's leaves do (the same chemistry), dissolved matter absorbs the
     /// blue (Bricaud et al. 1981), and silt scatters the colour of the land's dust.
     /// </summary>
-    static (Spectrum Deep, Spectrum Shallow) Water(float plankton, float tannin, float silt, Spectrum leaf, Spectrum dust, Spectrum sand)
+    static (Spectrum Deep, Spectrum Shallow) Water(float plankton, float tannin, float silt, float openSilt, Spectrum leaf, Spectrum dust, Spectrum sand)
     {
         Spectrum water = Spectrum.Of(PureWater);
         Spectrum pigment = leaf.Map(r => -MathF.Log(MathF.Max(r, 1e-3f)));
@@ -343,7 +344,6 @@ public sealed record WorldPalette
         for (int i = 0; i < Spectrum.Bands; i++) top = MathF.Max(top, pigment[i]);
         Spectrum grains = Albedo(dust);
         // The light coming up from under the surface (the water's glint off the surface is the renderer's).
-        // The open sea holds a tenth of the silt the shore does.
         (Spectrum r, Spectrum k) Body(float mud)
         {
             Spectrum a = water + pigment * (0.06f * MathF.Pow(plankton, 0.65f) / MathF.Max(top, 1e-3f))
@@ -353,7 +353,7 @@ public sealed record WorldPalette
                           + grains * (0.006f * mud);
             return (bb / (a + bb) * 0.33f, a + bb);
         }
-        Spectrum deep = Body(silt * 0.1f).r;
+        Spectrum deep = Body(openSilt).r;
         (Spectrum near, Spectrum kd) = Body(silt);
         Spectrum shallow = near + (sand - near) * Spectrum.Exp(kd * (-2f * 4f * 1.2f));
         return (deep, shallow);
