@@ -37,8 +37,8 @@ public sealed partial class Town
     float SwimDepth(Person p) => Height(p) * (_places?.Zone.Physics.Rules.Water.SwimDepth ?? 0.7f);
     static float BankClimb(Person p) => Height(p) * 0.6f;
 
-    /// <summary>Whether a point stands in water (more than ankle-deep), the place's frame.</summary>
-    bool InWaterAt(Vector3 local) => Surface(local) is float top && top - Bottom(local) > 0.15f;
+    /// <summary>The bed under a point that stands in water (more than ankle-deep), the place's frame; null out of it.</summary>
+    float? BedIn(Vector3 local) => Surface(local) is float top && Bottom(local) is var bed && top - bed > 0.15f ? bed : null;
 
     /// <summary>In the water (landed in it, or walked into it out on a run): their way given up, the nearest bank looked for.</summary>
     void EnterWater(Person p)

@@ -76,6 +76,7 @@ public sealed partial class Town
     {
         lo = Local(lo);
         hi = Local(hi);
+        _gone.Add(new Aabb(lo - new Vector3(1.5f, 1f, 1.5f), hi - lo + new Vector3(3f, 4f, 3f)));
         foreach (Person p in People)
         {
             if (p.Gone || p.Pos.X < lo.X - 1.2f || p.Pos.X > hi.X + 1.2f || p.Pos.Z < lo.Z - 1.2f || p.Pos.Z > hi.Z + 1.2f || p.Pos.Y < lo.Y - 0.5f || p.Pos.Y > hi.Y + 2.5f) continue;
@@ -86,6 +87,25 @@ public sealed partial class Town
                 p.Rig?.Unsettle();
             }
         }
+    }
+
+    /// <summary>Where something has gone from under (<see cref="Unfloored"/>, widened by a stride and a storey), the place's frame.</summary>
+    readonly List<Aabb> _gone = new();
+
+    /// <summary>
+    /// Whether the place stands as it was built round someone (nothing has gone there) and the walking grid holds them: a standing
+    /// cell under them or beside them at their height (a corner cut by a stairwell's edge). Then they stand as they always have,
+    /// nothing looked under; only where something went, or off the grid of what can be walked, do the colliders say.
+    /// </summary>
+    bool AsBuilt(Person p)
+    {
+        foreach (Aabb box in _gone) if (box.HasPoint(p.Pos)) return false;
+        PInt3 c = Cell(p.Pos);
+        if (!Memory.Inst.Blocks.InBounds(new PInt3(c.X, Memory.Inst.Blocks.Min.Y, c.Z))) return p.Pos.Y - LandAt(p.Pos) < FootSlack + 0.05f; // (out on the land, on it)
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+                if (_nav.Standable(new PInt3(c.X + dx, c.Y, c.Z + dz)) || _nav.RampAt(new PInt3(c.X + dx, c.Y, c.Z + dz), out _) || _nav.RampAt(new PInt3(c.X + dx, c.Y - 1, c.Z + dz), out _)) return true;
+        return false;
     }
 
     /// <summary>The top of what is solid under a point (the place's frame), from <paramref name="above"/> over it to <paramref name="below"/> under it; null with nothing (or nothing built to tell).</summary>
@@ -150,7 +170,8 @@ public sealed partial class Town
                 if (p.CheckFor < Pressing) _looks++;
                 _looks++;
                 if (_staleFor <= 0f) p.CheckFor -= dt; // (its time runs once the colliders have caught up)
-                if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
+                if (AsBuilt(p)) { p.CheckFor = 0f; return false; } // (as it was built: stood on, nothing looked under)
+                else if (!Footed(p) && !OnFloor(p)) LoseFooting(p);
                 else
                 {
                     // Sitting on a seat that has gone: down on the floor (their pose eases down), up off it frightened.
@@ -263,7 +284,7 @@ public sealed partial class Town
         if (share > 0f) Struck(p, share * p.Health.Max, GalHack.Arms.DamageClass.Kinetic, byPlayer: false);
         if (p.Dead) return;
         p.CheckFor = 0.3f; // (landed on an edge: off it, or stood on what is there)
-        if (InWaterAt(p.Pos)) { EnterWater(p); return; } // (in water: out of it first, Town.Water)
+        if (BedIn(p.Pos) != null) { EnterWater(p); return; } // (in water: out of it first, Town.Water)
         // A step down (off a kerb, a pad's edge): on as they were, unshaken; out on a run their way goes on by itself.
         if (p.FirmAt.Y - p.Pos.Y < StepDown) return;
         // Startled by it (their body says so), on at once.
@@ -300,8 +321,14 @@ public sealed partial class Town
     void OnLand(Person p, Vector3 was, float dt)
     {
         p.Clambering = false;
-        // (Walked into water deeper than they wade: out of it to the nearest bank, Town.Water; their way, planned round water, goes on after.)
-        if (Surface(p.Pos) is float top && top - Bottom(p.Pos) > Wade(p)) { EnterWater(p); return; }
+        // (Walked into water deeper than they wade: out of it to the nearest bank, Town.Water; their way, planned round water, goes on after.
+        // Shallower, they wade across on their way, feet on its bed and slowed: Walk.)
+        if (BedIn(p.Pos) is float bed)
+        {
+            if (Surface(p.Pos) - bed > Wade(p)) EnterWater(p);
+            else p.Pos.Y = bed;
+            return;
+        }
         GalHack.Terrain.PlanetTerrain t = _places.Zone.Planet.Terrain;
         Vector3 w = World(p.Pos);
         var chunk = TerrainDigging.Terrain.ChunkStore.ChunkOf(t.Canonical(new TerrainDigging.Terrain.Int3((int)MathF.Floor(w.X), (int)MathF.Floor(w.Y), (int)MathF.Floor(w.Z))));
