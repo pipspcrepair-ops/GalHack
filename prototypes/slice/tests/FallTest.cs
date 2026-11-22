@@ -299,6 +299,7 @@ public partial class FallTest : Node
     IEnumerable<int> Watch(Town town, Town.Person who, string what, bool shots, string kind = null)
     {
         float y0 = who.Pos.Y, health = who.Health.Current, last = y0, from = y0;
+        Vector3 overHole = who.Pos + new Vector3(1.1f, 1.7f, 1.1f); // (the eye for the shots: in the room they fell from, by the hole)
         _solidSeen = 0;
         // (Standing against a wall where they stood (as the walking grid lets them), the first of the fall goes down it: not counted.)
         bool touching = InSolid(town.World(who.Pos), 0.2f);
@@ -315,7 +316,7 @@ public partial class FallTest : Node
             // (Off their feet: the moment their fall has them; on a build without falls, the moment they first go down.)
             if (start < 0 && (Get(who, "Airborne") is bool air ? air : y < y0 - 1e-3f)) (start, from) = (Frame(f0), last);
             if (start >= 0 && (Get(who, "Airborne") is bool still ? !still : y >= last - 1e-4f)) { end = Frame(f0); break; }
-            if (start >= 0 && _shots != null && !_shot && y0 - y > 1.5f) { foreach (int x in Snap(town, who, "falling.png")) yield return x; (_shot, shot) = (true, true); }
+            if (start >= 0 && _shots != null && !_shot && y0 - y > 1.5f) { foreach (int x in Snap(town, who, "falling.png", 0, overHole)) yield return x; (_shot, shot) = (true, true); }
             if (start >= 0 && !(touching && y0 - who.Pos.Y < 0.5f) && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
             last = y;
         }
@@ -343,7 +344,7 @@ public partial class FallTest : Node
         Check(inSolid == 0 && !InSolid(town.World(who.Pos), 0.2f), $"{what}: never in anything solid on the way or landed ({inSolid} ticks)");
         Check(OnSomething(town.World(who.Pos), 0.25f) || town.World(who.Pos).Y - (_game.Zone.Planet.WaterSurfaceAt(town.World(who.Pos)) ?? -1e9f) < 0f, $"{what}: landed on something ({town.World(who.Pos)})");
         Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
-        if (shot) foreach (int x in Snap(town, who, "landed.png", 40)) yield return x;
+        if (shot) foreach (int x in Snap(town, who, "landed.png", 40, overHole)) yield return x;
         if (!who.Dead) foreach (int x in Acting(town, who, what)) yield return x;
     }
 
@@ -367,12 +368,13 @@ public partial class FallTest : Node
     }
 
     /// <summary>A shot of one of them from the side (windowed only).</summary>
-    IEnumerable<int> Snap(Town town, Town.Person who, string name, int wait = 0)
+    IEnumerable<int> Snap(Town town, Town.Person who, string name, int wait = 0, Vector3? over = null)
     {
         for (int i = 0; i < wait; i++) yield return 0;
-        // (From where the sleeper stands watching, a little nearer and higher: over the hole, looking down into it.)
+        // (From where the sleeper stands watching, a little nearer and higher; or from over the hole (the place's frame), looking down
+        // into it past its rim.)
         Vector3 at = town.World(who.Pos + Vector3.Up * 0.8f), eye = _game.Survivor.WorldFeet + Vector3.Up * 2.2f;
-        eye += (new Vector3(at.X, eye.Y, at.Z) - eye).LimitLength(2f);
+        eye = over is { } o ? town.World(o) : eye + (new Vector3(at.X, eye.Y, at.Z) - eye).LimitLength(2f);
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at - eye, Vector3.Up), eye);
         _game.Visor.Visible = false;
         yield return 0;
