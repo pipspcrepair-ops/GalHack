@@ -75,9 +75,9 @@ public sealed partial class HumanRig : Rig
     readonly int[] _armU = new int[2], _armL = new int[2], _legU = new int[2], _legL = new int[2], _foot = new int[2];
     readonly Vector3[] _feet = new Vector3[2], _drawn = new Vector3[2];
     readonly bool[] _planted = { true, true }, _swung = new bool[2], _kept = new bool[2];
-    /// <summary>Travelling: where each foot is over the ground (flat), how far from the gait's place for it while lifted (or settling), and how far through a step taken standing to settle it (0: none).</summary>
+    /// <summary>Travelling: where each foot is over the ground (flat), how far from the gait's place for it while lifted (or settling), how far through a step taken standing to settle it (0: none), and which way the body faced as it was set down.</summary>
     readonly Vector3[] _ground = { new(float.NaN, 0f, 0f), new(float.NaN, 0f, 0f) }, _lifted = new Vector3[2];
-    readonly float[] _settle = new float[2];
+    readonly float[] _settle = new float[2], _downYaw = new float[2];
     /// <summary>How far the body is walking (0 standing, 1) and running, eased: a stop or a sprint never changes the stride's shape in a frame.</summary>
     float _moving, _run;
     /// <summary>How far aslant of the way the body faces its stride runs, radians, eased.</summary>
@@ -332,8 +332,9 @@ public sealed partial class HumanRig : Rig
 
     /// <summary>
     /// Where the feet are this pose (<see cref="_feet"/>): a foot on the ground moves back under the body at walking speed, one in
-    /// the air comes through high, the way the stride runs (<paramref name="along"/>); going over the ground, one down keeps to it (<see cref="Keep"/>) no further from its hip
-    /// (<paramref name="hip"/>, flat) than <paramref name="most"/>. How far the furthest is from its hip, flat (the hips come down to it).
+    /// the air comes through high, the way the stride runs (<paramref name="along"/>); going over the ground, one down keeps to it
+    /// (<see cref="Keep"/>) no further from its hip (<paramref name="hip"/>, flat) than <paramref name="most"/>. How far the
+    /// furthest is from its hip, flat (the hips come down to it).
     /// </summary>
     float PlaceFeet(in Gesture g, Vector3 hip, Vector3 recoil, Vector3 fwd, Vector3 along, Vector3 right, float phase, float duty, float half, float moving, float run,
         float stalk, float staggerSide, float keyed, Vector3 hitFlat, float stagger, bool husk, float most)
@@ -358,7 +359,7 @@ public sealed partial class HumanRig : Rig
             }
             bool grounded = stance || moving <= 0f;
             Vector3 hipAt = hip + right * side * f.HipW * 0.55f;
-            foot += Keep(i, at, hipAt, most, g.Travels && g.Sit <= 0f && g.Down <= 0f, ref grounded, out float rise);
+            foot += Keep(i, at, hipAt, most, g.Yaw, fwd, g.Travels && g.Sit <= 0f && g.Down <= 0f, ref grounded, out float rise);
             apart = MathF.Max(apart, WildSim.Flat(foot - hipAt).Length());
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
             // The heel comes up as a foot trails behind; the swing clears the ground.
@@ -375,18 +376,22 @@ public sealed partial class HumanRig : Rig
         return MathF.Min(apart, 0.9f * (f.UpperLeg + f.LowerLeg)); // (never down onto the ground)
     }
 
-    /// <summary>How long a step taken standing lasts, and how quickly a lifted foot's stray from the gait's place for it fades, s; how far a foot strays from that place before a step taken standing (a share of the leg).</summary>
-    const float SettleTime = 0.3f, Fade = 0.07f, SettleAt = 0.25f;
+    /// <summary>
+    /// How long a step taken standing lasts, and how quickly a lifted foot's stray from the gait's place for it fades, s; how far
+    /// a foot strays from that place before a step taken standing, to the side and fore and aft (shares of the leg: stopped
+    /// mid-stride it stays), and how far the body turns over it first, radians.
+    /// </summary>
+    const float SettleTime = 0.3f, Fade = 0.07f, SettleAside = 0.15f, SettleAhead = 0.4f, SettleTurn = 0.5f;
 
     /// <summary>
     /// Travelling (<paramref name="on"/>), a foot down stays where it was set down while the body goes on over it, is pushed or
     /// turns: the gait's place for it (<paramref name="at"/>) is only where it lands. A foot lifted (or no longer kept: sat,
     /// lain down) eases from where it was to the gait's place in its swing; one strayed from it while the body stands (turned,
     /// nudged, stopped mid-stride) settles there in a quick step of its own (<paramref name="down"/> false and
-    /// <paramref name="rise"/> its lift meanwhile); one left further than <paramref name="most"/> from its hip (<paramref name="hip"/>) steps so too
-    /// (dragged after it if it can't). What to add to the gait's place for the foot, flat.
+    /// <paramref name="rise"/> its lift meanwhile); so does one left further than <paramref name="most"/> from its hip
+    /// (<paramref name="hip"/>), dragged after it if it can't. What to add to the gait's place for the foot, flat.
     /// </summary>
-    Vector3 Keep(int i, Vector3 at, Vector3 hip, float most, bool on, ref bool down, out float rise)
+    Vector3 Keep(int i, Vector3 at, Vector3 hip, float most, float yaw, Vector3 fwd, bool on, ref bool down, out float rise)
     {
         rise = 0f;
         at.Y = 0f;
@@ -395,11 +400,13 @@ public sealed partial class HumanRig : Rig
         if (!(off.LengthSquared() <= 2.25f * leg * leg))
         {
             // (First posed, or set down somewhere else: stood there.)
-            (_ground[i], _lifted[i], _settle[i], _kept[i]) = (at, Vector3.Zero, 0f, on && down);
+            (_ground[i], _lifted[i], _settle[i], _kept[i], _downYaw[i]) = (at, Vector3.Zero, 0f, on && down, yaw);
             return Vector3.Zero;
         }
         // (Standing and strayed, or barely going and left further from the hip than a leg gives: walking on, its stride takes it up.)
-        bool strayed = _moving <= 0f && off.LengthSquared() > SettleAt * SettleAt * leg * leg, behind = _moving < 0.5f && WildSim.Flat(_ground[i] - hip).LengthSquared() > most * most;
+        float ahead = off.Dot(fwd);
+        bool strayed = _moving <= 0f && (MathF.Abs(ahead) > SettleAhead * leg || (off - fwd * ahead).Length() > SettleAside * leg || MathF.Abs(Geo.WrapAngle(yaw - _downYaw[i])) > SettleTurn);
+        bool behind = _moving < 0.5f && WildSim.Flat(_ground[i] - hip).LengthSquared() > most * most;
         if (on && _settle[i] <= 0f && down && _kept[i] && _settle[1 - i] <= 0f && (strayed || behind))
             (_settle[i], _lifted[i]) = (1e-4f, off);
         if (on && _settle[i] > 0f)
@@ -408,12 +415,12 @@ public sealed partial class HumanRig : Rig
             _ground[i] = at + _lifted[i] * (1f - s * s * (3f - 2f * s));
             rise = MathF.Sin(s * MathF.PI) * 0.07f * leg;
             down = s >= 1f;
-            if (down) (_settle[i], _lifted[i], Steps) = (0f, Vector3.Zero, Steps + 1);
+            if (down) (_settle[i], _lifted[i], _downYaw[i], Steps) = (0f, Vector3.Zero, yaw, Steps + 1);
         }
         else if (on && down)
         {
             // (Set down where it came to; further from the hip than a leg gives, it is dragged: never left behind.)
-            _kept[i] = true;
+            if (!_kept[i]) (_kept[i], _downYaw[i]) = (true, yaw);
             Vector3 from = WildSim.Flat(_ground[i] - hip);
             if (from.LengthSquared() > most * most) _ground[i] = WildSim.Flat(hip) + from.Normalized() * most;
         }

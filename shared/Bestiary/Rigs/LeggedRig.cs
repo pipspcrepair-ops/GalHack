@@ -264,8 +264,8 @@ public sealed class LeggedRig : Rig
 
             if (li == stompLeg)
             {
-                // Lifted in the tell, then brought down hard on whoever is there.
-                leg.Stepping = false;
+                // Lifted in the tell, then brought down hard on whoever is there. (Caught in a step, lifted from where it is.)
+                if (leg.Stepping) (leg.Foot, leg.Stepping) = (leg.Drawn, false);
                 Vector3 stompFoot;
                 if (c.Phase == AttackPhase.Windup)
                 {
