@@ -409,17 +409,17 @@ public partial class FallTest : Node
         return hit.Count > 0 ? ((Vector3)hit["position"]).Y : GroundNow(w.X, w.Z);
     }
 
-    /// <summary>Water near the settlement (world): deep enough to swim in (over two metres) or shallow enough to wade (a hand to half a metre); null if none within 250 m.</summary>
+    /// <summary>Water near the settlement (world): deep enough to swim in (over two metres) or shallow enough to wade (a hand to 0.6 m); null if none within 400 m.</summary>
     (Vector3 At, float Top, float Floor)? WaterNear(Town town, bool deep)
     {
         Vector3 o = town.World(Vector3.Zero);
-        for (float r = 20f; r <= 250f; r += 6f)
+        for (float r = 20f; r <= 400f; r += 4f)
             for (int k = 0; k < 36; k++)
             {
                 Vector3 at = o + new Vector3(MathF.Sin(k * MathF.Tau / 36f), 0f, MathF.Cos(k * MathF.Tau / 36f)) * r;
                 if (_game.Zone.Planet.WaterSurfaceAt(at) is not float top) continue;
                 float floor = GroundNow(at.X, at.Z), depth = top - floor;
-                if (deep ? depth > 2.2f : depth is > 0.2f and < 0.5f) return (at, top, floor);
+                if (deep ? depth > 2.2f : depth is > 0.2f and < 0.6f) return (at, top, floor);
             }
         return null;
     }
@@ -431,7 +431,7 @@ public partial class FallTest : Node
     IEnumerable<int> Water(Town town, HashSet<Town.Person> used, bool deep)
     {
         string what = deep ? "into deep water" : "into shallow water";
-        if (WaterNear(town, deep) is not var (at, top, floor)) { GD.Print($"  (no {(deep ? "deep" : "shallow")} water within 250 m of the settlement: not tried here)"); yield break; }
+        if (WaterNear(town, deep) is not var (at, top, floor)) { GD.Print($"  (no {(deep ? "deep" : "shallow")} water within 400 m of the settlement: not tried here)"); yield break; }
         Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep).FirstOrDefault();
         if (who == null) { Check(false, $"someone to drop {what}"); yield break; }
         used.Add(who);
@@ -475,7 +475,7 @@ public partial class FallTest : Node
     /// <summary>One of the land's creatures that swims, dropped into deep water: it swims for a bank and walks out, never with a leap.</summary>
     IEnumerable<int> WaterCreature(Town town)
     {
-        if (WaterNear(town, deep: true) is not var (at, top, floor)) { GD.Print("  (no deep water within 250 m: no creature dropped in)"); yield break; }
+        if (WaterNear(town, deep: true) is not var (at, top, floor)) { GD.Print("  (no deep water within 400 m: no creature dropped in)"); yield break; }
         _game.Survivor.PlaceOutside(((at + Vector3.Back * 8f) with { Y = MathF.Max(top, _game.Zone.Planet.GroundHeight(at.X, at.Z + 8f)) + 1f }).ToNumerics());
         for (int i = 0; i < 240; i++) { TopUp(); yield return 0; }
         WildlifePatch patch = _game.Zone.Wildlife;
@@ -626,7 +626,9 @@ public partial class FallTest : Node
         // (A fall in a place's rooms is stepped in short pieces with the speed at each: within a tick and a half.)
         Check(end >= 0 && MathF.Abs(took - free) <= Tick * (who.Space == null ? 1f : 1.5f) + 1e-3f, $"{what}: down in the time a free fall from {h:F2} m takes ({took:F3} s against {free:F3} s)");
         // (On the land a creature stands on the ground as dug, by the metre.)
-        Check(float.IsNaN(ground) || MathF.Abs(w.Y - ground) < 0.35f, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2})");
+        // (A body wider than the hole stands on its rim, on three of its feet: Locomotion.Footing.)
+        float feet = who.Space == null ? patch.FromPatch(who.Position with { Y = Locomotion.Footing(patch.Sim, who, who.Position.X, who.Position.Z) }).Y : float.NaN;
+        Check(float.IsNaN(ground) || MathF.Abs(w.Y - ground) < 0.35f || MathF.Abs(w.Y - feet) < 0.35f && feet >= ground, $"{what}: on the ground as it is now, never in it ({w.Y:F2} against {ground:F2}, its feet' footing {feet:F2})");
         Check(MathF.Abs(lost - expect) <= MathF.Max(1f, expect * 0.08f), $"{what}: hurt by the sleeper's fall rule ({lost:F1} lost, {expect:F1} by the rule)");
         Vector3 at = who.Position;
         float moved = 0f;

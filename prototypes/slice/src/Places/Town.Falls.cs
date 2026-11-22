@@ -224,7 +224,7 @@ public sealed partial class Town
         p.FallSpeed = speed;
         if (down)
         {
-            OffSides(p, 6); // (down beside a step or a wall's foot: stood clear of it)
+            OffSides(p, 3); // (down beside a step or a wall's foot: stood clear of it)
             Land(p, speed, wet);
         }
     }
@@ -233,13 +233,13 @@ public sealed partial class Town
     PhysicsShapeQueryParameters3D _bodyQuery;
 
     /// <summary>Falling past something beside them (a wall's top, a beam, the edge of the hole): held off it sideways, never through it.</summary>
-    void OffSides(Person p, int most = 3)
+    void OffSides(Person p, int most = 2)
     {
         float r = BodyRadius(p), h = MathF.Max(2f * r, Height(p) - 0.25f);
         (_body.Radius, _body.Height) = (r, h);
         _bodyQuery ??= new PhysicsShapeQueryParameters3D { Shape = _body, CollisionMask = Layers.World | Layers.Hull | Layers.Interior };
         var space = _view.GetWorld3D().DirectSpaceState;
-        for (int k = 0; k < most; k++) // (0.15 m a step at most falling, a run's: eased off it, never thrown)
+        for (int k = 0; k < most; k++) // (0.1 m a step at most falling: eased off it, never thrown)
         {
             _bodyQuery.Transform = new Transform3D(Basis.Identity, World(p.Pos + Vector3.Up * (0.25f + h * 0.5f)));
             var rest = space.GetRestInfo(_bodyQuery);

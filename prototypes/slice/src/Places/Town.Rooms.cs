@@ -168,7 +168,7 @@ public sealed partial class Town
     {
         pending = false;
         // Getting up out of a seat: out the way they came in, by its own spot.
-        PInt3? here = InSeat(p, p.Spot) ? Spots[p.Spot].Cell : InSeat(p, p.Seat) ? Spots[p.Seat].Cell : StandIn(Cell(p.Pos)) ?? Stand(Cell(p.Pos));
+        PInt3? here = InSeat(p, p.Spot) ? Spots[p.Spot].Cell : InSeat(p, p.Seat) ? Spots[p.Seat].Cell : Stand(Cell(p.Pos));
         if (here is not { } h || !_nav.Standable(Spots[spot].Cell)) return null;
         pending = !Searched(h, spot, out List<Vector3> path);
         return path;
