@@ -529,8 +529,13 @@ public sealed class WildSim
             float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
+            // Never put down in or crowding one already put down (asleep till you come near, it would never be parted): on round till clear.
+            Species kind = i < young ? species.Young : species;
+            float gap = herd != null ? Brain.GrazeKeep(kind.Stats.Radius) : 0.1f;
+            for (int k = 0; k < 8 && list.Exists(o => Flat(o.Position - p).Length() < o.Radius + kind.Stats.Radius + gap); k++)
+                p = FreeSpot(p + new Vector3(MathF.Cos(a + k * 0.8f), 0f, MathF.Sin(a + k * 0.8f)) * (kind.Stats.Radius * 2f + gap), rng);
             if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species)) continue;
-            list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
+            list.Add(Spawn(kind, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
         if (herd?.Party != null && list.Count > 0) Kennel(herd, center, rng, allow);

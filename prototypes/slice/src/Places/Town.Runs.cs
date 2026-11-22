@@ -461,12 +461,14 @@ public sealed partial class Town
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
         Vector3 heading = next, was = p.Pos;
+        bool offLine = false;
         while (step > 0f && r.Leg < way.Count)
         {
             // Off the way's line (beside another walking it: Town.Space), on along it as far off it as they are, not back into
             // its line and them; a point of it within reach is passed, not walked onto.
             bool end = r.Leg >= way.Count - 1;
-            Vector3 to = end || r.Leg == 0 ? way[r.Leg] : way[r.Leg] + Beside(p.Pos, way[r.Leg - 1], way[r.Leg]), d = to - p.Pos;
+            Vector3 side = end || r.Leg == 0 ? Vector3.Zero : Beside(p.Pos, way[r.Leg - 1], way[r.Leg]), to = way[r.Leg] + side, d = to - p.Pos;
+            offLine |= side.LengthSquared() > 0.0025f;
             float f = Flat(d);
             if (!end && f < LandReach) { r.Leg++; continue; }
             if (f <= step) { p.Pos = to; step -= f; r.Leg++; continue; }
@@ -475,9 +477,8 @@ public sealed partial class Town
             heading = d;
             step = 0f;
         }
-        // (Off the way's line beside another, on the ground where they are, not the line's height.)
-        // (Up it as a walk climbs, never a hop: off a bank out of the water, say.)
-        if (!OnGrid(p.Pos) && _places?.Zone.Planet is PlanetWorld planet) p.Pos.Y = Mathf.MoveToward(p.Pos.Y, Height(planet, World(p.Pos)) - _origin.Y, Flat(p.Pos - was) + Clamber * dt);
+        // (Off the way's line beside another, near enough to be seen: on the ground where they are, not the line's height, up it as a walk climbs.)
+        if (offLine && !p.Far && !OnGrid(p.Pos) && _places?.Zone.Planet is PlanetWorld planet) p.Pos.Y = Mathf.MoveToward(p.Pos.Y, Height(planet, World(p.Pos)) - _origin.Y, Flat(p.Pos - was) + Clamber * dt);
         OnLand(p, was, dt);
         Turn(p, heading, dt);
         p.Sitting = false;
