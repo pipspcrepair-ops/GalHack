@@ -79,6 +79,36 @@ public sealed class WildSim
         Rescues++;
         Rescued?.Invoke(c);
     }
+
+    /// <summary>The world's pull on whatever falls here, m/s² (the game sets its planet's).</summary>
+    public float Gravity = 9.8f;
+    /// <summary>The water's surface over a point (sim frame; null on dry ground, and with no water known), and the shares of a body's height under it at which it swims, and below which it wades again (the game sets its own).</summary>
+    public Func<float, float, float?> WaterAt;
+    public float SwimShare = 0.7f, WadeShare = 0.55f;
+    /// <summary>What a landing at a speed (m/s) costs, as a share of the body's health (the game's own fall rule; none without one).</summary>
+    public Func<float, float> FallHurt;
+    /// <summary>A creature came down from a fall at a speed (m/s).</summary>
+    public event Action<Creature, float> Fell;
+
+    /// <summary>Landing slower than this is a step down (about half a metre), m/s: on as it was, unshaken.</summary>
+    const float StepSpeed = 3f;
+
+    /// <summary>
+    /// Down on its feet from a fall (on the land, or in a cave or a place): hurt by the fall rule and frightened by it (it runs a
+    /// moment the way it faced), its way looked for again from where it landed.
+    /// </summary>
+    internal void Landed(Creature c, float speed)
+    {
+        if (!c.Dead && FallHurt?.Invoke(speed) is float share and > 0f) Damage(c, share * c.Stats.MaxHealth, null);
+        Fell?.Invoke(c, speed);
+        if (speed < StepSpeed) return; // (a step down: on as it was)
+        c.Path.Clear();
+        c.Repath = true;
+        c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + Brain.FellFright);
+        (c.FellAt, c.Think, c.ThinkEvery) = (Time, 0f, 0f);
+        c.ScaredFrom = c.Position - c.Forward * 3f;
+    }
+
     /// <summary>An ambush or a hunt gives itself away: a rattle, dust, scratching, breathing.</summary>
     public event Action<TellEvent> Told;
     /// <summary>A predator brought down another creature.</summary>
@@ -440,6 +470,7 @@ public sealed class WildSim
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Nerve = species.Mechanical ? 1f : Rng.For(species.Seed, "nerve", c.Id).Float(); // its own stream: nothing else it rolls changes
         c.Position = c.GoodAt = c.Behind = c.ProgressAt = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
+        if (WaterAt?.Invoke(position.X, position.Z) is float top && top > c.Position.Y) c.ShorewardReach = Shore.Reach * 0.5f; // (put down in water: awake till it is out, its first look for a bank at the usual reach)
         c.SwarmAlive = species.Body.Members;
         c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)

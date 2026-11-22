@@ -104,6 +104,14 @@ public sealed class Survivor
     /// </summary>
     public float ImpactSpeed => Body.OnFloor || Seated != null || -N.Vector3.Dot(Body.Velocity, Body.Up) < 0.5f ? 0f : Body.Velocity.Length();
 
+    /// <summary>
+    /// The sleeper's fall: what landing at a speed (m/s) costs, as a share of their health (the physics module's one formula with a
+    /// sleeper's own safe speed, over a sleeper's toughness, as <see cref="Suit.Take"/> has it; the mass falls out). Nothing to about
+    /// a 12 m drop, a 30 m one about a tenth, 90 m kills. Everyone else who falls lands by it too.
+    /// </summary>
+    public static float FallShare(PhysicsRules rules, float speed) =>
+        Impacts.Damage(Mass, speed, rules.Contacts, BodyKind.Player) / Impacts.Integrity(BodyKind.Player, Mass, rules.Integrity);
+
     /// <summary>Times the survivor walked off a structure straight onto the ground (tests).</summary>
     public int StepsOff { get; private set; }
 

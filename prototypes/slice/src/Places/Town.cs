@@ -561,6 +561,9 @@ public sealed partial class Town : IKeeper
         _searchAside = true; // from here on the main thread asks: new routes come from a worker
         Vector3 player = _you = Local(_places.Zone.Wildlife.PlayerWorld());
         _tick++;
+        _looks = 0;
+        _staleFor = _place is { Stale: > 0 } ? _staleFor + tickDt : 0f;
+        if (_tick % 4 == 0) Sweep(player);
         bool night = Night();
         float time = (float)_places.Zone.Sky.TimeOfDay;
         // Where you are looking, in the place's frame: what you point at, people see.
@@ -662,6 +665,13 @@ public sealed partial class Town : IKeeper
         p.Saved += tickDt;
         float away = (player - p.Pos).Length();
         p.Far = away > FarSchedule;
+        // Nothing under them: falling, whatever they were at, every step till down (Town.Falls).
+        if ((p.Airborne || p.CheckFor > 0f) && Falling(p, p.Saved) || p.ClimbTo != null && Climb(p, p.Saved) || (p.Swimming || p.Wading) && Water(p, p.Saved))
+        {
+            Pose(p, who, away, p.Saved);
+            p.Saved = 0f;
+            return;
+        }
         if (!Due(who, away)) return;
         float dt = p.Saved;
         p.Saved = 0f;
@@ -707,6 +717,8 @@ public sealed partial class Town : IKeeper
             p.Fleeing = mood == Mood.Hostile || scared;
             if (p.Refuge < 0) p.Refuge = p.Fleeing ? Refuge(p, _clock - p.FleeAt < 2f ? p.FleeFrom : player) : NightSpot(p);
             if (p.Spot != p.Refuge || p.Path == null) GoTo(p, p.Refuge);
+            // No way there from here (the floor gone between, say): another of the homes.
+            if (p.Asked < 0 && p.Path is { Count: 0 } && (p.Pos - At(p.Refuge)).Length() > 1.5f && _homes.Length > 1) p.Refuge = _homes[_rng.Next(_homes.Length)];
             p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
             Arrive(p, dt, offDuty && !p.Fleeing);
             Pose(p, who, away, dt);
@@ -812,6 +824,7 @@ public sealed partial class Town : IKeeper
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
         if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
+        else if (_clock - p.NoFloorAt > 1f && !Floored(p.Pos)) (p.CheckFor, p.NoFloorAt) = (MathF.Max(p.CheckFor, 0.05f), _clock); // (no floor under them by the blocks: looked under, Town.Falls)
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was, dt);
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
@@ -855,6 +868,9 @@ public sealed partial class Town : IKeeper
         if (p.Seat < 0 && InSeat(p, p.Spot)) p.Seat = p.Spot;
         if (path == null)
         {
+            // Landed somewhere their routes don't know (a fall): on by a way from where they stand, out by climbing, or home over the
+            // land off the place's grid (Town.Falls).
+            if (p.Falls > 0 && OnAfterFall(p)) return;
             // No way there from here: they stay where they are a while rather than walk through anything.
             p.Path = new List<Vector3>();
             p.Step = 0;
@@ -1547,7 +1563,7 @@ public sealed partial class Town : IKeeper
         {
             Feet = p.Pos,
             Yaw = p.Yaw,
-            Speed = p.Now,
+            Speed = p.Swimming ? MathF.Max(p.Now, 1.1f) : p.Now, // (swimming, the sleeper's stroke: never still)
             Walked = p.Gait,
             Sit = p.Seated,
             Work = p.Bent,
@@ -1565,6 +1581,7 @@ public sealed partial class Town : IKeeper
             Style = _style ??= Gestures.FriendlyStyle(_places.Zone.Wildlife.Life.World.Seed),
             Far = p.PoseAway >= 30f && !p.Engaged,
         });
+        if (p.Swimming) LayOut(p);
         p.LookFor = MathF.Max(0f, p.LookFor - dt);
         p.View.Sync(p.Pos, p.Yaw, p.Now, PoseKey(p));
         PoseWeapon(p);

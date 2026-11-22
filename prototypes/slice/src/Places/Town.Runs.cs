@@ -456,12 +456,12 @@ public sealed partial class Town
         if (r.Leg >= way.Count) { p.Now = 0f; return true; }
         Vector3 next = way[r.Leg] - p.Pos;
         bool last = r.Leg >= way.Count - 1;
-        float flat = Flat(next), pace = p.Speed * p.Feel.Pace;
+        float flat = Flat(next), pace = p.Speed * p.Feel.Pace * (BedIn(p.Pos) != null ? 0.5f : 1f); // (wading the shallows, slowed: OnLand)
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
         p.Gait += step;
-        Vector3 heading = next;
+        Vector3 heading = next, was = p.Pos;
         while (step > 0f && r.Leg < way.Count)
         {
             Vector3 to = way[r.Leg], d = to - p.Pos;
@@ -472,6 +472,7 @@ public sealed partial class Town
             heading = d;
             step = 0f;
         }
+        OnLand(p, was, dt);
         if (Flat(heading) > 0.01f) p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-heading.X, -heading.Z), 5f * dt);
         p.Sitting = false;
         return r.Leg >= way.Count;

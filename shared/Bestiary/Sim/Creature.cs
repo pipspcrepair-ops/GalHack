@@ -302,6 +302,13 @@ public sealed class Creature
     public bool Falling;
     /// <summary>Coming down from a drop: it goes all the way to the floor, and catches no wall on the way.</summary>
     public bool Dropping;
+    /// <summary>Falling because what it stood on went (not a leap or a drop of its own): the landing hurts and frightens it.</summary>
+    public bool Unfloored;
+    /// <summary>In water over its depth: the bank it makes for (sim frame; null: none found yet), when it last looked for one, and how far (each look further than the last).</summary>
+    public Vector3? Shoreward;
+    public float ShorewardAt = -999f, ShorewardReach;
+    /// <summary>When it last came down from such a fall (sim time).</summary>
+    public float FellAt = -999f;
     /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
     public Vector3 LastFirm;
     public Vector3 LastFirmNormal = Vector3.Up;

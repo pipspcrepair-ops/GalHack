@@ -255,14 +255,14 @@ public sealed partial class Town
             float t = ab.LengthSquared() > 1e-4f ? Math.Clamp((danger - a).Dot(ab) / ab.LengthSquared(), 0f, 1f) : 0f;
             return (At(h) - danger).Length() > mine && (a + ab * t - danger).Length() > 3f;
         }
-        if (_homes.Length == 0 || Wide(p.Home)) return p.Home;
+        if (_homes.Length == 0 || Wide(p.Home) && Whole(p.Home)) return p.Home;
         int best = p.Home;
         float most = float.MinValue;
         foreach (int h in _homes)
         {
             // (One others already make for counts for less: a crowd at the one spot wedges them all in a narrow way.)
             float score = (At(h) - danger).Length() - 0.3f * (At(h) - p.Pos).Length() - 4f * Making(p, h);
-            if (score > most && Wide(h)) { most = score; best = h; }
+            if (score > most && Wide(h) && Whole(h)) { most = score; best = h; }
         }
         return best;
     }
