@@ -326,16 +326,22 @@ public partial class Spaceflight
     /// Showing or hiding a node visits everything under it, and the land is thousands of nodes: all
     /// at once it cost 80 ms of the crossing's frame. It goes a little a frame, the sheet in front of
     /// it the while, so what's left of the land for those few frames can't be seen. A zone's parking and waking
-    /// (<see cref="Park"/>) go the same way, first.
+    /// (<see cref="Park"/>) go the same way, alongside.
     /// </summary>
     void TurnGround()
     {
-        if (_groundTurns.Count == 0 && _modeTurns.Count == 0) return;
+        Turn(_modeTurns);
+        Turn(_groundTurns);
+    }
+
+    /// <summary>A queue's turns, as many as fit in <see cref="GroundTurnMs"/> (one at the least): the land's showing and the zones' parking each get their share of a frame.</summary>
+    static void Turn(Queue<Action> turns)
+    {
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (_modeTurns.TryDequeue(out Action turn) || _groundTurns.TryDequeue(out turn))
+        while (turns.TryDequeue(out Action turn))
         {
             turn();
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) break;
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) return;
         }
     }
 
