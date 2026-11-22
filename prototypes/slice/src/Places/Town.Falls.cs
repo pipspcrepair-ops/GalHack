@@ -241,7 +241,7 @@ public sealed partial class Town
         p.FallSpeed = speed;
         // Clear of what they now pass (a ledge, an eave): a long fall held off it before it is into them; a step down or a landing
         // eased off it (0.1 m a tick at most with the first).
-        OffSides(p, speed > 3f && !down ? 4 : 1);
+        OffSides(p, down ? 1 : speed > 6f ? 4 : speed > 3f ? 2 : 1);
         if (!down) return;
         Land(p, speed, wet);
     }
