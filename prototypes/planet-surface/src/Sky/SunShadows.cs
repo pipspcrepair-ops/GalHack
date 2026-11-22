@@ -16,11 +16,18 @@ public static class SunShadows
     /// <summary>A level as the engine's numbers.</summary>
     /// <param name="Reach">How far from the eye the sun's shadows are drawn, m.</param>
     /// <param name="SunAtlas">The sun's shadow map, pixels a side; <paramref name="LampAtlas"/> the torch's and lamps'.</param>
+    /// <param name="Filter">How many samples soften an edge: the stairs of a shadow-map texel, long at a low sun, blend into a ramp
+    /// that slides as the sun turns, where a few samples left them stepped and flipping whole pixels a frame (PopRoute edges: on a
+    /// dune world, edge pixels changing a frame as the sun moves 2.6% at SoftLow, 0.3% at SoftHigh with <see cref="Blur"/>).</param>
     public readonly record struct Setup(float Reach, DirectionalLight3D.ShadowMode Splits, int SunAtlas, int LampAtlas, RenderingServer.ShadowQuality Filter);
 
     /// <summary>The shadow distance a level reaches by itself, m; past it the far land's own shade (FarShade) takes over.</summary>
     public const float DefaultReach = 320f, MostReach = 1500f;
 
+    /// <summary>
+    /// High reaches 320 m, and the far land's own shade takes over past it. (High at 1500 m spread one map over five times the
+    /// ground: past 400 m a texel was 2 m, so every far tree's shadow crawled at a low sun and sharpened in steps as you came in.)
+    /// </summary>
     public static Setup For(ShadowLevel level) => level switch
     {
         ShadowLevel.Low => new(120f, DirectionalLight3D.ShadowMode.Parallel2Splits, 2048, 1024, RenderingServer.ShadowQuality.SoftVeryLow),
@@ -32,8 +39,8 @@ public static class SunShadows
     /// <summary>The sun's shadow normal bias (the engine's is 2, in texels: at a low sun it hid small shadows and set the rest off their bases) and the first split's distance, m.</summary>
     const float NormalBias = 0.6f, FirstSplit = 30f;
 
-    /// <summary>How far the sun moves before its light turns after it, radians (0: every frame).</summary>
-    public static float TurnStep = 0f;
+    /// <summary>How wide the filter spreads an edge, in texels (the engine's is 1).</summary>
+    const float Blur = 1.5f;
 
     /// <summary>Where the far land's shade is full, as a share of the reach: the real shadows fade from there (PlanetSurface.Terrain.FarShade.JoinFull).</summary>
     const float FadeStart = 0.85f;
@@ -65,13 +72,15 @@ public static class SunShadows
 
     /// <summary>
     /// One light's shadow: the splits grow by one ratio from the first (so a texel grows with distance, and a plant's shadow
-    /// is as sharp at 300 m as at 80), each hands over to the next across a band, and the last 15% fades as the far shade comes in.
+    /// is as sharp at 300 m as at 80), each hands over to the next across a band, and the last 15% fades as the far shade
+    /// comes in (at every level: Low and Medium kept the engine's splits and fade before, which the far shade did not meet).
     /// </summary>
     static void Shape(DirectionalLight3D light, DirectionalLight3D.ShadowMode splits, float reach)
     {
         light.DirectionalShadowMode = splits;
         light.DirectionalShadowMaxDistance = reach;
         light.ShadowNormalBias = NormalBias;
+        light.ShadowBlur = Blur;
         light.DirectionalShadowBlendSplits = true;
         light.DirectionalShadowFadeStart = FadeStart;
         float ratio = MathF.Pow(reach / FirstSplit, splits == DirectionalLight3D.ShadowMode.Parallel4Splits ? 1f / 3f : 1f);

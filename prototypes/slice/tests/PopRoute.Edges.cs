@@ -10,22 +10,23 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Shadow edges by numbers (the owner, 22 Nov: "pixelation around edges of shadows; flickering around edges of shadows;
-/// flickering of shadows"), at a dusk sun and a day sun, standing on the ground and hovering over the trees:
+/// flickering of shadows"), at a dusk sun (6 degrees: long grazing shadows) and a day sun (25), standing on the ground and hovering 40 m over the trees. Judge it on bare land (--type=dune, or a barren world):
 /// <list type="bullet">
 /// <item>where the edges are: each view drawn with the sun's shadows and the far shade, then without either; a pixel's
 /// shadow is the one over the other, and an edge pixel is one whose shadow changes by 0.12 or more across its 3 x 3
 /// neighbours. Pixels that change by themselves with no shadows at all (grass dither, water, sky) are left out;</item>
 /// <item>steps: the share of edge pixels whose whole change happens between two neighbours (a hard stair, where a
 /// filtered edge ramps over several pixels);</item>
-/// <item>still: everything held, frame after frame: edge pixels changing (more than 8 of 255) a frame;</item>
+/// <item>still: everything held, frame after frame: edge pixels changing (more than 8 of 255) a frame. Each of these measures runs first with no shadows, and a pixel that changes then (grass, water, the ground's own shading as the sun moves, what a move streams in) is left out of it;</item>
 /// <item>sun: the view held while the sun moves on a frame at a time at the game's own pace, 1.5 s: edge pixels
-/// changing a frame, less the same with no shadows, and the shadows' inside pixels likewise (a whole shadow wavering);</item>
+/// changing a frame, and the shadows' inside pixels likewise (a whole shadow wavering);</item>
 /// <item>move: from the view, a step, a walk, a turn, a look down or a climb away and straight back: edge pixels that
-/// differ from before, less the same with no shadows. Nothing in the world moved, so it is the shadow map refitted to
+/// differ from before. Nothing in the world moved, so it is the shadow map refitted to
 /// where the eye has been.</item>
 /// </list>
 /// --variants=a|b|...: the whole measure once for each, each a list of shadow settings over the player's (filter=0-5,
-/// atlas=N, bits=16|32, blur=X, nbias=X, bias=X, pancake=X). Frames go to --out-dir (user://edges).
+/// atlas=N, bits=16|32, blur=X, nbias=X, bias=X, pancake=X); the GPU's time a frame is printed with each. Frames go to --out-dir (user://edges),
+/// with a close-up of the same busiest patch in every variant.
 /// </summary>
 public partial class PopRoute
 {
@@ -81,7 +82,6 @@ public partial class PopRoute
                 case "nbias": sun.ShadowNormalBias = v; break;
                 case "bias": sun.ShadowBias = v; break;
                 case "pancake": sun.DirectionalShadowPancakeSize = v; break;
-                case "step": SunShadows.TurnStep = Mathf.DegToRad(v); break;
             }
         }
     }
@@ -120,7 +120,7 @@ public partial class PopRoute
                 // One frame of a pose, with the shadows or without (the sun's casters off, the far shade out past reach).
                 IEnumerable<int> Shoot(Transform3D at, bool shadows)
                 {
-                    sun.ShadowCasterMask = shadows ? uint.MaxValue : 0u;
+                    sun.ShadowCasterMask = shadows ? Casting : 0u;
                     float reach = zone.Streamer.ShadowReach;
                     if (!shadows) zone.Streamer.ShadowReach = 1e7f;
                     for (int i = 0; i < 3; i++)
@@ -193,14 +193,14 @@ public partial class PopRoute
                     for (int i = 0; i < a.Length; i++) moving[i] |= MathF.Abs(a[i] - c[i]) > EdgeChange;
                 }
                 // Everything still; then the sun moving on a frame at a time, the view still.
-                double still = 0, sunEdge = 0, sunInside = 0;
+                double still = 0, sunEdge = 0, sunInside = 0, gpu = 0;
                 foreach (bool sunMoves in new[] { false, true })
                 {
                     moving = new bool[w * h];
                     for (int pass = 1; pass >= 0; pass--)
                     {
                         float[] last = null;
-                        int n = sunMoves ? 90 : 20;
+                        int n = sunMoves ? 90 : 20, from = _gpu.Count;
                         for (int k = 0; k <= n; k++)
                         {
                             sky.TimeOfDay = t0 + (sunMoves ? k * frame : 0.0);
@@ -217,6 +217,7 @@ public partial class PopRoute
                             }
                             last = shot;
                         }
+                        if (pass == 0 && sunMoves) gpu = _gpu.Skip(from).Average(); // the frame's GPU time with the shadows, ms
                     }
                 }
                 sky.TimeOfDay = t0;
@@ -263,9 +264,13 @@ public partial class PopRoute
                 }
                 string file = $"{dir}/edges-{Tidy(variant)}-{want:F0}-{view}";
                 picture.SavePng(file + ".png");
-                Busiest(picture, edge, w, h).SavePng(file + "-close.png");
+                // The same close-up in every variant: the first one's busiest.
+                if (!_closeUps.TryGetValue((want, view), out Rect2I close)) _closeUps[(want, view)] = close = Busiest(edge, w, h);
+                Image near = picture.GetRegion(close);
+                near.Resize(close.Size.X * 3, close.Size.Y * 3, Image.Interpolation.Nearest);
+                near.SavePng(file + "-close.png");
                 GD.Print(string.Create(CultureInfo.InvariantCulture,
-                    $"ROUTE edges [{variant}] sun {want:F0} deg, {view}: edge pixels {100.0 * edges / (w * h):F2}% of {w}x{h} ({100.0 * noisy.Count(n => n) / noisy.Length:F1}% noisy left out), hard steps {steps:F1}%; " +
+                    $"ROUTE edges [{variant}] sun {want:F0} deg, {view}: edge pixels {100.0 * edges / (w * h):F2}% of {w}x{h} ({100.0 * noisy.Count(n => n) / noisy.Length:F1}% noisy left out), hard steps {steps:F1}%; GPU {gpu:F2} ms a frame; " +
                     $"still {still:F2}% a frame; sun moving {sunEdge:F2}% a frame, insides {sunInside:F2}%; " +
                     $"away and back {moved:F2}% (worst {worst:F2}% after {worstName}); {file}.png"));
             }
@@ -282,6 +287,9 @@ public partial class PopRoute
 
     int _w, _h;
 
+    /// <summary>Every caster but the sleeper held out of view (its own shadow would stray into the frame and move).</summary>
+    const uint Casting = ~((1u << (Slice.Player.CharacterModel.BodyLayer - 1)) | (1u << (Slice.Player.CharacterModel.HeadLayer - 1)));
+
     /// <summary>A frame's brightness a pixel, 0 to 1.</summary>
     static float[] Luma(Image img, out int w, out int h)
     {
@@ -293,8 +301,10 @@ public partial class PopRoute
         return l;
     }
 
-    /// <summary>The frame's busiest 320 x 180 of edges, three times over, a pixel a block (the stairs as they are).</summary>
-    static Image Busiest(Image picture, bool[] edge, int w, int h)
+    readonly Dictionary<(float, string), Rect2I> _closeUps = new();
+
+    /// <summary>The frame's busiest 320 x 180 of edges (shown three times over, a pixel a block: the stairs as they are).</summary>
+    static Rect2I Busiest(bool[] edge, int w, int h)
     {
         const int W = 320, H = 180, Step = 20;
         int bx = 0, by = 0, best = -1;
@@ -307,8 +317,6 @@ public partial class PopRoute
                         if (edge[y * w + x]) n++;
                 if (n > best) (best, bx, by) = (n, x0, y0);
             }
-        Image close = picture.GetRegion(new Rect2I(bx, by, W, H));
-        close.Resize(W * 3, H * 3, Image.Interpolation.Nearest);
-        return close;
+        return new Rect2I(bx, by, W, H);
     }
 }

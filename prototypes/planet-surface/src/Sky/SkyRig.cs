@@ -95,9 +95,6 @@ public partial class SkyRig : Node3D
     }
     public Vector3 ToSun { get; private set; } = Vector3.Up;
 
-    /// <summary>The way the sun's light (and its shadows) last turned to.</summary>
-    Vector3 _lightWay = Vector3.Down;
-
     /// <summary>The share of the sun's disc in sight from where you stand, 0 to 1 (an eclipse hides the rest): its light, the sky's and the shadows go with it.</summary>
     public float SunLit { get; private set; } = 1f;
 
@@ -510,9 +507,7 @@ public partial class SkyRig : Node3D
         ToSun = toSun;
         SunLit = (float)(1.0 - m.EclipseAt(days, m.Position(m.Home, days) + o.ToSystem(_eye), m.Home).Covered);
         StarInField = (V(m.Position(m.Star, days) - m.Position(m.Home, days))).Normalized();
-        // The light turns in steps (SunShadows.TurnStep): a shadow map turned a hair every frame redraws every edge's stairs a little off.
-        if (_lightWay.Dot(toSun) < MathF.Cos(SunShadows.TurnStep)) _lightWay = toSun;
-        Sun.LookAt(Sun.GlobalPosition - _lightWay, MathF.Abs(_lightWay.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
+        Sun.LookAt(Sun.GlobalPosition - toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
         Skew();
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("star_turn"), Stars.Field * SkyToStars);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_to_globe"), _skyToGlobe);
