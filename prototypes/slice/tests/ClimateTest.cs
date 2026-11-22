@@ -523,7 +523,7 @@ public partial class ClimateTest : Node
         Vector3 local = patch.PatchLocal(Me.WorldFeet);
         if (patch.Fauna.Species.Count > 0 && patch.Sim.Terrain.Inside(local, 20f))
         {
-            Species s = patch.Fauna.Species[0];
+            Species s = patch.Fauna.Species.FirstOrDefault(f => !f.Flies && !f.Rooted && f.Rig is not (RigKind.GasBag or RigKind.Swarm or RigKind.Finned)) ?? patch.Fauna.Species[0]; // (one that walks: fliers and floaters are over the water, not in it)
             // (Left to the water while the rest goes on, so nothing after waits on it: judged at the end, SwimmingAnimal.)
             _swimmer = (patch.Sim.Spawn(s, local with { Y = water.Y - patch.Origin.Y }), water.Y);
         }
@@ -545,7 +545,7 @@ public partial class ClimateTest : Node
         bool inWater = _game.Zone.Planet.WaterSurfaceAt(w) != null, swims = Shore.Swims(c.Species);
         float below = top - w.Y, swim = c.Species.BodyHeight * patch.Sim.SwimShare;
         Check(swims ? !inWater || MathF.Abs(below - swim) < 0.35f : c.Dead || below > swim,
-            $"a land animal left in deep water {(swims ? inWater ? "swims, its back at the surface" : "swam out onto a bank" : "too heavy to swim, sank")}: its feet {below:F2} m under the surface ({swim:F2} swimming){(c.Dead ? ", dead" : "")}");
+            $"a land animal ({c.Species.Name}, {c.Species.Rig}) left in deep water {(swims ? inWater ? "swims, its back at the surface" : "swam out onto a bank" : "too heavy to swim, sank")}: its feet {below:F2} m under the surface ({swim:F2} swimming){(c.Dead ? ", dead" : "")}");
         c.Removed = true;
     }
 }

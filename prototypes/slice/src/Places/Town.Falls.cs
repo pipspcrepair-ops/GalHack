@@ -271,8 +271,10 @@ public sealed partial class Town
         // Startled by it (their body says so), on at once.
         (p.StartleFor, p.Wait, p.Refuge, p.ProgressAt, p.StuckFor) = (0.9f, 0f, -1, p.Pos, 0f);
         // On from here: out on a run, home; in the place, by a way from where they landed to the nearest spot there is one to; in a hole
-        // with none, up its side to where there is; on open ground past the search, where they were bound (or somewhere else).
+        // with none, up its side to where there is; off the place's grid, home over the land; on open ground past the search, where they
+        // were bound (or somewhere else).
         if (p.Run != null) p.ScaredFor = MathF.Max(p.ScaredFor, 4f);
+        else if (!Memory.Inst.Blocks.InBounds(Cell(p.Pos))) HomeOverLand(p, "fell off the place");
         else if (OnFrom(p) == SpotSearchSpent)
         {
             if (p.Spot >= 0 && Whole(p.Spot)) GoTo(p, p.Spot);
@@ -447,15 +449,19 @@ public sealed partial class Town
         (p.ClimbTo, p.Clambering, p.Path, p.Asked) = (to, to is { } t && t.Y > p.Pos.Y + 0.5f, null, -1); // (up a side or over a parapet, held on)
     }
 
+    /// <summary>The most a way down steps off onto the land past the place's grid: a fall at about the speed a body takes unhurt, m.</summary>
+    const float StepOff = 12f;
+
     /// <summary>
-    /// On a ledge or a roof with no way down by the walking grid: the nearest edge (within 8 m) with open air beside it down to a floor a few
-    /// cells under that a way goes on from, over which they step off (and fall: <see cref="Falling"/>); null if there is none.
+    /// On a ledge or a roof with no way down by the walking grid: the nearest edge (within 16 m) with open air beside it down to a floor a few
+    /// cells under that a way goes on from (or past the place's grid, the land no more than <see cref="StepOff"/> under), over which they
+    /// step off (and fall: <see cref="Falling"/>); null if there is none.
     /// </summary>
     Vector3? WayDown(Person p)
     {
         PInt3 c = Cell(p.Pos);
         int tries = 0;
-        for (int reach = 1; reach <= 8; reach++)
+        for (int reach = 1; reach <= 16; reach++)
             for (int dz = -reach; dz <= reach; dz++)
                 for (int dx = -reach; dx <= reach; dx++)
                 {
@@ -471,6 +477,13 @@ public sealed partial class Town
                         blocked |= _nav.Solid(mid + PInt3.Up) || _nav.Solid(mid + PInt3.Up * 2);
                     }
                     if (blocked) continue;
+                    // (Past the place's grid, the land as it stands: stepped off onto it if the drop is one a body takes unhurt.)
+                    if (!Memory.Inst.Blocks.InBounds(new PInt3(c.X + dx, Memory.Inst.Blocks.Min.Y, c.Z + dz)))
+                    {
+                        var off = new Vector3(c.X + dx + 0.5f, p.Pos.Y + (over ? 1.05f : 0f), c.Z + dz + 0.5f);
+                        if (p.Pos.Y - LandAt(off) <= StepOff) return off;
+                        continue;
+                    }
                     for (int dy = 1; dy <= 14; dy++)
                     {
                         var q = new PInt3(c.X + dx, c.Y - dy, c.Z + dz);

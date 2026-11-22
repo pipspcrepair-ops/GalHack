@@ -158,6 +158,7 @@ public partial class FallTest : Node
             double ms0 = Ms(), last = ms0;
             int Fell() => town.People.Sum(p => Get(p, "Falls") is int f ? f : 0);
             int fell0 = Fell();
+            var falls0 = town.People.ToDictionary(p => p, p => Get(p, "Falls") is int f ? f : 0);
             var frames = new List<double>(600);
             for (int i = 0; i < 600; i++) { TopUp(); yield return 0; frames.Add(Ms() - last); last = Ms(); }
             frames.Sort();
@@ -167,6 +168,9 @@ public partial class FallTest : Node
             Check(each < 0.05 && p99 < 0.1, $"looking under them costs well under 0.1 ms a frame ({each:F4} ms a frame on average, {p99:F4} ms in 99 frames of 100, {worst:F4} ms at the worst)");
             int rays = (int)Get(town, "FallRays") - rays0, checks = (int)Get(town, "FallChecks") - checks0;
             GD.Print($"  (the sweep, nothing breaking: {Fell() - fell0} fell meanwhile, {checks / 10f:F1} looks and {rays / 10f:F1} rays a second over {town.People.Count(p => !p.Dead)} people, {town.People.Count(p => !p.Dead && (town.World(p.Pos) - _game.Survivor.WorldFeet).Length() < 60f)} within its reach)");
+            // (Any who fell with nothing breaking, told: where, and on what.)
+            foreach (Town.Person p in town.People.Where(p => (Get(p, "Falls") is int f ? f : 0) > falls0[p]).Take(4))
+                GD.Print($"    (fell meanwhile: {p.Job} at {p.Pos}, {(place.Memory.Inst.Blocks.InBounds(new Int3((int)MathF.Floor(p.Pos.X), (int)MathF.Floor(p.Pos.Y), (int)MathF.Floor(p.Pos.Z))) ? "in the place's grid" : "off it")}, falls {Get(p, "Falls")}, run {p.Run != null}, swimming {Get(p, "Swimming")}, airborne {Get(p, "Airborne")})");
         }
 
         foreach (int x in Floor(town, place, "standing", p => Free(p) && p.Now < 0.05f && !p.Sitting && !p.Asleep, used, shots && _shots != null)) yield return x;
@@ -311,6 +315,13 @@ public partial class FallTest : Node
             if (start >= 0 && _shots != null && !_shot && y0 - y > 1.5f) { foreach (int x in Snap(town, who, "falling.png")) yield return x; (_shot, shot) = (true, true); }
             if (start >= 0 && !(touching && y0 - who.Pos.Y < 0.5f) && InSolid(town.World(who.Pos), 0.2f)) inSolid++;
             last = y;
+        }
+        if (start < 0)
+        {
+            // (Never off their feet: what holds them, told.)
+            Vector3 mid = town.World(who.Pos + Vector3.Up * 0.5f);
+            var held = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(mid, mid + Vector3.Down * 0.8f, Layers.World | Layers.Hull | Layers.Interior));
+            GD.Print($"    (held up by {(held.Count == 0 ? "nothing under their middle" : $"{(held["collider"].AsGodotObject() as Node)?.GetPath()} shape {held["shape"]} at {held["position"]}")}, asleep {who.Asleep}, sitting {who.Sitting}, check {Get(who, "CheckFor")})");
         }
         float h = from - who.Pos.Y, took = end >= 0 ? (end - start) * Tick : -1f, free = MathF.Sqrt(2f * MathF.Max(0f, h) / G);
         // (A shot taken in the fall holds this watch a few ticks: their own count of the fall's ticks then.)

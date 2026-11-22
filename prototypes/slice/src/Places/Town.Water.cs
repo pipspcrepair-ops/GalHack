@@ -106,12 +106,17 @@ public sealed partial class Town
             if (OnFrom(p) == SpotSearchSpent) Next(p);
             return;
         }
+        HomeOverLand(p, "out of the water");
+    }
+
+    /// <summary>Off the place's grid with no run (out of the water, off a roof's edge): home over the land, as a scavenger comes home, by the way in.</summary>
+    void HomeOverLand(Person p, string why)
+    {
         if (_places?.Zone.Planet is not PlanetWorld planet) return;
-        // (Home over the land, as a scavenger comes home: by the way in.)
         var way = new List<Vector3> { World(p.Pos) };
         Densify(planet, way, World(At(Gate)));
         for (int i = 0; i < way.Count; i++) way[i] = Local(way[i]);
-        p.Run = new ScavRun { Out = way, Round = new List<Vector3> { way[0] }, Way = way, Find = way[0], Home = true, Why = "out of the water" };
+        p.Run = new ScavRun { Out = way, Round = new List<Vector3> { way[0] }, Way = way, Find = way[0], Home = true, Why = why };
     }
 
     /// <summary>The sleeper's swimming pose on a body the rig has posed standing: laid out along the way they face, the head clear of the water.</summary>
