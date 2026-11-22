@@ -74,7 +74,10 @@ public sealed partial class Town : IKeeper
         public CitizenSpawn Spawn;
         public string Role => Spawn.Role;
         public Vector3 Pos;                // local feet
-        public float Yaw;
+        /// <summary>Which way they face, and how fast they are turning (eased: Town.Turn).</summary>
+        public float Yaw, Spin;
+        /// <summary>Walking, the gap left to someone ahead going their way, m (Town.Space; MaxValue: nobody).</summary>
+        public float Clear = float.MaxValue;
         public int Spot, Home;
         /// <summary>The spot they are bound for while its way is worked out on a worker (-1: none).</summary>
         public int Asked = -1;
@@ -121,7 +124,7 @@ public sealed partial class Town : IKeeper
         /// <summary>Making headway on their way (Town.Headway): where they last got a quarter metre on from, and how long since.</summary>
         public Vector3 ProgressAt;
         public float StuckFor;
-        /// <summary>Held again: this second's way past it is a step aside, the next's another way (Town.Headway).</summary>
+        /// <summary>Held up on this way and stepped aside for it once already: next time held, another way (Town.Headway).</summary>
         public bool Held;
         /// <summary>Frightened: the spot they make for to get in (their own home unless what frightened them is that way), and where it was, when last seen (local).</summary>
         public int Refuge = -1;
@@ -192,6 +195,7 @@ public sealed partial class Town : IKeeper
         town._parts = PlaceParts.Of(m);
         town._fixed = PlaceParts.Fixed(m);
         town._ways = DoorWays.Of(m);
+        town.Passages(m);
         m.Bodies.Add(town.BodiesNear);
         town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
@@ -229,7 +233,79 @@ public sealed partial class Town : IKeeper
             }
             path.Add(here);
         }
-        return path;
+        return Pulled(path);
+    }
+
+    /// <summary>
+    /// The place's doorways, ways out and openings between its parts, and the part (or two) each cell is in (-1: none): a
+    /// straightened way stays within a part, and keeps a point of its own in each passage it goes through.
+    /// </summary>
+    HashSet<PInt3> _passages;
+    Dictionary<PInt3, (int A, int B)> _modules;
+
+    void Passages(PlaceMemory m)
+    {
+        _passages = new HashSet<PInt3>(m.Inst.Layout.Doorways.SelectMany(d => d.Cells).Concat(m.Inst.Layout.ExitCells));
+        foreach (var (a, b) in RoomDecor.Openings(m.Inst)) { _passages.Add(a); _passages.Add(b); }
+        _modules = new Dictionary<PInt3, (int, int)>();
+        foreach (PlacedModule mod in m.Inst.Layout.Modules)
+            foreach (PInt3 c in mod.Cells)
+                _modules[c] = _modules.TryGetValue(c, out var was) ? (was.A, was.B < 0 ? mod.Index : was.B) : (mod.Index, -1);
+    }
+
+    /// <summary>Whether two cells are in a part of the place together (or both in none).</summary>
+    bool OnePart(PInt3 a, PInt3 b)
+    {
+        (int A, int B) x = _modules.TryGetValue(a, out var pa) ? pa : (-1, -1), y = _modules.TryGetValue(b, out var pb) ? pb : (-1, -1);
+        return x.A == y.A || x.A >= 0 && x.A == y.B || x.B >= 0 && (x.B == y.A || x.B == y.B);
+    }
+
+    /// <summary>How many of a route's points ahead are looked along for a straight way to.</summary>
+    const int PullReach = 10;
+
+    /// <summary>
+    /// A route's points pulled straight (owner: "npc's can get really twitchy when figuring out which way to path"): the grid's
+    /// way goes cell by cell, a staircase across open floor that turned them a quarter turn every metre or so. Walked, it is a
+    /// straight line from each point kept to the farthest a few ahead a body gets to straight: on the one floor, clear of the
+    /// walls and the furniture, and never through a doorway or onto a stair but at a point of its own.
+    /// </summary>
+    List<Vector3> Pulled(List<Vector3> path)
+    {
+        if (path.Count < 3 || _nav == null) return path;
+        var kept = new List<Vector3>(path.Count) { path[0] };
+        for (int i = 0; i < path.Count - 1;)
+        {
+            int j = i + 1;
+            // (The first step and the last, out of a seat or a bed and into one, are walked as they lie.)
+            if (i > 0)
+                for (int k = Math.Min(path.Count - 2, i + PullReach); k > i + 1; k--)
+                    if (Shortcut(path[i], path[k])) { j = k; break; }
+            kept.Add(path[j]);
+            i = j;
+        }
+        return kept;
+    }
+
+    /// <summary>Whether a body walks straight from one point of a route to another (<see cref="Pulled"/>).</summary>
+    bool Shortcut(Vector3 a, Vector3 b)
+    {
+        if (MathF.Abs(a.Y - b.Y) > 0.05f) return false;
+        Vector3 d = (b - a) with { Y = 0f };
+        float len = d.Length();
+        if (len < 1e-3f) return true;
+        PInt3 ca = Cell(a), cb = Cell(b);
+        if (!OnePart(ca, cb)) return false;
+        const float R = PlaceParts.PersonRadius;
+        for (float s = 0f; s <= len; s += 0.25f)
+        {
+            Vector3 q = a + d * (s / len);
+            if (Cell(q) is var c && c != ca && c != cb && _passages.Contains(c)) return false;
+            // (The body's width on the floor all the way: no wall's corner clipped between two cells.)
+            for (int k = 0; k < 4; k++)
+                if (Cell(q + new Vector3(k % 2 == 0 ? -R : R, 0f, k < 2 ? -R : R)) is var f && (!_nav.Standable(f) || _nav.RampAt(f, out _) || !OnePart(ca, f))) return false;
+        }
+        PartSet parts = _parts ?? _fixed; // (the clutter too: a way pulled straight never goes through what the body would be held off)
+        return parts == null || parts.Sweep(a, b, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls: Place.WallsOf(_nav), wallRadius: PlaceParts.PersonRadius);
     }
 
     List<Vector3> PathBetween(int a, int b) => PathBetween(a, b, out _);
@@ -588,6 +664,7 @@ public sealed partial class Town : IKeeper
             _step = 1;
             for (int who = 0; who < People.Count; who++)
                 if (People[who].Run != null) Step(People[who], who, player, eye, look, tickDt, night, time);
+            if (!standing) KeepApart(player, tickDt, all: false); // (the place down: only they are about to keep apart)
             Miss();
             LastRunsMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
         }
@@ -771,7 +848,8 @@ public sealed partial class Town : IKeeper
             // Letting someone through first: a step back out of their way.
             p.Yield -= dt;
             Vector3 back = new(MathF.Sin(p.Yaw), 0f, MathF.Cos(p.Yaw));
-            if (Open(p.Pos + back * 0.5f * dt)) p.Pos += back * 0.5f * dt;
+            Vector3 stepped = Unpressed(p, p.Pos, p.Pos + back * 0.5f * dt);
+            if (OnGrid(stepped)) p.Pos = stepped;
             p.Now = Mathf.MoveToward(p.Now, 0f, PeopleAccel * 2f * dt);
             return false;
         }
@@ -792,13 +870,23 @@ public sealed partial class Town : IKeeper
         }
         // The doors ahead opened as they come (a door they may not open: they wait where they are).
         if (!ThroughDoors(p)) { p.Now = 0f; return true; }
+        // Pushed or stepped on past a point of their way (in a crowd; a new way from the middle of the cell they stand in): on to
+        // the next where a body gets there straight, never turned back for it. (Not out of a seat, nor the last of the way: walked as they lie.)
+        while (p.Step < p.Path.Count - 2 && p.Seat < 0 && Passed(p.Pos, p.Path[p.Step], p.Path[p.Step + 1]) && Shortcut(p.Pos, p.Path[p.Step + 1])) p.Step++;
+        // A point of it the furniture leaves no room to stand on, a hand's breadth off: passed too (never pressed into the furniture for it).
+        while (p.Step < p.Path.Count - 1 && p.Seat < 0 && !(ToSeat(p) && p.Step >= p.Path.Count - 2) && _parts != null && Flat(p.Path[p.Step] - p.Pos) < 0.3f
+               && _parts.Gap(p.Path[p.Step], BodyRadius(p), Height(p)) < 0f) p.Step++;
         Vector3 to = p.Path[p.Step];
         Vector3 d = to - p.Pos;
         float flat = new Vector2(d.X, d.Z).Length();
         // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
         bool last = p.Step >= p.Path.Count - 1;
+        // Coming up on a crowd at the end of their way (not into a seat or a bed: walked as it lies): they stop at its edge, an arm's length off the nearest, not pressed into it.
+        if (last && !ToSeat(p) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength * 1.5f && Settles(p)) return true;
         float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
+        // Behind someone going their way: on at their pace an arm's length back, never into them (Town.Space).
+        wanted = Following(p, wanted, pace);
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
         // Turns a corner a stride early, not on the spot.
@@ -820,7 +908,11 @@ public sealed partial class Town : IKeeper
         }
         Vector3 was = p.Pos;
         if (p.Sitting) p.GettingUp = true;
-        p.Pos += new Vector3(d.X, 0f, d.Z) / flat * step;
+        // Never further into anyone: round them (Town.Space); held by one, at the pace they really go (no walking on the spot).
+        Vector3 meant = p.Pos + new Vector3(d.X, 0f, d.Z) / flat * step;
+        p.Pos = Unpressed(p, was, meant);
+        bool byBody = (p.Pos - meant).LengthSquared() > 1e-8f;
+        if (byBody && dt > 0f) p.Now = MathF.Min(p.Now, Flat(p.Pos - was) / dt);
         if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
@@ -828,23 +920,48 @@ public sealed partial class Town : IKeeper
         else if (_clock - p.NoFloorAt > 1f && !Floored(p.Pos)) (p.CheckFor, p.NoFloorAt) = (MathF.Max(p.CheckFor, 0.05f), _clock); // (no floor under them by the blocks: looked under, Town.Falls)
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was, dt);
+        p.Pos = Unpressed(p, was, p.Pos); // (nor held off the furniture into anyone)
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
-        if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
+        if (!byBody && (p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {
             p.Blocked = 0f;
             if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
         }
         Headway(p, dt);
-        p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
+        Turn(p, d, dt);
         p.Sitting = false;
         return false;
     }
 
     const float PeopleAccel = 3f;
 
+    /// <summary>Bound for a seat or a bed (a spot with furniture of its own), whose last steps are walked as they lie.</summary>
+    bool ToSeat(Person p) => p.Spot >= 0 && (p.Spot < _own.Count && _own[p.Spot] != null || p.Spot < _lie.Count && _lie[p.Spot] != null);
+
+    /// <summary>A point of a way is behind someone already: within a metre of it and on past it toward the next.</summary>
+    static bool Passed(Vector3 at, Vector3 point, Vector3 next) => Flat(at - point) < 1f && (at - point).Dot(next - point) > 0f;
+
+    /// <summary>How fast someone turns at most, rad/s; how much faster the nearer they are off the way they want; how quickly a turn gets going, and settles, rad/s².</summary>
+    const float TurnRate = 4.5f, TurnGain = 6f, TurnUp = 14f, TurnDown = 30f;
+
+    /// <summary>
+    /// Turns someone toward a way (flat) at a natural rate: eased into the turn and out of it, never snapped round, so a way that
+    /// changes by a little now and then is a sway, not a flick (a point less than a step off is no way to turn to).
+    /// </summary>
+    static void Turn(Person p, Vector3 way, float dt)
+    {
+        if (Flat(way) < 0.25f) return;
+        float off = Mathf.AngleDifference(p.Yaw, MathF.Atan2(-way.X, -way.Z));
+        float want = Math.Clamp(off * TurnGain, -TurnRate, TurnRate);
+        p.Spin = Mathf.MoveToward(p.Spin, want, (want * p.Spin >= 0f && MathF.Abs(want) > MathF.Abs(p.Spin) ? TurnUp : TurnDown) * dt);
+        float by = p.Spin * dt;
+        if (by * off >= 0f && MathF.Abs(by) >= MathF.Abs(off)) (by, p.Spin) = (off, 0f);
+        p.Yaw += by;
+    }
+
     void GoTo(Person p, int spot)
     {
-        p.StuckFor = 0f;
+        (p.StuckFor, p.Held, p.Spin) = (0f, false, 0f);
         p.ProgressAt = p.Pos;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - At(spot)).Length() < 1.5f) return;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)
@@ -880,6 +997,8 @@ public sealed partial class Town : IKeeper
         }
         p.Left = p.Spot;
         p.Spot = spot;
+        // (Off a bench or a counter they stood pressed up to at their work, as out of a seat: clear of it as they go.)
+        if (_parts != null && _parts.Gap(p.Pos, BodyRadius(p), Height(p)) < 0f) p.GettingUp = true;
         p.Step = 0;
         if (p.Far && !p.Fleeing && (path[^1] - _you).Length() > FarSchedule)
         {
