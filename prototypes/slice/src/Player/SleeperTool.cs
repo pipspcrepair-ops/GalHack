@@ -128,6 +128,8 @@ public sealed class SleeperTool
     /// <summary>The pulses a deposit's ore rock still has in it.</summary>
     public int TellLeft(Deposit d) => TellPulses - _tellsWorked.GetValueOrDefault((d.X, d.Y));
     Deposit? _tell;
+    /// <summary>The power pole or pylon under the crosshair (its index on the world's lines), if that is what it is on.</summary>
+    int? _pole;
     readonly Dictionary<(double, double), int> _tellsWorked = new();
     /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
     public const int TellPulses = 4, TellOrePerPulse = 1;
@@ -203,13 +205,18 @@ public sealed class SleeperTool
         _placeHit = null;
         _wreck = null;
         _tell = null;
+        _pole = null;
         if (!OnBlock && Places != null && WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Props | Place.SceneryLayer, out LookHit p)
             && (!HasTarget || p.Distance < ground + 0.05f))
         {
             _placePoint = p.Point;
             if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h, p.Shape)) _placeHit = h;
             else _wreck = Places.SalvageOf(p.Collider);
-            if (!OnPlace && p.Collider is Node solid && _zone.Infra.IsAncestorOf(solid)) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
+            if (!OnPlace && p.Collider is Node solid && _zone.Infra.IsAncestorOf(solid))
+            {
+                _pole = _zone.PoleOf(p.Collider); // a power pole or pylon: cut as a trunk is
+                if (_pole == null) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
+            }
             if (OnPlace)
             {
                 TargetLabel = _placeHit is PoiPlaces.Hit ph ? Places.Label(ph) : _wreck.Name.ToUpperInvariant();
@@ -573,6 +580,12 @@ public sealed class SleeperTool
             Strike(_placePoint, Vector3.One * 0.35f, 2);
         }
         else if (!OnBlock && _tell != null) { WorkTell(); Strike(_placePoint, Vector3.One * 0.4f, 3); }
+        else if (!OnBlock && _pole is int pole)
+        {
+            _suit.Worked();
+            _zone.WearPole(pole, BlastWear, _placePoint - _survivor.WorldEye());
+            Strike(_placePoint, Vector3.One * 0.3f, 2);
+        }
         else if (!OnBlock && CutPlant(out Vector3 plant)) Strike(plant, Vector3.One * 0.3f, 2);
         else if (!OnBlock && HasTarget && Dig() is { } edit)
         {

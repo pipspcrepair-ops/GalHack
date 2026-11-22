@@ -142,15 +142,82 @@ public partial class SurfaceZone : IFloraField
     /// </summary>
     public float WearPlant(in TerrainStreamer.PlantSighting s, float damage, Vector3 away, bool batch = false)
     {
-        if (damage <= 0f || Planet.Felled.Contains(s.Id)) return 0f;
-        float max = PlantMax(s), done = _plantWorn.GetValueOrDefault(s.Id), dealt = Mathf.Min(damage, max - done);
-        if (done + damage < max) _plantWorn[s.Id] = done + damage;
+        if (Planet.Felled.Contains(s.Id)) return 0f;
+        TerrainStreamer.PlantSighting plant = s;
+        return Wear(s.Id, PlantMax(s), damage, () => Fell(plant, away, broken: batch));
+    }
+
+    /// <summary>Hit points off something standing that is felled as a tree is: the share of its whole dealt; spent, it falls.</summary>
+    float Wear(long id, float max, float damage, System.Action fell)
+    {
+        if (damage <= 0f) return 0f;
+        float done = _plantWorn.GetValueOrDefault(id), dealt = Mathf.Min(damage, max - done);
+        if (done + damage < max) _plantWorn[id] = done + damage;
         else
         {
-            _plantWorn.Remove(s.Id);
-            Fell(s, away, broken: batch);
+            _plantWorn.Remove(id);
+            fell();
         }
         return dealt / max;
+    }
+
+    // ---- Power poles and pylons: felled as trees are (owner, 22 Nov: "treat them like trees") -----------------------
+
+    /// <summary>A pole's place in the worn hit points, apart from every plant's.</summary>
+    static long PoleKey(int pole) => long.MinValue + pole;
+
+    /// <summary>The pole or pylon a collider is part of (its own node in a roads' tile), or null.</summary>
+    public int? PoleOf(GodotObject collider)
+    {
+        for (Node n = collider as Node; n != null && n != Infra; n = n.GetParent())
+            if (PlanetSurface.Infra.InfraLayer.PoleIndex(n.Name) is int pole) return pole;
+        return null;
+    }
+
+    /// <summary>A pole's hit points whole: a tree's, a pylon's four times over (data/slice.json plants).</summary>
+    public float PoleMax(PlanetSurface.Infra.PowerPole p) => Mathf.Max(1f, Mathf.Round(Data.Rules.Plants.Tree * (p.Pylon ? 4f : 1f)));
+
+    /// <summary>Wears a standing pole or pylon as a plant is worn (a shot, a blast, the tool); spent, it is felled away along <paramref name="away"/>.</summary>
+    public float WearPole(int pole, float damage, Vector3 away)
+    {
+        PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
+        if (pole < 0 || pole >= lines.Poles.Count || lines.Poles[pole] is not { Fallen: false, Role: PlanetSurface.Infra.PowerRole.Line } p) return 0f;
+        return Wear(PoleKey(pole), PoleMax(p), damage, () => FellPole(pole, away));
+    }
+
+    /// <summary>The poles and pylons in a blast's reach, worn as its plants are.</summary>
+    public void BlastPoles(Vector3 at, float radius, float damage)
+    {
+        PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
+        for (int i = 0; i < lines.Poles.Count; i++)
+        {
+            PlanetSurface.Infra.PowerPole p = lines.Poles[i];
+            Vector3 foot = Planet.NearestCopy(new Vector3((float)p.X, p.Ground, (float)p.Z), at), away = foot - at;
+            float d = new Vector2(away.X, away.Z).Length();
+            if (d >= radius + (p.Pylon ? p.Height * 0.13f : 0f) || at.Y > foot.Y + p.Height + radius) continue;
+            away.Y = 0f;
+            WearPole(i, damage * (1f - Mathf.Min(d, radius) / radius * 0.75f), away.LengthSquared() > 1e-4f ? away : Vector3.Right);
+        }
+    }
+
+    /// <summary>Poles and pylons felled so far (tests).</summary>
+    public int PolesFelled { get; private set; }
+
+    /// <summary>
+    /// A pole or pylon felled: it goes over as a tree does (<see cref="TreeFx.Fell"/>, its own drawing the body that falls and lies),
+    /// a pole's stump left; its drawing goes from its tile, and its wires drop to hang from the poles that still hold them.
+    /// </summary>
+    void FellPole(int pole, Vector3 away)
+    {
+        PlanetSurface.Infra.PowerLines lines = Planet.Infra.Power;
+        PlanetSurface.Infra.PowerPole p = lines.Poles[pole];
+        Mesh body = PlanetSurface.Infra.InfraLayer.PoleMesh(Planet, lines, pole); // (standing: drawn before it is down)
+        p.Fallen = true;
+        Infra.Felled(pole);
+        Vector3 root = Planet.NearestCopy(new Vector3((float)p.X, p.Ground, (float)p.Z), Focus());
+        Color look = p.Pylon ? new Color(0.43f, 0.44f, 0.45f) : new Color(0.31f, 0.24f, 0.17f);
+        Trees.Fell(root, away, p.Height, p.Pylon ? 0.3f : 0.14f, look, crown: false, look, body, Basis.Identity, stump: !p.Pylon, own: true);
+        PolesFelled++;
     }
 
     /// <summary>A standing plant by its id, near a point (its near self over its far stand-in).</summary>

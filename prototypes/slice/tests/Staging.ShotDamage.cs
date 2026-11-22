@@ -21,7 +21,7 @@ public sealed partial class Staging
         _game.Visor.Visible = false;
         var rng = new Random();
         Vector3 from = _game.Survivor.WorldFeet;
-        var site = (_args.ContainsKey("flavour") ? _game.Zone.Planet.Sites.Where(PlanetSurface.Infra.FlavourRuin.IsFlavour) : _game.Zone.Planet.Pois.AsEnumerable()).Where(s => s.Instance != null && !s.Family.Tags.Contains("underground"))
+        var site = (_args.ContainsKey("flavour") ? _game.Zone.Planet.Sites.Where(PlanetSurface.Infra.FlavourRuin.IsFlavour) : _game.Zone.Planet.Pois.AsEnumerable()).Where(s => s.Instance != null && !s.Family.Tags.Contains("underground") && (!_args.TryGetValue("tag", out string tag) || s.Family.Tags.Contains(tag)))
             .OrderBy(s => _game.Zone.Planet.NearestCopy(new Vector3(s.Entrance.X, s.Entrance.Y, s.Entrance.Z), from).DistanceTo(from)).FirstOrDefault();
         if (site == null) { GD.Print("(shotdamage: no place on this world)"); yield break; }
         Vector3 gate = _game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), from);

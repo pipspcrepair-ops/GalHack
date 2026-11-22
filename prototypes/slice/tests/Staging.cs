@@ -158,6 +158,7 @@ public sealed partial class Staging
             "city" => CityView(),
             "incidental" => IncidentalView(),
             "exposed" => ExposedView(),
+            "power" => PowerView(),
             "strike" => StrikeView(),
             "craters" => CraterViews(),
             "horizon" => HorizonView(),

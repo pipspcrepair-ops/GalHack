@@ -84,7 +84,8 @@ public sealed partial class TreeFx : Node3D
     /// A tree felled: the trunk and crown topple away along <paramref name="away"/>, lie, and fade;
     /// a stump stays.
     /// </summary>
-    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default, bool stump = true, Color custom = default)
+    /// <param name="own">The body keeps its own look (a power pole's or a pylon's, felled the same way: SurfaceZone.FellPole), not a plant's.</param>
+    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default, bool stump = true, Color custom = default, bool own = false)
     {
         away.Y = 0f;
         away = away.LengthSquared() < 1e-4f ? Vector3.Forward : away.Normalized();
@@ -96,7 +97,7 @@ public sealed partial class TreeFx : Node3D
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = bark, Roughness = 0.95f },
                 Position = root + Vector3.Up * 0.2f,
             });
-        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn, stump ? 0f : radius * 1.5f, custom));
+        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn, stump ? 0f : radius * 1.5f, custom, own));
     }
 
     /// <summary>Root holes left where trees were torn out whole (tests).</summary>
@@ -165,7 +166,7 @@ public sealed partial class FallingTree : Node3D
     readonly ShaderMaterial _body;
     float _t;
 
-    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default, float roots = 0f, Color custom = default)
+    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default, float roots = 0f, Color custom = default, bool own = false)
     {
         Position = root;
         _axis = Vector3.Up.Cross(away).Normalized();
@@ -178,7 +179,7 @@ public sealed partial class FallingTree : Node3D
         if (body != null)
         {
             // The tree itself goes over, its own shape and colours.
-            _body = FallMaterial(leaf, custom);
+            _body = own ? null : FallMaterial(leaf, custom);
             AddChild(new MeshInstance3D { Mesh = body, MaterialOverride = _body, Basis = turn });
             return;
         }

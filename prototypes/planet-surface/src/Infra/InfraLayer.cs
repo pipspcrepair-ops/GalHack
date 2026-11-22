@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -359,10 +359,10 @@ public partial class InfraLayer : Node3D
         PowerLines power = net.Power;
         for (int i = 0; i < power.Poles.Count; i++)
             if (power.Poles[i].Role != PowerRole.Plant) yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
-        foreach (PowerWire wire in power.Wires)
-            yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
-        foreach (ServiceDrop drop in power.Drops)
-            yield return new DropPiece { Lines = power, Drop = drop, X = power.Poles[drop.Pole].X, Z = power.Poles[drop.Pole].Z };
+        for (int i = 0; i < power.Wires.Count; i++)
+            yield return new WirePiece { Lines = power, Wire = power.Wires[i], Index = i, X = power.Poles[power.Wires[i].A].X, Z = power.Poles[power.Wires[i].A].Z };
+        for (int i = 0; i < power.Drops.Count; i++)
+            yield return new DropPiece { Lines = power, Drop = power.Drops[i], Index = i, X = power.Poles[power.Drops[i].Pole].X, Z = power.Poles[power.Drops[i].Pole].Z };
         // A station at each end of a line: a platform, a shelter and the buffers the track stops at.
         foreach (InfraRoute r in net.Routes)
         {
@@ -615,13 +615,82 @@ public partial class InfraLayer : Node3D
         return feet;
     }
 
+    /// <summary>The names of a pole's and a wire's own nodes in their tile (the game finds them by these).</summary>
+    public static string PoleNode(int pole) => $"Pole {pole}";
+    public static string WireNode(int wire) => $"Wire {wire}";
+    public static string DropNode(int drop) => $"Drop {drop}";
+
+    /// <summary>Which pole a node of a tile is (<see cref="PoleNode"/>), or null.</summary>
+    public static int? PoleIndex(string name) => name.StartsWith("Pole ", StringComparison.Ordinal) && int.TryParse(name.AsSpan(5), out int i) ? i : null;
+
+    /// <summary>A standing pole or pylon as drawn, about its own foot (what goes over when it is felled, as a tree's own mesh does).</summary>
+    public static Mesh PoleMesh(PlanetWorld world, PowerLines lines, int pole)
+    {
+        PowerPole p = lines.Poles[pole];
+        var b = new TileBuilder(world, p.X, p.Z) { BaseY = p.Ground };
+        new PolePiece { Lines = lines, Index = pole }.Draw(b);
+        return DecoGodot.ToMesh(b.Mesh);
+    }
+
+    /// <summary>
+    /// A pole or pylon felled in play (<c>PowerPole.Fallen</c> set): its drawing goes from its tile, and each wire it held drops,
+    /// hanging from the pole that still holds it to the ground (as a snapped wire hangs): nothing is left in the air.
+    /// </summary>
+    public void Felled(int pole)
+    {
+        PowerLines lines = _world.Infra.Power;
+        foreach (Tile t in _tiles.Values)
+            if (t.Node?.GetNodeOrNull<Node3D>(PoleNode(pole)) is { } drawn) drawn.Visible = false;
+        for (int i = 0; i < lines.Wires.Count; i++)
+        {
+            PowerWire w = lines.Wires[i];
+            // One already snapped and hanging from it goes down with it.
+            if (!w.Spanned && w.A == pole)
+                foreach (Tile t in _tiles.Values)
+                    if (t.Node?.GetNodeOrNull<Node3D>(WireNode(i)) is { } hung) hung.Visible = false;
+            if (!w.Spanned || w.A != pole && w.B != pole) continue;
+            (w.A, w.B, w.Spanned) = (w.A == pole ? w.B : w.A, pole, false);
+            int k = i;
+            Redraw(WireNode(i), b => new WirePiece { Lines = lines, Wire = w, Index = k }.Draw(b));
+        }
+        // A house's drop from it: now hanging from the wall that still holds it.
+        for (int i = 0; i < lines.Drops.Count; i++)
+        {
+            if (lines.Drops[i].Pole != pole) continue;
+            int k = i;
+            Redraw(DropNode(i), b => new DropPiece { Lines = lines, Drop = lines.Drops[k], Index = k }.Draw(b));
+        }
+    }
+
+    /// <summary>A piece's own node drawn again where its tile stands.</summary>
+    void Redraw(string name, Action<TileBuilder> draw)
+    {
+        foreach (Tile t in _tiles.Values)
+        {
+            if (t.Node?.GetNodeOrNull<Node3D>(name) is not { } old) continue;
+            var b = new TileBuilder(_world, t.Ix * TileSize, t.Iz * TileSize);
+            draw(b);
+            old.Name = name + " (gone)"; // (freed at the frame's end; its name is the new one's)
+            old.QueueFree();
+            t.Node.AddChild(b.ToNode(name));
+        }
+    }
+
     /// <summary>A pole or pylon, standing, or fallen flat along the line.</summary>
     sealed class PolePiece : Piece
     {
         public PowerLines Lines;
         public int Index;
 
-        public override void Emit(TileBuilder b)
+        /// <summary>Each pole a node of its own (<see cref="PoleNode"/>): the game stands it up as blocks near, and hides this drawing.</summary>
+        public override void Emit(TileBuilder tile)
+        {
+            var b = new TileBuilder(tile.World, tile.OriginX, tile.OriginZ);
+            Draw(b);
+            tile.Extra.Add(() => b.ToNode(PoleNode(Index)));
+        }
+
+        internal void Draw(TileBuilder b)
         {
             PowerPole p = Lines.Poles[Index];
             NV foot = b.Local(p.X, p.Ground, p.Z), side = new(p.SideX, 0, p.SideZ), along = new(-p.SideZ, 0, p.SideX);
@@ -772,8 +841,17 @@ public partial class InfraLayer : Node3D
     {
         public PowerLines Lines;
         public ServiceDrop Drop;
+        public int Index;
 
-        public override void Emit(TileBuilder b)
+        /// <summary>Each drop a node of its own (<see cref="DropNode"/>): when its pole is felled it is drawn anew, hanging from the wall.</summary>
+        public override void Emit(TileBuilder tile)
+        {
+            var b = new TileBuilder(tile.World, tile.OriginX, tile.OriginZ);
+            Draw(b);
+            tile.Extra.Add(() => b.ToNode(DropNode(Index)));
+        }
+
+        internal void Draw(TileBuilder b)
         {
             PowerPole p = Lines.Poles[Drop.Pole];
             var pts = Lines.DropPath(Drop, b.Ground).Select(q => b.Local(q.X, q.Y, q.Z)).ToList();
@@ -795,8 +873,17 @@ public partial class InfraLayer : Node3D
     {
         public PowerLines Lines;
         public PowerWire Wire;
+        public int Index;
 
-        public override void Emit(TileBuilder b)
+        /// <summary>Each wire a node of its own (<see cref="WireNode"/>): when a pole it hangs from goes over, the game hides it and drapes it anew.</summary>
+        public override void Emit(TileBuilder tile)
+        {
+            var b = new TileBuilder(tile.World, tile.OriginX, tile.OriginZ);
+            Draw(b);
+            tile.Extra.Add(() => b.ToNode(WireNode(Index)));
+        }
+
+        internal void Draw(TileBuilder b)
         {
             bool pylon = Lines.Poles[Wire.A].Pylon, sleek = !pylon && b.World.Profile.Before == TechLevel.High;
             // A high world's street lines are sheathed conduit, pale and thick; the rest bare dark wire.
@@ -924,9 +1011,12 @@ public sealed partial class TileBuilder
         OriginZ = oz;
     }
 
+    /// <summary>A height taken off every point (<see cref="PoleMesh"/>: a pole drawn about its own foot).</summary>
+    public float BaseY;
+
     /// <summary>A world point (any copy) in the tile's frame, the short way round the seams.</summary>
     public NV Local(double x, float y, double z) =>
-        new((float)Mathx.WrapDelta(x - OriginX, World.Width), y, (float)Mathx.WrapDelta(z - OriginZ, World.Height));
+        new((float)Mathx.WrapDelta(x - OriginX, World.Width), y - BaseY, (float)Mathx.WrapDelta(z - OriginZ, World.Height));
 
     /// <summary>The ground's height at a world point (stamps applied: what the player walks on, before digging).</summary>
     public float Ground(double x, double z) => World.Source.SurfaceHeight(Mathx.WrapX(x, World.Width), Mathx.Wrap(z, World.Height));
