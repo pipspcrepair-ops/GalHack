@@ -37,6 +37,7 @@ public static partial class Brain
         UpdateBand(w, h, b, lead);
         c.WantAim = 0f;
         if (w.Time > c.ActUntil) c.Act = BodyAct.None;
+        else if (c.Act is BodyAct.Cower or BodyAct.Grieve or BodyAct.Startle && Running(c)) c.Act = BodyAct.Panic; // never a slump at a run
         // Each takes in what the band does in its own time: the leader first, the rest once it has.
         if (c.PartySeen != b.Events)
         {
@@ -60,7 +61,7 @@ public static partial class Brain
         if (reacted && danger != null && b.Mood is PartyMood.Fighting or PartyMood.Fleeing && c.Health < c.Stats.MaxHealth * HurtRun)
         {
             Flee(w, c, danger.Position);
-            if (c.Act == BodyAct.None) Hold(w, c, BodyAct.Cower, 1f);
+            if (c.Act == BodyAct.None) Hold(w, c, Fright(c), 1f);
             return;
         }
         if (b.Mood == PartyMood.Fleeing)
@@ -114,6 +115,12 @@ public static partial class Brain
         }
         return child;
     }
+
+    /// <summary>Faster than a walk, wanted or under way.</summary>
+    static bool Running(Creature c) => MathF.Max(WildSim.Flat(c.Desired).Length(), WildSim.Flat(c.Velocity).Length()) > c.Stats.WalkSpeed * 1.1f;
+
+    /// <summary>A fright: on the run (or a child), the panic, hands to the head; cornered and still, a cower.</summary>
+    static BodyAct Fright(Creature c) => c.Species.Figure?.Stage == LifeStage.Child || Running(c) ? BodyAct.Panic : BodyAct.Cower;
 
     static void Hold(WildSim w, Creature c, BodyAct act, float seconds)
     {
@@ -622,7 +629,7 @@ public static partial class Brain
         if (f != null && (f.Stage == LifeStage.Child && animal || (picked ? !Weapons.Armed(f.Prop) && (f.Stage == LifeStage.Child || c.Nerve < 0.4f) : !Stands(c, b, foe))))
         {
             Flee(w, c, foe.Position);
-            Hold(w, c, f.Stage == LifeStage.Child ? BodyAct.Panic : BodyAct.Cower, 1f);
+            Hold(w, c, Fright(c), 1f);
             return;
         }
         c.LookAt = foe.Position + Vector3.Up * 1.4f;

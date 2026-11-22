@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DiegeticUi.Theme;
 using Godot;
+using PlanetSurface.Skies;
 using Slice.Game;
 using Palette = DiegeticUi.Theme.Palette;
 
@@ -199,7 +200,7 @@ public sealed class OptionsSection : IMenuSection
         if (Range(g, "opt:spawn", r, ref s.SpawnDistance, SpawnStepsFrom, SpawnStepsTo, 20f, x => $"{x:F0} M")) Changed();
 
         r = Row(g, body, i++, "SHADOW DISTANCE", null, rh);
-        if (Range(g, "opt:shadow", r, ref s.ShadowDistance, GameSettings.DefaultShadow, GameSettings.MostShadow, 20f, x => x <= GameSettings.DefaultShadow ? "AUTO" : $"{x:F0} M")) Changed();
+        if (Range(g, "opt:shadow", r, ref s.ShadowDistance, SunShadows.DefaultReach, SunShadows.MostReach, 20f, x => x <= SunShadows.DefaultReach ? "AUTO" : $"{x:F0} M")) Changed();
 
         r = Row(g, body, i++, "BRIGHTNESS", null, rh);
         if (Range(g, "opt:gamma", r, ref s.Gamma, GameSettings.MinGamma, GameSettings.MaxGamma, 0.05f, x => $"{x:F2}")) Changed();

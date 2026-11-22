@@ -14,7 +14,7 @@
     "Uncommon": ["Cobalt", "Magnesium", "Neodymium", "Gold", "Gravium"],
     "Rare": ["Fold crystal", "Emberite", "Starsilver"],
     "Exotic": ["Voidglass", "Stormcore", "Rimefire"],
-    "Unique": ["Precursor alloy", "Echo shards", "Lattice cores"]
+    "Unique": ["Precursor alloy", "Echo shards"]
   },
   "maxUniqueChance": 0.25,
 
@@ -84,8 +84,7 @@
       "attack": { "name": "Latching strike", "style": "Rear", "telegraph": 1.1, "reach": 4, "lunge": 0.35, "sound": "hiss" },
       "fixedParts": { "fins": "none" },
       "drops": [
-        { "material": "Starsilver", "rarity": "Rare", "amount": [1, 3], "chance": 1.0 },
-        { "material": "Lattice cores", "rarity": "Unique", "amount": [1, 1], "chance": 0.04 }
+        { "material": "Starsilver", "rarity": "Rare", "amount": [1, 3], "chance": 1.0 }
       ],
       "palette": { "hues": [[340, 360], [0, 15], [270, 290]], "saturation": [0.3, 0.6], "value": [0.12, 0.25],
         "glow": ["#ff3b3b", "#ff5ad1"], "glowStrength": [0.7, 1.0], "patterns": ["Bands", "Rings"] }

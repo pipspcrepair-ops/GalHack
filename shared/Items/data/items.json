@@ -80,10 +80,6 @@
       "mass": 5.0, "volume": 2, "where": "Alien ruins, derelicts · salvage", "uses": "Precursor armour blocks" },
     { "id": "echo-shard", "name": "Echo shard", "short": "ECHO", "category": "unique", "rarity": "unique", "source": "explore",
       "mass": 0.5, "volume": 0.5, "where": "Alien ruins", "uses": "Charge plating · charged armour" },
-    { "id": "lattice-core", "name": "Lattice core", "short": "LATTICE", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 2.0, "volume": 2, "where": "Derelicts, faction strongholds, rare traders", "uses": "CPU extender T3" },
-    { "id": "lattice-array", "name": "Lattice array", "short": "ARRAY", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 4.0, "volume": 4, "where": "Derelicts, faction strongholds, rare traders", "uses": "CPU extender T4" },
 
     // ---- Refined: made from raw only. The blueprint factory pays in these. -----------------
     { "id": "iron-bar", "name": "Iron bar", "category": "refined", "rarity": "common", "mass": 2.4, "volume": 0.5 },
@@ -136,8 +132,6 @@
     { "id": "voidglass-lens", "name": "Voidglass lens", "short": "LENS", "category": "component", "rarity": "exotic", "mass": 2.0, "volume": 1 },
     { "id": "storm-capacitor", "name": "Storm capacitor", "short": "STORMCP", "category": "component", "rarity": "exotic", "mass": 4.0, "volume": 1.5 },
     { "id": "rimefire-injector", "name": "Rimefire injector", "short": "INJECTR", "category": "component", "rarity": "exotic", "mass": 3.0, "volume": 1 },
-    { "id": "lattice-processor", "name": "Lattice processor", "short": "LAT-PRC", "category": "component", "rarity": "unique", "mass": 3.0, "volume": 2 },
-    { "id": "lattice-matrix", "name": "Lattice matrix", "short": "LAT-MTX", "category": "component", "rarity": "unique", "mass": 6.0, "volume": 4 },
     { "id": "charge-plating", "name": "Charge plating", "short": "CHRGPLT", "category": "component", "rarity": "unique", "mass": 8.0, "volume": 2 },
     // Force fields: one component makes one field of any size, drawn across an opening on a structure,
     // with its four corner emitters. Each tier is its own tech line (not shields'): what a field of

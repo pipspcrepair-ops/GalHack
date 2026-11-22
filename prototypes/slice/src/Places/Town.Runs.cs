@@ -397,7 +397,6 @@ public sealed partial class Town
         }
         // (Home: by the way in is enough, its spot may be crowded.)
         bool there = Walk(p, dt) || r.Home && r.Leg >= r.Way.Count - 1 && Flat(r.Way[^1] - p.Pos) < 1.5f;
-        Apart(p, dt);
         if (!there) return;
         // (Home with the place still down, coming up as you come: they stand at the way in till it is up, in the town again from there;
         // with nobody near to see, they are simply home, kept with the place.)
@@ -456,39 +455,45 @@ public sealed partial class Town
         if (r.Leg >= way.Count) { p.Now = 0f; return true; }
         Vector3 next = way[r.Leg] - p.Pos;
         bool last = r.Leg >= way.Count - 1;
-        float flat = Flat(next), pace = p.Speed * p.Feel.Pace;
+        float flat = Flat(next), pace = p.Speed * p.Feel.Pace * (BedIn(p.Pos) != null ? 0.5f : 1f); // (wading the shallows, slowed: OnLand)
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
+        wanted = Following(p, wanted, pace);
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
-        p.Gait += step;
-        Vector3 heading = next;
+        Vector3 heading = next, was = p.Pos;
         while (step > 0f && r.Leg < way.Count)
         {
-            Vector3 to = way[r.Leg], d = to - p.Pos;
+            // Off the way's line (beside another walking it: Town.Space), on along it as far off it as they are, not back into
+            // its line and them; a point of it within reach is passed, not walked onto.
+            bool end = r.Leg >= way.Count - 1;
+            Vector3 to = end || r.Leg == 0 ? way[r.Leg] : way[r.Leg] + Beside(p.Pos, way[r.Leg - 1], way[r.Leg]), d = to - p.Pos;
             float f = Flat(d);
+            if (!end && f < LandReach) { r.Leg++; continue; }
             if (f <= step) { p.Pos = to; step -= f; r.Leg++; continue; }
             p.Pos += new Vector3(d.X, 0f, d.Z) / f * step;
             p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, step / f);
             heading = d;
             step = 0f;
         }
-        if (Flat(heading) > 0.01f) p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-heading.X, -heading.Z), 5f * dt);
+        // (Off the way's line beside another, on the ground where they are, not the line's height.)
+        // (Up it as a walk climbs, never a hop: off a bank out of the water, say.)
+        if (!OnGrid(p.Pos) && _places?.Zone.Planet is PlanetWorld planet) p.Pos.Y = Mathf.MoveToward(p.Pos.Y, Height(planet, World(p.Pos)) - _origin.Y, Flat(p.Pos - was) + Clamber * dt);
+        OnLand(p, was, dt);
+        Turn(p, heading, dt);
         p.Sitting = false;
         return r.Leg >= way.Count;
     }
 
-    /// <summary>Two of them out on the land never stand in one another (as in town, a step aside at the crowd's pace).</summary>
-    void Apart(Person p, float dt)
+    /// <summary>How near a point of a way on the land is passed, m (they are 2 m apart), and how far off its line one walks it beside another at most.</summary>
+    const float LandReach = 1f, LaneMost = 0.5f;
+
+    /// <summary>How far, flat, a point is off the line from one point of a way to the next, across it (half a metre at most).</summary>
+    static Vector3 Beside(Vector3 at, Vector3 a, Vector3 b)
     {
-        foreach (Person q in People)
-        {
-            if (q == p || q.Run == null || q.Dead || q.Gone || MathF.Abs(p.Pos.Y - q.Pos.Y) > 1.6f) continue;
-            Vector3 d = new(p.Pos.X - q.Pos.X, 0f, p.Pos.Z - q.Pos.Z);
-            float touch = BodyRadius(p) + BodyRadius(q) + 0.1f, l = d.Length();
-            if (l >= touch) continue;
-            Vector3 away = l > 1e-3f ? d / l : new Vector3(MathF.Cos(p.Yaw), 0f, -MathF.Sin(p.Yaw));
-            p.Pos += away * MathF.Min(touch - l, PartPace * dt);
-        }
+        Vector3 along = (b - a) with { Y = 0f }, rel = (at - a) with { Y = 0f };
+        if (along.LengthSquared() < 1e-4f) return Vector3.Zero;
+        along = along.Normalized();
+        return (rel - along * rel.Dot(along)).LimitLength(LaneMost);
     }
 
     /// <summary>A shot at one of them out on a run (at them, or hitting them): by a creature, met as a danger; by you, they're done with you and the run.</summary>

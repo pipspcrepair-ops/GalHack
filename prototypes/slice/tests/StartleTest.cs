@@ -39,6 +39,9 @@ public partial class StartleTest : Node
     int _failures, _passes;
     readonly Stopwatch _clock = Stopwatch.StartNew();
     readonly System.Random _rng = new();
+    /// <summary>--seeds=a:b:...: the rounds' worlds rolled again in order (an A/B of a failing run; never pinned), else fresh.</summary>
+    readonly ulong[] _seeds = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seeds=")) is { } s ? s[8..].Split(':').Select(ulong.Parse).ToArray() : System.Array.Empty<ulong>();
+    int _round;
     Game.Game _game;
     Driver _drive;
     double _max;
@@ -98,7 +101,8 @@ public partial class StartleTest : Node
         // (A town with its people in its buildings as well as out in its streets: one under a roof, one in the open.)
         const string family = "survivor_town";
         PlanetSurface.Poi.PoiSiting.ForceFamily = family;
-        WorldChoice world = WorldChoice.Fresh("temperate");
+        WorldChoice world = WorldChoice.Fresh("temperate", _seeds.Length > _round ? _seeds[_round] : null);
+        _round++;
         _game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
         AddChild(_game);
         _drive = new Driver(_game);
@@ -108,6 +112,7 @@ public partial class StartleTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Sky.TimeOfDay = 0.42;
         _max = _game.Suit.Sim.Data.Vitals.Health.Max;
+        if (_round == 1) WildFolkRunUpright(_game.Zone.Wildlife.Life);
         GD.Print($"-- a settlement, {(runs ? "the way in, watched" : night ? "a night by their homes" : inside ? "in a building" : "in the open")}, {world} --");
         foreach (int x in Startle(family, inside, night, runs)) yield return x;
         _game.QueueFree();
@@ -233,7 +238,7 @@ public partial class StartleTest : Node
         var alive = people.Where(p => !p.Dead && !p.Gone).ToList();
         static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
         var before = people.ToDictionary(p => p, Flags);
-        int settled = town.Settled, rerouted = town.Rerouted, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0, bare = 0;
+        int settled = town.Settled, rerouted = town.Rerouted, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0, bare = 0, ran = 0, slumped = 0;
         var notes = new List<string>();
         var kinds = new Dictionary<string, int>();
         void Note(string kind, string s) { if ((kinds[kind] = kinds.GetValueOrDefault(kind) + 1) <= 3) notes.Add(s); }
@@ -280,6 +285,13 @@ public partial class StartleTest : Node
                 }
                 drawn[p] = d;
                 placed[p] = p.View?.GlobalPosition ?? default;
+                // Fleeing faster than a walk (posed every tick, near): the body is given no slumped act to draw. (A town body is
+                // posed through hits, staggers and its own stride state, so a twin rig can't stand in for it as it does for wild folk.)
+                if (p.Fleeing && p.Now > RunFrom && vis && near < 30f && p.Rig != null)
+                {
+                    ran++;
+                    if (p.Posed.Act is BodyAct.Cower or BodyAct.Grieve or BodyAct.Startle && p.Posed.ActAmount > 0.1f) { slumped++; Note("slump", $"{p.Job} fleeing at {p.Now:F1} m/s posed in {p.Posed.Act} {p.Posed.ActAmount:F2}"); }
+                }
             }
         }
         int dead = alive.Count(p => p.Dead);
@@ -289,6 +301,71 @@ public partial class StartleTest : Node
         Check(bare == 0, $"after {what}, everyone within {Town.SolidRange - 0.5f} m has a body to bump into ({bare} person-ticks without)");
         Check(jumps == 0, $"after {what}, nobody moved more than {TickMove} m in a tick in the sim ({jumps} jumps)");
         Check(drawnJumps == 0, $"after {what}, nobody was drawn more than {DrawnMove} m on in a tick ({drawnJumps} jumps)");
+        Check(slumped == 0, $"after {what}, everyone fleeing faster than a walk runs upright, never posed in a cower, grief or start ({slumped} of {ran} person-ticks)");
+    }
+
+    /// <summary>Faster than this a person is past a walk, m/s.</summary>
+    const float RunFrom = 1.6f;
+
+    /// <summary>
+    /// How a body is lower or more bent than the same one in a plain panicked run, hands to its head (owner, 23 Nov: "Why do
+    /// people crouch when they're running away?"): its torso tilted over past that, or its hips sunk by more than the two rigs'
+    /// own stride state parts them (a tenth of the leg); null when it runs upright. A cower bends the back half a radian over
+    /// (its sunk hips are no lower than a panicked run's wide stance already takes them).
+    /// </summary>
+    static string Slumped(Figure f, Rig drawn, Rig upright)
+    {
+        int at = drawn.Layout.Pieces.FindIndex(q => q.Name == "body");
+        static float Tilt(Transform3D b) => MathF.Acos(Math.Clamp(b.Basis.Y.Normalized().Y, -1f, 1f));
+        Transform3D body = drawn.Pose[at], run = upright.Pose[at];
+        float sunk = run.Origin.Y - body.Origin.Y, over = Tilt(body) - Tilt(run);
+        return sunk > 0.2f * f.LegLength || over > 0.15f ? $"hips {sunk:F2} m under a panicked run's, torso {over:F2} rad further over" : null;
+    }
+
+    /// <summary>
+    /// Wild folk of this world (its own kinds, ruin roamers, settlers) frightened on open ground: one of each band badly hurt
+    /// (it breaks off and runs), the band turned on you and the faint-hearted running from it. Each runner's body, as its rig
+    /// poses it, is upright as a run whenever it moves faster than a walk.
+    /// </summary>
+    void WildFolkRunUpright(WorldLife life)
+    {
+        var kinds = life.Signature.Kinds.Select(k => k.Species).Concat(life.RuinCast.Select(r => r.Item1)).Append(life.Settlers)
+            .Where(s => s is { Behaviour: Behaviour.Folk }).Distinct().Take(4).ToList();
+        if (kinds.Count == 0) { GD.Print("  (no wild folk on this world)"); return; }
+        WildlifeData data = DataFiles.LoadWildlife();
+        int ran = 0, slumped = 0;
+        var notes = new List<string>();
+        foreach (Species s in kinds)
+        {
+            var sim = new WildSim(data, new Terrain((x, z) => 0f, 120f), new Wildlife.NavGrid(120f, 3f));
+            var you = new DummyTarget { Position = new Vector3(0f, 0f, 10f), Health = new Health(1e9f), Forward = Vector3.Back };
+            sim.Targets.Add(you);
+            List<Creature> band = sim.SpawnGroup(s, Vector3.Zero, 4);
+            var rigs = band.ToDictionary(c => c, c => new HumanRig(c.Species));
+            var plain = band.ToDictionary(c => c, c => new HumanRig(c.Species)); // (the same body in a plain panicked run)
+            foreach (Creature c in band) { c.Nerve = 0.1f; rigs[c].Reset(sim, c); plain[c].Reset(sim, c); }
+            const float dt = 1f / 60f;
+            for (int t = 0; t < 60 * 8; t++)
+            {
+                if (t == 60) { sim.Damage(band[0], band[0].Stats.MaxHealth * 0.75f, you); sim.Damage(band[^1], 1f, you); }
+                sim.Step(dt);
+                foreach (Creature c in band)
+                {
+                    if (!c.Alive || c.Removed) continue;
+                    rigs[c].Update(sim, c, dt);
+                    BodyAct act = c.Act;
+                    c.Act = BodyAct.Panic;
+                    plain[c].Update(sim, c, dt);
+                    c.Act = act;
+                    float speed = WildSim.Flat(c.Velocity).Length();
+                    if (t < 120 || speed <= MathF.Max(RunFrom, c.Stats.WalkSpeed * 1.1f)) continue; // (the hits' own snap over first)
+                    ran++;
+                    if (Slumped(c.Species.Figure, rigs[c], plain[c]) is { } how && ++slumped <= 3) notes.Add($"{s.CommonName} at {speed:F1} m/s ({c.State}): {how}, act {c.Act}");
+                }
+            }
+        }
+        GD.Print($"  wild folk frightened ({string.Join(", ", kinds.Select(k => k.CommonName))}): {ran} running ticks{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
+        Check(ran > 0 && slumped == 0, $"wild folk running from a fright run upright, never crouched in a cower ({slumped} of {ran} running ticks low or bent)");
     }
 
     bool InView(Vector3 at)

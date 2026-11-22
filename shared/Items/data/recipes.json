@@ -65,8 +65,6 @@
     { "make": "voidglass-lens",   "count": 1, "from": { "voidglass": 1, "glass": 2 },    "seconds": 14,  "tier": 3 },
     { "make": "storm-capacitor",  "count": 1, "from": { "stormcore": 1, "winding": 2 },  "seconds": 14,  "tier": 3 },
     { "make": "rimefire-injector","count": 1, "from": { "rimefire": 1, "nozzle": 1 },    "seconds": 14,  "tier": 3 },
-    { "make": "lattice-processor","count": 1, "from": { "lattice-core": 1, "logic-module": 4 }, "seconds": 20, "tier": 3 },
-    { "make": "lattice-matrix",   "count": 1, "from": { "lattice-array": 1, "logic-module": 8 }, "seconds": 30, "tier": 3 },
     { "make": "charge-plating",   "count": 1, "from": { "echo-shard": 2, "gravium-ingot": 2 }, "seconds": 16, "tier": 3 },
     { "make": "force-field-t1",   "count": 1, "from": { "iron-plate": 6, "copper-wire": 8, "circuit-board": 2, "winding": 2 }, "seconds": 12, "tier": 1 },
     { "make": "force-field-t2",   "count": 1, "from": { "iron-plate": 10, "control-unit": 2, "power-unit": 1, "winding": 6 }, "seconds": 20, "tier": 2 },

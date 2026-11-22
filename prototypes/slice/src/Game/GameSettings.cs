@@ -1,14 +1,12 @@
 using System;
 using Godot;
+using PlanetSurface.Skies;
 using PlanetSurface.Terrain;
 
 namespace Slice.Game;
 
 /// <summary>How the game's window sits on the screen.</summary>
 public enum WindowKind { Windowed, Borderless, Fullscreen }
-
-/// <summary>The sun's shadows: how far they reach and how sharp they are. There is no "off": the sun's shadow is what keeps it out of rooms and under roofs.</summary>
-public enum ShadowLevel { Low, Medium, High, Ultra }
 
 /// <summary>How the 3D view's jagged edges are smoothed: none, a cheap screen-space pass (FXAA, SMAA) or multisampling.</summary>
 public enum AntiAliasing { Off, Fxaa, Smaa, Msaa2x, Msaa4x }
@@ -34,6 +32,7 @@ public sealed class GameSettings
     public float RenderScale = 1f;
     /// <summary>Vertical field of view, degrees.</summary>
     public float Fov = 75f;
+    /// <summary>The sun's shadows: how far they reach and how sharp they are (SunShadows). There is no "off": the sun's shadow is what keeps it out of rooms and under roofs.</summary>
     public ShadowLevel Shadows = ShadowLevel.High;
     /// <summary>MSAA 4x by default, the game's look before this was a setting.</summary>
     public AntiAliasing Aa = AntiAliasing.Msaa4x;
@@ -46,8 +45,7 @@ public sealed class GameSettings
     /// <summary>How far round you life is kept and drawn, m: from the default out toward the detail distance (SpawnReach).</summary>
     public float SpawnDistance = Slice.Surface.SpawnReach.Default;
     /// <summary>How far the sun's real-time shadows reach, m; past it the far land shades itself (TerrainStreamer.FarShade).</summary>
-    public float ShadowDistance = DefaultShadow;
-    public const float DefaultShadow = 320f, MostShadow = 1500f;
+    public float ShadowDistance = SunShadows.DefaultReach;
     /// <summary>The picture's gamma: above 1 lifts the shadows, below darkens them.</summary>
     public float Gamma = 1f;
     /// <summary>Where what is out there is marked: true in the scene on the things themselves (WORLD), false on the compass strip (COMPASS).</summary>
@@ -109,7 +107,7 @@ public sealed class GameSettings
         s.GroundDetail = Math.Clamp(Int(file, "graphics", "ground_detail", s.GroundDetail), MinGround, MaxGround);
         s.DetailDistance = Math.Clamp(Float(file, "graphics", "detail_distance", s.DetailDistance), DetailReach.Default, DetailReach.Most);
         s.TreeDistance = Math.Clamp(Float(file, "graphics", "tree_distance", s.TreeDistance), DetailReach.LeastTrees, DetailReach.Most);
-        s.ShadowDistance = Math.Clamp(Float(file, "graphics", "shadow_distance", s.ShadowDistance), DefaultShadow, MostShadow);
+        s.ShadowDistance = Math.Clamp(Float(file, "graphics", "shadow_distance", s.ShadowDistance), SunShadows.DefaultReach, SunShadows.MostReach);
         s.SpawnDistance = Math.Clamp(Float(file, "graphics", "spawn_distance", s.SpawnDistance), Slice.Surface.SpawnReach.Default, Slice.Surface.SpawnReach.Most);
         s.Gamma = Math.Clamp(Float(file, "graphics", "gamma", s.Gamma), MinGamma, MaxGamma);
         s.MarkersInWorld = !string.Equals(Str(file, "graphics", "markers"), "compass", StringComparison.OrdinalIgnoreCase);

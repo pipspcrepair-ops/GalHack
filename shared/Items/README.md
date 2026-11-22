@@ -37,7 +37,7 @@ Compile it in where it lives, never copy it:
 | Unique | gold `#ffbf2e` | 7 | 4 unique finds, 3 components made from them |
 
 - **Raw** (mined, dug or harvested): the design's ladder. Common: iron, copper, silicon and carbon ore, ice, stone (dug from any rock), biomass, burnstone. Uncommon: cobalt, magnesium, neodymium, gold, gravium. Rare: raw fold crystal, emberite, starsilver. Exotic: voidglass, stormcore, rimefire.
-- **Unique finds** can't be mined or crafted: precursor alloy, echo shards, lattice cores, lattice arrays. They come only from POIs, wrecks and derelicts; whatever needs one (lattice processors for CPU tier 3, charge plating, precursor armour) is marked as needing a find.
+- **Unique finds** can't be mined or crafted: precursor alloy and echo shards. They come only from POIs, wrecks and derelicts; whatever needs one (charge plating, precursor armour) is marked as needing a find.
 - **Refined** materials are made from raw ore only (bars, wafers, graphite, glass, polymer, ceramic, concrete mix, gravium ingots, fold crystal...). There is no smelter: a constructor refines ore as one more step of the chain (design section 10).
 - **Parts** (hull plates, wire, windings, circuit boards, servos, nozzles, barrels, magnets, machine frames, logic modules, propellant, charges) and **components** (control and power units, thrust assemblies, field emitters, warp coils, fusion cores, lenses...) take refined materials and parts, never raw ore.
 - **Consumables**, **ammo** (counted in boxes: a 12 mm belt is 200 rounds, a box of 40 mm shells 25) and one **tool**, the survival constructor.
