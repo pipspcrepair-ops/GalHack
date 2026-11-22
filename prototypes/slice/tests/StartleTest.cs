@@ -239,6 +239,7 @@ public partial class StartleTest : Node
         static string Flags(Town.Person p) => $"{(p.Fleeing ? "F" : "")}{(p.Engaged ? "E" : "")}{(p.Asleep ? "S" : "")}{(p.Sitting ? "s" : "")} spot {p.Spot} way {p.Step}/{p.Path?.Count ?? -1} stuck {p.StuckFor:F1} now {p.Now:F1}";
         var before = people.ToDictionary(p => p, Flags);
         int settled = town.Settled, rerouted = town.Rerouted, fled = 0, removed = 0, hid = 0, popped = 0, jumps = 0, drawnJumps = 0, bare = 0, ran = 0, slumped = 0;
+        var upright = new Dictionary<Town.Person, HumanRig>();
         var notes = new List<string>();
         var kinds = new Dictionary<string, int>();
         void Note(string kind, string s) { if ((kinds[kind] = kinds.GetValueOrDefault(kind) + 1) <= 3) notes.Add(s); }
@@ -285,11 +286,13 @@ public partial class StartleTest : Node
                 }
                 drawn[p] = d;
                 placed[p] = p.View?.GlobalPosition ?? default;
-                // Fleeing faster than a walk (posed every tick, near): upright as a run, never a cower's slump or lean.
-                if (p.Fleeing && p.Now > RunFrom && vis && near < 30f && p is { Crouched: < 0.05f, Bent: < 0.05f, Seated: < 0.05f, Down: < 0.05f, Engaged: false } && p.Rig != null)
+                // Fleeing faster than a walk (posed every tick, near): as upright as the same body running with no act at all.
+                if (p.Fleeing && p.Now > RunFrom && vis && near < 30f && p.Rig != null)
                 {
+                    HumanRig twin = upright.TryGetValue(p, out var u) ? u : upright[p] = new HumanRig(p.Looks);
+                    twin.Drive(p.Posed with { Act = BodyAct.None, ActAmount = 0f });
                     ran++;
-                    if (Slumped(p.Figure, p.Rig, p.Pos.Y, p.Now) is { } how) { slumped++; Note("slump", $"{p.Job} fleeing at {p.Now:F1} m/s: {how}, act {p.Act} {p.ActAmount:F2}"); }
+                    if (Slumped(p.Figure, p.Rig, twin) is { } how) { slumped++; Note("slump", $"{p.Job} fleeing at {p.Now:F1} m/s: {how}, act {p.Act} {p.ActAmount:F2}"); }
                 }
             }
         }
@@ -307,19 +310,17 @@ public partial class StartleTest : Node
     const float RunFrom = 1.6f;
 
     /// <summary>
-    /// How a body is lower or more bent than a run at this speed (owner, 23 Nov: "Why do people crouch when they're running
-    /// away?"): its torso tilted past a run's lean and the figure's stoop, or its hips sunk past a run's (a panicked run's wide,
-    /// long stride takes them a fifth of the leg down already); null when it runs upright. A cower drops the hips a further
-    /// fifth of the leg and bends the back over by more than half a radian.
+    /// How a body is lower or more bent than the same one running with no act (owner, 23 Nov: "Why do people crouch when
+    /// they're running away?"): its hips sunk or its torso tilted over past that; null when it runs upright. A cower drops the
+    /// hips a fifth of the leg and bends the back half a radian over.
     /// </summary>
-    static string Slumped(Figure f, Rig rig, float feetY, float speed)
+    static string Slumped(Figure f, Rig drawn, Rig upright)
     {
-        Transform3D body = rig.Pose[rig.Layout.Pieces.FindIndex(q => q.Name == "body")];
-        float run = Math.Clamp((speed - 2f) / 1.4f, 0f, 1f);
-        float low = f.LegLength * (0.99f - 0.022f - 0.07f * run - 0.3f) - (0.012f + 0.024f * run) * f.Height;
-        float most = 0.05f + 0.26f * run + f.Stoop * 0.55f + 0.3f;
-        float hip = body.Origin.Y - feetY, tilt = MathF.Acos(Math.Clamp(body.Basis.Y.Normalized().Y, -1f, 1f));
-        return hip < low || tilt > most ? $"hips {hip:F2} m up (a run's {low:F2} at least), torso {tilt:F2} rad over (a run's {most:F2} at most)" : null;
+        int at = drawn.Layout.Pieces.FindIndex(q => q.Name == "body");
+        static float Tilt(Transform3D b) => MathF.Acos(Math.Clamp(b.Basis.Y.Normalized().Y, -1f, 1f));
+        Transform3D body = drawn.Pose[at], run = upright.Pose[at];
+        float sunk = run.Origin.Y - body.Origin.Y, over = Tilt(body) - Tilt(run);
+        return sunk > 0.06f * f.LegLength || over > 0.15f ? $"hips {sunk:F2} m under a plain run's, torso {over:F2} rad further over" : null;
     }
 
     /// <summary>
@@ -342,7 +343,8 @@ public partial class StartleTest : Node
             sim.Targets.Add(you);
             List<Creature> band = sim.SpawnGroup(s, Vector3.Zero, 4);
             var rigs = band.ToDictionary(c => c, c => new HumanRig(c.Species));
-            foreach (Creature c in band) { c.Nerve = 0.1f; rigs[c].Reset(sim, c); }
+            var plain = band.ToDictionary(c => c, c => new HumanRig(c.Species)); // (the same body with no act: a plain run)
+            foreach (Creature c in band) { c.Nerve = 0.1f; rigs[c].Reset(sim, c); plain[c].Reset(sim, c); }
             const float dt = 1f / 60f;
             for (int t = 0; t < 60 * 8; t++)
             {
@@ -352,10 +354,14 @@ public partial class StartleTest : Node
                 {
                     if (!c.Alive || c.Removed) continue;
                     rigs[c].Update(sim, c, dt);
+                    BodyAct act = c.Act;
+                    c.Act = BodyAct.None;
+                    plain[c].Update(sim, c, dt);
+                    c.Act = act;
                     float speed = WildSim.Flat(c.Velocity).Length();
                     if (t < 120 || speed <= MathF.Max(RunFrom, c.Stats.WalkSpeed * 1.1f)) continue; // (the hits' own snap over first)
                     ran++;
-                    if (Slumped(c.Species.Figure, rigs[c], c.Position.Y, speed) is { } how && ++slumped <= 3) notes.Add($"{s.CommonName} at {speed:F1} m/s ({c.State}): {how}, act {c.Act}");
+                    if (Slumped(c.Species.Figure, rigs[c], plain[c]) is { } how && ++slumped <= 3) notes.Add($"{s.CommonName} at {speed:F1} m/s ({c.State}): {how}, act {c.Act}");
                 }
             }
         }

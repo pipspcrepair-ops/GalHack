@@ -86,6 +86,8 @@ public sealed partial class Town : IKeeper
         /// <summary>Who they are, how they stand, and what draws them (once near enough to have been built).</summary>
         public Species Looks;
         public HumanRig Rig;
+        /// <summary>What the body was last posed from.</summary>
+        public Gesture Posed;
         /// <summary>How long the next round has waited for the weapon to come onto its mark, and how far off the mark the last round left, degrees.</summary>
         public float AimHeld, LastOff;
         public PersonView View;
@@ -1564,7 +1566,7 @@ public sealed partial class Town : IKeeper
             if (MathF.Abs(off) < 1.25f) look = off;
         }
         p.HeadYaw = Mathf.Lerp(p.HeadYaw, look, 0.08f);
-        p.Rig.Drive(new Gesture
+        p.Rig.Drive(p.Posed = new Gesture
         {
             Feet = p.Pos,
             Yaw = p.Yaw,

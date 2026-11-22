@@ -18,6 +18,7 @@ namespace Slice.Tests;
 /// The bestiary's proof frames, all in the real game on the world asked for (--planet, --seed):
 /// --view=folk   everyone this world dresses, one of each role, then a mutated one and a raider, at two distances
 /// --view=crowd  a real town's people at several distances, and a run of frames of them walking
+/// --view=flee   one of a town's crowd killed, and frames of the rest running from it
 /// --view=fauna  this world's wild species standing on its own ground, and what vacuum leaves
 /// --out=DIR is the folder (one PNG a moment).
 /// </summary>
@@ -277,6 +278,40 @@ public sealed partial class Staging
             foreach (int x in Shot(Path.Combine(frames, $"f{i:000}.png"))) yield return x;
         }
         GD.Print($"(people cost: worst tick {worst:F2} ms for {town.People.Count} while shooting, {people.Count} out; walker {walker.Role} at {walker.Now:F1} m/s)");
+    }
+
+    /// <summary>One of a town's crowd killed by the sleeper, then frames of the rest running from it (owner, 23 Nov: upright, never in a cower).</summary>
+    IEnumerable<int> FleeView()
+    {
+        string dir = Folder("flee");
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null).OrderBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0).ThenBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).FirstOrDefault();
+        if (site == null) { GD.Print("(no town on this world)"); yield break; }
+        foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.Wait(300)) yield return x;
+        Place p = _game.Places.PlaceOf(site);
+        Town town = p.Memory.Town;
+        var people = town.People.Where(q => !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
+        if (people.Count < 2) { GD.Print("(nobody out in the open)"); yield break; }
+        Town.Person busy = people.OrderByDescending(q => people.Count(o => o.Pos.DistanceTo(q.Pos) < 12f)).First();
+        Vector3 at = p.ToWorld(busy.Pos), eye = at + new Vector3(7f, 0f, 7f);
+        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f;
+        _game.Survivor.PlaceOutside(Ground(eye + new Vector3(2f, 0f, 2f)).ToNumerics());
+        _game.Visor.Visible = false;
+        Look(eye, at + Vector3.Up);
+        foreach (int x in _drive.Wait(60)) yield return x;
+        town.Struck(busy, 9999f, GalHack.Arms.DamageClass.Explosive, byPlayer: true);
+        for (int i = 0; i < 10; i++)
+        {
+            foreach (int x in _drive.Wait(18)) yield return x;
+            var runners = town.People.Where(q => q.Fleeing && q.Now > 2f).ToList();
+            if (runners.Count > 0) Look(eye, runners.Aggregate(Vector3.Zero, (s, q) => s + p.ToWorld(q.Pos)) / runners.Count + Vector3.Up);
+            foreach (int x in _drive.Wait(2)) yield return x;
+            foreach (int x in Shot(Path.Combine(dir, $"flee-{i:00}.png"))) yield return x;
+            GD.Print($"(flee-{i:00}: {runners.Count} running: {string.Join(", ", runners.Take(4).Select(q => $"{q.Job} {q.Now:F1} m/s {q.Act} {q.ActAmount:F2}"))})");
+        }
     }
 
     IEnumerable<int> FaunaView()
