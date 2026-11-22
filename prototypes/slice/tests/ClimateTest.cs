@@ -98,6 +98,7 @@ public partial class ClimateTest : Node
         foreach (int x in Lava()) yield return x;
         foreach (int x in Node()) yield return x;
         foreach (int x in Cells()) yield return x;
+        SwimmingAnimal();
     }
 
     /// <summary>A shut box of steel on open ground, in a monsoon: nothing of the storm gets in, and it is all still out there.</summary>
@@ -514,18 +515,37 @@ public partial class ClimateTest : Node
 
         foreach (int x in IceWater(water)) yield return x;
 
-        // A land animal driven out over the water floats on it at the most, never sinks.
+        // A land animal out over deep water swims, its back at the surface (Locomotion.Swim), or too heavy to swim, sinks: it never
+        // stands on the water.
         WildlifePatch patch = Zone.Wildlife;
         patch.FinishFollowing();
         foreach (int x in _drive.Wait(5)) yield return x;
         Vector3 local = patch.PatchLocal(Me.WorldFeet);
         if (patch.Fauna.Species.Count > 0 && patch.Sim.Terrain.Inside(local, 20f))
         {
-            Species s = patch.Fauna.Species[0];
-            Creature c = patch.Sim.Spawn(s, local);
-            float below = water.Y - patch.FromPatch(c.Position).Y;
-            Check(below <= WildlifePatch.Draught + 0.05f, $"a land animal over deep water floats: its feet {below:F2} m under the surface");
-            c.Removed = true;
+            Species s = patch.Fauna.Species.FirstOrDefault(f => !f.Flies && !f.Rooted && f.Rig is not (RigKind.GasBag or RigKind.Swarm or RigKind.Finned)) ?? patch.Fauna.Species[0]; // (one that walks: fliers and floaters are over the water, not in it)
+            // (Left to the water while the rest goes on, so nothing after waits on it: judged at the end, SwimmingAnimal.)
+            _swimmer = (patch.Sim.Spawn(s, local with { Y = water.Y - patch.Origin.Y }), water.Y);
         }
+    }
+
+    /// <summary>The land animal left in deep water (Swim), and the water's surface there.</summary>
+    (Creature Animal, float Surface)? _swimmer;
+
+    /// <summary>
+    /// The land animal left in deep water: one that swims has its back at the surface, or has swum out onto a bank; one too heavy to
+    /// swim sank (and drowned). Never standing on the water.
+    /// </summary>
+    void SwimmingAnimal()
+    {
+        if (_swimmer is not var (c, top)) return;
+        WildlifePatch patch = Zone.Wildlife;
+        if (c.Removed || !patch.Sim.Creatures.Contains(c)) { GD.Print("  (the animal left in the water went with its patch: not judged)"); return; }
+        Vector3 w = patch.FromPatch(c.Position);
+        bool inWater = _game.Zone.Planet.WaterSurfaceAt(w) != null, swims = Shore.Swims(c.Species);
+        float below = top - w.Y, swim = c.Species.BodyHeight * patch.Sim.SwimShare;
+        Check(swims ? !inWater || MathF.Abs(below - swim) < 0.35f : c.Dead || below > swim,
+            $"a land animal ({c.Species.Name}, {c.Species.Rig}) left in deep water {(swims ? inWater ? "swims, its back at the surface" : "swam out onto a bank" : "too heavy to swim, sank")}: its feet {below:F2} m under the surface ({swim:F2} swimming){(c.Dead ? ", dead" : "")}");
+        c.Removed = true;
     }
 }

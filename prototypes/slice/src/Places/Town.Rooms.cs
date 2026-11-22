@@ -171,7 +171,8 @@ public sealed partial class Town
         PInt3? here = InSeat(p, p.Spot) ? Spots[p.Spot].Cell : InSeat(p, p.Seat) ? Spots[p.Seat].Cell : Stand(Cell(p.Pos));
         if (here is not { } h || !_nav.Standable(Spots[spot].Cell)) return null;
         pending = !Searched(h, spot, out List<Vector3> path);
-        return path;
+        // (Its first point is the middle of the cell they stand in: from anywhere in it, on straight for the next, not back to it first and round again.)
+        return path is { Count: > 1 } && here == Stand(Cell(p.Pos)) && Shortcut(p.Pos, path[1]) ? path.GetRange(1, path.Count - 1) : path;
     }
 
     /// <summary>On the last step of the way to a seat, inside the seat's own cells (tests).</summary>
@@ -305,13 +306,13 @@ public sealed partial class Town
     /// </summary>
     int NightSpot(Person p)
     {
-        if (p.Home < _lie.Count && _lie[p.Home] != null) return p.Home;
+        if (p.Home < _lie.Count && _lie[p.Home] != null && Whole(p.Home)) return p.Home;
         Vector3 home = At(p.Home);
         int seat = -1, other = -1;
         float seatAt = 6f, otherAt = 8f;
         for (int i = 0; i < Spots.Count; i++)
         {
-            if (Spots[i].Tag == "bed" || Making(p, i) > 0) continue;
+            if (Spots[i].Tag == "bed" || Making(p, i) > 0 || !Whole(i)) continue;
             float d = (At(i) - home).Length();
             if (Spots[i].Tag == "sit" && d < seatAt) (seat, seatAt) = (i, d);
             else if (i != p.Home && d < otherAt) (other, otherAt) = (i, d);

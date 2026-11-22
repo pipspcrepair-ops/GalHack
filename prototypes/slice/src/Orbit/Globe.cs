@@ -858,7 +858,9 @@ public partial class Globe : Node3D
         _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(look.RingColor));
         _hasRing = look.Ring;
         // The mesh only covers the ring: a shade wider than it, so its straight sides never cut the round edge.
-        _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * (RingInner - 0.02f), radius * (RingOuter + 0.03f), 160), MaterialOverride = _ringMaterial, Visible = false, CustomAabb = Everywhere };
+        // Cast no shadow, as nothing up here does: its shader stands it round the eye, and in the sun's shadow pass that eye is the light's.
+        _ring = Instance("Ring", RingMesh(radius * (RingInner - 0.02f), radius * (RingOuter + 0.03f), 160), _ringMaterial);
+        (_ring.Visible, _ring.CustomAabb) = (false, Everywhere);
         AddChild(_ring);
         Visible = false;
     }

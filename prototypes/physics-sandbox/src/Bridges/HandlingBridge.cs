@@ -44,7 +44,7 @@ public sealed class HandlingFlight : IFlightRules
 
     int _revision = -1;
     bool _inAir;
-    float _carried, _livePower = -1f;
+    float _carried, _gravity, _livePower = -1f;
 
     public HandlingFlight(IVesselStructure structure, Tunables tunables)
     {
@@ -58,12 +58,13 @@ public sealed class HandlingFlight : IFlightRules
     {
         // Craft parked on it count in its mass: its thrust has to cover the total.
         float carried = Units.Tonnes(body.Carried);
-        if (Stats == null || _revision != Structure.Revision || _inAir != zone.InAtmosphere || _carried != carried)
+        if (Stats == null || _revision != Structure.Revision || _inAir != zone.InAtmosphere || _carried != carried || _gravity != zone.PlanetGravity)
         {
             Stats = HandlingModel.Compute(Structure, Conditions(zone), Tunables, carried);
             _revision = Structure.Revision;
             _inAir = zone.InAtmosphere;
             _carried = carried;
+            _gravity = zone.PlanetGravity; // its lift is against this world's pull: a craft taken to a heavier one is weighed again
             _livePower = -1f;
         }
         // Power in steps of a twentieth, so a brownout doesn't recompute the numbers every tick.

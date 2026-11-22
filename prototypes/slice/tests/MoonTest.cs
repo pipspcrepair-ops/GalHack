@@ -572,7 +572,7 @@ public partial class MoonTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(v.Controller?.Frozen == true && v.Body.Damage == hurtBefore && !_game.Suit.Dead, $"landed on {moon.Name} on its gear, undamaged, the sleeper alive at the controls (settled {v.Controller?.Frozen}, {v.AboveGround:F1} m up, damage {v.Body.Damage - hurtBefore:F2}, the suit's air at {_game.Suit.OxygenShare:P0})");
         float g = surface.Physics.Zone.Strength, home = _game.Surface.Physics.Zone.Strength;
-        float sized = home * moon.GlobeRadius / _game.Orbit.Home.GlobeRadius;
+        float sized = home * surface.Spec.GravityScale / _game.Surface.Spec.GravityScale; // the owner's ladder by size (22 Nov): 0.2 g at 8 km
         Check(MathF.Abs(g - sized) < 0.01f, $"its gravity comes from its size: {g:F1} m/s² on a {surface.Planet.Width / 1000:F0} km moon, the world's {home:F1} on {_game.Surface.Planet.Width / 1000:F0} km");
         if (moon.Body.Spec.Airless)
             Check(surface.Weather.Sim == null && surface.Planet.Sky.Density < SurfaceWeather.NoAir && _game.Suit.Beyond != null && _game.Suit.InVacuum && _game.Visor.SleeperIcons()[1].On,
@@ -698,10 +698,11 @@ public partial class MoonTest : Node
         OrbitZone orbit = _game.Orbit;
         Vessel v = _skiff;
         Vector3 at = v.Body.Position.ToGodot();
-        Celestial next = orbit.Moons.Where(c => c != orbit.Moon).OrderBy(c => at.DistanceTo(c.Centre)).FirstOrDefault();
+        // Not a heavy one: a giant's moon can be any size (owner, 22 Nov), and the Skiff can't lift off 2.2 g or more.
+        Celestial next = orbit.Moons.Where(c => c != orbit.Moon && !c.Body.Spec.HighGravity).OrderBy(c => at.DistanceTo(c.Centre)).FirstOrDefault();
         if (next == null)
         {
-            GD.Print("  (no second moon to fly to: the thruster moon is this world's only one)");
+            GD.Print("  (no second moon to fly to: the thruster moon is this world's only light one)");
             yield break;
         }
         found(next);

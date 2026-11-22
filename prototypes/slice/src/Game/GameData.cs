@@ -188,6 +188,7 @@ public sealed class SliceRules
 
     public sealed class PlanetRules
     {
+        /// <summary>A start-sized world's gravity, 1 g, m/s²: every world's is this times its size's (PlanetSpec.Gravities); a core's artificial gravity is this.</summary>
         public float Gravity { get; set; } = 9.8f;
         public float Ceiling { get; set; } = 4000f;
         public double StartTimeOfDay { get; set; } = 0.27;

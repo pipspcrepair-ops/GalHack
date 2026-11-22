@@ -28,7 +28,7 @@ public readonly record struct Satellite(string Name, Vector3 Centre, float Radiu
 /// </summary>
 public sealed class Galaxy
 {
-    /// <summary>The disc's radius, ly; the hyperdrive's reach (design: T1 about 30 LY, T2 60); where the rim starts.</summary>
+    /// <summary>The disc's radius, ly; the fold drive's reach (design: T1 about 30 LY, T2 60); where the rim starts.</summary>
     public const float DiscRadius = 500f, JumpT1 = 30f, JumpT2 = 60f, RimFrom = 400f;
 
     public readonly ulong Seed;
