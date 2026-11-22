@@ -403,10 +403,8 @@ public sealed class WeatherSim
     {
         Segment s = SegmentAt(Time);
         (from, to, blend) = (s.FromKind, s.Kind, Blend(s, Time));
-        // The same everywhere at one moment: worked out once a tick, as every body's wind reads it every tick.
-        if (s != _calmSegment || Time != _calmTime) (_calm, _calmSegment, _calmTime) = (Conditions.Lerp(Calm(s.From, from), Calm(s.To, to), blend), s, Time);
-        Conditions c = _calm;
-        if (_front != null && _frontSegment != null && (_frontSegment == s || _frontSegment.Start > Time))
+        Conditions c = Calmed(s);
+        if (FrontOver(s))
         {
             // The front's own weather behind its edge, the one before it everywhere else.
             float under = _front.Strength * _front.Under(p);
@@ -416,6 +414,17 @@ public sealed class WeatherSim
         }
         return c;
     }
+
+    /// <summary>The timeline's air with a dust storm's taken for its fallback: the same everywhere at one moment, so worked out once a tick (every body's wind reads it every tick).</summary>
+    ref readonly Conditions Calmed(Segment s)
+    {
+        if (s != _calmSegment || Time != _calmTime)
+            (_calm, _calmSegment, _calmTime) = (Conditions.Lerp(Calm(s.From, s.FromKind), Calm(s.To, s.Kind), Blend(s, Time)), s, Time);
+        return ref _calm;
+    }
+
+    /// <summary>A front's weather is over its part of the map: its own behind its edge, the one before it ahead.</summary>
+    bool FrontOver(Segment now) => _front != null && _frontSegment != null && (_frontSegment == now || _frontSegment.Start > Time);
 
     /// <summary>Inside a dust storm, its weather over the world's, as deep as the point is in it (returned, 0 to 1): whatever the world's weather is doing there, the storm's own is the storm's.</summary>
     float InStorm(ref Conditions c, Vector3 p)
@@ -575,7 +584,7 @@ public sealed class WeatherSim
         {
             Vector2 l = d.Local(observer, WorldSize);
             if (d.Strength < 0.2f || MathF.Abs(l.Y) >= d.HalfWidth) continue;
-            float edge = d.HalfLength * MathF.Sqrt(1f - l.Y * l.Y / (d.HalfWidth * d.HalfWidth)); // its outline, ahead of and behind its middle, at this line
+            float edge = d.EdgeAlong(l.Y); // its outline, ahead of and behind its middle, on the observer's line
             float eta = MathF.Max(0f, (l.X - edge) / d.Speed);
             if (l.X < -edge || eta > dust.WarningLead) continue;
             into.Add(new WarningEntry(WarningLevel.Warning, dust.Warning, eta, WeatherKind.DustStorm, Time + eta,
@@ -1405,28 +1414,40 @@ public sealed class WeatherSim
     /// </summary>
     public Vector3 WindAt(Vector3 position)
     {
-        Conditions air = WindAir(position);
-        Vector2 mean = RegionWind(air.Wind, position);
+        (Vector2 air, float gustiness) = WindAir(position);
+        Vector2 mean = RegionWind(air, position);
         float speed = mean.Length();
         if (speed < 0.01f) return Vector3.Zero;
         Vector2 dir = mean / speed;
         float along = position.X * dir.X + position.Z * dir.Y;
         float phase = ((float)Time * speed - along) / 80f;
-        float gust = air.Gustiness * (0.55f * Noise.Value1D(phase, _gustSeed) + 0.25f * Noise.Value1D(phase * 2.7f + 31f, _gustSeed));
-        float veer = air.Gustiness * 0.2f * Noise.Value1D(phase * 0.5f + 77f, _gustSeed);
+        float gust = gustiness * (0.55f * Noise.Value1D(phase, _gustSeed) + 0.25f * Noise.Value1D(phase * 2.7f + 31f, _gustSeed));
+        float veer = gustiness * 0.2f * Noise.Value1D(phase * 0.5f + 77f, _gustSeed);
         Vector2 wind = dir.Rotated(veer) * speed * MathF.Max(0.1f, 1f + gust);
         return new Vector3(wind.X, 0f, wind.Y);
     }
 
     /// <summary>The mean wind at a place, m/s: its part of the front's (the storm's behind the edge), a dust storm's inside it, harder on the heights, softer in the woods.</summary>
-    public Vector2 MeanWindAt(Vector3 p) => RegionWind(WindAir(p).Wind, p);
+    public Vector2 MeanWindAt(Vector3 p) => RegionWind(WindAir(p).wind, p);
 
-    /// <summary>The air whose wind blows at a point: the world's, and a dust storm's inside one.</summary>
-    Conditions WindAir(Vector3 p)
+    /// <summary>The wind and its gustiness at a point: the world's, and a dust storm's inside one. With no front over the map it is the air worked out once a tick, and a look for storms.</summary>
+    (Vector2 wind, float gust) WindAir(Vector3 p)
     {
-        Conditions air = AirOver(p, out _, out _, out _);
-        InStorm(ref air, p);
-        return air;
+        Segment s = SegmentAt(Time);
+        Vector2 wind;
+        float gust;
+        if (FrontOver(s))
+        {
+            Conditions air = AirOver(p, out _, out _, out _);
+            (wind, gust) = (air.Wind, air.Gustiness);
+        }
+        else
+        {
+            ref readonly Conditions calm = ref Calmed(s);
+            (wind, gust) = (calm.Wind, calm.Gustiness);
+        }
+        if (_dust.Count == 0 || Deepest(p, out float depth) is not { } d) return (wind, gust);
+        return (wind.Lerp(d.Air.Wind, depth), gust + (d.Air.Gustiness - gust) * depth);
     }
 
     Vector2 RegionWind(Vector2 mean, Vector3 p)

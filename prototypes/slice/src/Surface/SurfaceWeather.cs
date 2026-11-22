@@ -190,12 +190,12 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             new Vector4(f.Shear, f.Bow, f.Bows, f.Bays), new Vector4(f.Kind == FrontKind.Storm ? 1f : 0f, f.Roll ? 1f : 0f, f.Seed, f.Severity));
     }
 
-    readonly Dictionary<int, PlanetSurface.Fx.Volume> _storms = new();
+    readonly Dictionary<int, Storm> _storms = new();
     readonly List<int> _gone = new();
     float? _aerial;
 
     /// <summary>The drawn body of a dust storm (tests and screenshots), or null.</summary>
-    public PlanetSurface.Fx.Volume StormOf(int id) => _storms.GetValueOrDefault(id);
+    public PlanetSurface.Fx.Volume StormOf(int id) => _storms.GetValueOrDefault(id)?.Body;
 
     /// <summary>Steps a dust storm's body is drawn in: enough for its heaps near the eye, few enough for the frame.</summary>
     const int StormSteps = 28;
@@ -210,16 +210,21 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         Godot.Environment env = Zone.Sky.Environment;
         Color haze = env.FogLightColor;
-        Color sun = Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy;
-        Color sky = haze.SrgbToLinear() * env.AmbientLightEnergy;
-        Color dust = _planet.Look.Dust;
-        Color deep = dust.SrgbToLinear() * (sky * 0.45f + sun * 0.05f); // as the body is lit deep inside, at its foot (volume.gdshader)
-        // Deep in it the murk hides the sky and everything far off alike, in its own colour.
+        // Tan, not orange: the dust takes the light's brightness more than its colour, as fine dust in sunlight does.
+        Color sun = Muted(Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy, 0.5f);
+        // The sky's light on it: the haze colour is the dimmer one, the sky over it brighter (the land is lit by that).
+        Color sky = Muted(haze.SrgbToLinear() * env.AmbientLightEnergy, 0.5f) * 1.6f;
+        Color dust = Muted(_planet.Look.Dust, 0.25f);
+        Color deep = dust.SrgbToLinear() * (sky * 0.45f + sun * 0.06f); // as the body is lit deep inside, at its foot (volume.gdshader)
+        // Deep in it the murk hides the sky and everything far off alike, in its own colour. The fog carries most of it, a
+        // little less in a lull and more in a gust; the body's heaps add the rest, uneven, streaming past the eye.
         float inside = Sim.DustDepth(camera) * open;
+        float mean = Sim.MeanWindAt(camera).Length(), gust = mean > 0.5f ? Mathf.Clamp(Sim.WindAt(camera).Length() / mean, 0.6f, 1.5f) : 1f;
         _aerial ??= env.FogAerialPerspective;
         env.FogLightColor = haze.Lerp(deep.LinearToSrgb(), inside);
         env.FogSkyAffect = Mathf.Lerp(env.FogSkyAffect, 1f, inside);
         env.FogAerialPerspective = Mathf.Lerp(_aerial.Value, 0f, inside);
+        env.FogDensity *= Mathf.Lerp(1f, 0.5f * gust, inside);
 
         _gone.Clear();
         foreach (int id in _storms.Keys) _gone.Add(id);
@@ -227,37 +232,56 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         {
             if (d.Strength < 0.005f) continue;
             _gone.Remove(d.Id);
-            if (!_storms.TryGetValue(d.Id, out PlanetSurface.Fx.Volume v))
+            if (!_storms.TryGetValue(d.Id, out Storm s))
             {
-                v = new PlanetSurface.Fx.Volume { Name = $"DustStorm{d.Id}" };
-                AddChild(v);
-                _storms[d.Id] = v;
+                s = new Storm(new PlanetSurface.Fx.Volume { Name = $"DustStorm{d.Id}" });
+                AddChild(s.Body);
+                _storms[d.Id] = s;
             }
             Vector3 at = _planet.NearestCopy(_planet.Canonical(d.Position), camera);
             // It stands on the land: its floor under the lowest ground of its footprint, its top its height over the middle's.
-            var along = new Vector3(d.Heading.X, 0f, d.Heading.Y) * d.HalfLength;
-            var across = new Vector3(-d.Heading.Y, 0f, d.Heading.X) * d.HalfWidth;
-            float middle = Sim.GroundHeight(at.X, at.Z), floor = middle;
-            for (int i = -1; i <= 1; i++)
-            for (int j = -1; j <= 1; j++)
+            // The ground under it is looked at again only once it has gone a good way, not every frame.
+            if (s.Laid.DistanceSquaredTo(at) > 150f * 150f)
             {
-                Vector3 p = at + along * i + across * j;
-                floor = MathF.Min(floor, Sim.GroundHeight(p.X, p.Z));
+                var along = new Vector3(d.Heading.X, 0f, d.Heading.Y) * d.HalfLength;
+                var across = new Vector3(-d.Heading.Y, 0f, d.Heading.X) * d.HalfWidth;
+                s.Middle = s.Floor = Sim.GroundHeight(at.X, at.Z);
+                for (int i = -1; i <= 1; i++)
+                for (int j = -1; j <= 1; j++)
+                {
+                    Vector3 p = at + along * i + across * j;
+                    s.Floor = MathF.Min(s.Floor, Sim.GroundHeight(p.X, p.Z) - 40f);
+                }
+                s.Laid = at;
             }
-            floor -= 40f;
-            const float billow = 220f;
-            v.Shape(new Vector2(at.X, at.Z), d.Heading, new Vector2(d.HalfLength, d.HalfWidth), floor, middle + d.Height - floor, 0.5f, billow);
-            // As thick inside as its weather's visibility makes the fog (Atmosphere's rule), thinner up top; its heaps ride
-            // on it a little faster than it moves, climbing its face, so its front rolls.
-            // Its outline drawn crisper than the model's ramp: the wall is seen as a wall, and the eye's fog takes over inside.
-            v.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, MathF.Min(d.Edge, 150f), 380f, d.Velocity * 1.15f, 2.5f, d.Strength);
-            v.Light(ToSun, sun, sky, env.FogLightColor, env.FogDensity, StormSteps);
+            const float billow = 280f;
+            s.Body.Shape(new Vector2(at.X, at.Z), d.Heading, new Vector2(d.HalfLength, d.HalfWidth), s.Floor, s.Middle + d.Height - s.Floor, 0.3f, billow);
+            // As thick inside as its weather's visibility makes the fog (Atmosphere's rule), thinner up top; great lobes that
+            // ride on it a little faster than it moves, climbing its face, so its front rolls. Its outline drawn crisper than
+            // the model's ramp: the wall is seen as a wall, and inside the eye's fog carries most of the murk.
+            s.Body.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, MathF.Min(d.Edge, 150f), 900f, d.Velocity * 1.15f, 2.5f, d.Strength);
+            s.Body.Light(ToSun, sun, sky, env.FogLightColor, env.FogDensity, StormSteps);
         }
         foreach (int id in _gone)
         {
-            _storms[id].QueueFree();
+            _storms[id].Body.QueueFree();
             _storms.Remove(id);
         }
+    }
+
+    /// <summary>A drawn dust storm, and the ground it was last stood on.</summary>
+    sealed class Storm(PlanetSurface.Fx.Volume body)
+    {
+        public readonly PlanetSurface.Fx.Volume Body = body;
+        public Vector3 Laid = new(float.MaxValue, 0f, 0f);
+        public float Floor, Middle;
+    }
+
+    /// <summary>A colour moved toward its own grey by a share.</summary>
+    static Color Muted(Color c, float share)
+    {
+        float grey = c.R * 0.2126f + c.G * 0.7152f + c.B * 0.0722f;
+        return c.Lerp(new Color(grey, grey, grey, c.A), share);
     }
 
     (MeshInstance3D, ShaderMaterial) AddShaft()

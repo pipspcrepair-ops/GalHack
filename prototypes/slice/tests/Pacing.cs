@@ -140,6 +140,13 @@ public partial class Pacing : Node
     {
         foreach (int x in _drive.UntilSettled(30)) yield return x;
         _pacing.Start();
+        // --split=1: each frame's main thread by stage and by system, and every hitch written down whole (as PopRoute's).
+        if (_args.ContainsKey("split"))
+        {
+            _split ??= new FrameSplit(GetTree().Root, GetViewport().GetViewportRid()) { Systems = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) };
+            _split.Systems.Reset();
+            _split.Reset();
+        }
         Vector3 from = S.WorldFeet;
         using (IEnumerator<int> d = drive?.GetEnumerator())
             for (int i = 0; i < ticks && (d == null || d.MoveNext()); i++)
@@ -153,8 +160,16 @@ public partial class Pacing : Node
             _pacing.Dump($"{dir}/{name}.csv");
         }
         GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms): {_pacing.Stop()}");
+        if (_split != null)
+        {
+            GD.Print($"SPLIT {name} frames: {_split.Report()}");
+            GD.Print($"SPLIT {name} by system (cpu ms a frame): {_split.Systems.Report(12)}");
+            foreach (string h in _split.Hitches) GD.Print($"SPLIT {name} hitch {h}");
+        }
         _mouse = Vector2.Zero;
     }
+
+    FrameSplit _split;
 
     IEnumerable<int> Run()
     {

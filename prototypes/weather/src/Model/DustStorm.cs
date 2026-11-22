@@ -58,13 +58,25 @@ public sealed class DustStorm
         return new Vector2(dx, dz);
     }
 
-    /// <summary>How far inside its outline a point is on the ground, metres (negative outside).</summary>
+    /// <summary>
+    /// How far inside its outline a point is on the ground, metres (negative outside). The outline is a
+    /// squared-off oval (a superellipse), so its leading edge runs long and straight, a wall, and only
+    /// its ends round off (volume.gdshader draws the same outline).
+    /// </summary>
     public float Inside(Vector3 p, Vector2 world)
     {
         Vector2 l = Local(p, world);
-        float r = new Vector2(l.X / HalfLength, l.Y / HalfWidth).Length();
+        float x = l.X / HalfLength, y = l.Y / HalfWidth;
+        float r = MathF.Sqrt(MathF.Sqrt(x * x * x * x + y * y * y * y));
         if (r < 1e-4f) return MathF.Min(HalfLength, HalfWidth);
         return l.Length() * (1f - r) / r; // along the line from its middle, to where that line crosses the outline
+    }
+
+    /// <summary>How far ahead of (and behind) its middle its outline lies on a line this far across its way, metres; 0 past its ends.</summary>
+    public float EdgeAlong(float across)
+    {
+        float y = across / HalfWidth;
+        return HalfLength * MathF.Sqrt(MathF.Sqrt(MathF.Max(0f, 1f - y * y * y * y)));
     }
 
     /// <summary>
@@ -86,14 +98,14 @@ public sealed class DustStormRules
     /// <summary>The most at once round the observer.</summary>
     public int MaxStorms { get; set; } = 2;
 
-    public float HalfWidthMin { get; set; } = 1000f;
-    public float HalfWidthMax { get; set; } = 2200f;
+    public float HalfWidthMin { get; set; } = 1800f;
+    public float HalfWidthMax { get; set; } = 2800f;
 
     /// <summary>Its length along its way as a share of its width.</summary>
-    public float LengthMin { get; set; } = 0.5f;
-    public float LengthMax { get; set; } = 0.75f;
+    public float LengthMin { get; set; } = 0.35f;
+    public float LengthMax { get; set; } = 0.55f;
     public float HeightMin { get; set; } = 500f;
-    public float HeightMax { get; set; } = 900f;
+    public float HeightMax { get; set; } = 850f;
     public float Edge { get; set; } = 350f;
 
     /// <summary>It forms this far upwind of the observer, metres (its leading edge's distance), so its wall is watched coming.</summary>

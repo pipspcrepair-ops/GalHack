@@ -50,23 +50,26 @@ vec3 local(vec3 p) {
 }
 
 // How far inside it a point is, metres (negative outside), before the heaps: in from its outline on
-// the ground (along the line from its middle), or down from its top, whichever is nearer.
+// the ground (along the line from its middle), or down from its top, whichever is nearer. The outline
+// is a squared-off oval (a superellipse, as DustStorm.Inside has it), so its leading side runs long and
+// straight and only its ends round off; its top is nearly flat, a little lower toward its back.
 float inside(vec3 l) {
-	float r = length(vec2(l.x / radii.x, l.z / radii.y));
+	vec2 e = vec2(l.x / radii.x, l.z / radii.y);
+	e *= e;
+	float r = sqrt(sqrt(dot(e, e)));
 	float flat_in = r > 1e-4 ? length(l.xz) * (1.0 - r) / r : min(radii.x, radii.y);
 	float lead = clamp(l.x / radii.x, -1.0, 1.0);
-	float top = height * (1.0 - front_rise * 0.5 * (1.0 - lead)) * (0.7 + 0.3 * smoothstep(0.0, 3.0 * edge, flat_in));
+	float top = height * (1.0 - front_rise * 0.5 * (1.0 - lead)) * (0.82 + 0.18 * smoothstep(0.0, 3.0 * edge, flat_in));
 	return min(flat_in, top - l.y);
 }
 
-float heap(vec3 p) {
+// Its heaps at a point, 0 to 1: great round lobes, a few smaller ones on them, and close to the eye
+// (`near`, 0 to 1) the wisps that stream past. All drift and climb with it.
+float heap(vec3 p, float near) {
 	vec3 q = p - flow * TIME - vec3(0.0, rise * TIME, 0.0);
-	return texture(heaps, q / grain).r * 0.65 + texture(heaps, (q + vec3(31.0, 17.0, 53.0)) / (grain * 0.38)).r * 0.35;
-}
-
-// How far inside it a point is with its heaps: its outline pushed in and out by them.
-float field(vec3 p, vec3 l) {
-	return inside(l) + billow * (heap(p) * 2.0 - 1.0);
+	float h = texture(heaps, q / grain).r * 0.8 + texture(heaps, (q + vec3(31.0, 17.0, 53.0)) / (grain * 0.45)).r * 0.2;
+	if (near > 0.0) h += near * 0.5 * (texture(heaps, (q - flow * TIME * 0.6 + vec3(7.0, 3.0, 11.0)) / (grain * 0.07)).r - 0.5);
+	return h;
 }
 
 void fragment() {
@@ -89,7 +92,8 @@ void fragment() {
 	if (t1 <= t0) discard;
 
 	// Steps crowd near the eye, where its heaps are seen largest, and spread out beyond.
-	float jitter = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
+	// A little jitter: enough to hide the steps' slices, too little to speckle its face.
+	float jitter = 0.5 + 0.35 * (fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715)))) - 0.5);
 	float span = t1 - t0, trans = 1.0, depth_sum = 0.0;
 	vec3 light = vec3(0.0);
 	float n = float(steps);
@@ -101,21 +105,23 @@ void fragment() {
 		vec3 p = cam + dir * t;
 		p.y += round_sink(p.xz - cam.xz); // it sinks past the near land as the ground does
 		vec3 l = local(p);
-		float s = field(p, l);
+		float h = heap(p, 1.0 - smoothstep(40.0, 300.0, t));
+		float s = inside(l) + billow * (h * 2.0 - 1.0); // its outline pushed in and out by its heaps
 		if (s <= 0.0) continue;
 		float up = clamp(l.y / height, 0.0, 1.0);
-		float rho = density * smoothstep(0.0, edge, s) * mix(1.0, top_fade, up) * strength;
+		// Inside it the murk is uneven too: thick in its heaps, thinner between them, as they stream past.
+		float rho = density * smoothstep(0.0, edge, s) * mix(1.0, top_fade, up) * (0.4 + 1.2 * h) * strength;
 		float sigma = max(rho - fog_floor, 0.0);
 		if (sigma <= 0.0) continue;
 		// Lit by the sun as far as little of it lies between: its own heaps shade their undersides and
 		// the far side of each, its bulk the side away from the sun. The sky lights it from above, so
 		// it darkens down to its foot and deeper in.
-		vec3 ps = p + to_sun * (0.35 * grain);
-		float near_shade = smoothstep(-0.15 * grain, 0.25 * grain, field(ps, local(ps)));
+		vec3 ps = p + to_sun * (0.3 * grain);
+		float near_shade = smoothstep(-0.1 * grain, 0.2 * grain, inside(local(ps)) + billow * (heap(ps, 0.0) * 2.0 - 1.0));
 		float far_shade = smoothstep(-edge, 2.0 * edge, inside(local(p + to_sun * (2.5 * edge))));
-		float sunlit = (1.0 - 0.8 * near_shade) * (1.0 - 0.7 * far_shade);
+		float sunlit = (1.0 - 0.75 * near_shade) * (1.0 - 0.7 * far_shade);
 		float deep = smoothstep(0.0, 2.0 * edge, s);
-		vec3 lit = albedo * (ambient * (0.45 + 0.55 * up) * (1.0 - 0.4 * deep) + sun_color * sunlit * phase * 0.6);
+		vec3 lit = albedo * (ambient * (0.5 + 0.5 * up) * (1.0 - 0.4 * deep) + sun_color * sunlit * phase * (0.55 + 0.45 * up) * 0.6);
 		float alpha = 1.0 - exp(-sigma * dt);
 		light += trans * alpha * lit;
 		depth_sum += trans * alpha * t;

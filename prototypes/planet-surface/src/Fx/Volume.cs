@@ -12,7 +12,7 @@ public partial class Volume : MeshInstance3D
 {
     readonly ShaderMaterial _draw = new() { Shader = GD.Load<Shader>("res://shaders/volume.gdshader") };
 
-    /// <summary>The heaps every volume steps through: round billows over billows, made once, tiling.</summary>
+    /// <summary>The heaps every volume steps through: round smooth lobes (inverted cell distance), made once, tiling.</summary>
     static NoiseTexture3D _heaps;
     static NoiseTexture3D Heaps => _heaps ??= new NoiseTexture3D
     {
@@ -20,7 +20,7 @@ public partial class Volume : MeshInstance3D
         Noise = new FastNoiseLite
         {
             NoiseType = FastNoiseLite.NoiseTypeEnum.Cellular, Frequency = 1f / 16f, CellularReturnType = FastNoiseLite.CellularReturnTypeEnum.Distance,
-            FractalType = FastNoiseLite.FractalTypeEnum.Fbm, FractalOctaves = 2, Seed = 7,
+            FractalType = FastNoiseLite.FractalTypeEnum.None, Seed = 7,
         },
     };
 

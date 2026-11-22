@@ -389,8 +389,8 @@ public partial class Staging
 
     /// <summary>
     /// A dust storm's wall rolling over open ground toward a lookout in daylight, the sun at the eye's back: from 3 km and
-    /// 1 km off, at its edge, inside it, and watched from the highest ground near by, outside it (--dir=folder for the five
-    /// frames; --bearing turns the way it comes from). The liberty: the storm is placed for each frame (the weather's own
+    /// 1 km off, at its edge, inside it, watched from the highest ground near by, outside it, and from 1 km off at dusk
+    /// (--dir=folder for the six frames; --bearing turns the way it comes from). The liberty: the storm is placed for each frame (the weather's own
     /// form upwind and roll in the same way).
     /// </summary>
     IEnumerable<int> DustShot()
@@ -440,6 +440,12 @@ public partial class Staging
             if (g.Y > high.Y && !_game.Zone.Water.LiquidAt(g.X, g.Z, out _)) high = g;
         }
         foreach (int x in Frame("5-high-ground", high, 2200f, 6f, 0f, -0.02f)) yield return x;
+        // And at dusk, the wall a kilometre off again: the evening hour with the sun this low.
+        double dusk = 0.5;
+        for (double t = 0.5; t < 0.95; t += 0.0005)
+            if (MathF.Abs(sky.SunAt(t).Y - 0.05f) < MathF.Abs(sky.SunAt(dusk).Y - 0.05f)) dusk = t;
+        sky.TimeOfDay = dusk;
+        foreach (int x in Frame("6-dusk-1km", ground, 1000f, 1.7f, 0f, 0.1f)) yield return x;
     }
 
     /// <summary>A dig's dust: a handful of puffs, seen a moment after.</summary>
