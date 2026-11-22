@@ -48,7 +48,7 @@ public sealed partial class FrameSplit
     TimeSpan _paused;
     readonly double[] _pipes = new double[4];
     readonly int[] _gcs = new int[3];
-    public static readonly Performance.Monitor[] Pipes = { Performance.Monitor.PipelineCompilationsDraw, Performance.Monitor.PipelineCompilationsSpecialization, Performance.Monitor.PipelineCompilationsSurface, Performance.Monitor.PipelineCompilationsMesh };
+    static readonly Performance.Monitor[] Pipes = { Performance.Monitor.PipelineCompilationsDraw, Performance.Monitor.PipelineCompilationsSpecialization, Performance.Monitor.PipelineCompilationsSurface, Performance.Monitor.PipelineCompilationsMesh };
 
     public FrameSplit(Node root, Rid viewport)
     {

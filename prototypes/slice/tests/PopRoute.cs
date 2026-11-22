@@ -96,8 +96,6 @@ public partial class PopRoute : Node
         }
         if (more) return;
         SetPhysicsProcess(false);
-        // Draw-time compiles stall the frame they are met in; specialization ones run beside it (the ubershader draws meanwhile).
-        GD.Print($"ROUTE {RenderingServer.GetCurrentRenderingMethod()} pipelines compiled in all (draw/specialization/surface/mesh): {string.Join("/", FrameSplit.Pipes.Select(Performance.GetMonitor))}");
         if (_args.ContainsKey("check")) GD.Print(_gateFails == 0 && !_failed ? "ALL PASSED (the moving picture is within its limits)" : $"{_gateFails} CHECK(S) FAILED");
         Wildlife.Shutdown.Quit(this, _failed || _gateFails > 0 ? 1 : 0);
     }

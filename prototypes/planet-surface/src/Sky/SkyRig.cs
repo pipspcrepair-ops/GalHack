@@ -254,9 +254,6 @@ public partial class SkyRig : Node3D
             GlowIntensity = 0.5f,
             GlowBloom = 0.02f,
             GlowHdrThreshold = 2.0f,
-            // Forward+ draws past 2.0 where Mobile stopped: capped there, as it was, so far lamps' pixel-wide points
-            // never bloom into white blobs that flicker as the view moves.
-            GlowHdrLuminanceCap = 2.0f,
             AdjustmentEnabled = true,
             AdjustmentContrast = 1.06f,
         };
