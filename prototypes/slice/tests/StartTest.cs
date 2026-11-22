@@ -302,6 +302,25 @@ public partial class StartTest : Node
         // Nothing standing round the start leaves out the sky's light, the haze or the sun: it would draw black by day, clear through fog.
         var unlit = Unpainted.Near(game.Zone, game.Survivor.WorldFeet, 600f, (x, z) => game.Zone.GroundAt(x, z).Y).Where(f => f.Kind == "unlit").ToList();
         Check(unlit.Count == 0, $"{world}: nothing round the start drawn without the sky's light, the haze or the sun{(unlit.Count == 0 ? "" : ": " + string.Join("; ", unlit.Take(3)))}");
+        // The roadside ruins (houses, farms, sheds, fuel stops) are places like any: the nearest stands, and a block of its wall
+        // takes a shot's damage, then breaks away (the tool's blast and every weapon go the same way, PoiPlaces.Struck).
+        if (game.Zone.Planet.Sites.Any(PlanetSurface.Infra.FlavourRuin.IsFlavour))
+        {
+            Slice.Places.Place ruin = null;
+            var wait = Stopwatch.StartNew();
+            while ((ruin = game.Places.Standing.FirstOrDefault(p => p.Ready && PlanetSurface.Infra.FlavourRuin.IsFlavour(p.Site))) == null && wait.Elapsed.TotalSeconds < 60) yield return 0;
+            var wall = ruin?.Inst.Blocks.Blocks().Where(b => b.Block.Role == PoiGenerator.Gen.Role.Wall && PoiGenerator.Gen.BlockInfo.IsFullCube(b.Block.Type)).Select(b => (PoiGenerator.Gen.Int3?)b.Cell).FirstOrDefault();
+            bool chipped = false, broken = false;
+            if (ruin != null && wall is { } cell)
+            {
+                var hit = new Slice.Places.PoiPlaces.Hit(ruin, cell, null, null);
+                game.Places.Struck(hit, 1f);
+                chipped = !ruin.Inst.Blocks.Get(cell).IsAir && ruin.Memory.BlockDamage.ContainsKey(cell);
+                game.Places.Struck(hit, 1e6f);
+                broken = ruin.Inst.Blocks.Get(cell).IsAir;
+            }
+            Check(chipped && broken, $"{world}: a roadside ruin stands as a place ({ruin?.Site.Name ?? "none within a minute"}), and a block of its wall takes a shot's damage, then breaks");
+        }
         // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.
         if (game.Zone.Planet.Infra.Wrecks.Count > 0 && game.Places.SalvageSites.FirstOrDefault() is Slice.Places.SalvageSite wreck)
         {

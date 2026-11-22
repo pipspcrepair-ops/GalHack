@@ -97,5 +97,12 @@ public sealed partial class PlanetWorld
         // Power lines and wrecked traffic stand on the finished ground, beside the roads.
         infra.Power = PowerLines.Plan(infra, source, Hash.Of(spec.Seed, 0x90E7));
         infra.Wrecks = Wrecks.Plan(infra, source, pois, Hash.Of(spec.Seed, 0x3EC5));
+        // Each ruin a place of the world's like any (their blocks each with their own health), once nothing more is planned round them.
+        foreach (FlavourRuin ruin in infra.Ruins) ruin.Stand(infra.Profile, source);
+    }
+
+    static partial void MoreSites(object around, List<PoiSite> sites)
+    {
+        if (around is InfraNetwork infra) sites.AddRange(infra.Ruins.Select(r => r.Site));
     }
 }

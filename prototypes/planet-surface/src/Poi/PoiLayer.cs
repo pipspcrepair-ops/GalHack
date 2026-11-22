@@ -58,7 +58,7 @@ public partial class PoiLayer : Node3D
     double _time;
     PlanetWorld _world;
 
-    public IReadOnlyList<PoiSite> Sites => _world?.Pois ?? new List<PoiSite>();
+    public IReadOnlyList<PoiSite> Sites => _world?.Sites ?? new List<PoiSite>();
 
     /// <summary>The physics layer the places' collision is on: planet-surface's own by default; a game puts it on its world layer.</summary>
     public static uint PlaceLayer = Layers.Hull;
@@ -82,7 +82,7 @@ public partial class PoiLayer : Node3D
         Clear();
         PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // places stand still; they only move by whole planets at a seam
         _world = world;
-        Builds = new PoiBuilds(world.Pois, world.Map.WidthMeters, world.Map.HeightMeters, world.Landing.X, world.Landing.Y);
+        Builds = new PoiBuilds(world.Sites, world.Map.WidthMeters, world.Map.HeightMeters, world.Landing.X, world.Landing.Y);
         _focus = new Vector3((float)world.Landing.X, 0f, (float)world.Landing.Y);
         if (Far == null) AddChild(Far = new FarLights { Name = "Far lights" });
         Far.Sky = _sky;
@@ -98,7 +98,7 @@ public partial class PoiLayer : Node3D
             BuildTiered(world);
             return;
         }
-        foreach (PoiSite site in world.Pois)
+        foreach (PoiSite site in world.Sites)
         {
             var place = new Place { Site = site };
             _places.Add(place);

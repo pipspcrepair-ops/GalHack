@@ -382,11 +382,9 @@ public partial class FaceTest : Node
             perFamily[p.Family.Id] = perFamily.GetValueOrDefault(p.Family.Id) + 1;
             subjects.Add(Make(p.Name, p.Instance, p.Origin.X, p.Origin.Y, p.Origin.Z, PoiLayer.Mesh(p)));
         }
-        foreach (PlanetSurface.Infra.FlavourRuin r in (w.Infra?.Ruins ?? new List<PlanetSurface.Infra.FlavourRuin>()).OrderBy(_ => _rand.Next()).Take(8))
-        {
-            PoiInstance inst = r.Spawn(w.Profile, w.Source);
-            subjects.Add(Make(r.Family.Id, inst, r.OriginX, r.OriginY, r.OriginZ, PlanetSurface.Infra.InfraLayer.RuinMesh(inst)));
-        }
+        // The roadside ruins: places of their own now, drawn as any place is.
+        foreach (PoiSite r in w.Sites.Except(w.Pois).OrderBy(_ => _rand.Next()).Take(8))
+            subjects.Add(Make(r.Family.Id, r.Instance, r.Origin.X, r.Origin.Y, r.Origin.Z, PoiLayer.Mesh(r)));
         foreach (Subject s in subjects)
         {
             t.Structures++;

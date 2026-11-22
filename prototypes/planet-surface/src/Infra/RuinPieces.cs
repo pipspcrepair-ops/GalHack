@@ -1,15 +1,12 @@
 using System.Collections.Generic;
-using Godot;
 using PlanetSurface.World;
-using PoiGenerator;
 using PoiGenerator.Gen;
-using NV = System.Numerics.Vector3;
 
 namespace PlanetSurface.Infra;
 
 public partial class InfraLayer
 {
-    /// <summary>The flavour ruins: houses, farmsteads, sheds and wayside stops, spawned and meshed when their tile comes near.</summary>
+    /// <summary>What the flavour ruins' worlds hung on them: the ruins themselves are places (<see cref="FlavourRuin.Site"/>), drawn and stood up by the places' layers.</summary>
     public static IEnumerable<Piece> RuinPieces(PlanetWorld world)
     {
         foreach (FlavourRuin ruin in world.Infra.Ruins)
@@ -19,35 +16,15 @@ public partial class InfraLayer
         }
     }
 
-    /// <summary>A ruin's blocks as they are drawn.</summary>
-    public static List<ChunkMesh> RuinMesh(PoiInstance inst)
-    {
-        BlockGrid g = inst.Blocks;
-        // No door leaves: a ruin has no doors to open, and a leaf drawn there would be a panel you walk through.
-        MeshOptions options = WalkableMesh.On(g.Min);
-        options.Mottle = 0.2f;
-        return Mesher.Build(g, inst.Layout.Occupied, options);
-    }
-
-    /// <summary>A flavour ruin: its century of decay spawned from its seed on a worker, meshed by the POI generator's mesher like any place.</summary>
+    /// <summary>A ruin's front as its world dressed it: marks by the door, a shop's awning and sign, from the place as built.</summary>
     sealed class RuinPiece : Piece
     {
         public FlavourRuin Ruin;
 
         public override void Emit(TileBuilder b)
         {
-            PoiInstance inst = Ruin.Spawn(b.World.Profile, b.World.Source);
-            Growth.Earthen(inst, b.World.RubbleRock, b.World.Weed);
-            List<ChunkMesh> meshes = RuinMesh(inst);
-            NV at = b.Local(Ruin.OriginX, Ruin.OriginY, Ruin.OriginZ);
-            string name = Ruin.Family.Id;
-            b.Blocks(name, new Vector3(at.X, at.Y, at.Z), meshes, () => Materials.BySurface);
-            // What its world painted and hung on its front: marks by the door, a shop's awning and sign.
-            b.DressHouse(Ruin, inst, at);
+            PoiInstance inst = Ruin.Site.Instance;
+            b.DressHouse(Ruin, inst, b.Local(Ruin.OriginX, Ruin.OriginY, Ruin.OriginZ));
         }
     }
-
-    static BlockMaterials _materials;
-    /// <summary>The block materials ruins are drawn with (dim: nobody has kept the lights on).</summary>
-    static BlockMaterials Materials => _materials ??= new BlockMaterials(1.6f);
 }

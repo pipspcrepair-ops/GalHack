@@ -74,7 +74,7 @@ public partial class PoiLayer
     void BuildTiered(PlanetSurface.World.PlanetWorld world)
     {
         var tiles = new Dictionary<(int, int), Tile>();
-        foreach (PoiSite site in world.Pois)
+        foreach (PoiSite site in world.Sites)
         {
             var place = new Place { Site = site };
             _places.Add(place);

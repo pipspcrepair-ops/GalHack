@@ -6,6 +6,9 @@ using GalHack.Terrain;
 using Planets.Gen;
 using PoiGenerator.Gen;
 using PoiSite = PlanetSurface.Poi.PoiSite;
+using PoiGate = PlanetSurface.Poi.PoiGate;
+using TInt3 = TerrainDigging.Terrain.Int3;
+using CellBox = TerrainDigging.Terrain.CellBox;
 using PInt3 = PoiGenerator.Gen.Int3;
 
 namespace PlanetSurface.Infra;
@@ -46,6 +49,39 @@ public sealed class FlavourRuin
     public Dir? FixingSide;
     public float FixingHeight = 3f;
     public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
+
+    /// <summary>
+    /// The ruin as one of the world's places (<see cref="Stand"/>): drawn by distance and stood up near as any place is, its
+    /// blocks each with their own health, shot, blasted and broken one at a time. Not marked, not on a road of its own:
+    /// <see cref="Flavour"/> tells it apart.
+    /// </summary>
+    public PoiSite Site;
+
+    /// <summary>What a flavour ruin's site is sited as.</summary>
+    public const string Flavour = "flavour";
+
+    /// <summary>Whether a place is one of these: no mark, no road, no made ground of its own beyond what the ruin laid.</summary>
+    public static bool IsFlavour(PoiSite site) => site.Siting == Flavour;
+
+    /// <summary>Makes <see cref="Site"/>: the same layout, seed and pad the ruin was laid with.</summary>
+    public PoiSite Stand(WorldProfile world, PlanetTerrainSource ground)
+    {
+        double w = ground.Width, h = ground.Height;
+        CellMask occ = Layout.Occupied;
+        BlockGrid g = Layout.Blocks;
+        int ox = (int)Mathx.WrapX(OriginX, w), oz = (int)Mathx.Wrap(OriginZ, h);
+        int top = OriginY + Math.Max(occ.Min.Y + occ.Size.Y, g.Min.Y + g.Size.Y);
+        PInt3 e = Layout.EntranceCell, outward = Layout.EntranceFacing.Vec();
+        var entrance = new TInt3(ox + e.X, OriginY + e.Y, oz + e.Z);
+        return Site = new PoiSite
+        {
+            Name = Family.Name, Family = Family, Layout = Layout, State = State, Stamp = Stamp, Siting = Flavour, Recarve = () => { },
+            Origin = new TInt3(ox, OriginY, oz),
+            Footprint = new CellBox(new TInt3(ox + occ.Min.X, OriginY + Math.Min(0, occ.Min.Y), oz + occ.Min.Z), new TInt3(ox + occ.Min.X + occ.Size.X, top, oz + occ.Min.Z + occ.Size.Z)),
+            Make = () => Spawn(world, ground),
+            Entrance = entrance, Gates = new List<PoiGate> { new("entrance", entrance, outward.X, outward.Z) },
+        };
+    }
 
     /// <summary>The ruin as built and decayed (a pure function of its layout and seed): call off the main thread.</summary>
     public PoiInstance Spawn(WorldProfile world, PlanetTerrainSource ground = null)

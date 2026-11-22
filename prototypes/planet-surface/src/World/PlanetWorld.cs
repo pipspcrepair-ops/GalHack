@@ -28,6 +28,11 @@ public sealed partial class PlanetWorld
     public readonly PlanetTerrain Terrain;
     public readonly LandingSite Landing;
     public readonly IReadOnlyList<PoiSite> Pois;
+    /// <summary>
+    /// Every place that stands as one: the points of interest, and the small places round them nobody marks (a roadside
+    /// ruin, a farmstead, a fuel stop: <see cref="MoreSites"/>). Drawn, stood up, lit and broken alike.
+    /// </summary>
+    public readonly IReadOnlyList<PoiSite> Sites;
     public SkySystem Sky { get; private set; }
     public readonly WorldLook Look;
 
@@ -188,8 +193,8 @@ public sealed partial class PlanetWorld
         return true;
     }
 
-    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, object around, PlanetTerrainSource source, double ms, PoiGenerator.Gen.WorldReading reading,
-        IReadOnlyList<PoiGenerator.Gen.Strike> blasts)
+    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, IReadOnlyList<PoiSite> sites, object around, PlanetTerrainSource source, double ms,
+        PoiGenerator.Gen.WorldReading reading, IReadOnlyList<PoiGenerator.Gen.Strike> blasts)
     {
         Spec = spec;
         Profile = profile;
@@ -198,6 +203,7 @@ public sealed partial class PlanetWorld
         Map = map;
         Landing = landing;
         Pois = pois;
+        Sites = sites;
         Blasts = blasts ?? Array.Empty<PoiGenerator.Gen.Strike>();
         Source = source;
         Terrain = new PlanetTerrain(source);
@@ -219,7 +225,7 @@ public sealed partial class PlanetWorld
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
         // As each place is built: its rubble the land's rock, its weeds the land's, and the trees through it (RuinGrowth).
         Palette.Planted = new System.Collections.Concurrent.ConcurrentDictionary<long, PlantedFlora>();
-        foreach (PoiSite p in pois)
+        foreach (PoiSite p in sites)
         {
             PoiSite site = p;
             site.Fit.Add(inst =>
@@ -291,9 +297,11 @@ public sealed partial class PlanetWorld
             PoiSite site = p;
             site.Fit.Add(inst => PoiGenerator.Gen.StateTransforms.Settle(inst, (x, z) => source.SurfaceHeight(Mathx.WrapX(site.Origin.X + x + 0.5, source.Width), Mathx.Wrap(site.Origin.Z + z + 0.5, source.Height)) - site.Origin.Y, 3));
         }
+        var sites = new List<PoiSite>(pois);
+        MoreSites(around, sites);
         double tEnd = Lap();
         LastTimes = $"map {tMap / 1000:F1} s, places {(tPlaces - tMap) / 1000:F1} s (plan {PoiSiting.LastPlanMs / 1000:F1}, layouts {PoiSiting.LastLayoutMs / 1000:F1}, seats {PoiSiting.LastSeatMs / 1000:F1} s), around {(tAround - tPlaces) / 1000:F1} s [{LastAroundTimes}], finish {(tEnd - tAround) / 1000:F1} s";
-        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers, Library = catalog?.Library };
+        var world = new PlanetWorld(spec, profile, map, landing, pois, sites, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers, Library = catalog?.Library };
         // Tests: build every place while the world loads, as a world did before places were built when wanted (to time one against the other).
         if (BuildPlacesAtLoad) System.Threading.Tasks.Parallel.ForEach(pois, p => p.Build());
         world.TakeChart(chart);
@@ -314,6 +322,9 @@ public sealed partial class PlanetWorld
     static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps,
         PoiGenerator.Gen.WorldRoll roll, List<PoiGenerator.Gen.Strike> blasts, ref object around);
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);
+
+    /// <summary>The places round the points of interest that stand as places too, unmarked (nothing when that isn't compiled in).</summary>
+    static partial void MoreSites(object around, List<PoiSite> sites);
 
     /// <summary>
     /// A planet's world profile: rolled from its seed and kind, the first thing generated. Start

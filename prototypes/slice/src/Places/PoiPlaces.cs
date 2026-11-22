@@ -180,7 +180,7 @@ public partial class PoiPlaces : Node3D
     {
         PoiSite next = null;
         float best = float.MaxValue;
-        foreach (PoiSite site in Zone.Planet.Pois)
+        foreach (PoiSite site in Zone.Planet.Sites)
         {
             if (site.Layout == null || site == besides || _placeOf.ContainsKey(site)) continue;
             if (Urgency(site, focus) is not float u || u >= best) continue;
@@ -440,7 +440,7 @@ public partial class PoiPlaces : Node3D
         // (A surface's faces carry their finish codes, or none: two formats.)
         foreach (bool coded in new[] { true, false }) PlanetSurface.Fx.Fade.Warm(new PoiGenerator.BlockMaterials().BySurface, Zone, Speck(false, coded));
         PlanetSurface.Fx.Fade.CopyOf(Wildlife.CreatureMaterials.Clothed);
-        PoiSite nearest = Zone.Planet.Pois.Where(s => s.Layout != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
+        PoiSite nearest = Zone.Planet.Sites.Where(s => s.Layout != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
         if (nearest == null) return;
         var clock = Stopwatch.StartNew();
         Begin(nearest);

@@ -51,7 +51,6 @@ public partial class Game
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;
-        Zone.AddChild(new RuinLoot { Name = "Ruin loot", Zone = Zone, Focus = Focus });
         Hulks = new Hulks { Name = "Hulks", Zone = Zone, Focus = Focus, Places = Places };
         Zone.AddChild(Hulks);
         Sky = new SkyTraffic { Name = "SkyTraffic", Zone = Zone, Focus = () => Survivor.WorldFeet, Eye = () => Camera.GlobalPosition };

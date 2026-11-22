@@ -77,4 +77,8 @@ public partial class InfraLayer
                 });
         }
     }
+
+    static BlockMaterials _materials;
+    /// <summary>The block materials the under-town is drawn with (dim: nobody has kept the lights on).</summary>
+    static BlockMaterials Materials => _materials ??= new BlockMaterials(1.6f);
 }

@@ -168,7 +168,7 @@ public partial class SkyLight : Node
             if (store.RemovedMask(c) is { } mask) snap.Masks[c] = mask;
         }
         var near = new Vector3(x + SkyField.SizeX / 2, 0f, z + SkyField.SizeZ / 2);
-        foreach (PlanetSurface.Poi.PoiSite s in Zone.Planet.Pois)
+        foreach (PlanetSurface.Poi.PoiSite s in Zone.Planet.Sites)
         {
             BlockGrid g = s.Built?.Blocks;
             if (g == null) continue;
