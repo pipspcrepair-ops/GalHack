@@ -77,6 +77,7 @@ public partial class FoldTest : Node
             more = false;
         }
         if (more) return;
+        GD.Print($"frames through each fold{(_minSpec ? " (min-spec stand-in)" : "")}:\n  {string.Join("\n  ", _foldFrames)}");
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
         SetProcess(false);
@@ -85,37 +86,42 @@ public partial class FoldTest : Node
 
     // ---- Frame times through a fold --------------------------------------------------------------
 
-    long _lastFrame;
-    bool _timing;
-    readonly List<double> _frames = new();
-    readonly List<string> _frameAt = new();
-    TimeSpan _gcWas;
-    bool _shotTaken;
+    /// <summary>Every frame's main thread in its stages, and any over budget written down whole: by stage, system, pipelines compiled and stalls.</summary>
+    FrameSplit _split;
+    SystemSplit _systems;
 
-    public override void _Process(double delta)
+    void StartTiming()
     {
-        long now = Stopwatch.GetTimestamp();
-        TimeSpan gc = GC.GetTotalPauseDuration();
-        if (_timing && _lastFrame != 0 && !_shotTaken)
+        if (_split == null)
         {
-            _frames.Add(Stopwatch.GetElapsedTime(_lastFrame, now).TotalMilliseconds);
-            Jump j = _game?.Spaceflight?.Jumping;
-            double paused = (gc - _gcWas).TotalMilliseconds;
-            _frameAt.Add((j == null ? "" : j.Running ? $"{j.Now} {(j.Now == Jump.Stage.Spool ? j.Spooled * 100 : j.InTunnel):F1}{(j.Now == Jump.Stage.Spool ? "%" : " s")}" : "after") + (paused > 1 ? $", GC {paused:F0} ms" : ""));
+            Rid vp = GetViewport().GetViewportRid();
+            RenderingServer.ViewportSetMeasureRenderTime(vp, true);
+            StallWatch.StallMs = 20;
+            _systems = new SystemSplit(_game);
+            _split = new FrameSplit(GetTree().Root, vp) { HitchMs = 20, Systems = _systems, Doing = Stage };
         }
-        _gcWas = gc;
-        _lastFrame = now;
-        _shotTaken = false;
+        _systems.Reset();
+        _split.Reset();
     }
 
+    /// <summary>The jump's stage, for a frame's note.</summary>
+    string Stage()
+    {
+        Jump j = _game?.Spaceflight?.Jumping;
+        return j == null ? "" : j.Running ? $"{j.Now} {(j.Now == Jump.Stage.Spool ? j.Spooled * 100 : j.InTunnel):F1}{(j.Now == Jump.Stage.Spool ? "%" : " s")}" : "after";
+    }
+
+    /// <summary>The frames since timing started: worst, 99th, median, how many over budget, and the worst few whole.</summary>
     string FrameReport()
     {
-        if (_frames.Count == 0) return "no frames";
-        var sorted = _frames.OrderBy(f => f).ToList();
-        double worst = sorted[^1], p99 = sorted[(int)(sorted.Count * 0.99)], over = sorted.Count(f => f > 16.7);
-        string worstThree = string.Join("; ", Enumerable.Range(0, _frames.Count).OrderByDescending(i => _frames[i]).Take(3).Select(i => $"{_frames[i]:F0} ms ({_frameAt[i]})"));
-        return $"{sorted.Count} frames, worst {worst:F1} ms, 99th {p99:F1} ms, median {sorted[sorted.Count / 2]:F1} ms, {sorted.Count(f => f > 25)} over 25 ms; worst: {worstThree}";
+        var frames = _split.Frames.Select(f => f.Total).OrderBy(f => f).ToList();
+        if (frames.Count == 0) return "no frames";
+        string worst = string.Join("\n      ", _split.Hitches.OrderByDescending(h => double.Parse(h[..h.IndexOf(' ')], System.Globalization.CultureInfo.InvariantCulture)).Take(5));
+        return $"{frames.Count} frames, worst {frames[^1]:F1} ms, 99th {frames[(int)(frames.Count * 0.99)]:F1} ms, median {frames[frames.Count / 2]:F1} ms, {frames.Count(f => f > 16.7)} over 16.7 ms, {frames.Count(f => f > 20)} over 20 ms, {frames.Count(f => f > 25)} over 25 ms{(worst.Length > 0 ? ":\n      " + worst : "")}";
     }
+
+    /// <summary>Each fold's frames in a line, printed together at the end.</summary>
+    readonly List<string> _foldFrames = new();
 
     bool Check(bool ok, string what)
     {
@@ -156,6 +162,7 @@ public partial class FoldTest : Node
         Flight.Charts.ChosenStar = -1;
         var homeLeft = Left();
         int home = Flight.HomeStar;
+        StartTiming(); // its markers in the scene before the counts are first taken
         foreach (int x in Settle()) yield return x;
         Levels baseline = Measure("in the start world's orbit, before any fold");
 
@@ -317,11 +324,9 @@ public partial class FoldTest : Node
         string fault = Flight.FoldFault(_ship, star);
         if (!Check(fault == null, $"the fold drive can make it: {fault ?? "IN REACH"} ({Flight.CrystalTo(star)} fold crystal, {_ship.Power.Range(Spaceflight.FoldDrive)?.Reach:F0} LY on the gauge)")) yield break;
         int folds = Flight.Folds.Count();
-        _frames.Clear();
-        _frameAt.Clear();
-        _timing = true;
+        StartTiming();
         string refused = Flight.Fold(star);
-        if (!Check(refused == null, $"FOLD: the drive spools ({refused ?? $"{_ship.Power.SpoolLeft:F0} s"})")) { _timing = false; yield break; }
+        if (!Check(refused == null, $"FOLD: the drive spools ({refused ?? $"{_ship.Power.SpoolLeft:F0} s"})")) yield break;
         int ticks = 0;
         bool tunnelShot = false;
         while (Flight.Folds.Count() == folds && Flight.Jumping.Running && ticks++ < 60 * 120)
@@ -331,13 +336,15 @@ public partial class FoldTest : Node
                 tunnelShot = true;
                 Shot("fold-2-tunnel");
             }
+            if (ticks % 20 == 0) _systems.MarkNew(); // the zones a fold makes are split out too, as they come
             yield return 0;
         }
         for (int i = 0; i < 120; i++) yield return 0; // a couple of seconds after, the arrival's settling in
-        _timing = false;
+        string frames = FrameReport();
         if (!Check(Flight.Folds.Count() > folds, $"the fold arrived after {ticks / 60f:F1} s ({Flight.Jumping.Now}{(Flight.Jumping.Trouble != null ? ", " + Flight.Jumping.Trouble : "")})")) yield break;
         Jump made = Flight.Folds.Last();
-        GD.Print($"  frames through the fold: {FrameReport()}; {made.InTunnel:F1} s in the tunnel, longest setting-up tick {made.LongestStepMs:F1} ms, worst arrival tick {Flight.WorstArrivalMs:F1} ms");
+        GD.Print($"  frames through the fold: {frames}\n    {made.InTunnel:F1} s in the tunnel, longest setting-up tick {made.LongestStepMs:F1} ms ({made.LongestStep}), worst arrival tick {Flight.WorstArrivalMs:F1} ms");
+        _foldFrames.Add($"{Catalogue.Name(from)} → {Catalogue.Name(star)}: {frames.Split(':')[0]}");
         OrbitZone here = _game.Orbit;
         StarSystem system = Flight.SystemHere;
 
@@ -424,7 +431,7 @@ public partial class FoldTest : Node
         System.IO.Directory.CreateDirectory(dir);
         string file = System.IO.Path.Combine(dir, $"{name}{(_minSpec ? "-minspec" : "")}.png");
         Error err = GetViewport().GetTexture().GetImage().SavePng(file);
-        _shotTaken = true; // the frame that read the picture back and wrote it out is the test's, not the game's
+        if (_split != null) _split.Skip = true; // the frame that read the picture back and wrote it out is the test's, not the game's
         GD.Print(err == Error.Ok ? $"  shot {file}" : $"  could not save {file}: {err}");
     }
 
