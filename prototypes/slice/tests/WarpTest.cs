@@ -376,10 +376,10 @@ public partial class WarpTest : Node
         GD.Print($"-- {what}: warp to {Charts.Tidy(target.Name)} --");
         foreach (int x in WarpTo(target)) yield return x;
         if (_ok && Windowed && target == Model.Star)
-            foreach (int x in SkyAway("star-high-orbit-facing-away", v => GD.Print($"  (at the star's high orbit the sky facing away from it: mean brightness {v:F3})"))) yield return x;
+            foreach (int x in SkyAway("star-high-orbit-facing-away", v => GD.Print($"  (at the star's high orbit the sky facing away from it: its floor of brightness {v:F3})"))) yield return x;
         if (_ok && Windowed && target == Model.Home && _freshSky >= 0)
-            foreach (int x in SkyAway("after-the-star-home-facing-away", v => Check(v <= Math.Max(_freshSky * 1.5, _freshSky + 0.05),
-                $"no glare follows from the star: home's sky facing away from the sun is back at its fresh level ({v:F3} mean brightness, {_freshSky:F3} before the star)"))) yield return x;
+            foreach (int x in SkyAway("after-the-star-home-facing-away", v => Check(v <= Math.Max(_freshSky * 1.5, _freshSky + 0.03),
+                $"no glare follows from the star: home's sky facing away from the sun is back at its fresh level (its floor of brightness {v:F3}, {_freshSky:F3} before the star)"))) yield return x;
         if (!_ok || !land || _args.ContainsKey("noland")) yield break; // --noland=1: warps alone (shots of the trip)
         foreach (int x in Land(target)) yield return x;
         if (!_ok) yield break;

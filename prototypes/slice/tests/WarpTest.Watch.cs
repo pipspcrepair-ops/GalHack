@@ -126,7 +126,7 @@ public partial class WarpTest
     }
 
     /// <summary>
-    /// The sky's mean brightness in the middle of a view from just off the hull, facing away from the local sun and from the
+    /// The sky's floor of brightness (its darkest fifth) in the middle of a view from just off the hull, facing away from the local sun and from the
     /// body you fly over (windowed), with a shot. The owner (23 Nov): the star's glare may wash the sky at its high orbit,
     /// "it's a problem if it follows us when we leave": measured at a fresh orbit, at the star, and right after leaving it.
     /// </summary>
@@ -138,14 +138,15 @@ public partial class WarpTest
         _game.FixedCamera = new Transform3D(Basis.LookingAt(away, MathF.Abs(away.Y) < 0.9f ? Vector3.Up : Vector3.Right), _game.Camera.GlobalPosition + away * 40f);
         for (int i = 0; i < 20; i++) yield return 0;
         float[] luma = StreakFlow.Luma(GetViewport().GetTexture().GetImage());
-        double sum = 0;
-        int n = 0;
+        // The darkest fifth of the middle of the view: glare lifts the whole sky, a nebula or a cluster only its part.
+        var middle = new List<float>();
         for (int y = StreakFlow.H * 3 / 10; y < StreakFlow.H * 7 / 10; y++)
-            for (int x = StreakFlow.W / 4; x < StreakFlow.W * 3 / 4; x++, n++) sum += luma[y * StreakFlow.W + x];
+            for (int x = StreakFlow.W / 4; x < StreakFlow.W * 3 / 4; x++) middle.Add(luma[y * StreakFlow.W + x]);
+        middle.Sort();
         Shot(shot);
         _game.FixedCamera = null;
         for (int i = 0; i < 5; i++) yield return 0;
-        measured(sum / n);
+        measured(middle[middle.Count / 5]);
     }
 
     // ---- Where the frames go (--split=1) ---------------------------------------------------------------------------

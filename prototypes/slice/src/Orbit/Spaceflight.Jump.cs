@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using GalHack.Items.Bridge;
+using GalHack.Physics.Engine;
 using Godot;
 using Slice.Surface;
 using Slice.Vessels;
@@ -206,6 +207,8 @@ public partial class Spaceflight
             Stop(j, "REFUSED");
             return;
         }
+        // Where it arrives worked out again now: a fast moon moved on its rails (300 m) while the record was committed.
+        j.Arrived = j.To.Arrival(this, j.Carrier);
         Arrive(j, j.Arrived.Value);
     }
 
@@ -226,6 +229,7 @@ public partial class Spaceflight
             v.Binding.Teleport();
             v.Node.ResetPhysicsInterpolation();
             if (s.Body.Frame == v.Body) s.Node.ResetPhysicsInterpolation();
+            if (to is OrbitZone here) FrameAt(here, a.Position.ToGodot());
         }
         else
         {
@@ -234,7 +238,7 @@ public partial class Spaceflight
             double woke = watch.Elapsed.TotalMilliseconds;
             Handover.Move(from, to, s, v, a.Position, a.Rotation, N.Vector3.Zero);
             g.EnterZone(to);
-            if (to is OrbitZone orbit) InOrbitOf(orbit);
+            if (to is OrbitZone orbit) InOrbitOf(orbit, a.Position.ToGodot());
             _arrivalLaps = $"woken {woke:F1}, moved {watch.Elapsed.TotalMilliseconds - woke:F1}";
         }
         End(j, Jump.Stage.Done);
@@ -247,11 +251,24 @@ public partial class Spaceflight
         GD.Print($"[jump: arrived at {j.To.Name} in {to.Name} after {j.InTunnel:F1} s in the tunnel, {watch.Elapsed.TotalMilliseconds:F1} ms: {_arrivalLaps}; the slowest piece of making it {j.LongestStepMs:F1} ms, {j.LongestStep}]");
     }
 
+    /// <summary>
+    /// The body whose reach a jump arrived in is the frame you fly in from this tick: a moon held still at once, not moving on
+    /// its rails away from the arrival till the frame hands over (40 to 300 m off its high orbit before).
+    /// </summary>
+    void FrameAt(OrbitZone orbit, Vector3 at)
+    {
+        if (orbit.OwnerOf(at) is not { } owner || owner == orbit.Anchor) return;
+        SurfaceZone before = Below;
+        orbit.TakeOver(owner);
+        Took(before);
+    }
+
     /// <summary>The orbit you fly in is now this one: the seam starts over in its terms, every sky on the one clock.</summary>
-    void InOrbitOf(OrbitZone orbit)
+    void InOrbitOf(OrbitZone orbit, Vector3 at)
     {
         double days = Below.Sky.Days;
         Orbit = orbit;
+        FrameAt(orbit, at);
         _aligned = false;
         _band = 0f; // the next frame lays it all out as space (AllSpace)
         _wreckFade = -1f;
