@@ -31,30 +31,36 @@ public partial class JumpView : Node3D
         uniform float amount = 0.0;
         uniform float cover = 0.0;
         uniform float flash = 0.0;
-        uniform float phase = 0.0; // how far the streaks have run, growing: each lane's pattern moves from ahead (-z) to behind (+z)
+        uniform float phase = 0.0; // how far the jump has flown, growing
         varying vec3 dir;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float noise(vec2 p) {
-            vec2 i = floor(p), f = fract(p);
-            f = f * f * (3.0 - 2.0 * f);
-            return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
-        }
         void vertex() {
-            dir = VERTEX;
+            dir = VERTEX; // the sphere's own frame: -z is the way the jump goes
         }
         void fragment() {
             vec3 d = normalize(dir);
+            // Stars on a tube round the way ahead: one standing a fixed way out and z ahead is seen at cot(angle) = z. Going
+            // forward, z falls at a steady rate: each star is born small at the point ahead and rushes outward, faster and
+            // longer as it nears the edge of the view, and on past the camera.
+            float z = -d.z / max(length(d.xy), 1e-3);
             float around = atan(d.x, d.y) / 6.2831853 + 0.5;
-            float lanes = 140.0;
+            float lanes = 120.0;
             float lane = floor(around * lanes);
-            float off = hash(vec2(lane, 3.7));
-            float run = d.z * (3.0 + 4.0 * off) - phase * (0.5 + off); // a crest stays where d.z grows with phase: it rushes outward from ahead
-            float streak = smoothstep(0.62, 1.0, noise(vec2(lane * 1.31, run)));
-            float centre = 1.0 - abs(fract(around * lanes) - 0.5) * 2.0;
-            streak *= smoothstep(0.15, 0.95, centre) * smoothstep(0.98, 0.6, abs(d.z));
+            float across = fract(around * lanes);
+            float r = hash(vec2(lane, 3.7));
+            float run = z * (0.8 + 0.6 * r) + phase * (0.7 + 0.6 * r) + r * 17.0; // a star's z falls as the phase grows
+            float cell = floor(run), f = fract(run);
+            float there = step(0.55, hash(vec2(lane * 1.7, cell)));
+            float len = mix(0.18, 0.5, hash(vec2(cell * 0.31, lane + 7.0)));
+            float from = hash(vec2(lane + 3.3, cell * 1.9)) * (1.0 - len);
+            float t = (f - from) / len; // 0 at its outer end (the head, leading the way out), 1 at its tail toward the point ahead
+            float head = there * step(0.0, t) * step(t, 1.0) * (1.0 - t) * (1.0 - t);
+            float width = smoothstep(0.0, 0.5, 1.0 - abs(across - 0.5) * 2.0);
+            float shown = smoothstep(14.0, 4.0, z) * smoothstep(-6.0, -0.5, z); // born faint just off the point ahead, gone well behind
+            float streak = head * width * shown;
             float ahead = clamp(0.5 - 0.5 * d.z, 0.0, 1.0);
             vec3 deep = mix(vec3(0.004, 0.006, 0.02), vec3(0.03, 0.05, 0.16), ahead * ahead);
-            vec3 lit = mix(vec3(0.35, 0.55, 1.0), vec3(0.9, 0.95, 1.0), off) * (0.6 + 2.4 * ahead);
+            vec3 lit = mix(vec3(0.45, 0.65, 1.0), vec3(0.95, 0.97, 1.0), r) * 2.6;
             ALBEDO = deep * cover + lit * streak * amount + vec3(1.6, 1.7, 2.0) * flash;
             ALPHA = clamp(max(cover, max(streak * amount, flash)), 0.0, 1.0);
         }
@@ -78,6 +84,9 @@ public partial class JumpView : Node3D
 
     int _drawnOnce;
     float _phase;
+
+    /// <summary>How fast the streaks run, phase a second: gathering with the spool, then the tunnel's rush (a star's run a frame stays well under half its spacing, so none reads backwards).</summary>
+    public static float PhaseRate(float spool, bool tunnel) => tunnel ? 6f : 0.5f + 2.5f * spool;
 
     /// <summary>The tunnel's look; its axis (-z) is the way the jump goes, and <c>phase</c> grows with the streaks' run.</summary>
     public static ShaderMaterial TunnelMaterial() => new() { Shader = new Shader { Code = Source } };
@@ -140,7 +149,7 @@ public partial class JumpView : Node3D
         _material.SetShaderParameter("amount", _streaks);
         _material.SetShaderParameter("cover", _cover);
         _material.SetShaderParameter("flash", _flash);
-        _phase = (_phase + dt * (tunnel ? 2.2f : 0.4f + spool)) % 4096f;
+        _phase = (_phase + dt * PhaseRate(spool, tunnel)) % 4096f;
         _material.SetShaderParameter("phase", _phase);
     }
 }

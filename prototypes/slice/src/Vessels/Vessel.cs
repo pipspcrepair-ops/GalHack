@@ -400,14 +400,28 @@ public sealed partial class Vessel
     /// <summary>Collision chunks still to build.</summary>
     public int PendingShapes => _pendingShapes.Count;
 
-    /// <summary>Builds the next chunk of collision still to build (each tick), or all of it now.</summary>
+    /// <summary>What building collision a chunk at a time may take of one tick, every structure's together, ms: a zone that
+    /// arrives with many wrecks to make solid (a warp's destination) shares it rather than each taking a chunk a tick.</summary>
+    const double ShapesBudgetMs = 2.0;
+    static ulong _shapesTick;
+    static double _shapesSpent;
+
+    /// <summary>Builds the next chunk of collision still to build (each tick, within the shared budget), or all of it now.</summary>
     public void BuildPendingShapes(bool all = false)
     {
+        if (!all)
+        {
+            ulong tick = Engine.GetPhysicsFrames();
+            if (tick != _shapesTick) (_shapesTick, _shapesSpent) = (tick, 0.0);
+            if (_shapesSpent >= ShapesBudgetMs || _pendingShapes.Count == 0) return;
+        }
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
         while (_pendingShapes.TryDequeue(out var next))
         {
             next.shapes.Apply(new[] { next.chunk });
             if (!all) break;
         }
+        if (!all) _shapesSpent += System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
 
     void Register()

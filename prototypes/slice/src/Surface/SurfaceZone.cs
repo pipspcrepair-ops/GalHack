@@ -130,11 +130,8 @@ public partial class SurfaceZone : Node3D
     double _valleyTimer;
     float _valleyFloor;
 
-    public string ReadyLaps = ""; /*TMPLAP*/
     public override void _Ready()
     {
-        var lap = System.Diagnostics.Stopwatch.StartNew(); /*TMPLAP*/ ReadyLaps = ""; /*TMPLAP*/
-        void L(string n) { ReadyLaps += $"{n} {lap.Elapsed.TotalMilliseconds:F1}, "; lap.Restart(); } /*TMPLAP*/
         ProcessPhysicsPriority = 50; // after the physics host (-10) and game logic (0): frame shifts see where things ended up
         Data ??= GameData.Shared;
         SliceRules.PlanetRules p = Data.Rules.Planet;
@@ -147,14 +144,11 @@ public partial class SurfaceZone : Node3D
         SkyLit.Watch(GetTree());
         Sky = new SkyRig { Name = "Sky", TimeOfDay = p.StartTimeOfDay };
         AddChild(Sky);
-        L("Sky"); /*TMPLAP*/
         Light = new SkyLight { Name = "SkyLight", Zone = this };
         AddChild(Light);
-        L("Light"); /*TMPLAP*/
         Streamer = new TerrainStreamer { Name = "Terrain" };
         Streamer.SunToward = () => Sky?.Sun is { } sun && sun.IsInsideTree() ? sun.GlobalBasis.Z.Normalized() : Vector3.Up;
         AddChild(Streamer);
-        L("Streamer"); /*TMPLAP*/
         Sea = new MeshInstance3D
         {
             // Subdivided so its far side can sink over the horizon with the land (round_sink in the water shader).
@@ -162,35 +156,27 @@ public partial class SurfaceZone : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, ExtraCullMargin = PlanetSurface.Terrain.TerrainStreamer.RoundSink(17000f),
         };
         AddChild(Sea);
-        L("Sea"); /*TMPLAP*/
         Sfx = new PlanetSurface.Fx.Sfx { Name = "Sfx" };
         AddChild(Sfx);
-        L("Sfx"); /*TMPLAP*/
 
         Physics = new PhysicsWorld(Data.Physics);
         Physics.Zone.Strength = p.Gravity * Spec.GravityScale; // the start world's 1 g, scaled by this world's size (PlanetSpec.Gravities)
         Physics.Zone.Ceiling = p.Ceiling;
         Host = new PhysicsHost(Physics);
         AddChild(Host);
-        L("Host"); /*TMPLAP*/
         Physics.MotionChanged += body => VesselOf(body)?.BecomeWreck();
         Physics.Unregistered += body => { _vesselOf.Remove(body); Held.Remove(body); };
 
         Weather = new SurfaceWeather { Name = "Weather", Zone = this };
         AddChild(Weather);
-        L("Weather"); /*TMPLAP*/
         Wildlife = new WildlifePatch { Name = "Wildlife", Zone = this };
         AddChild(Wildlife);
-        L("Wildlife"); /*TMPLAP*/
         Blood = new BloodFx { Name = "Blood" };
         AddChild(Blood);
-        L("Blood"); /*TMPLAP*/
         Underwater = new UnderwaterView { Name = "Underwater", Zone = this };
         AddChild(Underwater);
-        L("Underwater"); /*TMPLAP*/
         Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder, DrawnOf = DrawnOf };
         AddChild(Loot);
-        L("Loot"); /*TMPLAP*/
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
         PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
@@ -198,10 +184,8 @@ public partial class SurfaceZone : Node3D
         PlanetSurface.Infra.InfraLayer.OreTellsCollide = true; // ore rocks are solid; the Sleeper tool breaks them down for a little ore
         Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois", Sky = Sky };
         AddChild(Pois);
-        L("Pois"); /*TMPLAP*/
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
         AddChild(Infra);
-        L("Infra"); /*TMPLAP*/
         PlanetSpec spec = Spec;
         if (ShareFrom != null)
         {
