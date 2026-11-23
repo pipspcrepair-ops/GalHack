@@ -10,10 +10,10 @@ using PlanetSurface.World;
 namespace PlanetSurface.Poi;
 
 /// <summary>
-/// The lights that carry at night, cheaply (sci-fi-inspirations 17, Night Lights). Two draws for the
+/// The lights that carry at night, cheaply (sci-fi-inspirations 17, Night Lights). One draw for the
 /// whole planet, none of them a light: every place's outward lamps, windows and beacons as points that
-/// keep a few pixels wide however far off, and a soft glow in the air over each cluster of lived-in places
-/// (no beams straight up: owner, 18 Nov, they read as pillars of light over places). Positions are canonical and wrapped round the
+/// keep a few pixels wide however far off (no beams straight up: owner, 18 Nov, they read as pillars of light over places;
+/// no glowing dome of air over a town either: owner, 23 Nov). Positions are canonical and wrapped round the
 /// world in the shaders, so nothing moves on the CPU. A place's real lights hand off to its points over
 /// one band (<see cref="HandOff"/>): past it the points are all there is, and only where someone lives.
 /// </summary>
@@ -48,7 +48,7 @@ public partial class FarLights : Node3D
             || spot.Range >= 10f && !inst.Layout.Occupied[spot.Cell];
     }
 
-    /// <summary>The glow over a cluster of lived-in places: where, how wide and how bright (also the globe's night lights).</summary>
+    /// <summary>A cluster of lived-in places with lamps enough to show from orbit: where, how wide and how bright (the globe's night lights).</summary>
     public readonly record struct Glow(double X, double Z, float Y, float Radius, float Strength, int Places);
 
     /// <summary>How many lamps a lived-in place shows, by its size (its lights are only known once built; this is known from the start).</summary>
@@ -60,12 +60,12 @@ public partial class FarLights : Node3D
         return s.Primary ? lamps * 2f : lamps;
     }
 
-    /// <summary>Lamps in a cluster before the air over it glows: a town or a port, never a lone farm.</summary>
+    /// <summary>Lamps in a cluster before it shows as a smudge from orbit: a town or a port, never a lone farm.</summary>
     public const float GlowFrom = 30f;
 
     /// <summary>
     /// The lived-in places gathered into clusters (any within <see cref="Gather"/> of a cluster's middle joins it),
-    /// and those with lamps enough for a glow. The same list draws the glow on the ground and on the globe.
+    /// and those with lamps enough to show on the globe's night side.
     /// </summary>
     public static List<Glow> Clusters(IReadOnlyList<PoiSite> sites, double width, double height)
     {
@@ -90,17 +90,16 @@ public partial class FarLights : Node3D
     /// <summary>How far apart places may stand and still glow as one, m.</summary>
     const double Gather = 700.0;
 
-    MultiMesh _points, _domes;
-    ShaderMaterial _pointMaterial, _domeMaterial;
+    MultiMesh _points;
+    ShaderMaterial _pointMaterial;
     readonly List<float> _pointData = new();
     /// <summary>Points added since the last frame, to put in.</summary>
     readonly List<int> _fresh = new();
     double _clock;
     PlanetWorld _world;
 
-    /// <summary>Points and glows drawn (tests).</summary>
+    /// <summary>Points drawn (tests).</summary>
     public int PointCount => _pointData.Count / Stride;
-    public IReadOnlyList<Glow> Glows { get; private set; } = Array.Empty<Glow>();
 
     /// <summary>The canonical points of each place added, by place (tests: which are lit from far off).</summary>
     public readonly Dictionary<PoiSite, (int First, int Count, bool Lived)> Of = new();
@@ -113,11 +112,7 @@ public partial class FarLights : Node3D
         _world = world;
         var size = new Vector2((float)world.Width, (float)world.Height);
         _pointMaterial = Shaded(PointSource, size);
-        _domeMaterial = Shaded(DomeSource, size);
         _points = Layer("Far points", new QuadMesh { Size = Vector2.One * 2f }, _pointMaterial);
-        _domes = Layer("Light glow", new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 24, Rings = 12 }, _domeMaterial);
-        Glows = Clusters(world.Pois, world.Width, world.Height);
-        Fill(_domes, Glows.Select(g => (new Vector3((float)g.X, g.Y, (float)g.Z), g.Radius, new Color(1f, 0.72f, 0.42f), new Color(g.Strength, 0f, 0f, 0f))).ToList());
     }
 
     static ShaderMaterial Shaded(string code, Vector2 size)
@@ -253,21 +248,10 @@ public partial class FarLights : Node3D
             _points.VisibleInstanceCount = PointCount;
             _fresh.Clear();
         }
-        float night = 1f, fog = 0f, cover = 0f, cloudBase = 2000f;
-        if (Sky != null)
-        {
-            night = 1f - Sky.Daylight;
-            fog = Sky.Environment?.FogDensity ?? 0f;
-            cover = Sky.Air.CloudCover;
-            cloudBase = Sky.Air.CloudBase;
-        }
-        foreach (ShaderMaterial m in new[] { _pointMaterial, _domeMaterial })
-        {
-            m.SetShaderParameter(Fx.Names.Of("night"), night);
-            m.SetShaderParameter(Fx.Names.Of("fog_density"), fog);
-            m.SetShaderParameter(Fx.Names.Of("clock"), (float)(_clock % 3600.0));
-        }
-        _domeMaterial.SetShaderParameter(Fx.Names.Of("cloud"), new Vector2(cloudBase, cover));
+        float night = Sky == null ? 1f : 1f - Sky.Daylight, fog = Sky?.Environment?.FogDensity ?? 0f;
+        _pointMaterial.SetShaderParameter(Fx.Names.Of("night"), night);
+        _pointMaterial.SetShaderParameter(Fx.Names.Of("fog_density"), fog);
+        _pointMaterial.SetShaderParameter(Fx.Names.Of("clock"), (float)(_clock % 3600.0));
         LastMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
 
@@ -277,17 +261,16 @@ public partial class FarLights : Node3D
     public void Clear()
     {
         foreach (Node n in GetChildren()) n.QueueFree();
-        _points = _domes = null;
+        _points = null;
         _pointData.Clear();
         _fresh.Clear();
         Of.Clear();
-        Glows = Array.Empty<Glow>();
         _world = null;
     }
 
     // ---- Shaders --------------------------------------------------------------------------------
 
-    /// <summary>Shared by the three: an instance's canonical position wrapped to the copy nearest the eye, and sunk over the round horizon.</summary>
+    /// <summary>Shared code: an instance's canonical position wrapped to the copy nearest the eye, and sunk over the round horizon.</summary>
     const string PlaceCode = """
         uniform vec2 world_size = vec2(16000.0, 8000.0);
         uniform vec2 hand_off = vec2(500.0, 120.0);
@@ -348,57 +331,5 @@ public partial class FarLights : Node3D
         }
         """;
 
-    const string DomeSource = $$"""
-        shader_type spatial;
-        render_mode unshaded, blend_add, depth_draw_never, cull_front, fog_disabled, shadows_disabled;
-        {{PlaceCode}}
-        uniform vec2 cloud = vec2(2000.0, 0.0);
-        varying vec3 centre;
-        varying float radius;
-        varying float strength;
-        varying vec3 world;
-        void vertex() {
-            vec3 eye = INV_VIEW_MATRIX[3].xyz;
-            centre = near_copy(MODEL_MATRIX[3].xyz, eye);
-            radius = length(MODEL_MATRIX[0].xyz);
-            strength = INSTANCE_CUSTOM.x;
-            world = centre + VERTEX * radius;
-            POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(world, 1.0);
-        }
-        // The lit air in the dome along a point: thickest low over the middle, and where low cloud lies in it.
-        float lit(vec3 p) {
-            vec3 o = (p - centre) / radius;
-            float h = max(o.y, 0.0);
-            float air = pow(max(1.0 - dot(o, o), 0.0), 2.5) * exp(-h * 2.0); // fading to nothing well before the rim: no edge
-            float deck = cloud.y * exp(-pow((p.y - cloud.x) / (radius * 0.15), 2.0));
-            return air * (1.0 + 4.0 * deck);
-        }
-        void fragment() {
-            vec3 eye = INV_VIEW_MATRIX[3].xyz;
-            vec3 ray = normalize(world - eye);
-            // Where the eye's ray runs through the dome, above the ground it stands on.
-            vec3 oc = eye - centre;
-            float b = dot(oc, ray), c = dot(oc, oc) - radius * radius;
-            float disc = b * b - c;
-            if (disc <= 0.0) discard;
-            float t0 = max(-b - sqrt(disc), 0.0), t1 = -b + sqrt(disc);
-            if (abs(ray.y) > 1e-4) {
-                float tg = (centre.y - eye.y) / ray.y;
-                if (ray.y < 0.0) t1 = min(t1, tg); else t0 = max(t0, tg);
-            }
-            if (t1 <= t0) discard;
-            // A per-pixel noise (interleaved gradient): it jitters the samples along the ray, and dithers the result by about
-            // one step of the screen's colour, so a faint wide gradient never shows as shells.
-            float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
-            float sum = 0.0;
-            for (int i = 0; i < 6; i++) sum += lit(eye + ray * mix(t0, t1, (float(i) + n) / 6.0));
-            float along = (t1 - t0) / radius * sum / 6.0;
-            float d = length(centre - eye);
-            vec3 glow = COLOR.rgb * along * strength * 0.09 * night * haze(max(d - radius, 0.0));
-            float level = max(glow.r, max(glow.g, glow.b));
-            ALBEDO = max(glow + (n - 0.5) * (1.5 / 255.0) * smoothstep(0.0, 3.0 / 255.0, level), vec3(0.0));
-            ALPHA = 1.0;
-        }
-        """;
 
 }
