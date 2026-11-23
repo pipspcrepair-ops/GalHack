@@ -17,7 +17,7 @@ namespace Slice.Tests;
 /// poses it and as it is drawn (through the pose blend): none turns more than 60° in a frame where a frame beside it turns under 30°.
 ///
 /// -- --rounds=N worlds (default 2); --seeds=a:b:... rolls a run's worlds again (an A/B; never pinned); --shots=dir (windowed)
-/// replays the first flip's body (or --at=body:tick's) and saves it a few frames apart.
+/// replays the first flip's body (or --at=body:tick's) and saves it a few frames apart (--every=N frames).
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/ArmTest.tscn
 /// </summary>
 public partial class ArmTest : Node
@@ -72,7 +72,7 @@ public partial class ArmTest : Node
 
     sealed class Tally
     {
-        public int Frames, Pops, Jumps;
+        public int Frames, Pops, Jumps, Over;
         public float Worst, WorstJump;
         public readonly Dictionary<string, int> Why = new(), JumpWhy = new();
         public readonly List<string> Notes = new();
@@ -144,6 +144,8 @@ public partial class ArmTest : Node
     static readonly string[] Props = { "", "rifle", "pistol", "spear", "bow", "club", "machete", "shotgun", "cane", "umbrella", "hoe", "bottle" };
 
     readonly Tally _posed = new(), _drawn = new();
+    /// <summary>The same in a blow (the striking beat), counted apart: a swing is quick by design, so every frame a piece turns over <see cref="Pop"/> counts there.</summary>
+    readonly Tally _blowPosed = new(), _blowDrawn = new();
     double _poseMs;
     int _poses;
     (Species S, ulong Seed, int Frame)? _firstFlip, _shotOf;
@@ -190,6 +192,8 @@ public partial class ArmTest : Node
         GD.Print($"  (posing: {_poseMs * 1000.0 / Math.Max(1, _poses):F1} µs a pose over {_poses})");
         Report("as posed", _posed);
         Report("as drawn", _drawn);
+        Report("as posed in blows", _blowPosed);
+        Report("as drawn in blows", _blowDrawn);
         if (_dipWhy.Count > 0) GD.Print($"  (hips dipped while {Tally.Top(_dipWhy)})");
         Check(_hipFrames > 10000 && _dips == 0, $"the hips never dip for a frame, posed or drawn (over {Dip * 100f:F1} cm off the frames either side: {_dips} of {_hipFrames} frames, worst {_worstDip * 100f:F1} cm)");
         if (_shots != null && (_shotOf ?? _firstFlip) is { } f)
@@ -200,11 +204,13 @@ public partial class ArmTest : Node
 
     void Report(string what, Tally t)
     {
-        GD.Print($"  {what}: {t.Frames} frames, {t.Pops} flips (worst {t.Worst:F0}° in a frame), {t.Jumps} flicks (worst {t.WorstJump * 100f:F1} cm)");
+        bool blows = t == _blowPosed || t == _blowDrawn;
+        GD.Print($"  {what}: {t.Frames} frames, {t.Pops} flips (worst {t.Worst:F0}° in a frame), {t.Jumps} flicks (worst {t.WorstJump * 100f:F1} cm){(blows ? $", {t.Over} frames with a piece turned over {Pop:F0}°" : "")}");
         if (t.Why.Count > 0) GD.Print($"  ({what}: flips while {Tally.Top(t.Why)})");
         if (t.JumpWhy.Count > 0) GD.Print($"  ({what}: flicks while {Tally.Top(t.JumpWhy)})");
         foreach (string n in t.Notes) GD.Print($"    {n}");
-        Check(t.Frames > 10000, $"{what}: arms watched ({t.Frames} frames)");
+        Check(t.Frames > (blows ? 500 : 10000), $"{what}: arms watched ({t.Frames} frames)");
+        if (blows) Check(t.Over == 0, $"{what}: no arm bone or held thing turns over {Pop:F0}° in a frame ({t.Over} frames, worst {t.Worst:F0}°)");
         Check(t.Pops == 0, $"{what}: no arm bone or held thing turns over {Pop:F0}° in a frame beside a frame under {Calm:F0}° ({t.Pops} frames, worst {t.Worst:F0}°)");
         Check(t.Jumps == 0, $"{what}: no arm bone or held thing flicks (over {Flick * 100f:F0} cm in a frame and {Sudden:F0} times the frames beside it) ({t.Jumps} frames, worst {t.WorstJump * 100f:F1} cm)");
     }
@@ -308,6 +314,8 @@ public partial class ArmTest : Node
                 }
                 // (In the torso's frame: the arms as they hang from it, whatever the hips and back do.)
                 Transform3D back = rig.Pose[torso].AffineInverse(), backDrawn = drawn[torso].AffineInverse();
+                (Tally tp, Tally td) = beat == "striking" ? (_blowPosed, _blowDrawn) : (_posed, _drawn);
+                bool over1 = false, over2 = false;
                 for (int k = 0; k < Names.Length; k++)
                 {
                     int arm = k < 3 ? 0 : 1;
@@ -323,14 +331,13 @@ public partial class ArmTest : Node
                     string Doing() => $"{who}, {beat}{(now != BodyAct.None ? $" ({now} {act:F2})" : "")}{(aim > 0.05f ? $" aim {aim:F2}" : "")}{(sit > 0f ? $" sit {sit:F2}" : "")}";
                     (bool flip1, bool flick1) = posedW.Sample(k, posed, along, out float f1, out float s1, out float j1);
                     (bool flip2, bool flick2) = drawnW.Sample(k, shown, along, out float f2, out float s2, out float j2);
-                    if (flip1) Flip(_posed, Names[k], beat, Doing(), f1, s1, s, seed, tick);
-                    if (flip2) Flip(_drawn, Names[k], beat, Doing(), f2, s2, s, seed, tick);
-                    if (flick1 && !flip1) Flicked(_posed, Names[k], beat, Doing() + $", tick {tick - 1}", j1);
-                    if (flick2 && !flip2) Flicked(_drawn, Names[k], beat, Doing() + $", tick {tick - 1}", j2);
-                    (_posed.Worst, _drawn.Worst) = (MathF.Max(_posed.Worst, f1), MathF.Max(_drawn.Worst, f2));
+                    if (flip1) Flip(tp, Names[k], beat, Doing(), f1, s1, s, seed, tick);
+                    if (flip2) Flip(td, Names[k], beat, Doing(), f2, s2, s, seed, tick);
+                    if (flick1 && !flip1) Flicked(tp, Names[k], beat, Doing() + $", tick {tick - 1}", j1);
+                    if (flick2 && !flip2) Flicked(td, Names[k], beat, Doing() + $", tick {tick - 1}", j2);
+                    (tp.Worst, td.Worst, over1, over2) = (MathF.Max(tp.Worst, f1), MathF.Max(td.Worst, f2), over1 || f1 > Pop, over2 || f2 > Pop);
                 }
-                _posed.Frames++;
-                _drawn.Frames++;
+                (tp.Frames, td.Frames, tp.Over, td.Over) = (tp.Frames + 1, td.Frames + 1, tp.Over + (over1 ? 1 : 0), td.Over + (over2 ? 1 : 0));
             }
         }
     }
@@ -341,7 +348,7 @@ public partial class ArmTest : Node
         string key = $"{piece} {beat}";
         t.Why[key] = t.Why.GetValueOrDefault(key) + 1;
         if (t.Why[key] == 1) Note(t, $"{piece} turned {deg:F0}° in a frame ({swing:F0}° of its length, the rest a roll): {doing}, tick {tick - 1}");
-        _firstFlip ??= (s, seed, tick - 1);
+        if (t == _posed || t == _drawn) _firstFlip ??= (s, seed, tick - 1);
     }
 
     void Note(Tally t, string s)
@@ -430,6 +437,9 @@ public partial class ArmTest : Node
 
     // ---- The shots ---------------------------------------------------------------------------------
 
+    /// <summary>--every=N: the shots N frames apart (default 1: frame by frame).</summary>
+    static readonly int Every = Args.FirstOrDefault(a => a.StartsWith("--every=")) is { } e ? Math.Max(1, int.Parse(e[8..])) : 1;
+
     /// <summary>The first flipped body replayed and drawn (windowed only), a frame before its flip, at it and after.</summary>
     IEnumerable<int> Shots(Species s, ulong seed, int flip)
     {
@@ -439,7 +449,7 @@ public partial class ArmTest : Node
         Run(s, seed, (tick, rig, drawn, root) =>
         {
             played = rig;
-            if (tick >= flip - 2 && tick <= flip + 2) poses[tick] = ((Transform3D[])drawn.Clone(), root);
+            if (tick >= flip - 2 * Every && tick <= flip + 2 * Every && (tick - flip) % Every == 0) poses[tick] = ((Transform3D[])drawn.Clone(), root);
         });
         if (poses.Count == 0) yield break;
         AddChild(new WorldEnvironment { Environment = new Godot.Environment { BackgroundMode = Godot.Environment.BGMode.Color, BackgroundColor = new Color(0.55f, 0.62f, 0.7f), AmbientLightSource = Godot.Environment.AmbientSource.Color, AmbientLightColor = new Color(0.6f, 0.6f, 0.65f) } });

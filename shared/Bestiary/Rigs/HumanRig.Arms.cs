@@ -83,6 +83,12 @@ public sealed partial class HumanRig
     }
 
     /// <summary>
+    /// A hand carried from one place to another (t 0 to 1) round the shoulder, as an arm swings: turned about the shoulder and its
+    /// reach eased between, never straight across past it, where the arm would fold up on itself and its elbow fly round.
+    /// </summary>
+    static Vector3 Sweep(Vector3 shoulder, Vector3 from, Vector3 to, float t) => t <= 0f ? from : t >= 1f ? to : shoulder + (from - shoulder).Slerp(to - shoulder, t);
+
+    /// <summary>
     /// Clearance of a point from the torso's skin, m: below 0 inside it. In the body piece's space;
     /// near enough for an ellipse, and exact on its axes.
     /// </summary>
@@ -520,7 +526,7 @@ public sealed partial class HumanRig
                 Vector3 c = neck + head.Y * (f.Neck + f.HeadRadius) + F.Out * (f.HeadRadius + HandHalf(i) + 0.01f);
                 ArmGoal clutch = new(c, F.V(0.85f, 0.25f, -0.2f));
                 ArmGoal flail = Bones(shoulder, F.V(0.6f, 0.15f + 0.35f * MathF.Sin(t * 11f + i * 2f), 0.4f), F.V(0.3f, 0.6f, 0.5f + 0.4f * MathF.Sin(t * 9f + i)), upper, fore);
-                return new ArmGoal(clutch.Hand.Lerp(flail.Hand, k), clutch.Pole.Lerp(flail.Pole, k).Normalized()).With(HandTable.Mix("panic-clutch", "panic-flail", k, i));
+                return new ArmGoal(Sweep(shoulder, clutch.Hand, flail.Hand, k), clutch.Pole.Lerp(flail.Pole, k).Normalized()).With(HandTable.Mix("panic-clutch", "panic-flail", k, i));
             }
             case BodyAct.Present:
                 // A hand swept out to the wares, palm up.
