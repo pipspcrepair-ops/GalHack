@@ -45,8 +45,8 @@ public partial class BestiaryTest : Node
             GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
             if (OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only=")) is { } only)
             {
-                // Only the named checks, by method (a quick run while working on one thing): --only=Walking,HandsFaceTheWay
-                foreach (string m in only["--only=".Length..].Split(','))
+                // Only the named checks, by method (a quick run while working on one thing): --only=Walking:HandsFaceTheWay
+                foreach (string m in only["--only=".Length..].Split(':'))
                     GetType().GetMethod(m, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(this, null);
                 GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
