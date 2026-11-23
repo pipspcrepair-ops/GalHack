@@ -261,7 +261,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             // ride on it a little faster than it moves, climbing its face, so its front rolls. Its outline drawn crisper than
             // the model's ramp: the wall is seen as a wall, and inside the eye's fog carries most of the murk.
             s.Body.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, MathF.Min(d.Edge, 150f), 900f, d.Velocity * 1.15f, 2.5f, d.Strength);
-            s.Body.Light(toLight, env.FogLightColor, env.FogDensity, StormSteps, camera);
+            s.Body.Light(toLight, env.FogLightColor, env.FogDensity, StormSteps);
         }
         foreach (int id in _gone)
         {
