@@ -28,11 +28,15 @@ public sealed class DrawSmoother
 
         public Vector4 Now(double t) => _dur <= 0f || t >= _end ? default : _from * (float)((_end - t) / _dur);
 
+        /// <summary>
+        /// Another offset on top, faded over <paramref name="dur"/>; what was still to come keeps at least the time it had left (a
+        /// quick step noted after a slow one never hurries the rest of the slow one into a frame or two: that is a jump).
+        /// </summary>
         public void Add(Vector4 v, float dur, double t)
         {
             _from = Now(t) + v;
-            _end = t + dur;
-            _dur = dur;
+            _end = Math.Max(Live(t) ? _end : t, t + dur);
+            _dur = (float)(_end - t);
         }
 
         public bool Live(double t) => _dur > 0f && t < _end;
@@ -45,6 +49,8 @@ public sealed class DrawSmoother
     /// <summary>When the sim's root last changed, and when it was last noted at all.</summary>
     double _seen, _called;
     bool _has;
+    /// <summary>Trace (tests): cuts made while drawn, and moves beyond a run's eased in as corrections.</summary>
+    internal int Cuts, Overs;
 
     /// <summary>Where it stands in the sim now (last noted).</summary>
     public Vector3 Root => _at;
@@ -72,6 +78,7 @@ public sealed class DrawSmoother
         _called = now;
         if (Off || !_has || since > CutAfter || at.DistanceSquaredTo(_at) > CutDistance * CutDistance)
         {
+            if (_has) Cuts++;
             Cut();
             (_has, _at, _yaw, _seen) = (true, at, yaw, now);
             return;
@@ -88,6 +95,7 @@ public sealed class DrawSmoother
         _step.Add(-new Vector4(d.X - jump.X, d.Y - jump.Y, d.Z - jump.Z, turn - jumpTurn), dt, now);
         if (over > 0f || overTurn > 0f)
         {
+            Overs++;
             // Easing in over longer the bigger the whole of what is still to come.
             Vector4 all = _jump.Now(now) - new Vector4(jump.X, jump.Y, jump.Z, jumpTurn);
             _jump.Add(-new Vector4(jump.X, jump.Y, jump.Z, jumpTurn), Math.Clamp(0.1f + 0.02f * new Vector3(all.X, all.Y, all.Z).Length() + 0.05f * MathF.Abs(all.W), 0.1f, 0.25f), now);
@@ -128,6 +136,8 @@ public sealed class PoseBlend
     /// (<see cref="DrawSmoother"/>), so a planted foot stays where it is planted; a change of action eases in and out.
     /// </summary>
     bool _has, _span;
+    /// <summary>Trace (tests): poses that leapt and were blended.</summary>
+    internal int Leaps;
 
     public bool Active(double now) => _dur > 0f && now < _end;
 
@@ -139,9 +149,10 @@ public sealed class PoseBlend
     /// <summary>
     /// The pose to draw for the rig's, made at this root. A change of <paramref name="key"/> blends over <see cref="Switch"/>;
     /// <paramref name="span"/> above 0 (the seconds since the rig was last updated) carries it over that, straight. A piece that has leapt over
-    /// four fifths of the body's <paramref name="size"/> since the rig's last pose (a rig's own jump from one stride or stance to another) blends too.
+    /// four fifths of the body's <paramref name="size"/> since the rig's last pose (a rig's own jump from one stride or stance to another) blends too, as does a pose
+    /// long after the last (<paramref name="stale"/>).
     /// </summary>
-    public Transform3D[] Frame(Transform3D[] live, Transform3D root, int key, float span, float size, double now)
+    public Transform3D[] Frame(Transform3D[] live, Transform3D root, int key, float span, float size, double now, bool stale = false)
     {
         int n = live.Length;
         if (_last == null || _last.Length != n)
@@ -153,9 +164,9 @@ public sealed class PoseBlend
             _has = false;
         }
         if (DrawSmoother.Off) _has = false;
-        float dur = key != _key ? Switch : span;
+        float dur = key != _key || stale ? Switch : span;
         _key = key;
-        if (_has && Leapt(live, root, size * 0.8f)) dur = MathF.Max(dur, Leap);
+        if (_has && Leapt(live, root, size * 0.8f)) { dur = MathF.Max(dur, Leap); Leaps++; }
         // (A change of action still easing in runs its course: the span after it is in it.)
         if (_has && dur > 0f && (dur != span || _span || !Active(now)))
         {
@@ -177,7 +188,7 @@ public sealed class PoseBlend
     /// One piece's pose between two, by a straight blend of each axis kept at its blended length: a fifth of the cost of
     /// a rotation's slerp, and for the few tenths of a second it lasts, as good.
     /// </summary>
-    static Transform3D Mix(in Transform3D a, in Transform3D b, float w)
+    internal static Transform3D Mix(in Transform3D a, in Transform3D b, float w)
     {
         float v = 1f - w;
         Vector3 a0 = a.Basis.Column0, a1 = a.Basis.Column1, a2 = a.Basis.Column2, b0 = b.Basis.Column0, b1 = b.Basis.Column1, b2 = b.Basis.Column2;
