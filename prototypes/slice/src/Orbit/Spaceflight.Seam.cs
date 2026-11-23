@@ -131,6 +131,7 @@ public partial class Spaceflight
 
     void ProcessSeam(double delta)
     {
+        HushStep();
         TurnGround();
         Lap("ground turning");
         if (Game.InOrbit)
@@ -536,8 +537,8 @@ public partial class Spaceflight
         Vector3 at = carrier != null ? carrier.DrawTransform.Origin : Game.Survivor.WorldFeet;
         OrbitZone o = Orbit;
         float y = Height(at);
-        Game.Surface.Sky.Stars.Poll();
-        o.Space.Galaxy(Game.Surface.Sky.Stars);
+        Stars.Poll();
+        o.Space.Galaxy(Stars);
         HandOverFrames(at);
         if (!_aligned || y >= BandTop)
         {

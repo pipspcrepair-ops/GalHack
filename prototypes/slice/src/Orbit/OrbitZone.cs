@@ -219,7 +219,7 @@ public partial class OrbitZone : SurfaceZone
     IEnumerable<int> Build()
     {
         var (paint, wrecks) = _preparing.Result;
-        Space.Setup(paint?.Look, Below?.Sky ?? _lit, Home.Seen, Rules.Space, Surfaces, (float)Rules.Globe.Atmosphere);
+        foreach (int x in Space.Setup(paint?.Look, Below?.Sky ?? _lit, Home.Seen, Rules.Space, Surfaces, (float)Rules.Globe.Atmosphere)) yield return x;
         yield return 0;
         if (HasGround)
         {

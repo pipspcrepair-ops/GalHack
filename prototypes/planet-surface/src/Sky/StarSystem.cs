@@ -484,7 +484,8 @@ public sealed class StarSystem
     /// <summary>The system of a world: the same for everyone, from its spec.</summary>
     /// <param name="width">The map's width, m: its equator's length, so the home globe's size.</param>
     /// <param name="seed">The galaxy catalogue's seed for this star; 0: the world's own, where there is no galaxy.</param>
-    public static StarSystem For(PlanetSpec spec, SkySystem sky, double width, ulong seed = 0)
+    /// <param name="homeName">What its anchor world is called: a start world is "this world"; any other star's anchor is its first world.</param>
+    public static StarSystem For(PlanetSpec spec, SkySystem sky, double width, ulong seed = 0, string homeName = "this world")
     {
         if (seed == 0) seed = spec.Seed;
         var rng = new Rng(Hash.Of(seed, 0x535953, (long)spec.Archetype, spec.Variant));
@@ -608,7 +609,7 @@ public sealed class StarSystem
         double monthRadii = big != null ? 1.0 / Math.Tan(big.Radius) : 0.0;
         Orbiter home = new()
         {
-            Name = "this world", Kind = host == null ? OrbiterKind.Planet : OrbiterKind.Moon, Parent = host ?? star, Radius = homeRadius, Habitable = homeH,
+            Name = homeName, Kind = host == null ? OrbiterKind.Planet : OrbiterKind.Moon, Parent = host ?? star, Radius = homeRadius, Habitable = homeH,
             Orbit = host == null ? chart(homeH) : host.Radius * monthRadii, Period = host == null ? year(homeH) : capped(host.Radius * monthRadii, giantMonth(monthRadii)), Phase0 = phase(),
             Inclination = host == null ? 0.0 : equator(), Node = host == null ? 0.0 : equatorNode(), Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
             Rings = host == null && ArchetypeLook.For(spec).Ring, Color = sky.Horizon, // a moon has no rings (owner, 17 Nov)
@@ -824,6 +825,29 @@ public sealed class StarSystem
         s._bodies.Find(b => b.Kind == OrbiterKind.Belt).Deposits.Add(Deposit.CapitalMaterials);
         return s;
     }
+
+    /// <summary>
+    /// The system of any star of the galaxy's catalogue but a start's, from its catalogue seed and class: the same
+    /// recipe as a start system's (<see cref="For"/>), round an anchor world rolled from the seed (the body its frames
+    /// hang on, as a start world anchors its own) of a type its star suits. The same star always gives the same system.
+    /// </summary>
+    public static StarSystem ForStar(ulong seed, StarClass star)
+    {
+        var rng = new Rng(Hash.Of(seed, 0x414E43));
+        Archetype[] suits = AnchorTypes(star);
+        PlanetSpec anchor = PlanetSpec.Roll(seed, suits[rng.Next(suits.Length)], rng.Next(PlanetSpec.VariantCount));
+        return For(anchor, SkySystem.For(anchor, star), anchor.WidthMeters, seed, "world 1");
+    }
+
+    /// <summary>The world types a star of this class lights (the other way round from the sky's own pick of a star for a type).</summary>
+    static Archetype[] AnchorTypes(StarClass star) => star switch
+    {
+        StarClass.RedDwarf => new[] { Archetype.Lava, Archetype.Alien },
+        StarClass.Orange => new[] { Archetype.Temperate, Archetype.Lava, Archetype.Ice },
+        StarClass.Yellow => new[] { Archetype.Temperate, Archetype.Arid, Archetype.Alien },
+        StarClass.White => new[] { Archetype.Arid, Archetype.Ice, Archetype.Alien },
+        _ => new[] { Archetype.Ice, Archetype.Alien },
+    };
 
     /// <summary>The chance a giant's moon, with room for one, has a moon of its own.</summary>
     public const double MoonOfMoonChance = 0.35;

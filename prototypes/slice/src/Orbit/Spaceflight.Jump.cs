@@ -186,7 +186,7 @@ public partial class Spaceflight
             Arrive(j, a);
             return;
         }
-        _jumpTotals = ZoneLedger.Totals(Holders());
+        _jumpTotals = TotalsKept();
         if (!Ledger.Begin(Holders(), IdOf(j.Carrier), ZoneName(a.Zone)))
         {
             Refused();
@@ -247,7 +247,7 @@ public partial class Spaceflight
         if (to != from)
         {
             _leaving = (j, from);
-            j.Audit = Ledger.Audit(Holders(), _jumpTotals);
+            j.Audit = Ledger.Audit(Holders(), _jumpTotals, TotalsKept());
             foreach (string problem in j.Audit) GD.PrintErr($"jump audit: {problem}");
         }
         GD.Print($"[jump: arrived at {j.To.Name} in {to.Name} after {j.InTunnel:F1} s in the tunnel, {watch.Elapsed.TotalMilliseconds:F1} ms: {_arrivalLaps}; the slowest piece of making it {j.LongestStepMs:F1} ms, {j.LongestStep}]");

@@ -39,6 +39,8 @@ public sealed partial class FrameSplit
     public readonly List<string> Hitches = new();
     /// <summary>What the frame was doing, for a hitch's note (the route sets it).</summary>
     public Func<string> Doing = () => "";
+    /// <summary>The frame now open is left out: the test's own work is in it (a shot read back and written out).</summary>
+    public bool Skip;
     public SystemSplit Systems;
     readonly Rid _viewport;
     long _frameStart, _passStart, _physicsEnd, _processEnd, _preDraw, _alloc;
@@ -107,7 +109,7 @@ public sealed partial class FrameSplit
         _open = true;
         TimeSpan paused = GC.GetTotalPauseDuration();
         long alloc = GC.GetAllocatedBytesForCurrentThread();
-        if (_frameStart != 0)
+        if (_frameStart != 0 && !Skip)
         {
             double render = RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport) + RenderingServer.GetFrameSetupTimeCpu();
             var f = new Frame(Ms(_frameStart, now), _physicsScripts, _physicsEngine, _processScripts, _flush, _draw, render, (paused - _paused).TotalMilliseconds, alloc - _alloc, _ticks,
@@ -121,6 +123,7 @@ public sealed partial class FrameSplit
                 Hitches.Add(string.Create(CultureInfo.InvariantCulture, $"{f.Total:F0} ms at frame {Frames.Count} ({Parts(f)}; collections (gen 0/1/2) {gcs}; pipelines compiled (draw/specialization/surface/mesh) {pipes}; {Doing()}; systems: {Systems?.LastFrame(8) ?? "?"}; stalls: {StallWatch.Take()})"));
             }
         }
+        Skip = false;
         for (int i = 0; i < Pipes.Length; i++) _pipes[i] = Performance.GetMonitor(Pipes[i]);
         for (int g = 0; g < 3; g++) _gcs[g] = GC.CollectionCount(g);
         _frameStart = now;

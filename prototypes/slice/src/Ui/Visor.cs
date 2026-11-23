@@ -209,7 +209,7 @@ public partial class Visor : CanvasLayer
     void DrawChosenStar()
     {
         Slice.Orbit.Charts charts = Game.Spaceflight.Charts;
-        GalHack.Stars.GalaxySky stars = Game.Surface.Sky.Stars;
+        GalHack.Stars.GalaxySky stars = Game.Spaceflight.Stars;
         if (charts.ChosenStar < 0 || stars?.View == null) return;
         Camera3D camera = Game.Camera;
         Vector3 point = camera.GlobalPosition + Game.Spaceflight.LookToward(charts.ChosenStar) * 1000f;
@@ -243,7 +243,7 @@ public partial class Visor : CanvasLayer
     public bool CockpitImpact(Vessel v, out float seconds)
     {
         seconds = float.PositiveInfinity;
-        if (Game.InOrbit || v?.Flight == null || v.Controller == null || v.Controller.Frozen || Game.Survivor?.Seated != v) return false;
+        if (Game.InSpace || v?.Flight == null || v.Controller == null || v.Controller.Frozen || Game.Survivor?.Seated != v) return false;
         return ImpactSoon(-v.Body.Velocity.Y, v.AboveGround, Game.Zone.Physics.Rules.Contacts.SafeSpeed, out seconds);
     }
 

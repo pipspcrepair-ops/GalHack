@@ -92,6 +92,7 @@ public partial class Spaceflight : Node
     {
         ProcessPhysicsPriority = 6; // after the game's own after-physics step (5): positions are final
         ProcessPriority = 100;      // after the zones and the game have placed everything this frame
+        FoldTo = Fold;              // the jump key's fold to a star target
     }
 
     /// <summary>A zone waiting out of the scene is freed with the game (a made orbit that never entered it).</summary>
@@ -216,7 +217,7 @@ public partial class Spaceflight : Node
         GameNode g = Game;
         Vector3 at = g.Survivor.WorldFeet;
         // Where you are is charted, and with it everything a jump away.
-        if (g.Surface.Sky.Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
+        if (Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
         if (g.InOrbit)
         {
             OrbitZone o = Orbit;
@@ -272,7 +273,7 @@ public partial class Spaceflight : Node
         {
             ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = s.Sky.Surfaces,
         };
-        Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}"));
+        Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}")) { Kept = KeptInLedger };
         Orbit.Home.Surface = s;
         Orbit.Days = () => Below.Sky.Days;
         LightBodies(s);
@@ -679,14 +680,15 @@ public partial class Spaceflight : Node
         {
             if (zone?.Physics == null) continue;
             string name = ZoneName(zone);
+            bool freed = IsAbroad(zone); // freed when its system is left: where each thing is goes in its record, to be put back
             foreach (Vessel v in zone.Vessels)
             {
                 Bill items = v.Storage.Contents;
                 foreach (var c in v.Machines.Values) Add(items, c.Tray);
-                yield return new Holder(IdOf(v), "structure", name, null, v.Name, items, v.Structure.Count);
+                yield return new Holder(IdOf(v), "structure", name, null, v.Name, items, v.Structure.Count, freed ? PlacingOf(v, zone) : null);
             }
             foreach (Lootable l in zone.Loot.All)
-                yield return new Holder(IdOf(l), "container", name, null, l.Name, l.Storage.Contents, 0);
+                yield return new Holder(IdOf(l), "container", name, null, l.Name, l.Storage.Contents, 0, freed ? PlacingOf(l, zone) : null);
             foreach (Device d in zone.Devices)
             {
                 Bill items = d.Storage?.Contents ?? new Bill();

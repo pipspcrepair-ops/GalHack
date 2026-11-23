@@ -81,6 +81,14 @@ public sealed class OrbitRules
         public float MakeMoonWithin { get; set; } = 45000f;
     }
 
+    public FoldRules Fold { get; set; } = new();
+
+    public sealed class FoldRules
+    {
+        /// <summary>The least time in a fold's tunnel, s: longer still while the destination is made.</summary>
+        public double Tunnel { get; set; } = 4;
+    }
+
     static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

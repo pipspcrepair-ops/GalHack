@@ -65,6 +65,7 @@ public partial class SpaceSky : Node3D
     }
 
     Vector3 _eye;
+    float _sunAngular;
 
     /// <summary>Where the bodies were last drawn from.</summary>
     public Vector3 Eye => _eye;
@@ -176,7 +177,8 @@ public partial class SpaceSky : Node3D
         """;
 
     /// <param name="atmosphere">How high a world's air stands round its globe, in its radii: the far look's air is its globe's.</param>
-    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces, float atmosphere)
+    /// <returns>A step a body: each body's far look is made on its own frame (a system's worth at once would show as a hitch).</returns>
+    public IEnumerable<int> Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces, float atmosphere)
     {
         _surfaces = surfaces;
         _rules = rules;
@@ -201,6 +203,7 @@ public partial class SpaceSky : Node3D
         };
         World = new WorldEnvironment { Name = "Space" }; // no environment until space is what you see
         AddChild(World);
+        yield return 0; // a new system's sky is set up a piece a tick, under a fold's tunnel
         Rgb star = system.StarColor;
         var colour = new Color(star.R, star.G, star.B);
         SunEnergy = rules.SunEnergy;
@@ -209,11 +212,12 @@ public partial class SpaceSky : Node3D
         AddChild(Sun);
         _skySun = new DirectionalLight3D { Name = "SkySun", LightColor = colour, SkyMode = DirectionalLight3D.SkyModeEnum.SkyOnly, Visible = false };
         AddChild(_skySun);
-        var sphere = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 };
-        var bodyShader = new Shader { Code = BodySource };
+        SphereMesh sphere = Sphere;
+        Shader bodyShader = BodyShader;
         foreach (Orbiter b in model.Bodies)
         {
             if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == model.Home && b.Spec != null) continue; // a giant you are round is drawn here: it has no globe
+            yield return 0;
             var material = new ShaderMaterial { Shader = bodyShader };
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.Color));
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("band"), C(b.Band));
@@ -241,7 +245,7 @@ public partial class SpaceSky : Node3D
                 _air[b] = (air, airMaterial, Globe.AirShare(SkySystem.For(spec).Density), atmosphere);
             }
             if (!b.Rings) continue;
-            var ring = new ShaderMaterial { Shader = new Shader { Code = GiantRingSource }, RenderPriority = 3 };
+            var ring = new ShaderMaterial { Shader = RingShader, RenderPriority = 3 };
             ring.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.RingColor));
             node.AddChild(new MeshInstance3D
             {
@@ -275,19 +279,19 @@ public partial class SpaceSky : Node3D
         Sun.LightEnergy = SunEnergy * _share * SunLit;
         StarSystem.Orientation o = model.Orient(days);
         Vector3 W(D3 d) => turn * new Vector3((float)d.X, (float)d.Y, (float)d.Z);
-        ToSun = V(model.See(model.Star, days, eyeGlobe, o).Direction);
+        Sighting star = model.See(model.Star, days, eyeGlobe, o);
+        ToSun = V(star.Direction);
         Sun.Basis = Facing((turn * ToSun).Normalized());
+        // Its disc as big as it stands from the eye: the same from a world's orbit as from its ground, filling the view at its own high orbit.
+        if (MathF.Abs(star.Angular - _sunAngular) > _sunAngular * 0.002f)
+        {
+            _sunAngular = star.Angular;
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_radius"), _sunAngular);
+        }
         // The star field stands in the system's frame: the world turns under it with the day.
         Environment.SkyRotation = (turn * new Basis(V(o.X), V(o.Y), V(o.Z)).Transposed()).GetEuler();
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_time"), SkyRig.SunTime);
-        D3 toStar = model.Position(model.Star, days) - model.Position(model.Home, days);
-        if (model.Home == model.Star)
-        {
-            // Round the star itself (a warp's high orbit): its disc and its light from where you are.
-            toStar = o.ToSystem(eyeGlobe) * -1.0;
-            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_radius"), (float)Math.Asin(Math.Min(model.Star.Radius / Math.Max(toStar.Length, 1.0), 1.0)));
-        }
-        Vector3 field = V(toStar).Normalized();
+        Vector3 field = V(model.Position(model.Star, days) - model.Position(model.Home, days) - o.ToSystem(eyeGlobe)).Normalized();
         if (field.Dot(_fieldSun) < 0.99995f) // the sky's shader is worked again whenever its light moves
         {
             _fieldSun = field;
@@ -436,6 +440,34 @@ public partial class SpaceSky : Node3D
         _skySun.Visible = active;
         Environment.BackgroundEnergyMultiplier = brightness;
         Environment.AmbientLightEnergy = brightness;
+    }
+
+    /// <summary>
+    /// The far looks' and rings' shaders, one each for every space sky: a sky made for another system's space draws with
+    /// what is already compiled, so its first frame doesn't stall on a shader.
+    /// </summary>
+    static Shader BodyShader => _bodyShader ??= new Shader { Code = BodySource };
+    static Shader RingShader => _ringShader ??= new Shader { Code = GiantRingSource };
+    static SphereMesh Sphere => _sphere ??= new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 };
+    static SphereMesh _sphere;
+    static Shader _bodyShader, _ringShader;
+
+    /// <summary>
+    /// Lets go of what this sky holds outside its nodes now (its system left for good): its environment, its own and every
+    /// body's material, and with them the textures they read (the galaxy's, the far looks').
+    /// </summary>
+    public void Release()
+    {
+        if (World != null && IsInstanceValid(World)) World.Environment = null;
+        foreach (var (_, _, material) in _bodies) material.Dispose();
+        foreach (var a in _air.Values) a.Material.Dispose();
+        _bodies.Clear();
+        _air.Clear();
+        _fade.Clear();
+        _sky?.Dispose();
+        Environment?.Sky?.Dispose();
+        Environment?.Dispose();
+        _surfaces = null;
     }
 
     /// <summary>A giant's rings, in its radii: the sky's shader draws the same ones.</summary>

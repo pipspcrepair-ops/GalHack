@@ -74,10 +74,12 @@ public sealed record SkySystem
         }
     }
 
-    public static SkySystem For(PlanetSpec spec)
+    /// <param name="given">The star it circles when that is known already (a catalogue star's system: <c>StarSystem.ForStar</c>); null, the one its type suits.</param>
+    public static SkySystem For(PlanetSpec spec, StarClass? given = null)
     {
         var rng = new Rng(Hash.Of(spec.Seed, 0x534B59, (long)spec.Archetype, spec.Variant));
-        StarClass star = PickStar(spec, ref rng);
+        StarClass suited = PickStar(spec, ref rng); // rolled either way, so the rest of the sky rolls as it always did
+        StarClass star = given ?? suited;
         Rgb starColor = StarColorOf(star);
         AirKind air = AirOf(spec);
 

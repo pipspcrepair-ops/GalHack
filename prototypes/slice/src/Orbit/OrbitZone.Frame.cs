@@ -17,22 +17,22 @@ namespace Slice.Orbit;
 /// </summary>
 public partial class OrbitZone
 {
-    /// <summary>The sky its space is lit by when it has no world below of its own: the start world's (the one star).</summary>
+    /// <summary>The sky its space is lit by when it has no world below of its own: its system's anchor world's (the one star).</summary>
     SkySystem _lit;
 
     /// <summary>The body has ground: a world, with a globe and a surface under its crossing.</summary>
     public bool HasGround => Below != null;
 
-    /// <summary>The space round <paramref name="frame"/>, in the system <paramref name="system"/> owns.</summary>
-    public OrbitZone(Orbiter frame, PlanetWorld system, GameData data, OrbitRules rules)
+    /// <summary>The space round <paramref name="frame"/>, a body of <paramref name="system"/>, lit as <paramref name="light"/> (its anchor world's sky) has it.</summary>
+    public OrbitZone(Orbiter frame, StarSystem system, SkySystem light, GameData data, OrbitRules rules)
     {
         Name = "Orbit";
         Data = data;
         Rules = rules;
-        Spec = system.Spec;
+        Spec = system.Home.Spec;
         Gap = rules.Crossing.Gap;
-        _lit = system.Sky;
-        StarSystem model = system.StarSystem.SeenFrom(frame);
+        _lit = light;
+        StarSystem model = system.SeenFrom(frame);
         float r = (float)Math.Max(frame.Radius, 1.0);
         Home = new Celestial(frame, home: true)
         {

@@ -8,42 +8,33 @@ using Planets.Gen;
 namespace Slice.Orbit;
 
 /// <summary>
-/// What any star of the catalogue holds, worked out on demand and kept: its system from the star's
-/// own seed (<see cref="Galaxy.SystemSeed"/>) through the <see cref="StarSystem"/> model, and a short
+/// What any star of the catalogue holds, worked out on demand and kept: its system (<see cref="Of"/>) and a short
 /// summary of it. Only the orbits are built: no world's terrain is ever generated for a summary.
 /// </summary>
 public sealed class StarProfile
 {
     readonly Galaxy _galaxy;
+    readonly int _home;
+    readonly StarSystem _atHome;
     readonly Dictionary<int, StarSystem> _systems = new();
     readonly Dictionary<int, string[]> _lines = new();
 
-    public StarProfile(Galaxy galaxy) => _galaxy = galaxy;
+    /// <param name="home">The start's star, whose system is the start world's own (<paramref name="atHome"/>), or -1.</param>
+    public StarProfile(Galaxy galaxy, int home = -1, StarSystem atHome = null) => (_galaxy, _home, _atHome) = (galaxy, home, atHome);
 
-    /// <summary>The star class the system model builds for a catalogue kind.</summary>
-    public static StarClass ClassOf(StarKind k) => k switch
-    {
-        StarKind.BrownDwarf or StarKind.RedDwarf or StarKind.Protostar => StarClass.RedDwarf,
-        StarKind.OrangeDwarf or StarKind.RedGiant => StarClass.Orange,
-        StarKind.YellowDwarf => StarClass.Yellow,
-        StarKind.WhiteStar or StarKind.WhiteDwarf => StarClass.White,
-        _ => StarClass.BlueWhite,
-    };
+    /// <summary>
+    /// The system of a catalogue star that isn't the start's: built from its own seed (<see cref="Galaxy.SystemSeed"/>)
+    /// and class by the start system's recipe (<see cref="StarSystem.ForStar"/>). The one way every star gets its system:
+    /// the map's summaries, a fold's destination and the sky from there all read it.
+    /// </summary>
+    public static StarSystem Of(Galaxy galaxy, int id) => StarSystem.ForStar(galaxy.SystemSeed(id), SkyRig.ClassOf(galaxy.Stars[id].Kind));
 
-    /// <summary>The system of a star, or null if the model can't make one.</summary>
+    /// <summary>The system of a star: the start world's own at the start's star.</summary>
     public StarSystem System(int id)
     {
+        if (id == _home && _atHome != null) return _atHome;
         if (_systems.TryGetValue(id, out StarSystem known)) return known;
-        StarSystem made = null;
-        try
-        {
-            ulong seed = _galaxy.SystemSeed(id);
-            var spec = new PlanetSpec(seed, (Archetype)(int)((seed >> 7) % 5), 0, 0);
-            SkySystem sky = SkySystem.For(spec) with { Star = ClassOf(_galaxy.Stars[id].Kind) };
-            made = StarSystem.For(spec, sky, spec.WidthMeters, seed);
-        }
-        catch (Exception) { }
-        return _systems[id] = made;
+        return _systems[id] = Of(_galaxy, id);
     }
 
     /// <summary>Words for a body's temperature.</summary>

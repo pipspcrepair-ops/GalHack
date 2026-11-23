@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics.Engine;
@@ -69,8 +69,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     }
 
     /// <summary>Drops, and their splashes, are being drawn around the eye (tests).</summary>
-    public bool RainShown => _rain.Node.Visible;
-    public bool SplashShown => _splash.Visible;
+    public bool RainShown => _rain?.Node.Visible == true;
+    public bool SplashShown => _splash?.Visible == true;
 
     /// <summary>A strike's real light right now, and one set off by hand (tests).</summary>
     public float StrikeLight => _lightning.StrikeEnergy;
@@ -332,6 +332,15 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         _lightning = new LightningFx { Name = "Lightning", Fx = this, LightShare = () => SkyAtEye };
         AddChild(_lightning);
+    }
+
+    /// <summary>
+    /// What falls and blows (rain, snow, dust, motes, splashes, and what stops them), made once the zone has a world
+    /// with weather to show: a zone in space never pays for particles it can't have.
+    /// </summary>
+    void Dress()
+    {
+        if (_rain != null) return;
         // A top-down depth picture of everything around the camera: what falls dies on it.
         _stops = new GpuParticlesCollisionHeightField3D
         {
@@ -448,6 +457,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// </summary>
     public void SetWorld(PlanetWorld planet)
     {
+        Dress();
         _planet = planet;
         // The last world's dust storms go with it (a world with no air has no weather to draw them again).
         foreach (Storm s in _storms.Values) s.Body.QueueFree();

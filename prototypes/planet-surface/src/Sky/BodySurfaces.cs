@@ -70,6 +70,16 @@ public sealed class BodySurfaces
         System.Threading.Tasks.Task.Factory.StartNew(() => Work(order), CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.None, Painters);
     }
 
+    /// <summary>Lets go of the array now and stops its thread after the surface it is on (a system left for good).</summary>
+    public void Release()
+    {
+        _released = true;
+        while (_painted.TryDequeue(out _)) { }
+        Texture?.Dispose();
+    }
+
+    volatile bool _released;
+
     /// <summary>
     /// Where paint for far looks and globes is made: a quarter of the cores the game runs on (<see cref="Terrain.TerrainStreamer.Cores"/>; one at the least). The generator's loops run
     /// in parallel on whatever scheduler they are started from, so on all of them otherwise, and on the minimum spec's four
@@ -80,7 +90,7 @@ public sealed class BodySurfaces
 
     void Work(List<Orbiter> order)
     {
-        for (int i = 0; i < order.Count; i++)
+        for (int i = 0; i < order.Count && !_released; i++)
         {
             long started = Stopwatch.GetTimestamp();
             Image image = Paint(order[i]);
@@ -91,7 +101,7 @@ public sealed class BodySurfaces
     /// <summary>Uploads one finished surface: call it once a frame.</summary>
     public void Pump()
     {
-        if (!_painted.TryDequeue(out var p)) return;
+        if (_released || !_painted.TryDequeue(out var p)) return;
         Texture.UpdateLayer(p.Image, p.Layer);
         _ready[p.Body] = p.Layer;
         Done++;

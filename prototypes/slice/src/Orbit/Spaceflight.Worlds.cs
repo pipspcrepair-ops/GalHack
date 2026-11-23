@@ -36,37 +36,47 @@ public partial class Spaceflight
     /// <summary>Every orbit zone made so far, the start world's first.</summary>
     public IEnumerable<OrbitZone> Orbits => _orbits.Count > 0 ? _orbits : Orbit != null ? new[] { Orbit } : Array.Empty<OrbitZone>();
 
-    /// <summary>Every zone of the system: the orbits and every surface in them (the start world alone, before its orbit is made).</summary>
+    /// <summary>
+    /// Every zone in play: the start system's orbits and every surface in them (the start world alone, before its orbit is
+    /// made), and out among the stars the zones of the system you are in.
+    /// </summary>
     public IEnumerable<SurfaceZone> AllZones()
     {
-        if (Orbit == null)
-        {
-            yield return Game.Surface;
-            yield break;
-        }
+        if (Orbit == null) yield return Game.Surface;
         foreach (OrbitZone o in Orbits)
         {
             yield return o;
             foreach (Celestial c in o.Bodies)
                 if (c.Surface != null) yield return c.Surface;
         }
+        if (Away != null)
+            foreach (SurfaceZone z in Away.Zones) yield return z;
     }
 
     /// <summary>Every surface of the system.</summary>
     IEnumerable<SurfaceZone> AllSurfaces() => AllZones().Where(z => z is not OrbitZone);
 
-    /// <summary>The orbit a body is in (as its globe or a moon of it), or null if it has none yet.</summary>
-    public OrbitZone OrbitOf(Orbiter body) => Orbits.FirstOrDefault(o => o.Bodies.Exists(c => c.Body == body));
+    /// <summary>The orbit a body is in (as its globe or a moon of it), or null if it has none yet: the start system's, or the one you are in.</summary>
+    public OrbitZone OrbitOf(Orbiter body) => Orbits.Concat(Away?.Orbits ?? Enumerable.Empty<OrbitZone>()).FirstOrDefault(o => o.Bodies.Exists(c => c.Body == body));
 
     /// <summary>The body in an orbit zone, or null.</summary>
     public static Celestial CelestialOf(OrbitZone o, Orbiter body) => o?.Bodies.Find(c => c.Body == body);
 
     /// <summary>A body's short name in the records: its place in the system's list.</summary>
-    string KeyOf(Orbiter body) => "b" + IndexOf(Game.Surface.Planet.StarSystem, body);
+    /// <summary>Out among the stars, the star's too (a body of the system you are in, or of the one a fold is making).</summary>
+    string KeyOf(Orbiter body)
+    {
+        if (IndexOf(HomeSystem, body) is >= 0 and int i) return "b" + i;
+        Abroad of = AbroadOf(body);
+        return of == null ? "b-1" : $"s{of.Star}b{IndexOf(of.System, body)}";
+    }
+
+    /// <summary>The system out among the stars a body is of: the one you are in, or the one a fold is making.</summary>
+    Abroad AbroadOf(Orbiter body) => new[] { Away, _coming }.FirstOrDefault(a => a != null && IndexOf(a.System, body) >= 0);
 
     static int IndexOf(StarSystem model, Orbiter body)
     {
-        for (int i = 0; i < model.Bodies.Count; i++)
+        for (int i = 0; i < (model?.Bodies.Count ?? 0); i++)
             if (model.Bodies[i] == body) return i;
         return -1;
     }
@@ -77,6 +87,9 @@ public partial class Spaceflight
     /// </summary>
     string NameOf(SurfaceZone z)
     {
+        // Out among the stars: by the star, then the body's key in its system.
+        if (new[] { Away, _coming }.FirstOrDefault(a => a != null && a.Zones.Contains(z)) is { } of)
+            return AbroadPrefix(of.Star) + (z is OrbitZone a ? ZoneLedger.Orbit + "/" + KeyOf(a.Home.Body) : ZoneLedger.Surface + "/" + KeyOf(z.Body));
         OrbitZone start = FirstOrbit;
         if (z is OrbitZone o) return o == start ? ZoneLedger.Orbit : ZoneLedger.Orbit + "/" + KeyOf(o.Home.Body);
         if (z == Game.Surface) return ZoneLedger.Surface;
@@ -104,11 +117,11 @@ public partial class Spaceflight
     SurfaceZone BodyZone(Orbiter body, bool now)
     {
         SurfaceZone home = Game.Surface;
-        StarSystem model = home.Planet.StarSystem;
+        StarSystem model = SystemHere;
         float ceiling = Rules.OrbitAltitude("default");
         var zone = new SurfaceZone
         {
-            Name = Charts.Tidy(body.Name).Replace(" ", ""), Data = home.Data, Spec = body.Spec, ShareFrom = home.Planet, SkySurfaces = home.Sky.Surfaces, Body = body,
+            Name = Charts.Tidy(body.Name).Replace(" ", ""), Data = home.Data, Spec = body.Spec, ShareFrom = ShareHere, SkySurfaces = SurfacesHere, Body = body,
             MakeLater = !now, ProcessMode = ProcessModeEnum.Disabled, Visible = false,
         };
         Game.AddChild(zone);
@@ -120,7 +133,7 @@ public partial class Spaceflight
             zone.Ground.Ceiling = ceiling;
             LightBodies(zone);
             Mute(zone);
-            GD.Print($"{Charts.Tidy(body.Name)} is made: {body.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/sÂ²");
+            GD.Print($"{Charts.Tidy(body.Name)} is made: {body.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/sÃ‚Â²");
         };
         _surfaceShownOf[zone] = false;
         _groundShownOf[zone] = true;
@@ -136,7 +149,7 @@ public partial class Spaceflight
     internal IEnumerable<bool> MakeOrbit(Orbiter root, Orbiter target, Action<OrbitZone, SurfaceZone> made)
     {
         SurfaceZone start = Game.Surface;
-        StarSystem model = start.Planet.StarSystem;
+        StarSystem model = SystemHere;
         float ceiling = Rules.OrbitAltitude("default");
         OrbitZone orbit;
         if (root.Spec != null)
@@ -153,18 +166,15 @@ public partial class Spaceflight
             bool clear = w.Sky.Density < SurfaceWeather.NoAir;
             orbit = new OrbitZone(w, start.Data, Rules, PoiGenerator.Gen.Hash.Combine(model.StarKey, root.Seed), ceiling, clear ? (_, _) => 0f : null)
             {
-                Name = "Orbit" + home.Name, ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = start.Sky.Surfaces, DrawLater = true,
+                Name = "Orbit" + home.Name, ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = SurfacesHere, DrawLater = true,
             };
             orbit.Home.Surface = home;
+            orbit.Days = () => Below.Sky.Days;
+            if (_orbits.Count == 0) _orbits.Add(Orbit);
+            if (Away != null) Away.Orbits.Add(orbit);
+            else _orbits.Add(orbit);
         }
-        else
-            orbit = new OrbitZone(root, start.Planet, start.Data, Rules)
-            {
-                Name = "Orbit" + Charts.Tidy(root.Name).Replace(" ", ""), ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = start.Sky.Surfaces,
-            };
-        orbit.Days = () => Below.Sky.Days;
-        if (_orbits.Count == 0) _orbits.Add(Orbit);
-        _orbits.Add(orbit);
+        else orbit = StarSpace(root, Away);
         made(orbit, orbit.Home.Surface);
         // A world's or a giant's moons (and theirs); the star's planets and a belt's rocks are orbits of their own.
         foreach (Orbiter m in root.Kind is OrbiterKind.Star or OrbiterKind.Belt ? Enumerable.Empty<Orbiter>() : Under(model, root).ToList())
@@ -229,6 +239,15 @@ public partial class Spaceflight
 
     void Free(SurfaceZone z)
     {
+        Forget(z);
+        if (!IsInstanceValid(z)) return;
+        if (z.IsInsideTree()) z.QueueFree();
+        else z.Free();
+    }
+
+    /// <summary>What the flight keeps of a zone let go of, dropped.</summary>
+    void Forget(SurfaceZone z)
+    {
         _surfaceShownOf.Remove(z);
         _groundShownOf.Remove(z);
         _hiddenKidsOf.Remove(z);
@@ -238,9 +257,6 @@ public partial class Spaceflight
         foreach (Vessel w in _wreckFadeOf.Keys.Where(w => w.Zone == z).ToList()) _wreckFadeOf.Remove(w);
         _prepared.Remove(z);
         foreach (CollisionObject3D body in _shelved.Keys.Where(b => !IsInstanceValid(b) || IsInstanceValid(z) && z.IsAncestorOf(b)).ToList()) _shelved.Remove(body);
-        if (!IsInstanceValid(z)) return;
-        if (z.IsInsideTree()) z.QueueFree();
-        else z.Free();
     }
 
     /// <summary>The game goes: an orbit made that never entered the scene goes with it.</summary>

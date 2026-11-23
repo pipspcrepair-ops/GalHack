@@ -129,5 +129,13 @@
     // The moon's own globe, painted from the map you land on, fades in over its far look
     // (the sky's coarse paint of it) between these distances from its ground, m.
     "moonGlobeFrom": [ 9000, 7000 ]
+  },
+
+  // A fold between stars (docs/solar-systems.md section 8): it arrives in orbit of the target star,
+  // clear of it at its high orbit (warp.json's, the same as a warp to the star), on the side that
+  // faces the star it came from, its worlds where the one clock has them.
+  "fold": {
+    // The least time in the tunnel, s: it lasts longer while the destination is still being made.
+    "tunnel": 4
   }
 }

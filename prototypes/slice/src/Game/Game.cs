@@ -952,7 +952,7 @@ public partial class Game : Node3D
         float ease = 1f - MathF.Exp(-(float)_focusFor / 0.15f);
         _focusWas = focus;
         _focusFor = 0;
-        if (moved.Length() > 400f || InOrbit) moved = Vector3.Zero; // a seam or a crossing moved the frame, not you
+        if (moved.Length() > 400f || InSpace) moved = Vector3.Zero; // a seam or a crossing moved the frame, not you
         Vector3 heading = Surface.Streamer.Heading.Lerp(moved, ease);
         Surface.Streamer.Heading = heading;
         Surface.Infra.Heading = heading;
