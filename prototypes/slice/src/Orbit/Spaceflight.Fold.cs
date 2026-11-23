@@ -89,13 +89,6 @@ public partial class Spaceflight
 
     readonly Dictionary<int, StarSystem> _systems = new();
 
-    /// <summary>The system of any catalogue star: the start world's at the start's, the start system's recipe elsewhere (kept once made).</summary>
-    public StarSystem SystemOf(int star)
-    {
-        if (star == HomeStar) return HomeSystem;
-        if (!_systems.TryGetValue(star, out StarSystem s)) _systems[star] = s = StarProfile.Of(Stars.Galaxy, star);
-        return s;
-    }
 
     /// <summary>A star's distance from where you are, LY.</summary>
     public float LightYearsTo(int star) => N.Vector3.Distance(Stars.Galaxy.Stars[star].Position, Stars.Galaxy.Stars[StarHere].Position);
