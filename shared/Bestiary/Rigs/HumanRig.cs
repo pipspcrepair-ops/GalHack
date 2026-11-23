@@ -755,7 +755,7 @@ public sealed partial class HumanRig : Rig
                 axis = PropAxis(g, torso, fwd, right, sip, sipAxis);
                 gripW = axis.Length() * (1f - rightOff);
             }
-            Vector3 gripFore = Vector3.Zero, leanFore = Vector3.Zero; // (the forearm's way to the grip itself: which way round the hand goes is never its own say)
+            Vector3 gripFore = Vector3.Zero; // (the forearm's way to the grip itself: which way round the hand goes is never its own say)
             if (gripW > 0f)
             {
                 // The fist closes on the grip, not the wrist: the wrist goes back from it by the length of the hand (twice round, as the forearm moves with it;
@@ -765,12 +765,13 @@ public sealed partial class HumanRig : Rig
                 {
                     (Vector3 e0, Vector3 w0) = ArmIK(shoulder, want, upperArm, forearm, pole);
                     gripFore = (w0 - e0).Normalized();
-                    if (pass == 0) leanFore = gripFore;
+                    // (Which way round the hand goes, settled before the hand is placed by it: a hand put straight onto a grip, first posed, was
+                    // placed by the way it last went round, its fist a hand's length off the grip for that frame.)
+                    if (pass == 0) TurnGrip(i, gripW, axis, gripFore, F, spec);
                     want = hand - HandGrip(i, axis.Normalized(), gripFore, ahead, -F.Out, F.Mix(spec.Palm), _gripTurn[i]) * (HandMake.Fist * _handSize[i]) * gripW;
                 }
                 hand = want;
             }
-            TurnGrip(i, gripW, axis, leanFore, F, spec);
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
             if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f) * f.Padding) * on; // (a thick coat's shoulder rolls further forward)
