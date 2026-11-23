@@ -235,6 +235,7 @@ public partial class FoldTest : Node
         foreach (int x in Settle()) yield return x;
         Check(_game.Orbit == Flight.FirstOrbit && _ship.Zone == _game.Orbit && _game.Survivor.Seated == _ship, "back in the start world's orbit, at the ship's controls");
         Check(OnlySky(_game.Orbit) && _game.Orbit.Space.Sun.Visible, "the orbit's own sky and sun are the ones shown again");
+        foreach (int x in NoGlare("in the start world's orbit, warped to from home's star")) yield return x;
         Check(SameAsLeft(homeLeft, out changed), $"and everything left at home is there{changed}");
         Levels back = Measure("back in the start world's orbit");
         Level(baseline, back, "home, A, B and home again");
@@ -278,6 +279,7 @@ public partial class FoldTest : Node
         Celestial c = Spaceflight.CelestialOf(orbit, world);
         if (!Check(orbit == Flight.OrbitOf(world) && c != null && away.Orbits.Contains(orbit) && Flight.Away == away,
                 $"arrived in {name}'s orbit, a zone of {star}'s system ({orbit.Name})")) yield break;
+        foreach (int x in NoGlare($"in {name}'s orbit, warped to from {star}'s high orbit")) yield return x;
         for (int i = 0; i < 60 * 240 && (orbit.Anchor != c || !c.Ready || !c.Surface.Arrived); i++) yield return 0;
         if (!Check(orbit.Anchor == c && c.Ready && c.Surface.Arrived, $"{name}'s globe and ground are up")) yield break;
 
@@ -325,6 +327,28 @@ public partial class FoldTest : Node
         if (!Check(_game.Orbit == orbit && Flight.Band >= 1f, $"up off {name} into its orbit, clear of the band")) yield break;
         foreach (int x in Warp(system.Star)) yield return x;
         Check(_game.Orbit.Home.Body == system.Star && Flight.Away == away && away.Orbits.Contains(_game.Orbit), $"back round {star}'s star, in its own zone ({_game.Orbit.Name})");
+    }
+
+    /// <summary>
+    /// A star's glare stays at its high orbit (owner: "it's a problem if it follows us when we leave"): from a world's orbit
+    /// the sky's sun is as big as the star stands from here, and space across the view, side-on to the sun, is dark.
+    /// </summary>
+    IEnumerable<int> NoGlare(string where)
+    {
+        OrbitZone here = _game.Orbit;
+        double days = here.Days();
+        D3 eyeGlobe = D(here.Home.ToGlobe(_game.Camera.GlobalPosition.ToNumerics()));
+        Sighting star = here.Home.Seen.See(here.Home.Seen.Star, days, eyeGlobe, here.Home.Orient(days));
+        float radius = (float)((ShaderMaterial)here.Space.Environment.Sky.SkyMaterial).GetShaderParameter("sun_radius");
+        Check(MathF.Abs(radius / star.Angular - 1f) < 0.02f && radius < 0.1f, $"{where}: the sky's sun {2 * radius * 180 / MathF.PI:F2}° across, as the star stands from here");
+        if (!Shooting) yield break;
+        Vector3 sun = (here.Home.Turn.ToBasis() * here.Space.ToSun).Normalized(), toWorld = (here.Home.Centre - _ship.Body.Position.ToGodot()).Normalized();
+        Vector3 side = sun.Cross(toWorld).LengthSquared() > 1e-4f ? sun.Cross(toWorld).Normalized() : sun.Cross(Vector3.Up).Normalized();
+        foreach (int x in Face(side.ToNumerics(), 30)) yield return x;
+        Image frame = GetViewport().GetTexture().GetImage();
+        float lit = Enumerable.Range(1, 5).Average(k => frame.GetPixel(frame.GetWidth() * k / 6, frame.GetHeight() / 4).Luminance);
+        Check(lit < 0.3f, $"{where}: space side-on to the sun is dark, no glare carried over ({lit:F2} bright across the view)");
+        Shot($"fold-6-no-glare-{(here == Flight.FirstOrbit ? "home" : "abroad")}");
     }
 
     /// <summary>The ship's fuel as the console has it: generator fuel, the capacitor, the jump fuels.</summary>
