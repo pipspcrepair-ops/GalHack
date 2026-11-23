@@ -167,6 +167,11 @@ public partial class FoldTest : Node
         if (Flight.StarHere != a) yield break;
         if (Shooting)
         {
+            // Nose to the star: its disc fills the middle of the view.
+            foreach (int x in Face(N.Vector3.Normalize((_game.Orbit.Home.Centre - _ship.Body.Position.ToGodot()).ToNumerics()), 30)) yield return x;
+            Image frame = GetViewport().GetTexture().GetImage();
+            Color middle = frame.GetPixel(frame.GetWidth() / 2, frame.GetHeight() / 3);
+            Check(middle.Luminance > 0.6f, $"the star fills the view ahead: {middle.Luminance:F2} bright above the console");
             Shot("fold-3-arrival-star");
             // Away from the star, its worlds where they are; then the star come from, picked, at its bearing.
             foreach (int x in Face(N.Vector3.Normalize(-(_game.Orbit.Home.Centre - _ship.Body.Position.ToGodot()).ToNumerics()), 30)) yield return x;
@@ -354,6 +359,11 @@ public partial class FoldTest : Node
             if (angle > worst) (worst, worstBody) = (angle, body.Name);
         }
         Check(here.Space.Drawn.Any() && worst < 0.5, $"every world is drawn where the model has it this moment: {here.Space.Drawn.Count()} bodies, worst {worst:F3}° ({worstBody})");
+        // The star itself: the sky's sun where the star is from the eye, its disc as big as it stands there.
+        Vector3 eye = _game.Camera.GlobalPosition, sun = here.Home.Turn.ToBasis() * here.Space.ToSun;
+        double sunOff = Angle(sun.ToNumerics(), (here.Home.Centre - eye).Normalized().ToNumerics());
+        float radius = (float)((ShaderMaterial)here.Space.Environment.Sky.SkyMaterial).GetShaderParameter("sun_radius"), wantRadius = MathF.Asin((float)system.Star.Radius / here.Home.Centre.DistanceTo(eye));
+        Check(sunOff < 0.5 && MathF.Abs(radius / wantRadius - 1f) < 0.01f, $"the sky's sun stands where the star is ({sunOff:F3}° off), its disc {2 * radius * 180 / MathF.PI:F1}° across as the star is from here");
 
         // The star left behind, a point in this sky at its true bearing: in the catalogue as baked from here, and as the sky's own uniforms draw it.
         N.Vector3 truth = N.Vector3.Normalize(Catalogue.Stars[from].Position - Catalogue.Stars[star].Position);
