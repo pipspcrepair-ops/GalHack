@@ -434,8 +434,8 @@ public sealed class TerrainModel
         // Impacts land on whatever the land became: plains, hills and ranges alike, never flattened away.
         float ejecta = 0f;
         if (_craterGrids.Length > 0) e += Craters(x, y, spacing, plain * Def.MareBury, out ejecta);
-        // A fresh crater's ejecta blanket lies hummocky over the land, rougher than the ground round it.
-        e += _detail.Fbm(p, spacing) * r.Roughness * (e > 0f ? 1f : 0.4f) * (1f + EjectaRough * ejecta);
+        // A fresh crater's ejecta blanket lies hummocky over the land, rougher than the ground round it (on a saturated surface: a young one's few craters barely roughen it).
+        e += _detail.Fbm(p, spacing) * r.Roughness * (e > 0f ? 1f : 0.4f) * (1f + EjectaRough * ejecta * Def.CraterCover);
         // No air, no water: no basin ever filled, so nothing lies under the waterline (the map and the ground under the player alike).
         if (_bare) e = Math.Max(e, 0f) + PlanetGenerator.BareFloor;
         return Ceiling(e);
