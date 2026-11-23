@@ -152,9 +152,30 @@ public partial class FoldTest : Node
         if (!Check(nearA.Count > 0, $"stars within reach of {Catalogue.Name(a)} besides home: {nearA.Count}")) yield break;
         int b = nearA[_rng.Next(nearA.Count)];
         GD.Print($"route: home {Catalogue.Name(home)} ({home}) → A {Catalogue.Name(a)} ({a}) → B {Catalogue.Name(b)} ({b}) → home → A");
+        if (Shooting)
+        {
+            // The galaxy map with A picked: its route, LY, crystal and reach.
+            Flight.Charts.ChosenStar = a;
+            _game.Menu.OpenMap(Slice.Ui.MapLevel.Galaxy);
+            foreach (int x in _drive.Wait(40)) yield return x;
+            Shot("fold-1-map-route");
+            _game.Menu.Close();
+            foreach (int x in _drive.Wait(10)) yield return x;
+        }
 
         foreach (int x in FoldTo(a)) yield return x;
         if (Flight.StarHere != a) yield break;
+        if (Shooting)
+        {
+            Shot("fold-3-arrival-star");
+            // Away from the star, its worlds where they are; then the star come from, picked, at its bearing.
+            foreach (int x in Face(N.Vector3.Normalize(-(_game.Orbit.Home.Centre - _ship.Body.Position.ToGodot()).ToNumerics()), 30)) yield return x;
+            Shot("fold-3-arrival-worlds");
+            Flight.Charts.ChosenStar = home;
+            foreach (int x in Face(Flight.LookToward(home).ToNumerics(), 30)) yield return x;
+            Shot("fold-4-home-bearing");
+            Flight.Charts.ChosenStar = -1;
+        }
         // Something left at A: a crate set adrift beside the ship.
         Vector3 crateAt = _ship.Body.Position.ToGodot() + new Vector3(40f, 6f, 0f);
         _game.Orbit.Loot.Spill(Bill.Of(("iron-ore", 7), ("stone", 3)), crateAt);
@@ -284,7 +305,16 @@ public partial class FoldTest : Node
         string refused = Flight.Fold(star);
         if (!Check(refused == null, $"FOLD: the drive spools ({refused ?? $"{_ship.Power.SpoolLeft:F0} s"})")) { _timing = false; yield break; }
         int ticks = 0;
-        while (Flight.Folds.Count() == folds && Flight.Jumping.Running && ticks++ < 60 * 120) yield return 0;
+        bool tunnelShot = false;
+        while (Flight.Folds.Count() == folds && Flight.Jumping.Running && ticks++ < 60 * 120)
+        {
+            if (Shooting && !tunnelShot && Flight.Jumping.Holding && Flight.Jumping.InTunnel > 1.0)
+            {
+                tunnelShot = true;
+                Shot("fold-2-tunnel");
+            }
+            yield return 0;
+        }
         for (int i = 0; i < 120; i++) yield return 0; // a couple of seconds after, the arrival's settling in
         _timing = false;
         if (!Check(Flight.Folds.Count() > folds, $"the fold arrived after {ticks / 60f:F1} s ({Flight.Jumping.Now}{(Flight.Jumping.Trouble != null ? ", " + Flight.Jumping.Trouble : "")})")) yield break;
@@ -358,6 +388,35 @@ public partial class FoldTest : Node
     }
 
     static D3 D(N.Vector3 v) => new(v.X, v.Y, v.Z);
+
+    // ---- Shots, when there is a window ---------------------------------------------------------
+
+    static bool Shooting => DisplayServer.GetName() != "headless";
+
+    /// <summary>The last frame drawn, to the worktree's scratchpad (looked at before they are sent).</summary>
+    void Shot(string name)
+    {
+        string dir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "..", "scratchpad", "fold", "shots"));
+        System.IO.Directory.CreateDirectory(dir);
+        string file = System.IO.Path.Combine(dir, $"{name}{(_minSpec ? "-minspec" : "")}.png");
+        Error err = GetViewport().GetTexture().GetImage().SavePng(file);
+        GD.Print(err == Error.Ok ? $"  shot {file}" : $"  could not save {file}: {err}");
+    }
+
+    /// <summary>The ship turned and held still, its nose along a direction (for a shot), for a few ticks to settle.</summary>
+    IEnumerable<int> Face(N.Vector3 forward, int ticks)
+    {
+        Vector3 up = MathF.Abs(forward.Y) > 0.95f ? Vector3.Back : Vector3.Up;
+        Quaternion q = Basis.LookingAt(forward.ToGodot(), up).GetRotationQuaternion();
+        for (int i = 0; i < ticks; i++)
+        {
+            _ship.Body.Rotation = new N.Quaternion(q.X, q.Y, q.Z, q.W);
+            _ship.Body.Velocity = N.Vector3.Zero;
+            _ship.Body.AngularVelocity = N.Vector3.Zero;
+            _ship.Binding.Teleport();
+            yield return 0;
+        }
+    }
     // ---- What was left -----------------------------------------------------------------------
 
     /// <summary>Everything held at home but the sleeper and the ship (and what rides it): id, zone, items, blocks.</summary>

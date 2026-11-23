@@ -59,6 +59,9 @@ public partial class Spaceflight
     /// <summary>The system you are in when it isn't the start's, or null at home.</summary>
     public Abroad Away { get; private set; }
 
+    /// <summary>The system a fold under way is making, till it arrives or is called off.</summary>
+    Abroad _coming;
+
     /// <summary>The galaxy's sky as it stands from where you are: the start world's at home, the star's own out there.</summary>
     public GalaxySky Stars => Away?.Stars ?? Game.Surface?.Sky?.Stars;
 
@@ -210,6 +213,7 @@ public partial class Spaceflight
                 Surfaces = new BodySurfaces(system.SeenFrom(system.Star), new D3(0, system.Star.Radius * 3.0, 0)),
             };
             _zone = flight.StarSpace(system.Star, _away);
+            flight._coming = _away;
         }
 
         public JumpArrival Arrival(Spaceflight flight, Vessel carrier)
@@ -233,6 +237,7 @@ public partial class Spaceflight
             _arrived = true;
             Abroad left = flight.Away;
             flight.Away = _away;
+            flight._coming = null;
             if (left != null) flight.FreeAbroad(left); // a star's system out there: freed whole
             if (left == null) flight.ParkHome(); // the start system: parked as it was
             if (_away == null) flight.HomeParked = false; // home's star: the start system's zones in play again (each still parked till you go to it)
@@ -244,6 +249,7 @@ public partial class Spaceflight
         public void Dropped(Spaceflight flight)
         {
             if (_arrived) return;
+            flight._coming = null;
             if (_away != null) flight.FreeAbroad(_away);
             else if (_made) flight.Unmake(_zone, null);
         }

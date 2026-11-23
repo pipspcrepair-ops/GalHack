@@ -60,7 +60,16 @@ public partial class Spaceflight
     public static Celestial CelestialOf(OrbitZone o, Orbiter body) => o?.Bodies.Find(c => c.Body == body);
 
     /// <summary>A body's short name in the records: its place in the system's list.</summary>
-    string KeyOf(Orbiter body) => "b" + (IndexOf(HomeSystem, body) is >= 0 and var i ? i : IndexOf(Away?.System, body));
+    /// <summary>Out among the stars, the star's too (a body of the system you are in, or of the one a fold is making).</summary>
+    string KeyOf(Orbiter body)
+    {
+        if (IndexOf(HomeSystem, body) is >= 0 and int i) return "b" + i;
+        Abroad of = AbroadOf(body);
+        return of == null ? "b-1" : $"s{of.Star}b{IndexOf(of.System, body)}";
+    }
+
+    /// <summary>The system out among the stars a body is of: the one you are in, or the one a fold is making.</summary>
+    Abroad AbroadOf(Orbiter body) => new[] { Away, _coming }.FirstOrDefault(a => a != null && IndexOf(a.System, body) >= 0);
 
     static int IndexOf(StarSystem model, Orbiter body)
     {
@@ -76,7 +85,8 @@ public partial class Spaceflight
     string NameOf(SurfaceZone z)
     {
         // Out among the stars: by the star, then the body's key in its system.
-        if (Away != null && Away.Zones.Contains(z)) return AbroadPrefix(Away.Star) + (z is OrbitZone a ? ZoneLedger.Orbit + "/" + KeyOf(a.Home.Body) : ZoneLedger.Surface + "/" + KeyOf(z.Body));
+        if (new[] { Away, _coming }.FirstOrDefault(a => a != null && a.Zones.Contains(z)) is { } of)
+            return AbroadPrefix(of.Star) + (z is OrbitZone a ? ZoneLedger.Orbit + "/" + KeyOf(a.Home.Body) : ZoneLedger.Surface + "/" + KeyOf(z.Body));
         OrbitZone start = FirstOrbit;
         if (z is OrbitZone o) return o == start ? ZoneLedger.Orbit : ZoneLedger.Orbit + "/" + KeyOf(o.Home.Body);
         if (z == Game.Surface) return ZoneLedger.Surface;
