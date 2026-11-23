@@ -81,10 +81,11 @@ public partial class InfraLayer : Node3D
     public bool Hurry;
     /// <summary>The slowest frame of this layer's own main-thread work, ms, and the most it made in one frame (tests).</summary>
     public double WorstMainMs;
-    /// <summary>Unfinished tiles (with something in them) and how close the nearest is, m (infinity: none); each finished tile's seconds from start to standing and how far off it was by then. Measurements read these.</summary>
+    /// <summary>Unfinished tiles (with something in them) and how close the nearest is, m (infinity: none); the last <see cref="TileLogMost"/> finished tiles' seconds from start to standing and how far off each was by then (a new world starts it afresh: round trips keep nothing). Measurements read these.</summary>
     public int TilesBehind { get; private set; }
     public double NearestBehind { get; private set; } = double.PositiveInfinity;
     public readonly List<(double Seconds, double Distance)> TileLog = new();
+    const int TileLogMost = 512;
     /// <summary>The longest single step on the main thread, ms, and what it was.</summary>
     public double WorstStepMs;
     public string WorstStep = "";
@@ -138,6 +139,7 @@ public partial class InfraLayer : Node3D
     {
         foreach (Tile t in _tiles.Values) t.Node?.QueueFree();
         _tiles.Clear();
+        TileLog.Clear();
         _pieces = null;
         _planning = null;
         _world = null;
@@ -282,7 +284,11 @@ public partial class InfraLayer : Node3D
                 }
                 tile.SolidsDue = tile.Solids.Count > 0;
             }
-            if (waiting && tile.Done && TileLog.Count < 4096) TileLog.Add((tile.Clock.Elapsed.TotalSeconds, TileDistance(tile.Ix, tile.Iz, cx, cz)));
+            if (waiting && tile.Done)
+            {
+                if (TileLog.Count >= TileLogMost) TileLog.RemoveAt(0);
+                TileLog.Add((tile.Clock.Elapsed.TotalSeconds, TileDistance(tile.Ix, tile.Iz, cx, cz)));
+            }
             if (tile.Done) UpdateParts(tile, key);
             if (tile.Node != null)
             {
