@@ -45,6 +45,10 @@ public sealed class ScavRun
     public string Why = "";
     /// <summary>The spot of the round they are at or bound for, and how many they have searched (tests).</summary>
     public int Spot, Searched;
+    /// <summary>The metre cells (world) along the way and round the find with no water in them, found when it was planned (on a worker).</summary>
+    public HashSet<long> Dry;
+    public bool DryAt(Vector3 world) => Dry != null && Dry.Contains(Cell((int)MathF.Floor(world.X), (int)MathF.Floor(world.Z)));
+    public static long Cell(int x, int z) => ((long)x << 32) ^ (uint)z;
 }
 
 public sealed partial class Town
@@ -203,6 +207,7 @@ public sealed partial class Town
             };
             run.Out.AddRange(land.Select(q => q - a.Origin));
             run.Round[0] = run.Out[^1];
+            run.Dry = DryBand(planet, land.Prepend(a.Origin + a.Gate).Concat(round).ToList());
             LastPlan = $"{run.What} {length:F0} m off{(road ? " by road" : "")}";
             return run;
         }
@@ -216,6 +221,39 @@ public sealed partial class Town
     static float Height(PlanetWorld planet, Vector3 w) => planet.GroundHeight(Mathx.WrapX(w.X, planet.Width), Mathx.Wrap(w.Z, planet.Height));
 
     static bool Wet(PlanetWorld planet, Vector3 w) => planet.Source.WaterSurfaceAt(Mathx.WrapX(w.X, planet.Width), Mathx.Wrap(w.Z, planet.Height), out _);
+
+    /// <summary>
+    /// The metre cells beside a line of points (world, a metre or more either side) with no water at their corners or middle
+    /// (worker, the looks spread over the cores): a look for water is a ground sample, a few tenths of a millisecond, too dear
+    /// for every step of a walk far off (<see cref="BedUnder"/>).
+    /// </summary>
+    static HashSet<long> DryBand(PlanetWorld planet, List<Vector3> line)
+    {
+        var cells = new HashSet<(int X, int Z)>();
+        for (int i = 1; i < line.Count; i++)
+        {
+            Vector3 a = line[i - 1], b = line[i];
+            float length = Flat(b - a);
+            for (float s = 0f; s <= length; s += 0.5f)
+            {
+                Vector3 at = length > 0f ? a.Lerp(b, s / length) : a;
+                int x = (int)MathF.Floor(at.X), z = (int)MathF.Floor(at.Z);
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++) cells.Add((x + dx, z + dz));
+            }
+        }
+        // (Looked at on a half-metre lattice, each point once: a cell's corners and its middle.)
+        var points = new HashSet<(int, int)>();
+        foreach ((int x, int z) in cells)
+            points.UnionWith(new[] { (2 * x + 1, 2 * z + 1), (2 * x, 2 * z), (2 * x + 2, 2 * z), (2 * x, 2 * z + 2), (2 * x + 2, 2 * z + 2) });
+        var wet = new System.Collections.Concurrent.ConcurrentDictionary<(int, int), bool>();
+        System.Threading.Tasks.Parallel.ForEach(points, q => wet[q] = planet.WaterSurfaceAt(new Vector3(q.Item1 * 0.5f, 0f, q.Item2 * 0.5f)) != null);
+        var dry = new HashSet<long>();
+        foreach ((int x, int z) in cells)
+            if (!wet[(2 * x + 1, 2 * z + 1)] && !wet[(2 * x, 2 * z)] && !wet[(2 * x + 2, 2 * z)] && !wet[(2 * x, 2 * z + 2)] && !wet[(2 * x + 2, 2 * z + 2)])
+                dry.Add(ScavRun.Cell(x, z));
+        return dry;
+    }
 
     /// <summary>Spots round a find's walls, 1.5 m out (its corners and the middles of its sides, in order round it), on dry ground.</summary>
     static List<Vector3> Round(PlanetWorld planet, Footing f)
@@ -455,7 +493,7 @@ public sealed partial class Town
         if (r.Leg >= way.Count) { p.Now = 0f; return true; }
         Vector3 next = way[r.Leg] - p.Pos;
         bool last = r.Leg >= way.Count - 1;
-        float flat = Flat(next), pace = p.Speed * p.Feel.Pace * (BedIn(p.Pos) != null ? 0.5f : 1f); // (wading the shallows, slowed: OnLand)
+        float flat = Flat(next), pace = p.Speed * p.Feel.Pace * (BedUnder(p) != null ? 0.5f : 1f); // (wading the shallows, slowed: OnLand)
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         wanted = Following(p, wanted, pace);
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);

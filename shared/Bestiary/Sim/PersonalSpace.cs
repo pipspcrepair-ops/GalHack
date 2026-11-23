@@ -89,7 +89,7 @@ public sealed class PersonalSpace
                             {
                                 Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * overlap * ((i + j) % 2 == 0 ? 1f : -1f);
                                 if (a.Give >= b.Give && (open == null || open(i, a.Pos + side))) { pa = side; aOk = true; }
-                                else if (open == null || open(j, b.Pos - side)) { pb = -side; bOk = true; }
+                                else if (b.Give > 0f && (open == null || open(j, b.Pos - side))) { pb = -side; bOk = true; }
                                 // No room to part at all (a one-wide way): whoever is walking stops there and waits, never walks on through.
                                 if (!aOk && !bOk)
                                 {
