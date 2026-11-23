@@ -27,7 +27,8 @@ namespace Slice.Tests;
 /// star left behind a point at its true bearing, fold crystal spent one a light year, the sleeper and the ship's hold
 /// come along, nothing of the old system left (light, sky, gravity, weather, sound, the controls), the zone left freed
 /// and the counts (nodes, objects, physics bodies, memory, textures) level. Back home, all that was left there is as it
-/// was; back at A, what was left at A is put back.
+/// was; back at A, what was left at A is put back. Then a warp to one of A's own worlds, landed on (its ground, gravity, air
+/// and life its own, nothing of home's world showing), lifted off, a warp back to A's star, and a fold home: level again.
 ///
 /// The one shortcut is the setup, printed: the ship is set down whole, crystal in its hold, in Creative's free power.
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/FoldTest.tscn   (-- --minspec=1: 4 cores, lowest settings)
@@ -230,13 +231,10 @@ public partial class FoldTest : Node
         Check(same, $"home waited as it was left: {homeLeft.Count} holders, the same items and blocks in the same zones{changed}");
 
         // The warp on to the start world: its high orbit, its zones waking as they were.
-        GD.Print("-- the warp to the start world --");
-        string refused = Flight.Warp(Flight.HomeSystem.Home);
-        if (!Check(refused == null, $"from home's star the warp to the start world spools ({refused ?? "ok"})")) yield break;
-        for (int i = 0; i < 60 * 120 && Flight.Jumping.Running; i++) yield return 0;
+        foreach (int x in Warp(Flight.HomeSystem.Home)) yield return x;
         foreach (int x in Settle()) yield return x;
         Check(_game.Orbit == Flight.FirstOrbit && _ship.Zone == _game.Orbit && _game.Survivor.Seated == _ship, "back in the start world's orbit, at the ship's controls");
-        Check(OnlySky(_game.Orbit.Space.World) && _game.Orbit.Space.Sun.Visible, "the orbit's own sky and sun are the ones shown again");
+        Check(OnlySky(_game.Orbit) && _game.Orbit.Space.Sun.Visible, "the orbit's own sky and sun are the ones shown again");
         Check(SameAsLeft(homeLeft, out changed), $"and everything left at home is there{changed}");
         Levels back = Measure("back in the start world's orbit");
         Level(baseline, back, "home, A, B and home again");
@@ -247,6 +245,93 @@ public partial class FoldTest : Node
         float off = crate == null ? float.MaxValue : N.Vector3.Distance(_game.Orbit.Home.ToGlobe(crate.Position.ToNumerics()), crateOnStar);
         Check(crate != null && off < 0.5f && crate.Storage.Contents["stone"] == 3,
             $"back at A, the crate left there is put back where it was with what it held ({(crate == null ? "missing" : $"{off:F2} m off")})");
+
+        // Down onto one of A's own worlds and back up, back to A's star, and home: nothing of A comes along.
+        foreach (int x in AbroadWorld()) yield return x;
+        if (Flight.StarHere != a || _game.Orbit.Home.Body != Flight.SystemHere.Star) yield break;
+        foreach (int x in FoldTo(home)) yield return x;
+        if (Flight.StarHere != home) yield break;
+        foreach (int x in Settle()) yield return x;
+        Level(atHome, Measure($"round home's star again, {Catalogue.Name(home)}"), "A's world, then home's star again");
+    }
+
+    // ---- A world out among the stars -------------------------------------------------------------
+
+    /// <summary>
+    /// A warp from the star here to the nearest of its worlds the Skiff can lift off, down through its crossing onto its
+    /// ground and back up, and a warp back to the star: the world is the system's own, made from its seed and the rules.
+    /// </summary>
+    IEnumerable<int> AbroadWorld()
+    {
+        StarSystem system = Flight.SystemHere;
+        Spaceflight.Abroad away = Flight.Away;
+        string star = Catalogue.Name(Flight.StarHere);
+        // Light enough to lift off with the Skiff's jets, and near: a rocky world first, a moon if there is none.
+        bool Light(Orbiter o) => o.Spec is { HighGravity: false } && o.Spec.GravityScale <= _game.Surface.Spec.GravityScale * 1.05f;
+        Orbiter world = system.Bodies.Where(o => o.Kind == OrbiterKind.Planet && Light(o)).OrderBy(o => Flight.Route(o).Au).FirstOrDefault()
+            ?? system.Bodies.Where(o => o.Kind == OrbiterKind.Moon && Light(o)).OrderBy(o => Flight.Route(o).Au).FirstOrDefault();
+        if (!Check(world != null, $"{star} has a world the Skiff can land on and lift off ({system.Bodies.Count(o => o.Spec != null)} with ground)")) yield break;
+        string name = Charts.Tidy(world.Name);
+        GD.Print($"-- warp to {name}, a world of {star}: {world.Kind}, {world.Spec.Archetype}, {world.Spec.WidthMeters / 1000:F0} km, {world.Spec.GravityScale:F2} g, {(world.Spec.Airless ? "airless" : "air")} --");
+        foreach (int x in Warp(world)) yield return x;
+        OrbitZone orbit = _game.Orbit;
+        Celestial c = Spaceflight.CelestialOf(orbit, world);
+        if (!Check(orbit == Flight.OrbitOf(world) && c != null && away.Orbits.Contains(orbit) && Flight.Away == away,
+                $"arrived in {name}'s orbit, a zone of {star}'s system ({orbit.Name})")) yield break;
+        for (int i = 0; i < 60 * 240 && (orbit.Anchor != c || !c.Ready || !c.Surface.Arrived); i++) yield return 0;
+        if (!Check(orbit.Anchor == c && c.Ready && c.Surface.Arrived, $"{name}'s globe and ground are up")) yield break;
+
+        // Down: upright over it, sinking at a pace it can stop from, till the crossing hands it to the ground.
+        foreach (int x in MoonTest.Upright(_pilot, c, _ship)) yield return x;
+        int crossings = Flight.Crossings.Count;
+        for (int i = 0; i < 60 * 150 && Flight.Crossings.Count == crossings; i++)
+        {
+            _game.Controls.Hold(Key.Ctrl, -_ship.Body.Velocity.ToGodot().Dot((_ship.Body.Position.ToGodot() - c.Centre).Normalized()) < 40f);
+            yield return 0;
+        }
+        _game.Controls.ReleaseAll();
+        SurfaceZone surface = c.Surface;
+        if (!Check(_game.Zone == surface && _ship.Zone == surface && _game.Survivor.Seated == _ship && Flight.Crossings[^1].Audit.Count == 0,
+                $"down through its crossing onto {name}'s ground, seated, nothing lost ({_game.Zone.Name})")) yield break;
+        for (int tries = 0; tries < 2 && _ship.Controller?.Frozen != true; tries++)
+        {
+            foreach (int x in _pilot.Land(_ship, OrbitTest.FlatSpot(surface, _ship.Body.Position.ToGodot(), 40f))) yield return x;
+            foreach (int x in _drive.Wait(40)) yield return x;
+        }
+        Check(_ship.Controller?.Frozen == true && !_game.Suit.Dead, $"landed on {name} on its gear, the sleeper alive ({_ship.AboveGround:F1} m up, the suit's air {_game.Suit.OxygenShare:P0})");
+
+        // The world is the one in A's system, by its own rules; nothing of home's world shows.
+        PlanetSurface.World.PlanetWorld start = _game.Surface.Planet, here = surface.Planet;
+        Check(surface.Body == world && surface.Spec == world.Spec && here != start && away.Zones.Contains(surface),
+            $"its ground is {star}'s {name}, made from its own seed: {surface.Spec.Archetype} {surface.Spec.Seed:x}, {here.Width / 1000:F0} km (the start world {start.Spec.Archetype} {start.Spec.Seed:x})");
+        float g = surface.Physics.Zone.Strength, wantG = _game.Surface.Physics.Zone.Strength * surface.Spec.GravityScale / _game.Surface.Spec.GravityScale;
+        Check(MathF.Abs(g - wantG) < 0.02f, $"its gravity from its own size: {g:F2} m/s² ({surface.Spec.GravityScale:F2} g; the start world {_game.Surface.Physics.Zone.Strength:F2})");
+        bool airless = here.Sky.Density < SurfaceWeather.NoAir;
+        Check(airless == world.Spec.Airless && (_game.Suit.Beyond != null) == airless,
+            $"its air its own: {(airless ? "none, the suit sealed against space" : $"density {here.Sky.Density:F2}, the suit on its own oxygen")}");
+        int creatures = surface.Wildlife?.Sim.Creatures.Count ?? 0;
+        Check(here.Flora != start.Flora && (!airless || here.Flora.Book.Barren && creatures == 0),
+            $"{(here.Flora.Book.Barren ? "barren" : "alive")} by its own rules: {creatures} creatures{(airless ? ", none on a world with no air" : "")}");
+        Check(!_game.Surface.Visible && _game.Surface.ProcessMode == ProcessModeEnum.Disabled && Flight.HomeParked, "the start world waits parked: out of processing, hidden");
+        OnlyHere(surface, $"on {name}");
+        if (Shooting) Shot("fold-5-foreign-landed");
+
+        // Back up, and back to the star.
+        foreach (int x in Climb()) yield return x;
+        if (!Check(_game.Orbit == orbit && Flight.Band >= 1f, $"up off {name} into its orbit, clear of the band")) yield break;
+        foreach (int x in Warp(system.Star)) yield return x;
+        Check(_game.Orbit.Home.Body == system.Star && Flight.Away == away && away.Orbits.Contains(_game.Orbit), $"back round {star}'s star, in its own zone ({_game.Orbit.Name})");
+    }
+
+    /// <summary>A warp in the system here, spooled and waited through.</summary>
+    IEnumerable<int> Warp(Orbiter to)
+    {
+        GD.Print($"-- the warp to {Charts.Tidy(to.Name)} --");
+        string refused = Flight.Warp(to);
+        if (!Check(refused == null, $"the warp to {Charts.Tidy(to.Name)} spools ({refused ?? $"{Flight.Jumping.Distance:F2} AU"})")) yield break;
+        for (int i = 0; i < 60 * 240 && Flight.Jumping.Running; i++) yield return 0;
+        Check(Flight.Jumping.Now == Jump.Stage.Done && Flight.Jumping.Audit.Count == 0, $"the warp arrived ({Flight.Jumping.Now}{(Flight.Jumping.Trouble != null ? ", " + Flight.Jumping.Trouble : "")}; the ledger {(Flight.Jumping.Audit.Count == 0 ? "clean" : string.Join("; ", Flight.Jumping.Audit))})");
+        foreach (int x in _drive.Wait(60)) yield return x;
     }
     // ---- Setting up ------------------------------------------------------------------------------
 
@@ -294,11 +379,18 @@ public partial class FoldTest : Node
         foreach (int x in _pilot.Board(_ship)) yield return x;
         if (!Check(_game.Survivor.Seated == _ship, "at the ship's controls")) yield break;
         if (!Check(_ship.Stats?.LiftMargin > 0f, $"it can lift off this world: {_ship.Stats?.LiftMargin:F0} kN to spare")) yield break;
+        foreach (int x in Climb()) yield return x;
+    }
+
+    /// <summary>Straight up off the ground into orbit, on clear of the band, and stopped there.</summary>
+    IEnumerable<int> Climb()
+    {
+        string from = _game.Zone.Name;
         _game.Controls.Hold(Key.Space);
         int ticks = 0;
         while (!_game.InOrbit && ticks++ < 60 * 150) yield return 0;
         _game.Controls.ReleaseAll();
-        Check(_game.InOrbit, $"the climb crossed into orbit after {ticks / 60f:F0} s (lift margin {_ship.Stats?.LiftMargin:F0} kN)");
+        Check(_game.InOrbit, $"the climb off {from} crossed into orbit after {ticks / 60f:F0} s (lift margin {_ship.Stats?.LiftMargin:F0} kN)");
         // Clear of the band, where nothing of the surface is drawn.
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 60 * 30 && Flight.Band < 1f; i++) yield return 0;
@@ -402,13 +494,10 @@ public partial class FoldTest : Node
         // Nothing of the old system carries over.
         if (leftAbroad) Check(leftZones.All(z => !IsInstanceValid(z) || !z.IsInsideTree()), $"the system left is freed: its {leftZones.Count} zones out of the scene");
         else Check(left.ProcessMode == ProcessModeEnum.Disabled && !left.Visible && Flight.HomeParked == (star != Flight.HomeStar), "the start system waits parked: out of processing, hidden");
-        Check(OnlySky(here.Space.World), "one sky: this star's own, every other environment off");
-        var lights = Lit().Where(l => !here.IsAncestorOf(l)).Select(l => l.GetPath().ToString()).ToList();
-        Check(lights.Count == 0, $"no light of the old system shines here{(lights.Count > 0 ? ": " + string.Join(", ", lights.Take(4)) : "")}");
+        OnlyHere(here, $"round {Catalogue.Name(star)}");
         Check(here.Physics.Zone.Strength == 0f && (Vector4)RenderingServer.GlobalShaderParameterGet("weather_wind") == Vector4.Zero, "no gravity and no wind out here");
-        Node tunnel = _game.GetNodeOrNull("Jump"); // the fold's own tunnel sound, fading out
-        var sounds = Playing().Where(n => !here.IsAncestorOf(n) && !_game.Audio.IsAncestorOf(n) && !_ship.Node.IsAncestorOf(n) && tunnel?.IsAncestorOf(n) != true).Select(n => n.GetPath().ToString()).ToList();
-        Check(sounds.Count == 0, $"no sound of the old system plays on{(sounds.Count > 0 ? ": " + string.Join(", ", sounds.Take(4)) : "")}");
+        string readout = Flight.FlightLine(_ship);
+        Check(!readout.Contains("THIS WORLD") && (star == Flight.HomeStar || !readout.Contains("YOUR WORLD")), $"the flight readout names what is near by this system's names: {readout}");
         N.Vector3 v0 = _ship.Body.Velocity;
         _game.Controls.Hold(Key.W);
         foreach (int x in _drive.Wait(60)) yield return x;
@@ -509,9 +598,23 @@ public partial class FoldTest : Node
 
     IEnumerable<SurfaceZone> Zones() => _game.GetChildren().OfType<SurfaceZone>().Where(z => IsInstanceValid(z) && z.IsInsideTree());
 
-    /// <summary>The only environment shown is this one.</summary>
-    bool OnlySky(WorldEnvironment mine) => _game.FindChildren("*", "WorldEnvironment", true, false).OfType<WorldEnvironment>()
-        .Where(w => w.GetViewport() == GetViewport()).All(w => w == mine ? w.Environment != null : w.Environment == null);
+    /// <summary>One environment is shown, and it is this zone's own.</summary>
+    bool OnlySky(Node zone)
+    {
+        var shown = _game.FindChildren("*", "WorldEnvironment", true, false).OfType<WorldEnvironment>().Where(w => w.GetViewport() == GetViewport() && w.Environment != null).ToList();
+        return shown.Count == 1 && zone.IsAncestorOf(shown[0]);
+    }
+
+    /// <summary>Nothing of another zone shows or plays here: one sky, this zone's own; no other light; no other sound.</summary>
+    void OnlyHere(SurfaceZone here, string where)
+    {
+        Check(OnlySky(here), $"{where}: one sky, this zone's own, every other environment off");
+        var lights = Lit().Where(l => !here.IsAncestorOf(l)).Select(l => l.GetPath().ToString()).ToList();
+        Check(lights.Count == 0, $"{where}: no light of another zone shines here{(lights.Count > 0 ? ": " + string.Join(", ", lights.Take(4)) : "")}");
+        Node tunnel = _game.GetNodeOrNull("Jump"); // the jump's own tunnel sound, fading out
+        var sounds = Playing().Where(n => !here.IsAncestorOf(n) && !_game.Audio.IsAncestorOf(n) && !_ship.Node.IsAncestorOf(n) && tunnel?.IsAncestorOf(n) != true).Select(n => n.GetPath().ToString()).ToList();
+        Check(sounds.Count == 0, $"{where}: no sound of another zone plays on{(sounds.Count > 0 ? ": " + string.Join(", ", sounds.Take(4)) : "")}");
+    }
 
     IEnumerable<DirectionalLight3D> Lit() => _game.FindChildren("*", "DirectionalLight3D", true, false).OfType<DirectionalLight3D>()
         .Where(l => l.GetViewport() == GetViewport() && l.IsVisibleInTree() && l.LightEnergy > 0f && l.SkyMode != DirectionalLight3D.SkyModeEnum.SkyOnly);

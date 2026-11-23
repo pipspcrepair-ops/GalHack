@@ -171,9 +171,15 @@ public partial class Spaceflight
         {
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             string stage = "waiting";
-            // In the tunnel, out to another star: the start system's zone left is put away a piece a tick, so parking it on arrival is cheap.
-            if (flight.Jumping is { Holding: true } j && flight.Away == null && _star != flight.HomeStar && flight.Tuck(j.From, j.Carrier)) stage = "putting away";
-            try { return StepOnce(flight, ref stage); }
+            // Out of the start system to another star: the zone left is put away a little a tick under the tunnel's cover, so
+            // parking it on arrival is cheap; the tunnel lasts till it is.
+            bool putAway = flight.Away != null || _star == flight.HomeStar;
+            if (!putAway && flight.Jumping is { Holding: true } j && j.InTunnel >= TuckFrom)
+            {
+                putAway = !flight.Tuck(j.From, j.Carrier);
+                stage = "putting away";
+            }
+            try { return StepOnce(flight, ref stage) && putAway; }
             finally
             {
                 double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -290,6 +296,7 @@ public partial class Spaceflight
         {
             if (_arrived) return;
             flight._coming = null;
+            if (flight.Jumping?.From is { } from) flight.Untuck(from); // what was put away of the zone it never left comes back
             if (_away != null) flight.FreeAbroad(_away);
             else if (_made) flight.Unmake(_zone, null);
         }
@@ -318,45 +325,67 @@ public partial class Spaceflight
 
     // ---- The system left ---------------------------------------------------------------------
 
-    /// <summary>What of a zone was put away before it was parked (each switched off and hidden, in order), to bring back when it wakes.</summary>
-    readonly Dictionary<SurfaceZone, Queue<Node>> _tucked = new();
-    readonly Dictionary<SurfaceZone, Queue<Node>> _toTuck = new();
+    /// <summary>What of a zone was put away before it was parked, in order: each switched off, and hidden if it showed.</summary>
+    readonly Dictionary<SurfaceZone, List<(Node Node, bool Shown)>> _tucked = new();
+
+    /// <summary>What is still to put away of a zone being left, and whether a big branch's twigs have gone in ahead of it.</summary>
+    readonly Dictionary<SurfaceZone, Stack<(Node Node, bool Opened)>> _toTuck = new();
+
+    /// <summary>Into the tunnel this long, s, its cover is all but whole: what is put away from then on goes unseen.</summary>
+    const double TuckFrom = 0.75;
+
+    /// <summary>Most of a tick putting a zone away takes, ms.</summary>
+    const double TuckMs = 1.0;
 
     /// <summary>
-    /// One more piece of a zone about to be left switched off and hidden (a wreck, a body's shell, loose things): all but
-    /// what crosses (the structure and everyone in it), the eye, the console, the shots, the zone's sky and its physics.
-    /// Parking a zone whose pieces are already off is cheap: the change stops at each. False once there is none left.
+    /// A little more of a zone about to be left switched off and hidden (wrecks, bodies' shells, loose things; a big branch
+    /// twig by twig, then the branch): all but what crosses (the structure and everyone in it), the eye, the console, the
+    /// shots, the zone's sky and its physics. Parking a zone whose pieces are already off is cheap: the change stops at
+    /// each. False once there is none left.
     /// </summary>
     internal bool Tuck(SurfaceZone from, Vessel carrier)
     {
-        if (!_toTuck.TryGetValue(from, out Queue<Node> left))
+        if (!_toTuck.TryGetValue(from, out var left))
         {
             Node[] keep = { carrier?.Node, Game.Camera, Game.Console, Game.Shots, (from as OrbitZone)?.Space, from.Host, Game.Survivor?.Node };
-            _toTuck[from] = left = new Queue<Node>(from.GetChildren().Where(n => !keep.Any(k => k != null && (k == n || n.IsAncestorOf(k)))));
-            _tucked[from] = new Queue<Node>();
+            _toTuck[from] = left = new Stack<(Node, bool)>(from.GetChildren().Where(n => !keep.Any(k => k != null && (k == n || n.IsAncestorOf(k)))).Select(n => (n, false)));
+            _tucked[from] = new List<(Node, bool)>();
         }
-        if (!left.TryDequeue(out Node next)) return false;
-        if (IsInstanceValid(next) && next.ProcessMode == ProcessModeEnum.Inherit)
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (left.TryPop(out var top))
         {
-            next.ProcessMode = ProcessModeEnum.Disabled;
-            if (next is Node3D d) d.Visible = false;
-            _tucked[from].Enqueue(next);
+            Node n = top.Node;
+            if (!IsInstanceValid(n) || n.ProcessMode != ProcessModeEnum.Inherit) continue;
+            if (!top.Opened && n.GetChildCount() > ManyKids)
+            {
+                left.Push((n, true));
+                foreach (Node kid in n.GetChildren()) left.Push((kid, false));
+                continue;
+            }
+            bool shown = n is Node3D { Visible: true };
+            n.ProcessMode = ProcessModeEnum.Disabled;
+            if (shown) ((Node3D)n).Visible = false;
+            _tucked[from].Add((n, shown));
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > TuckMs) break;
         }
-        return true;
+        return left.Count > 0;
     }
 
-    /// <summary>A zone woken: what was put away comes back, a piece at a time within the frame's small budget for such turns.</summary>
+    /// <summary>A zone woken: what was put away comes back, branches before their twigs, a piece at a time within the frame's small budget for such turns.</summary>
     void Untuck(SurfaceZone zone)
     {
         _toTuck.Remove(zone);
-        if (!_tucked.Remove(zone, out Queue<Node> put)) return;
-        foreach (Node n in put)
+        if (!_tucked.Remove(zone, out var put)) return;
+        for (int i = put.Count - 1; i >= 0; i--)
+        {
+            var (n, shown) = put[i];
             _groundTurns.Enqueue(() =>
             {
                 if (!IsInstanceValid(n)) return;
                 n.ProcessMode = ProcessModeEnum.Inherit;
-                if (n is Node3D d) d.Visible = true;
+                if (shown) ((Node3D)n).Visible = true;
             });
+        }
     }
 
     /// <summary>Every zone of the start system out of play: as a world's surface waits under its orbit, its orbits and moons too.</summary>
