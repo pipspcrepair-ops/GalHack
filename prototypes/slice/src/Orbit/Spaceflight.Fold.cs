@@ -358,7 +358,9 @@ public partial class Spaceflight
         {
             Node n = top.Node;
             if (!IsInstanceValid(n) || n.ProcessMode != ProcessModeEnum.Inherit) continue;
-            if (!top.Opened && n.GetChildCount() > ManyKids)
+            // A big branch twig by twig; and what hangs under a plain node (a globe, apart so a parked orbit still shows it
+            // from the ground), which its hiding wouldn't reach.
+            if (!top.Opened && (n.GetChildCount() > ManyKids || n is not Node3D && n.GetChildCount() > 0))
             {
                 left.Push((n, true));
                 foreach (Node kid in n.GetChildren()) left.Push((kid, false));

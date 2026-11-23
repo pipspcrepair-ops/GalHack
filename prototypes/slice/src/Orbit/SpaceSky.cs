@@ -203,6 +203,7 @@ public partial class SpaceSky : Node3D
         };
         World = new WorldEnvironment { Name = "Space" }; // no environment until space is what you see
         AddChild(World);
+        yield return 0; // a new system's sky is set up a piece a tick, under a fold's tunnel
         Rgb star = system.StarColor;
         var colour = new Color(star.R, star.G, star.B);
         SunEnergy = rules.SunEnergy;
@@ -211,7 +212,7 @@ public partial class SpaceSky : Node3D
         AddChild(Sun);
         _skySun = new DirectionalLight3D { Name = "SkySun", LightColor = colour, SkyMode = DirectionalLight3D.SkyModeEnum.SkyOnly, Visible = false };
         AddChild(_skySun);
-        var sphere = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 };
+        SphereMesh sphere = Sphere;
         Shader bodyShader = BodyShader;
         foreach (Orbiter b in model.Bodies)
         {
@@ -447,6 +448,8 @@ public partial class SpaceSky : Node3D
     /// </summary>
     static Shader BodyShader => _bodyShader ??= new Shader { Code = BodySource };
     static Shader RingShader => _ringShader ??= new Shader { Code = GiantRingSource };
+    static SphereMesh Sphere => _sphere ??= new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 };
+    static SphereMesh _sphere;
     static Shader _bodyShader, _ringShader;
 
     /// <summary>

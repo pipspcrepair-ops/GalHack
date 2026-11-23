@@ -87,9 +87,11 @@ public partial class FoldTest : Node
 
     // ---- Frame times through a fold --------------------------------------------------------------
 
-    /// <summary>Every frame's main thread in its stages, and any over budget written down whole: by stage, system, pipelines compiled and stalls.</summary>
+    /// <summary>
+    /// Every frame's main thread in its stages, and any over budget written down whole: by stage, pipelines compiled and
+    /// stalls. (No system split: its markers hold every zone they mark, and a world let go of stayed in memory.)
+    /// </summary>
     FrameSplit _split;
-    SystemSplit _systems;
 
     void StartTiming()
     {
@@ -98,10 +100,8 @@ public partial class FoldTest : Node
             Rid vp = GetViewport().GetViewportRid();
             RenderingServer.ViewportSetMeasureRenderTime(vp, true);
             StallWatch.StallMs = 20;
-            _systems = new SystemSplit(_game);
-            _split = new FrameSplit(GetTree().Root, vp) { HitchMs = 20, Systems = _systems, Doing = Stage };
+            _split = new FrameSplit(GetTree().Root, vp) { HitchMs = 20, Doing = Stage };
         }
-        _systems.Reset();
         _split.Reset();
     }
 
@@ -444,7 +444,6 @@ public partial class FoldTest : Node
                 tunnelShot = true;
                 Shot("fold-2-tunnel");
             }
-            if (ticks % 20 == 0) _systems.MarkNew(); // the zones a fold makes are split out too, as they come
             leastSupply = Math.Min(leastSupply, _ship.Power.Supply);
             if (!_ship.Powered) unpowered++;
             yield return 0;
