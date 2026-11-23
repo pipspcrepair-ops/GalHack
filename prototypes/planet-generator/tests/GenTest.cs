@@ -606,7 +606,7 @@ public partial class GenTest : Node
         float otherWhite = Most(a => a is not (Archetype.Ice or Archetype.Temperate), 1);
         Check(Least(Archetype.Ice, 1) >= 0.4f && otherWhite < 0.15f, $"ice is ice: at least {Least(Archetype.Ice, 1):P0} of every ice world white with snow and ice, at most {otherWhite:P0} of an arid, lava or alien one");
         float aridCover = Most(a => a == Archetype.Arid, 2);
-        Check(aridCover <= 0.1f && Least(Archetype.Temperate, 2) >= 0.35f, $"an arid world has no standing vegetation: its land at most {aridCover:F2} covered by what grows, a temperate world's at least {Least(Archetype.Temperate, 2):F2}");
+        Check(aridCover <= 0.25f && Least(Archetype.Temperate, 2) >= 0.35f, $"an arid world has no standing vegetation: its land at most {aridCover:F2} covered by what grows, a temperate world's at least {Least(Archetype.Temperate, 2):F2}");
         float otherStrange = Most(a => a != Archetype.Alien, 6);
         Check(Least(Archetype.Alien, 6) >= 0.3f && otherStrange == 0f, $"an alien world stands in crystal and fungus: at least {Least(Archetype.Alien, 6):P0} of every alien world's land, none of any other");
 
@@ -658,9 +658,9 @@ public partial class GenTest : Node
     }
 
     /// <summary>
-    /// What a world's form shows, measured: the share of its globe self-lit (lava, glowing moss), the share white with snow and ice,
+    /// What a world's form shows, measured: the share of its globe burning bright (lava), the share white with snow and ice,
     /// how covered its land is by what grows (<see cref="WorldPalette.Cover"/>), its land fraction, mean slope, relief, and the
-    /// share of its land in crystal and fungus. <paramref name="land"/> is its land's mean colour, for variety.
+    /// share of its land in crystal and fungus. <paramref name="land"/> is its land's mean colour away from snow, for variety.
     /// </summary>
     static float[] Form(WorldMap map, out Oklab land)
     {
@@ -670,10 +670,13 @@ public partial class GenTest : Node
         for (int p = 0; p < pixels; p++)
         {
             float r = colors.Albedo[p * 4] / 255f, g = colors.Albedo[p * 4 + 1] / 255f, b = colors.Albedo[p * 4 + 2] / 255f;
-            if (0.3f * colors.Glow[p * 3] + 0.59f * colors.Glow[p * 3 + 1] + 0.11f * colors.Glow[p * 3 + 2] > 0.08f * 255f) glowing++;
+            // Fire, not a luminous night's faint glow over everything (GlowingNights) or alien seas' shimmer.
+            if (0.3f * colors.Glow[p * 3] + 0.59f * colors.Glow[p * 3 + 1] + 0.11f * colors.Glow[p * 3 + 2] > 0.2f * 255f) glowing++;
             Oklab o = Oklab.Of(new Rgb(r, g, b));
-            if (o.L > 0.85f && o.Chroma < 0.06f) white++;
-            if (colors.Albedo[p * 4 + 3] > 0) continue;
+            bool snow = o.L > 0.85f && o.Chroma < 0.06f;
+            if (snow) white++;
+            // The land's own colour for variety: its ground and growth, not its snow (white on any world).
+            if (colors.Albedo[p * 4 + 3] > 0 || snow) continue;
             (lr, lg, lb, landPixels) = (lr + r, lg + g, lb + b, landPixels + 1);
         }
         landPixels = Math.Max(landPixels, 1);

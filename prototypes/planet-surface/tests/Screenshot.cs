@@ -57,7 +57,7 @@ public partial class Screenshot : Node
     /// <summary>The batch's next line in place of the last: its own arguments only, nothing forced carried over.</summary>
     void NextInBatch()
     {
-        foreach (string key in new[] { "star", "tonemap", "airless", "body", "out" }) _args.Remove(key);
+        foreach (string key in new[] { "star", "tonemap", "airless", "body", "out", "pitch", "inland" }) _args.Remove(key);
         PlanetSurface.Skies.SkySystem.ForceStar = null;
         Grade.Force = null;
         Read(_batch.Dequeue().Split(' ', StringSplitOptions.RemoveEmptyEntries));
@@ -99,7 +99,7 @@ public partial class Screenshot : Node
         if (_args.TryGetValue("star", out string star)) PlanetSurface.Skies.SkySystem.ForceStar = Enum.Parse<StarClass>(star); // --star=RedDwarf..BlueWhite: the same world under another star
         ulong seed = (ulong)Int("seed", 1);
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
-        if (_args.TryGetValue("tonemap", out string tone)) Grade.Force = Enum.Parse<Grade.Curve>(tone); // --tonemap=Filmic|Agx|Aces|Linear|Shoulder: to compare them
+        if (_args.TryGetValue("tonemap", out string tone)) Grade.Force = Enum.Parse<Grade.Curve>(tone); // --tonemap=Filmic|Agx|Aces|Linear: to compare them
         if (_args.ContainsKey("airless")) planet = planet with { Modifiers = planet.Modifiers | Modifier.Cratered }; // the same world as a barren body (arid, ice or lava)
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
         _args.TryGetValue("force", out string force);
@@ -143,7 +143,7 @@ public partial class Screenshot : Node
                 var from = new Vector3(cx - Mathf.Sin(Mathf.DegToRad(turn)) * back, g0 + up, cz + Mathf.Cos(Mathf.DegToRad(turn)) * back);
                 return (from, turn, -Mathf.RadToDeg(Mathf.Atan2(up, back)));
             }
-            if (_args.ContainsKey("coast")) { var c = CoastView(m.World); return (c.pos, c.heading, (float)Num("pitch", c.pitch)); } // --pitch= to look down at the water or up at the sky
+            if (_args.ContainsKey("coast")) { var c = CoastView(m.World, Num("inland", 150)); return (c.pos, c.heading, (float)Num("pitch", c.pitch)); } // --pitch= to look down at the water or up at the sky
             double x = Num("x", m.World.Landing.X), z = Num("z", m.World.Landing.Y);
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));
@@ -156,10 +156,11 @@ public partial class Screenshot : Node
     }
 
     /// <summary>
-    /// One framing for every world (--coast=1): from the land 150 m back from the sea nearest the landing,
-    /// 18 m up, looking out across the shore, so sky, water, ground and plants share the frame alike.
+    /// One framing for every world (--coast=1): from the land 150 m back from the sea nearest the landing
+    /// (--inland=M; below 0 out over the water), 18 m up, looking out across the shore, so sky, water, ground
+    /// and plants share the frame alike.
     /// </summary>
-    static (Vector3 pos, float heading, float pitch) CoastView(PlanetSurface.World.PlanetWorld w)
+    static (Vector3 pos, float heading, float pitch) CoastView(PlanetSurface.World.PlanetWorld w, double inland)
     {
         WorldMap map = w.Map;
         double lx = w.Landing.X, lz = w.Landing.Y, best = double.MaxValue, sx = lx, sz = lz;
@@ -175,10 +176,10 @@ public partial class Screenshot : Node
         (ux, uz) = (ux / len, uz / len);
         double t = 0;
         while (t < len && w.Source.WaterSurfaceAt(Mathx.WrapX(sx + ux * t, w.Width), Mathx.Wrap(sz + uz * t, w.Height), out _)) t += 8;
-        double px = sx + ux * (t + 150), pz = sz + uz * (t + 150);
+        double px = sx + ux * (t + inland), pz = sz + uz * (t + inland);
         // High enough to see over everything between the eye and the water, 18 m over the ground at the least.
         float eye = Mathf.Max(w.GroundHeight(Mathx.WrapX(px, w.Width), Mathx.Wrap(pz, w.Height)), 0f) + 18f;
-        for (double d = 0; d <= t + 150; d += 10)
+        for (double d = 0; d <= t + inland; d += 10)
             eye = Mathf.Max(eye, w.GroundHeight(Mathx.WrapX(sx + ux * d, w.Width), Mathx.Wrap(sz + uz * d, w.Height)) + 14f);
         GD.Print($"coast view from {px:F0},{pz:F0} toward the sea at {sx:F0},{sz:F0}");
         return (new Vector3((float)px, eye, (float)pz), Mathf.RadToDeg(Mathf.Atan2((float)-ux, (float)uz)), -6f);

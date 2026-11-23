@@ -177,7 +177,7 @@ public partial class PaletteTest : Node
     /// median chroma against its floor and its hues spread round the wheel (at least five of its six sixths in use, none holding
     /// over 45% of worlds); the land's hue (plants on a living world, soil on the rest) at least 60 degrees from its sky's on three
     /// worlds in four, 90 at the median; red water, blue plants and a green sky each on at least one world in a hundred. Every
-    /// fourth roll is an airless body, whose rock stays grey.
+    /// fourth roll is an airless body, whose rock (unless it rusted while it had air) stays grey.
     /// </summary>
     void Bold(int count)
     {
@@ -193,7 +193,9 @@ public partial class PaletteTest : Node
             if (i % 4 == 0)
             {
                 spec = spec with { Archetype = PlanetSpec.Craters(a) ? a : Archetype.Arid, Modifiers = Modifier.Cratered };
-                greyest = MathF.Max(greyest, Oklab.Of(SkySystem.For(spec).Palette.Bedrock).Chroma);
+                // (An iron-rich one rusted while it still had air, and keeps it: its own colour, the vacuum's albedo, not the art push.)
+                WorldPalette moon = SkySystem.For(spec).Palette;
+                if (moon.Iron <= 0.75f) greyest = MathF.Max(greyest, Oklab.Of(moon.Bedrock).Chroma);
                 continue;
             }
             if (spec.Airless) continue;
@@ -223,33 +225,23 @@ public partial class PaletteTest : Node
         float apart = gaps.Count(g => g >= 60f) / (float)worlds;
         Check(apart >= 0.75f && gaps[worlds / 2] >= 90f, $"land stands apart from its sky: hue gap at least 60 deg on {apart:P0} of {worlds} worlds, median {gaps[worlds / 2]:F0} deg");
         Check(red >= worlds / 100 && blue >= worlds / 100 && green >= worlds / 100, $"red water on {red}, blue plants on {blue} and a green sky on {green} of {worlds} worlds (each at least {worlds / 100})");
-        Check(greyest < 0.04f, $"airless rock stays grey: highest Oklab chroma {greyest:F3}");
+        Check(greyest < 0.04f, $"airless rock that never rusted stays grey: highest Oklab chroma {greyest:F3}");
     }
 
-    /// <summary>
-    /// The grade adds chroma at each colour's own hue, never takes it, and greys stay grey. With its shoulder (the game's curve:
-    /// the scene's light at half exposure in, <see cref="Grade.Game"/>), each scene colour keeps its hue however bright, the
-    /// middle grey stays where it was, and the brightest white comes down under the screen's white.
-    /// </summary>
+    /// <summary>The grade adds chroma at each colour's own hue, never takes it: greys stay grey, black and white stay put.</summary>
     void Graded()
     {
         var rng = new Random((int)(RunSeed % int.MaxValue));
-        float worstHue = 0f, lost = 0f, grey = 0f, worstScene = 0f;
+        float worstHue = 0f, lost = 0f, grey = 0f;
         for (int i = 0; i < 4000; i++)
         {
             var c = new Rgb(rng.NextSingle(), rng.NextSingle(), rng.NextSingle());
             Oklab a = Oklab.Of(c), b = Oklab.Of(Grade.Of(c));
             if (a.Chroma > 0.03f) worstHue = MathF.Max(worstHue, Oklab.HueGap(a.Hue, b.Hue) * 180f / MathF.PI);
             lost = MathF.Max(lost, a.Chroma - b.Chroma);
-            // The same scene colour (0..2 a channel) through the shoulder.
-            Oklab scene = Oklab.FromLinear(2f * Oklab.Linear(c.R), 2f * Oklab.Linear(c.G), 2f * Oklab.Linear(c.B)), shown = Oklab.Of(Grade.Of(c, true));
-            if (scene.Chroma > 0.05f && shown.Chroma > 0.03f) worstScene = MathF.Max(worstScene, Oklab.HueGap(scene.Hue, shown.Hue) * 180f / MathF.PI);
         }
-        for (int i = 0; i <= 10; i++)
-            grey = MathF.Max(grey, MathF.Max(Oklab.Of(Grade.Of(new Rgb(i / 10f, i / 10f, i / 10f))).Chroma, Oklab.Of(Grade.Of(new Rgb(i / 10f, i / 10f, i / 10f), true)).Chroma));
-        float mid = Oklab.Linear(Grade.Of(new Rgb(Oklab.Encode(0.09f), Oklab.Encode(0.09f), Oklab.Encode(0.09f)), true).G), top = Oklab.Linear(Grade.Of(new Rgb(1f, 1f, 1f), true).G);
+        for (int i = 0; i <= 10; i++) grey = MathF.Max(grey, Oklab.Of(Grade.Of(new Rgb(i / 10f, i / 10f, i / 10f))).Chroma);
         Check(worstHue < 3f && lost < 0.01f && grey < 0.002f, $"the grade keeps hue (worst {worstHue:F1} deg) and never greys (most chroma lost {lost:F3}; greys stay grey, {grey:F4})");
-        Check(worstScene < 4f && MathF.Abs(mid - 0.18f) < 0.012f && top < 0.98f, $"the shoulder keeps each scene colour's hue (worst {worstScene:F1} deg), middle grey at {mid:F3} (0.18 in), the brightest white at {top:F2}");
     }
 
     /// <summary>A colour in CIELAB (D65), from sRGB.</summary>
