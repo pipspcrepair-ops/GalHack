@@ -20,10 +20,14 @@ public readonly record struct D3(double X, double Y, double Z)
     public D3 Normalized => this * (1.0 / Length);
 }
 
-/// <summary>What a start system's bodies are marked as holding (the drive and ship materials; never a jump fuel). Landing and mining come later: this says where.</summary>
+/// <summary>
+/// What a start system's bodies are marked as holding (the drive and ship materials; never a jump fuel). A drive's mark
+/// sits on its real deposits (<see cref="DepositField.DriveKinds"/>): the warp drive's on the airless fuel moon, the fold
+/// drive's on a high-gravity world.
+/// </summary>
 public static class Deposit
 {
-    // No marker for warp fuel or fold fuel, ever: they are found by going there (DepositField.FuelKinds).
+    // No marker for warp fuel or fold fuel, ever: they are found by going there.
     public const string WarpDrive = "warp-drive-materials";
     public const string FoldDriveMaterials = "fold-drive-materials";
     public const string CapitalMaterials = "capital-ship-materials";
@@ -936,11 +940,14 @@ public sealed class StarSystem
     /// <summary>Why this can't be a start system, or null: what the design promises every start.</summary>
     public string StartFault()
     {
-        if (FuelMoon?.Spec is not { Airless: true } || !FuelMoon.Deposits.Contains(Deposit.WarpDrive)) return "no vacuum moon holds warp fuel and the drive's materials";
+        if (FuelMoon == null || !FuelMoon.Deposits.Contains(Deposit.WarpDrive) || !Holds(FuelMoon, DepositField.WarpKinds)) return "no vacuum moon holds warp fuel and the drive's materials";
         double reach = (Position(FuelMoon, 0.0) - Position(Home, 0.0)).Length;
         if (reach > Home.Radius * (ThrusterReachRadii + 1.0)) return $"the fuel moon stands {reach / 1000.0:F0} km off, past thrusters";
-        foreach (string d in new[] { Deposit.FoldDriveMaterials, Deposit.CapitalMaterials })
-            if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(d))) return $"no {d} anywhere a warp away";
+        if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(Deposit.FoldDriveMaterials) && Holds(b, DepositField.FoldKinds))) return $"no {Deposit.FoldDriveMaterials} anywhere a warp away";
+        if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(Deposit.CapitalMaterials))) return $"no {Deposit.CapitalMaterials} anywhere a warp away";
         return null;
     }
+
+    /// <summary>Whether a body's ground holds these deposit kinds, by the generator's own rule for what it is.</summary>
+    static bool Holds(Orbiter b, DepositKind[] kinds) => b.Spec != null && kinds.All(DepositField.DriveKinds(b.Spec).Contains);
 }

@@ -95,6 +95,14 @@ public partial class WildStartTest : Node
             yield break;
         }
         if (game.Zone.Weather.Bridge is { } weather) weather.Calm = true; // an airless world has no weather to calm
+        if (game.Zone.Wildlife.Airless)
+        {
+            // No air, no creatures: the start is quiet because nothing lives there, on the surface or in its caves.
+            Check(game.Zone.Wildlife.Sim == null && game.Zone.Wildlife.Sites.Count == 0, $"{world.Name}, seed {world.Seed}: an airless start has no creatures at all ({game.Zone.Wildlife.Sites.Count} cave sims)");
+            game.QueueFree();
+            for (int i = 0; i < 10; i++) yield return 0;
+            yield break;
+        }
         game.Zone.Wildlife.Frozen = true;
         Bunker b = game.Bunker;
         game.Survivor.PlaceOutside(new System.Numerics.Vector3(b.Outside.X, b.Outside.Y, b.Outside.Z));

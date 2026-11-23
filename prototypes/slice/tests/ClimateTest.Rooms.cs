@@ -160,6 +160,20 @@ public partial class ClimateTest
             $"power off in orbit, it drifts toward space: {spaceDrift:F0} °C ({spaceShare:P0} of the way to {vacuumC:F0}) and {spaceDriftO2:F1}% oxygen after {Since():F0} s");
         suit.Beyond = null;
         room.PowerOn = true;
+        foreach (int x in _drive.Wait(10)) yield return x;
+
+        // The life support pod: using it tops the suit's air up; take it out and the powered room has no air of its own.
+        double cap = suit.Sim.OxygenCapacity;
+        suit.Vitals.Oxygen = cap * 0.3;
+        bool topped = _game.UseLifeSupport(room);
+        Check(room.LifeSupport && topped && suit.Vitals.Oxygen == cap, $"using the pod tops the suit's air up to full ({suit.Vitals.Oxygen:F0} of {cap:F0})");
+        var podCell = new Int3(3, 1, 4);
+        Building.Remove(s, podCell, null);
+        room.ApplyEdits();
+        suit.Vitals.Oxygen = cap * 0.3;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(room.Powered && !room.HasLifeSupportPod && !room.LifeSupport && suit.Room == RoomKind.Unpowered && !_game.UseLifeSupport(room),
+            $"with no pod the powered room holds its air then drifts like an unpowered one ({suit.Room}), and the missing pod gives no air");
 
         (climate.ColdestC, climate.HottestC) = was;
         suit.ClimateTimeScale = 1;

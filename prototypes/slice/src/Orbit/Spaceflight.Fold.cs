@@ -158,12 +158,8 @@ public partial class Spaceflight
         /// <summary>What letting go of the system left took on the main thread, ms (tests read it).</summary>
         public double LeftMs { get; private set; }
 
-        /// <summary>The zone the fold leaves, while it is under way (a fold called off brings back what was put away of it).</summary>
-        SurfaceZone _leaving;
-
         public void Begin(Spaceflight flight)
         {
-            _leaving = flight.Game.Zone;
             Galaxy galaxy = flight.Stars.Galaxy;
             int star = _star;
             _system = star == flight.HomeStar ? Task.FromResult(flight.HomeSystem)
@@ -178,15 +174,7 @@ public partial class Spaceflight
         {
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             string stage = "waiting";
-            // The zone left is put away a little a tick under the tunnel's cover, so parking it on arrival (or letting it go)
-            // is cheap; the tunnel lasts till it is.
-            bool putAway = false;
-            if (flight.Jumping is { Holding: true } j && j.InTunnel >= TuckFrom)
-            {
-                putAway = !flight.Tuck(j.From, j.Carrier);
-                stage = "putting away";
-            }
-            try { return StepOnce(flight, ref stage) && putAway; }
+            try { return StepOnce(flight, ref stage); }
             finally
             {
                 double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -225,9 +213,10 @@ public partial class Spaceflight
             {
                 stage = "setting up";
                 _zone.BuildStep();
+                if (_zone.Ready) flight.Prepare(_zone); // made parked: its hulls into the physics shelved, its branches held, once
                 return false;
             }
-            if (!_warmed && flight.Jumping is { Holding: true, InTunnel: >= TuckFrom })
+            if (!_warmed && flight.Jumping is { Holding: true, InTunnel: >= CoverFrom })
             {
                 // Its far looks drawn once behind the tunnel's cover, so their shaders are ready for the arrival's first frame
                 // (it compiled 26 of them there: 100 ms on the minimum spec).
@@ -304,17 +293,16 @@ public partial class Spaceflight
             flight.Game.Progress.Discover("fold", 200, "folded to another star");
             LeftMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             GD.Print($"[fold: the system left {(left != null ? "freed" : _away != null ? "parked" : "in play again")} in {LeftMs:F1} ms; the longest tick making it {WorstStageMs:F1} ms, {WorstStage}]");
-            (_away, _zone, _leaving) = (null, null, null); // the jump's record keeps no hold on a system once it is let go of
+            (_away, _zone) = (null, null); // the jump's record keeps no hold on a system once it is let go of
         }
 
         public void Dropped(Spaceflight flight)
         {
             if (_arrived) return;
             flight._coming = null;
-            if (_leaving != null) flight.Untuck(_leaving); // what was put away of the zone it never left comes back
             if (_away != null) flight.FreeAbroad(_away);
             else if (_made) flight.Unmake(_zone, null);
-            (_away, _zone, _leaving) = (null, null, null);
+            (_away, _zone) = (null, null);
         }
     }
 
@@ -341,90 +329,22 @@ public partial class Spaceflight
 
     // ---- The system left ---------------------------------------------------------------------
 
-    /// <summary>What of a zone was put away before it was parked, in order: each hidden if it showed, switched off if it ran.</summary>
-    readonly Dictionary<SurfaceZone, List<(Node Node, bool Shown, bool Ran)>> _tucked = new();
-
-    /// <summary>What is still to put away of a zone being left, and whether a big branch's twigs have gone in ahead of it.</summary>
-    readonly Dictionary<SurfaceZone, Stack<(Node Node, bool Opened)>> _toTuck = new();
-
-    /// <summary>Into the tunnel this long, s, its cover is all but whole: what is put away from then on goes unseen.</summary>
-    const double TuckFrom = 0.75;
-
-    /// <summary>Most of a tick putting a zone away takes, ms.</summary>
-    const double TuckMs = 1.0;
+    /// <summary>Into the tunnel this long, s, its cover is all but whole: what is drawn from then on goes unseen.</summary>
+    const double CoverFrom = 0.75;
 
     /// <summary>
-    /// A little more of a zone about to be left switched off and hidden (wrecks, bodies' shells, loose things; a big branch
-    /// twig by twig, then the branch): all but what crosses (the structure and everyone in it), the eye, the console, the
-    /// shots, the zone's sky and its physics. Parking a zone whose pieces are already off is cheap: the change stops at
-    /// each. False once there is none left.
+    /// A zone out of play by the flight's own parking (<see cref="Park"/>, a piece a frame from here) and hidden; any parking
+    /// or waking of it under way finished first. A zone not in the scene yet runs nothing: only hidden.
     /// </summary>
-    internal bool Tuck(SurfaceZone from, Vessel carrier)
+    void PutAway(SurfaceZone z)
     {
-        if (!_toTuck.TryGetValue(from, out var left))
+        if (z.IsInsideTree() && z.Host != null)
         {
-            Node[] keep = { carrier?.Node, Game.Camera, Game.Console, Game.Shots, (from as OrbitZone)?.Space, from.Host, Game.Survivor?.Node };
-            _toTuck[from] = left = new Stack<(Node, bool)>(from.GetChildren().Where(n => !keep.Any(k => k != null && (k == n || n.IsAncestorOf(k)))).Select(n => (n, false)));
-            // Left again while it was still coming back (woken a moment ago): what hadn't come back yet stays put away.
-            _waking.Remove(from);
-            _tucked.TryAdd(from, new List<(Node, bool, bool)>());
+            WorkOf(z);
+            if (z.ProcessMode != ProcessModeEnum.Disabled) Park(z);
         }
-        long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (left.TryPop(out var top))
-        {
-            Node n = top.Node;
-            if (!IsInstanceValid(n)) continue;
-            // What runs by its own process mode keeps it, but is hidden all the same; what is off and hidden already stays so.
-            bool ran = n.ProcessMode == ProcessModeEnum.Inherit, shown = n is Node3D { Visible: true };
-            if (!ran && !shown) continue;
-            // A big branch twig by twig; and what hangs under a plain node (a globe, apart so a parked orbit still shows it
-            // from the ground), which its hiding wouldn't reach.
-            if (!top.Opened && (n.GetChildCount() > ManyKids || n is not Node3D && n.GetChildCount() > 0))
-            {
-                left.Push((n, true));
-                foreach (Node kid in n.GetChildren()) left.Push((kid, false));
-                continue;
-            }
-            if (ran) n.ProcessMode = ProcessModeEnum.Disabled;
-            if (shown) ((Node3D)n).Visible = false;
-            _tucked[from].Add((n, shown, ran));
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > TuckMs) break;
-        }
-        return left.Count > 0;
+        z.Visible = false;
     }
-
-    /// <summary>A zone woken: what was put away comes back (<see cref="UntuckStep"/>).</summary>
-    void Untuck(SurfaceZone zone)
-    {
-        _toTuck.Remove(zone);
-        if (_tucked.ContainsKey(zone)) _waking.Add(zone);
-    }
-
-    /// <summary>The zones woken whose pieces are coming back.</summary>
-    readonly HashSet<SurfaceZone> _waking = new();
-
-    /// <summary>A little more of the zones woken brought back (once a drawn frame): the last put away first, so branches before their twigs.</summary>
-    void UntuckStep()
-    {
-        if (_waking.Count == 0) return;
-        long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        foreach (SurfaceZone zone in _waking.ToList())
-        {
-            List<(Node Node, bool Shown, bool Ran)> put = _tucked[zone];
-            while (put.Count > 0)
-            {
-                var (n, shown, ran) = put[^1];
-                put.RemoveAt(put.Count - 1);
-                if (!IsInstanceValid(n)) continue;
-                if (ran) n.ProcessMode = ProcessModeEnum.Inherit;
-                if (shown) ((Node3D)n).Visible = true;
-                if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) return;
-            }
-            _tucked.Remove(zone);
-            _waking.Remove(zone);
-        }
-    }
-
     /// <summary>Every zone of the start system out of play: as a world's surface waits under its orbit, its orbits and moons too.</summary>
     void ParkHome()
     {
@@ -443,9 +363,7 @@ public partial class Spaceflight
                 foreach (Celestial c in o.Bodies)
                     if (c.Globe != null) c.Globe.Visible = false;
             }
-            took.Append($"{z.Name} {watch.Elapsed.TotalMilliseconds:F1}+");
-            watch.Restart();
-            Park(z);
+            PutAway(z);
             if (z is not OrbitZone) Mute(z); // a surface's sky and light off (an orbit's are its space sky's, off above)
             Silence(z);
             took.Append($"{z.Name} {watch.Elapsed.TotalMilliseconds:F1}, ");
@@ -487,12 +405,11 @@ public partial class Spaceflight
             }
             else if (z.Sky != null) Mute(z);
             foreach (object dead in _ids.Keys.Where(k => k is Vessel w && w.Zone == z || k is Lootable l && z.Loot != null && z.Loot.All.Contains(l)).ToList()) _ids.Remove(dead);
+            // Out of play now, whole (its parking finished at once: it is taken down from here, never woken).
+            PutAway(z);
+            if (z.IsInsideTree() && z.Host != null) WorkOf(z);
             Forget(z);
-            _tucked.Remove(z);
-            _toTuck.Remove(z);
-            _waking.Remove(z);
             if (!z.IsInsideTree()) { z.Free(); continue; }
-            Park(z);
             _dismantle.Push((z, false));
         }
         a.Orbits.Clear();

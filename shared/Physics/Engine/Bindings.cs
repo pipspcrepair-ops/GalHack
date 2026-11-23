@@ -84,9 +84,10 @@ public sealed class HullBinding : BodyBinding
     public override void Move(PhysicsHost host, float dt)
     {
         Body b = Body;
-        Transform3D placed = GodotMath.TransformOf(b);
-        if (b.Asleep && placed == _cleared) return; // asleep where it was last cleared: nothing has moved it
-        Hull.GlobalTransform = placed; // turning, gear lifts and settling happened in the rules
+        // Turning, gear lifts and settling happened in the rules. Where it already stands it isn't set again: every shape and
+        // mesh a hull holds is told of a move, and a still wreck of two thousand of them was told every tick.
+        Transform3D at = GodotMath.TransformOf(b);
+        if (Hull.GlobalTransform != at) Hull.GlobalTransform = at;
         if (b.Asleep)
         {
             // At rest it isn't swept, but what set it where it stands (settling onto its legs, a placement, a toss
@@ -149,14 +150,6 @@ public sealed class HullBinding : BodyBinding
 
         b.Position = Hull.GlobalPosition.ToNumerics();
         b.Velocity = host.World.ResolveContacts(b, _contacts, before.ToNumerics(), velocity.ToNumerics());
-        // A hull nothing flies, still in no gravity with nothing touching it (a wreck adrift in space), sleeps: no sweep and no
-        // move a tick (a big wreck's was most of a ms, every tick) till something rams or pushes it (PhysicsWorld.ApplyForces).
-        if (b.Controller == null && _contacts.Count == 0 && b.Velocity.LengthSquared() < 1e-6f && b.AngularVelocity.LengthSquared() < 1e-8f
-            && host.World.GravityAt(b).LengthSquared() < 1e-6f)
-        {
-            b.Asleep = true;
-            _cleared = Hull.GlobalTransform;
-        }
     }
 
     /// <summary>One contact per thing met: per node, or per shape of a body made on the physics server alone (the flora's: each a tree's part).</summary>

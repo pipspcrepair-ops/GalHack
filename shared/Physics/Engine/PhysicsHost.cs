@@ -127,13 +127,10 @@ public partial class PhysicsHost : Node
         for (int i = 0; i < _bindings.Count; i++) _bindings[i].Sync(this, dt);
         World.ApplyForces(dt);
         World.Integrate(dt);
-        // A body whose node is switched off (put away a piece at a time, ahead of its zone being parked) is out of the
-        // physics space: nothing to sweep it through, and it stays where it is till its node is back.
+        // A body whose node waits (its zone parked, or woken a piece a frame) isn't swept: it takes its body's place once its
+        // node runs again. Every hull of a zone just woken was swept on its first tick at once, 60 to 150 ms.
         for (int i = 0; i < _moveOrder.Count; i++)
-        {
-            BodyBinding m = _moveOrder[i];
-            if (m.Body.Motion == Motion.Kinematic && (m.Collider == null || m.Collider.IsInsideTree() && m.Collider.CanProcess())) m.Move(this, dt);
-        }
+            if (_moveOrder[i].Body.Motion == Motion.Kinematic && _moveOrder[i].Node.CanProcess()) _moveOrder[i].Move(this, dt);
         // Landed vessels parked on a host ride it: placed by the host's motion this tick, now that it has moved.
         World.CarryParked();
         for (int i = 0; i < _bindings.Count; i++)

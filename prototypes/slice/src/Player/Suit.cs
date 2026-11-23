@@ -145,7 +145,8 @@ public sealed class Suit : IDamageSink
         // Head under water: nothing to breathe, the suit on its own oxygen (or held breath).
         if (_zone.Water.Under(new Godot.Vector3((float)p.X, (float)p.Y + Survivor.EyeHeight, (float)p.Z), out _)) oxygen = 0;
         // The world's background, and what a nuclear crater and its ring left in the ground here.
-        double radiation = (_climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double rad) ? rad : 0) + planet.RadiationAt(x, z);
+        double radiation = (_climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double rad) ? rad : 0) + planet.RadiationAt(x, z)
+            + StormFallout(planet, new Vector3((float)p.X, (float)p.Y, (float)p.Z));
         double temperature = baseline + weather + day + height;
         raw = temperature;
         var rules = _zone.Data.Rules.ClimateNode;
@@ -157,6 +158,19 @@ public sealed class Suit : IDamageSink
                 break;
             }
         return new Exposure(temperature, oxygen, radiation, null, planet.Palette.BiomeAt(x, z).ToString(), LavaMetres(p));
+    }
+
+    /// <summary>
+    /// What a dust storm carries on a world a nuclear war blasted, RAD: the dust it lifts is the craters' fallout, a share of the
+    /// strongest crater's reading, as deep as the point is in the storm. Nothing outside one, nothing on a world no blast touched.
+    /// </summary>
+    double StormFallout(PlanetWorld planet, Vector3 at)
+    {
+        float depth = _zone.Weather.Sim?.DustDepth(at) ?? 0f;
+        if (depth <= 0f) return 0;
+        float strongest = 0f;
+        foreach (PoiGenerator.Gen.Strike b in planet.Blasts) strongest = MathF.Max(strongest, b.Rad);
+        return depth * strongest * _climate.DustFallout;
     }
 
     static readonly float[] LavaRings = { 1f, 2f, 3f, 5f, 8f, 12f };

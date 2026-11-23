@@ -49,8 +49,9 @@ public partial class WarpTest : Node
     Vessel _ship;
     string _shots;
     readonly Dictionary<string, string> _args = new();
-    readonly List<double> _cpu = new(), _wall = new(), _parking = new();
+    readonly List<double> _cpu = new(), _wall = new();
     readonly Dictionary<string, List<double>> _byStage = new();
+    readonly Dictionary<Orbiter, Vector2> _sites = new(); // each world's landing site, map metres
     double _worstCpu;
     string _worstAt = "";
 
@@ -184,8 +185,12 @@ public partial class WarpTest : Node
             foreach (int x in Leg(Model.Home, land: true, $"{loop}: home")) yield return x;
             if (!_ok) yield break;
             foreach (int x in _drive.Wait(300)) yield return x;
+            foreach (int x in Settle()) yield return x;
             levels.Add(($"landed home after round trip {loop}", Measure()));
             GD.Print($"  level {loop}: {levels[^1].At}");
+            Holdings(loop);
+            static double Mb(Performance.Monitor m) => Performance.GetMonitor(m) / 1048576.0;
+            GD.Print($"  (memory {loop}: static {Mb(Performance.Monitor.MemoryStatic):F0} MB ({_staticAtOnce:F0} the moment the collection ended); video {Mb(Performance.Monitor.RenderVideoMemUsed):F0} MB, textures {Mb(Performance.Monitor.RenderTextureMemUsed):F0} MB, buffers {Mb(Performance.Monitor.RenderBufferMemUsed):F0} MB, {Performance.GetMonitor(Performance.Monitor.ObjectResourceCount)} resources; the physics server: {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects)} active bodies, {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs)} pairs, {Performance.GetMonitor(Performance.Monitor.Physics3DIslandCount)} islands)");
             if (loop < loops)
             {
                 foreach (int x in TakeOff("home")) yield return x;
@@ -202,6 +207,8 @@ public partial class WarpTest : Node
         Check(b.ManagedMb < a.ManagedMb * 1.15 + 40 && b.StaticMb < a.StaticMb * 1.10 + 64,
             $"memory back at level: managed {b.ManagedMb:F0} MB (was {a.ManagedMb:F0}), engine {b.StaticMb:F0} MB (was {a.StaticMb:F0})");
         Check(b.Zones == a.Zones, $"no zone made twice: {b.Zones} zones after both loops");
+        long ShapesAfter(int back) => _held.Count >= back ? _held[^back].GetValueOrDefault("TerrainStreamer._solidShapes") : -1;
+        Check(_held.Count >= 2 && Within(ShapesAfter(1), ShapesAfter(2), 0.02, 4), $"the ground's shared physics shapes hold their level: {ShapesAfter(1)} shapes held by every world's near columns (was {ShapesAfter(2)})");
         Check(Flight.Jumps.TrueForAll(x => x.Running || x.From == null && x.Arrived?.Zone == null && x.To.Zone == null),
             $"no finished jump holds a zone, only their names ({Flight.Jumps.Count} jumps; the last from {Flight.Jumps[^1].FromName} to {Flight.Jumps[^1].ArrivedIn})");
         FrameTimes();
@@ -381,9 +388,37 @@ public partial class WarpTest : Node
             foreach (int x in SkyAway("after-the-star-home-facing-away", v => Check(v <= Math.Max(_freshSky * 1.5, _freshSky + 0.03),
                 $"no glare follows from the star: home's sky facing away from the sun is back at its fresh level (its floor of brightness {v:F3}, {_freshSky:F3} before the star)"))) yield return x;
         if (!_ok || !land || _args.ContainsKey("noland")) yield break; // --noland=1: warps alone (shots of the trip)
+        foreach (int x in StaticAt($"warp to {Charts.Tidy(target.Name)}")) yield return x;
         foreach (int x in Land(target)) yield return x;
         if (!_ok) yield break;
+        foreach (int x in StaticAt($"landing on {Charts.Tidy(target.Name)}")) yield return x;
         if (target != Model.Home) foreach (int x in TakeOff(Charts.Tidy(target.Name))) yield return x;
+        if (target != Model.Home) foreach (int x in StaticAt($"take-off from {Charts.Tidy(target.Name)}")) yield return x;
+    }
+
+    double _staticWas, _staticAtOnce;
+
+    /// <summary>--phases=1: the engine's static memory after a step, everything unreachable collected first (what a step adds).</summary>
+    IEnumerable<int> StaticAt(string after)
+    {
+        if (!_args.ContainsKey("phases")) yield break;
+        foreach (int x in Settle()) yield return x;
+        double now = OS.GetStaticMemoryUsage() / 1048576.0;
+        GD.Print($"  (static {now:F0} MB after the {after}: {now - _staticWas:+0;-0} MB; {Performance.GetMonitor(Performance.Monitor.ObjectCount)} objects, {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)} nodes)");
+        _staticWas = now;
+    }
+
+    /// <summary>
+    /// Everything unreachable collected, then a few frames: what the finalizers let go of (a mesh's or texture's data) the engine
+    /// frees on the main thread over the next frames, so static memory read the moment a collection ends still counts it, and the
+    /// more there was to collect the more it counts (160 to 400 MB more a round trip: it looked like a leak).
+    /// </summary>
+    IEnumerable<int> Settle()
+    {
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        GC.WaitForPendingFinalizers();
+        _staticAtOnce = OS.GetStaticMemoryUsage() / 1048576.0;
+        for (int i = 0; i < 3; i++) yield return 0;
     }
 
     /// <summary>
@@ -434,16 +469,11 @@ public partial class WarpTest : Node
         var views = new List<SeatView>();
         Jump.Stage stage = j.Now;
         SplitStart();
-        // The frames that wake the zone gone to and park the zone left are timed apart: proto/orbitclean's piecewise Park/Run replaces them.
-        int switched = Flight.ZonesSwitched;
-        bool apart = false;
         for (int i = 0; i < 60 * 240 && j.Running; i++)
         {
             yield return 0;
             bool kept = _keep != null; // the frame keeping for the seat's proof slows its frames: not counted
-            if (apart) { apart = false; _parking.Add(probe.LastCpuMs); }
-            else if (!kept) Frame(probe, $"warp to {route.Name}, {j.Now}");
-            if (Flight.ZonesSwitched != switched) (switched, apart) = (Flight.ZonesSwitched, true);
+            if (!kept) Frame(probe, $"warp to {route.Name}, {j.Now}");
             if (j.Now != stage) { SplitReport($"{route.Name}, {stage}"); stage = j.Now; }
             if (j.Now != Jump.Stage.Spool && spooled < 0) spooled = clock.Elapsed.TotalSeconds;
             if (_shots != null && j.Now == Jump.Stage.Spool && j.Spooled > 0.6 && shotSpool < 0) { shotSpool = 1; Shot($"spool-{Charts.Tidy(target.Name)}"); }
@@ -458,10 +488,9 @@ public partial class WarpTest : Node
         for (int i = 0; i < 90; i++)
         {
             yield return 0;
-            if (apart) { apart = false; _parking.Add(probe.LastCpuMs); }
-            else Frame(probe, $"arrived at {route.Name}");
-            if (Flight.ZonesSwitched != switched) (switched, apart) = (Flight.ZonesSwitched, true);
+            Frame(probe, $"arrived at {route.Name}");
         }
+        foreach (int x in UntilParked()) yield return x;
         probe.Remove();
         SplitReport($"{route.Name}, after arrival");
         foreach (SeatView v in views) Judge(v, route, awayDeg);
@@ -516,6 +545,12 @@ public partial class WarpTest : Node
             $"the sleeper and everyone aboard came along: seated, {ridersNow} riding the hull (was {riders}), the hull in one zone's world");
         Check(j.Audit.Count == 0, $"the ledger: nothing lost, doubled or misplaced ({string.Join("; ", j.Audit)})");
         Leftovers($"after the warp to {route.Name}");
+    }
+
+    /// <summary>The zone left parks a piece a frame, the zone itself last: parked once its mode reads Disabled.</summary>
+    IEnumerable<int> UntilParked()
+    {
+        for (int i = 0; i < 600 && Flight.AllZones().Any(z => z != _game.Zone && z.ProcessMode != ProcessModeEnum.Disabled); i++) yield return 0;
     }
 
     /// <summary>Nothing of a zone you are not in shows: its sky, its light, its sound, its globes; gravity and the camera are the zone's own.</summary>
@@ -614,7 +649,24 @@ public partial class WarpTest : Node
         if (_game.Zone != surface) { _ok = false; yield break; }
         Vector3 at = _ship.Body.Position.ToGodot();
         Check(at.Y > surface.GroundAt(at.X, at.Z).Y + 1f, $"it came in over the ground, not under it ({at.Y - surface.GroundAt(at.X, at.Z).Y:F0} m up)");
-        Vector3 pad = OrbitTest.FlatSpot(surface, at, 40f);
+        // The same site on each world every loop: what streams round where you land is then the same, so the levels
+        // compare loop to loop. The first loop picks it; later loops fly there level from wherever they came down.
+        float width = (float)surface.Planet.Width, height = (float)surface.Planet.Height;
+        static float Near(float v, float to, float period) => to + Mathf.PosMod(v - to + period / 2f, period) - period / 2f;
+        Vector3 pad;
+        if (_sites.TryGetValue(target, out Vector2 site))
+        {
+            float px = Near(site.X, at.X, width), pz = Near(site.Y, at.Z, height);
+            pad = surface.GroundAt(px, pz);
+            float cruise = at.Y;
+            foreach (int x in _pilot.FlyTo(_ship, () => new Vector3(pad.X, cruise, pad.Z), 20f, 300f)) yield return x;
+            GD.Print($"  (to {name}'s site from the first loop: {new Vector2(px - at.X, pz - at.Z).Length():F0} m, now {new Vector2(_ship.Body.Position.X - pad.X, _ship.Body.Position.Z - pad.Z).Length():F0} m off it)");
+        }
+        else
+        {
+            pad = OrbitTest.FlatSpot(surface, at, 40f);
+            _sites[target] = new Vector2(Mathf.PosMod(pad.X, width), Mathf.PosMod(pad.Z, height));
+        }
         foreach (int x in _pilot.Land(_ship, pad)) yield return x;
         foreach (int x in _drive.Wait(40)) yield return x;
         if (_ship.Controller?.Frozen != true)
@@ -636,6 +688,7 @@ public partial class WarpTest : Node
             Check(ore > 0, $"{name} is airless and holds pentaxite: {ore} warp fuel deposits");
         }
         if (_shots != null) Shot($"landed-{name}");
+        foreach (int x in UntilParked()) yield return x;
         Leftovers($"landed on {name}");
     }
 
@@ -672,30 +725,39 @@ public partial class WarpTest : Node
 
     // ---- Levels and frame times --------------------------------------------------------------------------------------
 
-    readonly record struct Level(int Nodes, int Objects, int Resources, int Bodies, int Colliders, int Drawn, double ManagedMb, double StaticMb, int Zones, int Terrain)
+    readonly record struct Level(int Nodes, int Objects, int Resources, int Bodies, int Colliders, int Drawn, double ManagedMb, double StaticMb, int Zones, int Streamed)
     {
-        public override string ToString() => $"{Nodes} nodes, {Objects} objects, {Resources} resources, {Bodies} physics bodies, {Colliders} colliders, {Drawn} drawn, managed {ManagedMb:F0} MB, engine {StaticMb:F0} MB, {Zones} zones, {Terrain} streamed ground pieces apart";
+        public override string ToString() => $"{Nodes} nodes, {Objects} objects, {Resources} resources, {Bodies} physics bodies, {Colliders} colliders, {Drawn} drawn, managed {ManagedMb:F0} MB, engine {StaticMb:F0} MB, {Zones} zones, {Streamed} nodes streamed round where you are (ground, places, roads, life) apart";
     }
 
     Level Measure()
     {
-        GC.Collect();
+        // Everything unreachable gone, the large objects' heap compacted: what is left is what is held.
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
         GC.WaitForPendingFinalizers();
-        GC.Collect();
-        int colliders = 0, drawn = 0, terrain = 0, marks = 0;
-        foreach (Node n in Every(_game))
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        int colliders = 0, drawn = 0, streamed = 0, marks = 0;
+        static int All(Node n) => 1 + n.GetChildren().Sum(All);
+        void Walk(Node n)
         {
-            if (SystemSplit.IsMark(n)) { marks++; continue; } // --split's own markers aren't the game's
-            // The ground streamed round where you are (or left each world) comes and goes with where that is: counted apart.
-            bool ground = n is PlanetSurface.Terrain.TerrainStreamer || n.GetParent() is PlanetSurface.Terrain.TerrainStreamer;
-            if (ground) { terrain += n.GetChildCount(); continue; }
+            if (SystemSplit.IsMark(n)) { marks++; return; } // --split's own markers aren't the game's
+            // What streams round where you are (the ground, its places, roads and life) comes and goes with where that is,
+            // and each world's landing spot differs from loop to loop: counted apart, whole.
+            if (n is PlanetSurface.Terrain.TerrainStreamer or Slice.Places.PoiPlaces or PlanetSurface.Poi.PoiLayer or PlanetSurface.Infra.InfraLayer or WildlifePatch)
+            {
+                streamed += All(n);
+                return;
+            }
             if (n is CollisionObject3D) colliders++;
             if (n is GeometryInstance3D gi && gi.IsVisibleInTree()) drawn++;
+            foreach (Node k in n.GetChildren()) Walk(k);
         }
+        Walk(_game);
         var zones = Flight.AllZones().ToList();
-        return new Level((int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount) - marks, (int)Performance.GetMonitor(Performance.Monitor.ObjectCount) - marks,
+        return new Level((int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount) - marks - streamed, (int)Performance.GetMonitor(Performance.Monitor.ObjectCount) - marks - streamed,
             (int)Performance.GetMonitor(Performance.Monitor.ObjectResourceCount), zones.Sum(z => z.Physics?.Bodies.Count ?? 0), colliders, drawn,
-            GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count, terrain);
+            GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count, streamed);
     }
 
     bool _timed;
@@ -711,7 +773,6 @@ public partial class WarpTest : Node
         var (p95, worst) = Spread(_cpu);
         var (wallP95, wallWorst) = Spread(_wall);
         foreach (var (stage, ms) in _byStage) { var (s95, sWorst) = Spread(ms); GD.Print($"  ({stage}: CPU 95th {s95:F1} ms, worst {sWorst:F1} ms over {ms.Count} frames)"); }
-        if (_parking.Count > 0) GD.Print($"  (left out of the budget: the frames waking the zone gone to and parking the zone left, proto/orbitclean's piecewise Park/Run to fix: {string.Join(", ", _parking.Select(ms => ms.ToString("F0")))} ms)");
         GD.Print($"  frame times through every warp, CPU: 95th {p95:F1} ms, worst {worst:F1} ms ({_worstAt}); wall: 95th {wallP95:F1} ms, worst {wallWorst:F1} ms; {_cpu.Count} frames, {(_args.ContainsKey("minspec") ? "min spec stand-in" : "this machine")}, {(_shots != null ? "windowed" : "headless")}");
         Check(p95 < 16.7 && worst < 33.4, $"the warps keep the frame budget in CPU time: 95th percentile {p95:F1} ms (budget 16.7), worst {worst:F1} ms (no frame dropped twice)");
     }

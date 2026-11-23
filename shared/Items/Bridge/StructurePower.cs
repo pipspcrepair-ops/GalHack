@@ -174,7 +174,7 @@ public sealed partial class StructurePower
     public double SecondsLeft => DrawMW - SolarNowMW <= 1e-9 ? double.PositiveInfinity
         : ((GeneratorMW > 0 ? FuelUnits * _rules.FuelUnitMJ : 0) + ChargeMJ) / (DrawMW - SolarNowMW);
 
-    /// <summary>Power drawn from outside its blocks this tick (a climate node standing by it), MW.</summary>
+    /// <summary>Power drawn from outside its blocks this tick (a force field), MW.</summary>
     public void AddLoad(double mw) => _extra += mw;
 
     /// <summary>A drive's reach for one jump (AU or LY, per its rule): what the jump fuel in core storage takes it, no further than its best block jumps; null if none is fitted.</summary>

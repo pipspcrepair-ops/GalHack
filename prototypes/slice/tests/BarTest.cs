@@ -89,6 +89,7 @@ public partial class BarTest : Node
         s.Set(new Int3(3, 1, 3), Make("generator-t1"));
         s.Set(new Int3(-3, 1, 1), Make("container-t1"));
         s.Set(new Int3(-3, 1, 2), Make("container-t1"));
+        s.Set(new Int3(-3, 1, 0), Make("life-support-pod"));
         s.Set(Chair, Make("command-chair"));
         foreach (Int3 g in Guns) s.Set(g, Make("gatling"));
         foreach (Int3 p in Spots) s.Set(p, Make("spotlight"));
@@ -210,7 +211,7 @@ public partial class BarTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(s.GravityOn && v.Body.Core?.On == true, "gravity on again");
 
-        Check(v.Powered && v.LifeSupport, "life support runs on a powered structure");
+        Check(v.Powered && v.HasLifeSupportPod && v.LifeSupport, "life support runs on a powered structure with a pod");
         foreach (int x in Press("life-support")) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(!v.SystemOn(StructureBar.LifeSupport) && !v.LifeSupport && !_game.Suit.HoldsAir(v), "life support off: the structure's air is no longer kept");

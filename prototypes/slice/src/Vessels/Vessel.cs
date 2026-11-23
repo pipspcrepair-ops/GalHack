@@ -139,8 +139,25 @@ public sealed partial class Vessel
         else Structure.SystemsOff.Add(system);
     }
 
-    /// <summary>Its life support keeps its sealed rooms' air and warmth: powered and switched on. Off, they drift as they would unpowered.</summary>
-    public bool LifeSupport => Powered && SystemOn(StructureBar.LifeSupport);
+    bool _hasPod;
+    int _podVersion = -1;
+
+    /// <summary>A life support pod is on it.</summary>
+    public bool HasLifeSupportPod
+    {
+        get
+        {
+            if (_podVersion != Structure.Version)
+            {
+                _podVersion = Structure.Version;
+                _hasPod = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsLifeSupport);
+            }
+            return _hasPod;
+        }
+    }
+
+    /// <summary>Its life support keeps its sealed rooms' air and warmth: a pod aboard, powered and switched on. Off, or with no pod, they drift as they would unpowered.</summary>
+    public bool LifeSupport => Powered && SystemOn(StructureBar.LifeSupport) && HasLifeSupportPod;
 
     StructureBar _bar;
 

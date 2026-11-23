@@ -19,7 +19,9 @@ public partial class BestiaryTest : Node
 {
     WildlifeData _data;
     int _failures, _checks;
-    readonly Rng _fresh = new((ulong)DateTime.UtcNow.Ticks);
+    /// <summary>The run's worlds: fresh every run, or --seed=N's again (a one-off repro or an A/B; never pinned).</summary>
+    static readonly ulong FreshSeed = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seed=")) is { } s ? ulong.Parse(s[7..]) : (ulong)DateTime.UtcNow.Ticks;
+    readonly Rng _fresh = new(FreshSeed);
 
     public override void _Ready()
     {
@@ -42,7 +44,16 @@ public partial class BestiaryTest : Node
                     Shutdown.Quit(this, 0);
                     return;
                 }
-            GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
+            GD.Print($"(worlds rolled from seed {FreshSeed}: --seed={FreshSeed} rolls them again)");
+            if (OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only=")) is { } only)
+            {
+                // Only the named checks, by method (a quick run while working on one thing): --only=Walking:HandsFaceTheWay
+                foreach (string m in only["--only=".Length..].Split(':'))
+                    GetType().GetMethod(m, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(this, null);
+                GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+                Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+                return;
+            }
             if (OS.GetCmdlineUserArgs().Contains("--bodies"))
             {
                 // Only the body checks (a quick run while working on poses, blows, hits and the dead).
@@ -324,7 +335,7 @@ public partial class BestiaryTest : Node
         Figure f = s.Figure;
         var rig = new HumanRig(s);
         Vector3 feet = new(3f, 0f, -2f);
-        float walked = 0f, worst = 0f, worstRun = 0f, off = 0f;
+        float worst = 0f, worstRun = 0f, off = 0f;
         var last = new[] { Vector3.Zero, Vector3.Zero };
         var was = new[] { false, false };
         bool finite = true;
@@ -334,8 +345,10 @@ public partial class BestiaryTest : Node
             bool run = i >= 200;
             float speed = run ? 3.4f : 1.3f, dt = 1f / 60f;
             feet += Vector3.Forward * speed * dt;
-            walked += speed * dt;
-            rig.Drive(new Gesture { Feet = feet, Yaw = 0f, Speed = speed, Walked = walked, Clock = i * dt });
+            // Driven as the sim drives a body (HumanRig.Animate): over the ground at the pace it really goes, a set-off or a speed-up
+            // eased as a body's is (the stride keeps to that, never to a speed jumped in a frame), a foot down kept to the ground.
+            rig.Pace.Note(feet, Vector3.Forward, dt);
+            rig.Drive(new Gesture { Feet = feet, Yaw = 0f, Speed = rig.Pace.Speed, Walked = rig.Pace.Walked, Travels = true, Clock = i * dt });
             for (int k = 0; k < 2; k++)
             {
                 if (rig.FootPlanted(k))
@@ -343,7 +356,8 @@ public partial class BestiaryTest : Node
                     off = MathF.Max(off, rig.FootTarget(k).DistanceTo(rig.FootDrawn(k)));
                     if (was[k] && i % 200 != 0)
                     {
-                        float slip = rig.FootTarget(k).DistanceTo(last[k]);
+                        // (Over the ground: the heel peeling up at the end of a stride is no slide.)
+                        float slip = WildSim.Flat(rig.FootTarget(k) - last[k]).Length();
                         if (run) worstRun = MathF.Max(worstRun, slip); else worst = MathF.Max(worst, slip);
                     }
                 }

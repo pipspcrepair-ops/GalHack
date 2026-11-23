@@ -44,6 +44,7 @@
     "constructor": { "working": 1 },
     "chair": { "seated": 1 },
     "forecast": { "on": 1 },
+    "life-support": { "on": 1 },
     "turret": { "idle": 0, "tracking": 0.3, "firing": 1 },
     "weapon": { "idle": 0, "firing": 1 },
     "shield": { "up": 0.1, "recharging": 1 },

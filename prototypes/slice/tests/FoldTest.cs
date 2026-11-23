@@ -533,7 +533,7 @@ public partial class FoldTest : Node
         StarSystem catalogue = star == Flight.HomeStar ? Flight.HomeSystem : StarProfile.Of(Catalogue, star);
         Check(system.StarKey == Catalogue.SystemSeed(star) && Same(system, catalogue), $"its system is the catalogue star's own, built again from its seed the same: {Describe(system)}");
         Check(system.Bodies.Count(o => o.Kind is OrbiterKind.Planet or OrbiterKind.GasGiant or OrbiterKind.Moon) >= 8
-              && system.Bodies.Any(o => o.Spec is { HighGravity: true } && Planets.Gen.DepositField.FuelKinds(o.Spec).Contains(Planets.Gen.DepositKind.Crystal)),
+              && system.Bodies.Any(o => o.Spec is { HighGravity: true } && Planets.Gen.DepositField.DriveKinds(o.Spec).Contains(Planets.Gen.DepositKind.Crystal)),
             "with at least 8 worlds and a high-gravity world holding fold fuel");
 
         // Where it arrives: the star's high orbit, facing it, its worlds where the model has them.
@@ -657,9 +657,11 @@ public partial class FoldTest : Node
     IEnumerable<int> Settle()
     {
         for (int i = 0; i < 30; i++) yield return 0;
-        GC.Collect();
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
         GC.WaitForPendingFinalizers();
-        GC.Collect();
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        // What the finalizers let go of (a mesh's, a texture's data) the engine frees on the main thread over the next frames:
+        // static memory is read after them, as WarpTest's (read at once, it counted all of it).
         for (int i = 0; i < 10; i++) yield return 0;
     }
 

@@ -1073,9 +1073,12 @@ block -6..5 8 -2 iron-plated slope rot=+y+z paint=roof
 block -3 8 6 thruster-t3 rot=+z-y
 block 2 8 6 thruster-t3 rot=+z-y
 block -4 9 -20 iron-plated slope rot=-x-z paint=hull,hull,hull,hull,inner,hull
-block -3..2 9 -20 iron-plated paint=hull,hull,hull,hull,inner,hull
+block -3 9 -20 iron-plated paint=hull,hull,hull,hull,inner,hull
+block -2 9 -20 iron-plated paint=hull
+block -1..2 9 -20 iron-plated paint=hull,hull,hull,hull,inner,hull
 block 3 9 -20 iron-plated slope rot=+x-z paint=hull,hull,hull,hull,inner,hull
 block -5 9 -19 iron-plated slope rot=-x-z paint=inner,hull,hull,hull,inner,hull
+block -2 9 -19 life-support-pod
 block 4 9 -19 iron-plated slope rot=+x-z paint=hull,inner,hull,hull,inner,hull
 block -6 9 -18 iron-plated slope rot=-x-z paint=inner,hull,hull,hull,inner,hull
 block 5 9 -18 iron-plated slope rot=+x-z paint=hull,inner,hull,hull,inner,hull
@@ -1115,7 +1118,9 @@ block -4 10 -20 iron-plated slope rot=-x-z paint=hull,hull,roof,hull,hull,hull
 block -3..2 10 -20 iron-plated paint=hull,hull,roof,hull,hull,hull
 block 3 10 -20 iron-plated slope rot=+x-z paint=hull,hull,roof,hull,hull,hull
 block -5 10 -19 iron-plated slope rot=-x-z paint=hull,hull,roof,hull,hull,hull
-block -4..3 10 -19 iron-plated paint=hull,hull,roof,inner,hull,hull
+block -4..-3 10 -19 iron-plated paint=hull,hull,roof,inner,hull,hull
+block -2 10 -19 iron-plated paint=hull,hull,roof,hull,hull,hull
+block -1..3 10 -19 iron-plated paint=hull,hull,roof,inner,hull,hull
 block 4 10 -19 iron-plated slope rot=+x-z paint=hull,hull,roof,hull,hull,hull
 block -6 10 -18 iron-plated slope rot=-x-z paint=hull,hull,roof,hull,hull,hull
 block -5..4 10 -18 iron-plated paint=hull,hull,roof,inner,hull,hull

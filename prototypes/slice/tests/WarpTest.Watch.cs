@@ -149,6 +149,57 @@ public partial class WarpTest
         measured(middle[middle.Count / 5]);
     }
 
+    // ---- What the game holds, by owner (a leak's census) -------------------------------------------------------------
+
+    Dictionary<string, long> _heldWas;
+    readonly List<Dictionary<string, long>> _held = new();
+
+    /// <summary>
+    /// Every collection and array the game holds, counted by its owner's type and field: the scene's nodes' own, those of
+    /// what they hold a level down, and every static one. Printed against the loop before, the ones that grew most.
+    /// </summary>
+    void Holdings(int loop)
+    {
+        var asm = typeof(WarpTest).Assembly;
+        var held = new Dictionary<string, long>();
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        const System.Reflection.BindingFlags Own = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+        void Add(string key, object v)
+        {
+            if (v is Array a) held[key] = held.GetValueOrDefault(key) + a.LongLength;
+            else if (v is System.Collections.IEnumerable and not string && v.GetType().GetProperty("Count") is { } count && count.PropertyType == typeof(int))
+                held[key] = held.GetValueOrDefault(key) + (int)count.GetValue(v);
+        }
+        void Of(object o, string owner, int depth)
+        {
+            if (o == null || !seen.Add(o)) return;
+            for (Type t = o.GetType(); t != null && t.Assembly == asm; t = t.BaseType)
+                foreach (System.Reflection.FieldInfo f in t.GetFields(Own))
+                {
+                    object v;
+                    try { v = f.GetValue(o); } catch { continue; }
+                    if (v == null) continue;
+                    Add(owner + "." + f.Name, v);
+                    if (depth > 0 && v is not GodotObject && v.GetType().IsClass && v.GetType().Assembly == asm) Of(v, owner + "." + f.Name, depth - 1);
+                }
+        }
+        foreach (Node n in Every(_game)) Of(n, n.GetType().Name, 1);
+        foreach (Type t in asm.GetTypes())
+        {
+            if (t.ContainsGenericParameters) continue;
+            foreach (System.Reflection.FieldInfo f in t.GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+            {
+                object v;
+                try { v = f.GetValue(null); } catch { continue; }
+                if (v != null) Add("static " + t.Name + "." + f.Name, v);
+            }
+        }
+        if (_heldWas != null)
+            GD.Print($"  (held, grown most since loop {loop - 1}: {string.Join(", ", held.Select(kv => (kv.Key, Was: _heldWas.GetValueOrDefault(kv.Key), Now: kv.Value)).Where(x => x.Now > x.Was).OrderByDescending(x => x.Now - x.Was).Take(14).Select(x => $"{x.Key} {x.Was}->{x.Now}"))})");
+        _heldWas = held;
+        _held.Add(held);
+    }
+
     // ---- Where the frames go (--split=1) ---------------------------------------------------------------------------
 
     FrameSplit _split;
