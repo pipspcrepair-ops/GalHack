@@ -139,7 +139,7 @@ public partial class Spaceflight
         Task<StarSystem> _system;
         Abroad _away;
         OrbitZone _zone;
-        bool _arrived, _made;
+        bool _arrived, _made, _warmed;
 
         public FoldTo(Spaceflight flight, int star)
         {
@@ -220,7 +220,15 @@ public partial class Spaceflight
                 _zone.BuildStep();
                 return false;
             }
-            return _away?.Stars.Ready ?? true;
+            if (!_warmed && flight.Jumping is { Holding: true, InTunnel: >= TuckFrom })
+            {
+                // Its far looks drawn once behind the tunnel's cover, so their shaders are ready for the arrival's first frame
+                // (it compiled 26 of them there: 100 ms on the minimum spec).
+                _warmed = true;
+                stage = "warming its looks";
+                _zone.Space.ShowBodies(true);
+            }
+            return (_away?.Stars.Ready ?? true) && _warmed;
         }
 
         /// <summary>The space round the star: at home the start system's own (a warp's to the star), out there a new system's.</summary>
