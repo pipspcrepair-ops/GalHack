@@ -111,9 +111,7 @@ public partial class Spaceflight
             Name = Charts.Tidy(body.Name).Replace(" ", ""), Data = home.Data, Spec = body.Spec, ShareFrom = home.Planet, SkySurfaces = home.Sky.Surfaces, Body = body,
             MakeLater = !now, ProcessMode = ProcessModeEnum.Disabled, Visible = false,
         };
-        var tmpWatch = System.Diagnostics.Stopwatch.StartNew(); /*TMPLAP*/
         Game.AddChild(zone);
-        GD.Print($"[{zone.Name} entered the scene in {tmpWatch.Elapsed.TotalMilliseconds:F1} ms: {zone.ReadyLaps}]"); /*TMPLAP*/
         Mute(zone);
         zone.Physics.Zone.Strength = model.GravityOf(body, home.Physics.Zone.Strength);
         zone.Physics.Zone.Ceiling = ceiling;
