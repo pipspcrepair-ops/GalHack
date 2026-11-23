@@ -184,8 +184,10 @@ public partial class FoldTest : Node
             Color middle = frame.GetPixel(frame.GetWidth() / 2, frame.GetHeight() / 3);
             Check(middle.Luminance > 0.6f, $"the star fills the view ahead: {middle.Luminance:F2} bright above the console");
             Shot("fold-3-arrival-star");
-            // Away from the star, its worlds where they are; then the star come from, picked, at its bearing.
-            foreach (int x in Face(N.Vector3.Normalize(-(_game.Orbit.Home.Centre - _ship.Body.Position.ToGodot()).ToNumerics()), 30)) yield return x;
+            // The biggest of its worlds in the sky from here, where it is; then the star come from, picked, at its bearing.
+            var biggest = _game.Orbit.Space.Drawn.OrderByDescending(d => d.Angular).First();
+            GD.Print($"  (the worlds shot faces {biggest.Body.Name}, {2 * biggest.Angular * 180 / MathF.PI:F2}° across)");
+            foreach (int x in Face(biggest.Direction.ToNumerics(), 30)) yield return x;
             Shot("fold-3-arrival-worlds");
             Flight.Charts.ChosenStar = home;
             foreach (int x in Face(Flight.LookToward(home).ToNumerics(), 30)) yield return x;
