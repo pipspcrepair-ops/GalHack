@@ -614,6 +614,9 @@ public sealed partial class Town : IKeeper
     /// <summary>Far towns step less often, as their people already pose less often (<see cref="PersonView.PoseEvery"/>): measurements switch it off.</summary>
     public static bool Spaced = true;
 
+    /// <summary>The place down (only those out on the land about), how many ticks its people's moods are settled over, a share each tick.</summary>
+    const int DownEvery = 6;
+
     /// <summary>Whether a person this far off is due a step this town step: every <see cref="PersonView.PoseEvery"/> ticks, whichever tick of the step's span that falls on.</summary>
     bool Due(int who, float away) => (_tick + who) % PersonView.PoseEvery(away) < _step;
 
@@ -626,7 +629,7 @@ public sealed partial class Town : IKeeper
         return MathF.Sqrt(dx * dx + dz * dz);
     }
 
-    /// <summary>The last tick's walking of everyone out on a run, ms (measurements: the far ones are a point stepped along a way).</summary>
+    /// <summary>The last tick's walking of everyone out on a run, ms by <see cref="SkyTraffic.Clock"/> (measurements: the far ones are a point stepped along a way).</summary>
     public float LastRunsMs { get; private set; }
     /// <summary>What the last tick over a millisecond of it went on (measurements).</summary>
     public string LastRunsNote { get; private set; } = "";
@@ -656,24 +659,24 @@ public sealed partial class Town : IKeeper
         // walk whether the place stands or not, a body near you, a point stepped along the way far off.
         if (runs)
         {
-            long from = System.Diagnostics.Stopwatch.GetTimestamp();
+            double from = SkyTraffic.Clock();
             if (!standing)
             {
                 _clock += tickDt;
                 Sense(tickDt);
-                MoodTick(tickDt);
+                MoodTick(tickDt, DownEvery);
                 Held();
             }
-            long kept = System.Diagnostics.Stopwatch.GetTimestamp();
+            double kept = SkyTraffic.Clock();
             _built = 0;
             _step = 1;
             for (int who = 0; who < People.Count; who++)
                 if (People[who].Run != null) Step(People[who], who, player, eye, look, tickDt, night, time);
-            long walked = System.Diagnostics.Stopwatch.GetTimestamp();
+            double walked = SkyTraffic.Clock();
             if (!standing) KeepApart(player, tickDt, all: false); // (the place down: only they are about to keep apart)
             Miss();
-            LastRunsMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
-            if (LastRunsMs > 1f) LastRunsNote = $"the town's own {(kept - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2}, their steps {(walked - kept) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2}, kept apart {LastApartMs:F2} ms; bodies built {_built * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2} ms";
+            LastRunsMs = (float)(SkyTraffic.Clock() - from);
+            if (LastRunsMs > 1f) LastRunsNote = $"the town's own {kept - from:F2}, their steps {walked - kept:F2}, kept apart {LastApartMs:F2} ms; bodies built {_built * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2} ms";
         }
         // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
         _owed += tickDt;

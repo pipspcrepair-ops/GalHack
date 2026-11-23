@@ -118,17 +118,16 @@ public partial class PlayerTest : Node
         _game.Zone.Data.Progress.Xp.Gain = 1;
         foreach (int x in _drive.UntilPlaying()) yield return x;
 
-        foreach (int x in WakeUp()) yield return x;
-        foreach (int x in Gathering()) yield return x;
-        foreach (int x in Hunting()) yield return x;
-        foreach (int x in Inventory()) yield return x;
-        foreach (int x in JetpackLiftOff()) yield return x;
-        foreach (int x in SurvivalConstructor()) yield return x;
-        foreach (int x in Base()) yield return x;
-        foreach (int x in VesselCore()) yield return x;
-        foreach (int x in BuildVessel()) yield return x;
-        foreach (int x in Fly()) yield return x;
-        foreach (int x in MenuAndTorch()) yield return x;
+        foreach (Func<IEnumerable<int>> part in new Func<IEnumerable<int>>[] { WakeUp, Gathering, Hunting, Inventory, JetpackLiftOff, SurvivalConstructor, Base, VesselCore, BuildVessel, Fly, MenuAndTorch })
+        {
+            foreach (int x in part()) yield return x;
+            // Dead before the loop's own death: what follows would only read a dead sleeper's zeros, so say what killed them.
+            if (_game.Suit.Dead)
+            {
+                Fail($"the sleeper died in {_section} ({_game.Suit.Sim.Player.DeathCause} at {_game.Survivor.WorldFeet}, {_game.Stats.Seconds:F0} s in): the rest of the loop is not played");
+                yield break;
+            }
+        }
         foreach (int x in Death()) yield return x;
         Summary();
     }

@@ -51,34 +51,38 @@ public partial class SystemsTest
         Check(lit == 0 && weather == 0, $"barren: every one has the vacuum sky, black at noon with the stars out ({lit} lit), and no weather, storm, cloud, haze or fog at any hour ({weather} had some)");
     }
 
-    /// <summary>The mapped airless bodies: no dunes or other weathered ground, barren ground only, craters at every size.</summary>
-    void BarrenMaps(List<(StarSystem System, Orbiter Body, WorldMap Map)> coarse)
+    /// <summary>What a barren body's coarse map shows, read in the survey (the map is dropped after): weathered ground, ground that isn't barren, craters at every size.</summary>
+    readonly record struct BarrenRead(bool Dunes, bool Other, bool Cratered);
+
+    static readonly Landform[] Weathered = { Landform.DuneSea, Landform.Mesas, Landform.Canyonlands, Landform.Delta, Landform.Wetlands, Landform.LakeDistrict, Landform.RiverValleys, Landform.Fjords };
+
+    /// <summary>A barren body's map read for <see cref="BarrenMaps"/>; null for any other kind.</summary>
+    static BarrenRead? ReadBarren(WorldMap map)
     {
-        var weathered = new[] { Landform.DuneSea, Landform.Mesas, Landform.Canyonlands, Landform.Delta, Landform.Wetlands, Landform.LakeDistrict, Landform.RiverValleys, Landform.Fjords };
-        int maps = 0, dunes = 0, ground = 0, cratered = 0;
-        foreach (var (system, body, map) in coarse)
+        if (map.Spec.Archetype != Archetype.Barren) return null;
+        bool dune = false, other = false;
+        for (int k = 0; k < map.Count; k++)
         {
-            if (body == system.Home || body.Spec.Archetype != Archetype.Barren) continue;
-            maps++;
-            bool dune = false, other = false;
-            for (int k = 0; k < map.Count; k++)
-            {
-                var biome = (Biome)map.Biome[k];
-                dune |= weathered.Contains((Landform)map.Landform[k]) || biome is Biome.Dunes or Biome.Erg;
-                other |= Minerals.Of(biome) == null;
-            }
-            if (dune) dunes++;
-            if (other) ground++;
-            // Craters from metres to kilometres: some of every size, a few hundred metres and up seen in the map itself.
-            bool sizes = new[] { (3f, 10f), (10f, 40f), (40f, 150f), (150f, 2000f) }.All(band => map.Model.CratersOver(band.Item1).Any(c => c.Radius < band.Item2));
-            // The big ones the map's cells can show (three across their radius), their floor (half way out: a big one has a peak in
-            // its middle) well under their rim.
-            var big = map.Model.CratersOver(MathF.Max(120f, map.CellSize * 3f)).Where(c => c.Fresh > 0.8f).OrderByDescending(c => c.Radius).Take(8).ToList();
-            float Ring((double X, double Y, float Radius, float Fresh) c, float t) => new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Average(d => map.Sample(map.Elevation, c.X + d.Item1 * c.Radius * t, c.Y + d.Item2 * c.Radius * t));
-            int bowls = big.Count(c => Ring(c, 1f) - Ring(c, 0.5f) > c.Radius * 0.08f * map.Def.CraterRelief);
-            if (sizes && big.Count > 0 && bowls * 10 >= big.Count * 7) cratered++;
+            var biome = (Biome)map.Biome[k];
+            dune |= Weathered.Contains((Landform)map.Landform[k]) || biome is Biome.Dunes or Biome.Erg;
+            other |= Minerals.Of(biome) == null;
         }
-        Check(maps > 20 && dunes == 0 && ground == 0, $"barren: none of {maps} mapped barren bodies has dunes or other weathered ground ({dunes} had), or any but barren ground ({ground} had)");
-        Check(cratered == maps, $"barren: every one is cratered at every size from metres to kilometres, its big craters bowls in its map ({cratered} of {maps})");
+        // Craters from metres to kilometres: some of every size, a few hundred metres and up seen in the map itself.
+        bool sizes = new[] { (3f, 10f), (10f, 40f), (40f, 150f), (150f, 2000f) }.All(band => map.Model.CratersOver(band.Item1).Any(c => c.Radius < band.Item2));
+        // The big ones the map's cells can show (three across their radius), young enough to stand on a mare too, their floor
+        // (half way out: a big one has a peak in its middle) well under their rim.
+        var big = map.Model.CratersOver(MathF.Max(120f, map.CellSize * 3f)).Where(c => c.Fresh > 0.8f).OrderByDescending(c => c.Radius).Take(8).ToList();
+        float Ring((double X, double Y, float Radius, float Fresh) c, float t) => new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Average(d => map.Sample(map.Elevation, c.X + d.Item1 * c.Radius * t, c.Y + d.Item2 * c.Radius * t));
+        int bowls = big.Count(c => Ring(c, 1f) - Ring(c, 0.5f) > c.Radius * 0.08f * map.Def.CraterRelief);
+        return new BarrenRead(dune, other, sizes && big.Count > 0 && bowls * 10 >= big.Count * 7);
+    }
+
+    /// <summary>The mapped barren bodies (bar a start world): no dunes or other weathered ground, barren ground only, craters at every size.</summary>
+    void BarrenMaps(List<Ground> ground)
+    {
+        var read = ground.Where(g => g.Body != g.System.Home && g.Barren != null).Select(g => g.Barren.Value).ToList();
+        int dunes = read.Count(r => r.Dunes), other = read.Count(r => r.Other), cratered = read.Count(r => r.Cratered);
+        Check(read.Count > 20 && dunes == 0 && other == 0, $"barren: none of {read.Count} mapped barren bodies has dunes or other weathered ground ({dunes} had), or any but barren ground ({other} had)");
+        Check(cratered == read.Count, $"barren: every one is cratered at every size from metres to kilometres, its big craters bowls in its map ({cratered} of {read.Count})");
     }
 }

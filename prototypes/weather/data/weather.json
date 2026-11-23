@@ -105,7 +105,7 @@
     "fog": { "minHumidity": 0.45, "valleyDepth": 25, "lowHeight": 60 },
     "wind": { "highBoost": 0.45, "forestCut": 0.4 },
     "mountains": ["Mountains", "Fjords", "ShardFields"],
-    "fallback": { "DustStorm": "Clouds", "Blizzard": "Rain", "Fog": "Clouds", "Tornado": "Thunderstorm" },
+    "fallback": { "DustStorm": "Clear", "Blizzard": "Rain", "Fog": "Clouds", "Tornado": "Thunderstorm" },
     "forest": {
       "Forest": 0.8, "PineForest": 0.85, "Jungle": 0.95, "Rainforest": 0.95, "CloudForest": 0.9, "FungalForest": 0.8,
       "Swamp": 0.45, "Riverbank": 0.35, "Oasis": 0.4, "Meadow": 0.12, "Scrub": 0.15, "SporeMarsh": 0.3, "CrystalSpires": 0.5
@@ -170,6 +170,29 @@
     "driftShare": 0.7,
     "growSeconds": 30,
     "spawnEvery": 12
+  },
+
+  "dustStorms": {
+    "about": "A dust storm is a place: a body of dust kilometres across that forms over dry loose ground upwind of you while the weather is a dust storm, rolls over on its own wind and dies away off such ground or when its life is spent. Its weather holds only inside it.",
+    "maxStorms": 2,
+    "halfWidthMin": 1800,
+    "halfWidthMax": 2800,
+    "lengthMin": 0.35,
+    "lengthMax": 0.55,
+    "heightMin": 500,
+    "heightMax": 850,
+    "edge": 350,
+    "formNear": 2500,
+    "formFar": 5500,
+    "driftShare": 0.55,
+    "growSeconds": 60,
+    "fadeSeconds": 90,
+    "lifeMin": 420,
+    "lifeMax": 840,
+    "spawnEvery": 25,
+    "range": 12000,
+    "formGround": 0.6,
+    "fedGround": 0.3
   },
 
   "states": [

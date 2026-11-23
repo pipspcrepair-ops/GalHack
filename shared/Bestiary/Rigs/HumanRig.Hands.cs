@@ -186,7 +186,25 @@ public sealed partial class HumanRig
             if (led >= 0.5f) lean = fingers.Dot(fore);
         }
         if (turn < 0f) return lean < 0f ? other : one;
-        return turn <= 0f ? one : turn >= 1f ? other : Between(one, other, turn * turn * (3f - 2f * turn));
+        return turn <= 0f ? one : turn >= 1f ? other : Regrip(one, other, turn * turn * (3f - 2f * turn));
+    }
+
+    /// <summary>
+    /// A hand turning round what it grips from one way to the other, <paramref name="t"/> of the way (0 to 1). The two are half a turn
+    /// apart, where the short way round is no way at all (either way is as short, and which a slerp takes swaps with the smallest
+    /// change: the hand jumps): it always turns the way that leads with its fingers and palm.
+    /// </summary>
+    static Basis Regrip(Basis a, Basis b, float t)
+    {
+        Quaternion rel = (a.GetRotationQuaternion().Inverse() * b.GetRotationQuaternion()).Normalized();
+        if (rel.W < 0f) rel = -rel;
+        Vector3 u = new(rel.X, rel.Y, rel.Z);
+        float sin = u.Length();
+        if (sin < 1e-5f) return a;
+        u /= sin;
+        float angle = 2f * MathF.Atan2(sin, rel.W);
+        if (u.Y + u.Z < 0f) (u, angle) = (-u, MathF.Tau - angle);
+        return a * new Basis(u, angle * t);
     }
 
     /// <summary>The frame a hand takes: from its spec on the forearm, closed round what it grips as far as it grips.</summary>
@@ -224,7 +242,8 @@ public sealed partial class HumanRig
 
     /// <summary>
     /// A weapon held out of the way of the fists on it: where they would be in the torso or the head (a thick
-    /// coat, a drawn string hand), the whole weapon and both hands go the way the worst of them is pushed.
+    /// coat, a drawn string hand), the whole weapon and both hands go the way the worst of them is pushed, a fist's
+    /// push counting as far as it is on its grip (one coming to it or leaving it moves the weapon by degrees).
     /// </summary>
     void KeepFistsClear(ref Hold h, HoldKind kind, Basis torso)
     {
@@ -233,24 +252,33 @@ public sealed partial class HumanRig
             Vector3 shift = Vector3.Zero, pulled = Vector3.Zero;
             for (int i = 0; i < 2; i++)
             {
-                if ((i == 1 ? h.RW : h.LW) < 0.05f) continue;
+                float on = i == 1 ? h.RW : h.LW;
+                if (on <= 0f) continue;
                 var F = new Frame(torso, i == 0 ? -1f : 1f);
                 Vector3 grip = i == 1 ? h.R : h.L, shoulder = Pose[_body].Origin + torso.Y * _f.Torso * 0.9f + F.Out * _f.ShoulderW * 0.94f;
                 Vector3 push = Vector3.Zero;
                 for (int flip = 1; flip >= (kind == HoldKind.Bow ? 1 : -1); flip -= 2) // (the fingers go on from the forearm, which the arm settles later: clear of the fist whichever way round it ends; the string hand's palm is the whole of its frame)
                 {
-                    Basis frame = HandGrip(i, (i == 1 ? h.RAxis : h.LAxis).Normalized(), (grip - shoulder).Normalized() * flip, F.Ahead, -F.Out, F.Mix((i == 1 ? h.RHand : h.LHand).Palm));
-                    Vector3 p = HandClear(new Transform3D(frame, grip - frame * (HandMake.Fist * _handSize[i])), HandShape.Fist, i, 0.03f);
-                    if (p.LengthSquared() > push.LengthSquared()) push = p;
+                    // (Turned round the grip as the hand is, not whichever way suits: that swaps in a frame.)
+                    Basis frame = HandGrip(i, (i == 1 ? h.RAxis : h.LAxis).Normalized(), (grip - shoulder).Normalized() * flip, F.Ahead, -F.Out, F.Mix((i == 1 ? h.RHand : h.LHand).Palm), _gripTurn[i]);
+                    push = Worse(push, HandClear(new Transform3D(frame, grip - frame * (HandMake.Fist * _handSize[i])), HandShape.Fist, i, 0.03f) * on);
                 }
                 if (kind == HoldKind.Bow && i == 1) pulled = push; // (the string hand is not on the bow: it alone goes)
-                else if (push.LengthSquared() > shift.LengthSquared()) shift = push;
+                else shift = Worse(shift, push);
             }
             if (shift.LengthSquared() < 1e-6f && pulled.LengthSquared() < 1e-6f) return;
             h.R += shift + pulled;
             h.L += shift;
             h.Prop.Origin += shift;
         }
+    }
+
+    /// <summary>The worse of two pushes, near enough: each weighted by its length to the fourth, so the longer wins and one overtaking the other never swaps in a frame.</summary>
+    static Vector3 Worse(Vector3 a, Vector3 b)
+    {
+        float wa = a.LengthSquared(), wb = b.LengthSquared();
+        (wa, wb) = (wa * wa, wb * wb);
+        return wa + wb > 1e-20f ? (a * wa + b * wb) / (wa + wb) : Vector3.Zero;
     }
 
     /// <summary>

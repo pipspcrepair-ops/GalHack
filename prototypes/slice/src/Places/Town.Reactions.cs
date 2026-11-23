@@ -82,6 +82,7 @@ public sealed partial class Town
         float reach = Data.AreaRadius + 30f;
         Creature harmer = _harmedBy is { Dead: false, Removed: false } && _clock - _harmedAt < HarmMemory ? _harmedBy : null;
         _round.Clear();
+        GatherOut();
         // The open country's creatures and those of every place standing (their own place's among them): where each is in the world.
         for (int si = -1; si < patch.Sites.Count; si++)
         {

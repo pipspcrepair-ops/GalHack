@@ -229,10 +229,10 @@ public partial class PowerTest : Node
         Check(raw.Source == ItemSource.Mined && raw.DepositKind == nameof(DepositKind.Crystal) && fold.Recipe.Inputs.All(i => i.Item == raw),
             "fold fuel is gathered: raw fold crystal is mined from its deposits and refined into fold crystal");
         PlanetSpec Spec(Archetype a, Modifier m, int km = 16) => new((ulong)Random.Shared.NextInt64(), a, 0, m, km);
-        Check(DepositField.FuelKinds(Spec(Archetype.Barren, Modifier.Cratered, 8)).Contains(DepositKind.WarpFuel) && DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.Cratered)).Contains(DepositKind.WarpFuel)
-              && !DepositField.FuelKinds(Spec(Archetype.Temperate, Modifier.None)).Contains(DepositKind.WarpFuel) && !DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.None)).Contains(DepositKind.WarpFuel),
+        Check(DepositField.DriveKinds(Spec(Archetype.Barren, Modifier.Cratered, 8)).Contains(DepositKind.WarpFuel) && DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.Cratered)).Contains(DepositKind.WarpFuel)
+              && !DepositField.DriveKinds(Spec(Archetype.Temperate, Modifier.None)).Contains(DepositKind.WarpFuel) && !DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.None)).Contains(DepositKind.WarpFuel),
             "pentaxite lies on airless bodies only (the start's fuel moon is always one), not on a world with air, icy or living");
-        Check(DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.None, 32)).Contains(DepositKind.Crystal), "fold crystal lies on the dangerous high-gravity worlds");
+        Check(DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.None, 32)).Contains(DepositKind.Crystal), "fold crystal lies on the dangerous high-gravity worlds");
         Check(data.Power.Drives["warp-drive"].Item == cell.Id && data.Power.Drives["fold-drive"].Item == fold.Id, "the warp drive burns warp cells and the fold drive fold crystal, three fuels apart");
 
         // A drive reads its reach from the fuel in core storage.
