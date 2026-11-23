@@ -628,6 +628,9 @@ public sealed partial class Town : IKeeper
 
     /// <summary>The last tick's walking of everyone out on a run, ms (measurements: the far ones are a point stepped along a way).</summary>
     public float LastRunsMs { get; private set; }
+    /// <summary>What the last tick over a millisecond of it went on (measurements).</summary>
+    public string LastRunsNote { get; private set; } = "";
+    long _built;
 
     void Tick(float tickDt)
     {
@@ -661,12 +664,16 @@ public sealed partial class Town : IKeeper
                 MoodTick(tickDt);
                 Held();
             }
+            long kept = System.Diagnostics.Stopwatch.GetTimestamp();
+            _built = 0;
             _step = 1;
             for (int who = 0; who < People.Count; who++)
                 if (People[who].Run != null) Step(People[who], who, player, eye, look, tickDt, night, time);
+            long walked = System.Diagnostics.Stopwatch.GetTimestamp();
             if (!standing) KeepApart(player, tickDt, all: false); // (the place down: only they are about to keep apart)
             Miss();
             LastRunsMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+            if (LastRunsMs > 1f) LastRunsNote = $"the town's own {(kept - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2}, their steps {(walked - kept) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2}, kept apart {LastApartMs:F2} ms; bodies built {_built * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F2} ms";
         }
         // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
         _owed += tickDt;
@@ -738,7 +745,7 @@ public sealed partial class Town : IKeeper
             Pose(p, who, lying, tickDt);
             return;
         }
-        if (p.View == null || p.Holder == null && p.Model == null && Wields(p)) BuildNext(p);
+        if (p.View == null || p.Holder == null && p.Model == null && Wields(p)) { long b = System.Diagnostics.Stopwatch.GetTimestamp(); BuildNext(p); _built += System.Diagnostics.Stopwatch.GetTimestamp() - b; }
         // Far from you a town needn't move every tick: each in their turn, with the time they missed,
         // the further off the fewer times a second (and so their bodies are posed).
         p.Saved += tickDt;
@@ -882,7 +889,7 @@ public sealed partial class Town : IKeeper
         // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
         bool last = p.Step >= p.Path.Count - 1;
         // Coming up on a crowd at the end of their way (not into a seat or a bed: walked as it lies): they stop at its edge, an arm's length off the nearest, not pressed into it.
-        if (last && !ToSeat(p) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength * 1.5f && Settles(p)) return true;
+        if (last && !ToSeat(p) && InTheWay(p) is { } ahead && (ahead.Pos - p.Pos).Length() < BodyRadius(p) + BodyRadius(ahead) + PersonalSpace.ArmsLength * 2f && Settles(p)) return true;
         float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
         float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         // Behind someone going their way: on at their pace an arm's length back, never into them (Town.Space).
@@ -920,7 +927,6 @@ public sealed partial class Town : IKeeper
         else if (_clock - p.NoFloorAt > 1f && !Floored(p.Pos)) (p.CheckFor, p.NoFloorAt) = (MathF.Max(p.CheckFor, 0.05f), _clock); // (no floor under them by the blocks: looked under, Town.Falls)
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was, dt);
-        p.Pos = Unpressed(p, was, p.Pos); // (nor held off the furniture into anyone)
         // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
         if (!byBody && (p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
         {
@@ -1000,10 +1006,10 @@ public sealed partial class Town : IKeeper
         // (Off a bench or a counter they stood pressed up to at their work, as out of a seat: clear of it as they go.)
         if (_parts != null && _parts.Gap(p.Pos, BodyRadius(p), Height(p)) < 0f) p.GettingUp = true;
         p.Step = 0;
-        if (p.Far && !p.Fleeing && (path[^1] - _you).Length() > FarSchedule)
+        if (p.Far && !p.Fleeing && (path[^1] - _you).Length() > FarSchedule && !Taken(p, path[^1]))
         {
             // Far from you there and back: there already, their day kept as a schedule. (Running from a fright, or coming
-            // nearer you, they go on foot: nobody frightened turns up somewhere new.)
+            // nearer you, they go on foot: nobody frightened turns up somewhere new; nor does anyone where another already stands.)
             p.Pos = path[^1];
             p.Path = new List<Vector3>();
             return;

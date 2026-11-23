@@ -87,11 +87,11 @@ public sealed partial class Town
         Vector3 to = _parts.PushOut(p.Pos, r, h);
         to.Y = p.Pos.Y;
         float after = _parts.Gap(to, r, h);
-        if (after >= 0f && OnGrid(to)) { p.Pos = p.Pos.MoveToward(to, PartPace * dt); return; }
+        if (after >= 0f && OnGrid(to)) { p.Pos = Unpressed(p, p.Pos, p.Pos.MoveToward(to, PartPace * dt)); return; } // (never out into anyone)
         // No way clear: never deeper in than it was (one set down in a piece gets out of it by any way not further in).
         Vector3 best = p.Pos;
         float most = gap;
-        if (after > most && OnGrid(to)) { best = p.Pos.MoveToward(to, PartPace * dt); most = _parts.Gap(best, r, h); }
+        if (after > most && OnGrid(to)) { best = Unpressed(p, p.Pos, p.Pos.MoveToward(to, PartPace * dt)); most = _parts.Gap(best, r, h); }
         p.Pos = most >= _parts.Gap(was, r, h) ? best : was;
     }
 
@@ -136,7 +136,7 @@ public sealed partial class Town
         _gapAt.Clear();
         foreach (Person p in People)
         {
-            if (p.Dead || p.Gone || p.Asleep || p.Looks == null || _held.Contains(p) || !all && p.Run == null) continue;
+            if (p.Dead || p.Gone || p.Asleep || p.Looks == null || _held.Contains(p) || !all && (p.Run == null || p.Far)) continue; // (the place down: only those out on runs near enough to be seen)
             // One stepping back to let another by, or stopped a moment for one in the way, is still on their way: counted standing,
             // two face to face would never sort out who gives way in a narrow way.
             bool going = (p.Yield > 0f || p.StuckFor > 0f) && p.Path != null && p.Step < p.Path.Count;
@@ -145,7 +145,7 @@ public sealed partial class Town
             _bodies.Add(p);
             _gapAt.Add(float.NaN);
         }
-        if (_bodies.Count == 0) return;
+        if (_bodies.Count < (all ? 1 : 2)) return;
         // You are a body they keep off too (you aren't moved: your share is dropped); walking into them is the push rule's
         // (Town.Colliders). Your share isn't nothing, so one in you is moved off you at their own give: a braced guard least.
         if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = PlayerGive, Keep = FromStranger }); // (just inside their capsules' touch)

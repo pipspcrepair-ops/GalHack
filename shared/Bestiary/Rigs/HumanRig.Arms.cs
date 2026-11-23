@@ -71,9 +71,10 @@ public sealed partial class HumanRig
             // An elbow asked inside a thick coat sits on its outside instead, the forearm going on from there as asked.
             Transform3D body = Pose[_body];
             Vector3 out_ = body * Shell.PushOut(body.AffineInverse() * elbow, UpperRadius + 0.01f), d = out_ - shoulder, up = body.Basis.Y;
-            // Out round the coat, but no higher than asked: a dropped elbow stays dropped.
-            Vector3 flat = d - up * d.Dot(up);
-            elbow = u.Dot(up) < 0f && flat.Length() < upper * 0.98f ? shoulder + flat - up * MathF.Sqrt(upper * upper - flat.LengthSquared()) : shoulder + d.Normalized() * upper;
+            // Out round the coat, but no higher than asked: a dropped elbow stays dropped (by degrees as the arm comes up to level).
+            Vector3 flat = (d - up * d.Dot(up)).LimitLength(upper), dropped = shoulder + flat - up * MathF.Sqrt(MathF.Max(0f, upper * upper - flat.LengthSquared()));
+            elbow = shoulder + (shoulder + d.Normalized() * upper).Lerp(dropped, Mathf.SmoothStep(0f, 0.2f, -u.Dot(up))) - shoulder;
+            elbow = shoulder + (elbow - shoulder).Normalized() * upper;
         }
         Vector3 hand = elbow + f * fore;
         Vector3 pole = elbow - (shoulder + hand) * 0.5f;
@@ -123,16 +124,59 @@ public sealed partial class HumanRig
         return worst;
     }
 
-    /// <summary>The way each arm's elbow went last time round the body (zero when it hung as asked): tried first, so an arm kept clear stays clear without a search.</summary>
-    readonly Vector3[] _clearPole = new Vector3[2];
+    /// <summary>
+    /// The way each arm's elbow points off the line from its shoulder to its hand, in the body's own frame, as last posed (zero: not
+    /// yet). It turns from there toward the way asked no faster than an elbow swings, and a way round the body is looked for from it:
+    /// an elbow never jumps round its circle between frames, whatever the way asked does (a pose blended through the line, a hand
+    /// passing the shoulder, the body in the way one frame and not the next).
+    /// </summary>
+    readonly Vector3[] _way = new Vector3[2];
+
+    /// <summary>How fast an elbow swings round the line from its shoulder to its hand, radians a second.</summary>
+    const float ElbowSwing = 14f;
+
+    /// <summary>How far each arm's shoulder and hand were moved off where they were asked last frame to keep the arm out of the body (body frame; shoulder, hand, by arm).</summary>
+    readonly Vector3[] _shift = new Vector3[4];
+
+    /// <summary>Each arm's hinge as last posed (body frame), and how fast an arm rolls about its own length, radians a second.</summary>
+    readonly Vector3[] _hinge = new Vector3[2];
+    const float ArmRoll = 15f;
+
+    /// <summary>How fast those moves change, m a second.</summary>
+    const float Shift = 2f;
+
+    /// <summary>How much of an arm's reach its last straightening is eased over: near straight an elbow swings far for a small move of the hand.</summary>
+    const float SoftElbow = 0.04f;
+
+    /// <summary>Shoulder to hand by two-bone IK, the elbow toward the pole, its last straightening eased (<see cref="SoftElbow"/>).</summary>
+    static (Vector3 elbow, Vector3 wrist) ArmIK(Vector3 shoulder, Vector3 hand, float upper, float fore, Vector3 pole) => LeggedRig.SolveIK(shoulder, hand, upper, fore, pole, SoftElbow);
+
+    /// <summary>The part of <paramref name="v"/> square to <paramref name="axis"/> (a unit vector), unit length; zero if it has none.</summary>
+    static Vector3 Square(Vector3 v, Vector3 axis)
+    {
+        v -= axis * v.Dot(axis);
+        return v.LengthSquared() > 1e-8f ? v.Normalized() : Vector3.Zero;
+    }
+
+    /// <summary>The way an arm's elbow goes this frame: from where it went last, toward <paramref name="pole"/> as fast as an elbow swings.</summary>
+    Vector3 ElbowWay(int arm, Vector3 shoulder, Vector3 hand, Vector3 pole, Vector3 outward)
+    {
+        Vector3 axis = (hand - shoulder).Normalized(), want = Square(pole, axis);
+        if (want == Vector3.Zero) want = Square(outward, axis);
+        Vector3 was = Square(Pose[_body].Basis * _way[arm], axis);
+        if (was == Vector3.Zero || _dt <= 0f) return want;
+        float a = MathF.Atan2(axis.Dot(was.Cross(want)), was.Dot(want)), step = ElbowSwing * _dt;
+        return MathF.Abs(a) <= step ? want : was.Rotated(axis, MathF.Sign(a) * step);
+    }
 
     /// <summary>
-    /// Shoulder to hand by IK, the elbow toward the pole, kept out of the torso: a hand asked inside
-    /// it (or the head) is moved off its skin, and an arm that would pass through swings its elbow out
-    /// to the side (as a real one does) and, failing that, takes the hand further out to the side. A hand
-    /// on a weapon stays on its grip (the hold keeps the weapon itself clear of the body).
+    /// Shoulder to hand by IK, the elbow toward the pole (turned to it as an elbow swings, <see cref="ElbowWay"/>), kept out of the
+    /// torso: a hand asked inside it (or the head) is moved off its skin, and an arm that would pass through swings its elbow round
+    /// (as a real one does) to the nearest way that clears from where it was and, failing that, takes the hand further out to the
+    /// side. A hand on a weapon stays on its grip (the hold keeps the weapon itself clear of the body). Also the elbow's hinge (square
+    /// to the arm's bend, toward the body's right with the elbow back): the arm's bones roll with it.
     /// </summary>
-    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, ref Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, in Frame F, int arm, in HandSpec spec, Vector3 grips, float gripW, Vector3 gripFore, bool held)
+    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, ref Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, in Frame F, int arm, in HandSpec spec, Vector3 grips, float gripW, Vector3 gripFore, bool held, out Vector3 hinge)
     {
         Vector3 outward = F.Out, ahead = F.Ahead;
         Frame frame = F;
@@ -147,7 +191,41 @@ public sealed partial class HumanRig
             float sunk = SunkIn(inv, sh, elbow, wrist, 0.15f);
             return sunk > 0f || !handToo ? sunk : Free(elbow, wrist).Length();
         }
-        (Vector3 e, Vector3 w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
+        pole = ElbowWay(arm, shoulder, hand, pole, outward);
+        Vector3 askedShoulder = shoulder, askedHand = hand, wasWay = _way[arm];
+        // The arm as found, its shoulder and hand moved off where they were asked by no more than they were last frame give or take
+        // what a limb moves in a frame (Shift), and its elbow swung round from the way it went as far as an elbow swings:
+        // what clears the body changes in a step between frames (a coat grazed, or no longer), the arm never does.
+        (Vector3 e, Vector3 w) Done(Vector3 sh, (Vector3 e, Vector3 w) r, Vector3 way, out Vector3 h, out Vector3 shoulderAt)
+        {
+            Basis b = body.Basis, bi = b.Inverse();
+            Vector3 cs = bi * (sh - askedShoulder), ch = bi * (r.w - askedHand);
+            if (_dt > 0f) (cs, ch) = (_shift[arm * 2].MoveToward(cs, Shift * _dt), _shift[arm * 2 + 1].MoveToward(ch, Shift * _dt));
+            (_shift[arm * 2], _shift[arm * 2 + 1]) = (cs, ch);
+            (shoulderAt, sh) = (askedShoulder + b * cs, askedShoulder + b * cs);
+            Vector3 hd = askedHand + b * ch, along = (hd - sh).Normalized();
+            way = Square(way, along);
+            Vector3 was = Square(b * wasWay, along);
+            if (way == Vector3.Zero) way = was != Vector3.Zero ? was : Square(outward, along);
+            if (was != Vector3.Zero && _dt > 0f)
+            {
+                float a = MathF.Atan2(along.Dot(was.Cross(way)), was.Dot(way)), step = ElbowSwing * _dt;
+                if (MathF.Abs(a) > step) way = was.Rotated(along, MathF.Sign(a) * step);
+            }
+            if (way != Vector3.Zero) _way[arm] = bi * way;
+            // The hinge, rolled from the last no faster than an arm rolls: where the elbow's way is barely off the arm's line (a
+            // straight arm turning about its own length) it has no side of its own, and the bones keep to the one they had.
+            h = way != Vector3.Zero ? way.Cross(along) : Square(outward, along);
+            Vector3 hadHinge = Square(b * _hinge[arm], along);
+            if (hadHinge != Vector3.Zero && _dt > 0f)
+            {
+                float a = MathF.Atan2(along.Dot(hadHinge.Cross(h)), hadHinge.Dot(h)), step = ArmRoll * _dt;
+                if (MathF.Abs(a) > step) h = hadHinge.Rotated(along, MathF.Sign(a) * step);
+            }
+            _hinge[arm] = bi * h;
+            return ArmIK(sh, hd, upper, fore, way);
+        }
+        (Vector3 e, Vector3 w) = ArmIK(shoulder, hand, upper, fore, pole);
         if (held)
         {
             // On a grip it stays on it, give or take a hand's clearance of the body (never more than 3 cm).
@@ -156,9 +234,9 @@ public sealed partial class HumanRig
                 Vector3 nudge = Free(e, w);
                 if (nudge.LengthSquared() < 1e-6f) break;
                 hand += nudge.Length() > 0.03f ? nudge.Normalized() * 0.03f : nudge;
-                (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
+                (e, w) = ArmIK(shoulder, hand, upper, fore, pole);
             }
-            return (e, w);
+            return Done(shoulder, (e, w), pole, out hinge, out shoulder);
         }
         bool clear = false;
         for (int k = 0; k < 6 && !clear; k++)
@@ -167,56 +245,128 @@ public sealed partial class HumanRig
             clear = push.LengthSquared() < 1e-6f;
             if (clear) break;
             hand += push;
-            (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
+            (e, w) = ArmIK(shoulder, hand, upper, fore, pole);
         }
-        if (Shell == null) return (e, w);
+        if (Shell == null) return Done(shoulder, (e, w), pole, out hinge, out shoulder);
         float least = Through(shoulder, e, w, !clear);
-        if (least <= 0f)
-        {
-            _clearPole[arm] = Vector3.Zero;
-            return (e, w);
-        }
-        // Where it went last time, if that still clears and is near what was asked.
-        if (_clearPole[arm].Dot(pole.Normalized()) > 0.3f)
-        {
-            (Vector3 e1, Vector3 w1) = LeggedRig.SolveIK(shoulder, hand, upper, fore, _clearPole[arm]);
-            if (Through(shoulder, e1, w1, true) <= 0f) return (e1, w1);
-        }
-        // Through the body: the elbow round its circle to the nearest way that clears it; failing all of
-        // them, the shoulder brought forward a little (as one reaching across the chest does), then the
-        // hand a step out to the side, forward or up, by turns, and round again.
+        if (least <= 0f) return Done(shoulder, (e, w), pole, out hinge, out shoulder);
+        // Through the body: the elbow round its circle to the nearest way that clears it (from the way it went last, found to a degree
+        // or two); failing all of them, the shoulder brought forward a little (as one reaching across the chest does), then the hand a
+        // step out to the side, forward or up, by turns, and round again: only as far into the last step as clears it. Nothing is
+        // taken in whole steps, so nothing jumps a step between frames.
         (Vector3, Vector3) fallback = (e, w);
-        Vector3 fallbackShoulder = shoulder;
+        Vector3 fallbackShoulder = shoulder, fallbackWay = pole;
+        const float Notch = MathF.Tau / 16f;
+        // The way nearest the way it went that clears, within this far round (radians), with the arm; false if none.
+        bool Round(Vector3 sh, Vector3 hd, float most, out (Vector3 e, Vector3 w) arm, out Vector3 way)
+        {
+            Vector3 axis = (hd - sh).Normalized();
+            Vector3 b1 = Square(pole, axis);
+            if (b1 == Vector3.Zero) b1 = Square(outward, axis);
+            Vector3 b2 = axis.Cross(b1);
+            bool Clears(float a, out (Vector3, Vector3) r, out Vector3 p)
+            {
+                p = b1 * MathF.Cos(a) + b2 * MathF.Sin(a);
+                r = ArmIK(sh, hd, upper, fore, p);
+                float sunk = Through(sh, r.Item1, r.Item2, true);
+                if (sunk > 0f && sunk < least) (least, fallback, fallbackShoulder, fallbackWay) = (sunk, r, sh, p);
+                return sunk <= 0f;
+            }
+            for (int j = 0; j <= 8 && j * Notch <= most + 1e-3f; j++)
+                for (int side = 1; side >= (j == 0 || j == 8 ? 1 : -1); side -= 2)
+                {
+                    if (!Clears(side * j * Notch, out arm, out way)) continue;
+                    // (Between the last notch that was in the way and this one: as near the way it went as clears, to 1.4 degrees.)
+                    float lo = side * (j - 1) * Notch, hi = side * j * Notch;
+                    for (int n = 0; j > 0 && n < 4; n++)
+                    {
+                        float mid = (lo + hi) * 0.5f;
+                        if (Clears(mid, out var r, out Vector3 p)) (hi, arm, way) = (mid, r, p);
+                        else lo = mid;
+                    }
+                    return true;
+                }
+            (arm, way) = (default, Vector3.Zero);
+            return false;
+        }
         for (int k = 0; k < 17; k++)
         {
-            Vector3 axis = (hand - shoulder).Normalized();
-            Vector3 b1 = pole - axis * pole.Dot(axis);
-            if (b1.LengthSquared() < 1e-6f) b1 = outward - axis * outward.Dot(axis);
-            b1 = b1.Normalized();
-            Vector3 b2 = axis.Cross(b1);
-            float bestScore = -9f;
-            Vector3 best = Vector3.Zero;
-            for (int j = 0; j < 16; j++)
+            float most = k >= 6 ? MathF.PI : 0.79f;
+            if (Round(shoulder, hand, most, out var found, out Vector3 way))
             {
-                float a = MathF.Tau * j / 16f;
-                Vector3 p = b1 * MathF.Cos(a) + b2 * MathF.Sin(a);
-                (Vector3 e2, Vector3 w2) = LeggedRig.SolveIK(shoulder, hand, upper, fore, p);
-                float sunk = Through(shoulder, e2, w2, true);
-                // (Near the elbow it was asked for first: a hand moved a little out reads better than an elbow thrown up.)
-                if (sunk <= 0f && MathF.Cos(a) > bestScore && (k >= 6 || MathF.Cos(a) > 0.7f)) { bestScore = MathF.Cos(a); (e, w) = (e2, w2); best = p; }
-                else if (sunk < least) { least = sunk; fallback = (e2, w2); fallbackShoulder = shoulder; }
-            }
-            if (bestScore > -9f)
-            {
-                _clearPole[arm] = k == 0 ? best : Vector3.Zero;
-                return (e, w);
+                if (k > 0)
+                {
+                    // Only as far into the last step as clears.
+                    Vector3 sh0 = shoulder - (k <= 2 ? ahead * 0.025f : Vector3.Zero), hd0 = hand - (k > 2 ? Step(k - 1) : Vector3.Zero);
+                    float lo = 0f, hi = 1f;
+                    Vector3 sh = shoulder, hd = hand;
+                    for (int n = 0; n < 4; n++)
+                    {
+                        float t = (lo + hi) * 0.5f;
+                        Vector3 s1 = sh0.Lerp(shoulder, t), h1 = hd0.Lerp(hand, t);
+                        if (Round(s1, h1, most, out var r, out Vector3 p)) (hi, found, way, sh) = (t, r, p, s1);
+                        else lo = t;
+                    }
+                    shoulder = sh;
+                }
+                return Done(shoulder, found, way, out hinge, out shoulder);
             }
             if (k < 2) shoulder += ahead * 0.025f;
-            else hand += (k % 3 == 0 ? outward : k % 3 == 1 ? ahead : body.Basis.Y) * 0.05f;
+            else hand += Step(k);
         }
+        Vector3 Step(int k) => (k % 3 == 0 ? outward : k % 3 == 1 ? ahead : body.Basis.Y) * 0.05f;
         shoulder = fallbackShoulder;
-        _clearPole[arm] = Vector3.Zero;
-        return fallback;
+        return Done(shoulder, fallback, fallbackWay, out hinge, out shoulder);
+    }
+
+    /// <summary>
+    /// A mark the arms are turned to (a weapon's, a pointing hand's), as far as they have swung to it: round from the body's heading and
+    /// up from level, radians (yaw NaN: none yet). A new mark, or one passing behind the body, is swung onto across the front, never
+    /// snapped to; once on it, it is the mark itself.
+    /// </summary>
+    struct Swing
+    {
+        float _yaw, _pitch, _yawRate, _pitchRate;
+        public Swing() => _yaw = float.NaN;
+
+        /// <summary>How quickly arms come onto a new mark (a critically damped swing's rate, 1/s: most of the way in a quarter second, sped up and slowed down smoothly); how far round from the body's heading they point at most (the waist's turn and the arms').</summary>
+        const float Quick = 12f, Round = 1.5f;
+
+        public Vector3? Toward(Vector3? mark, Vector3 from, float heading, float dt)
+        {
+            Vector3 to = (mark ?? from) - from;
+            float flat = new Vector2(to.X, to.Z).Length();
+            if (mark == null) _yaw = float.NaN;
+            if (mark == null || flat < 0.3f) return mark;
+            float yaw = Math.Clamp(Geo.WrapAngle(MathF.Atan2(-to.X, -to.Z) - heading), -Round, Round), pitch = MathF.Atan2(to.Y, flat);
+            if (float.IsNaN(_yaw) || dt <= 0f) (_yaw, _pitch, _yawRate, _pitchRate) = (yaw, pitch, 0f, 0f);
+            else
+            {
+                Follow(ref _yaw, ref _yawRate, yaw, dt);
+                Follow(ref _pitch, ref _pitchRate, pitch, dt);
+            }
+            return from + new Basis(Vector3.Up, heading + _yaw) * new Vector3(0f, MathF.Sin(_pitch), -MathF.Cos(_pitch)) * to.Length();
+        }
+
+        static void Follow(ref float x, ref float v, float target, float dt)
+        {
+            v += (Quick * Quick * (target - x) - 2f * Quick * v) * dt;
+            x += v * dt;
+        }
+    }
+
+    Swing _aimed = new(), _shown = new();
+
+    /// <summary>The gesture with its marks (<see cref="Gesture.AimAt"/>, <see cref="Gesture.ActAt"/>) where the arms have swung to so far.</summary>
+    Gesture Aimed(in Gesture g)
+    {
+        Vector3 from = g.Feet + Vector3.Up * _f.Height * 0.75f;
+        Gesture aimed = g;
+        // (Raised with no mark, or the mark lost: along the look, as the hold has it then, swung to like any other.)
+        Vector3? mark = g.AimAt ?? (g.Aim > 0f ? from + new Basis(Vector3.Up, g.Yaw + Math.Clamp(g.Look, -0.6f, 0.6f)) * Vector3.Forward * 10f : null);
+        aimed.AimAt = _aimed.Toward(mark, from, g.Yaw, _dt);
+        aimed.ActAt = _shown.Toward(g.Act == BodyAct.None ? null : g.ActAt, from, g.Yaw, _dt) ?? g.ActAt;
+        return aimed;
     }
 
     /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or the thing pointed at is off to the left.</summary>
@@ -246,13 +396,12 @@ public sealed partial class HumanRig
     /// elbows stay down unless the act lifts them (hands up, a wave, a salute), and everything
     /// moves on the clock, so nothing is a held pose.
     /// </summary>
-    ArmGoal ActArm(in Gesture g, int i, bool doer, Vector3 shoulder, Vector3 neck, Basis torso, Basis head, float upper, float fore)
+    ArmGoal ActArm(in Gesture g, int i, Vector3 shoulder, Vector3 neck, Basis torso, Basis head, float upper, float fore)
     {
         float side = i == 0 ? -1f : 1f;
         var F = new Frame(torso, side);
         float t = g.Clock, arm = upper + fore;
         Figure f = _f;
-        if (OneHanded(g) && !doer) return default;
         switch (g.Act)
         {
             case BodyAct.HandsUp:

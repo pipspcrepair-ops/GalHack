@@ -392,7 +392,7 @@ public partial class CrowdTest : Node
                 Creature o = live.Where(x => x != c).OrderBy(x => WildSim.Flat(x.Position - c.Position).Length() - x.Radius).FirstOrDefault();
                 if (o == null) continue;
                 float nearest = WildSim.Flat(o.Position - c.Position).Length() - c.Radius - o.Radius;
-                if (-nearest > _herdWorst) (_herdWorst, _herdWorstAt) = (-nearest, $"{c.State}{(c.Species.Adult != null ? " young" : "")} and {o.State}{(o.Species.Adult != null ? " young" : "")}, {(alarmed ? "alarmed" : "grazing")}; spaced {c.Spaced}/{o.Spaced}, step every {c.StepEvery}/{o.StepEvery}, kept {c.Keeper != null}/{o.Keeper != null}, room {c.Room.Length():F2}/{o.Room.Length():F2}, speed {WildSim.Flat(c.Velocity).Length():F2}/{WildSim.Flat(o.Velocity).Length():F2}, dormant {c.Dormant}/{o.Dormant}");
+                if (-nearest > _herdWorst) (_herdWorst, _herdWorstAt) = (-nearest, $"{c.State}{(c.Species.Adult != null ? " young" : "")} and {o.State}{(o.Species.Adult != null ? " young" : "")}, {(alarmed ? "alarmed" : "grazing")}; spaced {c.Spaced}/{o.Spaced}, step every {c.StepEvery}/{o.StepEvery}, kept {c.Keeper != null}/{o.Keeper != null}, speed {WildSim.Flat(c.Velocity).Length():F2}/{WildSim.Flat(o.Velocity).Length():F2}, dormant {c.Dormant}/{o.Dormant}");
                 // (The young at their mothers' sides are not the herd's spacing.)
                 if (c.Species.Adult == null && o.Species.Adult == null && (!alarmed || c.State == CState.Flee)) (alarmed ? _alarmed : _calm).Add(nearest);
             }

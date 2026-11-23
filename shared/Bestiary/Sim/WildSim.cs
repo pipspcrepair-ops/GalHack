@@ -529,8 +529,13 @@ public sealed class WildSim
             float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
+            // Never put down in or crowding one already put down (asleep till you come near, it would never be parted): on round till clear.
+            Species kind = i < young ? species.Young : species;
+            float gap = herd != null ? Brain.GrazeKeep(kind.Stats.Radius) : 0.1f;
+            for (int k = 0; k < 8 && list.Exists(o => Flat(o.Position - p).Length() < o.Radius + kind.Stats.Radius + gap); k++)
+                p = FreeSpot(p + new Vector3(MathF.Cos(a + k * 0.8f), 0f, MathF.Sin(a + k * 0.8f)) * (kind.Stats.Radius * 2f + gap), rng);
             if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species)) continue;
-            list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
+            list.Add(Spawn(kind, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
         if (herd?.Party != null && list.Count > 0) Kennel(herd, center, rng, allow);
@@ -663,9 +668,10 @@ public sealed class WildSim
     /// <summary>
     /// Whether a body keeps its personal space: one on the ground or a floor (not one closing to strike or seize: an attack
     /// needs its reach; in a cave or a place, not a climber holding its walls; not a swarm, a cloud, nor a gas bag, which floats).
+    /// One asleep for being far from you is a body too, one that is not moved: others awake keep off it.
     /// </summary>
     public static bool Spaced(Creature c) =>
-        !(c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
+        !(c.Removed || c.Dead || c.HeldBy != null || c.Holding != null || c.Attacking || c.Thrown || c.InWalls
           || c.Space != null && (c.Species.Climbs || c.Falling)
           || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed && c.Space == null);
 
@@ -685,7 +691,7 @@ public sealed class WildSim
             c.Spaced = _spaced.Count;
             inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
-            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Dormant ? 0f : c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
             _spaced.Add(c);
         }
         if (_spaced.Count == 0) return;
