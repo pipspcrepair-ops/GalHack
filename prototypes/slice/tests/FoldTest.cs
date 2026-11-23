@@ -160,10 +160,11 @@ public partial class FoldTest : Node
         float reach = (float)_ship.Power.JumpReach(Spaceflight.FoldDrive);
         List<int> nearHome = Catalogue.Neighbours(home, reach);
         if (!Check(nearHome.Count > 0, $"stars within the drive's reach of home ({reach:F0} LY): {nearHome.Count}")) yield break;
-        int a = nearHome[_rng.Next(nearHome.Count)];
-        List<int> nearA = Catalogue.Neighbours(a, reach).Where(s => s != home).ToList();
-        if (!Check(nearA.Count > 0, $"stars within reach of {Catalogue.Name(a)} besides home: {nearA.Count}")) yield break;
-        int b = nearA[_rng.Next(nearA.Count)];
+        // A and B at random, so that each leg is one jump: home to A, A to B, B back home.
+        var homeSide = new HashSet<int>(nearHome);
+        var legs = nearHome.OrderBy(_ => _rng.Next()).Select(s => (a: s, bs: Catalogue.Neighbours(s, reach).Where(o => o != home && homeSide.Contains(o)).ToList())).FirstOrDefault(p => p.bs.Count > 0);
+        if (!Check(legs.bs != null, $"two stars in reach of home and of each other ({nearHome.Count} in reach of home)")) yield break;
+        int a = legs.a, b = legs.bs[_rng.Next(legs.bs.Count)];
         GD.Print($"route: home {Catalogue.Name(home)} ({home}) → A {Catalogue.Name(a)} ({a}) → B {Catalogue.Name(b)} ({b}) → home → A");
         if (Shooting)
         {
