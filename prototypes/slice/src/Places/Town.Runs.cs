@@ -47,6 +47,8 @@ public sealed class ScavRun
     public int Spot, Searched;
     /// <summary>The metre cells (world) along the way and round the find with no water in them, found when it was planned (on a worker).</summary>
     public HashSet<long> Dry;
+    /// <summary>The rain where they were last looked at, and the time till the next look, s.</summary>
+    public float Rain, RainIn;
     public bool DryAt(Vector3 world) => Dry != null && Dry.Contains(Cell((int)MathF.Floor(world.X), (int)MathF.Floor(world.Z)));
     public static long Cell(int x, int z) => ((long)x << 32) ^ (uint)z;
 }
@@ -58,6 +60,8 @@ public sealed partial class Town
     /// <summary>How long a spot round a find is searched, s (and the spots searched at most).</summary>
     const float SearchEach = 12f;
     const int SearchSpots = 4;
+    /// <summary>How often the rain over one of them out on the land is looked at, s.</summary>
+    const float RainEvery = 3f;
     /// <summary>Their pace out on the land at the least, m/s: a brisk walk, with a day's walk to make.</summary>
     const float Brisk = 1.5f;
     /// <summary>How near something has to be to one of them out on the land to be seen as on their way, m.</summary>
@@ -411,7 +415,9 @@ public sealed partial class Town
     void Trek(Person p, Vector3 player, Mood mood, bool offDuty, float dt)
     {
         ScavRun r = p.Run;
-        float rain = _places.Zone.Weather?.Sim?.RainAt(World(p.Pos)) ?? 0f;
+        // (The rain where they are, looked at every few seconds: it comes and goes over minutes, and a look is a sample of the land's weather.)
+        if ((r.RainIn -= dt) <= 0f) (r.RainIn, r.Rain) = (RainEvery, _places.Zone.Weather?.Sim?.RainAt(World(p.Pos)) ?? 0f);
+        float rain = r.Rain;
         bool frightened = p.ScaredFor > 0f || r.Wronged && !Fighter(p);
         // (Something only to keep wide of, they keep wide of and go on.)
         string why = r.Home ? null : frightened ? "frightened" : r.Wronged ? "turned on" : offDuty || Night() ? "the day over" : rain > 0.5f ? "rain" : Late(p) ? "late" : null;
