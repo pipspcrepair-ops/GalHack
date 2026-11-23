@@ -435,7 +435,15 @@ public partial class Spaceflight
     /// </summary>
     void FreeAbroad(Abroad a)
     {
-        foreach (SurfaceZone z in a.Zones.ToList())
+        var gone = a.Zones.ToList();
+        // Nothing keeps a hold on them: where a world of it was left from, the jumps made in it.
+        foreach (Celestial c in a.Orbits.SelectMany(o => o.Bodies)) _leftAt.Remove(c);
+        foreach (Jump j in Jumps.Where(j => !j.Running))
+        {
+            if (gone.Contains(j.From)) j.From = null;
+            if (j.Arrived is { } at && gone.Contains(at.Zone)) j.Arrived = null;
+        }
+        foreach (SurfaceZone z in gone)
         {
             if (z is OrbitZone o && o.Space != null)
             {

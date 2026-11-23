@@ -127,8 +127,13 @@ public partial class PhysicsHost : Node
         for (int i = 0; i < _bindings.Count; i++) _bindings[i].Sync(this, dt);
         World.ApplyForces(dt);
         World.Integrate(dt);
+        // A body whose node is switched off (put away a piece at a time, ahead of its zone being parked) is out of the
+        // physics space: nothing to sweep it through, and it stays where it is till its node is back.
         for (int i = 0; i < _moveOrder.Count; i++)
-            if (_moveOrder[i].Body.Motion == Motion.Kinematic) _moveOrder[i].Move(this, dt);
+        {
+            BodyBinding m = _moveOrder[i];
+            if (m.Body.Motion == Motion.Kinematic && (m.Collider == null || m.Collider.IsInsideTree() && m.Collider.CanProcess())) m.Move(this, dt);
+        }
         // Landed vessels parked on a host ride it: placed by the host's motion this tick, now that it has moved.
         World.CarryParked();
         for (int i = 0; i < _bindings.Count; i++)

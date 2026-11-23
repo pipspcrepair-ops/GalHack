@@ -231,7 +231,11 @@ public partial class Spaceflight
             return new JumpArrival(o, at, turn);
         }
 
-        public void Left(Spaceflight flight, SurfaceZone from) => flight.LeaveOrbit(from);
+        public void Left(Spaceflight flight, SurfaceZone from)
+        {
+            flight.LeaveOrbit(from);
+            (_zone, _home, _making) = (null, null, null); // the jump's record keeps no hold on a zone (a system folded away from is freed)
+        }
 
         public void Dropped(Spaceflight flight)
         {
