@@ -276,10 +276,10 @@ public partial class Spaceflight
             if (_away == null) flight.HomeParked = false; // home's star: the start system's zones in play again (each still parked till you go to it)
             flight.Restore(flight.Away);
             flight.Charts.Visited.Add(_star);
-            (_away, _zone) = (null, null); // the jump's record keeps no hold on a system once it is let go of
             flight.Game.Progress.Discover("fold", 200, "folded to another star");
             LeftMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             GD.Print($"[fold: the system left {(left != null ? "freed" : _away != null ? "parked" : "in play again")} in {LeftMs:F1} ms; the longest tick making it {WorstStageMs:F1} ms, {WorstStage}]");
+            (_away, _zone) = (null, null); // the jump's record keeps no hold on a system once it is let go of
         }
 
         public void Dropped(Spaceflight flight)
@@ -320,6 +320,8 @@ public partial class Spaceflight
         HomeParked = true;
         // No weather out there: the start world's wind and rain on every material stop (its weather sets them again once you are down).
         foreach (string w in new[] { "weather_wind", "weather_ground", "weather_flash" }) RenderingServer.GlobalShaderParameterSet(w, Vector4.Zero);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var took = new System.Text.StringBuilder();
         foreach (SurfaceZone z in HomeZones())
         {
             if (z is OrbitZone o)
@@ -333,7 +335,10 @@ public partial class Spaceflight
             Park(z);
             if (z is not OrbitZone) Mute(z); // a surface's sky and light off (an orbit's are its space sky's, off above)
             Silence(z);
+            took.Append($"{z.Name} {watch.Elapsed.TotalMilliseconds:F1}, ");
+            watch.Restart();
         }
+        GD.Print($"[fold: parked {took}]");
     }
 
     /// <summary>The start system's zones: its world's surface, and every orbit made in it with the surfaces in them.</summary>

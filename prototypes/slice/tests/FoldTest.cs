@@ -86,11 +86,21 @@ public partial class FoldTest : Node
     long _lastFrame;
     bool _timing;
     readonly List<double> _frames = new();
+    readonly List<string> _frameAt = new();
+    TimeSpan _gcWas;
 
     public override void _Process(double delta)
     {
         long now = Stopwatch.GetTimestamp();
-        if (_timing && _lastFrame != 0) _frames.Add(Stopwatch.GetElapsedTime(_lastFrame, now).TotalMilliseconds);
+        TimeSpan gc = GC.GetTotalPauseDuration();
+        if (_timing && _lastFrame != 0)
+        {
+            _frames.Add(Stopwatch.GetElapsedTime(_lastFrame, now).TotalMilliseconds);
+            Jump j = _game?.Spaceflight?.Jumping;
+            double paused = (gc - _gcWas).TotalMilliseconds;
+            _frameAt.Add((j == null ? "" : j.Running ? $"{j.Now} {(j.Now == Jump.Stage.Spool ? j.Spooled * 100 : j.InTunnel):F1}" : "after") + (paused > 1 ? $", GC {paused:F0} ms" : ""));
+        }
+        _gcWas = gc;
         _lastFrame = now;
     }
 
@@ -99,7 +109,8 @@ public partial class FoldTest : Node
         if (_frames.Count == 0) return "no frames";
         var sorted = _frames.OrderBy(f => f).ToList();
         double worst = sorted[^1], p99 = sorted[(int)(sorted.Count * 0.99)], over = sorted.Count(f => f > 16.7);
-        return $"{sorted.Count} frames, worst {worst:F1} ms, 99th {p99:F1} ms, median {sorted[sorted.Count / 2]:F1} ms, {over} over 16.7 ms";
+        string worstThree = string.Join("; ", Enumerable.Range(0, _frames.Count).OrderByDescending(i => _frames[i]).Take(3).Select(i => $"{_frames[i]:F0} ms ({_frameAt[i]})"));
+        return $"{sorted.Count} frames, worst {worst:F1} ms, 99th {p99:F1} ms, median {sorted[sorted.Count / 2]:F1} ms, {sorted.Count(f => f > 25)} over 25 ms; worst: {worstThree}";
     }
 
     bool Check(bool ok, string what)
@@ -311,6 +322,7 @@ public partial class FoldTest : Node
         if (!Check(fault == null, $"the fold drive can make it: {fault ?? "IN REACH"} ({Flight.CrystalTo(star)} fold crystal, {_ship.Power.Range(Spaceflight.FoldDrive)?.Reach:F0} LY on the gauge)")) yield break;
         int folds = Flight.Folds.Count();
         _frames.Clear();
+        _frameAt.Clear();
         _timing = true;
         string refused = Flight.Fold(star);
         if (!Check(refused == null, $"FOLD: the drive spools ({refused ?? $"{_ship.Power.SpoolLeft:F0} s"})")) { _timing = false; yield break; }
