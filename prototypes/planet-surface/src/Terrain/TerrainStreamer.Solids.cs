@@ -30,7 +30,8 @@ public partial class TerrainStreamer
     }
 
     readonly Dictionary<(int, int), SolidColumn> _solidColumns = new();
-    readonly Dictionary<(bool, int, int, int), Rid> _solidShapes = new();
+    /// <summary>The shapes the near columns' solids share, by size, with how many solids use each: one goes with its last user.</summary>
+    readonly Dictionary<(bool, int, int, int), (Rid Shape, int Users)> _solidShapes = new();
     HashSet<long> _felledSnapshot = new();
 
     /// <summary>Solid colliders (trunks and boulders) in the near columns right now.</summary>
@@ -170,9 +171,14 @@ public partial class TerrainStreamer
     Rid ShapeOf(FloraSolid s)
     {
         if (s.IsCanopy) return CanopyShape(s);
-        var key = (s.IsTrunk, Mathf.RoundToInt(s.Extents.X * 25f), Mathf.RoundToInt(s.Extents.Y * 5f), Mathf.RoundToInt(s.Extents.Z * 25f));
-        if (_solidShapes.TryGetValue(key, out Rid shape)) return shape;
+        var key = SizeOf(s);
+        if (_solidShapes.TryGetValue(key, out var held))
+        {
+            _solidShapes[key] = (held.Shape, held.Users + 1);
+            return held.Shape;
+        }
         var e = new Vector3(key.Item2 / 25f, key.Item3 / 5f, key.Item4 / 25f);
+        Rid shape;
         if (s.IsTrunk)
         {
             shape = PhysicsServer3D.CylinderShapeCreate();
@@ -183,13 +189,33 @@ public partial class TerrainStreamer
             shape = PhysicsServer3D.BoxShapeCreate();
             PhysicsServer3D.ShapeSetData(shape, e);
         }
-        _solidShapes[key] = shape;
+        _solidShapes[key] = (shape, 1);
         return shape;
     }
 
+    static (bool, int, int, int) SizeOf(FloraSolid s) =>
+        (s.IsTrunk, Mathf.RoundToInt(s.Extents.X * 25f), Mathf.RoundToInt(s.Extents.Y * 5f), Mathf.RoundToInt(s.Extents.Z * 25f));
+
+    /// <summary>
+    /// A column's body goes, and with it its hold on the shared shapes: one no column uses any more is freed (kept, every
+    /// size met over the ground flown or walked stayed for good: 56, 497, 542 shapes over a warp test's three loops).
+    /// </summary>
     void FreeSolids(SolidColumn c)
     {
-        if (c.Body.IsValid) PhysicsServer3D.FreeRid(c.Body);
+        if (c.Body.IsValid)
+        {
+            PhysicsServer3D.FreeRid(c.Body);
+            foreach (FloraSolid s in c.Solids)
+            {
+                if (s.IsCanopy || !_solidShapes.TryGetValue(SizeOf(s), out var held)) continue;
+                if (held.Users > 1) _solidShapes[SizeOf(s)] = (held.Shape, held.Users - 1);
+                else
+                {
+                    PhysicsServer3D.FreeRid(held.Shape);
+                    _solidShapes.Remove(SizeOf(s));
+                }
+            }
+        }
         c.Body = default;
         c.Solids.Clear();
     }
@@ -236,7 +262,7 @@ public partial class TerrainStreamer
     public override void _ExitTree()
     {
         if (World != null) ClearSolids();
-        foreach (Rid shape in _solidShapes.Values) PhysicsServer3D.FreeRid(shape);
+        foreach (var (shape, _) in _solidShapes.Values) PhysicsServer3D.FreeRid(shape);
         _solidShapes.Clear();
         foreach (Rid shape in _canopyShapes.Values) PhysicsServer3D.FreeRid(shape);
         _canopyShapes.Clear();

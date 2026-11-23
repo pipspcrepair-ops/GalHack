@@ -204,6 +204,8 @@ public partial class WarpTest : Node
         Check(b.ManagedMb < a.ManagedMb * 1.15 + 40 && b.StaticMb < a.StaticMb * 1.10 + 64,
             $"memory back at level: managed {b.ManagedMb:F0} MB (was {a.ManagedMb:F0}), engine {b.StaticMb:F0} MB (was {a.StaticMb:F0})");
         Check(b.Zones == a.Zones, $"no zone made twice: {b.Zones} zones after both loops");
+        long ShapesAfter(int back) => _held.Count >= back ? _held[^back].GetValueOrDefault("TerrainStreamer._solidShapes") : -1;
+        Check(_held.Count >= 2 && Within(ShapesAfter(1), ShapesAfter(2), 0.02, 4), $"the ground's shared physics shapes hold their level: {ShapesAfter(1)} shapes held by every world's near columns (was {ShapesAfter(2)})");
         Check(Flight.Jumps.TrueForAll(x => x.Running || x.From == null && x.Arrived?.Zone == null && x.To.Zone == null),
             $"no finished jump holds a zone, only their names ({Flight.Jumps.Count} jumps; the last from {Flight.Jumps[^1].FromName} to {Flight.Jumps[^1].ArrivedIn})");
         FrameTimes();

@@ -152,6 +152,7 @@ public partial class WarpTest
     // ---- What the game holds, by owner (a leak's census) -------------------------------------------------------------
 
     Dictionary<string, long> _heldWas;
+    readonly List<Dictionary<string, long>> _held = new();
 
     /// <summary>
     /// Every collection and array the game holds, counted by its owner's type and field: the scene's nodes' own, those of
@@ -196,6 +197,7 @@ public partial class WarpTest
         if (_heldWas != null)
             GD.Print($"  (held, grown most since loop {loop - 1}: {string.Join(", ", held.Select(kv => (kv.Key, Was: _heldWas.GetValueOrDefault(kv.Key), Now: kv.Value)).Where(x => x.Now > x.Was).OrderByDescending(x => x.Now - x.Was).Take(14).Select(x => $"{x.Key} {x.Was}->{x.Now}"))})");
         _heldWas = held;
+        _held.Add(held);
     }
 
     // ---- Where the frames go (--split=1) ---------------------------------------------------------------------------
