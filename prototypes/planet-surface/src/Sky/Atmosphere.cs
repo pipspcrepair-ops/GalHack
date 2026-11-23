@@ -74,7 +74,7 @@ public static class Atmosphere
         // The cloud layer sits between the peaks and the top of the atmosphere (about 1,060 m, on
         // Empyrion's scale): its base at 600 to 650 m, its top at about 1,000 m at the most.
         float baseHeight = 650f - 50f * cover * (0.4f + 0.6f * dark);
-        return new AtmosphereState(
+        var air = new AtmosphereState(
             CloudCover: cover,
             CloudDarkness: dark,
             CloudBase: baseHeight,
@@ -93,6 +93,12 @@ public static class Atmosphere
             AirFog = airFog,
             Stratus = MathF.Max(Smooth(0.5f, 0.85f, cover), cold * Smooth(0.2f, 0.6f, cover) * 0.85f) * (1f - cellular),
             Cirrus = (1f - humid) * (1f - humid) * (0.15f + 0.85f * wind) * (1f - Smooth(0.3f, 0.7f, cover)), // mostly none: only dry, windy, fair skies comb it out
+        };
+        // No air (a vacuum moon): nothing to hold a cloud, a haze or a morning fog, nothing to dim the sun, whatever the sky's defaults say.
+        return sky.Thickness > 0f ? air : air with
+        {
+            CloudCover = 0f, Overcast = 0f, FogDensity = 0f, ValleyFog = 0f, ValleyFogDepth = ValleyFogDepthOf(0f), SunScale = 1f, AmbientScale = 1f,
+            GroundFog = 0f, AirFog = 0f, Stratus = 0f, Cirrus = 0f,
         };
     }
 

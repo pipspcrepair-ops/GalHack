@@ -734,7 +734,8 @@ public static class FarBuilder
             solids?.MakeAll(rule.Kind, plant, plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length, id, new Vector3((float)x, rootY, (float)z), scale, angle, job.Solids);
         }
 
-        // Talus: rock fallen from a cliff lies along its foot, the taller the face the more and the bigger,
+        // Talus: rock fallen from a cliff lies along its foot, the taller the face the more and the bigger, and the blocks
+        // a fresh impact threw out lie round its rim (TerrainModel.Thrown), bigger from bigger craters,
         // on whatever the scatter left free (a cell nothing grows in, off water, roads, pads and dug ground).
         // Its own random numbers, so the scatter's are as they were.
         if (job.Lod == 0)
@@ -753,16 +754,18 @@ public static class FarBuilder
                 if (river[s] || height[s] < 0.6f || up[j * grid.Nx + i] < FloraMeshes.MinUp(fallen)) continue;
                 Vector2 under = relief.At(lx, lz, height[s]);
                 // (A face above it: 14 m or more within the lattice's 16 m reach. A hillside's valley floor isn't one.)
-                float lies = Smooth(14f, 34f, under.X) * (1f - Smooth(1.5f, 4f, under.Y));
-                if (Hash.Unit(roll, 2) >= lies * 0.75f) continue;
+                float lies = Smooth(14f, 34f, under.X) * (1f - Smooth(1.5f, 4f, under.Y)) * 0.75f;
                 double x = x0 + lx, z = z0 + lz;
+                // Or blocks a fresh impact threw out round its rim (only where the world keeps its craters).
+                float thrown = pal.Map.Model.Thrown(x, z, out float block) * ThrownCover;
+                if (Hash.Unit(roll, 2) >= MathF.Max(lies, thrown)) continue;
                 if (source.Built(x, z, out bool onRoad) > 0f || onRoad) continue;
                 int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);
                 if (Dug(dug, cx, cz)) continue;
                 float h = source.SurfaceHeight(x, z);
                 if (source.CellDensity(cx, (int)Math.Floor(h - 0.6f), cz) <= 0f) continue;
                 float big = Hash.Unit(roll, 3);
-                float scale = Mathx.Lerp(0.45f, 1.5f, big * big) * Mathx.Lerp(0.7f, 1.25f, Smooth(10f, 40f, under.X)) * FloraMeshes.BaseScale(fallen);
+                float scale = Mathx.Lerp(0.45f, 1.5f, big * big) * (thrown > lies ? block : Mathx.Lerp(0.7f, 1.25f, Smooth(10f, 40f, under.X))) * FloraMeshes.BaseScale(fallen);
                 if (source.Reserved(x, z, Reach(fallen, null, scale))) continue;
                 float angle = Hash.Unit(roll, 4) * Mathf.Tau;
                 float foot = FootRadius(fallen) * scale;
@@ -874,6 +877,9 @@ public static class FarBuilder
     internal static bool Dug(IReadOnlySet<long> dug, int x, int z) => dug != null && (dug.Contains(Key(x, z)) || dug.Contains(Key(x + 1, z)) || dug.Contains(Key(x, z + 1)) || dug.Contains(Key(x - 1, z)) || dug.Contains(Key(x, z - 1)));
 
     const float MaxRockLean = 0.8f;
+
+    /// <summary>The most of the rock scatter's free cells thrown blocks take, on a fresh crater's rim.</summary>
+    const float ThrownCover = 0.3f;
 
     /// <summary>How far a kind's foot reaches from its root, at scale 1: what must stay in the ground on a slope.</summary>
     public static float FootRadius(Flora kind) => kind switch

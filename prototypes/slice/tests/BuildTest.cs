@@ -118,8 +118,9 @@ public partial class BuildTest : Node
         _play = new Playthrough(_game);
         _game.Said += (text, _) => _said.Add(text);
         foreach (int x in _drive.UntilPlaying()) yield return x;
-        _game.Zone.Weather.Bridge.Calm = true;
-        _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        // (An airless world, --type barren, has no weather to calm.)
+        if (_game.Zone.Weather.Bridge != null) _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim?.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         GD.Print("  (systems test: items are handed over and the sleeper teleported where a playthrough would spend minutes)");
         CompassAtStart();
@@ -403,6 +404,7 @@ public partial class BuildTest : Node
             _site = _play.FlatSpot(_game.Start, 70f + attempt * 30f, 0.6f + attempt * 1.7f, 0.4f, span: 14f);
             foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
             LevelSite(14f);
+            Playthrough.Clearing(_game.Zone, _site, 16f); // boulders too (a fresh crater throws them round its rim): they stand between you and the blocks
             foreach (int x in _drive.UntilSettled()) yield return x;
             _site = Ground(_site);
             float ridge = 0f;
@@ -412,7 +414,7 @@ public partial class BuildTest : Node
                 var way = new Vector3(MathF.Cos(k * 0.3927f), 0f, MathF.Sin(k * 0.3927f));
                 standing |= _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(_site + Vector3.Up * 1.2f, _site + Vector3.Up * 1.2f + way * 12f, GalHack.Physics.Layers.World)).Count > 0;
                 for (float r = 2f; r <= 12f; r += 2f)
-                    ridge = MathF.Max(ridge, MathF.Abs(_game.Zone.GroundAt(_site.X + way.X * r, _site.Z + way.Z * r).Y - _site.Y));
+                    ridge = MathF.Max(ridge, MathF.Abs(Ground(new Vector3(_site.X + way.X * r, 0f, _site.Z + way.Z * r)).Y - _site.Y)); // the ground as dug
             }
             if (ridge < 0.6f && !standing) break;
             GD.Print($"  (the site at {_site} keeps {ridge:F1} m of ground{(standing ? " and something standing on it" : "")}: on to another)");
@@ -786,7 +788,8 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_base.ToWorld(Face(new Int3(0, 0, 2))), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(!_base.Structure.Has(new Int3(0, 0, 2)) && _base.Storage.Count(steel) == stored + 1 && Pack[steel] == bag + 1, "with a full bag, it goes to the structure's storage");
+        Check(!_base.Structure.Has(new Int3(0, 0, 2)) && _base.Storage.Count(steel) == stored + 1 && Pack[steel] == bag + 1,
+            $"with a full bag, it goes to the structure's storage (taken down {!_base.Structure.Has(new Int3(0, 0, 2))}, storage {stored} -> {_base.Storage.Count(steel)} steel, bag {bag + 1} -> {Pack[steel]})");
 
         // Both full: a container on the ground.
         double room = _base.Storage.FreeSu;
@@ -805,7 +808,7 @@ public partial class BuildTest : Node
     /// <summary>No creature spawns within the clearance of a base, from its footprint's edge; a vessel keeps nothing away.</summary>
     void NoSpawnsByBases()
     {
-        if (_base == null) return;
+        if (_base == null || _play.Lifeless("no creature spawns near a base")) return;
         GD.Print("-- no creature spawns near a base --");
         var patch = _game.Zone.Wildlife;
         patch.SyncBases();

@@ -644,6 +644,17 @@ public sealed class Playthrough
         return best;
     }
 
+    /// <summary>
+    /// Whether this world has no life: an airless one (<see cref="Planets.Gen.PlanetSpec.Airless"/>, the rule its flora and
+    /// creatures read) grows no plants and keeps no creatures. If so, prints that a check of <paramref name="what"/> is skipped.
+    /// </summary>
+    public bool Lifeless(string what)
+    {
+        if (!Game.Zone.Planet.Spec.Airless) return false;
+        GD.Print($"SKIP  {what}: an airless world grows no plants and keeps no creatures");
+        return true;
+    }
+
     /// <summary>Walks to the nearest plant and cuts it.</summary>
     public IEnumerable<int> CutPlant()
     {
@@ -916,7 +927,7 @@ public sealed class Playthrough
         foreach (int x in Drive.WalkTo(stand, 0.8f, 40f)) yield return x;
     }
 
-/// <summary>A flat, dry spot about this far from a point, clear of structures and devices (for a base or a vessel). Flatter first, then less flat.</summary>
+    /// <summary>A flat, dry spot about this far from a point, clear of structures and devices and not down in a hollow (for a base or a vessel). Flatter first, then less flat.</summary>
     public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f, float within = float.MaxValue, float span = 5f)
     {
         SurfaceZone zone = Game.Zone;
@@ -925,13 +936,16 @@ public sealed class Playthrough
             {
                 float a = startAngle + i * 0.61f, r = distance + (i / 16) * 6f;
                 var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
-                float h0 = zone.GroundAt(p.X, p.Z).Y, worst = 0f;
+                float h0 = zone.GroundAt(p.X, p.Z).Y, worst = 0f, rise = 0f;
                 for (int k = 0; k < 8; k++)
                 {
                     float b = k * MathF.Tau / 8f;
                     for (float r2 = span; r2 >= 5f; r2 /= 2f)
                         worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * r2, p.Z + MathF.Sin(b) * r2).Y - h0));
+                    // Not the floor of a hollow (a crater's): ground rising round it past its span would bury what is built at its edge.
+                    rise = MathF.Max(rise, zone.GroundAt(p.X + MathF.Cos(b) * span * 1.6f, p.Z + MathF.Sin(b) * span * 1.6f).Y - h0);
                 }
+                worst = MathF.Max(worst, rise - 1f);
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
                              && (Game.Bunker == null || !Game.Bunker.Over(g, 8f)) && !RuinAt(g, span);

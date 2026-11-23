@@ -84,6 +84,7 @@ public partial class SystemsTest : Node
         MoonSpeeds(systems, daySeconds);
         Gravity(systems);
         Vacuum(systems);
+        Barren(systems);
         Moons(systems);
         Planes(systems);
         Rings(systems);
@@ -98,6 +99,7 @@ public partial class SystemsTest : Node
         Fuels(ground);
         NoWaterOnBareWorlds(ground, mapped);
         DriveBills(ground);
+        BarrenMaps(ground);
         Flyer(ground);
         Loot();
         NoMarkers(systems);
@@ -179,7 +181,7 @@ public partial class SystemsTest : Node
         var total = new SortedDictionary<int, int>();
         var airless = new SortedDictionary<int, int>();
         var thick = new SortedDictionary<int, (float Min, float Max)>();
-        int wrongKind = 0, stormy = 0, fuelMoons = 0, fuelMoonsBare = 0, homeMoons = 0, homeMoonsBare = 0, kindsThinner = 0;
+        int fuelMoons = 0, fuelMoonsBare = 0, homeMoons = 0, homeMoonsBare = 0, kindsThinner = 0;
         foreach (StarSystem s in systems)
             foreach (Orbiter b in Landable(s))
             {
@@ -191,9 +193,7 @@ public partial class SystemsTest : Node
                 total[w] = total.GetValueOrDefault(w) + 1;
                 if (b.Spec.Airless)
                 {
-                    airless[w] = airless.GetValueOrDefault(w) + 1;
-                    if (!PlanetSpec.Craters(b.Spec.Archetype)) wrongKind++;
-                    if (b.Spec.Has(Modifier.PerpetualStorm)) stormy++;
+                    airless[w] = airless.GetValueOrDefault(w) + 1; // what it is and its weather: Barren
                     continue;
                 }
                 // The air's thickness is the world's size's, and its density the same kind's grows with it.
@@ -214,7 +214,6 @@ public partial class SystemsTest : Node
         bool thicker = sized.Count == 4 && thick.Values.All(t => t.Min == t.Max);
         for (int i = 1; i < sized.Count; i++) thicker &= thick[sized[i]].Min > thick[sized[i - 1]].Max;
         Check(thicker && kindsThinner == 0, $"air: one thickness for each size, thicker the bigger, the largest's the densest ({string.Join(", ", thick.Select(p => $"{p.Key} km {p.Value.Min:F1}"))}); the same kind of air is denser on a bigger world ({kindsThinner} were not)");
-        Check(wrongKind == 0 && stormy == 0, $"vacuum: every airless body is bare rock, ice or lava, never a living world ({wrongKind} were not), and has no storm ({stormy} had)");
         Check(fuelMoons == systems.Count && fuelMoonsBare == fuelMoons, $"vacuum: every start's thruster moon is airless ({fuelMoonsBare} of {fuelMoons})");
         // The owner's bug (17 Nov): three small moons round a start world, every one with air. A start world's own
         // moons are smaller than it, so 8 km, and those are almost all airless.
@@ -462,7 +461,7 @@ public partial class SystemsTest : Node
     /// What one landable world's coarse map holds, kept in place of the map: a large world's map and deposit index run
     /// to megabytes, and thousands are walked.
     /// </summary>
-    sealed record Ground(StarSystem System, Orbiter Body, Dictionary<DepositKind, double> Ore, double BiggestWarp, bool Dry);
+    sealed record Ground(StarSystem System, Orbiter Body, Dictionary<DepositKind, double> Ore, double BiggestWarp, bool Dry, BarrenRead? Barren);
 
     /// <summary>Every landable world of the mapped systems, each coarse map made, read and dropped on a worker: no more than one a core is held at once.</summary>
     static List<Ground> Survey(List<StarSystem> systems)
@@ -474,7 +473,7 @@ public partial class SystemsTest : Node
             WorldMap map = BodySurfaces.Coarse(worlds[i].Body.Spec);
             var ore = map.Deposits.All().GroupBy(d => d.Kind).ToDictionary(g => g.Key, g => g.Sum(Units));
             double biggest = map.Deposits.All().Where(d => d.Kind == DepositKind.WarpFuel).Select(Units).DefaultIfEmpty(0).Max();
-            ground[i] = new Ground(worlds[i].System, worlds[i].Body, ore, biggest, Dry(map));
+            ground[i] = new Ground(worlds[i].System, worlds[i].Body, ore, biggest, Dry(map), ReadBarren(map));
         });
         return ground.ToList();
     }
@@ -606,7 +605,7 @@ public partial class SystemsTest : Node
             }
             bare++;
             if (!g.Dry) wet++;
-            if (g.Body.Spec.Archetype == Archetype.Ice && g.Ore.ContainsKey(DepositKind.Water)) ice++;
+            if ((g.Body.Spec.Archetype == Archetype.Ice || g.Body.Spec is { Archetype: Archetype.Barren, Variant: Archetypes.Icy }) && g.Ore.ContainsKey(DepositKind.Water)) ice++;
         }
         // The same at the game's own resolution, on every start's moon (each map dropped once read).
         var full = new bool[systems.Count];

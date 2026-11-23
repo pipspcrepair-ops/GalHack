@@ -258,7 +258,7 @@ public partial class BestiaryTest : Node
         }
         Check(clean && machines >= worlds * 2, $"vacuum worlds hold only machines and sealed things ({machines} machines)");
         Check(alive > 0 && alive < worlds * 0.25f, $"sealed animals are super rare: on {alive} of {worlds} worlds");
-        var spec = new PlanetSpec(Seed(), Archetype.Arid, 0, Modifier.Cratered);
+        var spec = new PlanetSpec(Seed(), Archetype.Barren, 0, Modifier.Cratered);
         Check(WorldConditions.Of(spec).Vacuum && !WorldConditions.Of(new PlanetSpec(Seed(), Archetype.Temperate, 0, Modifier.None)).Vacuum, "cratered rock has no air; a temperate world has");
     }
 

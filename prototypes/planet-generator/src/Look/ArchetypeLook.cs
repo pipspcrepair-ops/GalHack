@@ -147,6 +147,15 @@ public sealed record ArchetypeLook
             Atmosphere = Rgb.Hex("50ffd0"), CloudColor = Rgb.Hex("e0c0ff"), CloudCover = 0.3f,
             Nebula = Rgb.Hex("3a0a5a"), Moon = Rgb.Hex("ff9a4a"), MoonSize = 0.16f,
         },
+        (Archetype.Barren, _) => new()
+        {
+            // No air: a black sky full of stars by day, no haze, no cloud, no air shell from orbit, shadows lit only by what the ground throws back.
+            DeepSea = Rgb.Hex("303032"), ShallowSea = Rgb.Hex("505052"),
+            SkyTop = Rgb.Hex("010102"), SkyHorizon = Rgb.Hex("020203"), SunColor = Rgb.Hex("ffffff"),
+            SunEnergy = 1.45f, SunElevation = 30f, Ambient = 0.1f, FogDensity = 0f, Stars = 1f,
+            Atmosphere = Rgb.Hex("000000"), CloudCover = 0f, Nebula = Rgb.Hex("1a1a2e"),
+            Moon = Rgb.Hex("c8c4bc"), MoonSize = 0.06f,
+        },
         _ => new()
         {
             DeepSea = Rgb.Hex("2a1050"), ShallowSea = Rgb.Hex("7a3aaa"),

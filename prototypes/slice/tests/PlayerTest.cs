@@ -110,8 +110,9 @@ public partial class PlayerTest : Node
                 GD.Print($"  (rescued the sleeper at {_game.Stats.Seconds:F0} s: {r.From} -> {r.To}, inside {r.Inside}; aboard {_game.Survivor.Aboard?.Name}, seated {_game.Survivor.Seated?.Name})");
         };
         // Clear, still weather and calm creatures: the steps are what is tested, not the storms.
-        _game.Zone.Weather.Bridge.Calm = true;
-        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        // (An airless world, --type barren, has no weather to calm.)
+        if (_game.Zone.Weather.Bridge != null) _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim?.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         // The steps are tested at full experience; the pace of levelling (the gain) is BuildTest's.
         _game.Zone.Data.Progress.Xp.Gain = 1;
@@ -233,9 +234,12 @@ public partial class PlayerTest : Node
             Check(_game.Pack[ore] >= 3, $"walked to the nearest {scarce} and dug it out: {_game.Pack[ore]} {ore}");
         }
 
-        int plants = _game.Tool.PlantsCut, biomass = _game.Pack["biomass"];
-        foreach (int x in _play.CutPlant()) yield return x;
-        Check(_game.Tool.PlantsCut > plants && _game.Pack["biomass"] > biomass, $"cutting a plant: +{_game.Pack["biomass"] - biomass} biomass");
+        if (!_play.Lifeless("cutting a plant"))
+        {
+            int plants = _game.Tool.PlantsCut, biomass = _game.Pack["biomass"];
+            foreach (int x in _play.CutPlant()) yield return x;
+            Check(_game.Tool.PlantsCut > plants && _game.Pack["biomass"] > biomass, $"cutting a plant: +{_game.Pack["biomass"] - biomass} biomass");
+        }
         Mark("gathered");
     }
 
@@ -266,6 +270,7 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Wait(20)) yield return x;
         Check(_game.Shots.LightningBolts > bolts && _game.Tool.ChippedCells + _game.Zone.Planet.Terrain.Store.RemovedCount != worked,
             $"a blast at the ground in reach: lightning to it, and the ground is worked ({_game.Shots.LightningBolts - bolts} bolts)");
+        if (_play.Lifeless("hunting a creature")) yield break;
         WildlifePatch w = _game.Zone.Wildlife;
         Vector3 feet = _game.Survivor.WorldFeet;
         var tried = new HashSet<Creature>();
@@ -376,6 +381,7 @@ public partial class PlayerTest : Node
     IEnumerable<int> Inventory()
     {
         Section("-- 4. the body, and the inventory by hand --");
+        if (_play.Lifeless("looting a creature's body, and the bag by hand with what it held")) yield break;
         Lootable body = _game.Zone.Loot.All.FirstOrDefault(l => l.Kind == LootKind.Corpse && l.Creature == _prey);
         if (body == null) { Fail("the creature left no body to loot"); yield break; }
         Check(body.Storage.Count("meat") > 0 && body.Storage.Count("hide") > 0, $"its body is a container: {_game.Zone.Data.Items.Describe(body.Storage.Contents)}");

@@ -893,15 +893,14 @@ public sealed class StarSystem
             }
             if (!widths.TryGetValue(b, out int width)) continue;
             var (type, variant) = TypeOf(b);
-            // Vacuum or not: small bodies can't hold air. Only the kinds that keep craters can be airless, so a
-            // living world that lost its air is bare rock (or ice, out in the cold) and not a living world.
+            // Vacuum or not: small bodies can't hold air. A body with none is barren (owner, 22 Nov: grey cratered
+            // moonscapes, never dunes), icy out in the cold and metal on a heavy world; only a giant's tidally
+            // heated moon keeps its own kind without air, its heat a reason for its lava or its warmed ice.
             bool vacuum = b == FuelMoon || new Rng(Hash.Of(b.Seed, 0x564143)).NextFloat() < PlanetSpec.VacuumChances[PlanetSpec.ClassOf(width)];
-            if (vacuum && !PlanetSpec.Craters(type)) type = b.Zone >= 5 ? Archetype.Ice : Archetype.Arid;
-            PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width);
+            if (vacuum && !TidallyHeated(b)) (type, variant) = (Archetype.Barren, Archetypes.BarrenVariant(b.Zone >= 5, PlanetSpec.Heavy(width)));
+            PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width, vacuum);
             // Its sky is the system's, so a ringed sky is no modifier here: a ring is the body's own (below).
-            Modifier mods = spec.Modifiers & ~Modifier.RingedSky;
-            if (PlanetSpec.Craters(type)) mods = vacuum ? (mods | Modifier.Cratered) & ~Modifier.PerpetualStorm : mods & ~Modifier.Cratered; // no air, no storm
-            b.Spec = spec with { Modifiers = mods };
+            b.Spec = spec with { Modifiers = spec.Modifiers & ~Modifier.RingedSky };
             // A rocky world's ring: rare (only the ringed kinds, start-sized or bigger); a moon never has one (owner, 17 Nov).
             ArchetypeLook look = ArchetypeLook.For(b.Spec);
             b.Rings = b.Kind == OrbiterKind.Planet && width >= PlanetSpec.StartWidthKm && look.Ring;
@@ -917,12 +916,7 @@ public sealed class StarSystem
         int variant = rng.NextFloat() < 0.5f ? 0 : 1;
         if (b.Kind == OrbiterKind.Moon)
         {
-            if (b.Parent.Kind == OrbiterKind.GasGiant)
-            {
-                double radii = b.Orbit / b.Parent.Radius;
-                if (radii < 6.0) return (Archetype.Lava, variant); // tides
-                if (radii < 12.0) return (Archetype.Ice, 1); // warmed ice, geysers, hot springs
-            }
+            if (TidallyHeated(b)) return b.Orbit / b.Parent.Radius < 6.0 ? (Archetype.Lava, variant) : (Archetype.Ice, 1); // tides; farther out, warmed ice with geysers and hot springs
             if (b.Zone <= 2) return (Archetype.Arid, 0);
             return b.Zone >= 6 ? (Archetype.Ice, 0) : (Archetype.Arid, 0); // too small to hold air
         }
@@ -936,6 +930,9 @@ public sealed class StarSystem
             _ => (Archetype.Ice, 0),
         };
     }
+
+    /// <summary>A giant's close moon (within 12 of its radii), kneaded warm by its tides: lava close in, warmed ice past that.</summary>
+    public static bool TidallyHeated(Orbiter b) => b.Kind == OrbiterKind.Moon && b.Parent.Kind == OrbiterKind.GasGiant && b.Orbit / b.Parent.Radius < 12.0;
 
     /// <summary>Why this can't be a start system, or null: what the design promises every start.</summary>
     public string StartFault()
