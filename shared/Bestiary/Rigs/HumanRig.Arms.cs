@@ -227,8 +227,8 @@ public sealed partial class HumanRig
         // The arm as found, its shoulder and hand moved off where they were asked by no more than they were last frame give or take
         // what a limb moves in a frame (Shift), and its elbow swung round from the way it went as far as an elbow swings:
         // what clears the body changes in a step between frames (a coat grazed, or no longer), the arm never does. Eased into the
-        // body, it comes on the faster the longer it has been in (counting this frame), by degrees, so it is out in a moment and
-        // never with a jump.
+        // body (the way round it jumped on), it comes on faster the longer it has been in, as much as takes it out: an arm left in a
+        // thick coat is out of it in a moment.
         (Vector3 e, Vector3 w) Done(Vector3 sh, Vector3 hd, Vector3 way, out Vector3 h, out Vector3 shoulderAt)
         {
             Basis b = body.Basis, bi = b.Inverse();
@@ -252,12 +252,27 @@ public sealed partial class HumanRig
                 }
                 return Toward(s, hd, wy);
             }
+            bool In((Vector3 e, Vector3 w) r, Vector3 s) => SunkIn(inv, s, r.e, r.w, 0f) > 0f || Free(r.e, r.w, 0f) != Vector3.Zero;
             var res = At(1f, out sh, out way);
             float pace = 1f;
-            if (eased && !held && Shell != null && (SunkIn(inv, sh, res.e, res.w, 0f) > 0f || Free(res.e, res.w, 0f) != Vector3.Zero))
+            if (eased && !held && Shell != null && In(res, sh))
             {
+                // Toward an arm that is out, as much faster as takes it out: none faster for a moment (a graze, a knock), then up to a
+                // pace more for every 0.03 s in (counting this frame).
                 _into[arm] += _dt;
-                res = At(pace = MathF.Min(CatchUp, 1f + _into[arm] / 0.05f), out sh, out way); // (a pace more for every 0.05 s in)
+                float most = MathF.Min(CatchUp, 1f + MathF.Max(0f, _into[arm] - 0.05f) / 0.03f);
+                if (most > 1f && !In(At(1e6f, out Vector3 s1, out _), s1))
+                {
+                    float lo = 1f;
+                    pace = most;
+                    for (int n = 0; n < 5; n++)
+                    {
+                        float mid = (lo + pace) * 0.5f;
+                        if (In(At(mid, out Vector3 s2, out _), s2)) lo = mid;
+                        else pace = mid;
+                    }
+                }
+                res = At(pace, out sh, out way);
             }
             else _into[arm] = 0f;
             (_shift[arm * 2], _shift[arm * 2 + 1]) = (Moved(0, pace), Moved(1, pace));
