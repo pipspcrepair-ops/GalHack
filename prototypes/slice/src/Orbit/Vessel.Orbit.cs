@@ -24,7 +24,7 @@ public sealed partial class Vessel
     /// its floor), its hull and cabin world like any structure's, so it is boarded, walked or floated
     /// through, looted and taken apart the same way.
     /// </summary>
-    public static Vessel SpawnDerelict(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation)
+    public static Vessel SpawnDerelict(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation, System.Collections.Generic.List<GalHack.Physics.ChunkColliders> colliders = null, bool drawLater = false)
     {
         var tmp = System.Diagnostics.Stopwatch.StartNew(); string laps = ""; void L(string n) { laps += $"{n} {tmp.Elapsed.TotalMilliseconds:F1}, "; tmp.Restart(); } /*TMPLAP*/
         MassProperties mass = MassOf(s);
@@ -49,7 +49,7 @@ public sealed partial class Vessel
         vessel.Binding = zone.Host.Bind(body, new HullBinding(hull));
         vessel.HullShapes = new StructureShapes(hull);
         L("shapes"); /*TMPLAP*/
-        vessel.Furnish(hull);
+        vessel.Furnish(hull, drawLater, colliders); // drawn and made solid a chunk at a time later, if it is set adrift in play
         L("furnish"); /*TMPLAP*/
         vessel.Binding.Teleport();
         vessel.Register();

@@ -486,6 +486,8 @@ public partial class WarpTest : Node
         {
             _game.Controls.Hold(Key.Ctrl, -_ship.Body.Velocity.ToGodot().Dot((_ship.Body.Position.ToGodot() - c.Centre).Normalized()) < 40f);
             yield return 0;
+            if (i % 1200 == 1199)
+                GD.Print($"  ({i / 60 + 1} s down: {c.Height(_ship.Body.Position.ToGodot()):F0} m over {name}, sinking {-_ship.Body.Velocity.ToGodot().Dot((_ship.Body.Position.ToGodot() - c.Centre).Normalized()):F1} m/s, in {_game.Zone.Name}, frame {o.Anchor.Name}, band {Flight.Band:F2}, aligned {Flight.Aligned}, streaming {Flight.StreamingAhead}, its surface arrived {c.Surface.Arrived}, ground ready {c.Surface.Streamer.ReadyAround(_ship.Body.Position.ToGodot(), 1, needCollision: false)}, ceiling {c.Surface.Physics.Zone.Ceiling:F0})");
         }
         _game.Controls.ReleaseAll();
         SurfaceZone surface = c.Surface;

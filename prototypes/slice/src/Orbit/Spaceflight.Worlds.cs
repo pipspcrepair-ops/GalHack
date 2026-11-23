@@ -155,7 +155,7 @@ public partial class Spaceflight
             bool clear = w.Sky.Density < SurfaceWeather.NoAir;
             orbit = new OrbitZone(w, start.Data, Rules, PoiGenerator.Gen.Hash.Combine(model.StarKey, root.Seed), ceiling, clear ? (_, _) => 0f : null)
             {
-                Name = "Orbit" + home.Name, ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = start.Sky.Surfaces,
+                Name = "Orbit" + home.Name, ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = start.Sky.Surfaces, DrawLater = true,
             };
             orbit.Home.Surface = home;
         }
