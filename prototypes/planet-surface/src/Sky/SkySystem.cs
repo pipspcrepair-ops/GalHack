@@ -105,13 +105,21 @@ public sealed record SkySystem
         {
             AirKind.Humid => (Particles.Haze, 0.12f), AirKind.Dusty => (Particles.Dust, 0.25f), AirKind.Thin => (Particles.Dust, 0.3f),
             AirKind.Ash => (Particles.Ash, 2.5f), AirKind.Sulfurous => (Particles.Sulfate, 1.2f),
-            AirKind.Exotic when spec.Variant == 1 => (Particles.Haze, 0.15f), // a fungal world's spores
+            AirKind.Exotic when spec.Variant == 1 && !WorldPalette.TodayOf(spec) => (Particles.Haze, 0.15f), // a fungal world's spores
             _ => (Particles.Clean, 0.04f),
         };
         AirMix mix = spec.Airless ? AirMix.None : new AirMix(density, particles, aerosol * spec.AirThickness, air is AirKind.Breathable or AirKind.Humid);
         WorldPalette palette = WorldPalette.Make(spec, WorldPalette.Kelvins[(int)sun], mix);
         Rgb starColor = palette.Star;
-        rng.NextFloat(); // the roll the exotic air's hand colours took, so every world's bodies and nebula stay as they were
+        float hue = rng.NextFloat();
+        if (air == AirKind.Exotic && palette.Today)
+        {
+            // Today's look for alien air: its own families of colour, lit by this star (a red dwarf reddens them as it does any sky).
+            var (z, h, f, s) = ExoticAir(spec, hue);
+            Rgb Lit(Rgb c) => (c * starColor) * (c.Luma / MathF.Max((c * starColor).Luma, 1e-4f));
+            (z, h, f) = (Lit(z), Lit(h), Lit(f));
+            palette = palette with { Zenith = z, Horizon = h, Haze = f, Sunset = s, Limb = h, CloudTint = Rgb.Lerp(Rgb.Hex("f0f0f0"), h, 0.35f) };
+        }
         Rgb zenith = palette.Zenith, horizon = palette.Horizon, haze = palette.Haze, sunset = palette.Sunset, cloudTint = palette.CloudTint;
         bool nebula = rng.NextFloat() < (spec.Archetype == Archetype.Alien ? 0.75f : 0.18f) || spec.Has(Modifier.GlowingNights);
         float nh = rng.NextFloat();
@@ -188,6 +196,22 @@ public sealed record SkySystem
         (Archetype.Lava, _) => AirKind.Sulfurous,
         _ => AirKind.Exotic,
     };
+
+    /// <summary>Alien chemistry in today's look: a family of colours per variant with seeded drift.</summary>
+    static (Rgb zenith, Rgb horizon, Rgb haze, Rgb sunset) ExoticAir(PlanetSpec spec, float hue)
+    {
+        if (spec.Variant == 0)
+        {
+            // Crystal worlds: a fluorescing upper atmosphere, deep violet to teal and rose.
+            Rgb zenith = Rgb.Lerp(Rgb.Hex("2a1a5e"), Rgb.Hex("1a2c66"), hue);
+            Rgb horizon = Rgb.Lerp(Rgb.Hex("7fd8c8"), Rgb.Hex("e0a0d0"), hue);
+            return (zenith, horizon, Rgb.Lerp(horizon, Rgb.Hex("b0a0d0"), 0.4f), Rgb.Hex("ff70b0"));
+        }
+        // Fungal worlds: spore haze, olive and lime over a warm amber horizon.
+        Rgb z = Rgb.Lerp(Rgb.Hex("3a4a2a"), Rgb.Hex("2a3c3a"), hue);
+        Rgb h = Rgb.Lerp(Rgb.Hex("cfd88a"), Rgb.Hex("e0c070"), hue);
+        return (z, h, Rgb.Lerp(h, Rgb.Hex("a0a070"), 0.4f), Rgb.Hex("ff9a40"));
+    }
 
     static List<SkyBody> MakeBodies(PlanetSpec spec, ref Rng rng, AirKind air)
     {

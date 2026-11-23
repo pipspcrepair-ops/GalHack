@@ -272,6 +272,10 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_day"), C(s.Zenith));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("horizon_day"), C(s.Horizon));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("band_day"), C(s.Palette?.Band ?? s.Horizon));
+        // Today's look keeps today's sky: graded close to the horizon, no band of its own.
+        bool today = s.Palette?.Today ?? false;
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("band_share"), today ? 0f : 0.8f);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sky_curve"), today ? 0.42f : 0.75f);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_night"), C(s.NightZenith));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sunset"), C(s.Sunset));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("haze"), C(s.Haze));
@@ -304,7 +308,7 @@ public partial class SkyRig : Node3D
         Sun.LightColor = C(s.StarColor);
         // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey; with no
         // air there is no sky's light in the shade, and its colour is nearly all the shade's own (SkySystem.Vacuum).
-        Environment.AmbientLightSkyContribution = s.Thickness > 0f ? 0.5f : 0.15f;
+        Environment.AmbientLightSkyContribution = today ? 1f : s.Thickness > 0f ? 0.5f : 0.15f;
         Grade.Apply(Environment);
     }
 
@@ -633,13 +637,14 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast"), air.Overcast);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("stratus"), air.Stratus);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cirrus"), air.Cirrus);
-        // Overcast keeps the air's own hue under its cloud: it changes the sky's colour, never drains it.
-        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.35f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
+        // Overcast keeps the air's own hue under its cloud: it changes the sky's colour, never drains it (today's look greys it as it did).
+        bool today = s.Palette?.Today ?? false;
+        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), today ? 0.7f : 0.35f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast_color"), C(grey));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lit"), C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));
         // Ash over lava glows red from underneath, more so as daylight fades.
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_underglow"), s.Air == AirKind.Ash ? new Color(0.55f, 0.16f, 0.05f) * (0.35f + 0.65f * (1f - day)) : new Color(0, 0, 0));
-        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_shade"), C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), 0.35f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_shade"), C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), today ? 0.6f : 0.35f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
 
         // Fog: the air's haze colour, lit by the sun, greyed by overcast, dark at night. It is lit
         // as the ground is: by a sun that has climbed clear of the horizon's air, so haze and
@@ -661,6 +666,8 @@ public partial class SkyRig : Node3D
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
         // The shade's own colour goes with the daylight, as the sky's light does: night keeps its dark.
         Environment.AmbientLightColor = C(s.Shade * (0.06f + 0.94f * day));
+        // Today's look keeps today's grade: a little extra saturation, cut only under a really overcast sky.
+        Environment.AdjustmentSaturation = today ? 1.05f - 0.25f * Smooth(0.5f, 1f, air.Overcast) : 1f;
     }
 
     /// <summary>

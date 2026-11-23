@@ -245,12 +245,18 @@ public sealed class Herbarium
         if (Familiar(c)) d.Unit();
         d.Unit();
         p.H += d.Range(-9f, 9f);
-        if (c.Alien > 0.4f) { d.Unit(); d.Unit(); d.Unit(); } // the rolls alien worlds' own hues took, so their forms stay as they were
+        // Today's look (FloraClimate.Today) keeps alien worlds' own odd hues and its duller climates.
+        if (c.Alien > 0.4f)
+        {
+            (float, float, float) alien = (d.Range(0f, 360f), d.Range(0.34f, 0.62f), d.Range(0.34f, 0.56f));
+            if (c.Today) p = alien;
+        }
         // Cold dulls and darkens them a little; drought bleaches them; thick wet air deepens them; thin air pales them. Gently:
-        // the pigment already holds the light, and each species dulls again by its own dryness (Make). Nothing greys a whole world.
-        float cold = 1f - c.Warmth, dry = 1f - c.Wetness;
-        p.S *= 1f - 0.06f * cold - 0.08f * dry;
+        // the pigment already holds the light, and each species dulls again by its own dryness (Make).
+        float cold = 1f - c.Warmth, dry = 1f - c.Wetness, dull = c.Today ? 2f : 1f;
+        p.S *= 1f - dull * (0.06f * cold + 0.075f * dry);
         p.V *= (1f + 0.22f * dry) * (c.Wetness > 0.6f ? 0.92f : 1f) * (c.Air < 0.7f ? 1.12f : 1f);
+        if (c.Today && c.Air < 0.7f) p.S *= 0.82f;
         FloraMood m = c.Moods;
         // Overgrown country is deeper green; swollen growth swings off into wrong colours.
         p.V *= 1f - 0.1f * m.Overgrown;
@@ -320,7 +326,8 @@ public sealed class Herbarium
         leaf = Tone.Lerp(leaf, leaf * (0.86f + d.Unit() * 0.3f), 0.8f);
         // A plant's own climate shows in it: dry country is duller, wet country deeper.
         float grey = leaf.Luma;
-        leaf = Tone.Lerp(leaf, new Tone(grey, grey, grey * 0.9f), Math.Clamp((0.45f - wet) * 0.4f, 0f, 0.2f));
+        float dull = book.Climate.Today ? 2f : 1f;
+        leaf = Tone.Lerp(leaf, new Tone(grey, grey, grey * 0.9f), Math.Clamp((0.45f - wet) * 0.4f * dull, 0f, 0.2f * dull));
         if (family == PlantFamily.Cactus) leaf = Tone.Lerp(leaf, Tone.Hsv(150f, 0.3f, 0.4f), 0.35f);
         // On a green world the odd tree has turned: a species, so russet woods come and go with the region.
         if (Familiar(book.Climate) && family == PlantFamily.Broadleaf && d.Chance(0.16f)) leaf = Tone.Hsv(d.Range(16f, 44f), d.Range(0.46f, 0.6f), d.Range(0.4f, 0.5f));

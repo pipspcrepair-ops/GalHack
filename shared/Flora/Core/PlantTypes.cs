@@ -87,7 +87,7 @@ public enum PlantForm
 /// Pigment is the leaf colour its starlight evolved (the planet's to work out); Alien 0..1 pulls forms
 /// from the familiar to the strange; Life 0..1 is how much grows at all, and 0 means nothing does.
 /// </summary>
-public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Pigment, float Alien, float Life, FloraMood Mood = null)
+public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Pigment, float Alien, float Life, FloraMood Mood = null, bool Today = false)
 {
     /// <summary>What the world's history has done to its plants (none where nothing says).</summary>
     public FloraMood Moods => Mood ?? FloraMood.None;
