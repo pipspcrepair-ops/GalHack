@@ -416,10 +416,12 @@ public partial class ArmTest : Node
             HumanRig h = rig();
             h.Struck(h.ChestPoint + new Vector3(r.Range(-0.4f, 0.4f), r.Range(-0.6f, 0.6f), r.Range(-0.4f, 0.4f)), new Vector3(r.Range(-1f, 1f), r.Range(-0.3f, 0.3f), r.Range(-1f, 1f)), r.Range(0f, 1f));
         });
+        // Blows as the sim times them (Attacks: a wind-up, the lunge, the recovery over half a second): the lunge its full
+        // length, cut short by a touch, and touched at once (someone already in reach).
         yield return ("striking", 3.6f, (t, a) =>
         {
-            float p = t % 1.2f;
-            a.Strike = p < 0.5f ? 0.85f * p / 0.5f : p < 0.6f ? 0.85f + 0.15f * (p - 0.5f) / 0.1f : MathF.Max(0f, 1f - (p - 0.6f) / 0.5f);
+            float p = t % 1.2f, lunge = (int)(t / 1.2f) switch { 0 => 0.25f, 1 => 0.1f, _ => Dt };
+            a.Strike = p < 0.45f ? 0.85f * p / 0.45f : p < 0.45f + lunge ? 0.85f + 0.15f * (p - 0.45f) / lunge : MathF.Max(0f, 1f - (p - 0.45f - lunge) / 0.5f);
         });
         foreach (BodyAct g in new[] { BodyAct.WaveOff, BodyAct.Beckon, BodyAct.Point, BodyAct.Shrug, BodyAct.Warn, BodyAct.Celebrate, BodyAct.Grieve, BodyAct.Fidget, BodyAct.Taunt, BodyAct.Present, BodyAct.Greet, BodyAct.Play, BodyAct.Thanks, BodyAct.Rummage })
         {

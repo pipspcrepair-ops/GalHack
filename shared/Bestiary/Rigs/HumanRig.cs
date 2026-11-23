@@ -738,7 +738,7 @@ public sealed partial class HumanRig : Rig
             ArmGoal blow = i == 0 && kind == HoldKind.Bow ? default : StrikeArm(i, shoulder, torso, upperArm, forearm, out blowOn);
             if (blowOn > 0f && blow.On)
             {
-                hand = hand.Lerp(blow.Hand, blowOn);
+                hand = Sweep(shoulder, hand, blow.Hand, blowOn, ahead);
                 pole = pole.Lerp(blow.Pole, blowOn).Normalized();
                 spec = HandSpec.Lerp(spec, blow.Spec, blowOn);
                 if (i == 1) rightOff = MathF.Max(rightOff, blowOn);
@@ -1066,9 +1066,10 @@ public sealed partial class HumanRig : Rig
         {
             Vector3 lead = Ends(kind == HoldKind.Blade ? thumb : along);
             Transform3D hand = new(_handAt[1].Basis, fist), back = hand.AffineInverse();
-            return hand * (back * h.Prop).InterpolateWith(back * new Transform3D(Geo.AlongY(lead, kind == HoldKind.Blade ? right : thumb.Cross(lead)), fist), busy);
+            Transform3D swung = hand * (back * h.Prop).InterpolateWith(back * new Transform3D(Geo.AlongY(lead, kind == HoldKind.Blade ? right : thumb.Cross(lead)), fist), busy);
+            return InFist(swung.Basis, swung.Origin);
         }
-        if (kind != HoldKind.None) return h.Prop;
+        if (kind != HoldKind.None) return InFist(h.Prop.Basis, h.Prop.Origin, false); // (as held: noted, so a blow turns it from there)
         Vector3 axis = PropAxis(g, torso, fwd, right, sip, sipAxis), line = axis.LengthSquared() > 0f ? Ends(thumb) : thumb; // (a thing with no way of its own to lie goes the thumb's way)
         float firm = axis.Length() * (1f - busy);
         return InFist(Geo.AlongY(firm > 0f ? HandSpec.Turn(line, axis / axis.Length(), firm) : line, right), fist); // (turned to its axis the short way, never through nothing)
@@ -1080,13 +1081,14 @@ public sealed partial class HumanRig : Rig
 
     /// <summary>
     /// A carried thing as it lies in the fist, turned from the way it lay in it last as far as it turns in the time: where the way
-    /// it is asked to lie swaps ends or rolls over (its thumb's way crossing, its side along it), it turns over in the hand, never in a frame.
+    /// it is asked to lie swaps ends or rolls over (its thumb's way crossing, its side along it), it turns over in the hand, never in a
+    /// frame. A weapon its hold places (<paramref name="turn"/> false) is only noted, for a blow to turn it from.
     /// </summary>
-    Transform3D InFist(Basis want, Vector3 fist)
+    Transform3D InFist(Basis want, Vector3 fist, bool turn = true)
     {
         Basis hand = _handAt[1].Basis;
         Quaternion q = (hand.Inverse() * want).GetRotationQuaternion();
-        if (_dt > 0f && _inFist.LengthSquared() > 0.5f)
+        if (turn && _dt > 0f && _inFist.LengthSquared() > 0.5f)
         {
             float a = _inFist.AngleTo(q), most = FistTurn * _dt;
             if (a > most) q = _inFist.Slerp(q, most / a);
