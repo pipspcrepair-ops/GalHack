@@ -631,7 +631,7 @@ These replace anything above or in section 4 that disagrees with them.
    - **Coloured shadows.** Shadows take the sky's colour (violet, blue, deep red), never neutral grey.
    - **Coloured distance.** Haze tints distance with the air's own strong hue (green, orange, blue), never fading to grey.
    - **Big bodies in the sky.** Planets, moons and nebulae are large, bright focal points.
-   - **Airless moons** keep a grey base, but light and shadow tint them, like a lavender-grey cratered moon beside an orange asteroid. Never sandy yellow dunes.
+   - **Airless moons** keep a grey base, but light and shadow tint them, like a lavender-grey cratered moon beside an orange asteroid. Never sandy yellow dunes. Owner: "We can still have a deep grey moons, but saturated". A moon can be a deep, dark grey rock with strongly tinted light and shadow, set against a vivid sky of planets, nebulae and stars.
    - Nothing global desaturates or greys the scene. Overcast, dust and night change the colours. They never drain them.
 15. **Suns, gas giants and black holes up close (owner, 22 Nov: "Go with that").** Empyrion's way: high orbit is as close as you get.
    - **Suns and gas giants.** A warp to one stops at its high orbit. The body fills the view, huge and detailed: a star's churn and flares, a giant's bands, storms and spots. It has no surface zone. Flying further in, the star's heat or the giant's winds push the ship back out, with a visor warning. There's no heat damage and no crushing (this replaces section 8 item 3's heat damage and skim-and-crush). Heat damage and cloud skimming may be reviewed later, once this baseline is built (owner, 22 Nov). At a giant, the places to go are its moons, their moons, and its ring as a debris field.
