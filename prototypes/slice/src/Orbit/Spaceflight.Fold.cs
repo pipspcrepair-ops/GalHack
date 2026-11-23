@@ -349,7 +349,9 @@ public partial class Spaceflight
         {
             Node[] keep = { carrier?.Node, Game.Camera, Game.Console, Game.Shots, (from as OrbitZone)?.Space, from.Host, Game.Survivor?.Node };
             _toTuck[from] = left = new Stack<(Node, bool)>(from.GetChildren().Where(n => !keep.Any(k => k != null && (k == n || n.IsAncestorOf(k)))).Select(n => (n, false)));
-            _tucked[from] = new List<(Node, bool)>();
+            // Left again while it was still coming back (woken a moment ago): what hadn't come back yet stays put away.
+            _waking.Remove(from);
+            _tucked.TryAdd(from, new List<(Node, bool)>());
         }
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         while (left.TryPop(out var top))
@@ -371,20 +373,35 @@ public partial class Spaceflight
         return left.Count > 0;
     }
 
-    /// <summary>A zone woken: what was put away comes back, branches before their twigs, a piece at a time within the frame's small budget for such turns.</summary>
+    /// <summary>A zone woken: what was put away comes back (<see cref="UntuckStep"/>).</summary>
     void Untuck(SurfaceZone zone)
     {
         _toTuck.Remove(zone);
-        if (!_tucked.Remove(zone, out var put)) return;
-        for (int i = put.Count - 1; i >= 0; i--)
+        if (_tucked.ContainsKey(zone)) _waking.Add(zone);
+    }
+
+    /// <summary>The zones woken whose pieces are coming back.</summary>
+    readonly HashSet<SurfaceZone> _waking = new();
+
+    /// <summary>A little more of the zones woken brought back (once a drawn frame): the last put away first, so branches before their twigs.</summary>
+    void UntuckStep()
+    {
+        if (_waking.Count == 0) return;
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (SurfaceZone zone in _waking.ToList())
         {
-            var (n, shown) = put[i];
-            _groundTurns.Enqueue(() =>
+            List<(Node Node, bool Shown)> put = _tucked[zone];
+            while (put.Count > 0)
             {
-                if (!IsInstanceValid(n)) return;
+                var (n, shown) = put[^1];
+                put.RemoveAt(put.Count - 1);
+                if (!IsInstanceValid(n)) continue;
                 n.ProcessMode = ProcessModeEnum.Inherit;
                 if (shown) ((Node3D)n).Visible = true;
-            });
+                if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) return;
+            }
+            _tucked.Remove(zone);
+            _waking.Remove(zone);
         }
     }
 
@@ -457,6 +474,7 @@ public partial class Spaceflight
             Forget(z);
             _tucked.Remove(z);
             _toTuck.Remove(z);
+            _waking.Remove(z);
             if (!z.IsInsideTree()) { z.Free(); continue; }
             Park(z);
             _dismantle.Push((z, false));

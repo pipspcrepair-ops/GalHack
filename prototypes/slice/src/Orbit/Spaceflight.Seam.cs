@@ -127,6 +127,7 @@ public partial class Spaceflight
     void ProcessSeam(double delta)
     {
         HushStep();
+        UntuckStep();
         DismantleStep();
         TurnGround();
         Lap("ground turning");
