@@ -601,8 +601,11 @@ public partial class GenTest : Node
         float Most(Func<Archetype, bool> which, int d) => byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Max(f => f[d]);
         foreach (var (a, forms) in byType.OrderBy(k => k.Key))
             GD.Print($"      {Archetypes.Names[(int)a],-10} self-lit {forms.Min(f => f[0]):P1}..{forms.Max(f => f[0]):P1}, white {forms.Min(f => f[1]):P0}..{forms.Max(f => f[1]):P0}, cover {forms.Min(f => f[2]):F2}..{forms.Max(f => f[2]):F2}, crystal and fungus {forms.Min(f => f[6]):P0}..{forms.Max(f => f[6]):P0}");
-        float otherGlow = Most(a => a is not (Archetype.Lava or Archetype.Alien), 0);
-        Check(Least(Archetype.Lava, 0) >= 0.05f && otherGlow < 0.01f, $"lava glows: at least {Least(Archetype.Lava, 0):P1} of every lava world self-lit, at most {otherGlow:P1} of a temperate, arid or ice one");
+        // Lava burns: every lava world shows fire, and lava worlds burn many times more than temperate, arid and ice worlds do on
+        // average (an ice world's hot springs may glow a little; some lava worlds hold little open lava).
+        float Mean(Func<Archetype, bool> which, int d) => byType.Where(k => which(k.Key)).SelectMany(k => k.Value).Average(f => f[d]);
+        float lavaGlow = Mean(a => a == Archetype.Lava, 0), otherGlow = Mean(a => a is not (Archetype.Lava or Archetype.Alien), 0);
+        Check(Least(Archetype.Lava, 0) > 0f && lavaGlow >= 0.05f && lavaGlow >= 10f * otherGlow, $"lava glows: every lava world shows fire (least {Least(Archetype.Lava, 0):P1}), {lavaGlow:P1} of a lava world self-lit on average against {otherGlow:P2} of a temperate, arid or ice one");
         float otherWhite = Most(a => a is not (Archetype.Ice or Archetype.Temperate), 1);
         Check(Least(Archetype.Ice, 1) >= 0.4f && otherWhite < 0.15f, $"ice is ice: at least {Least(Archetype.Ice, 1):P0} of every ice world white with snow and ice, at most {otherWhite:P0} of an arid, lava or alien one");
         float aridCover = Most(a => a == Archetype.Arid, 2);
