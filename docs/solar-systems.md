@@ -634,7 +634,7 @@ These replace anything above or in section 4 that disagrees with them.
      - Vivid colour comes from sulfur, copper and chlorine compounds, dissolved minerals, vivid pigments in life, and unusual air chemistry.
      - The star's colour, the air's thickness and haze shape both.
      - The seed picks a world's elements, and the elements set its look.
-     - Every world saturated everywhere would be the "candy" sameness the owner rejected.
+     - Candy worlds, vivid in every part, are one of the looks. Owner: "Candy worlds are fine, as long as every world isn't a candy world". Every world being candy would be the sameness the owner rejected.
    - **The vivid look**, on vivid worlds and the vivid parts of mixed ones:
      - **Every element can take a strong colour.** Water, grass, foliage, soil, rock, sky, haze and clouds each come in a wide range of vivid hues, not one tasteful default. Teal, violet, crimson, gold and lime water; orange, magenta, blue or silver grass. Owner: "I mean, like we have the potential of red water, blue grass, green sky". Earth-like greens and blues are one possibility among many, not the default.
      - **Complementary contrast between sky and land.** Orange land under a violet sky, cyan ground under an orange sky, green haze around a red planet, black silhouettes against a red sky over a lime horizon band.
