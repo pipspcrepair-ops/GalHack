@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -7,6 +7,7 @@ using Planets.Look;
 using PlanetSurface.Skies;
 using PlanetSurface.Terrain;
 using PlanetSurface.World;
+using TerrainDigging.Terrain;
 using Archetype = Planets.Gen.Archetype;
 
 namespace PlanetSurface.Tests;
@@ -19,9 +20,11 @@ namespace PlanetSurface.Tests;
 ///   no two worlds may match in every colour at once. The same check runs on every other world type,
 ///   airless ones included.
 /// - <b>Real light.</b> The night sky stays dark.
-/// - <b>Natural, vivid and mixed</b> (owner, 23 Nov), over hundreds of palettes of every type with air: wholly natural,
-///   wholly vivid and mixed worlds each common, each part's hues spread round the wheel, red water, blue grass and a green
-///   sky all turning up. An airless body's rock stays grey.
+/// - <b>Earthy, today's look, vivid, candy and mixed</b> (owner, 23 Nov), over hundreds of palettes of every type with air:
+///   each kind common and candy one share, not most; every part looks as its label says; no hue family takes over any part;
+///   red water, blue grass and a green sky all turning up. An airless body's rock stays grey.
+/// - <b>Ore keeps its colour</b> (owner, 23 Nov): every ore's deposit the same on every world of every look, and standing
+///   apart from the ground round it.
 /// Prints "world: seed N, type" for each world so a run can be replayed.
 /// </summary>
 public partial class PaletteTest : Node
@@ -60,6 +63,7 @@ public partial class PaletteTest : Node
                 Variety(a.ToString().ToLowerInvariant(), 14, () => (a, (int)(Fresh() % 2), false));
             Variety("airless", 14, () => (new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava }[Fresh() % 3], (int)(Fresh() % 2), true));
             Range(600);
+            Ore(18);
         }
         catch (Exception e)
         {
@@ -163,21 +167,33 @@ public partial class PaletteTest : Node
 
     const float Same = 10f, TwinShare = 0.08f;
 
-    static readonly string[] Parts = { "zenith", "plants", "water", "soil" };
+    /// <summary>Hue families by Oklab hue: pink-magenta, red, orange, yellow, green, cyan, blue, violet (grey under 0.04 chroma, none).</summary>
+    static readonly string[] Families = { "pink", "red", "orange", "yellow", "green", "cyan", "blue", "violet" };
+
+    static int FamilyOf(Oklab o)
+    {
+        float d = (o.Hue * 180f / MathF.PI + 360f) % 360f;
+        return o.Chroma < 0.04f ? -1 : d < 15f || d >= 320f ? 0 : d < 45f ? 1 : d < 80f ? 2 : d < 115f ? 3 : d < 170f ? 4 : d < 230f ? 5 : d < 285f ? 6 : 7;
+    }
 
     /// <summary>
-    /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps). Each part of a world with air (its sky
-    /// straight up, its plants, its sea, its soil) reads vivid over Oklab chroma 0.13 and earthy under 0.09. Wholly natural
-    /// worlds (no vivid part), wholly vivid ones (no earthy part, two vivid or more) and mixed ones (both) must each make up a
-    /// good share (owner, 23 Nov: all three wanted and common, never every world saturated everywhere); each part's hues spread
-    /// round the wheel (at least five of its six sixths in use, none holding half the worlds); red water, blue plants and a green
-    /// sky each turn up on at least one world in a hundred. Every fourth roll is an airless body, whose rock (unless it rusted
+    /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps). Each kind of world is common: wholly earthy,
+    /// today's look (about one in five), vivid worlds that pair their strong parts against a deep one, candy (every part at full
+    /// strength: one share of the mix, never most: owner, 23 Nov) and mixed. Every part of every world looks as its label says: a
+    /// vivid part (sky: its zenith or its band) at least 0.095 Oklab chroma, an earthy one at most 0.09, a deep one dark and dull.
+    /// No hue family holds more than 35% of any part (sky, ground, plants, water), nor of its vivid ones. Red water, blue plants and
+    /// a green sky each turn up on at least one world in a hundred. Every fourth roll is an airless body, whose rock (unless it rusted
     /// while it had air) stays grey.
     /// </summary>
     void Range(int count)
     {
-        var colours = Parts.Select(_ => new List<Oklab>()).ToArray();
-        int natural = 0, mixed = 0, vivid = 0, worlds = 0, red = 0, blue = 0, green = 0;
+        string[] parts = { "sky", "ground", "plants", "water" };
+        Parts[] flags = { Planets.Look.Parts.Sky, Planets.Look.Parts.Ground, Planets.Look.Parts.Plants, Planets.Look.Parts.Water };
+        var all = new int[4, 9];
+        var vivid = new int[4, 9];
+        var kinds = new Dictionary<PaletteKind, int>();
+        var wrong = new List<string>();
+        int worlds = 0, red = 0, blue = 0, green = 0;
         float greyest = 0f;
         static float Deg(Oklab o) => (o.Hue * 180f / MathF.PI + 360f) % 360f;
         for (int i = 0; i < count; i++)
@@ -194,37 +210,93 @@ public partial class PaletteTest : Node
             }
             if (spec.Airless) continue;
             WorldPalette p = SkySystem.For(spec).Palette;
-            Oklab?[] these = { Oklab.Of(p.Zenith), p.Life > 0f ? Oklab.Of(p.Leaf) : null, a != Archetype.Lava ? Oklab.Of(Rgb.Lerp(p.Shallow, p.Deep, 0.5f)) : null, Oklab.Of(p.Ground(Biome.Grassland, 0.6f, 0.5f)) };
-            int vividParts = 0, earthyParts = 0;
-            for (int e = 0; e < Parts.Length; e++)
-            {
-                if (these[e] is not Oklab o) continue;
-                colours[e].Add(o);
-                if (o.Chroma > 0.13f) vividParts++;
-                if (o.Chroma < 0.09f) earthyParts++;
-            }
             worlds++;
-            if (vividParts == 0) natural++;
-            else if (earthyParts == 0 && vividParts >= 2) vivid++;
-            else if (earthyParts > 0) mixed++;
-            if (these[2] is Oklab water && water.Chroma > 0.08f && (Deg(water) < 45f || Deg(water) > 345f)) red++;
-            if (these[1] is Oklab plants && plants.Chroma > 0.08f && Deg(plants) is > 215f and < 285f) blue++;
-            if (these[0] is Oklab zenith && zenith.Chroma > 0.08f && Deg(zenith) is > 120f and < 170f) green++;
+            kinds[p.Kind] = kinds.GetValueOrDefault(p.Kind) + 1;
+            if (p.Today) continue;
+            Oklab sky = Oklab.Of(p.Zenith), band = Oklab.Of(p.Band);
+            Oklab[] these = { sky, Oklab.Of(p.Ground(Biome.Grassland, 0.6f, 0.5f)), Oklab.Of(p.Leaf), Oklab.Of(Rgb.Lerp(p.Shallow, p.Deep, 0.5f)) };
+            for (int e = 0; e < 4; e++)
+            {
+                if (!p.Has.HasFlag(flags[e])) continue;
+                Oklab o = these[e];
+                int f = FamilyOf(o);
+                if (f >= 0) all[e, f]++;
+                bool vivid_ = p.VividParts.HasFlag(flags[e]), deep = p.DeepParts.HasFlag(flags[e]);
+                if (vivid_ && f >= 0) vivid[e, f]++;
+                float strongest = e == 0 ? MathF.Max(o.Chroma, band.Chroma) : o.Chroma;
+                bool looks = vivid_ ? strongest >= 0.095f : deep ? o.L <= 0.55f && o.Chroma <= 0.085f : strongest <= 0.09f && (e != 0 || Oklab.Of(p.Horizon).Chroma <= 0.09f);
+                if (!looks) wrong.Add($"{spec.Seed} {a} {v} {parts[e]} {(vivid_ ? "vivid" : deep ? "deep" : "earthy")} chroma {strongest:F3} L {o.L:F2}");
+            }
+            if (p.Has.HasFlag(Planets.Look.Parts.Water) && these[3].Chroma > 0.08f && (Deg(these[3]) < 45f || Deg(these[3]) > 345f)) red++;
+            if (p.Has.HasFlag(Planets.Look.Parts.Plants) && these[2].Chroma > 0.08f && Deg(these[2]) is > 215f and < 285f) blue++;
+            if (sky.Chroma > 0.08f && Deg(sky) is > 120f and < 170f) green++;
         }
-        GD.Print($"RANGE {worlds} worlds with air: natural {natural}, mixed {mixed}, vivid {vivid}, between {worlds - natural - mixed - vivid}");
-        Check(natural >= worlds * 0.12f && vivid >= worlds * 0.1f && mixed >= worlds * 0.35f,
-            $"natural, vivid and mixed worlds all common: {natural * 100 / worlds}% wholly natural, {vivid * 100 / worlds}% wholly vivid, {mixed * 100 / worlds}% mixed of {worlds}");
-        for (int e = 0; e < Parts.Length; e++)
+        float Share(PaletteKind k) => kinds.GetValueOrDefault(k) / (float)worlds;
+        GD.Print($"RANGE {worlds} worlds with air: " + string.Join(", ", Enum.GetValues<PaletteKind>().Select(k => $"{k} {Share(k):P0}")));
+        Check(Share(PaletteKind.Earthy) >= 0.12f && Share(PaletteKind.Mixed) >= 0.25f && Share(PaletteKind.Today) is >= 0.12f and <= 0.3f
+              && Share(PaletteKind.Vivid) >= 0.04f && Share(PaletteKind.Candy) is >= 0.04f and <= 0.25f,
+            $"every kind common, candy one share of the mix: earthy {Share(PaletteKind.Earthy):P0}, today {Share(PaletteKind.Today):P0}, vivid {Share(PaletteKind.Vivid):P0}, candy {Share(PaletteKind.Candy):P0}, mixed {Share(PaletteKind.Mixed):P0}");
+        foreach (string w in wrong.Take(8)) GD.Print($"  looks unlike its label: {w}");
+        Check(wrong.Count <= worlds / 100, $"every part looks as its label says: {wrong.Count} parts unlike theirs over {worlds} worlds");
+        for (int e = 0; e < 4; e++)
         {
-            var c = colours[e];
-            int[] sixths = new int[6];
-            foreach (Oklab o in c) sixths[(int)(Deg(o) / 60f) % 6]++;
-            int used = sixths.Count(n => n > 0), most = sixths.Max();
-            GD.Print($"RANGE {Parts[e]}: hues by sixth from red {string.Join(" ", sixths)}; earthy {c.Count(o => o.Chroma < 0.09f)}, vivid {c.Count(o => o.Chroma > 0.13f)} of {c.Count}");
-            Check(used >= 5 && most < c.Count / 2, $"{Parts[e]} hues spread round the wheel: {used} of 6 sixths in use, the fullest holding {most} of {c.Count}");
+            int n = Enumerable.Range(0, 8).Sum(f => all[e, f]), nv = Enumerable.Range(0, 8).Sum(f => vivid[e, f]);
+            int most = Enumerable.Range(0, 8).Max(f => all[e, f]), mostVivid = Enumerable.Range(0, 8).Max(f => vivid[e, f]);
+            GD.Print($"RANGE {parts[e]}: " + string.Join(" ", Enumerable.Range(0, 8).Select(f => $"{Families[f]} {all[e, f]}/{vivid[e, f]}")) + $" (all/vivid of {n}/{nv})");
+            Check(most <= n * 0.35f && mostVivid <= nv * 0.35f, $"no hue family takes over the {parts[e]}: the commonest holds {most * 100 / Math.Max(n, 1)}% of all, {mostVivid * 100 / Math.Max(nv, 1)}% of the vivid");
         }
         Check(red >= worlds / 100 && blue >= worlds / 100 && green >= worlds / 100, $"red water on {red}, blue plants on {blue} and a green sky on {green} of {worlds} worlds (each at least {worlds / 100})");
         Check(greyest < 0.04f, $"airless rock that never rusted stays grey: highest Oklab chroma {greyest:F3}");
+    }
+
+    /// <summary>
+    /// Ore keeps its colour (owner, 23 Nov: "ore deposits we find keep their colors regardless of palette, so the player can tell the
+    /// ore at a glance"), over <paramref name="count"/> fresh worlds of every look: each ore's deposit, deep in the ground, is the same
+    /// colour on every one and marked as the ore's own (the shader keeps the palette off it), and every deposit breaking the surface
+    /// stands at least <see cref="DepositLook.Margin"/> (Oklab) from the soil round it and from the rock of its outcrop.
+    /// </summary>
+    void Ore(int count)
+    {
+        var seen = new Dictionary<DepositKind, Color>();
+        var kinds = new HashSet<PaletteKind>();
+        int differ = 0, unmarked = 0, deposits = 0, pushed = 0, close = 0;
+        float nearest = float.MaxValue;
+        for (int i = 0; i < count; i++)
+        {
+            var (a, v) = (new[] { Archetype.Temperate, Archetype.Arid, Archetype.Ice, Archetype.Alien }[Fresh() % 4], (int)(Fresh() % 2));
+            PlanetSpec spec = PlanetSpec.Roll(Fresh(), a, v, 8);
+            if (spec.Airless) continue;
+            WorldMap map = PlanetGenerator.Generate(spec);
+            SkySystem sky = SkySystem.For(spec);
+            kinds.Add(sky.Palette.Kind);
+            var ground = new GroundPalette(map, sky.Palette, PlanetFlora.For(map, sky));
+            foreach (DepositKind k in Enum.GetValues<DepositKind>())
+            {
+                Color c = ground.Vertex(CellMaterial.Ore, 100.0, 100.0, map.Sample(map.Elevation, 100.0, 100.0) - 30f, out Vector2 f, k);
+                if (f.Y > -0.99f) unmarked++;
+                if (seen.TryGetValue(k, out Color was) && !was.IsEqualApprox(c)) differ++;
+                seen[k] = c;
+            }
+            foreach (Planets.Gen.Deposit d in map.Deposits.All())
+            {
+                if (d.Depth > 0.01f) continue;
+                deposits++;
+                Rgb ore = DepositLook.Color(d.Kind), soil = ground.SoilAt(d.X, d.Y, out _), rock = Rgb.Lerp(ground.Rock, soil, 0.12f);
+                if (Gap(soil, ore) < DepositLook.Margin) pushed++;
+                float gap = MathF.Min(Gap(DepositLook.Around(soil, d.Kind), ore), Gap(DepositLook.Around(rock, d.Kind), ore));
+                nearest = MathF.Min(nearest, gap);
+                if (gap < DepositLook.Margin * 0.97f) close++;
+            }
+        }
+        GD.Print($"ORE {seen.Count} ores over worlds of {string.Join(", ", kinds)}; {deposits} deposits breaking the surface, {pushed} whose soil gave way; nearest ground {nearest:F3}");
+        Check(differ == 0 && unmarked == 0, $"every ore's deposit the same colour on every world and look, and marked its own: {differ} differ, {unmarked} unmarked");
+        Check(deposits > 0 && close == 0, $"every deposit stands apart from the ground round it: {close} of {deposits} within {DepositLook.Margin} (Oklab)");
+    }
+
+    static float Gap(Rgb x, Rgb y)
+    {
+        Oklab a = Oklab.Of(x), b = Oklab.Of(y);
+        return MathF.Sqrt((a.L - b.L) * (a.L - b.L) + (a.A - b.A) * (a.A - b.A) + (a.B - b.B) * (a.B - b.B));
     }
 
     /// <summary>A colour in CIELAB (D65), from sRGB.</summary>

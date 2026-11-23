@@ -88,7 +88,8 @@ public sealed record SkySystem
     public static SkySystem For(PlanetSpec spec, StarClass? star = null)
     {
         var rng = new Rng(Hash.Of(spec.Seed, 0x534B59, (long)spec.Archetype, spec.Variant));
-        StarClass picked = PickStar(spec, ref rng);
+        bool today = WorldPalette.IsToday(spec);
+        StarClass picked = PickStar(spec, ref rng, today);
         StarClass sun = star ?? ForceStar ?? picked;
         AirKind air = AirOf(spec);
         float density = air switch
@@ -110,14 +111,15 @@ public sealed record SkySystem
         };
         AirMix mix = spec.Airless ? AirMix.None : new AirMix(density, particles, aerosol * spec.AirThickness, air is AirKind.Breathable or AirKind.Humid);
         WorldPalette palette = WorldPalette.Make(spec, WorldPalette.Kelvins[(int)sun], mix);
+        float hue = rng.NextFloat(); // a dusty or exotic sky's own shade in today's look
+        if (palette.Today) palette = TodaySky(palette, sun, air, hue, spec.Variant);
         Rgb starColor = palette.Star;
-        rng.NextFloat(); // the roll the exotic air's hand colours took, so every world's bodies and nebula stay as they were
         Rgb zenith = palette.Zenith, horizon = palette.Horizon, haze = palette.Haze, sunset = palette.Sunset, cloudTint = palette.CloudTint;
         bool nebula = rng.NextFloat() < (spec.Archetype == Archetype.Alien ? 0.75f : 0.18f) || spec.Has(Modifier.GlowingNights);
         float nh = rng.NextFloat();
         Rgb nebulaA = HueColor(nh, 0.75f), nebulaB = HueColor(Frac(nh + 0.18f + 0.3f * rng.NextFloat()), 0.65f);
 
-        var bodies = MakeBodies(spec, ref rng, air);
+        var bodies = MakeBodies(spec, ref rng, air, today);
         float energy = sun switch
         {
             StarClass.RedDwarf => 1.1f, StarClass.Orange => 1.25f, StarClass.Yellow => 1.35f, StarClass.White => 1.5f, _ => 1.6f,
@@ -161,11 +163,14 @@ public sealed record SkySystem
         };
     }
 
-    static StarClass PickStar(PlanetSpec spec, ref Rng rng)
+    /// <param name="today">a world in today's look: under the stars its type had before the palette</param>
+    static StarClass PickStar(PlanetSpec spec, ref Rng rng, bool today)
     {
         float r = rng.NextFloat();
         return spec.Archetype switch
         {
+            Archetype.Temperate when today => r < 0.7f ? StarClass.Yellow : StarClass.Orange,
+            Archetype.Arid when today => r < 0.55f ? StarClass.Yellow : StarClass.White,
             // Life as we know it under any long-lived star: red dwarfs (the commonest hosts of temperate worlds), orange,
             // yellow and white (F) stars; a blue-white A star burns out too soon for it.
             Archetype.Temperate => r < 0.2f ? StarClass.RedDwarf : r < 0.5f ? StarClass.Orange : r < 0.85f ? StarClass.Yellow : StarClass.White,
@@ -176,6 +181,61 @@ public sealed record SkySystem
         };
     }
 
+
+    /// <summary>
+    /// Today's look (<see cref="WorldPalette.IsToday"/>): the hand-made sky the game had before the palette. The starlight's colour
+    /// by class; the clear sky its Rayleigh scattering (1/lambda^4 at 680, 550 and 440 nm); then each kind of air's own colours:
+    /// thin air's dark zenith, humid air's paler horizon, a dusty world's ochre, ash's brown-grey lid, sulfur's gold, exotic air's
+    /// fluorescing or spore-hazed families.
+    /// </summary>
+    static WorldPalette TodaySky(WorldPalette p, StarClass star, AirKind air, float hue, int variant)
+    {
+        Rgb starColor = Rgb.Hex(star switch { StarClass.RedDwarf => "ff9050", StarClass.Orange => "ffc488", StarClass.Yellow => "fff1dc", StarClass.White => "f4f6ff", _ => "c8dcff" });
+        Rgb rayleigh = starColor * new Rgb(0.21f, 0.5f, 1f);
+        rayleigh *= 1f / MathF.Max(rayleigh.R, MathF.Max(rayleigh.G, rayleigh.B));
+        Rgb zenith = rayleigh * 0.62f, horizon = Rgb.Lerp(rayleigh, starColor, 0.55f) * 0.95f;
+        Rgb haze = Rgb.Lerp(horizon, starColor, 0.3f);
+        Rgb sunset = Rgb.Lerp(starColor, new Rgb(1f, 0.42f, 0.16f), 0.65f);
+        switch (air)
+        {
+            case AirKind.Thin:
+                zenith = zenith * 0.45f;
+                horizon = Rgb.Lerp(horizon, starColor, 0.35f) * 0.85f;
+                break;
+            case AirKind.Humid:
+                zenith = Rgb.Lerp(zenith, horizon, 0.3f);
+                horizon = Rgb.Lerp(horizon, new Rgb(0.9f, 0.92f, 0.9f), 0.45f);
+                haze = Rgb.Lerp(haze, new Rgb(0.82f, 0.86f, 0.84f), 0.6f);
+                break;
+            case AirKind.Dusty:
+                Rgb dust = Rgb.Lerp(new Rgb(0.86f, 0.62f, 0.38f), new Rgb(0.8f, 0.5f, 0.3f), hue);
+                zenith = Rgb.Lerp(zenith, dust * 0.55f, 0.35f);
+                horizon = Rgb.Lerp(horizon, dust, 0.75f);
+                haze = dust;
+                sunset = Rgb.Lerp(sunset, new Rgb(0.95f, 0.45f, 0.2f), 0.5f);
+                break;
+            case AirKind.Ash:
+                (zenith, horizon, haze, sunset) = (new Rgb(0.16f, 0.13f, 0.13f), new Rgb(0.44f, 0.27f, 0.2f), new Rgb(0.32f, 0.22f, 0.19f), new Rgb(1f, 0.35f, 0.1f));
+                break;
+            case AirKind.Sulfurous:
+                (zenith, horizon, haze, sunset) = (new Rgb(0.42f, 0.36f, 0.2f), new Rgb(0.92f, 0.66f, 0.3f), new Rgb(0.8f, 0.58f, 0.3f), new Rgb(1f, 0.38f, 0.12f));
+                break;
+            case AirKind.Exotic when variant == 0: // crystal worlds: a fluorescing upper air, deep violet to teal and rose
+                (zenith, horizon) = (Rgb.Lerp(Rgb.Hex("2a1a5e"), Rgb.Hex("1a2c66"), hue), Rgb.Lerp(Rgb.Hex("7fd8c8"), Rgb.Hex("e0a0d0"), hue));
+                (haze, sunset) = (Rgb.Lerp(horizon, Rgb.Hex("b0a0d0"), 0.4f), Rgb.Hex("ff70b0"));
+                break;
+            case AirKind.Exotic: // fungal worlds: spore haze, olive and lime over a warm amber horizon
+                (zenith, horizon) = (Rgb.Lerp(Rgb.Hex("3a4a2a"), Rgb.Hex("2a3c3a"), hue), Rgb.Lerp(Rgb.Hex("cfd88a"), Rgb.Hex("e0c070"), hue));
+                (haze, sunset) = (Rgb.Lerp(horizon, Rgb.Hex("a0a070"), 0.4f), Rgb.Hex("ff9a40"));
+                break;
+        }
+        Rgb cloud = air switch
+        {
+            AirKind.Dusty => Rgb.Hex("e8d8c0"), AirKind.Ash => Rgb.Hex("5a4e4a"), AirKind.Sulfurous => Rgb.Hex("d8c890"),
+            AirKind.Exotic => Rgb.Lerp(Rgb.Hex("f0f0f0"), horizon, 0.35f), _ => Rgb.Hex("ffffff"),
+        };
+        return p with { Star = starColor, Disc = starColor, Zenith = zenith, Horizon = horizon, Band = horizon, Haze = haze, Sunset = sunset, CloudTint = cloud, Shade = zenith };
+    }
 
     static AirKind AirOf(PlanetSpec spec) => (spec.Archetype, spec.Variant) switch
     {
@@ -189,7 +249,7 @@ public sealed record SkySystem
         _ => AirKind.Exotic,
     };
 
-    static List<SkyBody> MakeBodies(PlanetSpec spec, ref Rng rng, AirKind air)
+    static List<SkyBody> MakeBodies(PlanetSpec spec, ref Rng rng, AirKind air, bool today)
     {
         var list = new List<SkyBody>();
         // A neighbouring giant: certain when the planet's modifiers say the sky has rings, likely on
@@ -199,7 +259,11 @@ public sealed record SkySystem
         {
             bool rings = spec.Has(Modifier.RingedSky) || rng.NextFloat() < 0.35f;
             float h = rng.NextFloat();
-            var (color, band) = Giant(h, h < 0.4f);
+            // Today's look keeps its old giants: any hue in exotic systems, elsewhere one of five familiar looks shaded a little.
+            var (color, band) = !today ? Giant(h, h < 0.4f)
+                : air == AirKind.Exotic ? Old(HueColor(h, 0.45f))
+                : Old(Rgb.Lerp(Rgb.Hex(new[] { "d6ab78", "e3cd96", "8fb4d8", "86c4b4", "c98f6a" }[(int)(h * 5f) % 5]), Rgb.Hex("b0a898"), Frac(h * 7f) * 0.25f));
+            static (Rgb, Rgb) Old(Rgb c) => (c, Rgb.Lerp(c, Rgb.Hex("5a4a3a"), 0.45f));
             list.Add(new SkyBody
             {
                 Kind = BodyKind.GasGiant, Name = rings ? "a ringed giant" : "a gas giant",

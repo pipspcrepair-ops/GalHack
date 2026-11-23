@@ -9,8 +9,8 @@ public enum Mineral { Granite, Basalt, Andesite, Sandstone, Limestone, Shale, An
 /// <summary>What hangs in a world's air besides its gas: sea salt and sulfate (clean), water haze, the ground's own dust, volcanic ash, sulfuric acid with sulfur.</summary>
 public enum Particles { Clean, Haze, Dust, Ash, Sulfate }
 
-/// <summary>A gas in a world's air that absorbs part of the visible light, and so colours its sky: ozone (violet-blue), chlorine (green), iodine (magenta), nitrogen dioxide (amber), methane (teal), sulfur vapour (gold).</summary>
-public enum Trace { None, Ozone, Chlorine, Iodine, NitrogenDioxide, Methane, Sulfur }
+/// <summary>A gas in a world's air that absorbs part of the visible light, and so colours its sky: ozone (violet-blue), chlorine (green), iodine (magenta), nitrogen dioxide (amber), methane (teal), sulfur vapour (gold), bromine (orange-red).</summary>
+public enum Trace { None, Ozone, Chlorine, Iodine, NitrogenDioxide, Methane, Sulfur, Bromine }
 
 /// <summary>The pigment kit a world's plants gather light with besides their reaction centre: what they throw back is their colour.</summary>
 public enum Pigment { Chlorophyll, Phycocyanin, Phycoerythrin, Anthocyanin, Carotenoid, Retinal, Melanin }
@@ -20,6 +20,17 @@ public enum Waters { Clear, Halophiles, Iron, Copper, Flour, PurpleSulfur, Cyano
 
 /// <summary>A world's commonest ore, weathered into its soil and dust beside the iron: sulfur, copper carbonates, manganese, cobalt bloom, glauconite, carbon.</summary>
 public enum Stain { None, Sulfur, Malachite, Azurite, Manganese, Cobalt, Glauconite, Carbon }
+
+/// <summary>
+/// How a world reads (owner, 23 Nov): wholly earthy, in today's look (the hand colours the game had before the palette),
+/// wholly vivid, or a mix of earthy and vivid parts. A wholly vivid world is candy (every part at full strength: owner, 23 Nov,
+/// "Candy worlds are fine, as long as every world isn't a candy world") or pairs its strong parts against a deep one.
+/// </summary>
+public enum PaletteKind { Earthy, Today, Vivid, Candy, Mixed }
+
+/// <summary>A world's four natural parts: its sky, its ground, its plants and its water.</summary>
+[Flags]
+public enum Parts { None = 0, Sky = 1, Ground = 2, Plants = 4, Water = 8 }
 
 /// <summary>
 /// A world's air as its colours need it: its gas column against Earth's (Rayleigh scattering grows with it;
@@ -45,14 +56,25 @@ public readonly record struct AirMix(float Column, Particles Particles, float Ae
 /// soil's ore, each rolled with real odds. Where the rolls allow, the land takes the kit or ore whose hue
 /// stands furthest from its sky's, and the water the chemistry furthest from its land's. Each part's colour
 /// is then as vivid as its own chemistry makes it (owner, 23 Nov): iron oxides, clays, basalt, carbon and dust
-/// give earth tones, left as the light makes them; sulfur, copper and chlorine compounds, dissolved minerals,
-/// vivid pigments in life and unusual air chemistry are pushed far past realistic at their own hue
-/// (<see cref="Bold"/>). A world of earthy makers is wholly natural, one rich in vivid makers wholly vivid, and
-/// most mix the two. Sources are cited in prototypes/planet-generator/README.md (Palette).
+/// give earth tones, left as the light makes them and held to a natural strength; sulfur, copper, chlorine and
+/// bromine compounds, dissolved minerals, vivid pigments in life and unusual air chemistry are pushed far past
+/// realistic at their own hue (<see cref="Bold"/>). A world of earthy makers is wholly natural, one rich in vivid
+/// makers wholly vivid (candy, or its strong parts paired against a deep one), and most mix the two; about one
+/// in five keeps today's look instead (<see cref="IsToday"/>). Sources are cited in prototypes/planet-generator/README.md (Palette).
 /// </summary>
 public sealed record WorldPalette
 {
     // ---- What the world is made of (rolled, so it can be printed and tested) ----
+    /// <summary>How the world reads: earthy, today's look, vivid (paired against a deep part), candy or mixed.</summary>
+    public PaletteKind Kind { get; init; }
+    public bool Today => Kind == PaletteKind.Today;
+    /// <summary>
+    /// The parts the world has (no plants where nothing lives, no water on a lava world); of them, those whose chemistry is vivid,
+    /// and the one a wholly vivid world that isn't candy keeps deep against the rest.
+    /// </summary>
+    public Parts Has { get; init; }
+    public Parts VividParts { get; init; }
+    public Parts DeepParts { get; init; }
     public float Kelvin { get; init; }
     public AirMix Air { get; init; }
     public Mineral Rock { get; init; }
@@ -134,6 +156,7 @@ public sealed record WorldPalette
 
     public static WorldPalette Make(PlanetSpec spec, float kelvin, AirMix air)
     {
+        if (IsToday(spec)) return TodayLook(spec, kelvin, air);
         ulong h = Hash.Of(spec.Seed, 0x47454F);
         float U(int k) => Hash.Unit(h, k);
         Mineral rock = RockOf(spec, spec.Airless && spec.Archetype != Archetype.Ice ? U(15) : U(0));
@@ -226,15 +249,25 @@ public sealed record WorldPalette
             }
             Rgb zenith = Sky(1f, 1f, 0.8f).Light(SkyGain, skyEye); // the sun higher than 45° at midday: further from its glare
             Spectrum horizon = Sky(10f, 0.8f, 0.5f);
-            // How vivid this sky is: its gas's chemistry, a star far from the Sun's colour, and clear air (haze and dust mute it).
-            float v = Math.Clamp((Vivid(gas) + 0.3f * starOff) * MathF.Exp(-1.2f * air.Aerosol), 0f, 1f);
-            Rgb deep = Oklab.Vivid(zenith, 1f + 2f * v, 0.14f * v, 1f - 0.34f * v, most: SkyMost);
-            // The band along the horizon: the horizon's light after the long way back through the air, so it takes the colour the air
-            // lets through, the complement of the colour it scatters (blue air, a warm band; air that drinks the red, a cyan one).
-            return (deep, Oklab.Vivid(horizon.Light(SkyGain, skyEye), 1f + 1.8f * v, 0.12f * v, most: SkyMost),
-                    Apart(Oklab.Vivid((horizon * Spectrum.Exp(extinction * -2.5f)).Hue(skyEye), 1f + 1.2f * v, 0.2f * v, 1f - 0.04f * v, most: SkyMost + 0.03f), Oklab.Of(deep).Hue, MathF.PI * 5f / 12f * v),
+            Rgb sunset = (light * Spectrum.Exp(extinction * -12f)).Hue(skyEye); // the sun about 5° up
+            // An earthy sky (no trace gas, or a natural one: ozone's blue, nitrogen dioxide's amber, dust) is as the light makes
+            // it, held to a natural strength, its horizon paler than its zenith and its band its horizon's own.
+            if (Vivid(gas) < 0.5f)
+            {
+                Rgb pale = Held(horizon.Light(SkyGain, skyEye), EarthyHorizon);
+                return (Held(zenith, EarthyMost), pale, Held((horizon * Spectrum.Exp(extinction * -2.5f)).Hue(skyEye), EarthyHorizon),
+                        Held(Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye), EarthyHorizon), sunset, (light * scatter).Hue(skyEye), Held(zenith, EarthyMost), albedo);
+            }
+            // A vivid sky, its gas's own colour pushed (haze and dust mute it a little, never back to earthy): a deep zenith over a
+            // bright horizon, and along the horizon a glowing band of the colour the long path lets through, turned well away from
+            // the zenith's hue (blue air, a warm band; air that drinks the red, a cyan one), so the sky reads graded, never one tint.
+            float v = Math.Clamp((Vivid(gas) + 0.3f * starOff) * MathF.Exp(-0.4f * air.Aerosol), 0.8f, 1f);
+            Rgb deep = Oklab.Vivid(zenith, 1f + 2f * v, 0.15f * v, 1f - 0.4f * v, most: SkyMost);
+            Rgb bright = Oklab.Vivid(horizon.Light(SkyGain, skyEye), 1f + 1.8f * v, 0.13f * v, 1.08f, most: SkyMost);
+            return (deep, Apart(bright, Oklab.Of(deep).Hue, MathF.PI / 6f),
+                    Apart(Oklab.Vivid((horizon * Spectrum.Exp(extinction * -2.5f)).Hue(skyEye), 1f + 1.2f * v, 0.2f * v, 1f - 0.04f * v, most: SkyMost + 0.03f), Oklab.Of(deep).Hue, MathF.PI / 3f),
                     Oklab.Vivid(Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye), 1f + 1.8f * v, 0.12f * v, most: SkyMost),
-                    Oklab.Vivid((light * Spectrum.Exp(extinction * -12f)).Hue(skyEye), 1f + 0.6f * v, 0.2f * v, 1f - 0.05f * v), // the sun about 5° up
+                    Oklab.Vivid(sunset, 1f + 0.6f * v, 0.2f * v, 1f - 0.05f * v),
                     Oklab.Vivid((light * scatter).Hue(skyEye), 1f + 0.6f * v, 0.12f * v),
                     Oklab.Vivid(zenith, 1f + 2.4f * v, 0.17f * v), albedo);
         }
@@ -244,7 +277,7 @@ public sealed record WorldPalette
             Oklab z = Oklab.Of(zenith), b = Oklab.Of(band);
             return MathF.Atan2(z.B + b.B, z.A + b.A);
         }
-        Rgb SoilOf(Stain ore, float warm, float wet) => Bold(Stained(Soil(Fines(Stain.None), warm, wet, iron, life), ore, oreAmount), GroundBoost, Vivid(ore)); // the ore over all a soil's weathering
+        Rgb SoilOf(Stain ore, float warm, float wet) => Part(Stained(Soil(Fines(Stain.None), warm, wet, iron, life), ore, oreAmount), GroundBoost, Vivid(ore)); // the ore over all a soil's weathering
 
         // Where the air is the ground's own dust, the sky is that dust lofted: burnt orange and rust over rust as often as not (owner,
         // 23 Nov), a trace gas rolled plainly. Over ash the ground comes first and the trace gas is the one of a few rolled that
@@ -284,7 +317,7 @@ public sealed record WorldPalette
         Pigment pigment = life > 0f && hasSky ? Contrast(kits, h, 26, k => LeafOf(k).Reflectance(), skyHue) : Roll(kits, U(26));
         Spectrum leaf = Leaves(kelvin, through, k => U(4 + k), pigment, silver, out float peak);
         // A broad dark pigment (life gathering every photon of dim or red light) stays deep: umber and charcoal, never lightened.
-        Rgb leafColor = Bold(leaf, LeafBoost, Vivid(pigment) * (silver ? 0.4f : 1f));
+        Rgb leafColor = silver ? Held(leaf.Reflectance(), 0.05f) : Part(leaf, LeafBoost, Vivid(pigment)); // a wax bloom throws back every colour: silver
 
         // ---- Water ----
         // Phytoplankton by how much lives (clear seas to green ones), dissolved matter browning still water,
@@ -298,26 +331,85 @@ public sealed record WorldPalette
         // The open sea holds a tenth of the silt the shore does; a desert's sea takes wind-blown dust too (the Sahara's falls on the Atlantic).
         float openSilt = silt * (spec.Archetype == Archetype.Arid ? 0.45f : 0.1f);
         (Spectrum, Spectrum) WaterOf(Waters w) => Seas(plankton, tannin, silt, openSilt, leaf, dust, sand, w, solute);
-        Waters waters = Contrast(Makers(WaterOdds(spec), 3, w => Vivid(w)), h, 31, w => WaterOf(w).Item1.Reflectance(), land.Hue);
+        // Never the sky's own hue either: a sea that takes its sky's colour reads flat.
+        Waters waters = Contrast(Makers(WaterOdds(spec), 3, w => Vivid(w)), h, 31, w => WaterOf(w).Item1.Reflectance(), land.Hue, skyHue);
         (Spectrum deep, Spectrum shallow) = WaterOf(waters);
         Spectrum snow = Spectrum.Of(l => 0.93f - 0.08f * (l - 400f) / 300f);
 
+        Parts has = PartsOf(spec, life), vivid = has & ((Vivid(gas) >= 0.5f ? Parts.Sky : 0) | (Vivid(ore) >= 0.5f ? Parts.Ground : 0)
+            | (Vivid(pigment) >= 0.5f && !silver ? Parts.Plants : 0) | (Vivid(waters) >= 0.5f ? Parts.Water : 0));
+        // A wholly vivid world is candy as often as not; otherwise one of its parts lies deep, dark and dull, against the strong rest.
+        Parts deepPart = 0;
+        if (vivid == has && vivid != 0 && U(52) >= CandyShare)
+        {
+            var parts = Array.FindAll(new[] { Parts.Sky, Parts.Ground, Parts.Plants, Parts.Water }, x => has.HasFlag(x));
+            deepPart = parts[Math.Min((int)(U(53) * parts.Length), parts.Length - 1)];
+            vivid &= ~deepPart;
+        }
+        Rgb D(Rgb c, Parts part) => part == deepPart ? Deepened(c) : c;
+        if (deepPart == Parts.Ground) soils = Array.ConvertAll(soils, Deepened);
         return new WorldPalette
         {
+            Kind = vivid == 0 ? PaletteKind.Earthy : vivid == has ? PaletteKind.Candy : (vivid | deepPart) == has ? PaletteKind.Vivid : PaletteKind.Mixed,
+            Has = has, VividParts = vivid, DeepParts = deepPart,
             Kelvin = kelvin, Air = air, Rock = rock, Iron = iron, Life = life, Plankton = plankton,
             Gas = gas, Kit = pigment, Silver = silver, Water = waters, Ore = ore,
             Star = light.Hue(eye), Disc = light.Hue(),
-            Zenith = sky.Zenith, Horizon = sky.Horizon, Band = sky.Band, Haze = sky.Haze, Sunset = sky.Sunset, Limb = sky.Limb, Shade = sky.Shade,
+            Zenith = D(sky.Zenith, Parts.Sky), Horizon = D(sky.Horizon, Parts.Sky), Band = D(sky.Band, Parts.Sky), Haze = D(sky.Haze, Parts.Sky), Sunset = sky.Sunset,
+            Limb = D(sky.Limb, Parts.Sky), Shade = D(sky.Shade, Parts.Sky),
             CloudTint = hasSky ? Rgb.Lerp(new Rgb(1f, 1f, 1f), Albedo(sky.Albedo).Reflectance(), Math.Clamp(air.Aerosol * 0.35f, 0f, 0.55f)) : new Rgb(1f, 1f, 1f),
             // An airless body keeps its regolith's own grey (its light and shadow colour it).
-            Dust = spec.Airless ? dust.Reflectance() : Bold(dust, GroundBoost, 0.7f * Vivid(ore)),
-            Bedrock = spec.Airless ? bedrock.Reflectance() : Bold(bedrock, RockBoost, 0.6f * Vivid(ore)), Sand = spec.Airless ? sand.Reflectance() : Bold(sand, GroundBoost, Vivid(ore)), Snow = snow.Reflectance(),
-            Deep = Bold(deep, DeepBoost, Vivid(waters)), Shallow = Bold(shallow, ShallowBoost, Vivid(waters)),
+            Dust = spec.Airless ? dust.Reflectance() : D(Part(dust, GroundBoost, 0.85f * Vivid(ore)), Parts.Ground),
+            Bedrock = spec.Airless ? bedrock.Reflectance() : D(Part(bedrock, RockBoost, Vivid(ore)), Parts.Ground),
+            Sand = spec.Airless ? sand.Reflectance() : D(Part(sand, GroundBoost, Vivid(ore)), Parts.Ground), Snow = snow.Reflectance(),
+            Deep = D(Part(deep, DeepBoost, Vivid(waters)), Parts.Water), Shallow = D(Part(shallow, ShallowBoost, Vivid(waters)), Parts.Water),
             Ice = (snow * 0.92f).Reflectance(),
-            Leaf = leafColor, Peak = peak,
+            Leaf = D(leafColor, Parts.Plants), Peak = peak,
             _soils = soils,
         };
     }
+
+    /// <summary>
+    /// About one world with air in five keeps today's look: the hand colours the game had before the palette (owner, 23 Nov: "what
+    /// we have today would be something we could also see"). Airless bodies never do: theirs is the deep grey moon, never the
+    /// old sandy dunes.
+    /// </summary>
+    public static bool IsToday(PlanetSpec spec) => !spec.Airless && Hash.Unit(Hash.Of(spec.Seed, 0x544F44), 0) < 0.2f;
+
+    /// <summary>
+    /// Today's look: every biome's ground from <see cref="BiomeLook.Ground"/> under what grows on it, the globe from
+    /// <see cref="BiomeLook.Color"/> and the type's own hand colours (<see cref="ArchetypeLook"/>), the water, dust and rock the
+    /// surface had by type. Its sky here is the globe's; the sky model gives the ground its own (SkySystem), and its plants take
+    /// their colour from the starlight as they did (FloraClimate.Light).
+    /// </summary>
+    static WorldPalette TodayLook(PlanetSpec spec, float kelvin, AirMix air)
+    {
+        ArchetypeLook globe = ArchetypeLook.Base(spec.Archetype, spec.Variant);
+        (string shallow, string deep, string dust, string rock) = (spec.Archetype, spec.Variant) switch
+        {
+            (Archetype.Temperate, 0) => ("2e7a80", "0c2c40", "9c7e5a", "726b61"),
+            (Archetype.Temperate, _) => ("2f7c6c", "0c3236", "9c7e5a", "726b61"),
+            (Archetype.Arid, 0) => ("3a8c8a", "12384a", "b98a56", "a2725a"),
+            (Archetype.Arid, _) => ("3a8c8a", "12384a", "b98a56", "9c5436"),
+            (Archetype.Ice, 0) => ("2c5a78", "0a1c34", "c8ccd0", "5d646e"),
+            (Archetype.Ice, _) => ("2a6a7c", "0a2236", "c0c4c8", "5d646e"),
+            (Archetype.Lava, _) => ("8a1a0a", "ff6a18", "4a4442", "2f2a2b"),
+            (Archetype.Alien, 0) => ("2a8a86", "0c2a3a", "a898b8", "6f6185"),
+            _ => ("5a3a7a", "1a0c30", "8a8a5a", "6b5a52"),
+        };
+        return new WorldPalette
+        {
+            Kind = PaletteKind.Today, Kelvin = kelvin, Air = air, Life = LifeOf(spec), Has = PartsOf(spec, LifeOf(spec)),
+            Star = globe.SunColor, Disc = globe.SunColor, Zenith = globe.SkyTop, Horizon = globe.SkyHorizon, Band = globe.SkyHorizon,
+            Haze = globe.SkyHorizon, Sunset = globe.SkyHorizon, Limb = globe.Atmosphere, CloudTint = globe.CloudColor, Shade = globe.SkyTop,
+            Dust = Rgb.Hex(dust), Bedrock = Rgb.Hex(rock), Sand = BiomeLook.Ground(Biome.Beach), Snow = Rgb.Hex("eef2f6"),
+            Deep = Rgb.Hex(deep), Shallow = Rgb.Hex(shallow), Ice = globe.FrozenSea, Leaf = BiomeLook.Color(Biome.Grassland),
+        };
+    }
+
+    /// <summary>The parts a world has: ground always; with air, a sky, water but on a lava world, and plants where anything lives.</summary>
+    static Parts PartsOf(PlanetSpec spec, float life) => spec.Airless ? Parts.Ground
+        : Parts.Sky | Parts.Ground | (life > 0f ? Parts.Plants : 0) | (spec.Archetype == Archetype.Lava ? 0 : Parts.Water);
 
     /// <summary>
     /// How far the eye adapts to its star's light on lit ground: half way, so the star's cast shows on everything it lights, an
@@ -334,6 +426,15 @@ public sealed record WorldPalette
     /// <summary>The most chroma (Oklab) a sky takes: the paintings' skies, never neon.</summary>
     const float SkyMost = 0.22f;
 
+    /// <summary>
+    /// The most chroma (Oklab) an earthy part takes, and an earthy sky's horizon: a natural world reads natural (owner, 23 Nov: "our
+    /// desaturated and natural looking worlds"), and a part labelled earthy never looks vivid.
+    /// </summary>
+    const float EarthyMost = 0.085f, EarthyHorizon = 0.06f;
+
+    /// <summary>How often a wholly vivid world is candy, every part at full strength; the rest pair their strong parts against a deep one.</summary>
+    const float CandyShare = 0.5f;
+
     /// <summary>How far the sky is seen adapted: under half way, so skies under M, K, G, F and A stars differ plainly.</summary>
     const float SkyAdaptation = 0.45f;
 
@@ -345,17 +446,38 @@ public sealed record WorldPalette
     /// lightness too (vivid plants and water brighter than life, deep water most: it would be near black). How far each element
     /// goes is its own chemistry's (<see cref="Vivid(Stain)"/> and the rest): earth tones stay as the light makes them.
     /// </summary>
-    static readonly (float Gain, float Floor, float Light) GroundBoost = (2.7f, 0.065f, 1f), RockBoost = (2.3f, 0.045f, 1f), LeafBoost = (3.1f, 0.13f, 1.3f), ShallowBoost = (2.8f, 0.12f, 1.25f), DeepBoost = (2.8f, 0.12f, 1.6f);
+    static readonly (float Gain, float Floor, float Light) GroundBoost = (2.7f, 0.14f, 1f), RockBoost = (2.3f, 0.1f, 1f), LeafBoost = (3.1f, 0.15f, 1.3f), ShallowBoost = (2.8f, 0.14f, 1.25f), DeepBoost = (2.8f, 0.13f, 1.6f);
 
-    static Rgb Bold(Spectrum s, (float Gain, float Floor, float Light) boost, float vivid) =>
-        Oklab.Vivid(s.Reflectance(), 1f + (boost.Gain - 1f) * vivid, boost.Floor * vivid, 1f + (boost.Light - 1f) * vivid);
+    static Rgb Bold(Spectrum s, (float Gain, float Floor, float Light) boost, float vivid)
+    {
+        Rgb c = s.Reflectance();
+        float gain = 1f + (boost.Gain - 1f) * vivid, light = 1f + (boost.Light - 1f) * vivid;
+        // Where the screen can't hold that chroma so light or so dark, the lightness gives way toward the middle, never the colour.
+        Rgb bold = Oklab.Vivid(c, gain, boost.Floor, light);
+        for (int i = 0; i < 4 && Oklab.Of(bold).Chroma < boost.Floor * 0.95f; i++)
+            bold = Oklab.Vivid(c, gain, boost.Floor, (light = 0.6f / MathF.Max(Oklab.Of(c).L, 0.05f) * 0.35f + light * 0.65f));
+        return bold;
+    }
+
+    /// <summary>A part as its chemistry makes it: a vivid maker's pushed at its own hue (<see cref="Bold"/>), an earthy one's as the light makes it, held natural.</summary>
+    static Rgb Part(Spectrum s, (float Gain, float Floor, float Light) boost, float vivid) => vivid >= 0.5f ? Bold(s, boost, vivid) : Held(s.Reflectance(), EarthyMost);
+
+    /// <summary>A colour held to at most <paramref name="most"/> chroma (Oklab) at its own hue.</summary>
+    static Rgb Held(Rgb c, float most) => Oklab.Vivid(c, 1f, most: most);
+
+    /// <summary>A part laid deep against a vivid world's strong ones: darker and duller at its own hue.</summary>
+    static Rgb Deepened(Rgb c)
+    {
+        Oklab o = Oklab.Of(c);
+        return Oklab.Lch(o.L * 0.62f, MathF.Min(o.Chroma * 0.55f, 0.08f), o.Hue).ToRgb();
+    }
 
     // How vivid each element's chemistry makes it, 0 an earth tone to 1 a colour as strong as it comes (owner, 23 Nov: "a mix of
     // vibrancies and earth tones available based on elements"). Iron oxides, clays, basalt, carbon and dust give earth tones; sulfur,
     // copper and cobalt minerals, chlorine and iodine in the air, vivid pigments in life and the chemistry of water give the vivid.
     static float Vivid(Trace gas) => gas switch
     {
-        Trace.Chlorine or Trace.Iodine => 0.9f, Trace.Sulfur or Trace.Methane => 0.8f, Trace.NitrogenDioxide or Trace.Ozone => 0.3f, _ => 0.1f, // ozone's deep blue and NO2's amber haze are natural
+        Trace.Chlorine or Trace.Iodine or Trace.Bromine => 0.9f, Trace.Sulfur or Trace.Methane => 0.8f, Trace.NitrogenDioxide or Trace.Ozone => 0.3f, _ => 0.1f, // ozone's deep blue and NO2's amber haze are natural
     };
 
     static float Vivid(Stain ore) => ore switch
@@ -406,10 +528,10 @@ public sealed record WorldPalette
 
 
     /// <summary>
-    /// Of four rolled by their odds, the one whose colour stands furthest in hue from <paramref name="away"/>, a near-grey
+    /// Of four rolled by their odds, the one whose colour stands furthest in hue from <paramref name="away"/> (and <paramref name="also"/>), a near-grey
     /// counting for less: the basis allows each, and the look takes the one that contrasts most.
     /// </summary>
-    static T Contrast<T>((T, float)[] odds, ulong h, int salt, Func<T, Rgb> color, float away)
+    static T Contrast<T>((T, float)[] odds, ulong h, int salt, Func<T, Rgb> color, float away, float? also = null)
     {
         T best = odds[0].Item1;
         float score = -1f;
@@ -417,7 +539,7 @@ public sealed record WorldPalette
         {
             T c = Roll(odds, Hash.Unit(h, salt + 40 * i));
             Oklab o = Oklab.Of(color(c));
-            float s = Oklab.HueGap(o.Hue, away) * MathF.Min(1f, o.Chroma / 0.03f);
+            float s = MathF.Min(Oklab.HueGap(o.Hue, away), also is float a ? Oklab.HueGap(o.Hue, a) : MathF.PI) * MathF.Min(1f, o.Chroma / 0.03f);
             if (s > score) (best, score) = (c, s);
         }
         return best;
@@ -429,20 +551,21 @@ public sealed record WorldPalette
     /// nitrogen dioxide; air the model doesn't otherwise hold any of them.
     /// </summary>
     static (Trace, float)[] TraceOdds(AirMix air) => air.Oxygen
-        ? new[] { (Trace.None, 0.18f), (Trace.Ozone, 0.2f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.1f), (Trace.Chlorine, 0.14f), (Trace.NitrogenDioxide, 0.1f), (Trace.Sulfur, 0.08f) }
+        ? new[] { (Trace.None, 0.25f), (Trace.Ozone, 0.18f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.08f), (Trace.Chlorine, 0.08f), (Trace.NitrogenDioxide, 0.1f), (Trace.Sulfur, 0.07f), (Trace.Bromine, 0.08f) }
         : air.Particles switch
         {
-            Particles.Dust => new[] { (Trace.None, 0.32f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.1f), (Trace.Chlorine, 0.12f), (Trace.NitrogenDioxide, 0.15f), (Trace.Sulfur, 0.15f) },
-            Particles.Ash => new[] { (Trace.Sulfur, 0.25f), (Trace.Chlorine, 0.2f), (Trace.NitrogenDioxide, 0.15f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.15f) },
-            Particles.Sulfate => new[] { (Trace.Sulfur, 0.3f), (Trace.Chlorine, 0.25f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.2f) },
-            _ => new[] { (Trace.None, 0.14f), (Trace.Ozone, 0.14f), (Trace.Methane, 0.15f), (Trace.Chlorine, 0.15f), (Trace.Iodine, 0.12f), (Trace.NitrogenDioxide, 0.14f), (Trace.Sulfur, 0.13f) },
+            Particles.Dust => new[] { (Trace.None, 0.32f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.08f), (Trace.Chlorine, 0.08f), (Trace.NitrogenDioxide, 0.15f), (Trace.Sulfur, 0.08f), (Trace.Bromine, 0.1f), (Trace.Ozone, 0.06f) },
+            Particles.Ash => new[] { (Trace.Sulfur, 0.2f), (Trace.Chlorine, 0.12f), (Trace.NitrogenDioxide, 0.15f), (Trace.Iodine, 0.1f), (Trace.Methane, 0.12f), (Trace.Bromine, 0.16f), (Trace.None, 0.15f) },
+            Particles.Sulfate => new[] { (Trace.Sulfur, 0.22f), (Trace.Chlorine, 0.15f), (Trace.Iodine, 0.1f), (Trace.Methane, 0.15f), (Trace.Bromine, 0.18f), (Trace.None, 0.2f) },
+            _ => new[] { (Trace.None, 0.16f), (Trace.Ozone, 0.16f), (Trace.Methane, 0.16f), (Trace.Chlorine, 0.1f), (Trace.Iodine, 0.1f), (Trace.NitrogenDioxide, 0.12f), (Trace.Sulfur, 0.08f), (Trace.Bromine, 0.12f) },
         };
 
     /// <summary>
     /// A trace gas's absorption by wavelength (nm), 1 at its strongest in the visible: ozone's Chappuis band near 600 nm (a thick
     /// layer turns the sky violet-blue); chlorine's band from the ultraviolet across the violet and blue (a yellow-green gas: blue
     /// air turns green); iodine's band in the green near 525 nm (a violet gas: magenta skies); nitrogen dioxide's across the blue
-    /// (amber); methane's red bands from 619 nm on (Uranus' and Neptune's cyan); sulfur's allotropes drinking the violet (gold).
+    /// (amber); methane's red bands from 619 nm on (Uranus' and Neptune's cyan); sulfur's allotropes drinking the violet (gold);
+    /// bromine's broad band from the violet into the green (a red-brown gas: orange-red skies).
     /// </summary>
     static float Absorbs(Trace gas, float l) => gas switch
     {
@@ -451,7 +574,8 @@ public sealed record WorldPalette
         Trace.Iodine => G(l, 525f, 38f),
         Trace.NitrogenDioxide => Below(l, 470f, 30f),
         Trace.Methane => 0.9f * Mathx.Smooth(560f, 700f, l) + 0.5f * G(l, 619f, 10f),
-        Trace.Sulfur => Below(l, 450f, 18f),
+        Trace.Sulfur => Below(l, 485f, 18f),
+        Trace.Bromine => Below(l, 545f, 25f),
         _ => 0f,
     };
 
@@ -472,8 +596,8 @@ public sealed record WorldPalette
         float hot = Mathx.Smooth(5800f, 8500f, kelvin), cool = Mathx.Smooth(5800f, 3600f, kelvin), sunny = 1f - hot - cool;
         return new[]
         {
-            (Pigment.Chlorophyll, 0.25f + 0.5f * sunny), (Pigment.Phycocyanin, 0.25f + 0.6f * cool), (Pigment.Phycoerythrin, 0.25f + 0.2f * sunny),
-            (Pigment.Anthocyanin, 0.2f + 0.6f * hot), (Pigment.Carotenoid, 0.2f + 0.7f * hot), (Pigment.Retinal, 0.25f), (Pigment.Melanin, 0.05f + 0.6f * cool * cool),
+            (Pigment.Chlorophyll, 0.25f + 0.5f * sunny), (Pigment.Phycocyanin, 0.15f + 0.35f * cool), (Pigment.Phycoerythrin, 0.12f + 0.1f * sunny),
+            (Pigment.Anthocyanin, 0.1f + 0.35f * hot), (Pigment.Carotenoid, 0.4f + 0.6f * hot), (Pigment.Retinal, 0.2f), (Pigment.Melanin, 0.05f + 0.6f * cool * cool),
         };
     }
 
@@ -486,8 +610,8 @@ public sealed record WorldPalette
         Archetype.Arid => new[] { (Waters.Halophiles, 0.3f), (Waters.Iron, 0.2f), (Waters.Copper, 0.15f), (Waters.Sulfur, 0.1f), (Waters.PurpleSulfur, 0.1f), (Waters.Clear, 0.15f) },
         Archetype.Ice => new[] { (Waters.Flour, 0.35f), (Waters.Clear, 0.25f), (Waters.Copper, 0.15f), (Waters.PurpleSulfur, 0.1f), (Waters.Halophiles, 0.15f) },
         Archetype.Lava => new[] { (Waters.Sulfur, 0.4f), (Waters.Iron, 0.35f), (Waters.Copper, 0.25f) },
-        Archetype.Alien => new[] { (Waters.Clear, 0.08f), (Waters.Halophiles, 0.115f), (Waters.Iron, 0.115f), (Waters.Copper, 0.115f), (Waters.Flour, 0.115f), (Waters.PurpleSulfur, 0.115f), (Waters.Cyanobacteria, 0.115f), (Waters.Blackwater, 0.115f), (Waters.Sulfur, 0.115f) },
-        _ => new[] { (Waters.Clear, 0.22f), (Waters.Cyanobacteria, 0.14f), (Waters.PurpleSulfur, 0.1f), (Waters.Halophiles, 0.08f), (Waters.Copper, 0.1f), (Waters.Flour, 0.08f), (Waters.Blackwater, 0.1f), (Waters.Iron, 0.08f), (Waters.Sulfur, 0.1f) },
+        Archetype.Alien => new[] { (Waters.Clear, 0.08f), (Waters.Halophiles, 0.08f), (Waters.Iron, 0.12f), (Waters.Copper, 0.13f), (Waters.Flour, 0.12f), (Waters.PurpleSulfur, 0.09f), (Waters.Cyanobacteria, 0.11f), (Waters.Blackwater, 0.12f), (Waters.Sulfur, 0.12f) },
+        _ => new[] { (Waters.Clear, 0.22f), (Waters.Cyanobacteria, 0.12f), (Waters.PurpleSulfur, 0.08f), (Waters.Halophiles, 0.06f), (Waters.Copper, 0.12f), (Waters.Flour, 0.08f), (Waters.Blackwater, 0.1f), (Waters.Iron, 0.1f), (Waters.Sulfur, 0.1f) },
     };
 
     /// <summary>The ores a world's ground may weather into its soil: volcanic worlds' sulfur most of all, an icy world's ground mostly plain.</summary>
@@ -495,7 +619,7 @@ public sealed record WorldPalette
     {
         Archetype.Lava => new[] { (Stain.Sulfur, 0.35f), (Stain.None, 0.15f), (Stain.Manganese, 0.15f), (Stain.Malachite, 0.1f), (Stain.Cobalt, 0.1f), (Stain.Carbon, 0.15f) },
         Archetype.Ice => new[] { (Stain.None, 0.45f), (Stain.Azurite, 0.15f), (Stain.Manganese, 0.15f), (Stain.Glauconite, 0.15f), (Stain.Cobalt, 0.1f) },
-        _ => new[] { (Stain.None, 0.1f), (Stain.Sulfur, 0.08f), (Stain.Malachite, 0.16f), (Stain.Azurite, 0.12f), (Stain.Manganese, 0.14f), (Stain.Cobalt, 0.14f), (Stain.Glauconite, 0.16f), (Stain.Carbon, 0.1f) },
+        _ => new[] { (Stain.None, 0.12f), (Stain.Sulfur, 0.12f), (Stain.Malachite, 0.14f), (Stain.Azurite, 0.13f), (Stain.Manganese, 0.12f), (Stain.Cobalt, 0.09f), (Stain.Glauconite, 0.14f), (Stain.Carbon, 0.12f) },
     };
 
     /// <summary>
@@ -507,8 +631,8 @@ public sealed record WorldPalette
     {
         Stain.Sulfur => 0.85f * Below(l, 500f, 14f),
         Stain.Malachite => 0.75f * G(l, 660f, 60f) + 0.5f * Below(l, 450f, 20f),
-        Stain.Azurite => 0.75f * Mathx.Smooth(520f, 620f, l),
-        Stain.Manganese => 0.6f * G(l, 560f, 55f) + 0.25f,
+        Stain.Azurite => 0.85f * Mathx.Smooth(480f, 580f, l),
+        Stain.Manganese => 0.2f * G(l, 560f, 55f) + 0.5f,
         Stain.Cobalt => 0.7f * G(l, 530f, 35f),
         Stain.Carbon => 0.75f - 0.1f * (l - 400f) / 300f,
         _ => 0.55f * G(l, 640f, 70f) + 0.45f * Below(l, 470f, 25f),
@@ -694,20 +818,21 @@ public sealed record WorldPalette
     /// </summary>
     public Rgb Land(Biome biome, float warm, float wet, Rgb? growth = null)
     {
+        if (Today) return growth is Rgb t ? Rgb.Lerp(BiomeLook.Ground(biome), t, Cover(biome, true)) : BiomeLook.Color(biome);
         Rgb ground = Ground(biome, warm, wet);
         Rgb? green = growth ?? (Life > 0f ? Leaf : null);
         return green is Rgb g ? Rgb.Lerp(ground, g, Cover(biome)) : ground;
     }
 
-    /// <summary>How much of a biome's ground is hidden by what grows on it: a meadow's grass all but hides its soil.</summary>
-    public static float Cover(Biome b) => b switch
+    /// <summary>How much of a biome's ground is hidden by what grows on it: a meadow's grass all but hides its soil (less in today's look).</summary>
+    public static float Cover(Biome b, bool today = false) => b switch
     {
-        Biome.Grassland or Biome.Meadow => 0.75f,
-        Biome.Jungle or Biome.Riverbank or Biome.Oasis => 0.65f,
-        Biome.Forest or Biome.Rainforest => 0.55f,
-        Biome.PineForest or Biome.CloudForest => 0.5f,
-        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => 0.45f,
-        Biome.Tundra or Biome.Scrub or Biome.HotSpring => 0.3f,
+        Biome.Grassland or Biome.Meadow => today ? 0.55f : 0.75f,
+        Biome.Jungle or Biome.Riverbank or Biome.Oasis => today ? 0.5f : 0.65f,
+        Biome.Forest or Biome.Rainforest => today ? 0.5f : 0.55f,
+        Biome.PineForest or Biome.CloudForest => today ? 0.45f : 0.5f,
+        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => today ? 0.35f : 0.45f,
+        Biome.Tundra or Biome.Scrub or Biome.HotSpring => today ? 0.22f : 0.3f,
         _ => 0f,
     };
 
@@ -718,6 +843,7 @@ public sealed record WorldPalette
     /// </summary>
     public Rgb Ground(Biome biome, float warm, float wet)
     {
+        if (Today) return BiomeLook.Ground(biome);
         switch (biome)
         {
             case Biome.Beach: case Biome.Dunes: case Biome.Erg: return biome == Biome.Beach ? Sand : Rgb.Lerp(Sand, Dust, 0.35f);

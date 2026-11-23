@@ -21,6 +21,8 @@ global uniform vec4 weather_flash;   // where in the world the last strike light
 uniform vec3 zenith_day : source_color;
 uniform vec3 horizon_day : source_color;
 uniform vec3 band_day : source_color;     // the bright band along the horizon (WorldPalette.Band)
+uniform float band_share = 0.8;           // how strongly that band shows (none in today's look)
+uniform float sky_curve = 0.75;           // how far up the horizon's colour reaches (today's look: 0.42, close to the horizon)
 uniform vec3 zenith_night : source_color;
 uniform vec3 sunset : source_color;
 uniform vec3 haze : source_color;
@@ -104,10 +106,10 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 
 	vec3 zen = mix(zenith_night, zenith_day * bright, day);
 	vec3 hor = mix(zenith_night * 1.6 + haze * 0.02, horizon_day * bright, day);
-	float a = pow(clamp(up, 0.0, 1.0), 0.75 / density); // graded over the whole sky, the horizon's colour reaching well up
+	float a = pow(clamp(up, 0.0, 1.0), sky_curve / density); // graded over the whole sky, the horizon's colour reaching well up
 	vec3 col = mix(hor, zen, a);
 	// A glowing band of its own colour hugs the horizon, under the graded sky: deeper air, a taller band.
-	col = mix(col, band_day * bright, exp(-max(up, 0.0) * 16.0 / density) * 0.8 * day);
+	col = mix(col, band_day * bright, exp(-max(up, 0.0) * 16.0 / density) * band_share * day);
 
 	// Sunset and sunrise: warm light piling up toward a low sun, strongest in thick air.
 	vec2 flat_dir = normalize(dir.xz + vec2(1e-5));
@@ -125,7 +127,7 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	float sun_through = sun_air(sun_h);
 	// Low down both halos thin with the same path and take the sunset's colour, so a setting sun
 	// sits in a warm contained glow you can look at, never a white blaze.
-	vec3 halo = mix(sunset, mix(star_color, band_day, 0.6), smoothstep(0.03, 0.38, sun_h));
+	vec3 halo = mix(sunset, mix(star_color, band_day, 0.75 * band_share), smoothstep(0.03, 0.38, sun_h));
 	col += halo * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5 * sun_through * sun_through) * day * density;
 
 	// Below the horizon: the haze, darker downward.

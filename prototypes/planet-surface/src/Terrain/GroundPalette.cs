@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System;
 using System.Linq;
 using GalHack.Terrain;
@@ -223,26 +223,21 @@ public sealed class GroundPalette
         _cells = ColorMap.Soften(map, _cells);
 
         // The rock is the world's own mineral, alien worlds' too (their soils keep their own chemistry).
-        (Rock, Strata) = (map.Def.Archetype, map.Def.Variant) switch
+        Rock = colours.Bedrock;
+        Strata = (map.Def.Archetype, map.Def.Variant) switch
         {
-            (Archetype.Temperate, _) => (colours.Bedrock, 0.25f),
-            (Archetype.Arid, 0) => (colours.Bedrock, 0.55f),
-            (Archetype.Arid, _) => (colours.Bedrock, 0.9f),
-            (Archetype.Ice, _) => (colours.Bedrock, 0.3f),
-            (Archetype.Lava, _) => (colours.Bedrock, 0.35f),
-            (Archetype.Alien, 0) => (colours.Bedrock, 0.5f),
-            _ => (colours.Bedrock, 0.3f),
+            (Archetype.Arid, 0) => 0.55f, (Archetype.Arid, _) => 0.9f, (Archetype.Lava, _) => 0.35f, (Archetype.Alien, 0) => 0.5f,
+            (Archetype.Temperate, _) => 0.25f, _ => 0.3f,
         };
         DeepRock = Rock * 0.72f;
         Bedrock = Rgb.Hex("26262b");
-        // Under water the rock's own sand; in a river's bed its fines darkened wet; worn bare, the rock's dust.
-        Seabed = Rgb.Lerp(Rock, colours.Sand, 0.55f) * 0.85f;
-        RiverBed = Rgb.Lerp(Rock, colours.Dust * 0.5f, 0.6f);
-        BareSoil = Rgb.Lerp(Rock, colours.Dust * 0.8f, 0.55f);
+        // Under water the rock's own sand; in a river's bed its fines darkened wet; worn bare, the rock's dust (today's look:
+        // the hand mixes it had).
+        (Seabed, RiverBed, BareSoil) = colours.Today
+            ? (Rgb.Lerp(Rock, Rgb.Hex("b0a48a"), 0.45f) * 0.85f, Rgb.Lerp(Rock, Rgb.Hex("4a4034"), 0.6f), Rgb.Lerp(Rock, Rgb.Hex("7a5e44"), 0.45f))
+            : (Rgb.Lerp(Rock, colours.Sand, 0.55f) * 0.85f, Rgb.Lerp(Rock, colours.Dust * 0.5f, 0.6f), Rgb.Lerp(Rock, colours.Dust * 0.8f, 0.55f));
         Snow = colours.Snow;
     }
-
-
 
     /// <summary>Blended soil colour at a point (canonical metres) and how much it glows (lava fields, glow moss).</summary>
     public Rgb SoilAt(double x, double z, out float glow)
@@ -305,20 +300,24 @@ public sealed class GroundPalette
         {
             case CellMaterial.Ore:
             {
-                // Ore shows in the rock as speckle and streaks of its colour, not a flat stain: a
-                // texture over the rock, read by its pattern first, and only a faint glow.
+                // Ore shows as speckle and streaks of its colour over a dark matrix of the same ore, not a flat stain: read
+                // by its pattern first, and only a faint glow. Its colours are its own on every world (DepositLook), never
+                // the world's rock, and the shader keeps the palette off it (flags.Y below 0: how much is the ore's own).
                 Rgb oreColour = DepositLook.Color(ore);
                 float speck = SmoothStep(0.55f, 0.85f, ValueNoise(x * 1.7, z * 1.7 + height * 0.9, 41));
                 float streak = MathF.Abs(ValueNoise(x * 0.45 + height * 0.3, z * 0.45, 43) - 0.5f) < 0.1f ? 1f : 0f;
-                c = Rgb.Lerp(Rock, oreColour, 0.14f + 0.26f * speck + 0.18f * streak);
+                c = Rgb.Lerp(oreColour * 0.62f, oreColour * 1.18f, 0.2f + 0.55f * speck + 0.25f * streak);
                 flags.X = DepositLook.Glow(ore) * 0.12f;
+                flags.Y = -1f;
                 rock = 0.8f;
-                // Where a body breaks the surface it shows through the soil in broken patches, never a slab of its own.
+                // Where a body breaks the surface it shows through the soil in broken patches, never a slab of its own; the soil
+                // round them gives way where it would hide them.
                 if (Map.Sample(Map.Elevation, x, z) - height < 2.5f)
                 {
                     float showing = SmoothStep(0.45f, 0.68f, ValueNoise(x * 0.33, z * 0.33, 53));
-                    c = Rgb.Lerp(SoilAt(x, z, out _), c, showing * 0.8f);
+                    c = Rgb.Lerp(DepositLook.Around(SoilAt(x, z, out _), ore), c, showing);
                     rock *= showing;
+                    flags.Y = -showing;
                 }
                 break;
             }

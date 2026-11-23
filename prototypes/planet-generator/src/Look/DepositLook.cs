@@ -1,13 +1,33 @@
+using System;
 using Planets.Gen;
 
 namespace Planets.Look;
 
 /// <summary>
-/// One colour per material, the same on every planet: the mineral as it looks in rock, weathered and
-/// matte, so a prospector learns to read it by the rock first and its colour second.
+/// One colour per material, the same on every planet and in every look (owner, 23 Nov: "ore deposits we find keep their colors
+/// regardless of palette, so the player can tell the ore at a glance"): the mineral as it looks in rock, weathered and matte, so a
+/// prospector learns to read it by the rock first and its colour second. Nothing of a world's palette touches it; where a world's
+/// ground would hide it, the ground gives way (<see cref="Around"/>).
 /// </summary>
 public static class DepositLook
 {
+    /// <summary>How far apart (Oklab) a deposit and the ground round it always stand.</summary>
+    public const float Margin = 0.12f;
+
+    /// <summary>
+    /// The ground round a deposit: its own colour, moved off the ore's lightness where the two would blend, so the deposit keeps
+    /// its colour and still stands <see cref="Margin"/> apart (the ground gives way, never the ore).
+    /// </summary>
+    public static Rgb Around(Rgb ground, DepositKind kind)
+    {
+        Oklab g = Oklab.Of(ground), o = Oklab.Of(Color(kind));
+        float da = g.A - o.A, db = g.B - o.B, dl = g.L - o.L, need = Margin * Margin - da * da - db * db;
+        if (dl * dl >= need) return ground;
+        float step = MathF.Sqrt(need) + 0.01f, l = o.L + (dl >= 0f ? step : -step);
+        if (l > 0.95f || l < 0.08f) l = o.L + (dl >= 0f ? -step : step); // no room that way: the other
+        return new Oklab(l, g.A, g.B).ToRgb();
+    }
+
     public static Rgb Color(DepositKind kind) => kind switch
     {
         DepositKind.Iron => Rgb.Hex("7c4f38"),      // rust

@@ -85,9 +85,11 @@ public enum PlantForm
 /// <summary>
 /// What a world offers its plants. Warmth and Wetness run 0..1; Air 0 is vacuum, 1 Earth's, 2 thick;
 /// Pigment is the leaf colour its starlight evolved (the planet's to work out); Alien 0..1 pulls forms
-/// from the familiar to the strange; Life 0..1 is how much grows at all, and 0 means nothing does.
+/// from the familiar to the strange; Life 0..1 is how much grows at all, and 0 means nothing does. Light,
+/// on a world in today's look, is the sunlight's colour, and its plants' colours are picked from it as
+/// they were before the palette.
 /// </summary>
-public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Pigment, float Alien, float Life, FloraMood Mood = null)
+public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Pigment, float Alien, float Life, FloraMood Mood = null, Tone? Light = null)
 {
     /// <summary>What the world's history has done to its plants (none where nothing says).</summary>
     public FloraMood Moods => Mood ?? FloraMood.None;

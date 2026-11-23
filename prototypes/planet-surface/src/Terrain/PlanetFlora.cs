@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Plants;
@@ -116,7 +116,8 @@ public sealed class PlanetFlora
         float alien = StrangenessOf(spec, lean);
         // The leaf pigment this world's starlight evolved: the palette's, which its water's plankton share.
         Rgb leaf = sky.Palette.Leaf;
-        var climate = new FloraClimate(Hash.Of(spec.Seed, 0x466C7261, (long)spec.Archetype, spec.Variant), meanWarm, meanWet, air, new Tone(leaf.R, leaf.G, leaf.B), alien, life, mood);
+        Tone? light = sky.Palette.Today ? new Tone(sky.StarColor.R, sky.StarColor.G, sky.StarColor.B) : null; // today's look: its plants from the starlight, as they were
+        var climate = new FloraClimate(Hash.Of(spec.Seed, 0x466C7261, (long)spec.Archetype, spec.Variant), meanWarm, meanWet, air, new Tone(leaf.R, leaf.G, leaf.B), alien, life, mood, light);
         return new PlanetFlora(map, Herbarium.Roll(climate, habitats), meanWet);
     }
 
