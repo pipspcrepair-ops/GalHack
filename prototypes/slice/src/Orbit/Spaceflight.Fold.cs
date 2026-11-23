@@ -161,25 +161,52 @@ public partial class Spaceflight
                 : flight._systems.TryGetValue(star, out StarSystem known) ? Task.FromResult(known) : Task.Run(() => StarProfile.Of(galaxy, star));
         }
 
+        /// <summary>The longest one tick of making it took on the main thread, ms, and what it was doing then (tests print it).</summary>
+        public double WorstStageMs { get; private set; }
+        public string WorstStage { get; private set; } = "";
+
         public bool Step(Spaceflight flight)
+        {
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            string stage = "waiting";
+            try { return StepOnce(flight, ref stage); }
+            finally
+            {
+                double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (ms > WorstStageMs) (WorstStageMs, WorstStage) = (ms, stage);
+            }
+        }
+
+        bool StepOnce(Spaceflight flight, ref string stage)
         {
             if (_zone == null)
             {
                 if (!_system.IsCompleted) return false;
                 if (_system.IsFaulted) throw new InvalidOperationException($"{Name}'s system failed to build", _system.Exception);
+                stage = _away == null ? "its sky and light" : _away.Surfaces == null ? "its far looks' array" : "its zone";
                 MakeSpace(flight, _system.Result); // a piece a tick: its sky, its far looks' array, its zone
                 return false;
             }
-            _away?.Stars.Poll();
+            // One thing a tick: the sky's textures go up one a tick, and nothing else rides on that tick.
+            if (_away is { Stars.Ready: false } a)
+            {
+                stage = "the sky's textures";
+                bool busy = a.Stars.Uploading;
+                a.Stars.Poll();
+                if (busy || a.Stars.Uploading) return false;
+            }
+            stage = "a far look";
             _away?.Surfaces?.Pump();
             if (!_zone.IsInsideTree())
             {
                 if (!_zone.Prepared) return false;
+                stage = "into the scene";
                 flight.Game.AddChild(_zone);
                 return false;
             }
             if (!_zone.Ready)
             {
+                stage = "setting up";
                 _zone.BuildStep();
                 return false;
             }
@@ -249,9 +276,10 @@ public partial class Spaceflight
             if (_away == null) flight.HomeParked = false; // home's star: the start system's zones in play again (each still parked till you go to it)
             flight.Restore(flight.Away);
             flight.Charts.Visited.Add(_star);
+            (_away, _zone) = (null, null); // the jump's record keeps no hold on a system once it is let go of
             flight.Game.Progress.Discover("fold", 200, "folded to another star");
             LeftMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            GD.Print($"[fold: the system left {(left != null ? "freed" : _away != null ? "parked" : "in play again")} in {LeftMs:F1} ms]");
+            GD.Print($"[fold: the system left {(left != null ? "freed" : _away != null ? "parked" : "in play again")} in {LeftMs:F1} ms; the longest tick making it {WorstStageMs:F1} ms, {WorstStage}]");
         }
 
         public void Dropped(Spaceflight flight)
@@ -326,8 +354,11 @@ public partial class Spaceflight
     {
         foreach (SurfaceZone z in a.Zones.ToList())
         {
-            Silence(z);
-            if (z is OrbitZone o && o.Space != null) o.Space.Show(false, 0f);
+            if (z is OrbitZone o && o.Space != null)
+            {
+                o.Space.Show(false, 0f);
+                o.Space.Release();
+            }
             foreach (object dead in _ids.Keys.Where(k => k is Vessel w && w.Zone == z || k is Lootable l && z.Loot != null && z.Loot.All.Contains(l)).ToList()) _ids.Remove(dead);
             if (z.IsInsideTree()) z.GetParent().RemoveChild(z);
             Free(z);
@@ -337,17 +368,35 @@ public partial class Spaceflight
         a.Surfaces?.Release();
     }
 
-    /// <summary>Every sound under a zone stopped: nothing of a system left plays on.</summary>
-    static void Silence(Node zone)
+    /// <summary>
+    /// Every sound under a zone left stopped, so nothing of a system left plays on: a slice of its tree a frame
+    /// (<see cref="HushStep"/>), as a world's is tens of thousands of nodes and a walk of it all at once shows as a hitch.
+    /// </summary>
+    void Silence(Node zone) => _hush.Enqueue(zone);
+
+    readonly Queue<Node> _hush = new();
+
+    /// <summary>The nodes looked through a frame for sounds to stop.</summary>
+    const int HushPerFrame = 2000;
+
+    /// <summary>A slice of the zones left looked through, their sounds stopped (once a drawn frame).</summary>
+    void HushStep()
     {
-        foreach (Node n in zone.FindChildren("*", "", true, false))
-            switch (n)
+        for (int n = 0; n < HushPerFrame && _hush.TryDequeue(out Node node); n++)
+        {
+            if (!IsInstanceValid(node)) continue;
+            switch (node)
             {
                 case AudioStreamPlayer p: p.Stop(); break;
                 case AudioStreamPlayer2D p: p.Stop(); break;
                 case AudioStreamPlayer3D p: p.Stop(); break;
             }
+            for (int i = 0, k = node.GetChildCount(); i < k; i++) _hush.Enqueue(node.GetChild(i));
+        }
     }
+
+    /// <summary>The zones left are still being looked through for sounds to stop (tests wait on it).</summary>
+    public bool Hushing => _hush.Count > 0;
 
     // ---- What was left out among the stars --------------------------------------------------------
 

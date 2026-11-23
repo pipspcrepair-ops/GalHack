@@ -212,7 +212,7 @@ public partial class SpaceSky : Node3D
         _skySun = new DirectionalLight3D { Name = "SkySun", LightColor = colour, SkyMode = DirectionalLight3D.SkyModeEnum.SkyOnly, Visible = false };
         AddChild(_skySun);
         var sphere = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 };
-        var bodyShader = new Shader { Code = BodySource };
+        Shader bodyShader = BodyShader;
         foreach (Orbiter b in model.Bodies)
         {
             if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == model.Home && b.Spec != null) continue; // a giant you are round is drawn here: it has no globe
@@ -244,7 +244,7 @@ public partial class SpaceSky : Node3D
                 _air[b] = (air, airMaterial, Globe.AirShare(SkySystem.For(spec).Density), atmosphere);
             }
             if (!b.Rings) continue;
-            var ring = new ShaderMaterial { Shader = new Shader { Code = GiantRingSource }, RenderPriority = 3 };
+            var ring = new ShaderMaterial { Shader = RingShader, RenderPriority = 3 };
             ring.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.RingColor));
             node.AddChild(new MeshInstance3D
             {
@@ -439,6 +439,32 @@ public partial class SpaceSky : Node3D
         _skySun.Visible = active;
         Environment.BackgroundEnergyMultiplier = brightness;
         Environment.AmbientLightEnergy = brightness;
+    }
+
+    /// <summary>
+    /// The far looks' and rings' shaders, one each for every space sky: a sky made for another system's space draws with
+    /// what is already compiled, so its first frame doesn't stall on a shader.
+    /// </summary>
+    static Shader BodyShader => _bodyShader ??= new Shader { Code = BodySource };
+    static Shader RingShader => _ringShader ??= new Shader { Code = GiantRingSource };
+    static Shader _bodyShader, _ringShader;
+
+    /// <summary>
+    /// Lets go of what this sky holds outside its nodes now (its system left for good): its environment, its own and every
+    /// body's material, and with them the textures they read (the galaxy's, the far looks').
+    /// </summary>
+    public void Release()
+    {
+        if (World != null && IsInstanceValid(World)) World.Environment = null;
+        foreach (var (_, _, material) in _bodies) material.Dispose();
+        foreach (var a in _air.Values) a.Material.Dispose();
+        _bodies.Clear();
+        _air.Clear();
+        _fade.Clear();
+        _sky?.Dispose();
+        Environment?.Sky?.Dispose();
+        Environment?.Dispose();
+        _surfaces = null;
     }
 
     /// <summary>A giant's rings, in its radii: the sky's shader draws the same ones.</summary>

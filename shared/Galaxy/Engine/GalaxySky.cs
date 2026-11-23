@@ -32,6 +32,9 @@ public sealed class GalaxySky
     /// <summary>Everything is on the graphics card: stars are showing.</summary>
     public bool Ready { get; private set; }
 
+    /// <summary>A baked sky is going up to the graphics card, a texture a <see cref="Poll"/>.</summary>
+    public bool Uploading => _uploading != null;
+
     public double MakeMs { get; private set; }
     public double BakeMs { get; private set; }
 
