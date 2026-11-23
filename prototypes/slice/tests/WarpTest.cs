@@ -187,6 +187,7 @@ public partial class WarpTest : Node
             foreach (int x in _drive.Wait(300)) yield return x;
             levels.Add(($"landed home after round trip {loop}", Measure()));
             GD.Print($"  level {loop}: {levels[^1].At}");
+            Holdings(loop);
             if (loop < loops)
             {
                 foreach (int x in TakeOff("home")) yield return x;
