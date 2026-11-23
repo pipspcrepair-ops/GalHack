@@ -711,7 +711,7 @@ public sealed partial class HumanRig : Rig
                 ArmGoal a = ActArm(g, i, shoulder, neck, torso, headBasis, upperArm, forearm);
                 if (a.On)
                 {
-                    hand = Sweep(shoulder, hand, a.Hand, acts);
+                    hand = Sweep(shoulder, hand, a.Hand, acts, ahead);
                     pole = pole.Lerp(a.Pole, acts).Normalized();
                     spec = HandSpec.Lerp(spec, a.Spec, acts);
                     if (i == 1) rightOff = MathF.Max(rightOff, acts);
@@ -720,7 +720,7 @@ public sealed partial class HumanRig : Rig
             float on = i == 1 ? hold.RW : hold.LW;
             if (on > 0f)
             {
-                hand = Sweep(shoulder, hand, i == 1 ? hold.R : hold.L, on);
+                hand = Sweep(shoulder, hand, i == 1 ? hold.R : hold.L, on, ahead);
                 spec = HandSpec.Lerp(spec, i == 1 ? hold.RHand : hold.LHand, on);
                 // Holding something out in front, the elbow hangs down and a little out; drawing a bow, the elbow up and back along the arrow.
                 Vector3 holdPole = kind == HoldKind.Bow && i == 1 ? (hold.R - hold.L).Normalized() * 0.7f + torso.X * 0.6f - Vector3.Up * 0.1f : Vector3.Down + torso.X * side * 0.5f + torso.Z * 0.2f;

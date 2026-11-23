@@ -252,7 +252,7 @@ public sealed partial class HumanRig
             Vector3 shift = Vector3.Zero, pulled = Vector3.Zero;
             for (int i = 0; i < 2; i++)
             {
-                float on = Mathf.SmoothStep(0.02f, 0.3f, i == 1 ? h.RW : h.LW);
+                float on = i == 1 ? h.RW : h.LW;
                 if (on <= 0f) continue;
                 var F = new Frame(torso, i == 0 ? -1f : 1f);
                 Vector3 grip = i == 1 ? h.R : h.L, shoulder = Pose[_body].Origin + torso.Y * _f.Torso * 0.9f + F.Out * _f.ShoulderW * 0.94f;
