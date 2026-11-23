@@ -380,7 +380,7 @@ public partial class WarpTest : Node
         if (_ok && Windowed && target == Model.Home && _freshSky >= 0)
             foreach (int x in SkyAway("after-the-star-home-facing-away", v => Check(v <= Math.Max(_freshSky * 1.5, _freshSky + 0.05),
                 $"no glare follows from the star: home's sky facing away from the sun is back at its fresh level ({v:F3} mean brightness, {_freshSky:F3} before the star)"))) yield return x;
-        if (!_ok || !land) yield break;
+        if (!_ok || !land || _args.ContainsKey("noland")) yield break; // --noland=1: warps alone (shots of the trip)
         foreach (int x in Land(target)) yield return x;
         if (!_ok) yield break;
         if (target != Model.Home) foreach (int x in TakeOff(Charts.Tidy(target.Name))) yield return x;
@@ -587,7 +587,12 @@ public partial class WarpTest : Node
         Check(o.Anchor == c && c.Ready && c.Surface.Arrived, $"{name} is the frame you fly in, its globe painted from its own surface, made from its seed ({c.Surface.Made?.Spec})");
         if (o.Anchor != c) { _ok = false; yield break; }
         GD.Print($"-- down onto {name} --");
-        foreach (int x in MoonTest.Upright(_pilot, c, _ship)) yield return x;
+        int t = 0;
+        foreach (int x in MoonTest.Upright(_pilot, c, _ship))
+        {
+            if (++t == 60) GD.Print($"  (turning upright, a second in: {Attitude(c)})");
+            yield return x;
+        }
         for (int tries = 0; tries < 2 && Mathf.RadToDeg(N.Vector3.Transform(N.Vector3.UnitY, _ship.Body.Rotation).ToGodot().AngleTo((_ship.Body.Position.ToGodot() - c.Centre).Normalized())) > 20f; tries++)
         {
             GD.Print($"  (not upright yet: {Attitude(c)}; turning again)");

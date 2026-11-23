@@ -195,6 +195,6 @@ public partial class WarpTest
         var st = _ship.Flight.State;
         Vector3 nose = Forward(_ship), north = N.Vector3.Transform(-N.Vector3.UnitZ, N.Quaternion.Normalize(c.Turn * c.Map.Frame(x, z))).ToGodot();
         return $"its top {Mathf.RadToDeg(top.AngleTo(radial)):F0}° off the sky over it (the map's up there {Mathf.RadToDeg(mapUp.AngleTo(radial)):F0}° off it), its nose {Mathf.RadToDeg(nose.AngleTo(north)):F0}° off the map's north and {Mathf.RadToDeg(nose.AngleTo(-radial)):F0}° off straight down, " +
-            $"turning {_ship.Body.AngularVelocity.Length():F2} rad/s (asked {_ship.Flight.Input.Turn}, turn rate {_ship.Stats?.TurnRate:F0}°/s, menu {(_game.Menu.IsOpen ? "open" : "shut")}), pushing {st.ThrustLocal.Length():F1} m/s² along its own {st.ThrustLocal.Normalized()}, cruise {(st.Cruise ? "on" : "off")}, assist {(st.AssistOff ? "off" : "on")}";
+            $"turning {_ship.Body.AngularVelocity.Length():F2} rad/s (asked {_ship.Flight.Input.Turn}, seated {(_ship.Flight.Input.Seated ? "yes" : "NO")} {(_game.Survivor.Seated == _ship ? "here" : "elsewhere")}, pilot {(_ship.Roles.Pilot == Vessel.Player ? "you" : "not you")}, frozen {_ship.Controller?.Frozen}, settling {_ship.Controller?.Settling}, tossed {_ship.Body.Tossed:F1}, look {_game.Controls.Look}, turn rate {_ship.Stats?.TurnRate:F0}°/s, menu {(_game.Menu.IsOpen ? "open" : "shut")}), pushing {st.ThrustLocal.Length():F1} m/s² along its own {st.ThrustLocal.Normalized()}, cruise {(st.Cruise ? "on" : "off")}, assist {(st.AssistOff ? "off" : "on")}";
     }
 }

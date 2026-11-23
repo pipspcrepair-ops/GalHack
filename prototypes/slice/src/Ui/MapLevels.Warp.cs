@@ -24,7 +24,7 @@ public sealed partial class MapLevels
     void WarpPanel(Gui g, Rect2 panel, Rect2 side, StarSystem model, Dictionary<string, Vector2> places)
     {
         Spaceflight sf = _game.Spaceflight;
-        Vector2 at = side.Position + new Vector2(0, 404);
+        Vector2 at = side.Position + new Vector2(0, 664); // under the map's level buttons and the picked body's facts
         var button = new Rect2(at + new Vector2(0, 48), new Vector2(150, 28));
         string key = OS.GetKeycodeString(_game.Settings?.Keys["jump"] ?? Key.J);
         Jump j = sf.Jumping;
