@@ -88,20 +88,22 @@ public partial class FoldTest : Node
     readonly List<double> _frames = new();
     readonly List<string> _frameAt = new();
     TimeSpan _gcWas;
+    bool _shotTaken;
 
     public override void _Process(double delta)
     {
         long now = Stopwatch.GetTimestamp();
         TimeSpan gc = GC.GetTotalPauseDuration();
-        if (_timing && _lastFrame != 0)
+        if (_timing && _lastFrame != 0 && !_shotTaken)
         {
             _frames.Add(Stopwatch.GetElapsedTime(_lastFrame, now).TotalMilliseconds);
             Jump j = _game?.Spaceflight?.Jumping;
             double paused = (gc - _gcWas).TotalMilliseconds;
-            _frameAt.Add((j == null ? "" : j.Running ? $"{j.Now} {(j.Now == Jump.Stage.Spool ? j.Spooled * 100 : j.InTunnel):F1}" : "after") + (paused > 1 ? $", GC {paused:F0} ms" : ""));
+            _frameAt.Add((j == null ? "" : j.Running ? $"{j.Now} {(j.Now == Jump.Stage.Spool ? j.Spooled * 100 : j.InTunnel):F1}{(j.Now == Jump.Stage.Spool ? "%" : " s")}" : "after") + (paused > 1 ? $", GC {paused:F0} ms" : ""));
         }
         _gcWas = gc;
         _lastFrame = now;
+        _shotTaken = false;
     }
 
     string FrameReport()
@@ -430,6 +432,7 @@ public partial class FoldTest : Node
         System.IO.Directory.CreateDirectory(dir);
         string file = System.IO.Path.Combine(dir, $"{name}{(_minSpec ? "-minspec" : "")}.png");
         Error err = GetViewport().GetTexture().GetImage().SavePng(file);
+        _shotTaken = true; // the frame that read the picture back and wrote it out is the test's, not the game's
         GD.Print(err == Error.Ok ? $"  shot {file}" : $"  could not save {file}: {err}");
     }
 
