@@ -230,6 +230,7 @@ public partial class Spaceflight
             v.Node.ResetPhysicsInterpolation();
             if (s.Body.Frame == v.Body) s.Node.ResetPhysicsInterpolation();
             if (to is OrbitZone here) FrameAt(here, a.Position.ToGodot());
+            j.To.Left(this, null); // a short-range warp stays in its zone: the destination only lets go
         }
         else
         {

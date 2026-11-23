@@ -228,7 +228,7 @@ public partial class Spaceflight
 
         public void Left(Spaceflight flight, SurfaceZone from)
         {
-            flight.LeaveOrbit(from);
+            if (from != null) flight.LeaveOrbit(from);
             LetGo();
         }
 

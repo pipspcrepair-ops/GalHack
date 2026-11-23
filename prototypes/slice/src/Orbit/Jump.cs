@@ -44,7 +44,7 @@ public interface IJumpDestination
     /// <summary>Where the structure arrives, worked out the moment it does.</summary>
     JumpArrival Arrival(Spaceflight flight, Vessel carrier);
 
-    /// <summary>It has arrived: what to do with the zone it left (park it as it was, or let it go).</summary>
+    /// <summary>It has arrived: what to do with the zone it left (park it as it was, or let it go); null when it arrived in the zone it left. Either way it lets go of what it holds.</summary>
     void Left(Spaceflight flight, SurfaceZone from);
 
     /// <summary>The jump was called off before it arrived: what was made for it alone may go.</summary>
