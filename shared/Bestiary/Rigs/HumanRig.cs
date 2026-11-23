@@ -334,16 +334,16 @@ public sealed partial class HumanRig : Rig
     /// <summary>
     /// Where the feet are this pose (<see cref="_feet"/>): a foot on the ground moves back under the body at walking speed, one in
     /// the air comes through high, the way the stride runs (<paramref name="along"/>); going over the ground, one down keeps to it
-    /// (<see cref="Keep"/>) no further from its hip (<paramref name="hip"/>, flat) than <paramref name="most"/>. How far the
-    /// furthest is from its hip, flat (the hips come down to it).
+    /// (<see cref="Keep"/>) no further from its hip (<paramref name="hip"/>, flat) than <paramref name="most"/>. How high over the
+    /// ground its hips can stand at most, its legs <paramref name="legReach"/> long (the hips come down to it).
     /// </summary>
     float PlaceFeet(in Gesture g, Vector3 hip, Vector3 recoil, Vector3 fwd, Vector3 along, Vector3 right, float phase, float duty, float half, float moving, float run,
-        float stalk, float staggerSide, float keyed, Vector3 hitFlat, float stagger, bool husk, float most)
+        float stalk, float staggerSide, float keyed, Vector3 hitFlat, float stagger, bool husk, float most, float legReach)
     {
         Figure f = _f;
         int stepper = hitFlat.Dot(right) > 0f ? 1 : 0;
         float wide = (g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed * (1f - moving) : 0f) + stalk * 0.06f; // a wide stance for a threat or a fright, standing (a run stays narrow)
-        float apart = 0f;
+        float highest = float.MaxValue;
         for (int i = 0; i < 2; i++)
         {
             float side = i == 0 ? -1f : 1f;
@@ -361,10 +361,17 @@ public sealed partial class HumanRig : Rig
             bool grounded = stance || moving <= 0f;
             Vector3 hipAt = hip + right * side * f.HipW * 0.55f;
             foot += Keep(i, at, hipAt, most, g.Yaw, fwd, g.Travels && g.Sit <= 0f && g.Down <= 0f, ref grounded, out float rise);
-            apart = MathF.Max(apart, WildSim.Flat(foot - hipAt).Length());
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
-            // The heel comes up as a foot trails behind; the swing clears the ground.
-            float heel = stance ? MathF.Max(0f, -reach - 0.25f) * 0.22f * f.LegLength : 0f;
+            // The heel comes up as a foot trails behind, and is still up as it leaves the ground, coming down through the swing; the swing clears the ground.
+            float heel = 0.22f * f.LegLength * (stance ? MathF.Max(0f, -reach - 0.25f) : 0.75f * (1f - (reach + 1f) * 0.5f));
+            // How high its hip can be: the leg's reach over the flat way to the foot (never down onto the ground), on the heel's rise. A
+            // foot swung through holds the hips where it left them, going over to where it comes down, and only as it leaves the ground
+            // and comes back to it, by degrees: lifted, its knee folds.
+            float flat = MathF.Min(WildSim.Flat(foot - hipAt).Length(), 0.9f * (f.UpperLeg + f.LowerLeg));
+            float up = MathF.Sqrt(legReach * legReach - flat * flat) + moving * heel;
+            if (stance || float.IsNaN(_leftAt[i])) _leftAt[i] = up;
+            else up = Mathf.Lerp(up, _leftAt[i], moving * (1f - (reach + 1f) * 0.5f)) + moving * lift * lift * legReach;
+            highest = MathF.Min(highest, up);
             // A Husk drags one foot and throws the other up too high.
             float step = husk ? (i == (_offset > 0.5f ? 1 : 0) ? 0.3f : 1.7f) : 1f;
             foot.Y = ground + f.Ankle + moving * (heel + lift * step * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run) * (1f - 0.5f * stalk)) + stepLift + rise;
@@ -374,7 +381,7 @@ public sealed partial class HumanRig : Rig
             if (grounded && _swung[i]) (Steps, _swung[i]) = (Steps + 1, false);
             _planted[i] = grounded;
         }
-        return MathF.Min(apart, 0.9f * (f.UpperLeg + f.LowerLeg)); // (never down onto the ground)
+        return highest;
     }
 
     /// <summary>
@@ -453,6 +460,12 @@ public sealed partial class HumanRig : Rig
         return false;
     }
 
+    /// <summary>How far the hips are down for the feet apart (m), and how closely that follows them (1/s).</summary>
+    float _drop;
+    /// <summary>How high each hip could stand over its foot as the foot last left the ground, m.</summary>
+    readonly float[] _leftAt = { float.NaN, float.NaN };
+    const float DropRate = 15f;
+
     void DriveAlive(in Gesture g)
     {
         Figure f = _f;
@@ -517,8 +530,10 @@ public sealed partial class HumanRig : Rig
         if (went.Dot(fwd) < -0.05f) went = -went; // (stepping back: the stride runs backwards)
         _aslant = Ease(_aslant, g.Travels && went.LengthSquared() > 0.04f ? Math.Clamp(Geo.WrapAngle(MathF.Atan2(-went.X, -went.Z) - g.Yaw), -0.8f, 0.8f) : 0f, 3f);
         Vector3 along = new Basis(Vector3.Up, g.Yaw + _aslant) * Vector3.Forward;
-        float apart = PlaceFeet(g, hip, recoil, fwd, along, right, phase, duty, half, moving, run, stalk, staggerSide, keyed, hitFlat, stagger, husk, most);
-        hipY -= MathF.Max(0f, hipUp - MathF.Sqrt(MathF.Max(0f, legReach * legReach - apart * apart)));
+        float drop = MathF.Max(0f, hipUp - PlaceFeet(g, hip, recoil, fwd, along, right, phase, duty, half, moving, run, stalk, staggerSide, keyed, hitFlat, stagger, husk, most, legReach));
+        // (Followed closely, not jumped to: a foot set down or taken up never drops the hips for a frame.)
+        _drop = _dt > 0f ? Geo.Smooth(_drop, drop, DropRate, _dt) : drop;
+        hipY -= _drop;
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         hip += Vector3.Up * hipY;
 
