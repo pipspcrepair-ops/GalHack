@@ -628,7 +628,7 @@ The player's kit is small and role-based: a few tools that change the world, wea
 | Detector | Shows ore deposits, POIs and buried caches | Battery | Handheld range about 1,250 m; vehicle detector about 10 km |
 | Hand scanner | Shows, through walls, where the cores nearby are (100 m to start), with distances; the core scanner is part of it | Battery | Researched in the Tools tab; finds a core hidden in a base |
 | Hijack Tool T1–T3 | Takes over enemy cores | Charges | Section 16 |
-| Survival kit items | Survival tent, survival replicator, portable heater and cooler, emergency O2 and water generator, work light | Fuel or battery | Early-game lifelines |
+| Survival kit items | Survival tent, survival replicator, portable heater and cooler (the climate node: carried, set down anywhere, keeps the climate safe in a radius round it; owner, 23 Nov), emergency O2 and water generator, work light | Fuel or battery (the climate node: battery, as life support is power only) | Early-game lifelines |
 | Hoverbike | Fast personal ground transport, a small vehicle made in the suit fabricator, so getting around is quick from early on | Fuel | Treats water as ground |
 | Paint sprayer | Sprays colour, texture, patterns, stencils, decals and grime onto any block face | Cheap paint cartridges | Craftable from the start; the way to detail ships however players like |
 
