@@ -101,6 +101,11 @@ public partial class Game
             {
                 return;
             }
+            if (type.IsLifeSupport)
+            {
+                UseLifeSupport(v);
+                return;
+            }
             if (type.IsLight && Godot.Input.IsKeyPressed(Godot.Key.Shift))
             {
                 LightEdit = look.Cell; // Shift+E: style this one light on the CORE tab
@@ -120,6 +125,14 @@ public partial class Game
             }
         }
         if (UsePlace(look)) return;
+    }
+
+    /// <summary>E at a life support pod: a working one tops the suit's air up to full.</summary>
+    public bool UseLifeSupport(Vessel v)
+    {
+        if (!v.LifeSupport) return false;
+        Suit.Vitals.Oxygen = Suit.Sim.OxygenCapacity;
+        return true;
     }
 
     /// <summary>F at a climate pod: it goes back in the pack with the fuel still in its slot.</summary>
@@ -161,6 +174,7 @@ public partial class Game
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
             if (type.IsCommandChair) return "F  Command chair";
+            if (type.IsLifeSupport) return $"E  Air  ·  {(v.LifeSupport ? "ON" : "OFF")}";
             if (type.IsLight) return (b.Off ? "E  Light on" : "E  Light off") + "   ·   Shift+E  Colour";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }

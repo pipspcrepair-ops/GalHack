@@ -202,7 +202,7 @@
       { "id": "scanner", "label": "SCAN", "functions": ["scanner"], "act": "run", "icon": "scanner", "end": "left" },
       { "id": "shields", "label": "SHIELD", "functions": ["shield"], "act": "toggle", "icon": "shield", "end": "right" },
       { "id": "fabricators", "label": "FAB", "functions": ["constructor", "factory", "deconstructor"], "act": "toggle", "icon": "fabricator", "end": "right" },
-      { "id": "life-support", "label": "LIFE", "functions": ["core"], "act": "toggle", "icon": "atmosphere", "end": "right" },
+      { "id": "life-support", "label": "LIFE", "functions": ["life-support"], "act": "toggle", "icon": "atmosphere", "end": "right" },
       { "id": "gravity", "label": "GRAV", "functions": ["core"], "act": "toggle", "icon": "gravity", "end": "right" }
     ]
   },

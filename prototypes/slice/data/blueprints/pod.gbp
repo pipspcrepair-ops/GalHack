@@ -45,6 +45,7 @@ block 0 1 -2 door-1x2x1
 block 1 1 -2 iron-plated paint=hull,hull,hull,hull,inner,hull
 block 2 1 -2 iron-plated slope rot=+x-z paint=hull
 block -2 1 -1 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 0 1 -1 life-support-pod
 block 1 1 -1 command-chair
 block 2 1 -1 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -2 1 0 iron-plated paint=inner,hull,hull,hull,hull,hull

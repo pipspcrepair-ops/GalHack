@@ -120,7 +120,7 @@ public partial class ClimateTest : Node
         for (int z = -5; z <= 5; z++)
         for (int x = -5; x <= 5; x++)
             if (y == 0 || y == 5 || Math.Abs(x) == 5 || Math.Abs(z) == 5) text.Append($"block {x} {y} {z} iron-plated\n");
-        text.Append("block 4 1 4 core\nblock -4 1 -4 generator-t1\nblock -4 1 4 container-t1\n");
+        text.Append("block 4 1 4 core\nblock -4 1 -4 generator-t1\nblock -4 1 4 container-t1\nblock 3 1 4 life-support-pod\n");
         var shut = Blueprint.Load(text.ToString(), Zone.Data.Catalogue, out List<string> errors);
         Check(shut != null, $"the room's blueprint loads {string.Join("; ", errors)}");
         Vector3 site = Zone.GroundAt(feet.X + 30f, feet.Z);

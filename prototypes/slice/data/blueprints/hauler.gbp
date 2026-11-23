@@ -108,12 +108,12 @@ block -3 0 -14 iron-plated slope rot=-x-z paint=cream
 block -2..1 0 -14 iron-plated paint=cream,cream,cream,cream,inner,cream
 block 2 0 -14 iron-plated slope rot=+x-z paint=cream
 block -3 0 -13 iron-plated paint=inner,cream,cream,cream,cream,cream
-block -2 0 -13 command-chair
 block 1 0 -13 command-chair
 block 2 0 -13 iron-plated paint=cream,inner,cream,cream,cream,cream
 block -3 0 -12 iron-plated paint=inner,cream,cream,cream,cream,cream
 block 2 0 -12 iron-plated paint=cream,inner,cream,cream,cream,cream
 block -3 0 -11 iron-plated paint=inner,cream,cream,cream,cream,cream
+block -2 0 -11 life-support-pod
 block 2 0 -11 iron-plated paint=cream,inner,cream,cream,cream,cream
 block -3 0 -10 door-1x2x1 rot=+y-x
 block 2 0 -10 iron-plated paint=cream,inner,cream,cream,cream,cream

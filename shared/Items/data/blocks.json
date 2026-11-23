@@ -80,6 +80,7 @@
     "scanner-t3": {"bill": {"iron-plate": 14, "logic-module": 2, "control-unit": 2, "field-emitter": 1}, "unlock": {"level": 18, "cost": 0, "parent": "scanner-t2", "tab": "structures"}},
     "shield-generator": {"bill": {"iron-plate": 6, "field-emitter": 1, "power-unit": 2, "control-unit": 2, "copper-wire": 10}, "unlock": {"level": 12, "cost": 0, "parent": "generator-t1", "tab": "structures"}},
     "solar-panel": {"bill": {"glass": 2, "iron-plate": 2, "copper-wire": 1}, "unlock": {"level": 5, "cost": 0, "parent": "generator-t1", "tab": "structures"}},
+    "life-support-pod": {"bill": {"iron-plate": 6, "copper-wire": 4, "winding": 1}, "unlock": {"level": 2, "cost": 0, "parent": "generator-t1", "tab": "structures"}},
     "weather-forecast": {"bill": {"iron-plate": 6, "circuit-board": 4, "copper-wire": 6, "servo": 1}, "unlock": {"level": 7, "cost": 2, "parent": "generator-t1", "tab": "structures"}},
     "portable-fabricator": {"bill": {"iron-plate": 6, "winding": 2, "copper-wire": 4}, "unlock": {"level": 3, "cost": 2, "parent": "core", "tab": "structures"}, "was": ["portfab@large", "portfab@small"]},
     "fabricator-t1": {"bill": {"iron-plate": 12, "winding": 4, "copper-wire": 8, "glass": 2}, "unlock": {"level": 3, "cost": 1, "parent": "core", "tab": "structures"}, "was": ["smallfab@large", "smallfab@small"]},

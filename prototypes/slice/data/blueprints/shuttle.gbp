@@ -61,12 +61,12 @@ block -3 0 -6 iron-plated slope rot=-x-z paint=hull
 block -2..1 0 -6 iron-plated paint=band,band,hull,hull,inner,hull
 block 2 0 -6 iron-plated slope rot=+x-z paint=hull
 block -3 0 -5 iron-plated paint=band,band,hull,hull,hull,hull
-block -2 0 -5 command-chair
 block 1 0 -5 command-chair
 block 2 0 -5 iron-plated paint=band,band,hull,hull,hull,hull
 block -3 0 -4 iron-plated paint=band,band,hull,hull,hull,hull
 block 2 0 -4 iron-plated paint=band,band,hull,hull,hull,hull
 block -3 0 -3 iron-plated paint=band,band,hull,hull,hull,hull
+block -2 0 -3 life-support-pod
 block 2 0 -3 iron-plated paint=band,band,hull,hull,hull,hull
 block -3 0 -2 iron-plated paint=band,band,hull,hull,hull,hull
 block 2 0 -2 iron-plated paint=band,band,hull,hull,hull,hull
