@@ -36,7 +36,7 @@ sealed class SurfacePalette
         Cliff = WorldPalette.Of(map.Spec).Bedrock;
         GlowColor = (map.Def.Archetype, map.Def.Variant) switch
         {
-            (Archetype.Temperate, _) or (Archetype.Arid, _) => Rgb.Hex("ffffff"),
+            (Archetype.Temperate, _) or (Archetype.Arid, _) or (Archetype.Barren, _) => Rgb.Hex("ffffff"),
             (Archetype.Ice, _) => Rgb.Hex("40fff0"),
             (Archetype.Lava, _) => Rgb.Hex("ff4a10"),
             (Archetype.Alien, 0) => Rgb.Hex("e070ff"),

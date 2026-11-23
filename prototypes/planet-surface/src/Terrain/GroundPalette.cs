@@ -227,13 +227,13 @@ public sealed class GroundPalette
         Strata = (map.Def.Archetype, map.Def.Variant) switch
         {
             (Archetype.Arid, 0) => 0.55f, (Archetype.Arid, _) => 0.9f, (Archetype.Lava, _) => 0.35f, (Archetype.Alien, 0) => 0.5f,
-            (Archetype.Temperate, _) => 0.25f, _ => 0.3f,
+            (Archetype.Temperate, _) => 0.25f, (Archetype.Barren, _) => 0.15f, _ => 0.3f, // barren: impact-shattered, barely bedded
         };
         DeepRock = Rock * 0.72f;
         Bedrock = Rgb.Hex("26262b");
-        // Under water the rock's own sand; in a river's bed its fines darkened wet; worn bare, the rock's dust (today's look:
-        // the hand mixes it had).
-        (Seabed, RiverBed, BareSoil) = colours.Today
+        // Under water the rock's own sand; in a river's bed its fines darkened wet; worn bare, the rock's dust (the hand tables'
+        // worlds, today's look and airless bodies: the hand mixes).
+        (Seabed, RiverBed, BareSoil) = colours.Hand
             ? (Rgb.Lerp(Rock, Rgb.Hex("b0a48a"), 0.45f) * 0.85f, Rgb.Lerp(Rock, Rgb.Hex("4a4034"), 0.6f), Rgb.Lerp(Rock, Rgb.Hex("7a5e44"), 0.45f))
             : (Rgb.Lerp(Rock, colours.Sand, 0.55f) * 0.85f, Rgb.Lerp(Rock, colours.Dust * 0.5f, 0.6f), Rgb.Lerp(Rock, colours.Dust * 0.8f, 0.55f));
         Snow = colours.Snow;

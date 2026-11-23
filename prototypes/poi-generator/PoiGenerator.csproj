@@ -14,6 +14,7 @@
          every underground room out of the ground and leaves solid walls around them. -->
     <Compile Include="..\..\shared\Testing\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\TerrainStamp.cs" />
+    <Compile Include="..\..\shared\Terrain\CraterShape.cs" />
     <Compile Include="..\building\src\Structures\LightSettings.cs" />
     <!-- The decorations library (every room is dressed from it, as in the game: Gen/RoomDecor) and the item catalogue it reads its pieces from. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />

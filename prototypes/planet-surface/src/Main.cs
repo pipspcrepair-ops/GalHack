@@ -145,8 +145,8 @@ public partial class Main : Node3D
 
     // ---- Planets --------------------------------------------------------------------------
 
-    /// <summary>Leaves the current planet (saving its edits) and starts building the next one.</summary>
-    public void Arrive(PlanetSpec spec)
+    /// <summary>Leaves the current planet (saving its edits) and starts building the next one (<paramref name="build"/> makes it, when it isn't the spec's own world: another body of a system).</summary>
+    public void Arrive(PlanetSpec spec, Func<PlanetWorld> build = null)
     {
         if (World != null) SaveQuietly();
         IsReady = false;
@@ -163,7 +163,7 @@ public partial class Main : Node3D
         _arriving = Stopwatch.StartNew();
         _settledHeap = false;
         PoiCatalog catalog = Catalog;
-        _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
+        _building = Task.Run(build ?? (() => PlanetWorld.Build(spec, catalog)));
     }
 
     void Arrived(PlanetWorld world)

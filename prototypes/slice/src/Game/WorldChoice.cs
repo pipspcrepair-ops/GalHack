@@ -60,6 +60,7 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant, i
         ulong s = seed ?? FreshSeed();
         if (Lookup(type) is { } t) return new WorldChoice(s, t.Archetype, t.Variant);
         if (LayerType(type) is { } l) return new WorldChoice(s, l.Archetype, l.Variant);
+        if (Named(type) is Archetype a) return new WorldChoice(s, a, 0);
         var r = Types[(int)(s % (ulong)Types.Count)];
         return new WorldChoice(s, r.Archetype, r.Variant);
     }
@@ -73,6 +74,12 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant, i
                 return t;
         return null;
     }
+
+    /// <summary>
+    /// Any world type by its archetype's name, for the command line and tests only (the start screen offers <see cref="Types"/>):
+    /// a barren body to play on (<c>--type barren --variant 1</c>), as one is reached from orbit.
+    /// </summary>
+    static Archetype? Named(string type) => !int.TryParse(type, out _) && Enum.TryParse(type, true, out Archetype a) ? a : null;
 
     /// <summary>A world-layer type by id (meadow, dune, hot_spring_ice...), or null.</summary>
     public static (string Id, Archetype Archetype, int Variant)? LayerType(string id)
@@ -109,7 +116,7 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant, i
         if (seedText == null && planet == null && size == null && force == null) return fallback;
         ulong? seed = ulong.TryParse(seedText, out ulong s) ? s : fallback?.Seed;
         WorldChoice picked = planet == null && fallback != null ? fallback with { Seed = seed ?? fallback.Seed } : Fresh(planet ?? "temperate", seed);
-        if (planet != null && Lookup(planet) == null && LayerType(planet) == null && !planet.Equals("random", StringComparison.OrdinalIgnoreCase))
+        if (planet != null && Lookup(planet) == null && LayerType(planet) == null && Named(planet) == null && !planet.Equals("random", StringComparison.OrdinalIgnoreCase))
             Godot.GD.PrintErr($"--type {planet}: no such world type (one of {string.Join(", ", Types.Select(t => t.Key).Concat(LayerTypes.Select(t => t.Id)))}); rolled one");
         if (int.TryParse(Value(args, "--variant"), out int variant)) picked = picked with { Variant = variant };
         if (size != null)

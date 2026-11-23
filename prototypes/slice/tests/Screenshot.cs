@@ -27,15 +27,20 @@ public partial class Screenshot : Node
     Staging _staging;
     string _pending;
 
-    /// <summary>A fresh world with rings: the next one rolled that has them.</summary>
-    static WorldChoice RingedWorld()
+    /// <summary>
+    /// A fresh world of the kind asked for (--type and the rest), rolled again until it has what a shot needs:
+    /// rings (--ringed=1), or its star's class (--star=yellow, a sunlike star's white light). Printed, for an A/B on the same seed.
+    /// </summary>
+    static WorldChoice Rolled(string[] args, Func<WorldChoice, bool> fits, string what)
     {
         for (int i = 0; i < 4096; i++)
         {
-            WorldChoice w = WorldChoice.Fresh("random");
-            if (w.Spec().Has(Planets.Gen.Modifier.RingedSky)) return w;
+            WorldChoice w = WorldChoice.FromArgs(args, WorldChoice.Fresh("random"));
+            if (!fits(w)) continue;
+            GD.Print($"screenshot: rolled {w} for {what}");
+            return w;
         }
-        throw new InvalidOperationException("no ringed world in 4,096 rolls");
+        throw new InvalidOperationException($"no world with {what} in 4,096 rolls");
     }
 
     public override void _Ready()
@@ -87,7 +92,12 @@ public partial class Screenshot : Node
         }
         // The forced place in a state of its own (--force-state=active: still powered, its lamps lit).
         if (_args.TryGetValue("force-state", out string fs) && Enum.TryParse(fs, true, out PoiGenerator.Gen.PoiState forcedState)) PlanetSurface.Poi.PoiSiting.ForceState = forcedState;
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
+        string[] cmd = OS.GetCmdlineUserArgs();
+        WorldChoice world = WorldChoice.FromArgs(cmd, WorldChoice.Tested);
+        if (Array.IndexOf(cmd, "--ringed=1") >= 0) world = Rolled(cmd, w => w.Spec().Has(Planets.Gen.Modifier.RingedSky), "rings");
+        if (_args.TryGetValue("star", out string star))
+            world = Rolled(cmd, w => PlanetSurface.Skies.SkySystem.For(w.Spec()).Star.ToString().Equals(star, StringComparison.OrdinalIgnoreCase), $"a {star} star");
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };
         _script = _staging.Run(_view).GetEnumerator();

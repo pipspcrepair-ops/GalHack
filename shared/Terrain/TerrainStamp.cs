@@ -255,10 +255,8 @@ public sealed class TerrainStamp
                 // A crater: a glassy bowl, a thrown rim, then back to the land round it.
                 Offset(x, z, out double dx, out double dz);
                 float d = (float)Math.Sqrt(dx * dx + dz * dz), rw = Radius * 0.5f;
-                float target, w = 1f;
-                if (d <= Radius) target = PadY + Rim - (Depth + Rim) * (1f - d * d / (Radius * Radius));
-                else if (d <= Radius + rw) target = PadY + Rim * (1f - (d - Radius) / rw);
-                else { target = PadY; w = 1f - Smooth((d - Radius - rw) / Blend); }
+                float target = PadY + CraterShape.Profile(d / Radius, Depth, Rim), w = 1f;
+                if (d > Radius + rw) w = 1f - Smooth((d - Radius - rw) / Blend);
                 return height + (target - height) * w;
             }
             case StampShape.Terraces:

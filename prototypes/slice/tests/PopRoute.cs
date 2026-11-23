@@ -52,6 +52,7 @@ public partial class PopRoute : Node
         if (_args.ContainsKey("minspec"))
         {
             Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            GD.Print($"ROUTE min-spec: affinity read back 0x{(long)Process.GetCurrentProcess().ProcessorAffinity:X}, {System.Environment.ProcessorCount} logical CPUs on the machine");
             if (!_args.ContainsKey("screen")) // the slowest screen
                 _args["screen"] = Enumerable.Range(0, DisplayServer.GetScreenCount()).MinBy(DisplayServer.ScreenGetRefreshRate).ToString(CultureInfo.InvariantCulture);
             TerrainStreamer.Cores = 4;
@@ -96,6 +97,7 @@ public partial class PopRoute : Node
         }
         if (more) return;
         SetPhysicsProcess(false);
+        if (_args.ContainsKey("minspec")) GD.Print($"ROUTE min-spec: affinity at the end 0x{(long)Process.GetCurrentProcess().ProcessorAffinity:X} (held for the run)");
         if (_args.ContainsKey("check")) GD.Print(_gateFails == 0 && !_failed ? "ALL PASSED (the moving picture is within its limits)" : $"{_gateFails} CHECK(S) FAILED");
         Wildlife.Shutdown.Quit(this, _failed || _gateFails > 0 ? 1 : 0);
     }
@@ -120,8 +122,9 @@ public partial class PopRoute : Node
                  $"ground detail {zone.Streamer.VoxelRadius}, detail distance {DetailReach.Distance}, level-0 radius {TerrainStreamer.FarLod0Radius}, far radius {TerrainStreamer.FarRadius}, " +
                  $"sun shadows {sun.DirectionalShadowMaxDistance} m, splits {sun.DirectionalShadowSplit1 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit2 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit3 * sun.DirectionalShadowMaxDistance:F0}, normal bias {sun.ShadowNormalBias}, bias {sun.ShadowBias}, blend splits {sun.DirectionalShadowBlendSplits}, mode {sun.DirectionalShadowMode}");
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");
-        zone.Weather.Bridge.Calm = true;
-        zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        // (An airless world has no weather to calm.)
+        if (zone.Weather.Bridge != null) zone.Weather.Bridge.Calm = true;
+        zone.Weather.Sim?.Snap(Weather.Model.WeatherKind.Clear);
         zone.Wildlife.Frozen = !_args.ContainsKey("live");
         _day = zone.Sky.TimeOfDay;
         if (_args.TryGetValue("vary", out string vary)) Vary(vary); // --vary=filter=2,...: shadow settings over the player's (Edges' variants)
@@ -441,7 +444,7 @@ public partial class PopRoute : Node
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
                  $"queue {Q(pending.Select(c => (double)c).ToList())} (median over the first third {P(pending.Take(pending.Count / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}, the last {P(pending.Skip(pending.Count * 2 / 3).Select(c => (double)c).Order().ToList(), 0.5):F0}; ground tiles {Q(clipPending.Select(c => (double)c).ToList())}; focus off the eye at most {focusOff:F0} m, frame shifts {_game.Zone.FrameShifts - shifts0}); far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
                  $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; places appearing at m {Q(placesIn.Select(q => (double)q.Distance).ToList(), true)}, {placesSeen} of them in plain view (at m {Q(placesIn.Where(q => q.Seen).Select(q => (double)q.Distance).ToList(), true)}), {unshown0} not drawn within the camera's reach at the start; flora or cover jumps over 5% within 120 m {nearJumps}; " +
-                 $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; streaming: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over {LateMs:F0} ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
+                 $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; streaming: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, mean {(_frames.Count > 0 ? _frames.Average() : 0):F1}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over {LateMs:F0} ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
         // good test build, about the same), with room for a machine other runs share.
         if (lim != null)

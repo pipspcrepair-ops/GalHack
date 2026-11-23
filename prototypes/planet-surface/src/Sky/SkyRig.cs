@@ -307,10 +307,6 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring"), world.StarSystem.Home.Rings);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_color"), C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
-        // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey; with no
-        // air there is no sky's light in the shade, and its colour is nearly all the shade's own (SkySystem.Vacuum). Today's
-        // look keeps all its shade light the sky's.
-        Environment.AmbientLightSkyContribution = today ? 1f : s.Thickness > 0f ? 0.5f : 0.15f;
         Grade.Apply(Environment);
     }
 
@@ -599,14 +595,16 @@ public partial class SkyRig : Node3D
 
         // The sun: star-coloured, warming toward the horizon, dimmed by weather and, low down, by
         // the long path its light takes through the air (to under half near the horizon).
-        float low = Smooth(0.35f, 0f, toSun.Y);
+        // With no air (a vacuum world) nothing reddens or dims it on its way down: a hard white disc to the horizon.
+        bool vacuum = s.Thickness <= 0f;
+        float low = vacuum ? 0f : Smooth(0.35f, 0f, toSun.Y);
         Rgb light = Rgb.Lerp(s.StarColor, s.Sunset, low * 0.7f);
         // An eclipse: the light goes with the share of the disc still in sight, cooler as it goes,
         // and the shadows fade as the sun thins to a ring.
         float lit = Eclipses ? SunLit : 1f;
         light = Rgb.Lerp(light, new Rgb(0.6f, 0.68f, 0.86f), (1f - lit) * 0.55f);
         Sun.LightColor = C(light);
-        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * AirMass(toSun.Y) * air.SunScale * lit;
+        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * (vacuum ? 1f : AirMass(toSun.Y)) * air.SunScale * lit;
         Sun.ShadowOpacity = Math.Clamp(0.25f + air.SunScale, 0f, 1f) * Smooth(0.02f, 0.35f, lit);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_lit"), lit);
         // The sun stays the sky's light even below the horizon (the shader reads its direction for
@@ -671,11 +669,29 @@ public partial class SkyRig : Node3D
         // The shade's own colour goes with the daylight, as the sky's light does: night keeps its dark.
         Environment.AmbientLightColor = C(s.Shade * (0.06f + 0.94f * day));
         Environment.AdjustmentSaturation = today ? air.Saturation : 1f;
+        // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey; today's look
+        // keeps all its shade light the sky's. No air, no sky light: a vacuum sky's radiance is black space, its stars and the bodies
+        // in it (the planet overhead lighting the shade); what else reaches a shadow is the sunlit ground's bounce, as strong as its
+        // grey rock throws back, in the shade's own colour opposite the star (owner: "deep grey moons, but saturated").
+        Environment.AmbientLightSkyContribution = vacuum ? VacuumSkyShare : today ? 1f : 0.5f;
+        if (vacuum && _world != null)
+        {
+            Color ground = _world.Look.Dust.SrgbToLinear(), shade = C(s.Shade).SrgbToLinear();
+            float bounce = GroundBounce * Sun.LightEnergy * Math.Max(0f, toSun.Y) / ((1f - VacuumSkyShare) * Math.Max(0.05f, Environment.AmbientLightEnergy));
+            float thrown = (0.2126f * ground.R * light.R + 0.7152f * ground.G * light.G + 0.0722f * ground.B * light.B) * bounce;
+            Environment.AmbientLightColor = (shade * (thrown / Math.Max(1e-4f, 0.2126f * shade.R + 0.7152f * shade.G + 0.0722f * shade.B))).LinearToSrgb();
+        }
         // A deposit keeps its colour: the terrain shader takes the shade light's own colour back off its ore (its grey stays).
         Color fill = Environment.AmbientLightColor.SrgbToLinear() * Environment.AmbientLightEnergy * (1f - Environment.AmbientLightSkyContribution);
         float luma = 0.2126f * fill.R + 0.7152f * fill.G + 0.0722f * fill.B;
         RenderingServer.GlobalShaderParameterSet("shade_fill", new Vector3(fill.R - luma, fill.G - luma, fill.B - luma));
     }
+
+    /// <summary>The share of a vacuum world's shade light its sky's radiance gives (the planet overhead), the rest the ground's bounce.</summary>
+    const float VacuumSkyShare = 0.5f;
+
+    /// <summary>How much of the sunlight on the ground comes back up into a shadow: a dim fill, the shade still near black.</summary>
+    const float GroundBounce = 0.08f;
 
     /// <summary>
     /// Pools valley fog below a height: the low ground around the player plus the fog's depth. Godot's

@@ -89,7 +89,7 @@ public sealed record SkySystem
     {
         var rng = new Rng(Hash.Of(spec.Seed, 0x534B59, (long)spec.Archetype, spec.Variant));
         bool today = WorldPalette.IsToday(spec);
-        StarClass picked = PickStar(spec, ref rng, today);
+        StarClass picked = PickStar(spec, ref rng);
         StarClass sun = star ?? ForceStar ?? picked;
         AirKind air = AirOf(spec);
         float density = air switch
@@ -163,18 +163,14 @@ public sealed record SkySystem
         };
     }
 
-    /// <param name="today">a world in today's look: under the stars its type had before the palette</param>
-    static StarClass PickStar(PlanetSpec spec, ref Rng rng, bool today)
+    /// <summary>The star a world circles: its system's first roll, as it always was, so the palette never changes what a seed makes.</summary>
+    static StarClass PickStar(PlanetSpec spec, ref Rng rng)
     {
         float r = rng.NextFloat();
         return spec.Archetype switch
         {
-            Archetype.Temperate when today => r < 0.7f ? StarClass.Yellow : StarClass.Orange,
-            Archetype.Arid when today => r < 0.55f ? StarClass.Yellow : StarClass.White,
-            // Life as we know it under any long-lived star: red dwarfs (the commonest hosts of temperate worlds), orange,
-            // yellow and white (F) stars; a blue-white A star burns out too soon for it.
-            Archetype.Temperate => r < 0.2f ? StarClass.RedDwarf : r < 0.5f ? StarClass.Orange : r < 0.85f ? StarClass.Yellow : StarClass.White,
-            Archetype.Arid => r < 0.2f ? StarClass.Orange : r < 0.65f ? StarClass.Yellow : StarClass.White,
+            Archetype.Temperate => r < 0.7f ? StarClass.Yellow : StarClass.Orange,
+            Archetype.Arid => r < 0.55f ? StarClass.Yellow : StarClass.White,
             Archetype.Ice => r < 0.5f ? StarClass.White : r < 0.75f ? StarClass.BlueWhite : StarClass.Orange,
             Archetype.Lava => r < 0.5f ? StarClass.Orange : StarClass.RedDwarf,
             _ => r < 0.3f ? StarClass.BlueWhite : r < 0.55f ? StarClass.RedDwarf : r < 0.8f ? StarClass.White : StarClass.Yellow,

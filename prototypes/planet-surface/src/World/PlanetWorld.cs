@@ -423,6 +423,7 @@ public sealed record WorldLook
             (Archetype.Ice, _) => new() { BaseSnow = 0.35f, SnowAltitude = 150f, Glow = new("40fff0") },
             (Archetype.Lava, _) => new() { Shallow = new("8a1a0a"), Deep = new("ff6a18"), Lava = true, LiquidGlow = 2.2f },
             (Archetype.Alien, 0) => new() { SnowAltitude = 500f, Glow = new("c070ff"), LiquidGlow = 0.25f },
+            (Archetype.Barren, _) => new(), // no snow and no water: its dust is regolith (the palette's hand table, WorldPalette.Hand)
             _ => new() { SnowAltitude = 500f, Glow = new("30ffc0"), LiquidGlow = 0.25f },
         };
         // Water and dust are the world's palette's; lava is the type's own fire.

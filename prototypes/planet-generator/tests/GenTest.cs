@@ -54,6 +54,7 @@ public partial class GenTest : Node
         Run("SizeClasses", SizeClasses);
         Run("SizedWorlds", SizedWorlds);
         Run("TerrainCeiling", TerrainCeiling);
+        Run("BarrenWorlds", BarrenWorlds);
         GD.Print($"total test time {total.Elapsed.TotalSeconds:F1} s");
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);

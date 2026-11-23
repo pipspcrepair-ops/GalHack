@@ -421,7 +421,7 @@ public partial class FloraTest : Node
             Check(plants == 0 && cover == 0, $"no plant and no cover scattered on it ({plants}, {cover})");
         }
         // Lifeless by nature: a world with no air by the generator's rule grows nothing either.
-        PlanetSpec cratered = PlanetSpec.Roll(Fresh(), Archetype.Arid, 0, 8) with { Modifiers = Modifier.Cratered };
+        PlanetSpec cratered = PlanetSpec.Roll(Fresh(), Archetype.Barren, 0, 8);
         WorldMap map = PlanetGenerator.Generate(cratered);
         Check(PlanetFlora.For(map, SkySystem.For(cratered)).Book.Barren, "an airless cratered world is barren");
         var lava = Roll(Fresh(), Archetype.Lava, 0).flora.Book;

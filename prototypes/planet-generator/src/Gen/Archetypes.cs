@@ -32,6 +32,7 @@ public sealed record ArchetypeDef
     public float RangeCover { get; init; } = 0.5f;        // share of inland ground in mountain ranges; the rest is lowland
     public float HillHeight { get; init; } = 60f;
     public float HillWavelength { get; init; } = 900f;
+    public int HillOctaves { get; init; } = 7;             // fewer: broad swells only, nothing rolling under a few hundred metres
     public float Billow { get; init; }                     // 0 = soft hills, 1 = rounded domes with creases
     public float Roughness { get; init; } = 2f;            // fine detail amplitude, only seen near the player
 
@@ -49,7 +50,15 @@ public sealed record ArchetypeDef
     public float PlateauWavelength { get; init; } = 1500f;
     public float VolcanoSpacing { get; init; }             // 0 = no volcanoes
     public float VolcanoHeight { get; init; }
-    public float CraterSpacing { get; init; }              // 0 = no craters
+    public float CraterSpacing { get; init; }              // the biggest craters' spacing, smaller ones down to metres under them; 0 = no craters
+    public float CraterRelief { get; init; } = 1f;         // how deep and high-rimmed they are against a fresh crater on rock (soft ice and heavy worlds less)
+    public float CraterCover { get; init; } = 0.05f;       // how thick craters lie at each size, 1 saturated (a barren body); a tidally heated moon's young surface keeps few
+    public float MareBury { get; init; }                   // how much of the craters older lava or ice flows buried on the open plains (0 none .. 1 all but the youngest small ones)
+    public float RilleDepth { get; init; }                 // winding lava channels, or straight cracks in an ice sheet (0 = none)
+    public float RilleWidth { get; init; } = 90f;          // metres
+    public float RilleWavelength { get; init; } = 3400f;
+    public float RilleWarp { get; init; } = 0.5f;          // 0 ruled-straight cracks .. 1 meandering rilles
+    public float WrinkleHeight { get; init; }              // low rounded ridges winding across the plains
     public float SpireHeight { get; init; }                // knife-edge crystal ridges
     public float ShelfHeight { get; init; }                // coastal ice cliffs
     public float HighlandLift { get; init; }
@@ -99,10 +108,22 @@ public sealed record ArchetypeDef
 
 public static class Archetypes
 {
-    public static readonly string[] Names = { "Temperate", "Arid", "Ice", "Lava", "Alien" };
+    public static readonly string[] Names = { "Temperate", "Arid", "Ice", "Lava", "Alien", "Barren" };
+
+    /// <summary>How many variants a type has: two each, and three barren ones (regolith, icy, metal).</summary>
+    public static int Variants(Archetype archetype) => archetype == Archetype.Barren ? 3 : PlanetSpec.VariantCount;
 
     public static ArchetypeDef Get(Archetype archetype, int variant) =>
-        Table[(int)archetype * PlanetSpec.VariantCount + Math.Clamp(variant, 0, PlanetSpec.VariantCount - 1)];
+        Table[(int)archetype * PlanetSpec.VariantCount + Math.Clamp(variant, 0, Variants(archetype) - 1)];
+
+    /// <summary>The barren variants, by what the body is.</summary>
+    public const int Regolith = 0, Icy = 1, Metal = 2;
+
+    /// <summary>
+    /// What an airless body is made of (docs/world-themes.md 21-26): ice past the cold line (frozen plains,
+    /// cracked sheets), metal on a heavy world (an iron body dense enough to pull hard), grey regolith otherwise.
+    /// </summary>
+    public static int BarrenVariant(bool cold, bool heavy) => cold ? Icy : heavy ? Metal : Regolith;
 
     public static ArchetypeDef For(PlanetSpec spec) => Get(spec.Archetype, spec.Variant).WithModifiers(spec.Modifiers);
 
@@ -272,6 +293,50 @@ public static class Archetypes
                 (Landform.Ringlands, 1f), (Landform.Hills, 1f), (Landform.LakeDistrict, 1f), (Landform.Delta, 0.6f),
                 (Landform.Archipelago, 0.5f), (Landform.RiverValleys, 0.5f)),
             SingleLandforms = new[] { Landform.DomeFields, Landform.Wetlands }, SingleChance = 0.2f,
+        },
+        // Barren bodies: no air, no water, nothing ever wore them down. Craters at every size over everything
+        // (the oldest softened and overprinted), dark lava plains low in the old basins with only young craters
+        // left on them and bright highlands round them saturated with craters (the open plains and the hills
+        // here), rilles winding over the plains and low wrinkle ridges. Its swells are broad and few: the ground's
+        // relief under a few hundred metres is its craters (no billowed hills, which read as dunes). No dunes,
+        // rivers, seas or terraces: only landforms without weather, and no rain.
+        new()
+        {
+            Archetype = Archetype.Barren, Variant = Regolith, VariantName = "regolith",
+            LandMin = 1f, LandMax = 1f,
+            ContinentScale = 0.5f, ContinentAmp = 170f, MountainHeight = 190f, SummitHeight = 0f, MountainWavelength = 1900f, RidgeSharpness = 0.9f,
+            HillHeight = 40f, HillWavelength = 1600f, HillOctaves = 3, Roughness = 0.45f,
+            CraterSpacing = 3400f, CraterCover = 1f, MareBury = 0.9f, RilleDepth = 26f, RilleWidth = 110f, WrinkleHeight = 14f,
+            RiverArea = 1e9f, Rain = 0f, BaseTemperature = 0.5f, LatitudeRange = 0.55f, BaseHumidity = 0f, RiverbankBiome = Biome.Regolith,
+            Hazard = "vacuum, radiation, cold shadows", Resources = "iron, cobalt, polar ice", Signature = DepositKind.Iron,
+            Landforms = Odds((Landform.Plains, 3f), (Landform.Hills, 3f), (Landform.Mountains, 0.8f)),
+            SingleLandforms = new[] { Landform.Hills }, SingleChance = 0.15f,
+        },
+        new()
+        {
+            // An ice moon: frozen plains broken by long straight cracks, its craters fewer and slumped (ice flows, slowly).
+            Archetype = Archetype.Barren, Variant = Icy, VariantName = "icy",
+            LandMin = 1f, LandMax = 1f,
+            ContinentScale = 0.45f, ContinentAmp = 130f, MountainHeight = 140f, SummitHeight = 0f, MountainWavelength = 1700f, RidgeSharpness = 1.1f,
+            HillHeight = 30f, HillWavelength = 1400f, HillOctaves = 3, Roughness = 0.3f,
+            CraterSpacing = 2000f, CraterCover = 1f, CraterRelief = 0.65f, MareBury = 0.25f, RilleDepth = 9f, RilleWidth = 26f, RilleWavelength = 2800f, RilleWarp = 0.04f, WrinkleHeight = 6f,
+            RiverArea = 1e9f, Rain = 0f, BaseTemperature = 0.04f, LatitudeRange = 0.2f, BaseHumidity = 0f, RiverbankBiome = Biome.Frost,
+            Hazard = "vacuum, extreme cold, cracking ice", Resources = "water ice, ammonia, cobalt", Signature = DepositKind.Water,
+            Landforms = Odds((Landform.IcePlain, 4f), (Landform.Plains, 1.5f), (Landform.Hills, 1.2f)),
+            SingleLandforms = new[] { Landform.IcePlain }, SingleChance = 0.3f,
+        },
+        new()
+        {
+            // A heavy metal world: dark metallic plains and spires, its craters shallow under the pull.
+            Archetype = Archetype.Barren, Variant = Metal, VariantName = "metal",
+            LandMin = 1f, LandMax = 1f,
+            ContinentScale = 0.42f, ContinentAmp = 150f, MountainHeight = 170f, SummitHeight = 0f, MountainWavelength = 1500f, RidgeSharpness = 2f,
+            HillHeight = 30f, HillWavelength = 1400f, HillOctaves = 3, Roughness = 0.6f, SpireHeight = 90f,
+            CraterSpacing = 2400f, CraterCover = 1f, CraterRelief = 0.55f, MareBury = 0.5f, WrinkleHeight = 10f,
+            RiverArea = 1e9f, Rain = 0f, BaseTemperature = 0.7f, LatitudeRange = 0.4f, BaseHumidity = 0f, RiverbankBiome = Biome.Ironstone,
+            Hazard = "vacuum, high gravity", Resources = "gravium, iron, rare metals", Signature = DepositKind.Gravium,
+            Landforms = Odds((Landform.Plains, 3f), (Landform.ShardFields, 2f), (Landform.Hills, 0.8f)),
+            SingleLandforms = new[] { Landform.Plains }, SingleChance = 0.1f,
         },
     };
 }

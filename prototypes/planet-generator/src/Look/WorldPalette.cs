@@ -4,7 +4,7 @@ using Planets.Gen;
 namespace Planets.Look;
 
 /// <summary>What a world's rock is, under its soil and in its sand: the mineral every ground colour starts from.</summary>
-public enum Mineral { Granite, Basalt, Andesite, Sandstone, Limestone, Shale, Anorthosite, Ice }
+public enum RockType { Granite, Basalt, Andesite, Sandstone, Limestone, Shale, Anorthosite, Ice }
 
 /// <summary>What hangs in a world's air besides its gas: sea salt and sulfate (clean), water haze, the ground's own dust, volcanic ash, sulfuric acid with sulfur.</summary>
 public enum Particles { Clean, Haze, Dust, Ash, Sulfate }
@@ -68,6 +68,8 @@ public sealed record WorldPalette
     /// <summary>How the world reads: earthy, today's look, vivid (paired against a deep part), candy or mixed.</summary>
     public PaletteKind Kind { get; init; }
     public bool Today => Kind == PaletteKind.Today;
+    /// <summary>Its ground, rock, dust and globe from the hand tables (<see cref="BiomeLook.Ground"/>, <see cref="Hands"/>): today's look and every airless body (proto/vacuum's deep greys, which the palette's light and shade tint).</summary>
+    public bool Hand { get; init; }
     /// <summary>
     /// The parts the world has (no plants where nothing lives, no water on a lava world); of them, those whose chemistry is vivid,
     /// and the one a wholly vivid world that isn't candy keeps deep against the rest.
@@ -77,7 +79,7 @@ public sealed record WorldPalette
     public Parts DeepParts { get; init; }
     public float Kelvin { get; init; }
     public AirMix Air { get; init; }
-    public Mineral Rock { get; init; }
+    public RockType Rock { get; init; }
     /// <summary>How much iron the rock carries, 0..1: what its soils can rust into.</summary>
     public float Iron { get; init; }
     /// <summary>Life, 0..1: none on a dead world, 1 on a lush one.</summary>
@@ -157,9 +159,10 @@ public sealed record WorldPalette
     public static WorldPalette Make(PlanetSpec spec, float kelvin, AirMix air)
     {
         if (IsToday(spec)) return TodayLook(spec, kelvin, air);
+        (string handShallow, string handDeep, string handDust, string handRock) = Hands(spec);
         ulong h = Hash.Of(spec.Seed, 0x47454F);
         float U(int k) => Hash.Unit(h, k);
-        Mineral rock = RockOf(spec, spec.Airless && spec.Archetype != Archetype.Ice ? U(15) : U(0));
+        RockType rock = RockOf(spec, U(0));
         // Iron: most rock carries some; one world in four is iron-rich (red beds, Mars).
         float iron = U(1) > 0.75f ? 0.75f + 0.25f * U(2) : 0.12f + 0.5f * U(2);
         float life = LifeOf(spec);
@@ -172,7 +175,7 @@ public sealed record WorldPalette
         light *= 1f / light.Y;
         // The lit ground is seen by an eye adapted part of the way to its star, the sky less: grey rock takes the star's
         // cast (warm under a red dwarf, cool under a hot star), and the sky keeps more of it still.
-        Spectrum.Eye eye = light.Adapted(spec.Airless ? AirlessAdaptation : Adaptation), skyEye = light.Adapted(SkyAdaptation);
+        Spectrum.Eye eye = light.Adapted(Adaptation), skyEye = light.Adapted(SkyAdaptation);
         float starOff = Math.Clamp(MathF.Abs(kelvin - 5800f) / 2600f, 0f, 1f); // a star far from the Sun's colour: its light and sky the more vivid
         // How rich the world is in the vivid makers (sulfur, copper, chlorine and iodine, vivid pigments, dissolved minerals) against
         // the earthy ones (iron oxides, clays, basalt, carbon, dust): each part's chemistry is drawn from one or the other by it, so a
@@ -181,22 +184,17 @@ public sealed record WorldPalette
         float rich = 0.5f + 0.5f * MathF.CopySign(MathF.Pow(MathF.Abs(2f * U(35) - 1f), 0.6f), U(35) - 0.5f);
         (T, float)[] Makers<T>((T, float)[] odds, int k, Func<T, float> vividness) => Sort(odds, U(36 + k) < rich, vividness);
 
-        // ---- Minerals and soils ----
-        // An airless body's regolith is its dark mare basalt and bright highland anorthosite in its own mix (the Moon's).
-        Spectrum stone = spec.Airless && rock != Mineral.Ice ? Spectrum.Lerp(Stone(Mineral.Basalt), Stone(Mineral.Anorthosite), U(15)) : Stone(rock);
-        // An iron-rich airless body rusted while it still had air and water, and keeps it (Mars, had it lost all its air).
-        if (spec.Airless && iron > 0.75f) stone = Rust(stone, 0.55f, 0.25f);
+        // ---- Minerals and soils (an airless body's are the hand tables': Hand) ----
+        Spectrum stone = Stone(rock);
         // On a volcanic world the iron in fresh lava oxidises as it cools: glassy black flows where there's little of it,
         // red-brown scoria where there's much (Mars' and Hawaii's cinder cones).
-        if (spec.Archetype == Archetype.Lava && !spec.Airless) stone = Rust(rock is Mineral.Basalt or Mineral.Andesite ? stone * (1f + 1.5f * iron) : stone, 0.6f * iron, 0.2f * iron); // dark lava's scoria is frothier, so brighter, than its flows
-        // How long an airless surface has lain under the solar wind, from fresh (bright) to fully weathered (Lucey et al. 2000).
-        float maturity = 0.3f + 0.7f * U(16);
+        if (spec.Archetype == Archetype.Lava && !spec.Airless) stone = Rust(rock is RockType.Basalt or RockType.Andesite ? stone * (1f + 1.5f * iron) : stone, 0.6f * iron, 0.2f * iron); // dark lava's scoria is frothier, so brighter, than its flows
         float stain = wet ? iron : 0f;
         // Grains are brighter than the face they came from (small particles scatter more), and keep its iron; the finest
         // grains rust most (dust is the reddest of the ground), and take the world's ore with them where there is weather.
         float oreAmount = 0.5f + 0.5f * U(20);
-        Spectrum Fines(Stain ore) => Stained((spec.Airless ? Spaced(stone, iron, maturity) : stone) * 1.3f, ore, wet ? oreAmount : 0f);
-        Spectrum DustOf(Stain ore) => spec.Airless ? Fines(ore) : Rust(Fines(ore), 0.85f * iron, 0.2f * iron);
+        Spectrum Fines(Stain ore) => Stained(stone * 1.3f, ore, wet ? oreAmount : 0f);
+        Spectrum DustOf(Stain ore) => Rust(Fines(ore), 0.85f * iron, 0.2f * iron);
 
         // ---- Air ----
         // The trace gas that colours the sky (its kind by what the air is) and its amount, a column's optical depth at its peak.
@@ -299,12 +297,12 @@ public sealed record WorldPalette
         Spectrum fines = Fines(ore), dust = DustOf(ore);
         var sky = SkyOf(gas, dust);
         float skyHue = HueOf(sky.Zenith, sky.Band);
-        Spectrum bedrock = spec.Airless ? Spaced(stone, iron, maturity) : Stained(Rust(stone, 0.35f * stain * (spec.Archetype == Archetype.Arid ? 1.6f : 1f), 0.25f * stain), ore, wet ? 0.5f * oreAmount : 0f);
-        Spectrum sand = spec.Airless ? fines : Rust(fines, 0.3f * stain, 0.2f * stain);
+        Spectrum bedrock = Stained(Rust(stone, 0.35f * stain * (spec.Archetype == Archetype.Arid ? 1.6f : 1f), 0.25f * stain), ore, wet ? 0.5f * oreAmount : 0f);
+        Spectrum sand = Rust(fines, 0.3f * stain, 0.2f * stain);
         var soils = new Rgb[Grid * Grid];
         for (int t = 0; t < Grid; t++)
             for (int w = 0; w < Grid; w++)
-                soils[t * Grid + w] = spec.Airless ? fines.Reflectance() : SoilOf(ore, t / (Grid - 1f), w / (Grid - 1f)); // no air, no weather: regolith everywhere
+                soils[t * Grid + w] = SoilOf(ore, t / (Grid - 1f), w / (Grid - 1f));
 
         // ---- Plants ----
         // The light at the ground with the sun 45° up, into the near infrared: oxygen's and water vapour's bands carve it
@@ -351,17 +349,17 @@ public sealed record WorldPalette
         return new WorldPalette
         {
             Kind = vivid == 0 ? PaletteKind.Earthy : vivid == has ? PaletteKind.Candy : (vivid | deepPart) == has ? PaletteKind.Vivid : PaletteKind.Mixed,
-            Has = has, VividParts = vivid, DeepParts = deepPart,
+            Has = has, VividParts = vivid, DeepParts = deepPart, Hand = spec.Airless,
             Kelvin = kelvin, Air = air, Rock = rock, Iron = iron, Life = life, Plankton = plankton,
             Gas = gas, Kit = pigment, Silver = silver, Water = waters, Ore = ore,
             Star = light.Hue(eye), Disc = light.Hue(),
             Zenith = D(sky.Zenith, Parts.Sky), Horizon = D(sky.Horizon, Parts.Sky), Band = D(sky.Band, Parts.Sky), Haze = D(sky.Haze, Parts.Sky), Sunset = sky.Sunset,
             Limb = D(sky.Limb, Parts.Sky), Shade = D(sky.Shade, Parts.Sky),
             CloudTint = hasSky ? Rgb.Lerp(new Rgb(1f, 1f, 1f), Albedo(sky.Albedo).Reflectance(), Math.Clamp(air.Aerosol * 0.35f, 0f, 0.55f)) : new Rgb(1f, 1f, 1f),
-            // An airless body keeps its regolith's own grey (its light and shadow colour it).
-            Dust = spec.Airless ? dust.Reflectance() : D(Part(dust, GroundBoost, 0.85f * Vivid(ore)), Parts.Ground),
-            Bedrock = spec.Airless ? bedrock.Reflectance() : D(Part(bedrock, RockBoost, Vivid(ore)), Parts.Ground),
-            Sand = spec.Airless ? sand.Reflectance() : D(Part(sand, GroundBoost, Vivid(ore)), Parts.Ground), Snow = snow.Reflectance(),
+            // An airless body keeps proto/vacuum's deep greys (its light and shadow colour it).
+            Dust = spec.Airless ? Rgb.Hex(handDust) : D(Part(dust, GroundBoost, 0.85f * Vivid(ore)), Parts.Ground),
+            Bedrock = spec.Airless ? Rgb.Hex(handRock) : D(Part(bedrock, RockBoost, Vivid(ore)), Parts.Ground),
+            Sand = spec.Airless ? BiomeLook.Ground(Biome.Beach) : D(Part(sand, GroundBoost, Vivid(ore)), Parts.Ground), Snow = snow.Reflectance(),
             Deep = D(Part(deep, DeepBoost, Vivid(waters)), Parts.Water), Shallow = D(Part(shallow, ShallowBoost, Vivid(waters)), Parts.Water),
             Ice = (snow * 0.92f).Reflectance(),
             Leaf = D(leafColor, Parts.Plants), Peak = peak,
@@ -385,27 +383,34 @@ public sealed record WorldPalette
     static WorldPalette TodayLook(PlanetSpec spec, float kelvin, AirMix air)
     {
         ArchetypeLook globe = ArchetypeLook.Base(spec.Archetype, spec.Variant);
-        (string shallow, string deep, string dust, string rock) = (spec.Archetype, spec.Variant) switch
-        {
-            (Archetype.Temperate, 0) => ("2e7a80", "0c2c40", "9c7e5a", "726b61"),
-            (Archetype.Temperate, _) => ("2f7c6c", "0c3236", "9c7e5a", "726b61"),
-            (Archetype.Arid, 0) => ("3a8c8a", "12384a", "b98a56", "a2725a"),
-            (Archetype.Arid, _) => ("3a8c8a", "12384a", "b98a56", "9c5436"),
-            (Archetype.Ice, 0) => ("2c5a78", "0a1c34", "c8ccd0", "5d646e"),
-            (Archetype.Ice, _) => ("2a6a7c", "0a2236", "c0c4c8", "5d646e"),
-            (Archetype.Lava, _) => ("8a1a0a", "ff6a18", "4a4442", "2f2a2b"),
-            (Archetype.Alien, 0) => ("2a8a86", "0c2a3a", "a898b8", "6f6185"),
-            _ => ("5a3a7a", "1a0c30", "8a8a5a", "6b5a52"),
-        };
+        (string shallow, string deep, string dust, string rock) = Hands(spec);
         return new WorldPalette
         {
-            Kind = PaletteKind.Today, Kelvin = kelvin, Air = air, Life = LifeOf(spec), Has = PartsOf(spec, LifeOf(spec)),
+            Kind = PaletteKind.Today, Hand = true, Kelvin = kelvin, Air = air, Life = LifeOf(spec), Has = PartsOf(spec, LifeOf(spec)),
             Star = globe.SunColor, Disc = globe.SunColor, Zenith = globe.SkyTop, Horizon = globe.SkyHorizon, Band = globe.SkyHorizon,
             Haze = globe.SkyHorizon, Sunset = globe.SkyHorizon, Limb = globe.Atmosphere, CloudTint = globe.CloudColor, Shade = globe.SkyTop,
             Dust = Rgb.Hex(dust), Bedrock = Rgb.Hex(rock), Sand = BiomeLook.Ground(Biome.Beach), Snow = Rgb.Hex("eef2f6"),
             Deep = Rgb.Hex(deep), Shallow = Rgb.Hex(shallow), Ice = globe.FrozenSea, Leaf = BiomeLook.Color(Biome.Grassland),
         };
     }
+
+    /// <summary>
+    /// The hand tables by type: the water, dust and rock the surface had before the palette (today's look), and an airless body's
+    /// (proto/vacuum's barren greys: dust is regolith).
+    /// </summary>
+    static (string Shallow, string Deep, string Dust, string Rock) Hands(PlanetSpec spec) => (spec.Archetype, spec.Variant) switch
+    {
+        (Archetype.Temperate, 0) => ("2e7a80", "0c2c40", "9c7e5a", "726b61"),
+        (Archetype.Temperate, _) => ("2f7c6c", "0c3236", "9c7e5a", "726b61"),
+        (Archetype.Arid, 0) => ("3a8c8a", "12384a", "b98a56", "a2725a"),
+        (Archetype.Arid, _) => ("3a8c8a", "12384a", "b98a56", "9c5436"),
+        (Archetype.Ice, 0) => ("2c5a78", "0a1c34", "c8ccd0", "5d646e"),
+        (Archetype.Ice, _) => ("2a6a7c", "0a2236", "c0c4c8", "5d646e"),
+        (Archetype.Lava, _) => ("8a1a0a", "ff6a18", "4a4442", "2f2a2b"),
+        (Archetype.Alien, 0) => ("2a8a86", "0c2a3a", "a898b8", "6f6185"),
+        (Archetype.Barren, _) => ("505052", "303032", "8c8b88", "505050"),
+        _ => ("5a3a7a", "1a0c30", "8a8a5a", "6b5a52"),
+    };
 
     /// <summary>The parts a world has: ground always; with air, a sky, water but on a lava world, and plants where anything lives.</summary>
     static Parts PartsOf(PlanetSpec spec, float life) => spec.Airless ? Parts.Ground
@@ -417,11 +422,6 @@ public sealed record WorldPalette
     /// </summary>
     const float Adaptation = 0.5f;
 
-    /// <summary>
-    /// On an airless body the eye adapts most of the way (no sky to judge the light against): its grey rock reads grey under
-    /// any star, warmed or cooled a little, and its colour is in its shadows (<c>SkySystem.Vacuum</c>).
-    /// </summary>
-    const float AirlessAdaptation = 0.85f;
 
     /// <summary>The most chroma (Oklab) a sky takes: the paintings' skies, never neon.</summary>
     const float SkyMost = 0.22f;
@@ -659,24 +659,16 @@ public sealed record WorldPalette
     static Spectrum Rust(Spectrum r, float hematite, float goethite) =>
         r * (Spectrum.Flat(1f) - Spectrum.Below(565f, 12f) * (0.78f * hematite) - Spectrum.Below(505f, 18f) * (0.6f * goethite));
 
-    /// <summary>
-    /// With no air, iron can't rust: space weathering only darkens the grains and reddens their slope (Hapke 2001),
-    /// the more so the more iron there is to make into nanophase metal (iron-rich mare darker than highland) and the
-    /// longer it has lain exposed (<paramref name="maturity"/>, 0 fresh to 1 mature).
-    /// </summary>
-    static Spectrum Spaced(Spectrum r, float iron, float maturity) =>
-        r * Spectrum.Of(l => 1f - maturity * (0.38f + 0.3f * iron) + maturity * (0.12f + 0.2f * iron) * (l - 400f) / 300f);
-
     /// <summary>A world's rock by its type: lava worlds are basalt, airless bodies mare basalt or bright highland (or ice), the rest any of the common crustal rocks.</summary>
-    static Mineral RockOf(PlanetSpec spec, float u) => Roll(spec.Airless
-        ? spec.Archetype == Archetype.Ice ? new[] { (Mineral.Ice, 0.6f), (Mineral.Basalt, 0.2f), (Mineral.Anorthosite, 0.2f) }
-        : new[] { (Mineral.Basalt, 0.5f), (Mineral.Anorthosite, 0.5f) } // the more of the two in its mix: Make blends them
+    static RockType RockOf(PlanetSpec spec, float u) => Roll(spec.Airless
+        ? spec.Archetype == Archetype.Ice ? new[] { (RockType.Ice, 0.6f), (RockType.Basalt, 0.2f), (RockType.Anorthosite, 0.2f) }
+        : new[] { (RockType.Basalt, 0.5f), (RockType.Anorthosite, 0.5f) } // the more of the two in its mix: Make blends them
         : spec.Archetype switch
         {
-            Archetype.Lava => new[] { (Mineral.Basalt, 0.45f), (Mineral.Andesite, 0.3f), (Mineral.Granite, 0.25f) }, // granite's volcanic twin, rhyolite: pale and pink
-            Archetype.Arid => new[] { (Mineral.Sandstone, 0.3f), (Mineral.Granite, 0.2f), (Mineral.Basalt, 0.25f), (Mineral.Limestone, 0.25f) }, // red beds, grus, black sand, white gypsum and lime
-            Archetype.Ice => new[] { (Mineral.Granite, 0.35f), (Mineral.Basalt, 0.35f), (Mineral.Shale, 0.3f) },
-            _ => new[] { (Mineral.Granite, 0.25f), (Mineral.Basalt, 0.2f), (Mineral.Sandstone, 0.2f), (Mineral.Limestone, 0.15f), (Mineral.Shale, 0.2f) },
+            Archetype.Lava => new[] { (RockType.Basalt, 0.45f), (RockType.Andesite, 0.3f), (RockType.Granite, 0.25f) }, // granite's volcanic twin, rhyolite: pale and pink
+            Archetype.Arid => new[] { (RockType.Sandstone, 0.3f), (RockType.Granite, 0.2f), (RockType.Basalt, 0.25f), (RockType.Limestone, 0.25f) }, // red beds, grus, black sand, white gypsum and lime
+            Archetype.Ice => new[] { (RockType.Granite, 0.35f), (RockType.Basalt, 0.35f), (RockType.Shale, 0.3f) },
+            _ => new[] { (RockType.Granite, 0.25f), (RockType.Basalt, 0.2f), (RockType.Sandstone, 0.2f), (RockType.Limestone, 0.15f), (RockType.Shale, 0.2f) },
         }, u);
 
     /// <summary>
@@ -684,15 +676,15 @@ public sealed record WorldPalette
     /// feldspar's pink, basalt dark, quartz sandstone bright before its iron coat, limestone near white, shale
     /// grey, andesite (between basalt and rhyolite) mid-grey, lunar-highland anorthosite bright, ice near white with a little red absorbed.
     /// </summary>
-    static Spectrum Stone(Mineral m) => m switch
+    static Spectrum Stone(RockType m) => m switch
     {
-        Mineral.Granite => Spectrum.Of(l => 0.26f + 0.14f * (l - 400f) / 300f),
-        Mineral.Basalt => Spectrum.Of(l => 0.065f + 0.025f * (l - 400f) / 300f),
-        Mineral.Andesite => Spectrum.Of(l => 0.15f + 0.05f * (l - 400f) / 300f),
-        Mineral.Sandstone => Spectrum.Of(l => 0.34f + 0.16f * (l - 400f) / 300f),
-        Mineral.Limestone => Spectrum.Of(l => 0.5f + 0.1f * (l - 400f) / 300f),
-        Mineral.Shale => Spectrum.Of(l => 0.11f + 0.05f * (l - 400f) / 300f),
-        Mineral.Anorthosite => Spectrum.Of(l => 0.3f + 0.1f * (l - 400f) / 300f),
+        RockType.Granite => Spectrum.Of(l => 0.26f + 0.14f * (l - 400f) / 300f),
+        RockType.Basalt => Spectrum.Of(l => 0.065f + 0.025f * (l - 400f) / 300f),
+        RockType.Andesite => Spectrum.Of(l => 0.15f + 0.05f * (l - 400f) / 300f),
+        RockType.Sandstone => Spectrum.Of(l => 0.34f + 0.16f * (l - 400f) / 300f),
+        RockType.Limestone => Spectrum.Of(l => 0.5f + 0.1f * (l - 400f) / 300f),
+        RockType.Shale => Spectrum.Of(l => 0.11f + 0.05f * (l - 400f) / 300f),
+        RockType.Anorthosite => Spectrum.Of(l => 0.3f + 0.1f * (l - 400f) / 300f),
         _ => Spectrum.Of(l => 0.88f - 0.12f * (l - 400f) / 300f),
     };
 
@@ -832,7 +824,7 @@ public sealed record WorldPalette
     /// </summary>
     public Rgb Land(Biome biome, float warm, float wet, Rgb? growth = null)
     {
-        if (Today) return growth is Rgb t ? Rgb.Lerp(BiomeLook.Ground(biome), t, Cover(biome, true)) : BiomeLook.Color(biome);
+        if (Hand) return growth is Rgb t ? Rgb.Lerp(BiomeLook.Ground(biome), t, Cover(biome, true)) : BiomeLook.Color(biome);
         Rgb ground = Ground(biome, warm, wet);
         Rgb? green = growth ?? (Life > 0f ? Leaf : null);
         return green is Rgb g ? Rgb.Lerp(ground, g, Cover(biome)) : ground;
@@ -857,7 +849,7 @@ public sealed record WorldPalette
     /// </summary>
     public Rgb Ground(Biome biome, float warm, float wet)
     {
-        if (Today) return BiomeLook.Ground(biome);
+        if (Hand) return BiomeLook.Ground(biome);
         switch (biome)
         {
             case Biome.Beach: case Biome.Dunes: case Biome.Erg: return biome == Biome.Beach ? Sand : Rgb.Lerp(Sand, Dust, 0.35f);

@@ -836,9 +836,7 @@ public partial class SkyTest : Node
     {
         // A scorched world's sun is meant big and angry. One that is a close giant's moon sees it swell through its month (it
         // passes between the giant and the star, as much as a third nearer), so the top reaches past a lone planet's 15.
-        // A temperate world can circle a red dwarf or a white (F) star now (owner, 22 Nov: meadows under different stars), whose suns look
-        // half again as wide and a little smaller; an arid world an orange one, a little wider.
-        foreach (var (type, least, most) in new[] { (Archetype.Lava, 6f, 21f), (Archetype.Arid, 2.8f, 8f), (Archetype.Temperate, 2.1f, 5.4f), (Archetype.Ice, 0.9f, 3f) })
+        foreach (var (type, least, most) in new[] { (Archetype.Lava, 6f, 21f), (Archetype.Arid, 2.8f, 7f), (Archetype.Temperate, 2.4f, 4.6f), (Archetype.Ice, 0.9f, 3f) })
         {
             var sizes = new List<float>();
             for (int i = 0; i < 24; i++)

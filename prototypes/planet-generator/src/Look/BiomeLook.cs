@@ -21,9 +21,9 @@ public static class BiomeLook
     public static FloraRule[] FloraOf(Biome b) => FloraTable[(int)b];
 
     /// <summary>
-    /// The ground under each biome, as the surface shows it: its topsoil, sand, ash, ice or snow. Today's look paints every
-    /// biome's ground from this (<see cref="WorldPalette.IsToday"/>); elsewhere only hot-spring sinter, sulfur, obsidian, blue
-    /// ice and the crystal and fungal grounds come from here, whose chemistry the world palette doesn't hold.
+    /// The ground under each biome, as the surface shows it: its topsoil, sand, ash, ice, snow or barren rock. Today's look and
+    /// every airless body paint every biome's ground from this (<see cref="WorldPalette.Hand"/>); elsewhere only hot-spring sinter,
+    /// sulfur, obsidian, blue ice and the crystal and fungal grounds come from here, whose chemistry the world palette doesn't hold.
     /// </summary>
     public static Rgb Ground(Biome b) => b switch
     {
@@ -66,6 +66,12 @@ public static class BiomeLook
         Biome.FungalForest => Rgb.Hex("874a3c"),
         Biome.SporeMarsh => Rgb.Hex("5e6a35"),
         Biome.Mycelium => Rgb.Hex("cbbfa4"),
+        // Barren ground (proto/vacuum's albedos): deep greys, lit and shaded by the palette's light.
+        Biome.Regolith => Rgb.Hex("5c5c5c"),
+        Biome.Mare => Rgb.Hex("3a3a3b"),
+        Biome.Highland => Rgb.Hex("7c7c7c"),
+        Biome.Ironstone => Rgb.Hex("4a4848"),
+        Biome.Frost => Rgb.Hex("cdd1d6"),
         _ => Rgb.Hex("6a6a5a"),
     };
 
@@ -99,6 +105,10 @@ public static class BiomeLook
         Set(Biome.CrystalPlain, "7448b5"); Set(Biome.CrystalSpires, "c45ee6"); Set(Biome.Chalk, "ecd0e6");
         Set(Biome.GlowMoss, "34d6ad"); Set(Biome.FungalForest, "d0562c"); Set(Biome.SporeMarsh, "6e7d2c");
         Set(Biome.Mycelium, "eadfbf");
+
+        // Barren ground, a plain first pass in greys (the palette colours each by its mineral, Minerals.Of).
+        Set(Biome.Regolith, "606060"); Set(Biome.Mare, "3e3e40"); Set(Biome.Highland, "808080");
+        Set(Biome.Ironstone, "4c4a4a"); Set(Biome.Frost, "d2d6da");
         return c;
     }
 
@@ -163,6 +173,13 @@ public static class BiomeLook
         Set(Biome.FungalForest, R(Flora.GiantMushroom, 5f, "e0602a"), R(Flora.GiantMushroom, 1.5f, "f0c040"), R(Flora.Mushroom, 3f, "c04a8a"));
         Set(Biome.SporeMarsh, R(Flora.Mushroom, 4f, "a0a030"), R(Flora.JungleTree, 3f, "6a7a30"), R(Flora.Shrub, 2f, "7a8a30"));
         Set(Biome.Mycelium, R(Flora.Mushroom, 1.6f, "e08a5a"), R(Flora.GiantMushroom, 1.2f, "e0602a"));
+
+        // Nothing grows on barren ground: only the boulders impacts threw out.
+        Set(Biome.Regolith, R(Flora.Rock, 0.5f, "565656"));
+        Set(Biome.Mare, R(Flora.Rock, 0.3f, "363638"));
+        Set(Biome.Highland, R(Flora.Rock, 0.6f, "707070"));
+        Set(Biome.Ironstone, R(Flora.Rock, 0.6f, "444242"));
+        Set(Biome.Frost, R(Flora.Rock, 0.15f, "8a8e94"));
         return t;
     }
 }

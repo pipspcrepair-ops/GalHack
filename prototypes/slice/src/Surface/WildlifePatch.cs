@@ -676,7 +676,7 @@ public partial class WildlifePatch : Node3D
     {
         Origin += by;
         Position = Origin;
-        Audio.Origin = Origin;
+        if (Audio != null) Audio.Origin = Origin; // an airless world has no creatures to hear (SetWorld)
         _baking = null; // baked for the old frame: the next tick starts another
 
     }

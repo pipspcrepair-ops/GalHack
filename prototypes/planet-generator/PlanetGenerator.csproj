@@ -12,5 +12,7 @@
     <Compile Include="..\..\shared\Sky\**\*.cs" />
     <!-- The galaxy: the catalogue its skies are drawn from. -->
     <Compile Include="..\..\shared\Galaxy\**\*.cs" />
+    <!-- The one crater shape: the generator's impact craters and the strike stamps' bowls. -->
+    <Compile Include="..\..\shared\Terrain\CraterShape.cs" />
   </ItemGroup>
 </Project>

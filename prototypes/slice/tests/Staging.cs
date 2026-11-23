@@ -37,7 +37,7 @@ public sealed partial class Staging
     public IEnumerable<int> Run(string view)
     {
         foreach (int x in _drive.UntilPlaying()) yield return x;
-        _game.Zone.Weather.Bridge.Calm = true;
+        if (_game.Zone.Weather.Bridge is { } weather) weather.Calm = true; // (an airless world has no weather)
         _game.Zone.Wildlife.Frozen = view != "dig";
         foreach (int x in Play.MakeTool()) yield return x;
         // Every view but the bunker's own starts out on the surface: up the stairs first, on foot.
@@ -105,6 +105,7 @@ public sealed partial class Staging
             "cores" => CoresView(),
             "lightpanel" => LightPanelView(),
             "natural" => Natural(),
+            "barren" => BarrenView(),
             "flora" => FloraProof(),
             "flora-trees" => FloraTrees(),
             "florareach" => FloraReachView(),

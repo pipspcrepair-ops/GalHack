@@ -50,7 +50,7 @@ public partial class LayersTest
                            || tookAir;
                 if (bad) { wrong++; notes.Add($"{a} {fall} seed {seed}: {spec.Modifiers}, air {roll?.One(LayerKind.Air)?.Id} to {roll?.Fact("air")}"); }
             }
-        Check(wrong == 0 && cratered > 0, $"{worlds} fresh worlds with a war: none cratered or airless but barren rock ({cratered} cratered, all arid, ice or lava){(wrong > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
+        Check(wrong == 0 && cratered > 0, $"{worlds} fresh worlds with a war: none cratered or airless but barren rock ({cratered} cratered, all barren, ice or lava){(wrong > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
         // Natural craters only where they stay, even when asked for on a living world.
         PlanetSpec living = new(Seed(), Archetype.Temperate, 0, Modifier.Cratered);
         Check(Planets.Gen.Archetypes.For(living).CraterSpacing == 0f && !living.Airless && !WorldConditions.Of(living).Vacuum, "a temperate world told it's cratered keeps its air and grows no craters");

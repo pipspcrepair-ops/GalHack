@@ -17,12 +17,12 @@ namespace PlanetSurface.Tests;
 /// - <b>Variety with a basis.</b> Many meadow (temperate) worlds across stars, sizes and grounds: each
 ///   one's clear sky (zenith and horizon), plants, soil, rock and deep water in CIELAB. Each colour
 ///   must spread between worlds (median pair dE), few pairs may look the same at a glance, and almost
-///   no two worlds may match in every colour at once. The same check runs on every other world type,
-///   airless ones included.
+///   no two worlds may match in every colour at once. The same check runs on every other world type
+///   with air (an airless body's ground is proto/vacuum's deep greys, alike by design).
 /// - <b>Real light.</b> The night sky stays dark.
 /// - <b>Earthy, today's look, vivid, candy and mixed</b> (owner, 23 Nov), over hundreds of palettes of every type with air:
 ///   each kind common and candy one share, not most; every part looks as its label says; no hue family takes over any part;
-///   red water, blue grass and a green sky all turning up. An airless body's rock stays grey.
+///   red water, blue grass and a green sky all turning up. A barren body's rock stays grey.
 /// - <b>Ore keeps its colour</b> (owner, 23 Nov): every ore's deposit the same on every world of every look, and standing
 ///   apart from the ground round it.
 /// Prints "world: seed N, type" for each world so a run can be replayed.
@@ -61,7 +61,6 @@ public partial class PaletteTest : Node
             Variety("meadow", 24, () => (Archetype.Temperate, (int)(Fresh() % 2), false));
             foreach (Archetype a in new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava, Archetype.Alien })
                 Variety(a.ToString().ToLowerInvariant(), 14, () => (a, (int)(Fresh() % 2), false));
-            Variety("airless", 14, () => (new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava }[Fresh() % 3], (int)(Fresh() % 2), true));
             Range(600);
             Ore(18);
         }
@@ -191,8 +190,7 @@ public partial class PaletteTest : Node
     /// or at most 0.09, a deep one dark and dull (at most 0.06).
     /// No hue family holds more than 35% of any part's vivid colours (sky, ground, plants, water), nor 45% of all its colours (earthy
     /// worlds' earth tones may lead). Red water, blue plants and
-    /// a green sky each turn up on at least one world in a hundred. Every fourth roll is an airless body, whose rock (unless it rusted
-    /// while it had air) stays grey.
+    /// a green sky each turn up on at least one world in a hundred. Every fourth roll is a barren body, whose rock stays grey.
     /// </summary>
     void Range(int count)
     {
@@ -211,10 +209,9 @@ public partial class PaletteTest : Node
             PlanetSpec spec = PlanetSpec.Roll(Fresh(), a, v, PlanetSpec.RollWidthKm(_seeds));
             if (i % 4 == 0)
             {
-                spec = spec with { Archetype = PlanetSpec.Craters(a) ? a : Archetype.Arid, Modifiers = Modifier.Cratered };
-                // (An iron-rich one rusted while it still had air, and keeps it: its own colour, the vacuum's albedo, not the palette's.)
-                WorldPalette moon = SkySystem.For(spec).Palette;
-                if (moon.Iron <= 0.75f) greyest = MathF.Max(greyest, Oklab.Of(moon.Bedrock).Chroma);
+                // A barren body's rock is proto/vacuum's deep grey, whatever its star: the light and shade colour it, not the palette.
+                WorldPalette moon = SkySystem.For(spec with { Archetype = Archetype.Barren, Modifiers = Modifier.Cratered }).Palette;
+                greyest = MathF.Max(greyest, Oklab.Of(moon.Bedrock).Chroma);
                 continue;
             }
             if (spec.Airless) continue;
@@ -257,7 +254,7 @@ public partial class PaletteTest : Node
             Check(most <= n * 0.45f && mostVivid <= nv * 0.35f, $"no hue family takes over the {parts[e]}: the commonest holds {most * 100 / Math.Max(n, 1)}% of all, {mostVivid * 100 / Math.Max(nv, 1)}% of the vivid");
         }
         Check(red >= worlds / 100 && blue >= worlds / 100 && green >= worlds / 100, $"red water on {red}, blue plants on {blue} and a green sky on {green} of {worlds} worlds (each at least {worlds / 100})");
-        Check(greyest < 0.04f, $"airless rock that never rusted stays grey: highest Oklab chroma {greyest:F3}");
+        Check(greyest < 0.04f, $"a barren body's rock stays grey: highest Oklab chroma {greyest:F3}");
     }
 
     /// <summary>

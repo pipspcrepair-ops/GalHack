@@ -47,6 +47,8 @@ public static class PlanetGenerator
         var sorted = (float[])raw.Clone();
         Array.Sort(sorted);
         model.SeaOffset = Quantile(sorted, 1f - map.LandTarget);
+        // There the land stands high enough that its deepest crater's floor stays clear of the floor every bare world keeps.
+        if (bare) model.SeaOffset -= model.CraterDepthMost;
         // Landforms cut lakes, pools, delta channels and fjords below the water after sea level is
         // chosen, and deltas build out over the shallows. A sparse first pass measures what that
         // does to the land, and sea level is chosen again to make up for it.
@@ -75,7 +77,6 @@ public static class PlanetGenerator
                 int k = j * w + i;
                 double x = map.CellX(i);
                 float e = model.ShapeCell(raw[k], x, y, cellSize, out Landform landform, out float area, out float wet, out dry[k]);
-                if (bare) e = Math.Max(e, 0f) + BareFloor; // craters and landform pools cut no basins to fill
                 map.Elevation[k] = e;
                 map.Landform[k] = (byte)landform;
                 riverArea[k] = def.RiverArea * Math.Clamp(area, 0.6f, 4f);

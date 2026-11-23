@@ -35,7 +35,7 @@ public partial class Screenshot : Node
     /// <summary>One named view: the planet, where to stand, when, and in what weather.</summary>
     public sealed record ViewSpec(PlanetSpec Planet, Func<Main, (Vector3 pos, float heading, float pitch)> Place, double Time,
         WeatherKind? Weather = null, GroundCover? Ground = null, Action<Main> Prepare = null, Action<Main> BeforeCapture = null,
-        Func<Main, double> TimeFor = null, string Force = null, Func<Main, List<Shot>> Series = null);
+        Func<Main, double> TimeFor = null, string Force = null, Func<Main, List<Shot>> Series = null, Func<PlanetSurface.World.PlanetWorld> World = null);
 
     /// <summary>One frame of a series: a name for its file (FILE-name.png) and where the camera stands.</summary>
     public sealed record Shot(string Name, Vector3 Pos, float Heading, float Pitch);
@@ -92,7 +92,7 @@ public partial class Screenshot : Node
         PlanetSurface.Poi.PoiSiting.ForceFamily = _spec.Force;
         _main = new Main { Interactive = false };
         AddChild(_main);
-        _main.Arrive(_spec.Planet);
+        _main.Arrive(_spec.Planet, _spec.World);
     }
 
     ViewSpec Look()
@@ -755,6 +755,8 @@ public partial class Screenshot : Node
         GD.Print(result == Error.Ok ? $"saved {file}" : $"could not save {file}: {result}");
         GD.Print($"LABEL {System.IO.Path.GetFileNameWithoutExtension(file)}|{Label(_main.World)}");
         GD.Print($"PARTS {System.IO.Path.GetFileNameWithoutExtension(file)}|{PartColours(_main.World)}");
+        // The system the seed makes (its star, and each body's kind, seed, orbit and size): the palette must never change it.
+        GD.Print($"SYSTEM {System.IO.Path.GetFileNameWithoutExtension(file)}|{_main.World.Sky.Star} " + string.Join(" ", _main.World.StarSystem.Bodies.Select(b => $"{b.Kind}:{b.Seed % 1000000}:{b.Orbit:F4}:{b.Radius:F5}")));
         // A series: on to its next frame, the world kept.
         if (result == Error.Ok && _series != null && ++_shot < _series.Count)
         {
@@ -805,6 +807,7 @@ public static class Views
         _ when name.StartsWith("far:") => FarView(name),
         _ when name.StartsWith("cliff:") => CliffViews.Get(name),
         _ when name.StartsWith("infra:") => InfraViews.Get(name),
+        _ when name.StartsWith("barren:") => BarrenViews.Get(name),
         _ => null,
     };
 

@@ -213,15 +213,18 @@ public partial class SliceAudio : Node
         // Weather on the surface: planet-surface's wind and rain, muffled inside a structure.
         // Under water everything comes through it, dull and far off; the weather not at all.
         bool under = g.Zone.Underwater?.CameraUnder == true;
-        Muffle(under);
+        // No air round the suit (a vacuum world out of doors, or space): no sound comes through it from outside, only
+        // what the suit itself carries, dull through its boots and hands (the same low-pass as under water).
+        float air = g.Suit.InVacuum ? 0f : 1f - g.Spaceflight.AirGone;
+        Muffle(under || g.Suit.InVacuum);
         Fade(_under, under, -20f, dt);
-        UpdateWeather(under, dt);
+        UpdateWeather(under, air, dt);
 
         // The jetpack hisses while it pushes; a vessel's engines rumble with its thrust.
         bool jetting = (g.Survivor.Seated == null && !g.Survivor.Body.OnFloor && g.Survivor.Legs.Jetpack || g.Spaceflight.EvaThrusting) && !g.Suit.Dead;
         _jet.Voice.On = jetting;
         _jet.Voice.Thrust = 1f;
-        _jet.Voice.Air = 1f - g.Spaceflight.AirGone;
+        _jet.Voice.Air = air;
         bool engines = g.Survivor.Seated is Vessel v && v.Flight != null && v.Controller?.Frozen == false;
         _engine.Voice.On = engines;
         if (engines)
@@ -233,7 +236,7 @@ public partial class SliceAudio : Node
                 _engine.Voice.Retarget(VoiceProfile.Vessel(BiggestThrust(seat)));
             }
             _engine.Voice.Thrust = Effort(seat);
-            _engine.Voice.Air = 1f - g.Spaceflight.AirGone; // in vacuum the roar thins to what the hull carries
+            _engine.Voice.Air = air; // in vacuum the roar thins to what the hull carries
         }
 
         // Footsteps on the ground: a soft tap per stride.
@@ -266,7 +269,7 @@ public partial class SliceAudio : Node
     /// Wind by the LOCAL wind speed (ridges, hollows, woods, gusts) and rain by what falls HERE, both
     /// shaped by <see cref="AmbientExposure"/>: roof, walls, lee and relief; sealed rooms hear neither.
     /// </summary>
-    void UpdateWeather(bool under, float dt)
+    void UpdateWeather(bool under, float air, float dt)
     {
         Game g = Game;
         var w = g.Zone.Weather;
@@ -278,7 +281,6 @@ public partial class SliceAudio : Node
             bool aboard = g.Survivor.Aboard != null && !g.Survivor.OnOuterHull;
             bool shut = aboard || w.SkyAtEye < 0.2f;
             float speed = w.Sim.WindAt(w.Camera.GlobalPosition).Length();
-            float air = 1f - g.Spaceflight.AirGone; // the wind thins away with the air
             wantWind = AmbientExposure.WindLevel(speed, e.Cover, e.Walled, e.Relief, e.Lee, shut, cockpit) * air;
             wantRain = AmbientExposure.RainLevel(w.RainHere, e.Cover, e.Walled, shut, cockpit) * air;
         }
@@ -287,7 +289,7 @@ public partial class SliceAudio : Node
         g.Zone.Sfx.SetLevels(_windNow, _rainNow);
     }
 
-    /// <summary>A low-pass on the effects and ambience buses (the music stays clear), there once (a new game reloads the scene, the buses stay) and on only under water.</summary>
+    /// <summary>A low-pass on the effects and ambience buses (the music stays clear), there once (a new game reloads the scene, the buses stay) and on only under water and in vacuum.</summary>
     void Muffle(bool on)
     {
         if (on == _muffled) return;
