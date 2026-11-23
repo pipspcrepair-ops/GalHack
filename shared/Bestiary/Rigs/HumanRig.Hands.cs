@@ -197,7 +197,9 @@ public sealed partial class HumanRig
     /// </summary>
     static Basis Regrip(Basis a, Basis b, float t)
     {
-        Quaternion rel = (a.GetRotationQuaternion().Inverse() * b.GetRotationQuaternion()).Normalized();
+        Quaternion qa = Turn(a), qb = Turn(b);
+        if (!qa.IsNormalized() || !qb.IsNormalized()) return qa.IsNormalized() ? a : b; // (a frame with no turn: the other)
+        Quaternion rel = (qa.Inverse() * qb).Normalized();
         if (rel.W < 0f) rel = -rel;
         Vector3 u = new(rel.X, rel.Y, rel.Z);
         float sin = u.Length();
