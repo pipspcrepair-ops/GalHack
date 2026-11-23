@@ -151,6 +151,7 @@ public partial class Spaceflight
             while (home.Made == null) yield return false;
             Doing = "its orbit zone";
             PlanetWorld w = home.Made;
+            home.Wildlife.RollAhead(w); // its life rolled on a worker while its orbit is made
             bool clear = w.Sky.Density < SurfaceWeather.NoAir;
             orbit = new OrbitZone(w, start.Data, Rules, PoiGenerator.Gen.Hash.Combine(model.StarKey, root.Seed), ceiling, clear ? (_, _) => 0f : null)
             {
@@ -167,7 +168,8 @@ public partial class Spaceflight
         if (_orbits.Count == 0) _orbits.Add(Orbit);
         _orbits.Add(orbit);
         made(orbit, orbit.Home.Surface);
-        foreach (Orbiter m in Under(model, root).ToList())
+        // A world's or a giant's moons (and theirs); the star's planets and a belt's rocks are orbits of their own.
+        foreach (Orbiter m in root.Kind is OrbiterKind.Star or OrbiterKind.Belt ? Enumerable.Empty<Orbiter>() : Under(model, root).ToList())
             if (m.Spec != null && OrbitOf(m) == null)
             {
                 Doing = "a moon's surface zone";
@@ -185,9 +187,11 @@ public partial class Spaceflight
             orbit.BuildStep();
             yield return false;
         }
+        Doing = "waiting on its life";
+        while (orbit.Home.Surface is { } rolling && !rolling.Wildlife.LifeReady) yield return false;
         if (orbit.Home.Surface is { } surface)
             for (Doing = "its surface arriving"; !surface.TryArrive(); Doing = "its surface arriving: " + surface.ArriveSteps.Split(", ").Where(s => s != "").LastOrDefault()) yield return false;
-        GD.Print($"[{orbit.Name} made: {orbit.Bodies.Count} bodies with ground or frame, {orbit.Wrecks.Count} wrecks, setting up {orbit.LongestBuildMs:F1} ms at most]");
+        GD.Print($"[{orbit.Name} made: {orbit.Bodies.Count} bodies with ground or frame, {orbit.Wrecks.Count} wrecks, setting up {orbit.LongestBuildMs:F1} ms at most; its surface arrived {orbit.Home.Surface?.ArriveSteps}]");
         yield return true;
     }
 

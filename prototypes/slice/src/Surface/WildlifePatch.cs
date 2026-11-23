@@ -143,10 +143,26 @@ public partial class WildlifePatch : Node3D
         return Bestiary.Roll(Zone.Data.Wildlife, world);
     }
 
+    Task<WorldLife> _rollingAhead;
+
+    /// <summary>
+    /// Starts rolling a world's life on a worker ahead of <see cref="SetWorld"/>: a world made while you are elsewhere (a warp's
+    /// destination) then sets its life in its arrival's piece instead of rolling it on the main thread (most of a second).
+    /// </summary>
+    public void RollAhead(PlanetWorld planet)
+    {
+        if (_life != null || planet.Sky.Density < SurfaceWeather.NoAir) return;
+        Task<WorldLife> rolling = _rollingAhead = Task.Run(() => RollLife(planet));
+        _life = new Lazy<WorldLife>(() => rolling.Result);
+    }
+
+    /// <summary>Any life rolled ahead is ready.</summary>
+    public bool LifeReady => _rollingAhead == null || _rollingAhead.IsCompleted;
+
     public void SetWorld(PlanetWorld planet, Vector3 landing)
     {
         Airless = planet.Sky.Density < SurfaceWeather.NoAir;
-        _life = new Lazy<WorldLife>(() => RollLife(planet));
+        _life ??= new Lazy<WorldLife>(() => RollLife(planet));
         // An airless world has no creatures, so nothing here to bake or show (and no patch of it: the per-frame work stands down on _planet and Sim, never touching Life):
         // its life (the people in its sealed places) is rolled when the first place wants it, on that place's worker.
         if (Airless) return;

@@ -141,9 +141,10 @@ public partial class WarpTest : Node
         Refusals();
 
         var levels = new List<(string When, Level At)>();
-        int loops = int.Parse(_args.GetValueOrDefault("loops", "2"));
+        int loops = int.Parse(_args.GetValueOrDefault("loops", "3"));
         for (int loop = 1; loop <= loops; loop++)
         {
+            _loop = loop;
             GD.Print($"== round trip {loop} ==");
             foreach (int x in Leg(planet, land: true, $"{loop}: another world")) yield return x;
             if (!_ok) yield break;
@@ -171,9 +172,10 @@ public partial class WarpTest : Node
             }
         }
         if (levels.Count < 2) { FrameTimes(); yield break; }
-        Level a = levels[0].At, b = levels[1].At;
+        // Steady from the second loop on: the first makes every zone.
+        Level a = levels[^2].At, b = levels[^1].At;
         Check(Within(b.Nodes, a.Nodes, 0.02, 40) && Within(b.Objects, a.Objects, 0.02, 200) && Within(b.Resources, a.Resources, 0.03, 60),
-            $"nodes, objects and resources back at the first loop's level after the second: {b.Nodes} nodes (was {a.Nodes}), {b.Objects} objects ({a.Objects}), {b.Resources} resources ({a.Resources})");
+            $"nodes, objects and resources hold their level from one loop to the next: {b.Nodes} nodes (was {a.Nodes}), {b.Objects} objects ({a.Objects}), {b.Resources} resources ({a.Resources})");
         Check(Within(b.Bodies, a.Bodies, 0.0, 2) && Within(b.Colliders, a.Colliders, 0.02, 20), $"physics back at level: {b.Bodies} bodies in the zones' worlds (was {a.Bodies}), {b.Colliders} colliders in the tree ({a.Colliders})");
         Check(Within(b.Drawn, a.Drawn, 0.05, 60), $"drawn instances back at level: {b.Drawn} (was {a.Drawn})");
         Check(b.ManagedMb < a.ManagedMb * 1.15 + 40 && b.StaticMb < a.StaticMb * 1.10 + 64,
@@ -183,6 +185,7 @@ public partial class WarpTest : Node
     }
 
     bool _ok = true;
+    int _loop;
 
     /// <summary>No growth from one loop to the next (streaming makes what is loaded come and go, so less is fine).</summary>
     static bool Within(double now, double was, double share, double slack) => now - was <= Math.Max(was * share, slack);
@@ -249,22 +252,27 @@ public partial class WarpTest : Node
         float up = v.Stats.Thrust[(int)Direction.Up];
         int added = 0;
         BlockType jet = cat.Type("thruster-t2");
-        int rot = Enumerable.Range(0, 24).FirstOrDefault(r => Vessel.PushOf(Building.Make(s, jet, null, r)) == Direction.Up);
-        (lo, hi) = Bounds(s);
-        for (int tries = 0; v.Stats.Thrust[(int)Direction.Up] < v.Stats.Mass * g * 1.6f && tries < 400 && added < 12; tries++)
-        {
-            int side = tries % 2 == 0 ? lo.X - 1 : hi.X + 1, z = lo.Z + tries / 2 % Math.Max(1, hi.Z - lo.Z + 1);
-            for (int y = 0; y <= hi.Y; y++)
-            {
-                var p = new Int3(side, y, z);
-                if (s.Has(p)) continue;
-                if (Building.Place(s, p, Building.Make(s, jet, null, rot)) != PlaceError.None) continue;
-                added++;
-                v.ApplyEdits();
-                break;
-            }
-        }
-        GD.Print($"  (setup: {added} lift jets added: up thrust {up / 1000:F0} -> {v.Stats.Thrust[(int)Direction.Up] / 1000:F0} kN for {v.Stats.Mass / 1000:F1} t at {g:F1} m/s²)");
+        int[] rots = Enumerable.Range(0, 24).Where(r => Vessel.PushOf(Building.Make(s, jet, null, r)) == Direction.Up).ToArray();
+        var errors = new Dictionary<PlaceError, int>();
+        // Lift jets down both sides of the drive, pair by pair, till it climbs off the heaviest world of the trip.
+        if (at is Int3 d)
+            foreach (int z in Enumerable.Range(d.Z - 1, 7))
+                foreach (int side in new[] { d.X - 1, d.X + 3, d.X - 2, d.X + 4 })
+                    foreach (int y in new[] { d.Y, d.Y + 1, d.Y - 1 })
+                    {
+                        if (v.Stats.Thrust[(int)Direction.Up] >= v.Stats.Mass * g * 1.6f || added >= 14) break;
+                        var p = new Int3(side, y, z);
+                        if (s.Has(p)) continue;
+                        foreach (int r in rots)
+                        {
+                            PlaceError e = Building.Place(s, p, Building.Make(s, jet, null, r));
+                            if (e != PlaceError.None) { errors[e] = errors.GetValueOrDefault(e) + 1; continue; }
+                            added++;
+                            v.ApplyEdits();
+                            break;
+                        }
+                    }
+        GD.Print($"  (setup: {added} lift jets added beside the drive ({rots.Length} turns push up; refused: {string.Join(", ", errors.Select(e => $"{e.Key} {e.Value}"))}): up thrust {up:F0} -> {v.Stats.Thrust[(int)Direction.Up]:F0} for a mass of {v.Stats.Mass:F1} at {g:F1} m/s²)");
         Check(v.Stats.Thrust[(int)Direction.Up] > v.Stats.Mass * g * 1.25f, $"the Skiff with its drive can lift off the trip's heaviest world ({v.Stats.Thrust[(int)Direction.Up] / (v.Stats.Mass * g):F2} times its weight there)");
     }
 
@@ -278,7 +286,9 @@ public partial class WarpTest : Node
     void Refusals()
     {
         Orbiter home = Model.Home;
-        Check(Flight.Route(home).Refusal == "HERE", $"a warp to the world you are over says HERE ({Flight.Route(home).Refusal})");
+        float off = _ship.Body.Position.ToGodot().DistanceTo(_game.Orbit.Home.Centre), edge = Flight.HighOrbit(_game.Orbit, _game.Orbit.Home);
+        string here = Flight.Route(home).Refusal;
+        Check(off < edge + 500f ? here == "HERE" : here == null, $"a warp to the world you are over says HERE inside its highest orbit, and nothing past it ({off:F0} m out, the edge {edge:F0} m: {here ?? "clear"})");
         _ship.Power.ShieldsOn = true;
         string saved = Flight.Route(Model.Star).Refusal;
         Check(saved is null or "SHIELDS UP", $"with no shield on the Skiff, the shield switch can't stop it ({saved ?? "clear"})");
@@ -362,7 +372,7 @@ public partial class WarpTest : Node
     {
         _cpu.Add(probe.LastCpuMs);
         _wall.Add(probe.LastMs);
-        string stage = where.Contains(", ") ? where[(where.LastIndexOf(", ") + 2)..] : "arrival";
+        string stage = $"loop {_loop}, " + (where.Contains(", ") ? where[(where.LastIndexOf(", ") + 2)..] : "after arrival");
         if (!_byStage.TryGetValue(stage, out List<double> ms)) _byStage[stage] = ms = new List<double>();
         ms.Add(probe.LastCpuMs);
         if (probe.LastCpuMs > _worstCpu) (_worstCpu, _worstAt) = (probe.LastCpuMs, where);
@@ -487,6 +497,13 @@ public partial class WarpTest : Node
         Vector3 pad = OrbitTest.FlatSpot(surface, at, 40f);
         foreach (int x in _pilot.Land(_ship, pad)) yield return x;
         foreach (int x in _drive.Wait(40)) yield return x;
+        if (_ship.Controller?.Frozen != true)
+        {
+            // A bounce off a slope: once more, on the flattest spot near where it stands.
+            GD.Print($"  (not settled {_ship.AboveGround:F1} m up: down again on another spot)");
+            foreach (int x in _pilot.Land(_ship, OrbitTest.FlatSpot(surface, _ship.Body.Position.ToGodot(), 30f))) yield return x;
+            foreach (int x in _drive.Wait(40)) yield return x;
+        }
         Check(_ship.Controller?.Frozen == true && !_game.Suit.Dead, $"landed on {name} on its gear, the sleeper alive ({_ship.AboveGround:F1} m up, the suit's air {_game.Suit.OxygenShare:P0})");
         if (target != Model.Home && !before)
             Check(true, $"{name} had no zone of its own before this trip's warp: it was made from its seed and the system's rules");
@@ -511,15 +528,16 @@ public partial class WarpTest : Node
         for (int i = 0; i < 60 * 6; i++) yield return 0;
         _game.Controls.ReleaseAll();
         foreach (int x in _pilot.Stop()) yield return x;
-        Check(_game.InOrbit && Flight.Band >= 1f, $"up off {from} into orbit and over its band ({_game.Zone.Name})");
+        Vector3 upNow = N.Vector3.Transform(N.Vector3.UnitY, _ship.Body.Rotation).ToGodot();
+        Check(_game.InOrbit && Flight.Band >= 1f, $"up off {from} into orbit and over its band ({_game.Zone.Name}; the Skiff at {_ship.Body.Position.ToGodot()}, moving {_ship.Body.Velocity.ToGodot()}, its top {upNow}, power {_ship.Powered}, mode {_ship.Structure.Mode}, seated {_game.Survivor.Seated == _ship})");
         _ok = _game.InOrbit;
     }
 
     // ---- Levels and frame times --------------------------------------------------------------------------------------
 
-    readonly record struct Level(int Nodes, int Objects, int Resources, int Bodies, int Colliders, int Drawn, double ManagedMb, double StaticMb, int Zones)
+    readonly record struct Level(int Nodes, int Objects, int Resources, int Bodies, int Colliders, int Drawn, double ManagedMb, double StaticMb, int Zones, int Terrain)
     {
-        public override string ToString() => $"{Nodes} nodes, {Objects} objects, {Resources} resources, {Bodies} physics bodies, {Colliders} colliders, {Drawn} drawn, managed {ManagedMb:F0} MB, engine {StaticMb:F0} MB, {Zones} zones";
+        public override string ToString() => $"{Nodes} nodes, {Objects} objects, {Resources} resources, {Bodies} physics bodies, {Colliders} colliders, {Drawn} drawn, managed {ManagedMb:F0} MB, engine {StaticMb:F0} MB, {Zones} zones, {Terrain} streamed ground pieces apart";
     }
 
     Level Measure()
@@ -527,16 +545,19 @@ public partial class WarpTest : Node
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        int colliders = 0, drawn = 0;
+        int colliders = 0, drawn = 0, terrain = 0;
         foreach (Node n in Every(_game))
         {
+            // The ground streamed round where you are (or left each world) comes and goes with where that is: counted apart.
+            bool ground = n is PlanetSurface.Terrain.TerrainStreamer || n.GetParent() is PlanetSurface.Terrain.TerrainStreamer;
+            if (ground) { terrain += n.GetChildCount(); continue; }
             if (n is CollisionObject3D) colliders++;
             if (n is GeometryInstance3D gi && gi.IsVisibleInTree()) drawn++;
         }
         var zones = Flight.AllZones().ToList();
         return new Level((int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount), (int)Performance.GetMonitor(Performance.Monitor.ObjectCount),
             (int)Performance.GetMonitor(Performance.Monitor.ObjectResourceCount), zones.Sum(z => z.Physics?.Bodies.Count ?? 0), colliders, drawn,
-            GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count);
+            GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count, terrain);
     }
 
     void FrameTimes()

@@ -26,7 +26,9 @@ public sealed partial class Vessel
     /// </summary>
     public static Vessel SpawnDerelict(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation)
     {
+        var tmp = System.Diagnostics.Stopwatch.StartNew(); string laps = ""; void L(string n) { laps += $"{n} {tmp.Elapsed.TotalMilliseconds:F1}, "; tmp.Restart(); } /*TMPLAP*/
         MassProperties mass = MassOf(s);
+        L("mass"); /*TMPLAP*/
         Body body = zone.Physics.Register(new BodySpec
         {
             Kind = BodyKind.Wreck,
@@ -39,14 +41,20 @@ public sealed partial class Vessel
             Position = at,
             Rotation = rotation,
         });
+        L("body (shape, drag)"); /*TMPLAP*/
         var vessel = new Vessel(zone, s, body);
+        L("vessel"); /*TMPLAP*/
         var hull = new CharacterBody3D { Name = s.Name.Replace(" ", "").Replace("(", "").Replace(")", "").Replace(":", "") };
         zone.AddChild(hull);
         vessel.Binding = zone.Host.Bind(body, new HullBinding(hull));
         vessel.HullShapes = new StructureShapes(hull);
+        L("shapes"); /*TMPLAP*/
         vessel.Furnish(hull);
+        L("furnish"); /*TMPLAP*/
         vessel.Binding.Teleport();
         vessel.Register();
+        L("register"); /*TMPLAP*/
+        if (laps.Length > 0 && tmp != null) GD.Print($"[wreck {s.Name} ({s.Count} blocks): {laps}]"); /*TMPLAP*/
         return vessel;
     }
 

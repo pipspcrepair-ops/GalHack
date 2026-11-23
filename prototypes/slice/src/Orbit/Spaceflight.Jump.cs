@@ -119,7 +119,11 @@ public partial class Spaceflight
                 if (!j.Woken)
                 {
                     // The zone it goes to runs from now, under the tunnel: the arrival's own tick only moves it.
-                    if (j.To.Zone != Game.Zone) Wake(j.To.Zone);
+                    if (j.To.Zone != Game.Zone)
+                    {
+                        j.To.Zone.Camera = Game.Camera; // what it draws for itself (its weather's looks) faces the one camera from its first tick
+                        Wake(j.To.Zone);
+                    }
                     j.Woken = true;
                 }
                 else if (j.InTunnel >= j.TripSeconds) BeginArrival(j);
