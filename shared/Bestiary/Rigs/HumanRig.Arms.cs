@@ -393,7 +393,7 @@ public sealed partial class HumanRig
         return aimed;
     }
 
-    /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or the thing pointed at is off to the left.</summary>
+    /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or carries something, or the thing pointed at is off to the left.</summary>
     static int Doer(in Gesture g, bool rightHeld, Vector3 chest, Basis torso)
     {
         if (rightHeld) return 0;

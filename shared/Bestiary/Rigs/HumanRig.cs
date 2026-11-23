@@ -646,7 +646,7 @@ public sealed partial class HumanRig : Rig
         GripLeftOn = hold.LW;
         GripAxisRight = hold.RAxis;
         GripAxisLeft = hold.LAxis;
-        int doer = Doer(g, hold.RW > 0f, chest, torso);
+        int doer = Doer(g, hold.RW > 0f || _carryRow != null, chest, torso);
         float shrug = g.Act == BodyAct.Shrug ? act * (0.03f + 0.03f * MathF.Max(0f, MathF.Sin(g.Clock * 3f))) * f.Height / 1.72f : 0f;
         Vector3 mouth = neck + headBasis.Y * (f.Neck + f.HeadRadius * 0.55f) - headBasis.Z * f.HeadRadius * 0.95f;
         Vector3 sipAxis = (headBasis.Z * 0.72f - headBasis.Y * 0.69f).Normalized(); // the bottle's way from the hand to the lips
@@ -701,9 +701,9 @@ public sealed partial class HumanRig : Rig
             if (stalk > 0f) pole = pole.Lerp(F.V(0.5f, -0.4f, -0.8f), stalk).Normalized();
             // The hand's shape and where its palm faces, eased the way the hand is.
             HandSpec spec = StanceHand(i, g, kind, hold, moving, run, stalk, sip);
-            // A hand on a weapon stays on it; the other does the gesture (a one-handed one done by the free hand). Each arm's share
-            // of it eases over as the doer or the hold changes: a gesture never jumps from hand to hand.
-            float keeps = i == 1 ? hold.RW : kind == HoldKind.Bow ? 1f : 0f;
+            // A hand on a weapon or a carried thing (a cane, a hoe) stays on it; the other does the gesture (a one-handed one done by the
+            // free hand). Each arm's share of it eases over as the doer or the hold changes: a gesture never jumps from hand to hand.
+            float keeps = i == 1 ? (_carryRow != null ? 1f : hold.RW) : kind == HoldKind.Bow ? 1f : 0f;
             _actShare[i] = Ease(_actShare[i], (1f - keeps) * (OneHanded(g) && i != doer ? 0f : 1f), 5f);
             float acts = act * _actShare[i];
             if (acts > 0f)
@@ -811,7 +811,7 @@ public sealed partial class HumanRig : Rig
     /// <summary>How long each hand has been all the way on its grip, s, and whether its arm is found as one holding it.</summary>
     readonly float[] _onFor = new float[2];
     readonly bool[] _held = new bool[2];
-    /// <summary>Each arm's share of the gesture, eased (the doer's 1, a hand that keeps a weapon or the one not doing a one-handed act 0).</summary>
+    /// <summary>Each arm's share of the gesture, eased (the doer's 1, a hand that keeps a weapon or a carried thing or the one not doing a one-handed act 0).</summary>
     readonly float[] _actShare = { 1f, 1f };
     /// <summary>Each arm's shoulder, elbow and wrist as last posed (0 left, 1 right), for the tests.</summary>
     public (Vector3 shoulder, Vector3 elbow, Vector3 wrist) ArmOf(int i) => (_shoulder[i], _elbow[i], _wrist[i]);
