@@ -226,6 +226,10 @@ public partial class Spaceflight
         float outside = SeenFromOutside(y);
         _sky.SetShaderParameter("space_fade", MathF.Max(gone, outside));
         _sky.SetShaderParameter("space_under", MathF.Sqrt(outside)); // under the level there is only the rim's thin air to see through: ahead of the sky over it
+        // Up in orbit the zone's frame is the surface's laid out flat at one point, and the ground curves away from there: the sky's
+        // clouds are seen from the eye's true height over it, or after a way across the band they stood over you above their tops.
+        Vector3 eye = Game.Camera.GlobalPosition;
+        _sky.SetShaderParameter("eye_lift", Game.InOrbit ? Height(eye) - eye.Y : 0f);
         env.FogDensity = _fogDensity * (1f - gone);
         // Height fog thickens with height over the clouds' base: left to itself it would fog your own hull.
         env.FogHeightDensity = _fogHeight * (1f - Smooth((y - Rules.Crossing.FadeFrom) / 150f));

@@ -200,11 +200,13 @@ public sealed partial class Staging
     /// --yaws, degrees from north, and with --straight=1 one more straight down, from under the
     /// hull). --body=1 stops the clock at a moment with the biggest body well up, and every frame
     /// looks one way, at it; --side=1 or -1 picks a moment with the eye on that side of its ring plane,
-    /// 0 one nearly in the plane. --down=1 flies back down through them. Prints what each frame cost to draw.
+    /// 0 one nearly in the plane. --down=1 flies back down through them, and --across=1 forward too while in the band (a way across
+    /// it, as a descent comes in from far round the globe). Prints what each frame cost to draw.
     /// </summary>
     IEnumerable<int> ClimbView()
     {
         foreach (int x in Seated()) yield return x;
+        if (_args.TryGetValue("weather", out string kind)) _game.Zone.Weather.Sim.Snap(Enum.Parse<Weather.Model.WeatherKind>(kind)); // --weather=Clouds: a deck to climb through
         Vessel v = Skiff;
         _game.Visor.Visible = false;
         bool cabin = _args.GetValueOrDefault("cam", "cabin") == "cabin";
@@ -305,9 +307,11 @@ public sealed partial class Staging
             Hurry(height > 1900 || height < 950 ? 3 : 1);
             for (int i = 0; i < 60 * 90 && Up() > height; i++)
             {
+                _game.Controls.Hold(Key.W, _args.GetValueOrDefault("across") == "1" && _game.InOrbit && Up() < _game.Orbit.Anchor.Ceiling + _game.Orbit.Rules.Crossing.Band);
                 Look(yaws[0] * Mathf.Pi / 180f);
                 yield return 0;
             }
+            _game.Controls.Hold(Key.W, false);
             Hurry(1);
             foreach (int x in Frames($"dn{height:0}")) yield return x;
             GD.Print($"(descent at {height:0}: {(_game.InOrbit ? "orbit" : "surface")})");

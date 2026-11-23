@@ -68,7 +68,11 @@ public partial class OrbitTest : Node
         try
         {
             more = _run.MoveNext();
-            if (more) WatchZones();
+            if (more)
+            {
+                WatchZones();
+                WatchSkyClouds();
+            }
         }
         catch (Exception e)
         {
@@ -79,6 +83,27 @@ public partial class OrbitTest : Node
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
         Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+    }
+
+    int _skyBandTicks, _cloudsOver;
+    string _firstCloudsOver;
+
+    /// <summary>
+    /// In the band, above the clouds' tops (their base and thickness, as the surface's sky has them): the sky marches its clouds from
+    /// the eye's true height, so none is drawn over you (the owner, 23 Nov: clouds overhead at 1,179 m, coming down to a world).
+    /// </summary>
+    void WatchSkyClouds()
+    {
+        if (_game?.InOrbit != true || _game.Spaceflight.Band >= 1f || _game.Orbit?.Anchor is not { } here) return;
+        if (_game.Spaceflight.Below?.Sky?.Environment?.Sky?.SkyMaterial is not ShaderMaterial sky) return;
+        Vector3 eye = _game.Camera.GlobalPosition;
+        float height = here.Height(eye), top = (float)sky.GetShaderParameter("cloud_base") + (float)sky.GetShaderParameter("cloud_thick");
+        if (height < top + 1f) return;
+        _skyBandTicks++;
+        float seenFrom = eye.Y + (float)sky.GetShaderParameter("eye_lift");
+        if (seenFrom >= top) return;
+        _cloudsOver++;
+        _firstCloudsOver ??= $"at {height:F0} m the clouds were seen from {seenFrom:F0} m, their tops at {top:F0} m";
     }
 
     bool Check(bool ok, string what)
@@ -169,6 +194,7 @@ public partial class OrbitTest : Node
         foreach (int x in Descent()) yield return x;
         foreach (int x in Persistence()) yield return x;
         foreach (int x in Handovers()) yield return x;
+        Check(_skyBandTicks > 0 && _cloudsOver == 0, $"over the cloud tops in the band, up and down, the sky's clouds are seen from the true height, none over you: {_cloudsOver} of {_skyBandTicks} ticks wrong{(_firstCloudsOver != null ? ": " + _firstCloudsOver : "")}");
         Check(_zoneViolations == 0, $"every tick the sleeper and the Skiff were in exactly one zone, the one the game says ({_zoneViolations} ticks wrong{(_firstViolation != null ? ": " + _firstViolation : "")})");
     }
 

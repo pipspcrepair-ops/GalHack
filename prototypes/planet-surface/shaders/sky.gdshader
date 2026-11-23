@@ -698,6 +698,8 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 
 uniform float space_fade = 0.0;        // 0 the planet's sky, 1 space
 uniform float space_under = 0.0;       // 1: under the level is space (over the cap the world below is a globe, its air its own rim)
+uniform float eye_lift = 0.0;         // up in orbit: the eye's height over its world's ground less its height in the zone's frame (laid out flat
+                                      // at one point, the ground curving away from there): the clouds are seen from where the eye truly is
 uniform mat3 space_turn = mat3(1.0);   // the world's directions into the backdrop's
 uniform vec3 space_sun = vec3(0.0, 1.0, 0.0);
 
@@ -716,6 +718,7 @@ vec3 sun_east(vec3 sun) {
 
 void sky() {
 	vec3 dir = EYEDIR;
+	vec3 eye = POSITION + vec3(0.0, eye_lift, 0.0);
 	vec3 sun = LIGHT0_ENABLED ? LIGHT0_DIRECTION : normalize(vec3(0.3, 0.6, -0.4));
 	vec3 col = sky_color(dir, sun);
 
@@ -723,14 +726,14 @@ void sky() {
 		// How much the clouds hide of what is behind them, marched without light: cheap, and in a
 		// channel with ten bits; and in the next, their opacity as laid over the sky (the way out reads it).
 		float hide;
-		float laid = march_clouds(POSITION, dir, sun, col, false, march_jitter(FRAGCOORD.xy), hide).a;
+		float laid = march_clouds(eye, dir, sun, col, false, march_jitter(FRAGCOORD.xy), hide).a;
 		COLOR = vec3(hide, laid, 0.0);
 	} else if (AT_HALF_RES_PASS) {
 		// The clouds laid over the plain sky, at half resolution: the costly part. Stored on a
 		// square-root curve, scaled down for headroom: the buffer clamps at one and dark storm or
 		// ash clouds would band without the extra precision near black.
 		float hide;
-		vec4 c = march_clouds(POSITION, dir, sun, col, true, march_jitter(FRAGCOORD.xy), hide);
+		vec4 c = march_clouds(eye, dir, sun, col, true, march_jitter(FRAGCOORD.xy), hide);
 		COLOR = sqrt(max(c.rgb, vec3(0.0)) * 0.25);
 	} else {
 		float day = smoothstep(-0.2, 0.15, sun.y) * (0.04 + 0.96 * sun_lit); // an eclipse's totality: deep dusk, the stars out
@@ -783,7 +786,7 @@ void sky() {
 			// and a cheap look at the layer along the way for what it hides (no stars in the sea under a storm).
 			laid = cloud_cover * 0.6 * smoothstep(-0.02, 0.12, dir.y);
 			clouded = mix(plain, mix(cloud_shade, cloud_lit, 0.5) * (0.2 + 0.8 * day), laid);
-			cover = (cloud_cover < 0.02 && front_shape.x <= 0.001) ? laid : 1.0 - (1.0 - laid) * (1.0 - far_cover(POSITION, dir));
+			cover = (cloud_cover < 0.02 && front_shape.x <= 0.001) ? laid : 1.0 - (1.0 - laid) * (1.0 - far_cover(eye, dir));
 		} else {
 			clouded = HALF_RES_COLOR.rgb;
 			clouded = clouded * clouded * 4.0;
