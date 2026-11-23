@@ -19,9 +19,9 @@ public partial class Spaceflight
 
     void WeatherAloft(double delta)
     {
-        SurfaceZone s = Game.Surface;
+        SurfaceZone s = Below; // the world the orbit you are in is round
         // While the surface runs it steps its own weather (its physics' force provider): never both.
-        if (Orbit == null || !Game.InOrbit || !Here.IsHome || s?.Weather?.Sim is not WeatherSim sim || s.ProcessMode != ProcessModeEnum.Disabled) return;
+        if (Orbit == null || !Game.InOrbit || !Here.IsHome || !Orbit.HasGround || s?.Weather?.Sim is not WeatherSim sim || s.ProcessMode != ProcessModeEnum.Disabled) return;
         Vessel carrier = Carrier();
         Vector3 at = carrier != null ? carrier.Body.Position.ToGodot() : Game.Survivor.WorldFeet;
         Vector3 under = SurfacePoint(at, out _, out _);

@@ -24,9 +24,11 @@ public sealed partial class Vessel
     /// its floor), its hull and cabin world like any structure's, so it is boarded, walked or floated
     /// through, looted and taken apart the same way.
     /// </summary>
-    public static Vessel SpawnDerelict(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation)
+    public static Vessel SpawnDerelict(SurfaceZone zone, Structure s, N.Vector3 at, N.Quaternion rotation, System.Collections.Generic.List<GalHack.Physics.ChunkColliders> colliders = null, bool drawLater = false)
     {
+        var tmp = System.Diagnostics.Stopwatch.StartNew(); string laps = ""; void L(string n) { laps += $"{n} {tmp.Elapsed.TotalMilliseconds:F1}, "; tmp.Restart(); } /*TMPLAP*/
         MassProperties mass = MassOf(s);
+        L("mass"); /*TMPLAP*/
         Body body = zone.Physics.Register(new BodySpec
         {
             Kind = BodyKind.Wreck,
@@ -39,14 +41,20 @@ public sealed partial class Vessel
             Position = at,
             Rotation = rotation,
         });
+        L("body (shape, drag)"); /*TMPLAP*/
         var vessel = new Vessel(zone, s, body);
+        L("vessel"); /*TMPLAP*/
         var hull = new CharacterBody3D { Name = s.Name.Replace(" ", "").Replace("(", "").Replace(")", "").Replace(":", "") };
         zone.AddChild(hull);
         vessel.Binding = zone.Host.Bind(body, new HullBinding(hull));
         vessel.HullShapes = new StructureShapes(hull);
-        vessel.Furnish(hull);
+        L("shapes"); /*TMPLAP*/
+        vessel.Furnish(hull, drawLater, colliders); // drawn and made solid a chunk at a time later, if it is set adrift in play
+        L("furnish"); /*TMPLAP*/
         vessel.Binding.Teleport();
         vessel.Register();
+        L("register"); /*TMPLAP*/
+        if (laps.Length > 0 && tmp != null) GD.Print($"[wreck {s.Name} ({s.Count} blocks): {laps}]"); /*TMPLAP*/
         return vessel;
     }
 

@@ -6,8 +6,9 @@ namespace Slice.Orbit;
 
 /// <summary>
 /// What a jump looks and sounds like, all drawn and synthesised: while the drive spools, streaks gather round the view
-/// and its hum climbs; in the tunnel they stream past along the ship's axis and nothing outside the hull shows, over a
-/// steady roar; on arrival a flash and a thump, and the view clears onto where it arrived. A sphere round the camera,
+/// and its hum climbs; in the tunnel they pour out of the point ahead (the way it travels) and rush outward and past, as
+/// stars streak past a ship going forward, and nothing outside the hull shows, over a steady roar; on arrival a flash and a
+/// thump, and the view clears onto where it arrived. A sphere round the camera,
 /// drawn past the hull (the cabin stands in front of it), and one synthesised voice.
 /// </summary>
 public partial class JumpView : Node3D
@@ -30,7 +31,7 @@ public partial class JumpView : Node3D
         uniform float amount = 0.0;
         uniform float cover = 0.0;
         uniform float flash = 0.0;
-        uniform float speed = 1.0;
+        uniform float phase = 0.0; // how far the streaks have run, growing: each lane's pattern moves from ahead (-z) to behind (+z)
         varying vec3 dir;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float noise(vec2 p) {
@@ -47,7 +48,7 @@ public partial class JumpView : Node3D
             float lanes = 140.0;
             float lane = floor(around * lanes);
             float off = hash(vec2(lane, 3.7));
-            float run = d.z * (3.0 + 4.0 * off) + TIME * speed * (0.5 + off);
+            float run = d.z * (3.0 + 4.0 * off) - phase * (0.5 + off); // a crest stays where d.z grows with phase: it rushes outward from ahead
             float streak = smoothstep(0.62, 1.0, noise(vec2(lane * 1.31, run)));
             float centre = 1.0 - abs(fract(around * lanes) - 0.5) * 2.0;
             streak *= smoothstep(0.15, 0.95, centre) * smoothstep(0.98, 0.6, abs(d.z));
@@ -62,7 +63,7 @@ public partial class JumpView : Node3D
     public override void _Ready()
     {
         ProcessPriority = 200; // after the camera has been placed this frame
-        _material = new ShaderMaterial { Shader = new Shader { Code = Source } };
+        _material = TunnelMaterial();
         _tunnel = new MeshInstance3D
         {
             Name = "Tunnel", Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 }, MaterialOverride = _material,
@@ -76,6 +77,10 @@ public partial class JumpView : Node3D
     }
 
     int _drawnOnce;
+    float _phase;
+
+    /// <summary>The tunnel's look; its axis (-z) is the way the jump goes, and <c>phase</c> grows with the streaks' run.</summary>
+    public static ShaderMaterial TunnelMaterial() => new() { Shader = new Shader { Code = Source } };
 
     public override void _Process(double delta)
     {
@@ -125,13 +130,18 @@ public partial class JumpView : Node3D
         bool shown = _streaks > 0.003f || _cover > 0.003f || _flash > 0.003f || _drawnOnce < 3;
         _tunnel.Visible = shown;
         if (!shown) return;
-        // Round the eye, its axis the ship's: the streaks run past along the way it points.
-        Basis axis = Flight.Jumping?.Carrier?.Node is { } hull && IsInstanceValid(hull) ? hull.GlobalBasis.Orthonormalized() : eye.GlobalBasis.Orthonormalized();
+        // Round the eye, its axis the way the jump goes (wherever the hull points): the streaks pour out of the point ahead.
+        Jump going = _shown ?? Flight.Jumping;
+        Basis hullTurn = going?.Carrier?.Node is { } hull && IsInstanceValid(hull) ? hull.GlobalBasis.Orthonormalized() : eye.GlobalBasis.Orthonormalized();
+        Vector3 ahead = going != null && going.Heading.LengthSquared() > 0.5f ? new Vector3(going.Heading.X, going.Heading.Y, going.Heading.Z) : -hullTurn.Z;
+        Vector3 up = MathF.Abs(ahead.Dot(hullTurn.Y)) < 0.98f ? hullTurn.Y : hullTurn.X;
+        Basis axis = Basis.LookingAt(ahead, up);
         _tunnel.GlobalTransform = new Transform3D(axis.Scaled(Vector3.One * Radius), eye.GlobalPosition);
         _material.SetShaderParameter("amount", _streaks);
         _material.SetShaderParameter("cover", _cover);
         _material.SetShaderParameter("flash", _flash);
-        _material.SetShaderParameter("speed", tunnel ? 2.2f : 0.4f + spool);
+        _phase = (_phase + dt * (tunnel ? 2.2f : 0.4f + spool)) % 4096f;
+        _material.SetShaderParameter("phase", _phase);
     }
 }
 

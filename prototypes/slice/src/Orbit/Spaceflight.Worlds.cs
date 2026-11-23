@@ -24,6 +24,9 @@ namespace Slice.Orbit;
 /// </summary>
 public partial class Spaceflight
 {
+    /// <summary>What making an orbit is doing this tick (the jump's slowest piece is named by it).</summary>
+    internal string Doing;
+
     /// <summary>Every orbit made, the start world's first (once there are two).</summary>
     readonly List<OrbitZone> _orbits = new();
 
@@ -121,7 +124,9 @@ public partial class Spaceflight
             Name = Charts.Tidy(body.Name).Replace(" ", ""), Data = home.Data, Spec = body.Spec, ShareFrom = ShareHere, SkySurfaces = SurfacesHere, Body = body,
             MakeLater = !now, ProcessMode = ProcessModeEnum.Disabled, Visible = false,
         };
+        var tmpWatch = System.Diagnostics.Stopwatch.StartNew(); /*TMPLAP*/
         Game.AddChild(zone);
+        GD.Print($"[{zone.Name} entered the scene in {tmpWatch.Elapsed.TotalMilliseconds:F1} ms: {zone.ReadyLaps}]"); /*TMPLAP*/
         Mute(zone);
         zone.Physics.Zone.Strength = model.GravityOf(body, home.Physics.Zone.Strength);
         zone.Physics.Zone.Ceiling = ceiling;
@@ -130,7 +135,7 @@ public partial class Spaceflight
             zone.Ground.Ceiling = ceiling;
             LightBodies(zone);
             Mute(zone);
-            GD.Print($"{Charts.Tidy(body.Name)} is made: {body.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/sÂ²");
+            GD.Print($"{Charts.Tidy(body.Name)} is made: {body.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/sÃ‚Â²");
         };
         _surfaceShownOf[zone] = false;
         _groundShownOf[zone] = true;
@@ -151,15 +156,19 @@ public partial class Spaceflight
         OrbitZone orbit;
         if (root.Spec != null)
         {
+            Doing = "its surface zone";
             SurfaceZone home = BodyZone(root, now: true);
             made(null, home);
             yield return false;
+            Doing = "waiting on its world";
             while (home.Made == null) yield return false;
+            Doing = "its orbit zone";
             PlanetWorld w = home.Made;
+            home.Wildlife.RollAhead(w); // its life rolled on a worker while its orbit is made
             bool clear = w.Sky.Density < SurfaceWeather.NoAir;
             orbit = new OrbitZone(w, start.Data, Rules, PoiGenerator.Gen.Hash.Combine(model.StarKey, root.Seed), ceiling, clear ? (_, _) => 0f : null)
             {
-                Name = "Orbit" + home.Name, ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = SurfacesHere,
+                Name = "Orbit" + home.Name, ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = SurfacesHere, DrawLater = true,
             };
             orbit.Home.Surface = home;
             orbit.Days = () => Below.Sky.Days;
@@ -169,20 +178,30 @@ public partial class Spaceflight
         }
         else orbit = StarSpace(root, Away);
         made(orbit, orbit.Home.Surface);
-        foreach (Orbiter m in Under(model, root))
+        // A world's or a giant's moons (and theirs); the star's planets and a belt's rocks are orbits of their own.
+        foreach (Orbiter m in root.Kind is OrbiterKind.Star or OrbiterKind.Belt ? Enumerable.Empty<Orbiter>() : Under(model, root).ToList())
             if (m.Spec != null && OrbitOf(m) == null)
+            {
+                Doing = "a moon's surface zone";
                 orbit.AddMoon(m, BodyZone(m, now: m == target), ceiling);
+                yield return false; // a surface zone a tick: each enters the scene with its own nodes
+            }
+        Doing = "waiting on its orbit's paint";
         while (!orbit.Prepared) yield return false;
+        Doing = "its orbit entering the scene";
         Game.AddChild(orbit);
         yield return false;
         while (!orbit.Ready)
         {
+            Doing = $"its orbit set up a piece ({orbit.Wrecks.Count} wrecks in, its globe {(orbit.Home.Ready ? "set up" : "setting up")})";
             orbit.BuildStep();
             yield return false;
         }
+        Doing = "waiting on its life";
+        while (orbit.Home.Surface is { } rolling && !rolling.Wildlife.LifeReady) yield return false;
         if (orbit.Home.Surface is { } surface)
-            while (!surface.TryArrive()) yield return false;
-        GD.Print($"[{orbit.Name} made: {orbit.Bodies.Count} bodies with ground or frame, {orbit.Wrecks.Count} wrecks, setting up {orbit.LongestBuildMs:F1} ms at most]");
+            for (Doing = "its surface arriving"; !surface.TryArrive(); Doing = "its surface arriving: " + surface.ArriveSteps.Split(", ").Where(s => s != "").LastOrDefault()) yield return false;
+        GD.Print($"[{orbit.Name} made: {orbit.Bodies.Count} bodies with ground or frame, {orbit.Wrecks.Count} wrecks, setting up {orbit.LongestBuildMs:F1} ms at most; its surface arrived {orbit.Home.Surface?.ArriveSteps}]");
         yield return true;
     }
 

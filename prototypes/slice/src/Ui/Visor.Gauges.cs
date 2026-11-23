@@ -98,11 +98,14 @@ public partial class Visor
         Gauge Row(string label, double? value, Func<double, string> shown, Color tone, double? share = null) =>
             new(label, value is double x ? shown(x) : "--", share, value == null ? C.Dim : tone, false, false);
         double cap = r.CapUse ?? 0, fuel = r.FuelSeconds ?? 0;
+        // A warp under way: its spool's share, then the tunnel.
+        Slice.Orbit.Jump j = Game.Spaceflight?.Jumping is { Running: true } run && run.Carrier == v && run.Drive == Slice.Orbit.Spaceflight.WarpDrive ? run : null;
         return new[]
         {
             Row("CAP", r.CapUse, x => $"{x * 100:F0}%", cap > 1 ? C.Danger : cap > 0.9 ? C.Warn : C.Good, r.CapUse),
             Row("FUEL", r.FuelSeconds, x => double.IsInfinity(x) ? "IDLE" : $"{x / 60:F0} MIN", fuel <= 0 ? C.Danger : fuel < 300 ? C.Warn : C.Good),
-            Row("WARP", r.WarpAu, x => $"{x:F1} AU", r.WarpAu < 1 ? C.Danger : C.Good),
+            j == null ? Row("WARP", r.WarpAu, x => $"{x:F1} AU", r.WarpAu < 1 ? C.Danger : C.Good)
+                : new Gauge("WARP", j.Now == Slice.Orbit.Jump.Stage.Spool ? $"SPOOL {j.Spooled * 100:F0}%" : "TUNNEL", j.Now == Slice.Orbit.Jump.Stage.Spool ? j.Spooled : 1.0, C.Accent, false, false),
             Row("FOLD", r.FoldLy, x => $"{x:F1} LY", r.FoldLy < 1 ? C.Danger : C.Good),
         };
     }

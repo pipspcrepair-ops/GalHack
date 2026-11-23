@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
 using PlanetSurface.Skies;
 using PlanetSurface.World;
 using Slice.Game;
@@ -43,28 +45,33 @@ public partial class OrbitZone
     }
 
     /// <summary>
-    /// Moves everything in the zone so a point becomes its origin: out at a star's high orbit (a thousand km from its
-    /// centre) the numbers near where you fly stay small, and a hull drawn there doesn't shake. Nothing changes to the eye.
+    /// Everything in the zone moved by <paramref name="by"/> the other way, rigidly (the bodies, what floats, the globes): a
+    /// point far out in it (an arrival by a giant's far moon, or in the star's high orbit) becomes its origin, where floats
+    /// are finest. Nothing changes to the eye.
     /// </summary>
-    public void Recentre(N.Vector3 point)
+    public void Recentre(N.Vector3 by)
     {
+        if (Physics != null)
+            foreach (Body b in Physics.Bodies)
+            {
+                if (b.Frame != null) continue; // riders stay where they are aboard
+                b.Position -= by;
+                BodyBinding binding = Host.BindingOf(b);
+                binding?.Teleport();
+                binding?.Node.ResetPhysicsInterpolation();
+            }
+        if (Loot != null)
+            foreach (Slice.Items.Lootable l in Loot.All)
+            {
+                l.Position -= new Godot.Vector3(by.X, by.Y, by.Z);
+                if (l.Node != null) l.Node.GlobalPosition = l.Position;
+            }
         foreach (Celestial c in Bodies)
         {
-            c.Shift -= point;
-            c.ShiftWas = c.Shift;
+            c.Shift -= by;
+            c.ShiftWas -= by;
             Placed(c);
         }
-        foreach (var (_, shell) in _solids) shell.Position -= new Godot.Vector3(point.X, point.Y, point.Z);
-        foreach (GalHack.Physics.Body b in Physics.Bodies)
-        {
-            if (b.Frame != null) continue; // riders stay where they are aboard
-            b.Position -= point;
-            Host.BindingOf(b)?.Teleport();
-        }
-        foreach (Slice.Items.Lootable l in Loot.All)
-        {
-            l.Position -= new Godot.Vector3(point.X, point.Y, point.Z);
-            if (l.Node != null) l.Node.GlobalPosition = l.Position;
-        }
+        Move();
     }
 }

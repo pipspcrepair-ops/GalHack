@@ -206,6 +206,7 @@ public partial class Spaceflight : Node
         if (g.InOrbit)
         {
             OrbitZone o = Orbit;
+            if (o != FirstOrbit) return; // the map charts the start world's wrecks round it; another world's wait for their own chart
             foreach (Vessel w in o.Wrecks)
             {
                 Vector3 p = w.Body.Position.ToGodot();

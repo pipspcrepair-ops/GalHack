@@ -150,6 +150,8 @@ public partial class Spaceflight
 
         public string Name => _f.Stars.Galaxy.Name(_star);
 
+        public SurfaceZone Zone => _zone;
+
         /// <summary>What letting go of the system left took on the main thread, ms (tests read it).</summary>
         public double LeftMs { get; private set; }
 
