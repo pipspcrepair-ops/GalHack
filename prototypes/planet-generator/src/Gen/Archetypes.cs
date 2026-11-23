@@ -52,7 +52,7 @@ public sealed record ArchetypeDef
     public float VolcanoHeight { get; init; }
     public float CraterSpacing { get; init; }              // the biggest craters' spacing, smaller ones down to metres under them; 0 = no craters
     public float CraterRelief { get; init; } = 1f;         // how deep and high-rimmed they are against a fresh crater on rock (soft ice and heavy worlds less)
-    public float CraterCover { get; init; } = 0.1f;        // how thick craters lie at each size, 1 saturated (a barren body); a tidally heated moon's young surface keeps few
+    public float CraterCover { get; init; } = 0.05f;       // how thick craters lie at each size, 1 saturated (a barren body); a tidally heated moon's young surface keeps few
     public float MareBury { get; init; }                   // how much of the craters older lava or ice flows buried on the open plains (0 none .. 1 all but the youngest small ones)
     public float RilleDepth { get; init; }                 // winding lava channels, or straight cracks in an ice sheet (0 = none)
     public float RilleWidth { get; init; } = 90f;          // metres
