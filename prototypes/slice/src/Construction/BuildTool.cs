@@ -342,6 +342,15 @@ public sealed partial class BuildTool
             HasTarget = true;
             return;
         }
+        // A bridge, a tunnel mouth, a seawall the tool is on is taken into play: a wreck's blocks like any other's.
+        if (wrecks && hit.Vessel == null && _zone.InfraStruck(hit.Collider, hit.Point, hit.Normal, out Int3 cell) is Vessel infra && infra.Structure.Has(cell))
+        {
+            TargetCell = cell;
+            PlaceCell = cell + Dirs.Closest(MathX.Unrotate(infra.Body.Rotation, hit.Normal.ToNumerics())).Vec();
+            TargetVessel = infra;
+            HasTarget = true;
+            return;
+        }
         if (hit.Vessel == null && _zone.Host.BodyOf(hit.Collider) == null)
         {
             _groundPoint = hit.Point;

@@ -207,6 +207,30 @@ public partial class PopRoute : Node
             PopLog.On = false;
         }
         else if (only?.Contains("city") == true) GD.Print("ROUTE city: none on this world");
+        // --only=bridge: along the longest bridge on the world, 20 m over the ground under it at a bike's speed, from 200 m short of
+        // it to 200 m past (its spans, piers and abutments in view all the way).
+        if (only?.Contains("bridge") == true)
+        {
+            var bridge = zone.Planet.Infra.Structures.Where(b => b.Kind == GalHack.Terrain.RoadSpan.Bridge && !b.Route.Maglev).OrderByDescending(b => b.Length).FirstOrDefault();
+            if (bridge == null) GD.Print("ROUTE bridge: none on this world");
+            else
+            {
+                var r = bridge.Route;
+                Vector3 a = zone.Planet.NearestCopy(new Vector3((float)r.X[bridge.First], r.Y[bridge.First], (float)r.Z[bridge.First]), start);
+                Vector3 b = a + new Vector3((float)(r.X[bridge.Last] - r.X[bridge.First]), 0f, (float)(r.Z[bridge.Last] - r.Z[bridge.First]));
+                Vector3 along = (b - a) with { Y = 0f };
+                float span = along.Length();
+                along /= span;
+                GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE bridge: {bridge.Build}, {bridge.Length:F0} m, {new Vector2(a.X - start.X, a.Z - start.Z).Length():F0} m from the start"));
+                _hold = Lift(a - along * 200f, 20f);
+                for (int i = 0; i < 60; i++) yield return 0;
+                foreach (int x in _drive.UntilSettled(40)) yield return x;
+                for (int i = 0; i < 300; i++) yield return 0;
+                PopLog.On = true;
+                foreach (int x in Route("bridge bike", a - along * 200f, along, 26f, span + 400f, 20f)) yield return x;
+                PopLog.On = false;
+            }
+        }
         if (only?.Contains("gpu") == true)
             foreach (int x in GpuCost(start, way)) yield return x;
         if (only?.Contains("skyday") == true)

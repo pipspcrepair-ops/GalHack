@@ -36,8 +36,12 @@
     <Compile Include="..\weather\src\Glue.cs" />
     <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
     <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
-    <!-- Light colour and animation, shared with the player's light blocks: the POI generator's lights read it. -->
-    <Compile Include="..\building\src\Structures\LightSettings.cs" />
+    <!-- Building's structures (blocks with health, damage and splitting; light colour and animation, which the POI
+         generator's lights read too) and its chunk mesher and materials: the network's bridges, tunnel mouths, seawalls
+         and railways are built of the player's own 1 m blocks. -->
+    <Compile Include="..\building\src\Structures\**\*.cs" />
+    <Compile Include="..\building\src\Presentation\ChunkMesher.cs" />
+    <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
     <!-- The decorations library: alien places are dressed from its alien set, as in the POI viewer. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />

@@ -10,8 +10,9 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Power poles and pylons felled as trees are (--view=power; a world with a grid: --era-old=mid or high): for a pole and then a
-/// pylon, the nearest standing one seen down its line, shot through at its foot until it goes over, and seen again; then the
-/// next nearest cut down with the Sleeper tool. The run fails unless each went over (falling as a tree does, and lying flat),
+/// pylon, the nearest standing one shot through at its foot until it goes over, then the next nearest cut down with the Sleeper
+/// tool; each seen standing, going over and lying, from one eye side-on to the way it falls (its whole fall in frame), the
+/// sleeper stood behind that eye. The run fails unless each went over (falling as a tree does, and lying flat),
 /// its drawing went from its tiles, and every wire it held now hangs from the pole at its other end, the wire's top at that
 /// pole's insulator and its tail on the ground: nothing strung to it, nothing in the air. Then the dressing's nearest post or
 /// mast (a lamp post, a sign post) the same way, shot and then cut.
@@ -47,16 +48,15 @@ public sealed partial class Staging
             if (pole < 0) { GD.Print($"(power: no standing {what} left on this world)"); continue; }
             PowerPole p = lines.Poles[pole];
             Vector3 foot = At(pole), side = new(p.SideX, 0f, p.SideZ), along = new(-p.SideZ, 0f, p.SideX);
-            float back = pylon ? 80f : 26f;
-            Vector3 eye = foot + along * back + side * back * 0.3f;
-            eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f;
-            Vector3 look = foot - along * back * 0.6f + Vector3.Up * p.Height * 0.5f;
+            // It goes over away from the blow: cut from a step off along the line (a pylon across it), shot from across it.
+            Vector3 fall = cut && !pylon ? -along : -side;
+            var (eye, look) = SideOn(foot, fall, p.Height);
             foreach (int x in Shot($"{what}-{how}-before", eye, look)) yield return x;
             int felled = _game.Zone.PolesFelled, rebuilt = _game.Zone.Infra.PartsRebuilt, blows = 0;
             var held = Enumerable.Range(0, lines.Wires.Count).Where(i => lines.Wires[i].Spanned && (lines.Wires[i].A == pole || lines.Wires[i].B == pole)).ToList();
             var drops = lines.Drops.Where(d => d.Pole == pole).ToList();
             // A pylon is cut at one of its legs and shot with rockets.
-            foreach (int x in Fell(cut, pylon, pylon ? foot + (side + along) * (p.Height * 0.13f) : foot, pylon ? side : along, side, () => _game.Zone.PolesFelled > felled)) yield return x;
+            foreach (int x in Fell(cut, pylon, pylon ? foot + (side + along) * (p.Height * 0.13f) : foot, pylon ? side : along, side, () => _game.Zone.PolesFelled > felled, eye, look, $"{what}-{how}")) yield return x;
             blows = _blows;
             float lean = (_game.Zone.Trees.GetChildren().OfType<FallingTree>().LastOrDefault()?.Basis.Y.AngleTo(Vector3.Up) ?? 0f);
             bool drawn = !p.Felled || _game.Zone.Infra.PartsRebuilt == rebuilt || _game.Zone.Infra.PartsPending;
@@ -81,7 +81,7 @@ public sealed partial class Staging
             GD.Print($"  {(ok ? "ok   " : "FAIL ")} the {what} ({pole}, {p.Height:F0} m) {how} through: over after {blows} {(cut ? "pulls of the tool" : "shots")} (fallen {p.Fallen}, lying {Mathf.RadToDeg(lean):F0} degrees over, " +
                      $"its drawing {(drawn ? "still in its tiles" : "gone from its tiles")}); of its {held.Count} wires {hanging} hang from the pole at their other end (top off its insulator at most {worstTop:F2} m, " +
                      $"tail off the ground at most {worstTail:F2} m), {strung} still strung to it, {loose} hanging from it; of its {drops.Count} house drops {dropsUp} still held up by it");
-            foreach (int x in Shot($"{what}-{how}-after", eye, look)) yield return x;
+            foreach (int x in Shot($"{what}-{how}-lying", eye, look)) yield return x;
             from = _game.Survivor.WorldFeet;
         }
         // The dressing's posts and masts stand the same way (lamp posts, sign posts, beacons, flag and banner poles): the
@@ -96,25 +96,32 @@ public sealed partial class Staging
             DressItem it = items[k];
             Vector3 foot = _game.Zone.Planet.NearestCopy(new Vector3((float)it.X, _game.Zone.GroundAt((float)it.X, (float)it.Z).Y, (float)it.Z), from);
             Vector3 side = new(Mathf.Cos(it.Yaw), 0f, -Mathf.Sin(it.Yaw)), along = side.Cross(Vector3.Up);
-            Vector3 eye = foot + along * 9f + side * 4f;
-            eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f;
-            Vector3 look = foot + Vector3.Up * 2.5f;
+            var (eye, look) = SideOn(foot, cut ? -along : -side, 6f);
             foreach (int x in Shot($"post-{how}-before", eye, look)) yield return x;
             int felled = _game.Zone.PostsFelled, rebuilt = _game.Zone.Infra.PartsRebuilt;
-            foreach (int x in Fell(cut, false, foot, along, side, () => _game.Zone.PostsFelled > felled)) yield return x;
+            foreach (int x in Fell(cut, false, foot, along, side, () => _game.Zone.PostsFelled > felled, eye, look, $"post-{how}")) yield return x;
             float lean = (_game.Zone.Trees.GetChildren().OfType<FallingTree>().LastOrDefault()?.Basis.Y.AngleTo(Vector3.Up) ?? 0f);
             bool drawn = _game.Zone.Infra.PartsRebuilt == rebuilt || _game.Zone.Infra.PartsPending;
             bool ok = it.Felled && lean > 1.3f && !drawn;
             if (!ok) Faults++;
             GD.Print($"  {(ok ? "ok   " : "FAIL ")} a {it.Model} {how} through: over after {_blows} {(cut ? "pulls of the tool" : "shots")} (felled {it.Felled}, lying {Mathf.RadToDeg(lean):F0} degrees over, its drawing {(drawn ? "still in its tiles" : "gone from its tiles")})");
-            foreach (int x in Shot($"post-{how}-after", eye, look)) yield return x;
+            foreach (int x in Shot($"post-{how}-lying", eye, look)) yield return x;
             from = _game.Survivor.WorldFeet;
         }
         _game.FixedCamera = null;
 
+        // An eye side-on to a fall: across the line it falls along, back by more than its length, its whole fall in frame.
+        (Vector3 Eye, Vector3 Look) SideOn(Vector3 foot, Vector3 fall, float height)
+        {
+            Vector3 mid = foot + fall * (height * 0.5f), eye = mid + fall.Cross(Vector3.Up) * (height * 1.3f + 6f);
+            eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f;
+            return (eye, mid + Vector3.Up * (height * 0.3f));
+        }
+
         // Cut at waist height with the tool in hand (as the start gives it), stood a step off along <paramref name="off"/>; or shot
-        // at its foot from 8 m off along <paramref name="side"/>, with rockets for a pylon; then its fall, and its tiles built again.
-        IEnumerable<int> Fell(bool cut, bool rockets, Vector3 at, Vector3 off, Vector3 side, System.Func<bool> down)
+        // at its foot from 8 m off along <paramref name="side"/>, with rockets for a pylon; then its fall seen from the eye (the
+        // sleeper behind it), halfway down, and its tiles built again.
+        IEnumerable<int> Fell(bool cut, bool rockets, Vector3 at, Vector3 off, Vector3 side, System.Func<bool> down, Vector3 eye, Vector3 look, string tag)
         {
             _blows = 0;
             Vector3 waist = at with { Y = _game.Zone.GroundAt(at.X, at.Z).Y + 1f };
@@ -136,14 +143,29 @@ public sealed partial class Staging
                     foreach (int x in _drive.Wait(rockets ? 20 : 5)) yield return x;
                 }
             }
-            // Its fall (the newest falling tree is it), a tree's, slower under a light world's gravity: till it lies, or 15 s.
-            for (int i = 0; i < 900 && (i < 30 || (_game.Zone.Trees.GetChildren().OfType<FallingTree>().LastOrDefault()?.Basis.Y.AngleTo(Vector3.Up) ?? 0f) < 1.5f); i++) yield return 0;
+            // Its fall (the newest falling tree is it), a tree's, slower under a light world's gravity: seen from the eye as it
+            // passes halfway down, till it lies, or 15 s.
+            _game.Survivor.PlaceOutside((eye + (eye - look).Normalized() * 3f - Vector3.Up * 1.6f).ToNumerics());
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
+            bool seen = false;
+            for (int i = 0; i < 900; i++)
+            {
+                float lean = _game.Zone.Trees.GetChildren().OfType<FallingTree>().LastOrDefault()?.Basis.Y.AngleTo(Vector3.Up) ?? 0f;
+                if (!seen && lean > 0.6f)
+                {
+                    Snap($"{tag}-falling");
+                    GD.Print($"  (falling: {Mathf.RadToDeg(lean):F0} degrees over)");
+                    seen = true;
+                }
+                if (i >= 30 && lean >= 1.5f) break;
+                yield return 0;
+            }
             for (int i = 0; i < 300 && _game.Zone.Infra.PartsPending; i++) yield return 0;
         }
 
         IEnumerable<int> Shot(string tag, Vector3 eye, Vector3 look)
         {
-            _game.Survivor.PlaceOutside((eye - Vector3.Up * 1.7f).ToNumerics());
+            _game.Survivor.PlaceOutside((eye + (eye - look).Normalized() * 3f - Vector3.Up * 1.6f).ToNumerics()); // behind the eye: its own body out of the frame
             for (int i = 0; i < 900; i++)
             {
                 _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);

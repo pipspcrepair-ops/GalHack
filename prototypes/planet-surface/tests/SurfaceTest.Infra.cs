@@ -20,10 +20,13 @@ public partial class SurfaceTest
 {
     /// <summary>
     /// The roads' tiles' kinds of piece that take damage and break: tells broken, the under-town's lining block by block, poles and pylons felled as trees are (their wires
-    /// and drops falling with them), wrecks worn apart; the dressing's posts and masts fell, the rest of it (and a ruin's front)
-    /// is dressing, no structure. A ruin itself is a place. Every other kind is a structure nothing breaks yet.
+    /// and drops falling with them), wrecks worn apart; the network's block structures (bridges' spans, piers and abutments, tunnel
+    /// mouths, seawalls and their stairs, railways' track and stations, guideways and their pylons) block by block as any structure,
+    /// a span dropping when its support goes (each kind here once the structures view showed it breaking); the dressing's posts and
+    /// masts fell, the rest of it (and a ruin's front) is dressing, no structure, and a flooded tunnel's standing water is water. A
+    /// ruin itself is a place. Every other kind is a structure nothing breaks yet.
     /// </summary>
-    static readonly HashSet<string> Breaking = new() { "OreTellPiece", "PolePiece", "WirePiece", "DropPiece", "WreckPiece", "DressPiece", "RuinPiece", "UnderPiece" };
+    static readonly HashSet<string> Breaking = new() { "OreTellPiece", "PolePiece", "WirePiece", "DropPiece", "WreckPiece", "DressPiece", "RuinPiece", "UnderPiece", "FloodStretch" };
     /// <summary>Pieces of the kinds nothing breaks, by kind, over the sweep's worlds.</summary>
     readonly Dictionary<string, int> _unbroken = new();
 

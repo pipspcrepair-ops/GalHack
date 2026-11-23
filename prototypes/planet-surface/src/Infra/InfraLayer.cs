@@ -363,19 +363,14 @@ public partial class InfraLayer : Node3D
             if (s.Route.Maglev) continue;
             if (s.Kind == RoadSpan.Bridge)
             {
+                foreach (Piece p in BridgePieces(s)) yield return p;
+                continue;
+            }
+            yield return new Portal { Structure = s, AtStart = true, X = s.Route.X[s.First], Z = s.Route.Z[s.First] };
+            yield return new Portal { Structure = s, AtStart = false, X = s.Route.X[s.Last], Z = s.Route.Z[s.Last] };
+            if (s.Flooded)
                 for (int k = s.First; k < s.Last; k++)
-                    yield return new BridgeStretch { Structure = s, K = k, X = s.Route.X[k], Z = s.Route.Z[k] };
-                yield return new Abutment { Structure = s, AtStart = true, X = s.Route.X[s.First], Z = s.Route.Z[s.First] };
-                yield return new Abutment { Structure = s, AtStart = false, X = s.Route.X[s.Last], Z = s.Route.Z[s.Last] };
-            }
-            else
-            {
-                yield return new Portal { Structure = s, AtStart = true, X = s.Route.X[s.First], Z = s.Route.Z[s.First] };
-                yield return new Portal { Structure = s, AtStart = false, X = s.Route.X[s.Last], Z = s.Route.Z[s.Last] };
-                if (s.Flooded)
-                    for (int k = s.First; k < s.Last; k++)
-                        yield return new FloodStretch { Structure = s, K = k, X = s.Route.X[k], Z = s.Route.Z[k] };
-            }
+                    yield return new FloodStretch { Structure = s, K = k, X = s.Route.X[k], Z = s.Route.Z[k] };
         }
         foreach (WreckSite w in net.Wrecks)
         {
@@ -409,12 +404,7 @@ public partial class InfraLayer : Node3D
         foreach (InfraRoute r in net.Routes)
         {
             if (r.Kind != RouteKind.Rail) continue;
-            for (int k = 0; k + 1 < r.Count; k++)
-            {
-                if (underTrains.Contains((r.Id, k))) continue;
-                if (r.Maglev) yield return new Guideway { Route = r, K = k, X = r.X[k], Z = r.Z[k] };
-                else yield return new Track { Route = r, K = k, X = r.X[k], Z = r.Z[k] };
-            }
+            foreach (Piece p in r.Maglev ? GuidewayPieces(r) : TrackPieces(r, underTrains)) yield return p;
         }
     }
 
@@ -424,176 +414,6 @@ public partial class InfraLayer : Node3D
         TimberDark = DecoRgb.Hex("4a3826"), Steel = DecoRgb.Hex("6a4a3a"), SteelDark = DecoRgb.Hex("4c3a32"), Composite = DecoRgb.Hex("b8bcc0"),
         Ballast = DecoRgb.Hex("5f5a52"), Rail = DecoRgb.Hex("5a4438"), Sleeper = DecoRgb.Hex("4d3c2c"), SleeperConcrete = DecoRgb.Hex("7c7a74"),
         Water = DecoRgb.Hex("2c4a52"), Stone = DecoRgb.Hex("7a7268");
-
-    // ---- bridges ----------------------------------------------------------------------------------
-
-    /// <summary>One 4 m stretch of a bridge: its deck slab and parapets, a pier every fifth point; or, fallen, its deck lying broken below.</summary>
-    sealed class BridgeStretch : Piece
-    {
-        public InfraStructure Structure;
-        public int K;
-
-        public override void Emit(TileBuilder b)
-        {
-            InfraRoute r = Structure.Route;
-            NV a = b.Local(r.X[K], r.Y[K], r.Z[K]), c = b.Local(r.X[K + 1], r.Y[K + 1], r.Z[K + 1]);
-            (DecoRgb deck, DecoRgb dark, float thick, DecoSurface surface) = Structure.Build switch
-            {
-                "timber" => (Timber, TimberDark, 0.45f, DecoSurface.Matte),
-                "steel" => (Concrete, Steel, 0.9f, DecoSurface.Matte),
-                _ => (Composite, ConcreteDark, 1.1f, DecoSurface.Matte),
-            };
-            float half = r.HalfWidth + 0.3f;
-            NV along = c - a;
-            float len = along.Length();
-            if (len < 1e-3f) return;
-            NV dir = along / len, side = NV.Normalize(new NV(-dir.Z, 0, dir.X)), up = NV.Normalize(NV.Cross(side, dir));
-            if (up.Y < 0) up = -up;
-            bool fallen = Structure.Fallen.Contains(K);
-            if (!fallen)
-            {
-                NV mid = (a + c) * 0.5f - up * (thick * 0.5f);
-                // A little overlap so stretches meet without a gap.
-                b.Box(mid, dir * (len * 0.5f + 0.05f), up * (thick * 0.5f), side * half, deck, surface, collide: true);
-                // Parapets or rails along both edges, broken here and there on a neglected bridge.
-                ulong h = Planets.Gen.Hash.Of((ulong)r.Id * 7919UL + (ulong)K, 0xB41D);
-                for (int s = -1; s <= 1; s += 2)
-                {
-                    if (!r.Kept && (h >> (s > 0 ? 3 : 9) & 7) == 0) continue;
-                    NV edge = (a + c) * 0.5f + side * (s * (half - 0.15f));
-                    if (Structure.Build == "timber")
-                    {
-                        b.Box(edge + up * 0.95f, dir * (len * 0.5f), up * 0.06f, side * 0.06f, dark, DecoSurface.Matte, collide: false);
-                        b.Box(edge + up * 0.5f, dir * 0.07f, up * 0.5f, side * 0.07f, dark, DecoSurface.Matte, collide: false);
-                    }
-                    else
-                    {
-                        // A kerb along the deck, a post at each stretch's start and two rails: a guard rail you can see through.
-                        DecoRgb rail = Structure.Build == "steel" ? Steel : ConcreteDark;
-                        b.Box(edge + up * 0.12f, dir * (len * 0.5f + 0.02f), up * 0.12f, side * 0.16f, Composite, DecoSurface.Matte, collide: true);
-                        b.Box(edge - dir * (len * 0.5f) + up * 0.55f, dir * 0.07f, up * 0.55f, side * 0.07f, rail, DecoSurface.Metal, collide: true);
-                        b.Box(edge + up * 1.04f, dir * (len * 0.5f + 0.02f), up * 0.05f, side * 0.06f, rail, DecoSurface.Metal, collide: true);
-                        b.Box(edge + up * 0.58f, dir * (len * 0.5f + 0.02f), up * 0.04f, side * 0.04f, rail, DecoSurface.Metal, collide: true);
-                    }
-                }
-            }
-            else
-            {
-                // The fallen deck lies broken on the ground below, draped over whatever it came down on.
-                b.Drape((a + c) * 0.5f, new NV(dir.X, 0, dir.Z) * (len * 0.46f), side * (half * 0.9f), thick, deck, surface);
-            }
-            // A pier every fifth point (20 m), standing on the ground below (under a fallen span too).
-            if ((K - Structure.First) % 5 == 0 && K > Structure.First)
-            {
-                float ground = b.Ground(r.X[K], r.Z[K]);
-                float top = a.Y - thick;
-                if (top - ground > 0.5f)
-                {
-                    float h = top - ground + 1.5f;
-                    NV foot = new(a.X, ground - 1.5f + h * 0.5f, a.Z);
-                    if (Structure.Build == "timber")
-                    {
-                        // A timber trestle: posts and a cross brace.
-                        for (int s = -1; s <= 1; s += 2)
-                            b.Box(foot + side * (s * half * 0.7f), dir * 0.18f, NV.UnitY * (h * 0.5f), side * 0.18f, dark, DecoSurface.Matte, collide: true);
-                        NV x0 = new(a.X, ground, a.Z), x1 = new(a.X, top, a.Z);
-                        b.Beam(x0 + side * (half * 0.7f), x1 - side * (half * 0.7f), 0.12f, dark);
-                        b.Beam(x0 - side * (half * 0.7f), x1 + side * (half * 0.7f), 0.12f, dark);
-                    }
-                    else
-                    {
-                        // A hammerhead pier: two round columns on plinths under a cap beam that takes the deck.
-                        DecoRgb col = Structure.Build == "steel" ? Concrete : Composite;
-                        float cap = 0.6f;
-                        for (int s = -1; s <= 1; s += 2)
-                        {
-                            NV at = new NV(a.X, ground, a.Z) + side * (s * half * 0.5f);
-                            b.Box(at - NV.UnitY * 0.6f, dir * 1.1f, NV.UnitY * 0.8f, side * 1.1f, ConcreteDark, DecoSurface.Matte, collide: true);
-                            b.Column(at, 0.6f, top - cap - ground, col, DecoSurface.Matte, collide: true);
-                        }
-                        b.Box(new NV(a.X, top - cap * 0.5f, a.Z), dir * 0.8f, NV.UnitY * (cap * 0.5f), side * (half * 0.95f), col, DecoSurface.Matte, collide: true);
-                    }
-                }
-            }
-        }
-    }
-
-    /// <summary>A bridge's end: a block from its deck down into the bank, so the deck never ends in the air.</summary>
-    sealed class Abutment : Piece
-    {
-        public InfraStructure Structure;
-        public bool AtStart;
-
-        public override void Emit(TileBuilder b)
-        {
-            InfraRoute r = Structure.Route;
-            int k = AtStart ? Structure.First : Structure.Last, n = AtStart ? Math.Min(r.Count - 1, k + 1) : Math.Max(0, k - 1);
-            NV a = b.Local(r.X[k], r.Y[k], r.Z[k]), c = b.Local(r.X[n], r.Y[n], r.Z[n]);
-            NV dir = NV.Normalize(new NV(c.X - a.X, 0, c.Z - a.Z)), side = new(-dir.Z, 0, dir.X);
-            float ground = Math.Min(b.Ground(r.X[k], r.Z[k]), a.Y);
-            float h = a.Y - ground + 2.5f;
-            b.Box(new NV(a.X, a.Y - h * 0.5f - 0.05f, a.Z), dir * 1.6f, NV.UnitY * (h * 0.5f), side * (r.HalfWidth + 0.8f),
-                Structure.Build == "timber" ? Stone : ConcreteDark, DecoSurface.Matte, collide: true);
-        }
-    }
-
-    // ---- tunnels -----------------------------------------------------------------------------------
-
-    /// <summary>A tunnel mouth: a face wall round the bore, pillars and a lintel, set into the slope.</summary>
-    sealed class Portal : Piece
-    {
-        public InfraStructure Structure;
-        public bool AtStart;
-
-        public override void Emit(TileBuilder b)
-        {
-            InfraRoute r = Structure.Route;
-            int k = AtStart ? Structure.First : Structure.Last, outward = AtStart ? -1 : 1;
-            // The face stands forward of the mouth, in the cutting, with a covered box back to the bore:
-            // the raw edge where the bore meets the slope is behind it, and so is the far ring's ramp.
-            int boxPoints = (int)Math.Ceiling(TerrainStamp.MouthBox / InfraNetwork.Spacing);
-            int w = Math.Clamp(k + outward * boxPoints, 0, r.Count - 1);
-            NV mouth = b.Local(r.X[k], r.Y[k], r.Z[k]), wall = b.Local(r.X[w], r.Y[w], r.Z[w]);
-            NV flat = new(mouth.X - wall.X, 0, mouth.Z - wall.Z);
-            if (flat.LengthSquared() < 1e-6f) return;
-            float boxLength = flat.Length() + 3f;
-            NV into = NV.Normalize(flat), side = new(-into.Z, 0, into.X), up = NV.UnitY;
-            float bore = r.HalfWidth + 1.2f, height = r.Kind == RouteKind.Rail ? 7f : 6.5f;
-            // Dressed stone, or timber framing on a low-tech track; cast concrete; composite panels.
-            DecoRgb col = r.Tech == TechLevel.Low ? (r.Kind == RouteKind.Track ? PoleWood : Stone) : r.Tech == TechLevel.Mid ? Concrete : Composite;
-            float capped = height + 2.4f, half = bore + 2.4f;
-            // The face: piers either side of the opening, the lintel over it, a coping a little proud.
-            foreach (int s in new[] { -1, 1 })
-                b.Box(wall + side * (s * (bore + 1.2f)) + up * (capped * 0.5f - 0.75f), into * 0.7f, up * (capped * 0.5f + 0.75f), side * 1.2f, col, DecoSurface.Matte, collide: true);
-            b.Box(wall + up * (height + 1.2f), into * 0.7f, up * 1.2f, side * half, col, DecoSurface.Matte, collide: true);
-            b.Box(wall + up * (capped + 0.2f), into * 1f, up * 0.2f, side * (half + 0.35f), col, DecoSurface.Matte, collide: true);
-            // The covered box from the face back into the hill: walls and roof over the raw cut.
-            NV box = wall + into * (boxLength * 0.5f);
-            foreach (int s in new[] { -1, 1 })
-                b.Box(box + side * (s * (bore + 0.3f)) + up * (height * 0.5f), into * (boxLength * 0.5f), up * (height * 0.5f + 0.4f), side * 0.3f, col, DecoSurface.Matte, collide: true);
-            b.Box(box + up * (height + 0.3f), into * (boxLength * 0.5f), up * 0.4f, side * (bore + 0.6f), col, DecoSurface.Matte, collide: true);
-            // Wing walls down each side of the cutting, on its edge as it narrows, as high as the bank they hold.
-            for (int j = 0; j < 4; j++)
-            {
-                int p = w + outward * j, q = p + outward;
-                if (p < 0 || q < 0 || p >= r.Count || q >= r.Count || r.Span[Math.Min(p, q)] != RoadSpan.Ground) break;
-                NV pa = b.Local(r.X[p], r.Y[p], r.Z[p]), pb = b.Local(r.X[q], r.Y[q], r.Z[q]);
-                NV along = new(pb.X - pa.X, 0, pb.Z - pa.Z);
-                float len = along.Length();
-                if (len < 1e-3f) break;
-                NV dir = along / len, across = new(-dir.Z, 0, dir.X);
-                float far = Math.Clamp((j + 0.5f) * InfraNetwork.Spacing / TerrainStamp.MouthFade, 0f, 1f);
-                float edge = r.HalfWidth + (bore + TerrainStamp.MouthRoom - r.HalfWidth) * (1f - far) + 0.35f;
-                foreach (int s in new[] { -1, 1 })
-                {
-                    double gx = (r.X[p] + r.X[q]) * 0.5 + across.X * s * (edge + 2.5f), gz = (r.Z[p] + r.Z[q]) * 0.5 + across.Z * s * (edge + 2.5f);
-                    float tall = Math.Clamp(b.Ground(gx, gz) - Math.Min(r.Y[p], r.Y[q]) + 0.4f, 0.5f, capped);
-                    NV c = (pa + pb) * 0.5f + across * (s * edge) + up * (tall * 0.5f - 0.75f);
-                    b.Box(c, dir * (len * 0.5f + 0.25f), up * (tall * 0.5f + 0.75f), across * 0.35f, col, DecoSurface.Matte, collide: true);
-                }
-            }
-        }
-    }
 
     /// <summary>Standing water in a neglected tunnel's low middle.</summary>
     /// <summary>The water standing on a stretch of a flooded tunnel, if any.</summary>
@@ -875,101 +695,6 @@ public partial class InfraLayer : Node3D
             b.Cable(pts, radius, sleek ? Conduit : WireDark);
         }
     }
-
-    // ---- railways ----------------------------------------------------------------------------------
-
-    /// <summary>One 4 m stretch of railway: sleepers on the ballast and two rails (a few sleepers gone on a long-neglected line).</summary>
-    sealed class Track : Piece
-    {
-        public InfraRoute Route;
-        public int K;
-
-        public override void Emit(TileBuilder b)
-        {
-            InfraRoute r = Route;
-            NV a = b.Local(r.X[K], r.Y[K], r.Z[K]), c = b.Local(r.X[K + 1], r.Y[K + 1], r.Z[K + 1]);
-            NV along = c - a;
-            float len = along.Length();
-            if (len < 1e-3f) return;
-            NV dir = along / len, side = NV.Normalize(new NV(-dir.Z, 0, dir.X));
-            bool concrete = r.Tech != TechLevel.Low;
-            for (int i = 0; i < 6; i++)
-            {
-                ulong h = Planets.Gen.Hash.Of((ulong)r.Id * 104729UL + (ulong)(K * 6 + i), 0x51EE);
-                if (r.Wear > 0.6f && h % 9 == 0) continue;
-                NV p = a + dir * (len * (i + 0.5f) / 6f) + NV.UnitY * 0.12f;
-                b.Box(p, dir * 0.13f, NV.UnitY * 0.09f, side * 1.3f, concrete ? SleeperConcrete : Sleeper, DecoSurface.Matte, collide: false);
-            }
-            for (int s = -1; s <= 1; s += 2)
-            {
-                NV off = side * (s * 0.72f) + NV.UnitY * 0.28f;
-                b.Box((a + c) * 0.5f + off, dir * (len * 0.5f + 0.02f), NV.UnitY * 0.08f, side * 0.04f, Rail, DecoSurface.Metal, collide: false);
-            }
-        }
-    }
-
-    /// <summary>The end of a line: the track stops at a buffer, beside a platform with a roof over part of it. All of it stands in the ground.</summary>
-    sealed class Station : Piece
-    {
-        public InfraRoute Route;
-        public bool AtStart;
-
-        public override void Emit(TileBuilder b)
-        {
-            InfraRoute r = Route;
-            int k = AtStart ? 0 : r.Count - 1, step = AtStart ? 1 : -1, far = Math.Clamp(k + step * 12, 0, r.Count - 1);
-            NV a = b.Local(r.X[k], r.Y[k], r.Z[k]), c = b.Local(r.X[far], r.Y[far], r.Z[far]);
-            NV along = new(c.X - a.X, 0, c.Z - a.Z);
-            float length = along.Length();
-            if (length < 1f) return;
-            NV dir = along / length, side = new(-dir.Z, 0, dir.X);
-            DecoRgb body = r.Tech == TechLevel.Low ? Timber : r.Tech == TechLevel.Mid ? Concrete : Composite, dark = r.Tech == TechLevel.Low ? TimberDark : ConcreteDark;
-            float deck = (r.Y[k] + r.Y[far]) * 0.5f;
-            // Buffers across the end of the track.
-            b.Box(a + NV.UnitY * 0.45f, dir * 0.3f, NV.UnitY * 1.2f, side * 1.5f, dark, DecoSurface.Matte, collide: true);
-            foreach (int s in new[] { -1, 1 })
-            {
-                // The platform beside the track on the one side, its back wall on the other way.
-                if (s < 0) continue;
-                NV mid = a + dir * (length * 0.5f) + side * (r.HalfWidth + 2.2f);
-                float low = MathF.Min(deck, b.Ground(b.OriginX + mid.X, b.OriginZ + mid.Z)) - 1.5f, top = deck + 0.9f;
-                mid.Y = (low + top) * 0.5f;
-                b.Box(mid, dir * (length * 0.5f), NV.UnitY * ((top - low) * 0.5f), side * 2.2f, body, DecoSurface.Matte, collide: true);
-                // The shelter: posts on the platform, and a roof on them.
-                NV foot = new(mid.X, top, mid.Z);
-                foreach (float along2 in new[] { -9f, -3f, 3f, 9f })
-                    foreach (float across in new[] { -1.6f, 1.6f })
-                        b.Box(foot + dir * along2 + side * across + NV.UnitY * 1.5f, dir * 0.12f, NV.UnitY * 1.5f, side * 0.12f, dark, DecoSurface.Matte, collide: true);
-                b.Box(foot + NV.UnitY * 3.1f, dir * 10.5f, NV.UnitY * 0.12f, side * 2.3f, body, DecoSurface.Matte, collide: true);
-            }
-        }
-    }
-
-    /// <summary>A maglev's guideway: a beam high on pylons over everything between its stations.</summary>
-    sealed class Guideway : Piece
-    {
-        public InfraRoute Route;
-        public int K;
-
-        public override void Emit(TileBuilder b)
-        {
-            InfraRoute r = Route;
-            bool raised = r.Span[K] == RoadSpan.Bridge;
-            float lift = raised ? 7f : 0.8f;
-            NV a = b.Local(r.X[K], r.Y[K] + lift, r.Z[K]), c = b.Local(r.X[K + 1], r.Y[K + 1] + lift, r.Z[K + 1]);
-            NV along = c - a;
-            float len = along.Length();
-            if (len < 1e-3f) return;
-            NV dir = along / len, side = NV.Normalize(new NV(-dir.Z, 0, dir.X));
-            b.Box((a + c) * 0.5f, dir * (len * 0.5f + 0.03f), NV.UnitY * 0.8f, side * 1.3f, Composite, DecoSurface.Matte, collide: true);
-            if (raised && K % 6 == 0)
-            {
-                float ground = b.Ground(r.X[K], r.Z[K]);
-                float h = a.Y - 0.8f - ground + 1f;
-                if (h > 0.5f) b.Box(new NV(a.X, ground - 1f + h * 0.5f, a.Z), dir * 0.9f, NV.UnitY * (h * 0.5f), side * 0.9f, Composite, DecoSurface.Matte, collide: true);
-            }
-        }
-    }
 }
 
 /// <summary>A tile's mesh data and collision triangles, built on a worker, in the tile's own frame (its corner at the origin).</summary>
@@ -1019,50 +744,11 @@ public sealed partial class TileBuilder
         }
     }
 
-    /// <summary>
-    /// A flat slab laid on the ground, bending with it: a grid of points each on the ground under it, its
-    /// top a thickness above and its edges down into the ground, solid on top.
-    /// </summary>
-    public void Drape(NV centre, NV along, NV across, float thick, DecoRgb color, DecoSurface surface)
-    {
-        int nx = Math.Clamp((int)MathF.Ceiling(along.Length()), 1, 8), nz = Math.Clamp((int)MathF.Ceiling(across.Length()), 1, 8);
-        NV Top(int i, int j)
-        {
-            NV p = centre + along * (2f * i / nx - 1f) + across * (2f * j / nz - 1f);
-            p.Y = Ground(OriginX + p.X, OriginZ + p.Z) + thick * 0.5f;
-            return p;
-        }
-        for (int j = 0; j < nz; j++)
-        for (int i = 0; i < nx; i++)
-            Quad(Top(i, j), Top(i + 1, j), Top(i + 1, j + 1), Top(i, j + 1), color, surface, collide: true);
-        void Edge(NV p, NV q)
-        {
-            NV m = (p + q) * 0.5f;
-            Quad(p, q, q - NV.UnitY * (thick + 0.3f), p - NV.UnitY * (thick + 0.3f), color, surface, 1f, new NV(centre.X, m.Y, centre.Z));
-        }
-        for (int i = 0; i < nx; i++) { Edge(Top(i, 0), Top(i + 1, 0)); Edge(Top(i, nz), Top(i + 1, nz)); }
-        for (int j = 0; j < nz; j++) { Edge(Top(0, j), Top(0, j + 1)); Edge(Top(nx, j), Top(nx, j + 1)); }
-    }
-
     /// <summary>A cable along a polyline (drawn as thin tubes), in the tile's frame.</summary>
     public void Cable(List<NV> pts, float radius, DecoRgb color)
     {
         foreach (DecoPart part in DecoCables.Tubes(pts, radius, DecoSlot.Dark))
             DecoEmit.Part(Mesh, part, (_, _, _) => color, _ => DecoSurface.Matte);
-    }
-
-    /// <summary>A round column standing on a point: a prism of <paramref name="sides"/> flats (each a quad, drawn and collided as built), capped on top.</summary>
-    public void Column(NV foot, float radius, float height, DecoRgb color, DecoSurface surface, bool collide, int sides = 16)
-    {
-        if (height <= 0.05f) return;
-        NV top = foot + NV.UnitY * height;
-        NV P(int i, float y) { float t = MathF.Tau * i / sides; return new NV(foot.X + MathF.Cos(t) * radius, y, foot.Z + MathF.Sin(t) * radius); }
-        for (int i = 0; i < sides; i++)
-        {
-            NV a0 = P(i, foot.Y), a1 = P(i + 1, foot.Y), b1 = P(i + 1, top.Y), b0 = P(i, top.Y);
-            Quad(a0, a1, b1, b0, color, surface, 1f, new NV(foot.X, (foot.Y + top.Y) * 0.5f, foot.Z), collide);
-            Mesh.AddTriangle(surface, top, b1, b0, color, Coat(color, surface, 1f));
-        }
     }
 
     /// <summary>Timber and composite the tile's own pieces are built of; the rest of the matte is concrete and stone.</summary>

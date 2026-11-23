@@ -66,7 +66,8 @@ public static class Connectivity
 
     /// <summary>
     /// Moves every section that is not attached to the core into a wreck of its own and returns
-    /// the wrecks. Without a core (it was destroyed) the largest piece stays as this structure.
+    /// the wrecks. Without a core (it was destroyed) the pieces on its <see cref="Structure.Footing"/>
+    /// stay as this structure (all of it falls when none is); with no footing, the largest piece.
     /// </summary>
     public static List<Structure> SplitOff(Structure s)
     {
@@ -86,8 +87,9 @@ public static class Connectivity
         else
         {
             List<List<Int3>> pieces = Pieces(s);
-            if (pieces.Count <= 1) return wrecks;
-            detached = pieces.Skip(1).ToList();
+            if (pieces.Count <= 1 && s.Footing == null) return wrecks;
+            detached = s.Footing == null ? pieces.Skip(1).ToList() : pieces.Where(p => !p.Any(s.Footing.Contains)).ToList();
+            if (detached.Count == 0) return wrecks;
         }
 
         double capacityBefore = RawStorage(s, s.Blocks().Select(x => x.pos));

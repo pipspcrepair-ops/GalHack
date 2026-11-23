@@ -182,6 +182,7 @@ public partial class SurfaceZone : Node3D
         PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
         PlanetSurface.Poi.PoiLayer.Tiered = true; // places are drawn by distance; a near one stands as a structure (Places/PoiPlaces)
         PlanetSurface.Infra.InfraLayer.OreTellsCollide = true; // ore rocks are solid; the Sleeper tool breaks them down for a little ore
+        PlanetSurface.Infra.InfraLayer.BlockCatalogue = () => Data.Catalogue; // bridges, tunnel mouths and seawalls are the game's own blocks: one taken into play is a structure like any other
         Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois", Sky = Sky };
         AddChild(Pois);
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
@@ -576,6 +577,7 @@ public partial class SurfaceZone : Node3D
         if (Planet != null) WrapFrame();
         if (Streamer != null) HoldLoose();
         TakeBroken();
+        DropUnheld();
     }
 
     /// <summary>Loose bodies lying where the ground has no collision (past the collision radius): held still, off the weather.</summary>

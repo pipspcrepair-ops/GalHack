@@ -5,20 +5,23 @@ using Planets.Gen;
 using PlanetSurface.World;
 using PoiGenerator.Gen;
 using NV = System.Numerics.Vector3;
+using Hash = Planets.Gen.Hash;
+using NQ = System.Numerics.Quaternion;
+using SInt3 = GalHack.Structures.Int3;
 
 namespace PlanetSurface.Infra;
 
 /// <summary>
 /// A city's waterfronts (<see cref="CityPlan.Waterfront"/>): the wall under a waterfront road's water side, from
-/// the top of the road down past the water or the beach, along the road's own smooth line (4 m stretches, no
-/// steps). By tech and use: a stone or concrete seawall with a parapet; a quay with bollards where boats tied
-/// up; a revetment of boulders where the drop is tall; timber piling and a rail on a low-tech world. Stairs go
-/// down the face every 60 m or so. On a fallen world sections are cracked, slumped or breached, and weed and
-/// barnacles darken the waterline.
+/// the top of the road down past the water or the beach, along the road's own line, a block structure a 4 m
+/// stretch turned to it. By tech and use: a stone or concrete seawall with its coping and a parapet; a quay with
+/// bollards where boats tied up; a revetment of sloped boulder blocks stepping out where the drop is tall; timber
+/// planking and king piles on a low-tech world. Stairs go down the face every 60 m or so. On a fallen world
+/// sections are slumped and leaning or breached, and weed darkens the waterline.
 /// </summary>
 public partial class InfraLayer
 {
-    static readonly DecoRgb Weed = DecoRgb.Hex("3e4a32"), Crack = DecoRgb.Hex("4a4844"), Bollard = DecoRgb.Hex("3a3634"), Boulder = DecoRgb.Hex("6e675e");
+    static readonly DecoRgb Weed = DecoRgb.Hex("3e4a32"), Bollard = DecoRgb.Hex("3a3634"), Boulder = DecoRgb.Hex("6e675e");
 
     static IEnumerable<Piece> SeawallPieces(PlanetWorld world)
     {
@@ -36,8 +39,8 @@ public partial class InfraLayer
         }
     }
 
-    /// <summary>Where a waterfront's wall stands at point k: its top on the wall's line, the way out over the water, and the foot in front of it.</summary>
-    static (NV Top, NV Out, float Foot, float? Water) WallAt(TileBuilder b, InfraRoute r, int k)
+    /// <summary>Where a waterfront's wall stands at point k (a world point): its top on the wall's line, the way out over the water, the foot in front of it, and the water there.</summary>
+    static (NV Top, NV Out, float Foot, float? Water) WallAt(PlanetWorld w, InfraRoute r, int k)
     {
         int k0 = Math.Max(0, k - 1), k1 = Math.Min(r.Count - 1, k + 1);
         double dx = r.X[k1] - r.X[k0], dz = r.Z[k1] - r.Z[k0], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
@@ -47,139 +50,114 @@ public partial class InfraLayer
         double wx = r.X[k] + ox * reach, wz = r.Z[k] + oz * reach;
         // The ground in front, a little way out (the land's own there), and the water over it if any.
         double fx = wx + ox * 3, fz = wz + oz * 3;
-        float foot = Math.Min(b.Ground(fx, fz), r.Y[k] - 1f);
-        float? water = b.World.Source.WaterSurfaceAt(Mathx.WrapX(wx + ox * 6, b.World.Width), Mathx.Wrap(wz + oz * 6, b.World.Height), out float level) ? level : null;
-        return (b.Local(wx, r.Y[k], wz), new NV((float)ox, 0, (float)oz), foot, water);
+        float foot = Math.Min(w.Source.SurfaceHeight(Mathx.WrapX(fx, w.Width), Mathx.Wrap(fz, w.Height)), r.Y[k] - 1f);
+        float? water = w.Source.WaterSurfaceAt(Mathx.WrapX(wx + ox * 6, w.Width), Mathx.Wrap(wz + oz * 6, w.Height), out float level) ? level : null;
+        return (new NV((float)wx, r.Y[k], (float)wz), new NV((float)ox, 0, (float)oz), foot, water);
     }
 
-    /// <summary>One 4 m stretch of a waterfront's wall.</summary>
-    sealed class SeawallStretch : Piece
+    /// <summary>One 4 m stretch of a waterfront's wall, its +X out over the water.</summary>
+    sealed class SeawallStretch : BlockPiece
     {
         public CityPlan.Seawall Wall;
         public int K;
 
-        public override void Emit(TileBuilder b)
+        protected override void Lay(Laying l)
         {
             InfraRoute r = Wall.Road;
-            var (ta, outA, footA, waterA) = WallAt(b, r, K);
-            var (tc, outC, footC, waterC) = WallAt(b, r, K + 1);
-            NV along = tc - ta;
-            float len = new NV(along.X, 0, along.Z).Length();
+            var (ta, outA, footA, waterA) = WallAt(l.World, r, K);
+            var (tc, outC, footC, _) = WallAt(l.World, r, K + 1);
+            float len = new NV(tc.X - ta.X, 0, tc.Z - ta.Z).Length();
             if (len < 1e-3f) return;
-            ulong hash = Planets.Gen.Hash.Of(Wall.Seed + (ulong)K * 7919UL, 0x5EA);
+            ulong hash = Hash.Of(Wall.Seed + (ulong)K * 7919UL, 0x5EA);
             float roll = (hash % 1000) / 1000f, roll2 = (hash >> 12) % 1000 / 1000f;
             // A breach: the sea got in and took the section. Its neighbours stand.
             if (roll < Wall.Fall * 0.08f) return;
-            NV outward = NV.Normalize(outA + outC), dir = new NV(along.X, 0, along.Z) / len;
+            NV outward = NV.Normalize(outA + outC), way = NV.Cross(NV.UnitY, outward);
             float top = (ta.Y + tc.Y) * 0.5f, foot = Math.Min(footA, footC) - 1.5f;
             if (waterA is float wa) foot = Math.Min(foot, wa - 1.5f);
+            if (top - foot < 0.4f) return;
             // A slumped section has dropped and leant out a little.
             float slump = roll2 < Wall.Fall * 0.18f ? 0.5f + roll2 * 4f : 0f;
-            NV mid = (ta + tc) * 0.5f;
-            float height = top - foot;
-            if (height < 0.4f) return;
-            // Tall over a rough shore, a revetment of boulders instead of a face: heaped out from the wall's top.
-            if (Wall.Tech != TechLevel.Low && height > 7f)
+            Turn = slump > 0f ? NQ.Concatenate(Frame(way), NQ.CreateFromAxisAngle(way, slump * 0.05f)) : Frame(way);
+            // Row 0 is the wall's top metre, column 0 the metre out from its line, the cells running on from the stretch's end behind its way.
+            NV start = NV.Dot(way, tc - ta) >= 0f ? ta : tc;
+            Origin = new NV(start.X, top - slump - 0.5f, start.Z) + way * 0.5f + outward * 0.5f;
+            int n = Math.Max(1, (int)MathF.Round(len)), low = (int)MathF.Floor(foot - (top - slump) + 0.5f), g = Wall.Fall > 0.4f ? 3 : 2;
+            if (Wall.Tech != TechLevel.Low && top - foot > 7f)
             {
-                for (int i = 0; i < 5; i++)
-                {
-                    float t = (i + 0.5f) / 5f;
-                    NV at = mid + outward * (t * height * 0.9f) + NV.UnitY * (top - mid.Y - t * height);
-                    float size = 1.1f + ((hash >> (i * 5)) & 7) / 10f;
-                    NV turn = NV.Normalize(dir + outward * ((((hash >> (i * 3)) & 3) - 1.5f) * 0.3f));
-                    NV side = NV.Normalize(NV.Cross(NV.UnitY, turn));
-                    b.Box(at, turn * size, NV.UnitY * (size * 0.8f), side * size, Boulder, DecoSurface.Matte, collide: true);
-                }
+                // Tall over a rough shore, a revetment of boulders stepping out and down from the wall's top, a slope atop each step.
+                Laying.Stuff boulder = l.Of("concrete-plated", Boulder, g);
+                int slope = Laying.Rot(new SInt3(0, 1, 0), new SInt3(1, 0, 0));
+                for (int x = 0; -x > low; x++)
+                    for (int z = 0; z < n; z++)
+                    {
+                        if (-x - 1 >= low) l.Fill(x, x, low, -x - 1, -z, -z, boulder);
+                        l.Put(x, -x, -z, boulder, "slope", slope);
+                    }
                 return;
             }
-            const float Thick = 0.5f;
-            NV centre = new NV(mid.X, (top - slump + foot) * 0.5f, mid.Z) + outward * (Thick + slump * 0.15f);
             if (Wall.Tech == TechLevel.Low)
             {
-                // A timber revetment holding the bank: heavy planks laid edge on edge from the foot to the top, each
-                // its own shade and the face leaning back a little into the bank, king piles driven in front of them
-                // every two metres and cut off at the top, a capping beam over all. Nothing stands above the bank (a
-                // rail along the top read as a fence).
-                float h = top - slump - foot;
-                const float Batter = 0.12f;
-                // The backing the bank leans on (and what you bump into), behind the planks' faces.
-                b.Box(new NV(mid.X, foot + h * 0.5f, mid.Z) - outward * 0.06f, dir * (len * 0.5f + 0.04f), NV.UnitY * (h * 0.5f), outward * 0.08f, TimberDark, DecoSurface.Matte, collide: true);
-                int courses = Math.Clamp((int)MathF.Ceiling(h / 0.45f), 1, 10);
-                float course = h / courses;
-                for (int c = 0; c < courses; c++)
+                // A timber revetment holding the bank: heavy planking from the foot to the top, each course its own shade (the
+                // waterline's rotting darker and greener), king piles driven in front every two metres and cut off at the top,
+                // a capping beam over all. Nothing stands above the bank.
+                for (int y = low; y <= 0; y++)
                 {
-                    float y = foot + (c + 0.5f) * course, back = Batter * (c + 0.5f) / courses;
-                    ulong ch = Planets.Gen.Hash.Of(hash, c);
-                    DecoRgb tone = Timber.Scale(0.82f + (ch % 100) / 400f);
-                    // The waterline courses rot darker and greener.
-                    if (waterA is float lv && y < lv + 0.4f) tone = tone.Lerp(Weed, 0.45f);
-                    b.Box(new NV(mid.X, y, mid.Z) + outward * (0.24f - back), dir * (len * 0.5f + 0.02f), NV.UnitY * (course * 0.45f), outward * 0.06f, tone, DecoSurface.Matte, collide: false);
+                    DecoRgb tone = y == 0 ? TimberDark : Timber.Scale(0.82f + Hash.Of(hash, y + 64) % 100 / 400f);
+                    if (y < 0 && waterA is float lv && top - slump - 0.5f + y < lv + 0.4f) tone = tone.Lerp(Weed, 0.45f);
+                    l.Fill(0, 0, y, y, 0, -(n - 1), l.Of("base-block", tone, g));
                 }
-                foreach (float t in new[] { 0.25f, 0.75f })
-                {
-                    NV p = ta + along * t + outward * 0.36f;
-                    float cut = top - slump - 0.08f - ((hash >> (int)(t * 8)) & 3) * 0.06f;
-                    b.Box(new NV(p.X, (cut + foot - 0.4f) * 0.5f, p.Z), dir * 0.13f, NV.UnitY * ((cut - foot + 0.4f) * 0.5f), outward * 0.13f, TimberDark, DecoSurface.Matte, collide: true);
-                }
-                if (roll2 > Wall.Fall * 0.3f)
-                    b.Box(new NV(mid.X, top - slump - 0.06f, mid.Z) + outward * 0.2f, dir * (len * 0.5f + 0.03f), NV.UnitY * 0.09f, outward * 0.24f, TimberDark, DecoSurface.Matte, collide: true);
+                Laying.Stuff pile = l.Of("base-block", TimberDark, g);
+                for (int z = 1; z < n; z += 2)
+                    for (int y = low; y <= -1 - (int)((hash >> z) & 1); y++) l.Put(1, y, -z, pile, "cylinder");
                 return;
             }
             DecoRgb face = Wall.Tech == TechLevel.High ? Composite : (hash & 1) == 0 ? Concrete : Stone;
-            // The wall: from below the water or the beach up to the walk along the top, a coping on it.
-            b.Box(centre, dir * (len * 0.5f + 0.06f), NV.UnitY * ((top - slump - foot) * 0.5f), outward * Thick, face, DecoSurface.Matte, collide: true);
-            b.Box(new NV(mid.X, top - slump + 0.08f, mid.Z) + outward * (Thick + slump * 0.15f), dir * (len * 0.5f + 0.06f), NV.UnitY * 0.1f, outward * (Thick + 0.12f), ConcreteDark, DecoSurface.Matte, collide: true);
-            // Weed and barnacles where the water laps it, and a crack running down a fallen section.
-            if (waterA is float level && level > foot && level < top)
+            Laying.Stuff wall = l.Of("concrete-plated", face, g), coping = l.Of("concrete-plated", ConcreteDark, g), weed = l.Of("concrete-plated", face.Lerp(Weed, 0.7f), 3);
+            // The wall from below the water or the beach up to the walk along the top, a coping on it, weed where the water laps it.
+            for (int y = low; y <= 0; y++)
             {
-                NV w = new NV(mid.X, level, mid.Z) + outward * (Thick * 2f + slump * 0.15f + 0.03f);
-                b.Quad(w - dir * (len * 0.5f) - NV.UnitY * 0.4f, w + dir * (len * 0.5f) - NV.UnitY * 0.4f, w + dir * (len * 0.5f) + NV.UnitY * 0.5f, w - dir * (len * 0.5f) + NV.UnitY * 0.5f,
-                    Weed, DecoSurface.Matte, 1f, w - outward);
-            }
-            if (Wall.Fall > 0.4f && roll2 > 0.7f)
-            {
-                NV c0 = new NV(mid.X, top - slump - 0.2f, mid.Z) + outward * (Thick * 2f + slump * 0.15f + 0.02f) + dir * (len * (roll - 0.5f) * 0.6f);
-                NV c1 = new NV(mid.X, foot + (top - foot) * 0.3f, mid.Z) + outward * (Thick * 2f + slump * 0.15f + 0.02f) + dir * (len * (roll2 - 0.5f) * 0.6f);
-                b.Quad(c0 - dir * 0.06f, c0 + dir * 0.06f, c1 + dir * 0.06f, c1 - dir * 0.06f, Crack, DecoSurface.Matte, 1f, c0 - outward);
+                float at = top - slump - 0.5f + y;
+                bool wet = waterA is float level && at > level - 0.9f && at < level + 0.5f;
+                l.Fill(0, 0, y, y, 0, -(n - 1), y == 0 ? coping : wet ? weed : wall);
             }
             if (Wall.Quay)
             {
-                // A quay: bollards along the edge to tie up to, every third stretch.
-                if (K % 3 == 0) b.Box(ta + outward * 0.6f + NV.UnitY * (0.35f - slump), dir * 0.22f, NV.UnitY * 0.35f, outward * 0.22f, Bollard, DecoSurface.Matte, collide: true);
+                // A quay: a bollard on the edge to tie up to, every third stretch.
+                if (K % 3 == 0) l.Put(0, 1, 0, l.Of("iron-plated", Bollard, g), "cylinder");
                 return;
             }
-            // A parapet along the top, broken where the wall slumped and here and there on a fallen world.
-            if (slump > 0f || roll2 < Wall.Fall * 0.25f) return;
-            if (K % 15 == 7) return; // the stair's head
-            b.Box(new NV(mid.X, top + 0.45f, mid.Z) + outward * 0.25f, dir * (len * 0.5f + 0.02f), NV.UnitY * 0.45f, outward * 0.2f, face, DecoSurface.Matte, collide: true);
+            // A parapet along the top, broken where the wall slumped, here and there on a fallen world, and at a stair's head.
+            if (slump > 0f || roll2 < Wall.Fall * 0.25f || K % 15 == 7) return;
+            l.Fill(0, 0, 1, 1, 0, -(n - 1), wall);
         }
     }
 
-    /// <summary>Stairs down a waterfront's wall: from the top of the wall at point k, down along its face to the water or the beach.</summary>
-    sealed class SeawallStair : Piece
+    /// <summary>Stairs down a waterfront's wall: from the top of the wall at point k, down along its face toward the next point to the water or the beach, a stair block a metre on the fill under it.</summary>
+    sealed class SeawallStair : BlockPiece
     {
         public CityPlan.Seawall Wall;
         public int K;
 
-        public override void Emit(TileBuilder b)
+        protected override void Lay(Laying l)
         {
             InfraRoute r = Wall.Road;
-            var (ta, outward, foot, water) = WallAt(b, r, K);
-            var (tc, _, _, _) = WallAt(b, r, K + 1);
-            NV along = new NV(tc.X - ta.X, 0, tc.Z - ta.Z);
+            var (ta, outward, foot, water) = WallAt(l.World, r, K);
+            var (tc, _, _, _) = WallAt(l.World, r, K + 1);
+            NV along = new(tc.X - ta.X, 0, tc.Z - ta.Z);
             if (along.Length() < 1e-3f) return;
-            NV dir = NV.Normalize(along);
             float bottom = Math.Max(foot + 1.5f, (water ?? float.MinValue) - 0.3f), drop = ta.Y - bottom;
             if (drop < 1f || drop > 7f) return;
-            int steps = (int)MathF.Ceiling(drop / 0.25f);
-            DecoRgb stone = Wall.Tech == TechLevel.Low ? Timber : ConcreteDark;
-            // Down along the face, a step a quarter metre down and 0.3 m along, each a block to the ground under it.
+            NV dir = NV.Normalize(along);
+            Turn = Frame(dir);
+            Origin = new NV(ta.X, ta.Y - 0.5f, ta.Z) + outward * 1.5f + dir * 0.5f;
+            int g = Wall.Fall > 0.4f ? 3 : 2;
+            Laying.Stuff step = l.Of("stairs", ConcreteDark, g), fill = Wall.Tech == TechLevel.Low ? l.Of("base-block", Timber, g) : l.Of("concrete-plated", ConcreteDark, g);
+            int steps = (int)MathF.Ceiling(drop), low = (int)MathF.Floor(foot - ta.Y + 0.5f);
             for (int i = 0; i < steps; i++)
             {
-                float y = ta.Y - (i + 1) * 0.25f;
-                NV at = ta + outward * 1.75f + dir * (0.15f + i * 0.3f);
-                float under = Math.Min(y, bottom) - 0.5f;
-                b.Box(new NV(at.X, (y + under) * 0.5f, at.Z), dir * 0.15f, NV.UnitY * ((y - under) * 0.5f), outward * 0.7f, stone, DecoSurface.Matte, collide: true);
+                l.Put(0, -i, -i, step);
+                if (-i - 1 >= low) l.Fill(0, 0, low, -i - 1, -i, -i, fill);
             }
         }
     }

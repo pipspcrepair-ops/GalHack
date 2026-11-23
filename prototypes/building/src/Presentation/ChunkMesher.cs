@@ -52,6 +52,19 @@ public sealed class MeshBuffers
         Dark.Clear();
     }
 
+    /// <summary>Adds another surface's vertices after these (a whole structure's chunks as one surface).</summary>
+    public void Append(MeshBuffers other)
+    {
+        int at = VertexCount;
+        Vertices.AddRange(other.Vertices);
+        Normals.AddRange(other.Normals);
+        Colors.AddRange(other.Colors);
+        UVs.AddRange(other.UVs);
+        UV2s.AddRange(other.UV2s);
+        Dark.AddRange(other.Dark);
+        foreach (int i in other.Indices) Indices.Add(at + i);
+    }
+
     /// <summary>
     /// Adds a convex polygon given in metres, counter-clockwise around <paramref name="normal"/>
     /// (it is flipped if not). Godot's front faces are clockwise, so the fan is emitted reversed.

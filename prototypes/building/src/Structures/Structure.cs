@@ -116,6 +116,12 @@ public sealed class Structure
 
     public PaintPalette Palette { get; } = new();
 
+    /// <summary>
+    /// Cells set in the ground (a bridge pier's foot, a wall's): with no core, what is joined to one of them stands and the
+    /// rest breaks away (<see cref="Connectivity.SplitOff"/>). Null: the largest piece stands.
+    /// </summary>
+    public HashSet<Int3> Footing;
+
     /// <summary>Its force fields, each spanning the cells between its four emitter blocks.</summary>
     public readonly List<ForceField> Fields = new();
 
