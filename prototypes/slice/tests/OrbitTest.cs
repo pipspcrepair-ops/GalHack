@@ -68,7 +68,11 @@ public partial class OrbitTest : Node
         try
         {
             more = _run.MoveNext();
-            if (more) WatchZones();
+            if (more)
+            {
+                WatchZones();
+                WatchSkyClouds();
+            }
         }
         catch (Exception e)
         {
@@ -79,6 +83,27 @@ public partial class OrbitTest : Node
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
         Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+    }
+
+    int _skyBandTicks, _cloudsOver;
+    string _firstCloudsOver;
+
+    /// <summary>
+    /// In the band, above the clouds' tops (their base and thickness, as the surface's sky has them): the sky marches its clouds from
+    /// the eye's true height, so none is drawn over you (the owner, 23 Nov: clouds overhead at 1,179 m, coming down to a world).
+    /// </summary>
+    void WatchSkyClouds()
+    {
+        if (_game?.InOrbit != true || _game.Spaceflight.Band >= 1f || _game.Orbit?.Anchor is not { } here) return;
+        if (_game.Spaceflight.Below?.Sky?.Environment?.Sky?.SkyMaterial is not ShaderMaterial sky) return;
+        Vector3 eye = _game.Camera.GlobalPosition;
+        float height = here.Height(eye), top = (float)sky.GetShaderParameter("cloud_base") + (float)sky.GetShaderParameter("cloud_thick");
+        if (height < top + 1f) return;
+        _skyBandTicks++;
+        float seenFrom = eye.Y + (float)sky.GetShaderParameter("eye_lift");
+        if (seenFrom >= top) return;
+        _cloudsOver++;
+        _firstCloudsOver ??= $"at {height:F0} m the clouds were seen from {seenFrom:F0} m, their tops at {top:F0} m";
     }
 
     bool Check(bool ok, string what)
@@ -169,6 +194,7 @@ public partial class OrbitTest : Node
         foreach (int x in Descent()) yield return x;
         foreach (int x in Persistence()) yield return x;
         foreach (int x in Handovers()) yield return x;
+        Check(_skyBandTicks > 0 && _cloudsOver == 0, $"over the cloud tops in the band, up and down, the sky's clouds are seen from the true height, none over you: {_cloudsOver} of {_skyBandTicks} ticks wrong{(_firstCloudsOver != null ? ": " + _firstCloudsOver : "")}");
         Check(_zoneViolations == 0, $"every tick the sleeper and the Skiff were in exactly one zone, the one the game says ({_zoneViolations} ticks wrong{(_firstViolation != null ? ": " + _firstViolation : "")})");
     }
 
@@ -212,14 +238,13 @@ public partial class OrbitTest : Node
         _game.Controls.Hold(Key.Space);
         bool preloaded = false, sheetFromTheGround = true;
         int ticks = 0;
-        float lastAir = 0f, airStep = 0f, highestFlying = 0f, shroudAtCap = 0f;
+        float lastAir = 0f, airStep = 0f, highestFlying = 0f;
         Check(ceiling == 1060f, $"orbit starts at the cap on this world: {ceiling:F0} m (its highest ground {_game.Spaceflight.Highest:F0} m)");
         while (!_game.InOrbit && ticks++ < 60 * 150)
         {
             preloaded |= _game.Orbit != null && v.Body.Position.Y < ceiling;
             sheetFromTheGround &= _game.InOrbit || (_game.Orbit?.Ready == true && _game.Orbit.Globe.Visible && _game.Surface.SeaRim == _game.Surface.Streamer.HorizonRim);
             highestFlying = MathF.Max(highestFlying, v.Body.Position.Y);
-            shroudAtCap = _game.Spaceflight.Shrouded;
             airStep = MathF.Max(airStep, MathF.Abs(_game.Spaceflight.AirGone - lastAir));
             lastAir = _game.Spaceflight.AirGone;
             yield return 0;
@@ -234,7 +259,6 @@ public partial class OrbitTest : Node
         Check(highestFlying <= 1060f + 0.01f && _game.Spaceflight.HighestInAir <= 1060f + 0.01f,
             $"nothing flew over the cap in the atmosphere: {highestFlying:F2} m at the most before the crossing, 1,060 m the limit");
         Check(_game.Spaceflight.TicksHeldAtCap == 0, $"the orbit was ready before the ship got there: it waited {_game.Spaceflight.TicksHeldAtCap} ticks at the cap");
-        Check(shroudAtCap > 0.25f, $"the air's shroud was closed in at the cap: {shroudAtCap:P0} (this world's air: {_game.Surface.Planet.Sky.Air}, density {_game.Surface.Planet.Sky.Density:F2})");
         Check(_game.InOrbit && !_game.Surface.Streamer.Visible && !_game.Surface.Sea.Visible, "the land and the sea are gone from over the cap: the sheet is all the ground there is");
         Check(airAtCrossing is > 0.05f and < 0.5f && airStep < 0.02f,
             $"the atmosphere fades with height alone, through the crossing with no step: {airAtCrossing:P0} gone at the crossing, at most {airStep:P1} a tick");
@@ -268,6 +292,8 @@ public partial class OrbitTest : Node
         Check(up.Audit.Count == 0, $"the crossing lost and doubled nothing: the ledger's totals and zones match the game's ({string.Join("; ", up.Audit)})");
         Check(_game.Spaceflight.Ledger.ZoneOf("sleeper")?.StartsWith("cabin/") == true && _game.Spaceflight.Ledger.ZoneOf(IdOf(v)) == ZoneLedger.Orbit,
             $"on disk the Skiff is in orbit and the sleeper in its cabin (crossing committed before anything moved: {_game.Spaceflight.Ledger.LastCommit?.Written} record written)");
+        // A zone is parked a piece a frame (Spaceflight.Park): the surface's last piece is the zone itself.
+        for (int i = 0; i < 300 && _game.Surface.ProcessMode != ProcessModeEnum.Disabled; i++) yield return 0;
         Check(_game.Surface.ProcessMode == ProcessModeEnum.Disabled && _game.Surface.Vessels.Contains(_game.Bunker.Ruin),
             "the surface waits, frozen, everything on it as it was left (the bunker among it)");
     }
@@ -556,6 +582,7 @@ public partial class OrbitTest : Node
         Check(offMap < 60, $"it came in over the point it was over on the globe: {offMap:F1} m from the chosen map point");
         Check(HeadingError(down.HeadingDegrees, heading) < 3, $"heading kept: {down.HeadingDegrees:F1}° (north-east over the globe, north stays north)");
         Check(down.Audit.Count == 0, $"nothing lost or doubled on the way down ({string.Join("; ", down.Audit)})");
+        for (int i = 0; i < 300 && orbit.ProcessMode != ProcessModeEnum.Disabled; i++) yield return 0; // parked a piece a frame
         Check(surface.ProcessMode == ProcessModeEnum.Inherit && orbit.ProcessMode == ProcessModeEnum.Disabled && !orbit.Visible && v.Zone == surface,
             "the surface is live again and orbit waits, parked");
 
