@@ -680,7 +680,7 @@ public partial class GenTest : Node
             Oklab o = Oklab.Of(new Rgb(r, g, b));
             // Snow, or ice pale and blue (today's look paints sea ice so).
             float hue = (o.Hue * 180f / MathF.PI + 360f) % 360f;
-            bool snow = o.L > 0.85f && o.Chroma < 0.06f || o.L > 0.75f && o.Chroma < 0.08f && hue is > 200f and < 270f;
+            bool snow = o.L > 0.85f && o.Chroma < 0.06f || o.L > 0.8f && o.Chroma < 0.06f && hue is > 220f and < 260f;
             if (snow) white++;
             // The land's own colour for variety: its ground and growth, not its snow (white on any world).
             if (colors.Albedo[p * 4 + 3] > 0 || snow) continue;

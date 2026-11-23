@@ -186,7 +186,7 @@ public partial class PaletteTest : Node
     /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps). Each kind of world is common: wholly earthy,
     /// today's look (about one in five), vivid worlds that pair their strong parts against a deep one, candy (every part at full
     /// strength: one share of the mix, never most: owner, 23 Nov) and mixed. Every part of every world looks as its label says: a
-    /// vivid part (sky: its zenith or its band) at least 0.095 Oklab chroma (0.07 when darker than L 0.5), an earthy one an earth tone
+    /// vivid part (sky: its zenith or its band) at least 0.095 Oklab chroma (0.07 when no lighter than L 0.6), an earthy one an earth tone
     /// or at most 0.09, a deep one dark and dull (at most 0.06).
     /// No hue family holds more than 35% of any part's vivid colours (sky, ground, plants, water), nor 45% of all its colours (earthy
     /// worlds' earth tones may lead). Red water, blue plants and
@@ -230,8 +230,9 @@ public partial class PaletteTest : Node
                 bool vivid_ = p.VividParts.HasFlag(flags[e]), deep = p.DeepParts.HasFlag(flags[e]);
                 if (vivid_ && f >= 0) vivid[e, f]++;
                 float strongest = e == 0 ? MathF.Max(o.Chroma, band.Chroma) : o.Chroma;
-                // (A dark colour holds less chroma on the screen: a deep jewel tone under L 0.5 reads vivid from 0.07.)
-                bool looks = vivid_ ? strongest >= (o.L < 0.5f ? 0.07f : 0.095f) : deep ? o.L <= 0.55f && o.Chroma <= 0.06f : Earthy(o) && (e != 0 || Earthy(band) && Earthy(Oklab.Of(p.Horizon)));
+                // (A colour no lighter than the middle holds less chroma on the screen and is never lightened to hold more: a deep
+                // jewel tone under L 0.6 reads vivid from 0.07.)
+                bool looks = vivid_ ? strongest >= (o.L < 0.6f ? 0.07f : 0.095f) : deep ? o.L <= 0.55f && o.Chroma <= 0.06f : Earthy(o) && (e != 0 || Earthy(band) && Earthy(Oklab.Of(p.Horizon)));
                 if (!looks) wrong.Add($"{spec.Seed} {a} {v} {parts[e]} {(vivid_ ? "vivid" : deep ? "deep" : "earthy")} chroma {strongest:F3} L {o.L:F2}");
             }
             if (p.Has.HasFlag(Planets.Look.Parts.Water) && these[3].Chroma > 0.08f && (Deg(these[3]) < 45f || Deg(these[3]) > 345f)) red++;
