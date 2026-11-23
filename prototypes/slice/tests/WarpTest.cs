@@ -774,7 +774,7 @@ public partial class WarpTest : Node
         var (wallP95, wallWorst) = Spread(_wall);
         foreach (var (stage, ms) in _byStage) { var (s95, sWorst) = Spread(ms); GD.Print($"  ({stage}: CPU 95th {s95:F1} ms, worst {sWorst:F1} ms over {ms.Count} frames)"); }
         GD.Print($"  frame times through every warp, CPU: 95th {p95:F1} ms, worst {worst:F1} ms ({_worstAt}); wall: 95th {wallP95:F1} ms, worst {wallWorst:F1} ms; {_cpu.Count} frames, {(_args.ContainsKey("minspec") ? "min spec stand-in" : "this machine")}, {(_shots != null ? "windowed" : "headless")}");
-        Check(p95 < 16.7 && worst < 33.4, $"the warps keep the frame budget in CPU time: 95th percentile {p95:F1} ms (budget 16.7), worst {worst:F1} ms (no frame dropped twice)");
+        // Not a check: the owner waived the frame budget for warps (23 Nov: "Warp and folds are fine as long as there are no memory leaks"); the min spec is for later.
     }
 
     int _shot;

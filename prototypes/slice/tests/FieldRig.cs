@@ -48,6 +48,7 @@ public sealed class FieldRig
         s.Set(new Int3(4, 1, 3), Building.Make(s, cat.CoreType));
         s.Set(new Int3(2, 1, 4), Building.Make(s, cat.Type("generator-t1")));
         s.Set(new Int3(5, 1, 4), Building.Make(s, cat.Type("container-t1"))); // core storage, for the generator's fuel
+        s.Set(new Int3(6, 1, 3), Building.Make(s, cat.Type("life-support-pod"))); // a sealed room's air and comfort come from a pod, not the core (owner, 23 Nov)
         s.DirtyChunks.Clear();
         Vessel v = Vessel.SpawnBase(game.Zone, s, (ground + Vector3.Down * 0.2f * s.Grid.CellSize).ToNumerics(), 0f);
         foreach (var (p, _) in s.Blocks()) v.ClearGround(p);
