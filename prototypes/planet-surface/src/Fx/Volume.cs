@@ -10,7 +10,9 @@ namespace PlanetSurface.Fx;
 /// </summary>
 public partial class Volume : MeshInstance3D
 {
-    readonly ShaderMaterial _draw = new() { Shader = GD.Load<Shader>("res://shaders/volume.gdshader") };
+    /// <summary>Drawn from outside its box (its near faces, depth-tested, so no halo round what stands in front) and from inside it.</summary>
+    static readonly Shader Outside = GD.Load<Shader>("res://shaders/volume.gdshader"), Within = GD.Load<Shader>("res://shaders/volume_inside.gdshader");
+    readonly ShaderMaterial _draw = new() { Shader = Outside };
 
     /// <summary>The heaps every volume steps through: round smooth lobes (inverted cell distance), made once, tiling.</summary>
     static NoiseTexture3D _heaps;
@@ -73,10 +75,14 @@ public partial class Volume : MeshInstance3D
 
     /// <summary>
     /// The way to the light that shades it (the engine lights it by its own lights and sky, as it lights the land), and the
-    /// environment fog at the eye, which is already drawn over everything.
+    /// environment fog at the eye, which is already drawn over everything; and where the eye is (in its box or out of it).
     /// </summary>
-    public void Light(Vector3 toLight, Color fog, float fogDensity, int steps)
+    public void Light(Vector3 toLight, Color fog, float fogDensity, int steps, Vector3 eye)
     {
+        // Inside its box (with the near plane's breadth to spare) its near faces are behind the eye: drawn on its far ones.
+        Vector3 local = GlobalTransform.AffineInverse() * eye;
+        Shader shader = Mathf.Max(Mathf.Abs(local.X), Mathf.Max(Mathf.Abs(local.Y), Mathf.Abs(local.Z))) < 0.5f + 1e-3f ? Within : Outside;
+        if (_draw.Shader != shader) _draw.Shader = shader;
         Uniform("to_sun", toLight);
         Uniform("fog_color", fog);
         Uniform("fog_floor", fogDensity);

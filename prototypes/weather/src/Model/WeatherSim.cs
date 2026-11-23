@@ -132,7 +132,7 @@ public sealed class WeatherSim
     float _cellTimer, _dustTimer;
     Front _front;
     readonly List<WeatherEvent> _events = new();
-    readonly Rng _timelineRng, _hazardRng;
+    readonly Rng _timelineRng, _hazardRng, _dustRng;
     readonly uint _gustSeed;
     float _lightningCharge, _lightningNext, _debrisCharge, _debrisNext, _tornadoCharge, _tornadoNext, _spoutCharge, _spoutNext = 1f, _devilCharge, _devilNext = 1f;
     float _groundCheck;
@@ -148,6 +148,7 @@ public sealed class WeatherSim
         World = world ?? WorldWeather.Neutral;
         _timelineRng = new Rng(seed);
         _hazardRng = new Rng(seed ^ 0xA5A5_5A5A_C3C3_3C3CUL);
+        _dustRng = new Rng(seed ^ 0x5D57_0D57_9E37_79B9UL); // dust storms draw on their own: one forming never changes the next strike or funnel
         _gustSeed = (uint)(seed * 2654435761UL);
         _lightningNext = _hazardRng.Exponential();
         _debrisNext = _hazardRng.Exponential();
@@ -844,7 +845,7 @@ public sealed class WeatherSim
         var across = new Vector3(-down.Y, 0f, down.X);
         for (int k = 0; k < 6; k++)
         {
-            Vector3 off = -way * (_hazardRng.Range(r.FormNear, r.FormFar) + r.HalfWidthMax * 0.6f) + across * _hazardRng.Range(-1f, 1f) * r.HalfWidthMax;
+            Vector3 off = -way * (_dustRng.Range(r.FormNear, r.FormFar) + r.HalfWidthMax * 0.6f) + across * _dustRng.Range(-1f, 1f) * r.HalfWidthMax;
             if (off.Length() > Room) off = off.Normalized() * Room; // on a small world, no farther off than its next copy round allows
             Vector3 at = observer + off;
             if (DustGroundAt(at) < r.FormGround) continue;
@@ -866,12 +867,12 @@ public sealed class WeatherSim
         WeatherState state = Data.State(WeatherKind.DustStorm);
         Vector2 w = wind ?? (Current.WindSpeed > 0.01f ? Current.Wind.Normalized() : new Vector2(1f, 0f)) * state.WindSpeed;
         Vector2 heading = w.LengthSquared() > 1e-4f ? w.Normalized() : new Vector2(1f, 0f);
-        float half = MathF.Min(_hazardRng.Range(r.HalfWidthMin, r.HalfWidthMax), 0.6f * Room); // on a small world, a storm still leaves most of it clear
+        float half = MathF.Min(_dustRng.Range(r.HalfWidthMin, r.HalfWidthMax), 0.6f * Room); // on a small world, a storm still leaves most of it clear
         var d = new DustStorm
         {
             Id = _nextId++, Position = Flat(at), Heading = heading, Speed = MathF.Max(3f, w.Length() * r.DriftShare),
-            HalfWidth = half, HalfLength = half * _hazardRng.Range(r.LengthMin, r.LengthMax), Height = _hazardRng.Range(r.HeightMin, r.HeightMax),
-            Edge = r.Edge, Strength = strength, Life = _hazardRng.Range(r.LifeMin, r.LifeMax), Seed = _hazardRng.NextFloat(),
+            HalfWidth = half, HalfLength = half * _dustRng.Range(r.LengthMin, r.LengthMax), Height = _dustRng.Range(r.HeightMin, r.HeightMax),
+            Edge = r.Edge, Strength = strength, Life = _dustRng.Range(r.LifeMin, r.LifeMax), Seed = _dustRng.NextFloat(),
             Air = Conditions.FromState(state, Archetype.BaseTemperature, MathF.Atan2(heading.Y, heading.X)),
         };
         _dust.Add(d);
