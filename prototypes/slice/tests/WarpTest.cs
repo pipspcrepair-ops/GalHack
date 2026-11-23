@@ -51,6 +51,7 @@ public partial class WarpTest : Node
     readonly Dictionary<string, string> _args = new();
     readonly List<double> _cpu = new(), _wall = new(), _parking = new();
     readonly Dictionary<string, List<double>> _byStage = new();
+    readonly Dictionary<Orbiter, Vector2> _sites = new(); // each world's landing site, map metres
     double _worstCpu;
     string _worstAt = "";
 
@@ -614,7 +615,24 @@ public partial class WarpTest : Node
         if (_game.Zone != surface) { _ok = false; yield break; }
         Vector3 at = _ship.Body.Position.ToGodot();
         Check(at.Y > surface.GroundAt(at.X, at.Z).Y + 1f, $"it came in over the ground, not under it ({at.Y - surface.GroundAt(at.X, at.Z).Y:F0} m up)");
-        Vector3 pad = OrbitTest.FlatSpot(surface, at, 40f);
+        // The same site on each world every loop: what streams round where you land is then the same, so the levels
+        // compare loop to loop. The first loop picks it; later loops fly there level from wherever they came down.
+        float width = (float)surface.Planet.Width, height = (float)surface.Planet.Height;
+        static float Near(float v, float to, float period) => to + Mathf.PosMod(v - to + period / 2f, period) - period / 2f;
+        Vector3 pad;
+        if (_sites.TryGetValue(target, out Vector2 site))
+        {
+            float px = Near(site.X, at.X, width), pz = Near(site.Y, at.Z, height);
+            pad = surface.GroundAt(px, pz);
+            float cruise = at.Y;
+            foreach (int x in _pilot.FlyTo(_ship, () => new Vector3(pad.X, cruise, pad.Z), 20f, 300f)) yield return x;
+            GD.Print($"  (to {name}'s site from the first loop: {new Vector2(px - at.X, pz - at.Z).Length():F0} m, now {new Vector2(_ship.Body.Position.X - pad.X, _ship.Body.Position.Z - pad.Z).Length():F0} m off it)");
+        }
+        else
+        {
+            pad = OrbitTest.FlatSpot(surface, at, 40f);
+            _sites[target] = new Vector2(Mathf.PosMod(pad.X, width), Mathf.PosMod(pad.Z, height));
+        }
         foreach (int x in _pilot.Land(_ship, pad)) yield return x;
         foreach (int x in _drive.Wait(40)) yield return x;
         if (_ship.Controller?.Frozen != true)
@@ -679,9 +697,11 @@ public partial class WarpTest : Node
 
     Level Measure()
     {
-        GC.Collect();
+        // Everything unreachable gone, the large objects' heap compacted: what is left is what is held.
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
         GC.WaitForPendingFinalizers();
-        GC.Collect();
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
         int colliders = 0, drawn = 0, streamed = 0, marks = 0;
         static int All(Node n) => 1 + n.GetChildren().Sum(All);
         void Walk(Node n)
