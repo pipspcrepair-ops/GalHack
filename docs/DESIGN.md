@@ -902,7 +902,7 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 | --- | --- | --- |
 | Control | Core, command chairs, remote-control console | All |
 | Power | Generators sized per class, capacitors and solar panels (no fuel tanks: fuel sits in core storage) | All; solar on any structure |
-| Life support | Healing booth, respawn (clone) chamber; air and gravity are built into the core | Mostly bases and capital vessels |
+| Life support | Life support pod (air and comfort for the structure's sealed rooms, suit air top-up; owner, 23 Nov), healing booth, respawn (clone) chamber; gravity is built into the core | Any structure with sealed rooms |
 | Food | Replicators T1–T3 | Portable (T1); small vessels, bases and capital vessels |
 | Propulsion | Thrusters (small, medium, large, jet), RCS gyros, hover engines, landing gear, docking pads | Per class |
 | Travel | Warp drive; fold drive T1/T2 (their fuels sit in core storage) | Any Flight structure that fits the drive and can power it (owner, 22 Nov) |
@@ -916,11 +916,11 @@ Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a com
 
 **Air and life support**
 
-Air is handled by the core, like gravity: there are no ventilators, oxygen tanks or refill stations to place, power or keep stocked.
+Air comes from a **life support pod**, a block placed in the structure (owner, 23 Nov, replacing "air is handled by the core"): "If we interact with the life support pod, it tops up our air", "it's needed to keep any enclosed spaces of a structure comfortable", "and it fills enclosed spaces of a structure with air, too". Gravity stays in the core. The pod is separate from the survival climate pod, which only holds a safe temperature in a small radius and gives no air.
 
 - **Rooms are found automatically.** The game checks the block grid, and a room is sealed when every block on its boundary is airtight. Each block's tooltip says whether it's airtight; closed doors, hatches, ramps, glass doors and windows all are.
 - **Only the boundary matters.** Ladders, lifts, furniture and components inside a room never break its seal, so a ladder up to a roof hatch is fine while the hatch is shut.
-- **The core keeps sealed rooms breathable** whenever it has power, at no extra energy cost. If power fails, the air lasts a grace period (reference: 10 minutes) with a visor countdown before it thins.
+- **A working life support pod keeps the structure's sealed rooms breathable and comfortable** (full air, comfortable temperature) whenever the structure has power and the pod is switched on; a structure without one has sealed rooms that hold only what air they have. Using the pod tops up your suit's air. If power fails, the air lasts a grace period (reference: 10 minutes) with a visor countdown before it thins.
 - **Force fields hold the air at open doors.** A shimmering field spans any open bulkhead or outer hull door, so walking in and out never vents a room and it's plain to see why. Force field emitters can also span wide openings such as hangar bays: people, vessels and objects pass through, but the atmosphere stays in. Fields run on the structure's power: if the power goes out they fail, and any room relying on one decompresses at once, with the breach rules below.
 - **Breaches:** a room opened to vacuum or toxic air vents over a few seconds with a visible rush and an alarm, then stays unbreathable until the gap is fixed. Air comes back within seconds of resealing; nothing needs refilling.
 - **Finding leaks:** the visor's airtight overlay marks every leaking face in red, and the systems console lists each room as sealed, open or breached, with a marker to the problem.
