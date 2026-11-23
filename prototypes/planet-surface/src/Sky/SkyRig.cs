@@ -251,6 +251,7 @@ public partial class SkyRig : Node3D
             GlowIntensity = 0.5f,
             GlowBloom = 0.02f,
             GlowHdrThreshold = 2.0f,
+            AdjustmentEnabled = true,
             AdjustmentContrast = 1.06f,
         };
         AddChild(new WorldEnvironment { Environment = Environment });

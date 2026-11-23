@@ -19,12 +19,9 @@ namespace PlanetSurface.Tests;
 ///   no two worlds may match in every colour at once. The same check runs on every other world type,
 ///   airless ones included.
 /// - <b>Real light.</b> The night sky stays dark.
-/// - <b>Bold, as the art direction has it</b> (owner, 23 Nov: exaggerated, saturated colour like 1970s
-///   science fiction art), over hundreds of palettes of every type with air: each element's hues spread round
-///   the wheel (no one sixth of it holding most worlds), each element's chroma over its floor, every world's
-///   land standing well apart in hue from its sky, and red water, blue grass and a green sky all turning up.
-///   An airless body's rock stays grey.
-/// - <b>The grade</b> (<see cref="Grade.Of"/>) adds chroma at each colour's own hue and greys nothing.
+/// - <b>Natural, vivid and mixed</b> (owner, 23 Nov), over hundreds of palettes of every type with air: wholly natural,
+///   wholly vivid and mixed worlds each common, each part's hues spread round the wheel, red water, blue grass and a green
+///   sky all turning up. An airless body's rock stays grey.
 /// Prints "world: seed N, type" for each world so a run can be replayed.
 /// </summary>
 public partial class PaletteTest : Node
@@ -62,8 +59,7 @@ public partial class PaletteTest : Node
             foreach (Archetype a in new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava, Archetype.Alien })
                 Variety(a.ToString().ToLowerInvariant(), 14, () => (a, (int)(Fresh() % 2), false));
             Variety("airless", 14, () => (new[] { Archetype.Arid, Archetype.Ice, Archetype.Lava }[Fresh() % 3], (int)(Fresh() % 2), true));
-            Bold(600);
-            Graded();
+            Range(600);
         }
         catch (Exception e)
         {
@@ -167,23 +163,21 @@ public partial class PaletteTest : Node
 
     const float Same = 10f, TwinShare = 0.08f;
 
-    static readonly string[] Elements = { "zenith", "band", "plants", "water", "soil" };
-
-    /// <summary>The least median chroma (Oklab) of each element over worlds with air, in <see cref="Elements"/> order (a deep zenith has less room for chroma).</summary>
-    static readonly float[] Floors = { 0.09f, 0.12f, 0.1f, 0.08f, 0.06f };
+    static readonly string[] Parts = { "zenith", "plants", "water", "soil" };
 
     /// <summary>
-    /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps): per element over the worlds with air, its
-    /// median chroma against its floor and its hues spread round the wheel (at least five of its six sixths in use, none holding
-    /// over 45% of worlds); the land's hue (plants on a living world, soil on the rest) at least 60 degrees from its sky's on seven
-    /// worlds in ten whose sky isn't their own lofted dust, 90 at the median; red water, blue plants and a green sky each on at least one world in a hundred. Every
-    /// fourth roll is an airless body, whose rock (unless it rusted while it had air) stays grey.
+    /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps). Each part of a world with air (its sky
+    /// straight up, its plants, its sea, its soil) reads vivid over Oklab chroma 0.13 and earthy under 0.09. Wholly natural
+    /// worlds (no vivid part), wholly vivid ones (no earthy part, two vivid or more) and mixed ones (both) must each make up a
+    /// good share (owner, 23 Nov: all three wanted and common, never every world saturated everywhere); each part's hues spread
+    /// round the wheel (at least five of its six sixths in use, none holding half the worlds); red water, blue plants and a green
+    /// sky each turn up on at least one world in a hundred. Every fourth roll is an airless body, whose rock (unless it rusted
+    /// while it had air) stays grey.
     /// </summary>
-    void Bold(int count)
+    void Range(int count)
     {
-        var colours = Elements.Select(_ => new List<Oklab>()).ToArray();
-        var gaps = new List<float>();
-        int red = 0, blue = 0, green = 0;
+        var colours = Parts.Select(_ => new List<Oklab>()).ToArray();
+        int natural = 0, mixed = 0, vivid = 0, worlds = 0, red = 0, blue = 0, green = 0;
         float greyest = 0f;
         static float Deg(Oklab o) => (o.Hue * 180f / MathF.PI + 360f) % 360f;
         for (int i = 0; i < count; i++)
@@ -193,56 +187,44 @@ public partial class PaletteTest : Node
             if (i % 4 == 0)
             {
                 spec = spec with { Archetype = PlanetSpec.Craters(a) ? a : Archetype.Arid, Modifiers = Modifier.Cratered };
-                // (An iron-rich one rusted while it still had air, and keeps it: its own colour, the vacuum's albedo, not the art push.)
+                // (An iron-rich one rusted while it still had air, and keeps it: its own colour, the vacuum's albedo, not the palette's.)
                 WorldPalette moon = SkySystem.For(spec).Palette;
                 if (moon.Iron <= 0.75f) greyest = MathF.Max(greyest, Oklab.Of(moon.Bedrock).Chroma);
                 continue;
             }
             if (spec.Airless) continue;
             WorldPalette p = SkySystem.For(spec).Palette;
-            Oklab zenith = Oklab.Of(p.Zenith), band = Oklab.Of(p.Band), plants = Oklab.Of(p.Leaf), water = Oklab.Of(Rgb.Lerp(p.Shallow, p.Deep, 0.5f)), soil = Oklab.Of(p.Ground(Biome.Grassland, 0.6f, 0.5f));
-            Oklab[] these = { zenith, band, plants, water, soil };
-            for (int e = 0; e < Elements.Length; e++)
-                if ((e != 2 || p.Life > 0f) && (e != 3 || a != Archetype.Lava)) colours[e].Add(these[e]);
-            // A dusty sky is its ground's dust lofted (burnt orange over rust: owner, 23 Nov): contrast is asked where the basis allows.
-            if (p.Air.Particles != Particles.Dust) gaps.Add(Oklab.HueGap(MathF.Atan2(zenith.B + band.B, zenith.A + band.A), (p.Life >= 0.8f ? plants : soil).Hue) * 180f / MathF.PI);
-            if (a != Archetype.Lava && water.Chroma > 0.08f && (Deg(water) < 45f || Deg(water) > 345f)) red++;
-            if (p.Life > 0f && plants.Chroma > 0.08f && Deg(plants) is > 215f and < 285f) blue++;
-            if (zenith.Chroma > 0.08f && Deg(zenith) is > 120f and < 170f) green++;
+            Oklab?[] these = { Oklab.Of(p.Zenith), p.Life > 0f ? Oklab.Of(p.Leaf) : null, a != Archetype.Lava ? Oklab.Of(Rgb.Lerp(p.Shallow, p.Deep, 0.5f)) : null, Oklab.Of(p.Ground(Biome.Grassland, 0.6f, 0.5f)) };
+            int vividParts = 0, earthyParts = 0;
+            for (int e = 0; e < Parts.Length; e++)
+            {
+                if (these[e] is not Oklab o) continue;
+                colours[e].Add(o);
+                if (o.Chroma > 0.13f) vividParts++;
+                if (o.Chroma < 0.09f) earthyParts++;
+            }
+            worlds++;
+            if (vividParts == 0) natural++;
+            else if (earthyParts == 0 && vividParts >= 2) vivid++;
+            else if (earthyParts > 0) mixed++;
+            if (these[2] is Oklab water && water.Chroma > 0.08f && (Deg(water) < 45f || Deg(water) > 345f)) red++;
+            if (these[1] is Oklab plants && plants.Chroma > 0.08f && Deg(plants) is > 215f and < 285f) blue++;
+            if (these[0] is Oklab zenith && zenith.Chroma > 0.08f && Deg(zenith) is > 120f and < 170f) green++;
         }
-        int worlds = colours[0].Count;
-        for (int e = 0; e < Elements.Length; e++)
+        GD.Print($"RANGE {worlds} worlds with air: natural {natural}, mixed {mixed}, vivid {vivid}, between {worlds - natural - mixed - vivid}");
+        Check(natural >= worlds * 0.12f && vivid >= worlds * 0.1f && mixed >= worlds * 0.35f,
+            $"natural, vivid and mixed worlds all common: {natural * 100 / worlds}% wholly natural, {vivid * 100 / worlds}% wholly vivid, {mixed * 100 / worlds}% mixed of {worlds}");
+        for (int e = 0; e < Parts.Length; e++)
         {
             var c = colours[e];
-            float median = c.Select(o => o.Chroma).Order().ElementAt(c.Count / 2);
             int[] sixths = new int[6];
             foreach (Oklab o in c) sixths[(int)(Deg(o) / 60f) % 6]++;
             int used = sixths.Count(n => n > 0), most = sixths.Max();
-            GD.Print($"BOLD {Elements[e]}: median chroma {median:F3}; hues by sixth from red {string.Join(" ", sixths)}");
-            Check(median >= Floors[e], $"{Elements[e]} is bold: median Oklab chroma {median:F3} over {c.Count} worlds with air (at least {Floors[e]})");
-            Check(used >= 5 && most <= c.Count * 0.45f, $"{Elements[e]} hues spread round the wheel: {used} of 6 sixths in use, the fullest holding {most} of {c.Count}");
+            GD.Print($"RANGE {Parts[e]}: hues by sixth from red {string.Join(" ", sixths)}; earthy {c.Count(o => o.Chroma < 0.09f)}, vivid {c.Count(o => o.Chroma > 0.13f)} of {c.Count}");
+            Check(used >= 5 && most < c.Count / 2, $"{Parts[e]} hues spread round the wheel: {used} of 6 sixths in use, the fullest holding {most} of {c.Count}");
         }
-        gaps.Sort();
-        float apart = gaps.Count(g => g >= 60f) / (float)gaps.Count;
-        Check(apart >= 0.7f && gaps[gaps.Count / 2] >= 90f, $"land stands apart from its sky: hue gap at least 60 deg on {apart:P0} of {gaps.Count} worlds whose sky isn't their own dust, median {gaps[gaps.Count / 2]:F0} deg");
         Check(red >= worlds / 100 && blue >= worlds / 100 && green >= worlds / 100, $"red water on {red}, blue plants on {blue} and a green sky on {green} of {worlds} worlds (each at least {worlds / 100})");
         Check(greyest < 0.04f, $"airless rock that never rusted stays grey: highest Oklab chroma {greyest:F3}");
-    }
-
-    /// <summary>The grade adds chroma at each colour's own hue, never takes it: greys stay grey, black and white stay put.</summary>
-    void Graded()
-    {
-        var rng = new Random((int)(RunSeed % int.MaxValue));
-        float worstHue = 0f, lost = 0f, grey = 0f;
-        for (int i = 0; i < 4000; i++)
-        {
-            var c = new Rgb(rng.NextSingle(), rng.NextSingle(), rng.NextSingle());
-            Oklab a = Oklab.Of(c), b = Oklab.Of(Grade.Of(c));
-            if (a.Chroma > 0.03f) worstHue = MathF.Max(worstHue, Oklab.HueGap(a.Hue, b.Hue) * 180f / MathF.PI);
-            lost = MathF.Max(lost, a.Chroma - b.Chroma);
-        }
-        for (int i = 0; i <= 10; i++) grey = MathF.Max(grey, Oklab.Of(Grade.Of(new Rgb(i / 10f, i / 10f, i / 10f))).Chroma);
-        Check(worstHue < 3f && lost < 0.01f && grey < 0.002f, $"the grade keeps hue (worst {worstHue:F1} deg) and never greys (most chroma lost {lost:F3}; greys stay grey, {grey:F4})");
     }
 
     /// <summary>A colour in CIELAB (D65), from sRGB.</summary>

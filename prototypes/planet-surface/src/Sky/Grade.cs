@@ -1,83 +1,35 @@
-using Godot;
-using Planets.Gen;
-using Planets.Look;
-
 namespace PlanetSurface.Skies;
 
 /// <summary>
-/// The picture's last colour step, for the art direction (owner, 23 Nov: exaggerated, saturated colour like 1970s
-/// science fiction art): the tonemapper, and after it a lookup table in the engine's own tonemap pass (its colour
-/// correction, so no extra full-screen pass) that raises chroma in Oklab at each colour's own hue. Near black it
-/// barely acts (no coloured noise in the shadows); a colour pushed past what the screen can show gives up chroma
-/// at its hue and comes toward middle lightness rather than going white, so bright skies and lit cloud keep colour.
-/// Nothing here greys anything: overcast, dust and night change the colours the world gives it, never drain them.
+/// How the scene's light comes down to the screen's, and nothing more: no scene-wide grade pushes colour either way
+/// (owner, 23 Nov). A natural world is natural because of its own elements, air and dust, a vivid one because of its own
+/// (<see cref="Planets.Look.WorldPalette"/>), and the tonemap keeps each as it is.
 /// </summary>
 public static class Grade
 {
-    /// <summary>How the scene's light comes down to the screen's: one of the engine's tonemappers.</summary>
+    /// <summary>The engine's tonemappers, compared by shots.</summary>
     public enum Curve { Filmic, Agx, Aces, Linear }
 
     /// <summary>
-    /// The game's curve, picked by shots against AgX, ACES, plain linear and a hue-keeping shoulder of the grade's own
-    /// (23 Nov): Filmic at white 6. Its middle tones match plain linear's and the shoulder's; AgX came out darker and duller;
-    /// ACES a little punchier, a small gain beside the grade's own; and a hue-keeping shoulder turned lava's glow pale peach,
-    /// where Filmic's channels, rolling off one by one, take a bright orange toward yellow as fire looks. The grade gives the chroma.
+    /// The game's curve, picked by shots against AgX, ACES, plain linear and a hue-keeping shoulder of my own (23 Nov): Filmic
+    /// at white 6. Its middle tones match plain linear's and the shoulder's; AgX came out darker and duller; ACES a little
+    /// punchier; and the hue-keeping shoulder turned lava's glow pale peach, where Filmic's channels, rolling off one by one,
+    /// take a bright orange toward yellow as fire looks.
     /// </summary>
     public const Curve Game = Curve.Filmic;
-
-    /// <summary>How much chroma the grade adds at its fullest, Oklab chroma times this.</summary>
-    public const float Boost = 1.35f;
-
-    /// <summary>Lookup table cells a side: input in sRGB, each cell holding the colour for its own centre.</summary>
-    const int Size = 33;
 
     /// <summary>Tests and shots: the curve to use instead of the game's (null: the game's).</summary>
     public static Curve? Force;
 
-    static ImageTexture3D _lut;
-
-    /// <summary>The game's tonemapper and the grade on an environment (its adjustments turned on).</summary>
+    /// <summary>The game's tonemapper on an environment.</summary>
     public static void Apply(Godot.Environment env)
     {
-        Curve curve = Force ?? Game;
-        env.TonemapMode = curve switch
+        env.TonemapMode = (Force ?? Game) switch
         {
             Curve.Filmic => Godot.Environment.ToneMapper.Filmic, Curve.Agx => Godot.Environment.ToneMapper.Agx,
             Curve.Aces => Godot.Environment.ToneMapper.Aces, _ => Godot.Environment.ToneMapper.Linear,
         };
         env.TonemapWhite = 6f;
         env.TonemapExposure = 1f;
-        env.AdjustmentEnabled = true;
-        env.AdjustmentColorCorrection = _lut ??= Build();
-    }
-
-    /// <summary>What the grade does to one sRGB colour (0..1) the tonemapper gave it: the table's contents, testable without an engine.</summary>
-    public static Rgb Of(Rgb c)
-    {
-        Oklab o = Oklab.Of(c);
-        // Full strength through the middle tones, easing off into black and the brightest whites. A colour already at the
-        // screen's edge has nothing more to give, and keeps what it has.
-        float k = 1f + (Boost - 1f) * Mathx.Smooth(0.03f, 0.2f, o.L) * (1f - 0.5f * Mathx.Smooth(0.85f, 1f, o.L));
-        Oklab bold = new Oklab(o.L, o.A * k, o.B * k).Fit();
-        return bold.Chroma < o.Chroma ? c : bold.ToRgb();
-    }
-
-    static ImageTexture3D Build()
-    {
-        var slices = new Godot.Collections.Array<Image>();
-        var data = new byte[Size * Size * 4];
-        for (int b = 0; b < Size; b++)
-        {
-            for (int g = 0, i = 0; g < Size; g++)
-                for (int r = 0; r < Size; r++, i += 4)
-                {
-                    Rgb c = Of(new Rgb((r + 0.5f) / Size, (g + 0.5f) / Size, (b + 0.5f) / Size));
-                    (data[i], data[i + 1], data[i + 2], data[i + 3]) = (Rgb.Byte(c.R), Rgb.Byte(c.G), Rgb.Byte(c.B), 255);
-                }
-            slices.Add(Image.CreateFromData(Size, Size, false, Image.Format.Rgba8, data));
-        }
-        var lut = new ImageTexture3D();
-        lut.Create(Image.Format.Rgba8, Size, Size, Size, false, slices);
-        return lut;
     }
 }

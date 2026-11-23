@@ -142,20 +142,21 @@ public sealed record SkySystem
     /// A body with no air under a system's star: nothing scatters the light, so the sky is black by
     /// day as by night, the stars out in daylight, no haze, no clouds, no sunset glow. Its grey rock
     /// takes its colour from its light: the starlight's own on the sunlit faces, and in shadow a deep
-    /// colour across the hue circle from it, held to blue, violet and magenta (a grey lit by a warm light
+    /// colour across the hue circle from it, held to blue, violet and magenta, the stronger the further the star is from white (a grey lit by a warm light
     /// reads cool in its shadows, the simultaneous contrast painters exaggerate; owner, 23 Nov: "deep grey
     /// moons, but saturated").
     /// </summary>
     public static SkySystem Vacuum(SkySystem star)
     {
         var black = new Rgb(0.004f, 0.004f, 0.006f);
-        float hue = Oklab.Of(star.StarColor).Hue + MathF.PI, low = 250f * MathF.PI / 180f, high = 330f * MathF.PI / 180f;
+        Oklab light = Oklab.Of(star.StarColor);
+        float hue = light.Hue + MathF.PI, low = 250f * MathF.PI / 180f, high = 330f * MathF.PI / 180f;
         hue = (hue % MathF.Tau + MathF.Tau) % MathF.Tau;
         if (hue < low || hue > high) hue = Oklab.HueGap(hue, low) < Oklab.HueGap(hue, high) ? low : high;
         return star with
         {
             Air = AirKind.Thin, Thickness = 0f, Density = 0.02f, Zenith = black, Horizon = black, Haze = black, Sunset = black,
-            NightZenith = black, StarsByDay = 1f, Nebula = star.Nebula, Shade = Oklab.Lch(0.55f, 0.17f, hue).ToRgb(),
+            NightZenith = black, StarsByDay = 1f, Nebula = star.Nebula, Shade = Oklab.Lch(0.55f, Math.Clamp(0.06f + 2f * light.Chroma, 0.06f, 0.17f), hue).ToRgb(),
             Summary = $"{StarName(star.Star)} star · no air",
         };
     }
@@ -231,14 +232,13 @@ public sealed record SkySystem
     /// A giant's cloud tops and its darker belts, by what colours them (<paramref name="tone"/> 0..1 picks): ammonia ice
     /// (cream), tholins (orange), the red chromophores of Jupiter's Great Red Spot (crimson), sulfur (gold), ammonium
     /// hydrosulfide (brown); an ice giant's methane drinking the red (azure, teal, deep blue, aquamarine, violet-blue under a
-    /// high haze). The belts are another of the same kind, deeper. Bold, as the art direction has it: in many skies a giant
-    /// is the biggest thing there.
+    /// high haze). The belts are another of the same kind, deeper: cream and brown giants as well as crimson and azure ones.
     /// </summary>
     public static (Rgb Color, Rgb Band) Giant(float tone, bool ice)
     {
         string[] tops = ice ? new[] { "3a9ae8", "2ab8b0", "2a50d0", "60d0c0", "6a60e0" } : new[] { "f2dca0", "e07a3a", "c83a3a", "e8b83a", "a8683a" };
         int i = Math.Clamp((int)(tone * tops.Length), 0, tops.Length - 1);
-        return (Oklab.Vivid(Rgb.Hex(tops[i]), 1.4f, 0.1f), Oklab.Vivid(Rgb.Hex(tops[(i + 2) % tops.Length]), 1.3f, 0.12f, 0.72f));
+        return (Rgb.Hex(tops[i]), Oklab.Vivid(Rgb.Hex(tops[(i + 2) % tops.Length]), 1f, 0f, 0.72f));
     }
 
     static Rgb HueColor(float h, float saturation)

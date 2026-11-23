@@ -677,11 +677,11 @@ public sealed class StarSystem
         {
             float tone = next();
             double t = TemperatureAt(h);
-            // A rocky world's plain look until its own surface is painted (BodySurfaces): scorched, temperate or frozen, made bold.
+            // A rocky world's plain look until its own surface is painted (BodySurfaces): scorched, temperate or frozen.
             (Rgb color, Rgb band) = giant ? SkySystem.Giant(tone, ice) : Plain(t > 330 ? Rgb.Lerp(Rgb.Hex("a07058"), Rgb.Hex("d8c8a8"), tone)
                 : t > 210 ? Rgb.Lerp(Rgb.Hex("b89a80"), Rgb.Hex("7898b8"), tone)
                 : Rgb.Lerp(Rgb.Hex("c8d8e8"), Rgb.Hex("9098a8"), tone));
-            static (Rgb, Rgb) Plain(Rgb c) => (Oklab.Vivid(c, 2f, 0.06f), Rgb.Lerp(Oklab.Vivid(c, 2f, 0.06f), Rgb.Hex("5a4a3a"), 0.45f));
+            static (Rgb, Rgb) Plain(Rgb c) => (c, Rgb.Lerp(c, Rgb.Hex("5a4a3a"), 0.45f));
             var plane = planetPlane(h);
             var w = new Orbiter
             {
