@@ -19,7 +19,9 @@ public partial class BestiaryTest : Node
 {
     WildlifeData _data;
     int _failures, _checks;
-    readonly Rng _fresh = new((ulong)DateTime.UtcNow.Ticks);
+    /// <summary>The run's worlds: fresh every run, or --seed=N's again (a one-off repro or an A/B; never pinned).</summary>
+    static readonly ulong FreshSeed = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--seed=")) is { } s ? ulong.Parse(s[7..]) : (ulong)DateTime.UtcNow.Ticks;
+    readonly Rng _fresh = new(FreshSeed);
 
     public override void _Ready()
     {
@@ -42,7 +44,7 @@ public partial class BestiaryTest : Node
                     Shutdown.Quit(this, 0);
                     return;
                 }
-            GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
+            GD.Print($"(worlds rolled from seed {FreshSeed}: --seed={FreshSeed} rolls them again)");
             if (OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only=")) is { } only)
             {
                 // Only the named checks, by method (a quick run while working on one thing): --only=Walking:HandsFaceTheWay
