@@ -24,7 +24,8 @@ namespace Slice.Tests;
 /// giant's moons have moons of their own, in reach and on the one clock; suns and gas giants out-size every world
 /// you could land on, have bands, storms and spots and no ground; warp fuel lies on vacuum worlds only (as a
 /// deposit, plus loot in space places and ships), fold fuel on the dangerous high-gravity ones (plus ships), and
-/// the drives' materials with them; every system holds a high-gravity world; every start has a vacuum moon with
+/// the drives' materials with them: each drive's whole bill, walked down to ore, comes from its own worlds and is dug
+/// and made there (SystemsTest.Drives.cs); every system holds a high-gravity world; every start has a vacuum moon with
 /// enough warp fuel for a first jump; moons have no rings, and a ring's look follows the frost line and its
 /// giant's moons; every landable world holds what the cheapest flyer the recipe tree allows takes; and nothing
 /// marks a planet for a jump fuel. The rules on the systems' bodies run over thousands of systems; the ones
@@ -91,10 +92,13 @@ public partial class SystemsTest : Node
         DriveMaterials(systems);
         List<StarSystem> mapped = systems.Take(Mapped).ToList();
         StartMoons(mapped, out List<(StarSystem System, WorldMap Moon)> moons);
-        NoWaterOnBareWorlds(Fuels(mapped, moons), moons);
+        var coarse = Fuels(mapped, moons);
+        NoWaterOnBareWorlds(coarse, moons);
+        DriveBills(coarse);
         Flyer(mapped);
         Loot();
         NoMarkers(systems);
+        DriveProof(mapped.Take(2));
     }
 
     // ---- 0. Moons can be caught; planets keep their years -----------------------------------------
