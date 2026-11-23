@@ -225,6 +225,7 @@ public sealed class WeatherData
     public StrikeRules Debris { get; set; } = new();
     public TornadoRules Tornado { get; set; } = new();
     public CellRules Cells { get; set; } = new();
+    public DustStormRules DustStorms { get; set; } = new();
     public RegionRules Regions { get; set; } = new();
     public WorldRules Worlds { get; set; } = new();
     public List<WeatherState> States { get; set; } = new();
