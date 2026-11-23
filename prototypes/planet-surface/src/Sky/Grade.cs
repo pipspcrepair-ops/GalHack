@@ -47,19 +47,19 @@ public static class Grade
     static ImageTexture3D Build()
     {
         var slices = new Godot.Collections.Array<Image>();
+        var data = new byte[Size * Size * 4];
         for (int b = 0; b < Size; b++)
         {
-            var image = Image.CreateEmpty(Size, Size, false, Image.Format.Rgbah);
-            for (int g = 0; g < Size; g++)
-                for (int r = 0; r < Size; r++)
+            for (int g = 0, i = 0; g < Size; g++)
+                for (int r = 0; r < Size; r++, i += 4)
                 {
                     Rgb c = Of(new Rgb((r + 0.5f) / Size, (g + 0.5f) / Size, (b + 0.5f) / Size));
-                    image.SetPixel(r, g, new Color(c.R, c.G, c.B));
+                    (data[i], data[i + 1], data[i + 2], data[i + 3]) = (Rgb.Byte(c.R), Rgb.Byte(c.G), Rgb.Byte(c.B), 255);
                 }
-            slices.Add(image);
+            slices.Add(Image.CreateFromData(Size, Size, false, Image.Format.Rgba8, data));
         }
         var lut = new ImageTexture3D();
-        lut.Create(Image.Format.Rgbah, Size, Size, Size, false, slices);
+        lut.Create(Image.Format.Rgba8, Size, Size, Size, false, slices);
         return lut;
     }
 }

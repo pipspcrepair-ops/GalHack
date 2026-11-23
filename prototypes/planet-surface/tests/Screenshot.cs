@@ -15,7 +15,8 @@ namespace PlanetSurface;
 ///   godot --path prototypes/planet-surface res://tests/Screenshot.tscn -- --view=NAME --out=FILE.png
 /// Named views are in <see cref="Views"/>; "look" takes everything from arguments:
 ///   --archetype=0-4 --variant=0|1 --seed=N --x= --z= (metres) --up= (above ground) --heading= --pitch= (degrees)
-///   --time=0..1 --weather=Kind [--hud=1] [--star=RedDwarf|Orange|Yellow|White|BlueWhite] [--coast=1] [--airless=1] [--tonemap=Agx]
+///   --time=0..1 --weather=Kind [--hud=1] [--star=RedDwarf|Orange|Yellow|White|BlueWhite] [--coast=1] [--airless=1] [--tonemap=Agx] [--body=1]
+///   --batch=FILE: many "look" shots in one run, a line of these arguments for each
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -41,13 +42,34 @@ public partial class Screenshot : Node
     int _shot, _gpuFrames;
     double _gpuSum, _gpuWorst;
 
-    public override void _Ready()
+    /// <summary>--batch=FILE: one "look" shot a line, each line its own arguments (--archetype=... --out=...), all in one run, the world changed between them.</summary>
+    readonly Queue<string> _batch = new();
+
+    void Read(IEnumerable<string> args)
     {
-        foreach (string arg in OS.GetCmdlineUserArgs())
+        foreach (string arg in args)
         {
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
+    }
+
+    /// <summary>The batch's next line in place of the last: its own arguments only, nothing forced carried over.</summary>
+    void NextInBatch()
+    {
+        foreach (string key in new[] { "star", "tonemap", "airless", "body", "out" }) _args.Remove(key);
+        PlanetSurface.Skies.SkySystem.ForceStar = null;
+        Grade.Force = null;
+        Read(_batch.Dequeue().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        _out = _args.GetValueOrDefault("out", _out);
+        _spec = Look();
+    }
+
+    public override void _Ready()
+    {
+        Read(OS.GetCmdlineUserArgs());
+        if (_args.TryGetValue("batch", out string batch))
+            foreach (string line in System.IO.File.ReadAllLines(batch)) if (line.Trim().Length > 0) _batch.Enqueue(line.Trim());
         // A hung run quits on its own (--limit=SECONDS, 15 minutes by default), even if the main thread never returns.
         double limit = Num("limit", 900);
         _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(limit)).ContinueWith(_ =>
@@ -57,7 +79,8 @@ public partial class Screenshot : Node
         });
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
-        _spec = _view == "look" ? Look() : Views.Get(_view);
+        if (_batch.Count > 0) NextInBatch();
+        else _spec = _view == "look" ? Look() : Views.Get(_view);
         if (_spec == null)
         {
             GD.PrintErr($"no view '{_view}'");
@@ -590,6 +613,9 @@ public partial class Screenshot : Node
                 bool settled = _main.Streamer.Settled && _main.Pois.Built && _main.Infra.Built && (!PlanetSurface.Poi.PoiLayer.Tiered || !_main.Pois.MidPending);
                 _settled = settled ? _settled + 1 : 0;
                 if (_settled == SettleFrames - 12) _spec.BeforeCapture?.Invoke(_main);
+                // --body=1: turned to the biggest body up in the sky (a giant, a moon), from where the view stands.
+                if (_settled == SettleFrames - 12 && _args.ContainsKey("body") && _main.Sky.Drawn.Where(b => b.Direction.Y > 0.03f).OrderByDescending(b => b.Angular).FirstOrDefault() is { Body: not null } big)
+                    _main.Fly.Begin(_main.Camera.GlobalPosition, -Mathf.Atan2(big.Direction.X, -big.Direction.Z), Mathf.Atan2(big.Direction.Y, new Vector2(big.Direction.X, big.Direction.Z).Length()));
                 if (_settled == SettleFrames - 12 && _args.TryGetValue("hide", out string hide))
                     foreach (Node n in _main.Pois.GetChildren())
                         foreach (Node c in n.GetChildren())
@@ -638,6 +664,14 @@ public partial class Screenshot : Node
             _elapsed = 0;
             _settled = 0;
             _stage = 1;
+            return;
+        }
+        // A batch: on to its next world.
+        if (_batch.Count > 0)
+        {
+            NextInBatch();
+            _main.Arrive(_spec.Planet);
+            (_elapsed, _settled, _stage, _series, _shot) = (0, 0, 0, null, 0);
             return;
         }
         GalHack.Testing.Backstop.Quit(this, result == Error.Ok ? 0 : 1);

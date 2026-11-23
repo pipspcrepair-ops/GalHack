@@ -255,7 +255,6 @@ public partial class SkyRig : Node3D
             GlowHdrThreshold = 2.0f,
             AdjustmentContrast = 1.06f,
         };
-        Grade.Apply(Environment);
         AddChild(new WorldEnvironment { Environment = Environment });
 
         AddChild(Sun = SunShadows.Light("Sun", true));
@@ -304,6 +303,7 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring"), world.StarSystem.Home.Rings);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_color"), C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
+        Grade.Apply(Environment);
     }
 
     // ---- Lamps under the clouds ---------------------------------------------------------------------

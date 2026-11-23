@@ -237,7 +237,7 @@ public sealed record WorldPalette
         // stands furthest in hue from it; elsewhere the sky comes first and the ore is the one of a few rolled that stands furthest
         // from the sky. (Each is one the world might hold: only which one shows is chosen.)
         Trace gas = Trace.None;
-        Stain ore = Roll(StainOdds(spec), U(23));
+        Stain ore = wet ? Roll(StainOdds(spec), U(23)) : Stain.None; // no weather, no ore weathered out
         if (hasSky && air.Particles is Particles.Dust or Particles.Ash)
             gas = Contrast(TraceOdds(air), h, 21, g => { var s = SkyOf(g, DustOf(ore)); return Oklab.Lch(0.6f, 0.1f, HueOf(s.Zenith, s.Band)).ToRgb(); }, Oklab.Of(SoilOf(ore, 0.6f, 0.5f)).Hue);
         else if (hasSky)
@@ -313,7 +313,7 @@ public sealed record WorldPalette
     /// The art direction's push for each kind of surface: chroma times this, at least that (Oklab), at its own hue.
     /// Lightness too: plants and water brighter than life, as the paintings have them (deep water most: it would be near black).
     /// </summary>
-    static readonly (float Gain, float Floor, float Light) GroundBoost = (2.1f, 0.05f, 1f), RockBoost = (1.8f, 0.035f, 1f), LeafBoost = (2.4f, 0.1f, 1.15f), ShallowBoost = (2.2f, 0.09f, 1.25f), DeepBoost = (2.2f, 0.09f, 1.6f);
+    static readonly (float Gain, float Floor, float Light) GroundBoost = (2.1f, 0.05f, 1f), RockBoost = (1.8f, 0.035f, 1f), LeafBoost = (2.4f, 0.1f, 1.3f), ShallowBoost = (2.2f, 0.09f, 1.25f), DeepBoost = (2.2f, 0.09f, 1.6f);
 
     static Rgb Bold(Spectrum s, (float Gain, float Floor, float Light) boost) => Oklab.Vivid(s.Reflectance(), boost.Gain, boost.Floor, boost.Light);
 
