@@ -159,7 +159,8 @@ public partial class Pacing : Node
             System.IO.Directory.CreateDirectory(dir);
             _pacing.Dump($"{dir}/{name}.csv");
         }
-        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms): {_pacing.Stop()}");
+        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms" +
+                 $"{(_args.ContainsKey("minspec") ? $", affinity 0x{System.Diagnostics.Process.GetCurrentProcess().ProcessorAffinity:X}" : "")}): {_pacing.Stop()}");
         if (_split != null)
         {
             GD.Print($"SPLIT {name} frames: {_split.Report()}");

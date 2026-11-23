@@ -35,6 +35,7 @@ uniform vec3 to_sun = vec3(0.0, 1.0, 0.0); // the way to the light that casts it
 uniform int steps = 32;
 uniform sampler3D heaps : filter_linear, repeat_enable;
 uniform sampler2D scene_depth : hint_depth_texture, repeat_disable, filter_nearest;
+uniform sampler2D scene_color : hint_screen_texture, repeat_disable, filter_nearest;
 
 varying vec3 wpos;
 
@@ -74,9 +75,11 @@ float heap(vec3 p, float near) {
 	return h;
 }
 
-// How far the first thing seen through a point of the screen is, metres (sky: very far).
-float scene_distance(vec2 uv, mat4 inv_projection) {
-	float raw = textureLod(scene_depth, uv, 0.0).x;
+// Where the k-th of a pixel's 3 x 3 neighbourhood is, pixels from it (the odd ones are its four sides).
+vec2 tap_at(int k) { return vec2(float(k % 3) - 1.0, float(k / 3) - 1.0); }
+
+// How far the first thing seen through a point of the screen is, metres (sky: very far), from its depth there.
+float scene_distance(vec2 uv, float raw, mat4 inv_projection) {
 	if (raw <= 1e-7) return 1e7;
 	vec4 v = inv_projection * vec4(uv * 2.0 - 1.0, raw, 1.0);
 	return length(v.xyz / v.w);
@@ -92,24 +95,34 @@ void fragment() {
 	vec3 ta = (lo - o) * inv, tb = (hi - o) * inv;
 	vec3 tn = min(ta, tb), tf = max(ta, tb);
 	float t0 = max(max(tn.x, tn.y), max(tn.z, 0.0)), t1 = min(min(tf.x, tf.y), tf.z);
-	// What stands in front of it: the picture it is laid over is already smoothed, so a pixel at a silhouette holds
-	// part near thing, part the bare sky behind it, with one depth for both. So it is drawn to the farthest depth of the
-	// pixel and its eight neighbours, over the share of them that lies behind where it starts.
+	// What stands in front of it. The picture it is laid over is already smoothed, so a pixel at an outline holds part
+	// near thing, part what lies behind it, with one depth for both. The depth buffer runs evenly across any flat
+	// surface, so an outline is where it bends round the pixel: there it is marched to the farthest depth round it,
+	// noting how much of it lies beyond the nearest, and the outline is sorted out from the colours below; anywhere
+	// else, to the pixel's own depth.
 	vec2 px = 1.0 / VIEWPORT_SIZE;
-	float scene_t = 0.0, behind = 0.0;
+	float tap[9];
+	float raw[9];
+	float scene_near = 1e9, scene_far = 0.0, nearest = 0.0, bent = 0.0;
 	for (int k = 0; k < 9; k++) {
-		vec2 uv = SCREEN_UV + px * vec2(float(k % 3) - 1.0, float(k / 3) - 1.0);
-		float st = scene_distance(uv, INV_PROJECTION_MATRIX);
-		scene_t = max(scene_t, st);
-		behind += st > t0 ? 1.0 / 9.0 : 0.0;
+		vec2 uv = SCREEN_UV + px * tap_at(k);
+		raw[k] = textureLod(scene_depth, uv, 0.0).x;
+		tap[k] = scene_distance(uv, raw[k], INV_PROJECTION_MATRIX);
+		scene_near = min(scene_near, tap[k]);
+		scene_far = max(scene_far, tap[k]);
+		nearest = max(nearest, raw[k]);
 	}
-	t1 = min(t1, scene_t);
-	if (t1 <= t0 || behind <= 0.0) discard;
+	for (int k = 0; k < 4; k++) {
+		bent = max(bent, abs(raw[k] + raw[8 - k] - 2.0 * raw[4]));
+	}
+	bool outline = bent > 0.05 * nearest;
+	t1 = min(t1, outline ? scene_far : tap[4]);
+	if (t1 <= t0) discard;
 
 	// Steps crowd near the eye, where its heaps are seen largest, and spread out beyond.
 	// Jitter enough to break the steps' slices into a fine grain rather than streaks, not so much it speckles.
 	float jitter = 0.5 + 0.7 * (fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715)))) - 0.5);
-	float span = t1 - t0, trans = 1.0, depth_sum = 0.0;
+	float span = t1 - t0, trans = 1.0, depth_sum = 0.0, beyond = 0.0, beyond_t = 0.0;
 	float sky = 0.0, lit = 0.0; // how much of it the sky's light reaches, and the light's, along the ray
 	float n = float(steps);
 	for (int i = 0; i < steps; i++) {
@@ -138,6 +151,10 @@ void fragment() {
 		sky += trans * alpha * (0.5 + 0.5 * up) * (1.0 - 0.4 * deep);
 		lit += trans * alpha * sunlit * (0.55 + 0.45 * up);
 		depth_sum += trans * alpha * t;
+		// The share of the step past the nearest depth round the pixel, and where that part lies.
+		float from_t = t0 + span * a * a, to_t = t0 + span * b * b, past = clamp((to_t - scene_near) / dt, 0.0, 1.0);
+		beyond += trans * alpha * past;
+		beyond_t += trans * alpha * past * 0.5 * (max(from_t, scene_near) + to_t);
 		trans *= 1.0 - alpha;
 		if (trans < 0.01) break;
 	}
@@ -153,10 +170,56 @@ void fragment() {
 	SPECULAR = 0.0;
 	NORMAL = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
 	// The environment's fog lies between the eye and it as far as most of it is, not as far as its box.
-	FOG = vec4(fog_color, 1.0 - exp(-fog_floor * depth_sum / cover));
-	// Thin wisps let the sky through rather than darken it; at a silhouette it covers the share of the pixel's
-	// neighbourhood that lies behind where it starts, so a wire half over the sky keeps half of itself.
-	ALPHA = cover * smoothstep(0.0, 0.3, cover) * behind;
+	float fog = 1.0 - exp(-fog_floor * depth_sum / cover);
+	// Thin wisps let the sky through rather than darken it.
+	float near_cover = cover - beyond;
+	float a_far = cover * smoothstep(0.0, 0.3, cover), a_near = near_cover * smoothstep(0.0, 0.3, near_cover);
+	FOG = vec4(fog_color, fog);
+	ALPHA = a_far;
+	if (outline && a_far - a_near >= 0.01) {
+		// An outline. The pixel is part near thing and part what lies beyond (the neighbours nearer and farther than
+		// most of it beyond the nearest). What lies beyond is their mean. The near thing's own colour is that of the near
+		// neighbour least like it among those with only near ones round them (any other may hold some of what lies
+		// beyond); the pixel is as much of each as its colour lies between them (where they match, its depth says which).
+		// With no such neighbour (a thing a pixel or two thin: wires, a pole's top), the near thing is taken to be as
+		// unlike what lies beyond as the pixel is, at most wholly unlike it, so none of the light from beyond is left
+		// round it. Each part takes as much of it as lies in front of it, and the pixel is drawn whole: the picture
+		// there, those shares of it taken out and as much of its own colour put in (lit by the engine through ALBEDO,
+		// fogged here).
+		float split = beyond_t / beyond, n_far = 0.0, most = -1.0;
+		vec3 col[9];
+		vec3 far_c = vec3(0.0);
+		for (int k = 0; k < 9; k++) {
+			col[k] = textureLod(scene_color, SCREEN_UV + px * tap_at(k), 0.0).rgb;
+			far_c += tap[k] < split ? vec3(0.0) : col[k];
+			n_far += tap[k] < split ? 0.0 : 1.0;
+		}
+		far_c /= n_far;
+		vec3 near_c = col[4], here = col[4];
+		for (int k = 0; k < 9; k++) {
+			bool whole = tap[k] < split;
+			for (int j = 1; j < 9; j += 2) {
+				vec2 uv = SCREEN_UV + px * (tap_at(k) + tap_at(j));
+				whole = whole && scene_distance(uv, textureLod(scene_depth, uv, 0.0).x, INV_PROJECTION_MATRIX) < split;
+			}
+			float unlike = whole ? dot(col[k] - far_c, col[k] - far_c) : -1.0;
+			near_c = unlike > most ? col[k] : near_c;
+			most = max(most, unlike);
+		}
+		float far_share = 1.0 - clamp(length(here - far_c) / max(length(far_c), 1e-4), 0.0, 1.0);
+		if (most >= 0.0) {
+			vec3 gap = far_c - near_c;
+			float contrast = dot(gap, gap) / (dot(near_c + far_c, near_c + far_c) + 1e-6);
+			far_share = mix(tap[4] < split ? 0.0 : 1.0, clamp(dot(here - near_c, gap) / max(dot(gap, gap), 1e-8), 0.0, 1.0),
+					smoothstep(0.001, 0.01, contrast));
+		}
+		float k = (1.0 - far_share) * a_near + far_share * a_far;
+		if (k < 0.002) discard;
+		ALBEDO *= k * (1.0 - fog);
+		EMISSION = here - a_near * (here - far_share * far_c) - far_share * a_far * far_c + k * fog * fog_color;
+		FOG = vec4(0.0);
+		ALPHA = 1.0;
+	}
 }
 
 // The light on it: brighter looking toward the light, through its thin rim (fine dust scatters forward).
