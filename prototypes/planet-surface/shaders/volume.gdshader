@@ -93,16 +93,15 @@ void fragment() {
 	vec3 tn = min(ta, tb), tf = max(ta, tb);
 	float t0 = max(max(tn.x, tn.y), max(tn.z, 0.0)), t1 = min(min(tf.x, tf.y), tf.z);
 	// What stands in front of it: the picture it is laid over is already smoothed, so a pixel at a silhouette holds
-	// part near thing, part the bare sky behind it, with one depth for both. That sky would show as a bright rim round
-	// everything in front of it, so it is drawn to the farthest depth of the pixel and its four neighbours, and over the
-	// whole of a pixel any of whose neighbours lies behind where it starts: the rim is its own colour, never the sky's.
+	// part near thing, part the bare sky behind it, with one depth for both. So it is drawn to the farthest depth of the
+	// pixel and its eight neighbours, over the share of them that lies behind where it starts.
 	vec2 px = 1.0 / VIEWPORT_SIZE;
 	float scene_t = 0.0, behind = 0.0;
-	for (int k = 0; k < 5; k++) {
-		vec2 uv = SCREEN_UV + px * (k == 1 ? vec2(1.0, 0.0) : k == 2 ? vec2(-1.0, 0.0) : k == 3 ? vec2(0.0, 1.0) : k == 4 ? vec2(0.0, -1.0) : vec2(0.0));
+	for (int k = 0; k < 9; k++) {
+		vec2 uv = SCREEN_UV + px * vec2(float(k % 3) - 1.0, float(k / 3) - 1.0);
 		float st = scene_distance(uv, INV_PROJECTION_MATRIX);
 		scene_t = max(scene_t, st);
-		behind += st > t0 ? 0.2 : 0.0;
+		behind += st > t0 ? 1.0 / 9.0 : 0.0;
 	}
 	t1 = min(t1, scene_t);
 	if (t1 <= t0 || behind <= 0.0) discard;
@@ -155,8 +154,9 @@ void fragment() {
 	NORMAL = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
 	// The environment's fog lies between the eye and it as far as most of it is, not as far as its box.
 	FOG = vec4(fog_color, 1.0 - exp(-fog_floor * depth_sum / cover));
-	// Thin wisps let the sky through rather than darken it.
-	ALPHA = cover * smoothstep(0.0, 0.3, cover);
+	// Thin wisps let the sky through rather than darken it; at a silhouette it covers the share of the pixel's
+	// neighbourhood that lies behind where it starts, so a wire half over the sky keeps half of itself.
+	ALPHA = cover * smoothstep(0.0, 0.3, cover) * behind;
 }
 
 // The light on it: brighter looking toward the light, through its thin rim (fine dust scatters forward).
