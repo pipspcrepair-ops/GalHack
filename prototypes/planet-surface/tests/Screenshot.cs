@@ -143,7 +143,7 @@ public partial class Screenshot : Node
                 var from = new Vector3(cx - Mathf.Sin(Mathf.DegToRad(turn)) * back, g0 + up, cz + Mathf.Cos(Mathf.DegToRad(turn)) * back);
                 return (from, turn, -Mathf.RadToDeg(Mathf.Atan2(up, back)));
             }
-            if (_args.ContainsKey("coast")) return CoastView(m.World);
+            if (_args.ContainsKey("coast")) { var c = CoastView(m.World); return (c.pos, c.heading, (float)Num("pitch", c.pitch)); } // --pitch= to look down at the water or up at the sky
             double x = Num("x", m.World.Landing.X), z = Num("z", m.World.Landing.Y);
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));

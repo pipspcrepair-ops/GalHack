@@ -242,8 +242,6 @@ public partial class SkyRig : Node3D
             Sky = new Sky { SkyMaterial = _sky, RadianceSize = Sky.RadianceSizeEnum.Size64, ProcessMode = Sky.ProcessModeEnum.Incremental },
             AmbientLightSource = Godot.Environment.AmbientSource.Sky,
             ReflectedLightSource = Godot.Environment.ReflectionSource.Sky,
-            // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey.
-            AmbientLightSkyContribution = 0.5f,
             FogEnabled = true,
             FogMode = Godot.Environment.FogModeEnum.Exponential,
             FogAerialPerspective = 0.35f,
@@ -303,6 +301,9 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring"), world.StarSystem.Home.Rings);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("home_ring_color"), C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
+        // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey; with no
+        // air there is no sky's light in the shade, and its colour is nearly all the shade's own (SkySystem.Vacuum).
+        Environment.AmbientLightSkyContribution = s.Thickness > 0f ? 0.5f : 0.15f;
         Grade.Apply(Environment);
     }
 

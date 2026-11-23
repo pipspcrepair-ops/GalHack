@@ -375,13 +375,13 @@ public sealed record WorldPalette
     /// nitrogen dioxide; air the model doesn't otherwise hold any of them.
     /// </summary>
     static (Trace, float)[] TraceOdds(AirMix air) => air.Oxygen
-        ? new[] { (Trace.None, 0.18f), (Trace.Ozone, 0.2f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.14f), (Trace.Chlorine, 0.14f), (Trace.NitrogenDioxide, 0.1f), (Trace.Sulfur, 0.08f) }
+        ? new[] { (Trace.None, 0.18f), (Trace.Ozone, 0.2f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.1f), (Trace.Chlorine, 0.14f), (Trace.NitrogenDioxide, 0.1f), (Trace.Sulfur, 0.08f) }
         : air.Particles switch
         {
-            Particles.Dust => new[] { (Trace.None, 0.15f), (Trace.Methane, 0.2f), (Trace.Iodine, 0.2f), (Trace.Chlorine, 0.15f), (Trace.NitrogenDioxide, 0.15f), (Trace.Sulfur, 0.15f) },
+            Particles.Dust => new[] { (Trace.None, 0.15f), (Trace.Methane, 0.2f), (Trace.Iodine, 0.14f), (Trace.Chlorine, 0.15f), (Trace.NitrogenDioxide, 0.15f), (Trace.Sulfur, 0.15f) },
             Particles.Ash => new[] { (Trace.Sulfur, 0.25f), (Trace.Chlorine, 0.2f), (Trace.NitrogenDioxide, 0.15f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.15f) },
             Particles.Sulfate => new[] { (Trace.Sulfur, 0.3f), (Trace.Chlorine, 0.25f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.2f) },
-            _ => new[] { (Trace.None, 0.14f), (Trace.Ozone, 0.14f), (Trace.Methane, 0.15f), (Trace.Chlorine, 0.15f), (Trace.Iodine, 0.15f), (Trace.NitrogenDioxide, 0.14f), (Trace.Sulfur, 0.13f) },
+            _ => new[] { (Trace.None, 0.14f), (Trace.Ozone, 0.14f), (Trace.Methane, 0.15f), (Trace.Chlorine, 0.15f), (Trace.Iodine, 0.12f), (Trace.NitrogenDioxide, 0.14f), (Trace.Sulfur, 0.13f) },
         };
 
     /// <summary>

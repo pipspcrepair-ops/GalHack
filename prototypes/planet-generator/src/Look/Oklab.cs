@@ -54,18 +54,54 @@ public readonly record struct Oklab(float L, float A, float B)
         return new Rgb(Encode(r), Encode(g), Encode(b));
     }
 
-    /// <summary>The nearest colour of the same hue inside the gamut, found along the line toward a grey a little nearer the middle (Ottosson 2021's projection toward the cusp, simplified).</summary>
+    /// <summary>
+    /// The nearest colour of the same hue inside the gamut, found along the line toward a grey part of the way to the
+    /// lightness where that hue holds the most chroma (its cusp: Ottosson 2021, "sRGB gamut clipping"). So a bright orange
+    /// too strong for the screen comes down toward the orange it can show, not out to a pale peach.
+    /// </summary>
     public Oklab Fit()
     {
         float l = Math.Clamp(L, 0f, 1f);
         if (Inside(new Oklab(l, A, B))) return new Oklab(l, A, B);
-        float l0 = l + (0.6f - l) * 0.35f, lo = 0f, hi = 1f;
+        float l0 = l + (CuspAt(Hue) - l) * 0.6f, lo = 0f, hi = 1f;
         for (int i = 0; i < 14; i++)
         {
             float t = (lo + hi) * 0.5f;
             if (Inside(new Oklab(l0 + (l - l0) * t, A * t, B * t))) lo = t; else hi = t;
         }
         return new Oklab(l0 + (l - l0) * lo, A * lo, B * lo);
+    }
+
+    /// <summary>Each degree of hue's cusp lightness: where the screen shows that hue at its most chroma.</summary>
+    static readonly float[] Cusps = BuildCusps();
+
+    static float[] BuildCusps()
+    {
+        var cusps = new float[360];
+        for (int d = 0; d < 360; d++)
+        {
+            float h = d * MathF.PI / 180f, best = 0f;
+            for (float l = 0.2f; l <= 1f; l += 0.01f)
+            {
+                // The most chroma inside at this lightness and hue.
+                float lo = 0f, hi = 0.4f;
+                for (int i = 0; i < 12; i++)
+                {
+                    float c = (lo + hi) * 0.5f;
+                    if (Inside(Lch(l, c, h))) lo = c; else hi = c;
+                }
+                if (lo > best) (best, cusps[d]) = (lo, l);
+            }
+        }
+        return cusps;
+    }
+
+    static float CuspAt(float hue)
+    {
+        float d = (hue * 180f / MathF.PI + 360f) % 360f;
+        int i = (int)d;
+        return At(i) + (At(i + 1) - At(i)) * (d - i);
+        static float At(int k) => Cusps[k % 360];
     }
 
     static bool Inside(Oklab c)
