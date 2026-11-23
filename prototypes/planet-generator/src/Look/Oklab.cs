@@ -77,14 +77,14 @@ public readonly record struct Oklab(float L, float A, float B)
 
     /// <summary>
     /// This colour made bolder at its own hue: chroma times <paramref name="gain"/>, raised to at least
-    /// <paramref name="floor"/> (a near-grey takes <paramref name="hue"/> then, given one), lightness times
-    /// <paramref name="light"/>; then fitted into the gamut.
+    /// <paramref name="floor"/> (a near-grey takes <paramref name="hue"/> then, given one) and held to at most
+    /// <paramref name="most"/>, lightness times <paramref name="light"/>; then fitted into the gamut.
     /// </summary>
-    public static Rgb Vivid(Rgb c, float gain, float floor = 0f, float light = 1f, float? hue = null)
+    public static Rgb Vivid(Rgb c, float gain, float floor = 0f, float light = 1f, float? hue = null, float most = 1f)
     {
         Oklab o = Of(c);
         float chroma = o.Chroma, h = chroma > 0.004f || hue == null ? o.Hue : hue.Value;
-        return Lch(o.L * light, MathF.Max(chroma * gain, floor), h).ToRgb();
+        return Lch(o.L * light, MathF.Min(MathF.Max(chroma * gain, floor), most), h).ToRgb();
     }
 
     /// <summary>How far apart two hues are, 0 (the same) to π (opposite), radians.</summary>

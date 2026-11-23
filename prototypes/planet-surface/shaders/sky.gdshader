@@ -104,7 +104,7 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 
 	vec3 zen = mix(zenith_night, zenith_day * bright, day);
 	vec3 hor = mix(zenith_night * 1.6 + haze * 0.02, horizon_day * bright, day);
-	float a = pow(clamp(up, 0.0, 1.0), 0.42 / density);
+	float a = pow(clamp(up, 0.0, 1.0), 0.75 / density); // graded over the whole sky, the horizon's colour reaching well up
 	vec3 col = mix(hor, zen, a);
 	// A glowing band of its own colour hugs the horizon, under the graded sky: deeper air, a taller band.
 	col = mix(col, band_day * bright, exp(-max(up, 0.0) * 16.0 / density) * 0.8 * day);

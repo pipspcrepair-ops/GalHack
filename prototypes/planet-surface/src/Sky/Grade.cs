@@ -1,3 +1,4 @@
+using System;
 using Godot;
 using Planets.Gen;
 using Planets.Look;
@@ -14,37 +15,66 @@ namespace PlanetSurface.Skies;
 /// </summary>
 public static class Grade
 {
+    /// <summary>How the scene's light comes down to the screen's: one of the engine's tonemappers, or <see cref="Shoulder"/>.</summary>
+    public enum Curve { Filmic, Agx, Aces, Linear, Shoulder }
+
+    /// <summary>
+    /// The game's curve: the engine's linear tonemapper at half exposure (the Mobile renderer's scene light runs to 2), and
+    /// the lookup table brings it back with a shoulder of its own on Oklab lightness, chroma kept in step, so bright colours
+    /// roll off at their own hue instead of each channel flattening on its own (per-channel curves wash bright colours out).
+    /// </summary>
+    public const Curve Game = Curve.Shoulder;
+
     /// <summary>How much chroma the grade adds at its fullest, Oklab chroma times this.</summary>
     public const float Boost = 1.35f;
 
     /// <summary>Lookup table cells a side: input in sRGB, each cell holding the colour for its own centre.</summary>
     const int Size = 33;
 
-    /// <summary>Tests and shots: the tonemapper to use instead of the game's (null: the game's).</summary>
-    public static Godot.Environment.ToneMapper? Force;
+    /// <summary>Tests and shots: the curve to use instead of the game's (null: the game's).</summary>
+    public static Curve? Force;
 
-    static ImageTexture3D _lut;
+    static ImageTexture3D _plain, _shoulder;
 
     /// <summary>The game's tonemapper and the grade on an environment (its adjustments turned on).</summary>
     public static void Apply(Godot.Environment env)
     {
-        env.TonemapMode = Force ?? Godot.Environment.ToneMapper.Filmic;
+        Curve curve = Force ?? Game;
+        env.TonemapMode = curve switch
+        {
+            Curve.Filmic => Godot.Environment.ToneMapper.Filmic, Curve.Agx => Godot.Environment.ToneMapper.Agx,
+            Curve.Aces => Godot.Environment.ToneMapper.Aces, _ => Godot.Environment.ToneMapper.Linear,
+        };
         env.TonemapWhite = 6f;
-        env.TonemapExposure = 1f;
+        env.TonemapExposure = curve == Curve.Shoulder ? 0.5f : 1f;
         env.AdjustmentEnabled = true;
-        env.AdjustmentColorCorrection = _lut ??= Build();
+        env.AdjustmentColorCorrection = curve == Curve.Shoulder ? _shoulder ??= Build(true) : _plain ??= Build(false);
     }
 
-    /// <summary>What the grade does to one sRGB colour (0..1): the table's contents, testable without an engine.</summary>
-    public static Rgb Of(Rgb c)
+    /// <summary>What the grade does to one sRGB colour (0..1) the tonemapper gave it: the table's contents, testable without an engine.</summary>
+    public static Rgb Of(Rgb c, bool shoulder = false)
     {
         Oklab o = Oklab.Of(c);
-        // Full strength through the middle tones, easing off into black and the brightest whites.
+        if (shoulder)
+        {
+            // Back to the scene's light (half exposure), then its lightness rolled off above Knee toward 1, chroma with it.
+            var (r, g, b) = (2f * Oklab.Linear(c.R), 2f * Oklab.Linear(c.G), 2f * Oklab.Linear(c.B));
+            o = Oklab.FromLinear(r, g, b);
+            float l = o.L <= Knee ? o.L : Knee + (1f - Knee) * (1f - MathF.Exp(-(o.L - Knee) / (1f - Knee)));
+            float s = o.L > 1e-5f ? l / o.L : 1f;
+            o = new Oklab(l, o.A * s, o.B * s);
+        }
+        // Full strength through the middle tones, easing off into black and the brightest whites. A colour already at the
+        // screen's edge has nothing more to give, and keeps what it has.
         float k = 1f + (Boost - 1f) * Mathx.Smooth(0.03f, 0.2f, o.L) * (1f - 0.5f * Mathx.Smooth(0.85f, 1f, o.L));
-        return new Oklab(o.L, o.A * k, o.B * k).ToRgb();
+        Oklab bold = new Oklab(o.L, o.A * k, o.B * k).Fit();
+        return !shoulder && bold.Chroma < o.Chroma ? c : bold.ToRgb();
     }
 
-    static ImageTexture3D Build()
+    /// <summary>Where the shoulder starts, Oklab lightness: below it the scene's light shows as it is.</summary>
+    const float Knee = 0.75f;
+
+    static ImageTexture3D Build(bool shoulder)
     {
         var slices = new Godot.Collections.Array<Image>();
         var data = new byte[Size * Size * 4];
@@ -53,7 +83,7 @@ public static class Grade
             for (int g = 0, i = 0; g < Size; g++)
                 for (int r = 0; r < Size; r++, i += 4)
                 {
-                    Rgb c = Of(new Rgb((r + 0.5f) / Size, (g + 0.5f) / Size, (b + 0.5f) / Size));
+                    Rgb c = Of(new Rgb((r + 0.5f) / Size, (g + 0.5f) / Size, (b + 0.5f) / Size), shoulder);
                     (data[i], data[i + 1], data[i + 2], data[i + 3]) = (Rgb.Byte(c.R), Rgb.Byte(c.G), Rgb.Byte(c.B), 255);
                 }
             slices.Add(Image.CreateFromData(Size, Size, false, Image.Format.Rgba8, data));

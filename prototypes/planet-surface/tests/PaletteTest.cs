@@ -169,8 +169,8 @@ public partial class PaletteTest : Node
 
     static readonly string[] Elements = { "zenith", "band", "plants", "water", "soil" };
 
-    /// <summary>The least median chroma (Oklab) of each element over worlds with air, in <see cref="Elements"/> order.</summary>
-    static readonly float[] Floors = { 0.1f, 0.12f, 0.1f, 0.08f, 0.06f };
+    /// <summary>The least median chroma (Oklab) of each element over worlds with air, in <see cref="Elements"/> order (a deep zenith has less room for chroma).</summary>
+    static readonly float[] Floors = { 0.09f, 0.12f, 0.1f, 0.08f, 0.06f };
 
     /// <summary>
     /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps): per element over the worlds with air, its
@@ -226,20 +226,30 @@ public partial class PaletteTest : Node
         Check(greyest < 0.04f, $"airless rock stays grey: highest Oklab chroma {greyest:F3}");
     }
 
-    /// <summary>The grade adds chroma at each colour's own hue, never takes it: greys stay grey, black and white stay put.</summary>
+    /// <summary>
+    /// The grade adds chroma at each colour's own hue, never takes it, and greys stay grey. With its shoulder (the game's curve:
+    /// the scene's light at half exposure in, <see cref="Grade.Game"/>), each scene colour keeps its hue however bright, the
+    /// middle grey stays where it was, and the brightest white comes down under the screen's white.
+    /// </summary>
     void Graded()
     {
         var rng = new Random((int)(RunSeed % int.MaxValue));
-        float worstHue = 0f, lost = 0f, grey = 0f;
+        float worstHue = 0f, lost = 0f, grey = 0f, worstScene = 0f;
         for (int i = 0; i < 4000; i++)
         {
             var c = new Rgb(rng.NextSingle(), rng.NextSingle(), rng.NextSingle());
             Oklab a = Oklab.Of(c), b = Oklab.Of(Grade.Of(c));
             if (a.Chroma > 0.03f) worstHue = MathF.Max(worstHue, Oklab.HueGap(a.Hue, b.Hue) * 180f / MathF.PI);
             lost = MathF.Max(lost, a.Chroma - b.Chroma);
+            // The same scene colour (0..2 a channel) through the shoulder.
+            Oklab scene = Oklab.FromLinear(2f * Oklab.Linear(c.R), 2f * Oklab.Linear(c.G), 2f * Oklab.Linear(c.B)), shown = Oklab.Of(Grade.Of(c, true));
+            if (scene.Chroma > 0.05f && shown.Chroma > 0.03f) worstScene = MathF.Max(worstScene, Oklab.HueGap(scene.Hue, shown.Hue) * 180f / MathF.PI);
         }
-        for (int i = 0; i <= 10; i++) grey = MathF.Max(grey, Oklab.Of(Grade.Of(new Rgb(i / 10f, i / 10f, i / 10f))).Chroma);
+        for (int i = 0; i <= 10; i++)
+            grey = MathF.Max(grey, MathF.Max(Oklab.Of(Grade.Of(new Rgb(i / 10f, i / 10f, i / 10f))).Chroma, Oklab.Of(Grade.Of(new Rgb(i / 10f, i / 10f, i / 10f), true)).Chroma));
+        float mid = Oklab.Linear(Grade.Of(new Rgb(Oklab.Encode(0.09f), Oklab.Encode(0.09f), Oklab.Encode(0.09f)), true).G), top = Oklab.Linear(Grade.Of(new Rgb(1f, 1f, 1f), true).G);
         Check(worstHue < 3f && lost < 0.01f && grey < 0.002f, $"the grade keeps hue (worst {worstHue:F1} deg) and never greys (most chroma lost {lost:F3}; greys stay grey, {grey:F4})");
+        Check(worstScene < 4f && MathF.Abs(mid - 0.18f) < 0.012f && top < 0.98f, $"the shoulder keeps each scene colour's hue (worst {worstScene:F1} deg), middle grey at {mid:F3} (0.18 in), the brightest white at {top:F2}");
     }
 
     /// <summary>A colour in CIELAB (D65), from sRGB.</summary>

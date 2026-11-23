@@ -99,7 +99,7 @@ public partial class Screenshot : Node
         if (_args.TryGetValue("star", out string star)) PlanetSurface.Skies.SkySystem.ForceStar = Enum.Parse<StarClass>(star); // --star=RedDwarf..BlueWhite: the same world under another star
         ulong seed = (ulong)Int("seed", 1);
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
-        if (_args.TryGetValue("tonemap", out string tone)) Grade.Force = Enum.Parse<Godot.Environment.ToneMapper>(tone); // --tonemap=Filmic|Agx|Aces|Linear: to compare them
+        if (_args.TryGetValue("tonemap", out string tone)) Grade.Force = Enum.Parse<Grade.Curve>(tone); // --tonemap=Filmic|Agx|Aces|Linear|Shoulder: to compare them
         if (_args.ContainsKey("airless")) planet = planet with { Modifiers = planet.Modifiers | Modifier.Cratered }; // the same world as a barren body (arid, ice or lava)
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
         _args.TryGetValue("force", out string force);

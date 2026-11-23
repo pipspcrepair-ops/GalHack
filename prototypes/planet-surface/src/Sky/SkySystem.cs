@@ -155,7 +155,7 @@ public sealed record SkySystem
         return star with
         {
             Air = AirKind.Thin, Thickness = 0f, Density = 0.02f, Zenith = black, Horizon = black, Haze = black, Sunset = black,
-            NightZenith = black, StarsByDay = 1f, Nebula = star.Nebula, Shade = Oklab.Lch(0.34f, 0.13f, hue).ToRgb(),
+            NightZenith = black, StarsByDay = 1f, Nebula = star.Nebula, Shade = Oklab.Lch(0.45f, 0.15f, hue).ToRgb(),
             Summary = $"{StarName(star.Star)} star · no air",
         };
     }

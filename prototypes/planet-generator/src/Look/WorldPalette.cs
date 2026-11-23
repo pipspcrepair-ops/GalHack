@@ -146,7 +146,7 @@ public sealed record WorldPalette
         light *= 1f / light.Y;
         // The lit ground is seen by an eye adapted part of the way to its star, the sky less: grey rock takes the star's
         // cast (warm under a red dwarf, cool under a hot star), and the sky keeps more of it still.
-        Spectrum.Eye eye = light.Adapted(Adaptation), skyEye = light.Adapted(SkyAdaptation);
+        Spectrum.Eye eye = light.Adapted(spec.Airless ? AirlessAdaptation : Adaptation), skyEye = light.Adapted(SkyAdaptation);
 
         // ---- Minerals and soils ----
         // An airless body's regolith is its dark mare basalt and bright highland anorthosite in its own mix (the Moon's).
@@ -215,12 +215,12 @@ public sealed record WorldPalette
             }
             Rgb zenith = Sky(1f, 1f, 0.8f).Light(SkyGain, skyEye); // the sun higher than 45° at midday: further from its glare
             Spectrum horizon = Sky(10f, 0.8f, 0.5f);
-            Rgb deep = Oklab.Vivid(zenith, 2.4f, 0.11f, 0.82f);
+            Rgb deep = Oklab.Vivid(zenith, 2.4f, 0.11f, 0.66f, most: SkyMost);
             // The band along the horizon: the horizon's light after the long way back through the air, so it takes the colour the air
             // lets through, the complement of the colour it scatters (blue air, a warm band; air that drinks the red, a cyan one).
-            return (deep, Oklab.Vivid(horizon.Light(SkyGain, skyEye), 2.2f, 0.09f, 1.02f),
-                    Apart(Oklab.Vivid((horizon * Spectrum.Exp(extinction * -2.5f)).Hue(skyEye), 1.8f, 0.16f, 0.96f), Oklab.Of(deep).Hue, MathF.PI / 3f),
-                    Oklab.Vivid(Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye), 2.2f, 0.09f),
+            return (deep, Oklab.Vivid(horizon.Light(SkyGain, skyEye), 2.2f, 0.09f, 1.02f, most: SkyMost),
+                    Apart(Oklab.Vivid((horizon * Spectrum.Exp(extinction * -2.5f)).Hue(skyEye), 1.8f, 0.16f, 0.96f, most: SkyMost + 0.03f), Oklab.Of(deep).Hue, MathF.PI * 5f / 12f),
+                    Oklab.Vivid(Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye), 2.2f, 0.09f, most: SkyMost),
                     Oklab.Vivid((light * Spectrum.Exp(extinction * -12f)).Hue(skyEye), 1.6f, 0.2f, 0.95f), // the sun about 5° up
                     Oklab.Vivid((light * scatter).Hue(skyEye), 1.6f, 0.12f),
                     Oklab.Vivid(zenith, 2.8f, 0.14f), albedo);
@@ -302,6 +302,15 @@ public sealed record WorldPalette
 
     /// <summary>How far the eye adapts to its star's light on lit ground: a little over half way, so the star's cast shows on everything it lights (<see cref="Spectrum.Adapted"/>).</summary>
     const float Adaptation = 0.6f;
+
+    /// <summary>
+    /// On an airless body the eye adapts most of the way (no sky to judge the light against): its grey rock reads grey under
+    /// any star, warmed or cooled a little, and its colour is in its shadows (<c>SkySystem.Vacuum</c>).
+    /// </summary>
+    const float AirlessAdaptation = 0.85f;
+
+    /// <summary>The most chroma (Oklab) a sky takes: bold, the paintings' skies, never neon.</summary>
+    const float SkyMost = 0.17f;
 
     /// <summary>How far the sky is seen adapted: under half way, so skies under M, K, G, F and A stars differ plainly.</summary>
     const float SkyAdaptation = 0.45f;
