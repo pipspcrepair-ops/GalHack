@@ -240,8 +240,9 @@ public static class Locomotion
         }
         Vector3 p = c.Position + v * dt;
         Avoid(w, c, ref p, ref v);
-        // Never into another body: along its side instead.
+        // Never into another body: along its side instead (where it stood, if its side is a trunk's or a rock's: never into either).
         Vector3 held = w.Unpressed(c, c.Position, p);
+        if (held != p && IntoTrees(w, c, held)) held = c.Position;
         if (held != p) (p, v) = (held, WildSim.Flat(held - c.Position) / MathF.Max(dt, 1e-4f));
         p = Bound(w, p, ref v);
         // On its feet on the ground under them; a drop more than a stride down a slope it goes over, and falls (Unfooted).
@@ -249,8 +250,8 @@ public static class Locomotion
         if (c.Position.Y - p.Y > StrideDrop) p.Y = c.Position.Y;
         KeepOffFaces(w, c, ref p, ref v);
         if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
-        // Nor turned off a face or out of the solid into another body: along it, or where it stood if that takes it up a face.
-        if (w.Unpressed(c, c.Position, p) is var clear && clear != p) p = Face(w, c.Position, clear, Brain.GaitOf(c.Species)) ? c.Position : clear with { Y = Footing(w, c, clear.X, clear.Z) };
+        // Nor turned off a face or out of the solid into another body: along it, or where it stood if that takes it up a face or into a trunk.
+        if (w.Unpressed(c, c.Position, p) is var clear && clear != p) p = Face(w, c.Position, clear, Brain.GaitOf(c.Species)) || IntoTrees(w, c, clear) ? c.Position : clear with { Y = Footing(w, c, clear.X, clear.Z) };
         c.Velocity = v;
         c.Position = p;
     }

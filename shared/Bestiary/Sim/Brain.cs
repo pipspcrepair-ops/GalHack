@@ -45,8 +45,9 @@ public static partial class Brain
             return;
         }
 
-        // Giving way to one met face to face in a narrow way (Unstick): it backs off out of their way a moment, then goes on.
-        if (w.Time < c.GiveWayUntil && c.GiveWayTo is { Dead: false, Removed: false } other)
+        // Giving way to one met face to face in a narrow way (Unstick): it backs off out of their way a moment, then goes on. (A
+        // settlement's animal only as far as the edge of where it is kept: held up by a herd-mate, it never backs out of its pen.)
+        if (w.Time < c.GiveWayUntil && c.GiveWayTo is { Dead: false, Removed: false } other && !(c.Species.Domestic != DomesticKind.None && c.Keeper == null && Strayed(c)))
         {
             Back(w, c, other.Position, c.Stats.WalkSpeed);
             return;

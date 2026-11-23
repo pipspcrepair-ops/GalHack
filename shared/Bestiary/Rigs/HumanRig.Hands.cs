@@ -227,7 +227,7 @@ public sealed partial class HumanRig
     Basis Wrist(int i, Basis want)
     {
         Basis torso = Pose[_body].Basis;
-        Quaternion q = (torso.Inverse() * want).GetRotationQuaternion(), was = _wristTurn[i];
+        Quaternion q = Turn(torso.Inverse() * want), was = _wristTurn[i];
         if (_dt > 0f && was.LengthSquared() > 0.5f)
         {
             float a = was.AngleTo(q), most = WristTurn * _dt;
@@ -238,7 +238,10 @@ public sealed partial class HumanRig
     }
 
     /// <summary>Between two frames, turned the short way (t 0 the first).</summary>
-    static Basis Between(Basis a, Basis b, float t) => new(a.GetRotationQuaternion().Slerp(b.GetRotationQuaternion(), t));
+    static Basis Between(Basis a, Basis b, float t) => new(Turn(a).Slerp(Turn(b), t));
+
+    /// <summary>A frame's turn, unit length: a float frame's own can be off by more than a slerp allows (it throws, and the sim step with it).</summary>
+    static Quaternion Turn(Basis b) => b.GetRotationQuaternion().Normalized();
 
     /// <summary>
     /// A weapon held out of the way of the fists on it: where they would be in the torso or the head (a thick
