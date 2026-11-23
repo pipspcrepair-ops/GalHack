@@ -26,7 +26,11 @@ public partial class SurfaceTest
     /// masts fell, the rest of it (and a ruin's front) is dressing, no structure, and a flooded tunnel's standing water is water. A
     /// ruin itself is a place. Every other kind is a structure nothing breaks yet.
     /// </summary>
-    static readonly HashSet<string> Breaking = new() { "OreTellPiece", "PolePiece", "WirePiece", "DropPiece", "WreckPiece", "DressPiece", "RuinPiece", "UnderPiece", "FloodStretch" };
+    static readonly HashSet<string> Breaking = new()
+    {
+        "OreTellPiece", "PolePiece", "WirePiece", "DropPiece", "WreckPiece", "DressPiece", "RuinPiece", "UnderPiece", "FloodStretch",
+        "BridgeSpan", "BridgePier", "Abutment", "Portal", "SeawallStretch", "SeawallStair",
+    };
     /// <summary>Pieces of the kinds nothing breaks, by kind, over the sweep's worlds.</summary>
     readonly Dictionary<string, int> _unbroken = new();
 

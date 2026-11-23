@@ -81,13 +81,22 @@ public partial class SurfaceZone
                 Drop(span);
     }
 
-    /// <summary>A span its support let go of: taken into play and let fall whole, a free wreck.</summary>
+    /// <summary>
+    /// A span its support let go of: taken into play and let fall whole, a free wreck. It meets the spans it butted against end
+    /// to end no more (deck to deck with nothing between, they would wedge it in the air as an arch); it still comes down on
+    /// the support at its other end and on the ground.
+    /// </summary>
     void Drop(InfraLayer.BlockPiece span)
     {
         if (!_dropped.Add(span) || TakeInfra(span, Infra.Where(span)) is not { } v || v.Structure.Count == 0) return;
         Structure s = v.Structure;
-        _takenInfra[span] = v.Sever(Connectivity.Extract(s, s.Cells().Select(c => c.pos).ToList(), s.Name));
+        Vessel wreck = v.Sever(Connectivity.Extract(s, s.Cells().Select(c => c.pos).ToList(), s.Name));
+        _takenInfra[span] = wreck;
         Remove(v);
+        if (wreck.Node is PhysicsBody3D falling)
+            foreach (InfraLayer.BlockPiece next in span.Supports.Where(p => p != null).SelectMany(p => p.Carries).Distinct())
+                if (next != span && (_takenInfra.GetValueOrDefault(next)?.Node as PhysicsBody3D ?? Infra.BodyOf(next)) is { } butt && GodotObject.IsInstanceValid(butt))
+                    falling.AddCollisionExceptionWith(butt);
         InfraDropped++;
     }
 }

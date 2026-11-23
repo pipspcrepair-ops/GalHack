@@ -116,16 +116,22 @@ public partial class InfraLayer
             ulong h0 = Hash.Of((ulong)r.Id * 7919UL + (ulong)From, 0xB41D);
             if (Fallen)
             {
-                // In the valley, stepped over the ground it came down on (each cell's foot at or under it), broken here and there.
+                // In the valley, a slab stepped over the ground it came down on (each column's foot at or under the ground there,
+                // up to its neighbours' so no step shows a gap through it), its edges broken here and there.
                 NV flat = Level(Way);
                 Turn = Frame(flat);
                 Origin = new NV(Start.X, l.Ground(Start.X, Start.Z), Start.Z) + flat * 0.5f;
+                var rows = new int[Cells + 2, 2 * w + 3];
+                for (int i = -1; i <= Cells; i++)
+                    for (int x = -w - 1; x <= w + 1; x++) rows[i + 1, x + w + 1] = Row(l, x, -i, 0f);
                 for (int i = 0; i < Cells; i++)
                     for (int x = -w; x <= w; x++)
                     {
-                        if (Hash.Of(h0, i * 64 + x + 32) % 5 == 0) continue;
-                        NV at = Origin + NV.Transform(new NV(x, 0, -i), Turn);
-                        l.Put(x, (int)MathF.Floor(l.Ground(at.X, at.Z) - Origin.Y + 0.5f), -i, deck);
+                        if (Math.Abs(x) == w && Hash.Of(h0, i * 64 + x + 32) % 3 == 0) continue;
+                        int row = rows[i + 1, x + w + 1], top = row;
+                        foreach (var (di, dx) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1) })
+                            if (i + di >= 0 && i + di < Cells && Math.Abs(x + dx) <= w) top = Math.Max(top, rows[i + 1 + di, x + dx + w + 1] - 1);
+                        l.Fill(x, x, row, top, -i, -i, deck);
                     }
                 return;
             }

@@ -202,6 +202,10 @@ public partial class InfraLayer
     /// <summary>Every block structure planned on the world.</summary>
     public IEnumerable<BlockPiece> BlockPieces => _pieces?.Values.SelectMany(l => l).OfType<BlockPiece>() ?? Enumerable.Empty<BlockPiece>();
 
+    /// <summary>A structure's body as drawn now, or null.</summary>
+    public StaticBody3D BodyOf(BlockPiece p) =>
+        DrawnNodes.TryGetValue(p, out Node3D node) && IsInstanceValid(node) ? node.GetNodeOrNull<StaticBody3D>("Collision") : null;
+
     /// <summary>The box a structure drawn now fills in the scene, or null while it isn't drawn.</summary>
     public Aabb? BoxOf(BlockPiece p) =>
         DrawnNodes.TryGetValue(p, out Node3D node) && IsInstanceValid(node) && node.IsInsideTree() ? node.GlobalTransform * node.GetChild<MeshInstance3D>(0).GetAabb() : null;

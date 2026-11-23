@@ -38,7 +38,7 @@ public sealed partial class Staging
             bool carrier = kind is "BridgePier" or "GuidewayPylon";
             InfraLayer.BlockPiece piece = all.Where(p => p.GetType().Name == kind && !p.Taken && (!carrier || p.Carries.Count > 0) && (kind != "BridgeSpan" || p.Supports.Length > 0))
                 .OrderBy(p => new Vector2((float)p.X - from.X, (float)p.Z - from.Z).Length())
-                .FirstOrDefault(p => p.Build(_game.Zone.Planet) is { Count: > 0 } b && (!carrier || Standing(b).Max(c => c.Y) - Standing(b).Min(c => c.Y) >= 8));
+                .FirstOrDefault(p => p.Build(_game.Zone.Planet) is { Count: > 0 } b && Standing(b).Any() && (!carrier || Standing(b).Max(c => c.Y) - Standing(b).Min(c => c.Y) >= 8));
             if (piece == null) { missing.Add(kind); continue; }
             // Stand by it till its tile is drawn.
             Vector3 near = _game.Zone.Planet.NearestCopy(new Vector3((float)piece.X, 0f, (float)piece.Z), from);
@@ -59,11 +59,13 @@ public sealed partial class Staging
             // From the ground or water's level, or the structure's own when it stands high (a pier: from the deck's height off to its side).
             eye.Y = Mathf.Max(_game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f, (_game.Zone.Planet.WaterSurfaceAt(eye) ?? float.MinValue) + 1.7f);
             eye.Y = Mathf.Max(eye.Y, centre.Y);
-            // Aimed at its block nearest the eye out of the ground (a support's, low on its columns).
+            // Aimed at its block out of the ground nearest the line from the eye to its middle (a support's, low on its columns).
             var built = piece.Build(_game.Zone.Planet);
-            var cells = (Standing(built).Any() ? Standing(built) : built.Cells().Select(c => c.pos)).Select(c => at * new Vector3(c.X, c.Y, c.Z)).ToList();
+            var cells = Standing(built).Select(c => at * new Vector3(c.X, c.Y, c.Z)).ToList();
             float lowest = cells.Min(c => c.Y), highest = cells.Max(c => c.Y);
-            Vector3 look = centre, aim = cells.Where(c => !pier || c.Y < lowest + (highest - lowest) * 0.4f).OrderBy(c => c.DistanceTo(eye)).First();
+            Vector3 toward = (centre - eye).Normalized();
+            float OffLine(Vector3 c) => (c - eye - toward * (c - eye).Dot(toward)).Length();
+            Vector3 look = centre, aim = cells.Where(c => !pier || c.Y < lowest + (highest - lowest) * 0.4f).OrderBy(c => OffLine(c) + 0.05f * c.DistanceTo(eye)).First();
             foreach (int x in Look($"{kind}-before", eye, look)) yield return x;
             int dropped = _game.Zone.InfraDropped, rockets = 0;
             Vessel v = null;
