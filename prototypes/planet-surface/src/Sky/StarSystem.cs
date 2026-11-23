@@ -20,10 +20,14 @@ public readonly record struct D3(double X, double Y, double Z)
     public D3 Normalized => this * (1.0 / Length);
 }
 
-/// <summary>What a start system's bodies are marked as holding (the drive and ship materials; never a jump fuel). Landing and mining come later: this says where.</summary>
+/// <summary>
+/// What a start system's bodies are marked as holding (the drive and ship materials; never a jump fuel). A drive's mark
+/// sits on its real deposits (<see cref="DepositField.DriveKinds"/>): the warp drive's on the airless fuel moon, the fold
+/// drive's on a high-gravity world.
+/// </summary>
 public static class Deposit
 {
-    // No marker for warp fuel or fold fuel, ever: they are found by going there (DepositField.FuelKinds).
+    // No marker for warp fuel or fold fuel, ever: they are found by going there.
     public const string WarpDrive = "warp-drive-materials";
     public const string FoldDriveMaterials = "fold-drive-materials";
     public const string CapitalMaterials = "capital-ship-materials";
@@ -480,7 +484,8 @@ public sealed class StarSystem
     /// <summary>The system of a world: the same for everyone, from its spec.</summary>
     /// <param name="width">The map's width, m: its equator's length, so the home globe's size.</param>
     /// <param name="seed">The galaxy catalogue's seed for this star; 0: the world's own, where there is no galaxy.</param>
-    public static StarSystem For(PlanetSpec spec, SkySystem sky, double width, ulong seed = 0)
+    /// <param name="homeName">What its anchor world is called: a start world is "this world"; any other star's anchor is its first world.</param>
+    public static StarSystem For(PlanetSpec spec, SkySystem sky, double width, ulong seed = 0, string homeName = "this world")
     {
         if (seed == 0) seed = spec.Seed;
         var rng = new Rng(Hash.Of(seed, 0x535953, (long)spec.Archetype, spec.Variant));
@@ -604,7 +609,7 @@ public sealed class StarSystem
         double monthRadii = big != null ? 1.0 / Math.Tan(big.Radius) : 0.0;
         Orbiter home = new()
         {
-            Name = "this world", Kind = host == null ? OrbiterKind.Planet : OrbiterKind.Moon, Parent = host ?? star, Radius = homeRadius, Habitable = homeH,
+            Name = homeName, Kind = host == null ? OrbiterKind.Planet : OrbiterKind.Moon, Parent = host ?? star, Radius = homeRadius, Habitable = homeH,
             Orbit = host == null ? chart(homeH) : host.Radius * monthRadii, Period = host == null ? year(homeH) : capped(host.Radius * monthRadii, giantMonth(monthRadii)), Phase0 = phase(),
             Inclination = host == null ? 0.0 : equator(), Node = host == null ? 0.0 : equatorNode(), Temperature = TemperatureAt(homeH), Zone = ZoneAt(homeH),
             Rings = host == null && ArchetypeLook.For(spec).Ring, Color = sky.Horizon, // a moon has no rings (owner, 17 Nov)
@@ -822,6 +827,29 @@ public sealed class StarSystem
         return s;
     }
 
+    /// <summary>
+    /// The system of any star of the galaxy's catalogue but a start's, from its catalogue seed and class: the same
+    /// recipe as a start system's (<see cref="For"/>), round an anchor world rolled from the seed (the body its frames
+    /// hang on, as a start world anchors its own) of a type its star suits. The same star always gives the same system.
+    /// </summary>
+    public static StarSystem ForStar(ulong seed, StarClass star)
+    {
+        var rng = new Rng(Hash.Of(seed, 0x414E43));
+        Archetype[] suits = AnchorTypes(star);
+        PlanetSpec anchor = PlanetSpec.Roll(seed, suits[rng.Next(suits.Length)], rng.Next(PlanetSpec.VariantCount));
+        return For(anchor, SkySystem.For(anchor, star), anchor.WidthMeters, seed, "world 1");
+    }
+
+    /// <summary>The world types a star of this class lights (the other way round from the sky's own pick of a star for a type).</summary>
+    static Archetype[] AnchorTypes(StarClass star) => star switch
+    {
+        StarClass.RedDwarf => new[] { Archetype.Lava, Archetype.Alien },
+        StarClass.Orange => new[] { Archetype.Temperate, Archetype.Lava, Archetype.Ice },
+        StarClass.Yellow => new[] { Archetype.Temperate, Archetype.Arid, Archetype.Alien },
+        StarClass.White => new[] { Archetype.Arid, Archetype.Ice, Archetype.Alien },
+        _ => new[] { Archetype.Ice, Archetype.Alien },
+    };
+
     /// <summary>The chance a giant's moon, with room for one, has a moon of its own.</summary>
     public const double MoonOfMoonChance = 0.35;
 
@@ -910,11 +938,14 @@ public sealed class StarSystem
     /// <summary>Why this can't be a start system, or null: what the design promises every start.</summary>
     public string StartFault()
     {
-        if (FuelMoon?.Spec is not { Airless: true } || !FuelMoon.Deposits.Contains(Deposit.WarpDrive)) return "no vacuum moon holds warp fuel and the drive's materials";
+        if (FuelMoon == null || !FuelMoon.Deposits.Contains(Deposit.WarpDrive) || !Holds(FuelMoon, DepositField.WarpKinds)) return "no vacuum moon holds warp fuel and the drive's materials";
         double reach = (Position(FuelMoon, 0.0) - Position(Home, 0.0)).Length;
         if (reach > Home.Radius * (ThrusterReachRadii + 1.0)) return $"the fuel moon stands {reach / 1000.0:F0} km off, past thrusters";
-        foreach (string d in new[] { Deposit.FoldDriveMaterials, Deposit.CapitalMaterials })
-            if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(d))) return $"no {d} anywhere a warp away";
+        if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(Deposit.FoldDriveMaterials) && Holds(b, DepositField.FoldKinds))) return $"no {Deposit.FoldDriveMaterials} anywhere a warp away";
+        if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(Deposit.CapitalMaterials))) return $"no {Deposit.CapitalMaterials} anywhere a warp away";
         return null;
     }
+
+    /// <summary>Whether a body's ground holds these deposit kinds, by the generator's own rule for what it is.</summary>
+    static bool Holds(Orbiter b, DepositKind[] kinds) => b.Spec != null && kinds.All(DepositField.DriveKinds(b.Spec).Contains);
 }

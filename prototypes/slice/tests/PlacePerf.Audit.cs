@@ -304,7 +304,7 @@ public partial class PlacePerf
             }
         }
         if (!profile) yield break;
-        var profiler = new ProcessProfiler(_probe, GetTree().Root, 40, this);
+        var profiler = new ProcessProfiler(_probe, GetTree().Root, 600, this);
         while (!profiler.Done)
         {
             profiler.Step();

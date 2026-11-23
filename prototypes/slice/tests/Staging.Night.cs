@@ -16,7 +16,7 @@ namespace Slice.Tests;
 /// - checks, each an A/B of the same frame with the far lights drawn and hidden:
 ///   - a lived-in place's points seen from 3 km;
 ///   - none from a dead ruin;
-///   - the glow over a town, and none over a lone farm (no glow is rolled for one);
+///   - no glowing dome over a town (owner, 23 Nov: it is gone);
 ///   - the frame's cost, with and without them.
 /// - shots: from a hill 2 km off a town, from low flight, and from orbit (--orbit=0 skips it).
 /// --minspec=1: the minimum spec's stand-in (4 cores: CPUs 0, 2, 4, 6; the lowest graphics). Frames go in --out.
@@ -54,13 +54,11 @@ public sealed partial class Staging
         Vector3 Near(double x, double z) => world.NearestCopy(new Vector3((float)x, 0f, (float)z), from) with { Y = world.GroundHeight(Mathx.WrapX(x, world.Width), Mathx.Wrap(z, world.Height)) };
         Vector3 Middle(PoiSite s) => Near((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5);
         float Off(Vector3 p) => new Vector2(p.X - from.X, p.Z - from.Z).Length();
-        GD.Print($"(night: {world.Pois.Count} places, {world.Pois.Count(FarLights.Lived)} lived in, {far.Glows.Count} glows)");
+        List<FarLights.Glow> towns = FarLights.Clusters(world.Pois, world.Width, world.Height);
+        GD.Print($"(night: {world.Pois.Count} places, {world.Pois.Count(FarLights.Lived)} lived in, {towns.Count} towns)");
 
-        // The town: the brightest glow within reach of the start; the lone farm: a lived-in place no glow covers.
-        FarLights.Glow? town = far.Glows.Where(g => Off(Near(g.X, g.Z)) < 9000f).OrderByDescending(g => g.Strength / (1f + Off(Near(g.X, g.Z)) / 3000f)).Cast<FarLights.Glow?>().FirstOrDefault();
-        bool Covered(PoiSite s, float margin = 700f) => far.Glows.Any(g => Middle(s).DistanceTo(Near(g.X, g.Z) with { Y = Middle(s).Y }) < g.Radius + margin);
-        // (Far enough from every glow that none of them stands behind it in the view.)
-        PoiSite farm = world.Pois.Where(s => FarLights.Lived(s) && s.Siting != "city" && !Covered(s, 3000f)).OrderBy(s => Off(Middle(s))).FirstOrDefault();
+        // The town: the brightest cluster within reach of the start.
+        FarLights.Glow? town = towns.Where(g => Off(Near(g.X, g.Z)) < 9000f).OrderByDescending(g => g.Strength / (1f + Off(Near(g.X, g.Z)) / 3000f)).Cast<FarLights.Glow?>().FirstOrDefault();
         // The lit place and the dead ruin from what has been built (places build nearest first, out to the camera's reach), each with lamps to show.
         for (int i = 0; i < 1200 && !(far.Of.Any(o => o.Value.Lived && o.Value.Count > 0) && far.Of.Any(o => !o.Value.Lived && o.Value.Count > 0)); i++) yield return 0;
         PoiSite ruin = far.Of.Where(o => !o.Value.Lived && o.Value.Count > 0 && o.Key.Siting != "city").Select(o => o.Key).OrderBy(s => Off(Middle(s))).FirstOrDefault()
@@ -70,7 +68,7 @@ public sealed partial class Staging
         if (lived == null)
         {
             GD.Print("(night: nobody lives on this world, or no lived-in place shows a lamp)");
-            NightCheck(far.Glows.Count == 0 && far.PointCount == 0 || far.Of.Values.All(o => !o.Lived), "a world nobody lives on has no glow and no lit place far off");
+            NightCheck(far.PointCount == 0 || far.Of.Values.All(o => !o.Lived), "a world nobody lives on has no lit place far off");
             foreach (int x in NightResult()) yield return x;
             yield break;
         }
@@ -110,15 +108,13 @@ public sealed partial class Staging
             else NightCheck(seen < 0.01f, $"no lights from a dead ruin at 3 km ({site.Name}, {site.State}: lift {seen:F3})");
         }
 
-        // The glow over a town, from 2 km on a hill; none over a lone farm.
+        // A town from 2 km on a hill: no glowing dome over it.
+        NightCheck(far.GetNodeOrNull("Light glow") == null, "no glowing dome over a town");
         if (town is { } g)
         {
             Vector3 mid = Near(g.X, g.Z);
             Vector3 eye = Clear(mid, 2000f + g.Radius * 0.5f, 25f, highest: true);
             foreach (int x in Midnight(eye, mid + Vector3.Up * 40f, () => true)) yield return x;
-            float lift = 0f;
-            foreach (int x in AB(eye, mid + Vector3.Up * 40f, far, "Light glow", new List<Vector3> { mid + Vector3.Up * g.Radius * 0.25f }, v => lift = v, box: 40)) yield return x;
-            NightCheck(lift > 0.02f, $"the glow over a town ({g.Places} places, strength {g.Strength:F2}, radius {g.Radius:F0} m: lift {lift:F3})");
             Look(eye, mid + Vector3.Up * 40f);
             foreach (int x in _drive.Wait(4)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, $"hill-2km{(minspec ? "-minspec" : "")}.png"))) yield return x;
@@ -128,17 +124,7 @@ public sealed partial class Staging
             foreach (int x in Midnight(low, mid, () => true, 240)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, "low-flight.png"))) yield return x;
         }
-        else GD.Print("(night: no town glows on this world)");
-        NightCheck(farm == null || !Covered(farm), $"no glow over a lone farm ({farm?.Name ?? "none on this world"})");
-        if (farm != null)
-        {
-            Vector3 mid = Middle(farm);
-            Vector3 eye = Clear(mid, 500f, 250f);
-            foreach (int x in Midnight(eye, mid, () => true, 240)) yield return x;
-            float lift = 0f;
-            foreach (int x in AB(eye, mid, far, "Light glow", new List<Vector3> { mid + Vector3.Up * 60f }, v => lift = v, box: 40)) yield return x;
-            NightCheck(lift < 0.008f, $"nothing glows over the farm's air (lift {lift:F3})");
-        }
+        else GD.Print("(night: no town on this world)");
         foreach (int x in NightResult()) yield return x;
         if (_args.GetValueOrDefault("orbit", "1") == "0" || minspec) yield break;
         // From orbit: the night side, the towns as smudges.

@@ -534,7 +534,7 @@ public sealed class WildSim
             float gap = herd != null ? Brain.GrazeKeep(kind.Stats.Radius) : 0.1f;
             for (int k = 0; k < 8 && list.Exists(o => Flat(o.Position - p).Length() < o.Radius + kind.Stats.Radius + gap); k++)
                 p = FreeSpot(p + new Vector3(MathF.Cos(a + k * 0.8f), 0f, MathF.Sin(a + k * 0.8f)) * (kind.Stats.Radius * 2f + gap), rng);
-            if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species)) continue;
+            if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species) || list.Exists(o => Flat(o.Position - p).Length() < o.Radius + kind.Stats.Radius)) continue;
             list.Add(Spawn(kind, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
@@ -691,7 +691,7 @@ public sealed class WildSim
             c.Spaced = _spaced.Count;
             inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
-            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Dormant ? 0f : c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Dormant ? 0f : c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c), Height = c.Species.BodyHeight });
             _spaced.Add(c);
         }
         if (_spaced.Count == 0) return;

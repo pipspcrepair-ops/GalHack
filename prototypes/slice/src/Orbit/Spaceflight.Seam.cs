@@ -12,36 +12,31 @@ using Survivor = Slice.Player.Survivor;
 namespace Slice.Orbit;
 
 /// <summary>
-/// The seam between the surface and orbit: the air thickens round you to the cap, the land hands
-/// over behind it, and it thins away to black space with the world curving away below.
+/// The seam between the surface and orbit: the land hands over to the globe's sheet just under the
+/// cap, and the air thins away to black space with the world curving away below.
 ///
 /// The crossing itself changes nothing you can see: the orbit is laid out in the surface's own
 /// coordinates (<see cref="OrbitZone.Align"/>). What you see is set from your height alone, the
-/// same both ways:
+/// same both ways, and nothing stands round the eye to hide any of it (owner, 22 Nov: no shrouding):
 ///
 /// - From the ground up the sheet (<see cref="Globe"/>) is the far land past the surface's own, in
 ///   every direction, so the land and its sea never end at an edge.
-/// - The shroud thickens from under the clouds, in the world's own sky colours, thickest at the
-///   cap. Behind it the sheet comes over the land just under the cap, at the same size and in the
+/// - Just under the cap the sheet comes over the land, the same land at the same size and in the
 ///   same place, and at the cap the land is gone. Nothing of it is left over the cap.
-/// - Over the cap the shroud thins, the sheet curves away, and the sky fades into space's own
-///   backdrop (the same galaxy the orbit's sky draws, from the same catalogue, in the same
-///   directions), so when the orbit's sky takes over at the top of the band nothing changes. Wind and haze go with the air, and the star's
-///   light takes over from the planet's sun.
-///
-/// Air thin enough to have little shroud has little to hide the swap, and needs little: its sheet
-/// is the same land in the same place, under the same black sky.
+/// - Over the cap the sheet curves away and the sky fades into space's own backdrop (the same
+///   galaxy the orbit's sky draws, from the same catalogue, in the same directions), so when the
+///   orbit's sky takes over at the top of the band nothing changes. Wind and haze go with the air,
+///   and the star's light takes over from the planet's sun.
 ///
 /// Coming down it all runs backward: at the band's top the orbit is aligned to the place under
 /// you (rigidly, the sky too, so nothing shows), the surface's streamer has been running ahead
-/// of you for a while, and the crossing itself falls just under the cap, behind the shroud.
+/// of you for a while, and the crossing itself falls just under the cap.
 /// </summary>
 public partial class Spaceflight
 {
     ShaderMaterial _sky;
     float _fogDensity, _fogHeight, _fogScatter, _fogSky, _ambient;
     bool _aligned, _streaming;
-    float _wreckFade = -1f;
     float _band;
 
     /// <summary>Where you are in the band over the cap: 0 at its foot, 1 at its top (the orbit's own sky).</summary>
@@ -101,6 +96,7 @@ public partial class Spaceflight
         TimeSpan paused = GC.GetTotalPauseDuration();
         _frameDelta = (float)delta;
         ProcessSeam(delta);
+        if (Game.InOrbit) OrbitFrames++;
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (ms > WorstSeamMs)
         {
@@ -115,17 +111,27 @@ public partial class Spaceflight
     readonly System.Text.StringBuilder _laps = new();
     long _lapAt;
 
-    /// <summary>Notes the time since the last lap against a name, for <see cref="WorstSeamParts"/>.</summary>
+    /// <summary>All the time each part has taken in orbit, ms, over <see cref="OrbitFrames"/> drawn frames, and the most it took in one (tests print them, and reset them).</summary>
+    public readonly Dictionary<string, double> SpentInOrbit = new(), WorstInOrbit = new();
+    public int OrbitFrames;
+
+    /// <summary>Notes the time since the last lap against a name, for <see cref="WorstSeamParts"/> and <see cref="SpentInOrbit"/>.</summary>
     void Lap(string name)
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(_lapAt, now).TotalMilliseconds;
         _lapAt = now;
+        if (Game.InOrbit)
+        {
+            SpentInOrbit[name] = SpentInOrbit.GetValueOrDefault(name) + ms;
+            WorstInOrbit[name] = Math.Max(WorstInOrbit.GetValueOrDefault(name), ms);
+        }
         if (ms >= 0.5) _laps.Append($"{name} {ms:F1}, ");
     }
 
     void ProcessSeam(double delta)
     {
+        HushStep();
         TurnGround();
         Lap("ground turning");
         if (Game.InOrbit)
@@ -162,13 +168,13 @@ public partial class Spaceflight
         N.Vector3 q = c.ToGlobe(eye.ToNumerics()), h = o.Home.ToGlobe(eye.ToNumerics());
         var inHome = ViewFrom ?? new PlanetSurface.Skies.D3(h.X, h.Y, h.Z);
         var inHere = c.IsHome ? inHome : new PlanetSurface.Skies.D3(q.X, q.Y, q.Z);
-        if (s.Arrived)
+        if (s.Arrived && c.Surface == s)
         {
             s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
             s.Sky.Track();
             Lap("the sky below");
         }
-        o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
+        o.Space.Track(o.Home.Seen, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
     }
 
     /// <summary>Lays the orbit out over the surface at the point under a world position.</summary>
@@ -216,14 +222,23 @@ public partial class Spaceflight
         SurfaceZone s = Below;
         Godot.Environment env = s.Sky.Environment;
         _sky ??= env.Sky.SkyMaterial as ShaderMaterial;
-        _sky.SetShaderParameter("space_fade", gone);
+        // Once the world below is seen from outside, the sky is space as its rim of air shows: the one rule for both, over the
+        // level and (with the fog's wash over the sky) under it, where the sheet curves away.
+        float outside = SeenFromOutside(y);
+        _sky.SetShaderParameter("space_fade", MathF.Max(gone, outside));
+        _sky.SetShaderParameter("space_under", MathF.Sqrt(outside)); // under the level there is only the rim's thin air to see through: ahead of the sky over it
+        // Up in orbit the zone's frame is the surface's laid out flat at one point, and the ground curves away from there: the sky's
+        // clouds are seen from the eye's true height over it, or after a way across the band they stood over you above their tops.
+        Vector3 eye = Game.Camera.GlobalPosition;
+        _sky.SetShaderParameter("eye_lift", Game.InOrbit ? Height(eye) - eye.Y : 0f);
         env.FogDensity = _fogDensity * (1f - gone);
         // Height fog thickens with height over the clouds' base: left to itself it would fog your own hull.
-        env.FogHeightDensity = _fogHeight * (1f - Smooth((y - Rules.Crossing.ShroudFrom) / 150f));
+        env.FogHeightDensity = _fogHeight * (1f - Smooth((y - Rules.Crossing.FadeFrom) / 150f));
         env.FogSunScatter = _fogScatter * (1f - gone);
-        env.FogSkyAffect = _fogSky * (1f - gone);
+        env.FogSkyAffect = _fogSky * (1f - gone) * (1f - outside);
         env.AmbientLightEnergy = _ambient * (1f - gone) + Rules.Space.Ambient[1] * gone;
-        s.Sky.CloudDeckFade = (1f - gone) * (1f - OverLand(y));
+        // The surface's flat cloud deck goes as the sheet comes over the land, and in orbit there is none: the clouds are the globe's.
+        s.Sky.CloudDeckFade = Game.InOrbit ? 0f : (1f - gone) * (1f - OverLand(y));
     }
 
     // ---- The crossing ---------------------------------------------------------------------------
@@ -275,38 +290,18 @@ public partial class Spaceflight
         if (shown == GroundShown) return;
         SurfaceZone s = Below;
         _groundShownOf[s] = shown;
-        if (!_hiddenKidsOf.TryGetValue(s, out List<Node3D> _hiddenKids)) _hiddenKidsOf[s] = _hiddenKids = new List<Node3D>();
+        if (!_hiddenKidsOf.TryGetValue(s, out List<Node3D> hidden)) _hiddenKidsOf[s] = hidden = new List<Node3D>();
         // A turn left unfinished ends now, then this one is laid out a piece at a time (see TurnGround).
-        while (_groundTurns.TryDequeue(out Action turn)) turn();
+        Turn(_groundWork, all: true);
         if (shown)
         {
-            foreach (Node n in s.GetChildren())
-                if (n is Node3D d && n != s.Sky) _groundTurns.Enqueue(() => d.Visible = true);
-            // Branches before their twigs: each is shown once what it hangs on is.
-            for (int i = _hiddenKids.Count - 1; i >= 0; i--)
-            {
-                Node3D kid = _hiddenKids[i];
-                _groundTurns.Enqueue(() => { if (IsInstanceValid(kid)) kid.Visible = true; });
-            }
-            _hiddenKids.Clear();
+            // Branches before their twigs (each is shown once what it hangs on is): the twigs go on first, to come off last.
+            for (int i = hidden.Count - 1; i >= 0; i--) _groundWork.Push(new Piece(hidden[i], Step.Show, 0));
+            hidden.Clear();
         }
-        else
-        {
-            // Big branches go a twig at a time (two levels down), each before the branch it hangs on.
-            void Hide(Node3D d, int depth)
-            {
-                if (depth < 2 && d.GetChildCount() > ManyKids)
-                    foreach (Node k in d.GetChildren())
-                        if (k is Node3D kid && kid.Visible)
-                        {
-                            Hide(kid, depth + 1);
-                            _hiddenKids.Add(kid);
-                        }
-                _groundTurns.Enqueue(() => { if (IsInstanceValid(d)) d.Visible = false; });
-            }
-            foreach (Node n in s.GetChildren())
-                if (n is Node3D d && n != s.Sky) Hide(d, 0);
-        }
+        _hiding = hidden;
+        foreach (Node n in s.GetChildren())
+            if (n is Node3D d && n != s.Sky) _groundWork.Push(new Piece(d, shown ? Step.Show : Step.Hide, 0));
         Game.Camera.Far = shown ? _surfaceFar : Rules.Space.CameraFar;
     }
 
@@ -314,21 +309,87 @@ public partial class Spaceflight
 
     const int ManyKids = 24;
     const double GroundTurnMs = 1.5;
-    readonly Queue<Action> _groundTurns = new();
+
+    /// <summary>What a piece of a turn does to its node: shown or hidden, held parked (once its twigs are), woken.</summary>
+    enum Step { Show, Hide, Hidden, Hold, Held, Wake }
+
+    readonly record struct Piece(Node Node, Step Step, int Depth);
+
+    /// <summary>Where the twigs hidden apart from their branches are noted, to be shown again branch first.</summary>
+    List<Node3D> _hiding;
+
+    /// <summary>The land's showing or hiding, laid out a piece at a time as it goes (the zones' parking and waking: <see cref="ZoneWork"/>).</summary>
+    readonly Stack<Piece> _groundWork = new();
+
+    /// <summary>The pieces of a turn that took more than <see cref="SlowTurnMs"/> each, the first few (tests print them).</summary>
+    public readonly List<string> SlowTurns = new();
+    const double SlowTurnMs = 4.0;
 
     /// <summary>
     /// Showing or hiding a node visits everything under it, and the land is thousands of nodes: all
     /// at once it cost 80 ms of the crossing's frame. It goes a little a frame, the sheet in front of
-    /// it the while, so what's left of the land for those few frames can't be seen.
+    /// it the while, so what's left of the land for those few frames can't be seen. A zone's parking and waking
+    /// (<see cref="Park"/>) go the same way, alongside. Even laying the pieces out is done as they come.
     /// </summary>
     void TurnGround()
     {
-        if (_groundTurns.Count == 0) return;
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (_groundTurns.TryDequeue(out Action turn))
+        foreach (ZoneWork w in _workOf.Values)
         {
-            turn();
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) break;
+            Turn(w.Pieces, w, from: started);
+            if (w.Pieces.Count > 0) continue;
+            Settled(w);
+            if (w.Doing == null) continue;
+            GD.Print($"[{w.Doing} over {Engine.GetProcessFrames() - w.Since} frames]");
+            w.Doing = null;
+        }
+        Turn(_groundWork);
+    }
+
+    /// <summary>
+    /// A stack's pieces, as many as fit in <see cref="GroundTurnMs"/> from <paramref name="from"/> (now if 0), one at the least: the
+    /// land's showing and the zones' parking and waking each get their share of a frame.
+    /// </summary>
+    void Turn(Stack<Piece> work, ZoneWork zone = null, bool all = false, long from = 0)
+    {
+        long started = from != 0 ? from : System.Diagnostics.Stopwatch.GetTimestamp(), at = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (work.TryPop(out Piece p))
+        {
+            if (IsInstanceValid(p.Node)) Do(work, p, zone);
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(at, now).TotalMilliseconds;
+            if (ms > SlowTurnMs && SlowTurns.Count < 40 && IsInstanceValid(p.Node)) SlowTurns.Add($"{p.Step} {p.Node.Name} ({p.Node.GetType().Name}, {p.Node.GetChildCount()} children{(p.Depth == 0 && p.Step == Step.Held ? $": {string.Join(", ", p.Node.GetChildren().Where(k => k.ProcessMode != ProcessModeEnum.Disabled).Select(k => $"{k.Name} {k.ProcessMode} {k.GetChildCount()}"))} not held" : "")}) {ms:F1} ms");
+            at = now;
+            if (!all && System.Diagnostics.Stopwatch.GetElapsedTime(started, now).TotalMilliseconds > GroundTurnMs) return;
+        }
+    }
+
+
+    void Do(Stack<Piece> work, Piece p, ZoneWork zone)
+    {
+        Node n = p.Node;
+        switch (p.Step)
+        {
+            case Step.Show:
+                ((Node3D)n).Visible = true;
+                break;
+            case Step.Hide:
+                // A big branch goes a twig at a time (two levels down), each before the branch it hangs on.
+                work.Push(p with { Step = Step.Hidden });
+                if (p.Depth < 2 && n.GetChildCount() > ManyKids)
+                    foreach (Node k in n.GetChildren())
+                        if (k is Node3D kid && kid.Visible)
+                        {
+                            _hiding.Add(kid);
+                            work.Push(new Piece(kid, Step.Hide, p.Depth + 1));
+                        }
+                break;
+            case Step.Hidden:
+                ((Node3D)n).Visible = false;
+                break;
+            default:
+                ModeStep(zone, p);
+                break;
         }
     }
 
@@ -351,18 +412,11 @@ public partial class Spaceflight
     /// <summary>The sheet over the land (0 to 1): complete at the cap, the land still there under it until then.</summary>
     float OverLand(float y) => Smooth((y - Rules.Crossing.SwapFrom) / (Ceiling - Rules.Crossing.SwapFrom));
 
-    /// <summary>How thick the air round you stands, 0 to 1, whatever the world's air: it peaks at the cap, and thins away over it.</summary>
-    float ShroudAt(float y)
-    {
-        var r = Rules.Crossing;
-        return Smooth((y - r.ShroudFrom) / (Ceiling - r.ShroudFrom)) * (1f - Smooth((y - Ceiling - r.ShroudHolds) / r.ShroudThins));
-    }
+    /// <summary>How far the world below is seen from outside, 0 to 1: its rim of air shows, and the sky over you is space, over the first 600 m past the cap.</summary>
+    float SeenFromOutside(float y) => Smooth((y - Ceiling) / 600f);
 
-    /// <summary>The world's share of the shroud by how much air it has: thick air closes in, thin air hardly at all.</summary>
+    /// <summary>How much of the world's air its rim shows from outside: thick air glows, thin air hardly at all.</summary>
     float AirShare => Globe.AirShare(Below.Planet?.Sky.Density ?? 0f);
-
-    /// <summary>The shroud's thickness where you are (tests read this).</summary>
-    public float Shrouded { get; private set; }
 
     /// <summary>Lays the world below out for this drawn frame, from your height.</summary>
     void DrawWorld(float y)
@@ -383,6 +437,7 @@ public partial class Spaceflight
         float cap = Ceiling, R = o.GlobeRadius;
         // The weather it shows: often while its clouds are in sight, now and then while they're under the sky's own.
         o.Globe.Weather?.Update(_frameDelta, s.Weather?.Sim, s.Sky, s.Planet.Look.Dust, orbit || y > s.Sky.Air.CloudBase ? GlobeWeather.LeastPeriod : 15.0);
+        Lap("globe weather");
         double w = s.Planet.Width, h = s.Planet.Height;
 
         // Where the sheet stands: under you on the flat map, turning into under you on the globe up the band.
@@ -404,11 +459,15 @@ public partial class Spaceflight
             height = Mathf.Lerp(height, o.SurfaceHeight(q.Length()), onGlobe);
         }
         N.Quaternion map = o.Map.Frame(nx, nz);
+        // Under the band's top, where the ground is near enough for a texel of the whole paint to be metres on the screen,
+        // the ground under you is painted finer (a descent is aligned there, with the band still to come down).
+        if (y < BandTop) o.Globe.Near(nx, nz);
+        Lap("near ground");
 
         // What stands in front of what. It looks the same wherever it stands on its eye rays.
         float over = OverLand(y), near, far;
         if (y >= BandTop) near = far = 0f;
-        else if (orbit && y >= cap && _groundTurns.Count == 0) (near, far) = (16000f, 38000f);
+        else if (orbit && y >= cap && _groundWork.Count == 0) (near, far) = (16000f, 38000f);
         else if (over > 0f)
         {
             float clear = MathF.Max(60f, y - Highest) * 0.9f;
@@ -450,13 +509,15 @@ public partial class Spaceflight
             Local = Mathf.Clamp(MathF.Min((float)nz, (float)(h - nz)) * 0.8f, 300f, 3000f),
             Relief = Mathf.Lerp(1f, (float)Rules.Globe.ReliefFar, climb),
             CloudBend = cloudBend,
-            CloudLift = Mathf.Lerp(s.Sky.Air.CloudBase + s.Sky.Air.CloudThickness * 0.45f, (float)Rules.Globe.CloudHeight * R, Smooth((y - cap) / 400f)),
+            // A thin layer on the curve you see, whatever it is: the clouds you climbed through while the sheet is the flat
+            // land, the same share of its radius as it closes to the globe, never a shell standing off it (owner, 22 Nov).
+            CloudLift = MathF.Min(s.Sky.Air.CloudBase + s.Sky.Air.CloudThickness * 0.45f, (float)Rules.Globe.CloudHeight / bend),
             OverLand = over,
             Near = near, Far = far,
             ToSun = s.Sky.ToSun,
             FogDensity = SurfaceShown ? env.FogDensity : 0f,
             FogColor = airFar,
-            Rim = Smooth((y - cap) / 600f) * share,
+            Rim = SeenFromOutside(y) * share,
             TrueDepth = onGlobe >= 1f,
             TrueCentre = o.Centre,
         });
@@ -465,12 +526,6 @@ public partial class Spaceflight
         // running on past it would stand over the sheet's curve: a ring of water with no land in it.
         s.Streamer.FarFieldBehind = o.Globe.Visible;
         s.SeaRim = o.Globe.Visible ? s.Streamer.HorizonRim : PlanetSurface.Terrain.TerrainStreamer.NoRim;
-
-        // The shroud, in this world's own air as it is lit now.
-        Color high = new(sky.Zenith.R * day, sky.Zenith.G * day, sky.Zenith.B * day);
-        Color glow = new(sky.StarColor.R * day, sky.StarColor.G * day, sky.StarColor.B * day);
-        Shrouded = ShroudAt(y) * r.ShroudThickness * share;
-        o.Globe.Shroud(Shrouded, fog.Lerp(high, 0.3f), high, glow, s.Sky.ToSun);
     }
 
     // ---- The band ------------------------------------------------------------------------------
@@ -482,13 +537,14 @@ public partial class Spaceflight
         Vector3 at = carrier != null ? carrier.DrawTransform.Origin : Game.Survivor.WorldFeet;
         OrbitZone o = Orbit;
         float y = Height(at);
-        Game.Surface.Sky.Stars.Poll();
-        o.Space.Galaxy(Game.Surface.Sky.Stars);
+        Stars.Poll();
+        o.Space.Galaxy(Stars);
         HandOverFrames(at);
         if (!_aligned || y >= BandTop)
         {
             AirGone = 1f;
             if (_band < 1f) AllSpace();
+            FadeWrecks(1f); // the last of them, a few a frame
             _band = 1f;
             _aligned = false; // over the top: the sphere's own terms again
             DrawWorld(y);
@@ -505,6 +561,7 @@ public partial class Spaceflight
         o.Space.Show(false, 0f);
         SkyTurn();
         Lap("space sky");
+        s.Sky.CloudDeckFade = 0f; // in orbit there is none, whatever it was when this surface was last seen
         s.Sky.PlaceCloudDeck(at); // it sets the height fog, so it goes before the air is thinned
         Lap("cloud deck");
         SetSurfaceAir(AirGone, y);
@@ -532,19 +589,32 @@ public partial class Spaceflight
         o.Space.Show(true, 1f);
         o.Space.Light(1f);
         o.Space.ShowBodies(true);
-        FadeWrecks(1f);
     }
 
-    /// <summary>The wrecks far off fade in up the band: none of them hangs in the planet's sky.</summary>
+    /// <summary>
+    /// The wrecks far off fade in up the band: none of them hangs in the planet's sky. A wreck is faded piece by piece,
+    /// and all of them at once took 17 ms of a frame: they catch up a few a frame, from where the last frame stopped.
+    /// </summary>
     void FadeWrecks(float fade)
     {
-        if (fade == _wreckFade || (Mathf.Abs(fade - _wreckFade) < 0.04f && fade is > 0f and < 1f)) return;
-        _wreckFade = fade;
-        foreach (Vessel w in Orbit.Wrecks)
+        List<Vessel> wrecks = Orbit.Wrecks;
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        for (int i = 0; i < wrecks.Count; i++)
         {
+            Vessel w = wrecks[(_wreckNext + i) % wrecks.Count];
+            float was = _wreckFadeOf.TryGetValue(w, out float f) ? f : -1f;
+            if (fade == was || (Mathf.Abs(fade - was) < 0.04f && fade is > 0f and < 1f)) continue;
+            _wreckFadeOf[w] = fade;
             w.Node.Visible = fade > 0.01f;
             foreach (Node n in w.View.GetChildren())
                 if (n is GeometryInstance3D g) g.Transparency = 1f - fade;
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds < WreckFadeMs) continue;
+            _wreckNext = (_wreckNext + i + 1) % wrecks.Count;
+            return;
         }
     }
+
+    const double WreckFadeMs = 1.0;
+    readonly Dictionary<Vessel, float> _wreckFadeOf = new();
+    int _wreckNext;
 }

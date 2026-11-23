@@ -339,7 +339,7 @@ public sealed partial class Town
         p.Clambering = false;
         // (Walked into water deeper than they wade: out of it to the nearest bank, Town.Water; their way, planned round water, goes on after.
         // Shallower, they wade across on their way, feet on its bed and slowed: Walk.)
-        if (BedIn(p.Pos) is float bed)
+        if (BedUnder(p) is float bed)
         {
             if (Surface(p.Pos) - bed > Wade(p)) EnterWater(p);
             else p.Pos.Y = bed;

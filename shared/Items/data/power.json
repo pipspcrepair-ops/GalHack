@@ -20,7 +20,8 @@
 //               cores, containers, doors, pads, ladders.
 //   drives      the jump fuels, from core storage: the item each drive burns, how many per AU (warp drive,
 //               in a system) or per light year (fold drive, between stars), and the seconds it spools on
-//               its block's power before it jumps. Shields must be down to jump.
+//               its block's power before it jumps. Shields must be down to jump. A drive with a reach jumps no
+//               further than its best block's at a time (the fold drive's tiers: design, T1 about 30 LY, T2 60).
 //   shield      a structure's shield takes hits before its hull. By block: its hit points and recharge per
 //               second at full power. It refills cooldown seconds after the last hit, burning dribbles of
 //               fold crystal from core storage only while it recharges (crystal per hit point, owner 15 Nov;
@@ -43,6 +44,7 @@
     "constructor": { "working": 1 },
     "chair": { "seated": 1 },
     "forecast": { "on": 1 },
+    "life-support": { "on": 1 },
     "turret": { "idle": 0, "tracking": 0.3, "firing": 1 },
     "weapon": { "idle": 0, "firing": 1 },
     "shield": { "up": 0.1, "recharging": 1 },
@@ -50,8 +52,8 @@
     "fold-drive": { "engaged": 1 }
   },
   "drives": {
-    "warp-drive": { "fuel": "warp-cell", "per": 1, "unit": "AU", "spool": 10 },
-    "fold-drive": { "fuel": "fold-crystal", "per": 1, "unit": "LY", "spool": 15 }
+    "warp-drive": { "fuel": "warp-cell", "per": 1, "unit": "AU", "spool": 6 },
+    "fold-drive": { "fuel": "fold-crystal", "per": 1, "unit": "LY", "spool": 15, "reach": { "fold-drive-t1": 30, "fold-drive-t2": 60 } }
   },
   "shield": { "fuel": "fold-crystal", "foldPerHp": 0.0002, "cooldown": 15, "blocks": { "shield-generator": { "hp": 4000, "recharge": 500 } } },
   "solar": { "cloudCut": 0.75 }

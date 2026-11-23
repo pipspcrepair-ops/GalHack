@@ -954,6 +954,35 @@ public sealed class Playthrough
         return zone.GroundAt(near.X + distance, near.Z);
     }
 
+    /// <summary>
+    /// Creative's PLACE for a whole blueprint, from the edge of level ground big enough for it and facing across it (PLACE
+    /// searches ahead of the sleeper): up to five flat spots out from where the sleeper stands, each farther, rougher and
+    /// turned on from the last. Reports the vessel, its shapes made, or null and the last refusal.
+    /// </summary>
+    public IEnumerable<int> PlaceWhole(GalHack.Structures.Structure plan, Action<Vessel, string> placed)
+    {
+        var (lo, hi) = plan.Bounds();
+        float radius = 0.5f * new Vector2(hi.X - lo.X + 1, hi.Z - lo.Z + 1).Length();
+        Vessel v = null;
+        string why = null;
+        for (int attempt = 0; attempt < 5 && v == null; attempt++)
+        {
+            Vector3 spot = FlatSpot(Game.Survivor.WorldFeet, 60f + 40f * attempt, attempt * 1.3f, 0.5f + attempt * 0.5f, span: MathF.Max(14f, radius));
+            Vector3 stand = spot - Vector3.Forward * (radius + 4f);
+            Game.Survivor.PlaceOutside((Game.Zone.GroundAt(stand.X, stand.Z) + Vector3.Up * 0.2f).ToNumerics());
+            foreach (int x in Drive.UntilSettled(20)) yield return x;
+            Game.Survivor.Yaw = 0f;
+            Game.Survivor.Pitch = 0f;
+            foreach (int x in Drive.Wait(30)) yield return x;
+            Slice.Construction.WholePlacement job = Game.Builder.PlaceWhole(plan);
+            for (int t = 0; t < 600 && !job.Done; t++) yield return 0;
+            v = job.Vessel;
+            why = job.Why ?? (job.Done ? why : "still placing after 10 s");
+            for (int t = 0; t < 300 && v != null && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
+        }
+        placed(v, why);
+    }
+
     /// <summary>Takes a test's vessel out of the world, as one whose last block is gone goes: nothing it leaves falls on what comes next.</summary>
     /// <summary>
     /// A clearing: every tree and boulder rooted within this reach of a point is felled for good. Vessels collide with trunks

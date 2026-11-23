@@ -218,6 +218,8 @@ public sealed class SliceRules
         public double LapsePerKm { get; set; } = 6.5;
         public Dictionary<string, double> OxygenByAir { get; set; } = new();
         public Dictionary<string, double> RadiationByArchetype { get; set; } = new();
+        /// <summary>The share of a nuclear-blasted world's strongest crater reading that a dust storm's lifted fallout carries, deep inside it.</summary>
+        public double DustFallout { get; set; } = 0.25;
         public double SealedRoomC { get; set; } = 20;
 
         /// <summary>A sealed room's air, seconds: how fast its life support brings it to sealedRoomC (the gap shrinks by e each), how long it holds once the power is off, and how fast it then drifts to the outside's.</summary>
@@ -246,8 +248,8 @@ public sealed class SliceRules
         public double LowC { get; set; } = 12;
         public double HighC { get; set; } = 26;
 
-        /// <summary>What it draws from its structure's capacitors while running, MW.</summary>
-        public double Power { get; set; } = 0.01;
+        /// <summary>Fuel units it burns a second: a burnstone pack (30) lasts about a day and night (1,440 s, survival.json).</summary>
+        public double BurnPerSecond { get; set; } = 0.02;
     }
 
     public sealed class ToolRules

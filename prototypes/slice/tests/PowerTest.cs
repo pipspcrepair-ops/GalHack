@@ -229,10 +229,10 @@ public partial class PowerTest : Node
         Check(raw.Source == ItemSource.Mined && raw.DepositKind == nameof(DepositKind.Crystal) && fold.Recipe.Inputs.All(i => i.Item == raw),
             "fold fuel is gathered: raw fold crystal is mined from its deposits and refined into fold crystal");
         PlanetSpec Spec(Archetype a, Modifier m, int km = 16) => new((ulong)Random.Shared.NextInt64(), a, 0, m, km);
-        Check(DepositField.FuelKinds(Spec(Archetype.Barren, Modifier.Cratered, 8)).Contains(DepositKind.WarpFuel) && DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.Cratered)).Contains(DepositKind.WarpFuel)
-              && !DepositField.FuelKinds(Spec(Archetype.Temperate, Modifier.None)).Contains(DepositKind.WarpFuel) && !DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.None)).Contains(DepositKind.WarpFuel),
+        Check(DepositField.DriveKinds(Spec(Archetype.Barren, Modifier.Cratered, 8)).Contains(DepositKind.WarpFuel) && DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.Cratered)).Contains(DepositKind.WarpFuel)
+              && !DepositField.DriveKinds(Spec(Archetype.Temperate, Modifier.None)).Contains(DepositKind.WarpFuel) && !DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.None)).Contains(DepositKind.WarpFuel),
             "pentaxite lies on airless bodies only (the start's fuel moon is always one), not on a world with air, icy or living");
-        Check(DepositField.FuelKinds(Spec(Archetype.Ice, Modifier.None, 32)).Contains(DepositKind.Crystal), "fold crystal lies on the dangerous high-gravity worlds");
+        Check(DepositField.DriveKinds(Spec(Archetype.Ice, Modifier.None, 32)).Contains(DepositKind.Crystal), "fold crystal lies on the dangerous high-gravity worlds");
         Check(data.Power.Drives["warp-drive"].Item == cell.Id && data.Power.Drives["fold-drive"].Item == fold.Id, "the warp drive burns warp cells and the fold drive fold crystal, three fuels apart");
 
         // A drive reads its reach from the fuel in core storage.
@@ -249,15 +249,15 @@ public partial class PowerTest : Node
 
     void Start(GameData data)
     {
-        GD.Print("-- the start: power before the climate node needs it --");
+        GD.Print("-- the start: the first things a sleeper makes --");
         ItemCatalogue items = data.Items;
         var fresh = new Progress(data.Progress, items, data.Catalogue);
         string[] first = { "core", "generator-t1", "container-t1", "biofuel", "energy-cell", Device.ClimateItem };
         var late = first.Where(id => !fresh.ItemAllowed(items.Item(id)) || items.Item(id).Recipe.Tier > 0).ToList();
-        Check(late.Count == 0, $"a sleeper at level 1 makes a core, a generator, a container, biofuel and a climate node at the survival constructor{(late.Count > 0 ? ": not " + string.Join(", ", late) : "")}");
+        Check(late.Count == 0, $"a sleeper at level 1 makes a core, a generator, a container, biofuel and a climate pod at the survival constructor{(late.Count > 0 ? ": not " + string.Join(", ", late) : "")}");
         Check(items.Item("biofuel").Recipe.Inputs.All(i => i.Item.Source == ItemSource.Harvested), "and the first fuel from cutting plants");
-        Check(data.Rules.ClimateNode.Power > 0 && !items.Recipes.Any(r => r.Output.Id == Device.ClimateItem && r.Inputs.Any(i => i.Item.FuelUnits > 0)),
-            $"the climate node draws {data.Rules.ClimateNode.Power} MW of its structure's power and burns nothing");
+        Check(data.Rules.ClimateNode.BurnPerSecond > 0 && !items.Recipes.Any(r => r.Output.Id == Device.ClimateItem && r.Inputs.Any(i => i.Item.FuelUnits > 0)),
+            $"the climate pod burns {data.Rules.ClimateNode.BurnPerSecond} fuel units a second of its own and is made from no fuel");
     }
 
     // ---- In the world ------------------------------------------------------------------------------------

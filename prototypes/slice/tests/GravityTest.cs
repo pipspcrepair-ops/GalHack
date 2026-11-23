@@ -98,7 +98,7 @@ public partial class GravityTest : Node
 
     IEnumerable<int> Measure(int width)
     {
-        _game.Zone.Weather.Bridge.Calm = true;
+        if (_game.Zone.Weather.Bridge is { } weather) weather.Calm = true; // most 8 km worlds have no air, so no weather to calm
         _game.Zone.Wildlife.Frozen = true;
         float g = _game.Zone.Physics.Zone.Strength, table = PlanetSpec.Gravities[PlanetSpec.ClassOf(width)];
         string at = $"{width} km, {g / 9.8f:F1} g";
@@ -193,12 +193,11 @@ public partial class GravityTest : Node
         Structure plan = data.Blueprint("starter.gbp");
         plan.DirtyChunks.Clear();
         _game.Mode = GameMode.Creative;
-        S.Yaw = S.Pitch = 0f;
-        WholePlacement job = _game.Builder.PlaceWhole(plan);
-        for (int t = 0; t < 600 && !job.Done; t++) yield return 0;
-        Vessel v = job.Vessel;
-        if (!Check(v != null, $"{at}: the Skiff is set down{(v == null ? $" ({job.Why})" : "")}")) yield break;
-        for (int t = 0; t < 300 && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
+        // On level ground found for it: a small world's ground ahead of wherever the jetpack came down is often too rough.
+        Vessel v = null;
+        string why = null;
+        foreach (int x in new Playthrough(_game).PlaceWhole(plan, (placed, refused) => (v, why) = (placed, refused))) yield return x;
+        if (!Check(v != null, $"{at}: the Skiff is set down{(v == null ? $" ({why})" : "")}")) yield break;
         v.Controller?.Wake(v.Body);
         foreach (int x in _drive.Wait(60)) yield return x;
         bool sat = S.Sit(v);

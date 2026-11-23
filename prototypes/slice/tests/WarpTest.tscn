@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/WarpTest.cs" id="1"]
+
+[node name="WarpTest" type="Node"]
+script = ExtResource("1")

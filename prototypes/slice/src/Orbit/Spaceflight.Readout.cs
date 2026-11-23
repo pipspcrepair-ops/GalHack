@@ -21,8 +21,9 @@ public partial class Spaceflight
     {
         OrbitZone o = Orbit;
         N.Vector3 q = o.ToGlobe(world.ToNumerics());
-        (string, float, Orbiter) best = ("YOUR WORLD", q.Length() - o.GlobeRadius, null); // as the system map names it
-        StarSystem model = Game.Surface.Planet.StarSystem;
+        StarSystem model = o.Home.Seen;
+        // The start world as the system map names it; any other world by its own name.
+        (string, float, Orbiter) best = (model.Origin == null ? "YOUR WORLD" : Charts.Tidy(model.Home.Name).ToUpperInvariant(), q.Length() - o.GlobeRadius, null);
         double days = Game.Surface.Sky.Days;
         var eye = new D3(q.X, q.Y, q.Z);
         StarSystem.Orientation turned = model.Orient(days);

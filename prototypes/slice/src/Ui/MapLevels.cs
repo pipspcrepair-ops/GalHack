@@ -24,7 +24,7 @@ namespace Slice.Ui;
 /// one level's zoom is the next level, in and back out. Each shows only what has been discovered
 /// (<see cref="Charts"/>), and where you are, in the suit terminal's look.
 /// </summary>
-public sealed class MapLevels
+public sealed partial class MapLevels
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
@@ -46,7 +46,7 @@ public sealed class MapLevels
     /// <summary>What the panel's picture depends on, so dragging and zooming redraw it at once.</summary>
     public string Signature => $"{Level}|{View?.CentreX:F0}|{View?.CentreZ:F0}|{View?.MetresPerPixel:F2}|{_chart != null}|{_game.Spaceflight.Charts.Marks.Count()}|{_game.Spaceflight.Charts.Wrecks.Count}|{_game.Spaceflight.Charts.Destination}|{Trail.Star}|{_game.Spaceflight.Charts.ChosenStar}|{Sky?.Yaw:F3}|{Sky?.Pitch:F3}|{Sky?.Distance:F1}|{Sky?.Focus}|{_orbitX:F0}|{_orbitZ:F0}|{_orbitZoom:F2}|{_orbitPan.X:F0},{_orbitPan.Y:F0}|{_sysZoom:F2}|{_sysPan.X:F0},{_sysPan.Y:F0}|{LocalPan.X:F0},{LocalPan.Y:F0}|{LocalRange:F0}|{_body}|{(Level is MapLevel.System or MapLevel.HighOrbit ? _game.Surface.Sky.Days : 0.0):F3}";
 
-    GalaxySky Stars => _game.Surface.Sky.Stars;
+    GalaxySky Stars => _game.Spaceflight.Stars;
 
     StarProfile _profile;
     Galaxy _profileOf;
@@ -58,7 +58,7 @@ public sealed class MapLevels
         {
             Galaxy g = Catalogue;
             if (g == null) return null;
-            if (_profileOf != g) (_profile, _profileOf) = (new StarProfile(g), g);
+            if (_profileOf != g) (_profile, _profileOf) = (new StarProfile(g, _game.Spaceflight.HomeStar, _game.Spaceflight.HomeSystem), g);
             return _profile;
         }
     }
@@ -367,6 +367,9 @@ public sealed class MapLevels
 
     string _body;
 
+    /// <summary>Where each body of your system stands on the system map as last laid out, by its key (tests click them).</summary>
+    public IReadOnlyDictionary<string, Vector2> SystemPlaces { get; private set; } = new Dictionary<string, Vector2>();
+
     /// <summary>A dot's size on the system map, pixels: by kind, not to scale, or the giants would hide the rest.</summary>
     static float DotOf(SystemEntry e) => e.Kind switch { "star" => 15f, "giant" => 8f + e.Size * 8f, "world" => 7f, "planet" => 4f + e.Size * 8f, "moon" => 2.5f, _ => 0f };
 
@@ -392,10 +395,11 @@ public sealed class MapLevels
             _sysPan = new Vector2(Math.Clamp(_sysPan.X, -panel.Size.X * 2f, panel.Size.X * 2f), Math.Clamp(_sysPan.Y, -panel.Size.Y * 2f, panel.Size.Y * 2f));
         }
         Charts charts = _game.Spaceflight.Charts;
-        bool yours = Trail.AtYourStar;
+        // Your world and its wrecks are marked only in its own system, and only while you are by it (not out at a star).
+        bool yours = Trail.AtYourStar && _game.Spaceflight.Away == null;
         string star = Catalogue != null && Trail.Star >= 0 ? Catalogue.Name(Trail.Star) : "Star";
-        PlanetSurface.Skies.StarSystem sysModel = yours ? _game.Surface.Planet.StarSystem : Profile.System(Trail.Star);
-        List<SystemEntry> bodies = Charts.Bodies(sysModel, yours ? "Your world" : "Inner world", _game.Surface.Sky.Days, star);
+        PlanetSurface.Skies.StarSystem sysModel = Trail.AtYourStar ? _game.Spaceflight.SystemHere : Profile.System(Trail.Star);
+        List<SystemEntry> bodies = Charts.Bodies(sysModel, yours ? "Your world" : "Inner world", _game.Spaceflight.Below.Sky.Days, star);
         Vector2 c = panel.GetCenter() + _sysPan;
         float unit = panel.Size.Y * 0.49f * _sysZoom;
         var places = new Dictionary<string, Vector2> { ["star"] = c };
@@ -406,14 +410,19 @@ public sealed class MapLevels
         // A moon of a moon's parent may come after it in the list: moons are placed once every world is.
         foreach (SystemEntry e in bodies.Where(e => e.Parent != null).OrderBy(e => byKey[e.Parent].Parent == null ? 0 : 1))
             places[e.Key] = Round(e, DotOf(byKey[e.Parent]) + 7f + e.Orbit * 6f, places[e.Parent]);
+        if (yours) SystemPlaces = places;
         if (!g.Drawing && g.Pressed && g.Over(panel))
         {
             SystemEntry hit = null;
             float nearest = 14f * 14f;
             foreach (SystemEntry e in bodies)
-                if (e.Kind != "belt" && places[e.Key].DistanceSquaredTo(g.Mouse) < nearest) (nearest, hit) = (places[e.Key].DistanceSquaredTo(g.Mouse), e);
-            if (hit?.Kind == "world" && yours) Trail.Down(); // your world opens high orbit
-            else if (hit != null) _body = hit.Key;
+                if (places[e.Key].DistanceSquaredTo(g.Mouse) < nearest) (nearest, hit) = (places[e.Key].DistanceSquaredTo(g.Mouse), e); // a belt by its label's place on it
+            if (hit?.Kind == "world" && yours && HereKey(sysModel) == "world") Trail.Down(); // your world opens high orbit while you are at it
+            else if (hit != null)
+            {
+                _body = hit.Key;
+                if (yours) _game.Spaceflight.Target = JumpTarget.To(Charts.BodyOf(sysModel, hit.Key)); // the one target: it replaces any other
+            }
         }
         Vector2 world = places["world"];
         if (g.Drawing)
@@ -453,11 +462,11 @@ public sealed class MapLevels
                 g.Canvas.DrawCircle(q, r, e.Kind switch { "world" => C.Holo, "giant" => C.Accent2, "moon" => C.Text, _ => new Color(C.Text, 0.8f) });
                 if (e.Key == _body) g.Canvas.DrawArc(q, r + 5f, 0, Mathf.Tau, 24, C.Holo, 1.5f);
                 bool moonOfYours = e.Kind == "moon" && e.Parent == "world";
-                if (e.Kind == "world") labels.Add(q, r + 7f, yours ? "YOUR WORLD: YOU ARE HERE" : e.Label.ToUpperInvariant(), yours ? C.Accent : C.Text, 0);
+                if (e.Kind == "world") labels.Add(q, r + 7f, yours ? HereKey(sysModel) == "world" ? "YOUR WORLD: YOU ARE HERE" : "YOUR WORLD" : e.Label.ToUpperInvariant(), yours ? C.Accent : C.Text, 0);
                 else if (e.Kind != "moon" || moonOfYours || e.Key == _body) labels.Add(q, r, e.Label.ToUpperInvariant(), moonOfYours ? C.Dim : C.Text, moonOfYours ? 3 : 2);
                 else labels.Add(q, r, null, C.Dim, 6);
             }
-            if (yours && panel.HasPoint(world)) g.Canvas.DrawArc(world, DotOf(byKey["world"]) + 5f, 0, Mathf.Tau, 32, C.Accent, 2f);
+            if (yours && places.TryGetValue(HereKey(sysModel) ?? "world", out Vector2 here) && panel.HasPoint(here)) g.Canvas.DrawArc(here, DotOf(byKey[HereKey(sysModel) ?? "world"]) + 5f, 0, Mathf.Tau, 32, C.Accent, 2f);
             if (yours)
             foreach (SystemEntry w in charts.Wrecks)
             {
@@ -495,6 +504,7 @@ public sealed class MapLevels
                 g.Canvas.DrawCircle(world, 5f, C.Accent);
             }
         }
+        if (yours) WarpPanel(g, panel, side, sysModel, places);
         // What the model knows of the body you picked (or of the star).
         SystemEntry shown = _body != null && byKey.TryGetValue(_body, out SystemEntry b) ? b : bodies[0];
         g.Text(shown.Label.ToUpperInvariant(), side.Position + new Vector2(0, 530), C.Text, 15);
@@ -837,6 +847,7 @@ public sealed class MapLevels
                     {
                         charts.ChosenStar = picked;
                         Trail.Star = picked;
+                        _game.Spaceflight.Target = JumpTarget.ToStar(picked); // the one target: it replaces any other
                     }
                 }
                 _dragFrom = null;
@@ -900,10 +911,15 @@ public sealed class MapLevels
         int facts = charts.ChosenStar >= 0 ? charts.ChosenStar : Trail.You;
         StarFacts(g, side.Position + new Vector2(0, 40), facts);
         RouteFacts(g, side.Position + new Vector2(0, 524), galaxy, charts.ChosenStar);
+        FoldFacts(g, side.Position + new Vector2(0, 576));
         string[] held = Profile.Lines(facts);
-        for (int i = 0; i < held.Length && i < 10; i++) g.Text(held[i], side.Position + new Vector2(0, 580 + i * 20), i == 0 ? C.Text : C.Dim, 13);
+        for (int i = 0; i < held.Length && i < 10; i++) g.Text(held[i], side.Position + new Vector2(0, 632 + i * 20), i == 0 ? C.Text : C.Dim, 13);
         if (g.Button("map:open-star", new Rect2(side.Position + new Vector2(0, 208), new Vector2(150, 34)), "OPEN SYSTEM", C.Accent2)) Trail.OpenStar(facts);
-        if (g.Button("map:clear-star", new Rect2(side.Position + new Vector2(156, 208), new Vector2(150, 34)), "CLEAR MARK", C.Accent2, enabled: charts.ChosenStar >= 0)) charts.ChosenStar = -1;
+        if (g.Button("map:clear-star", new Rect2(side.Position + new Vector2(156, 208), new Vector2(150, 34)), "CLEAR MARK", C.Accent2, enabled: charts.ChosenStar >= 0))
+        {
+            if (_game.Spaceflight.Target?.Star == charts.ChosenStar) _game.Spaceflight.Target = null;
+            charts.ChosenStar = -1;
+        }
         if (g.Button("map:on-me", new Rect2(side.Position + new Vector2(0, 248), new Vector2(150, 34)), "ON ME", C.Accent2))
         {
             Sky.Focus = you.Position;
@@ -945,7 +961,29 @@ public sealed class MapLevels
         if (_route == null) { g.Text("NO ROUTE", at, C.Warn, 15); return; }
         float ly = Lanes.Length(galaxy, _route);
         g.Text($"{_route.Count - 1} JUMP{(_route.Count == 2 ? "" : "S")} · {ly:F1} LY", at, C.Holo, 15, UiTheme.Mono);
-        g.Text($"FOLD CRYSTAL {Lanes.Crystal(galaxy, _route)}", at + new Vector2(0, 24), C.Holo, 15, UiTheme.Mono);
+        g.Text($"FOLD CRYSTAL {Lanes.Crystal(galaxy, _route, _game.Zone.Data.Power.Drives["fold-drive"])}", at + new Vector2(0, 24), C.Holo, 15, UiTheme.Mono);
+    }
+
+    /// <summary>
+    /// A fold straight to the star targeted (section 8 item 16): how far, the fold crystal it burns, and whether the ship you
+    /// are in can make it (IN REACH, or what stops it), with the button that shows the jump key and does what it does; while
+    /// one spools, the same button calls it off.
+    /// </summary>
+    void FoldFacts(Gui g, Vector2 at)
+    {
+        Spaceflight flight = _game.Spaceflight;
+        int id = flight.Target?.Star ?? -1;
+        if (id < 0 || id == Trail.You) return;
+        g.Text($"FOLD {flight.LightYearsTo(id):F1} LY · FOLD CRYSTAL {flight.CrystalTo(id)}", at, C.Holo, 15, UiTheme.Mono);
+        Vessel ship = flight.Folder();
+        string fault = flight.FoldFault(ship, id), key = OS.GetKeycodeString(_game.Settings?.Keys["jump"] ?? Key.J);
+        Jump j = flight.Jumping;
+        bool folding = j?.Running == true && j.Drive == Spaceflight.FoldDrive, spooling = folding && j.Now == Jump.Stage.Spool;
+        string state = folding ? j.Holding ? "TUNNEL" : $"SPOOLING {ship?.Power.SpoolLeft ?? 0:F0} S" : fault ?? "IN REACH";
+        g.Text(state, at + new Vector2(0, 24), fault == null || folding ? C.Good : C.Warn, 15, UiTheme.Mono);
+        if (g.Button("map:fold", new Rect2(at + new Vector2(160, 18), new Vector2(146, 30)), spooling ? $"[{key}] CANCEL" : $"[{key}] FOLD", spooling ? C.Danger : C.Holo,
+                enabled: spooling || fault == null, size: 15) && flight.JumpKey() is { } no)
+            _game.Say(no, Slice.Game.Tones.Warning);
     }
 
     Vector2[] _cloudAt;

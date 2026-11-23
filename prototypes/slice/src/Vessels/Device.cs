@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using GalHack.Items;
 using GalHack.Items.Production;
@@ -13,15 +14,15 @@ namespace Slice.Vessels;
 /// fabricator (Empyrion's flow: the suit makes the bare minimum, the placed survival constructor
 /// makes the first core, the basics and the next constructor up). It is its own little structure
 /// with its own storage (a hopper you load from your bag); its panel is in the Tab menu's Core
-/// tab when you stand next to it. It needs no power. Or a climate node: no hopper and no fuel of
-/// its own, it runs on the power of the structure it stands by. Procedural look, no assets.
+/// tab when you stand next to it. It needs no power. Or a survival climate pod: no core, no
+/// power, just a slot for fuel it burns slowly to hold the air round it. Procedural look, no assets.
 /// </summary>
 public partial class Device : Node3D
 {
     public string Label;
     public string ItemId;
     public Constructor Constructor { get; private set; }
-    /// <summary>Its hopper, or null (a climate node has none).</summary>
+    /// <summary>Its hopper (a climate pod's is its one fuel slot).</summary>
     public ItemGrid Grid { get; private set; }
     public SharedStorage Storage => Grid?.Storage;
     StaticBody3D _body;
@@ -31,43 +32,45 @@ public partial class Device : Node3D
     /// <summary>The hopper's room, storage units.</summary>
     public const double Capacity = 1500;
 
-    /// <summary>The climate node's item: a small unit on the ground, no hopper, no constructor.</summary>
-    public const string ClimateItem = "climate-node";
+    /// <summary>The survival climate pod's item: a small unit on the ground with a fuel slot, no constructor.</summary>
+    public const string ClimateItem = "survival-climate-pod";
 
     public bool IsClimate => ItemId == ClimateItem;
 
-    /// <summary>A climate node with power: the air round it holds steady (<see cref="Slice.Player.Suit"/>).</summary>
-    public bool Running { get; private set; }
+    /// <summary>A pod with fuel burning: the air round it holds its band (<see cref="Slice.Player.Suit"/>).</summary>
+    public bool Running => _units > 0;
 
-    /// <summary>
-    /// The structure a climate node draws from: of those whose area it stands in (the structure it is placed on or
-    /// beside, the core's reach), the nearest with power, else the nearest. Null with none in reach.
-    /// </summary>
-    public Vessel Source { get; private set; }
-
+    /// <summary>Fuel units left in what is burning now, not counting the slot.</summary>
+    double _units;
     SurfaceZone _zone;
-    double _lookLeft;
+
+    /// <summary>Seconds of burn left: what is alight and what the slot holds.</summary>
+    public double SecondsLeft => (_units + Grid.Storage.Stacks.Sum(s => (double)s.Item.FuelUnits * s.Count)) / _zone.Data.Rules.ClimateNode.BurnPerSecond;
 
     public static Device PlaceClimate(SurfaceZone zone, Vector3 at, float yaw)
     {
-        var d = new Device { Name = "ClimateNode", Label = "Climate node", ItemId = ClimateItem, _zone = zone };
+        // A slot for fuel (anything with a fuel value), nothing else about it needs a hopper.
+        var storage = new SharedStorage(zone.Data.Items, "Fuel", FuelRoom);
+        var d = new Device { Name = "ClimatePod", Label = "Survival climate pod", ItemId = ClimateItem, _zone = zone, Grid = new ItemGrid(storage, 1, 1) };
         zone.AddChild(d);
         d.GlobalTransform = new Transform3D(new Basis(Vector3.Up, yaw), at);
         zone.Devices.Add(d);
         return d;
     }
 
-    /// <summary>Runs while its structure has power, drawing its share from that structure's capacitors (life support uses power only).</summary>
-    void Draw(double dt)
+    /// <summary>The fuel slot's room, storage units.</summary>
+    const double FuelRoom = 10;
+
+    /// <summary>Burns fuel from its slot, one item at a time, at the rate in the rules; with none it stops.</summary>
+    void Burn(double dt)
     {
-        if ((_lookLeft -= dt) <= 0.0 || Source is { IsWreck: true } || Source != null && !_zone.Vessels.Contains(Source))
+        double rate = _zone.Data.Rules.ClimateNode.BurnPerSecond;
+        if (_units <= 0 && Grid.Storage.Stacks.FirstOrDefault(s => s.Item.FuelUnits > 0).Item is { } fuel)
         {
-            _lookLeft = 1.0; // structures come and go slowly: once a second is plenty
-            var around = Slice.Construction.StructureArea.Around(_zone, GlobalPosition, _zone.Data.Rules.Build.Area);
-            Source = around.FirstOrDefault(v => v.Powered) ?? around.FirstOrDefault();
+            Grid.Storage.Remove(fuel.Id, 1);
+            _units += fuel.FuelUnits;
         }
-        Running = Source is { Powered: true };
-        if (Running) Source.Power.AddLoad(_zone.Data.Rules.ClimateNode.Power);
+        _units = Math.Max(0, _units - rate * dt);
     }
 
     public static Device Place(SurfaceZone zone, MachineDef machine, string itemId, Vector3 at, float yaw)
@@ -83,7 +86,7 @@ public partial class Device : Node3D
     }
 
     /// <summary>
-    /// A device's look, meshes only: the climate node is a squat vented drum on a plinth, its ring lit
+    /// A device's look, meshes only: the climate pod is a squat vented drum on a plinth, its ring lit
     /// while it runs; anything else a constructor's cabinet on hazard feet. Procedural, no assets.
     /// The inventory icon is this same model.
     /// </summary>
@@ -140,7 +143,7 @@ public partial class Device : Node3D
     {
         if (IsClimate)
         {
-            Draw(dt);
+            Burn(dt);
             _panelMaterial.EmissionEnergyMultiplier = Running ? 2.2f : 0.15f;
             return;
         }

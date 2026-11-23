@@ -47,19 +47,25 @@ public sealed partial class PlanetWorld
         Depth = galaxy.DepthOf(HomeStar);
     }
 
-    /// <summary>
-    /// This world is another body of a world's system (its moon): the same galaxy, the same star and
-    /// the same system on the same clock, seen from here. Set before the surface is laid out.
-    /// </summary>
-    public void ShareSystem(PlanetWorld of, Orbiter body)
+    /// <summary>What this world's system gives every other body of it: the galaxy, the star, the depth, the system and its light.</summary>
+    public SystemShare Share()
     {
-        of.FindHomeStar();
+        FindHomeStar();
+        return new SystemShare(Catalogue, HomeStar, Depth, StarSystem, Sky);
+    }
+
+    /// <summary>
+    /// This world is another body of a system (a moon of a world, any world of a star's): the same galaxy, the same star
+    /// and the same system on the same clock, seen from here. Set before the surface is laid out.
+    /// </summary>
+    public void ShareSystem(SystemShare of, Orbiter body)
+    {
         Catalogue = of.Catalogue;
-        HomeStar = of.HomeStar;
+        HomeStar = of.Star;
         Depth = of.Depth;
-        _system = of.StarSystem.SeenFrom(body);
+        _system = of.System.SeenFrom(body);
         // Its sky's star is the system's, and its air scatters that star's light; with no air, the sky is black space by day too.
-        SkySystem own = SkySystem.For(Spec, of.Sky.Star) with { Bodies = of.Sky.Bodies, DayMinutes = of.Sky.DayMinutes, Nebula = of.Sky.Nebula, NebulaA = of.Sky.NebulaA, NebulaB = of.Sky.NebulaB };
+        SkySystem own = SkySystem.For(Spec, of.Light.Star) with { Bodies = of.Light.Bodies, DayMinutes = of.Light.DayMinutes, Nebula = of.Light.Nebula, NebulaA = of.Light.NebulaA, NebulaB = of.Light.NebulaB };
         Sky = Spec.Airless ? SkySystem.Vacuum(own) : own;
     }
 
@@ -69,3 +75,9 @@ public sealed partial class PlanetWorld
         seed = Catalogue.SystemSeed(HomeStar);
     }
 }
+
+/// <summary>
+/// What a system gives each body of it that is made as a world: the galaxy's catalogue, its star there and that star's
+/// depth, the system's model (<see cref="StarSystem"/>), and the light and sky its anchor world has under that star.
+/// </summary>
+public sealed record SystemShare(Galaxy Catalogue, int Star, float Depth, StarSystem System, SkySystem Light);

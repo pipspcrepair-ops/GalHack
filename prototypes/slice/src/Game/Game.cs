@@ -555,7 +555,7 @@ public partial class Game : Node3D
                 else Select(i);
             }
         if (c.WasPressed(Key.Y)) SwitchBar();
-        if (c.WasPressed(Key.F) && !OpenCryopod()) TrySit();
+        if (c.WasPressed(Key.F) && !OpenCryopod() && !PickUpPod()) TrySit();
         if (c.WasPressed(Key.E)) Use();
         if (c.WasPressed(Key.B)) Report(Suit.Sim.DeployOrPack(FeetPos()));
         if (c.WasPressed(Key.H)) Report(Suit.Sim.ToggleHelmet());
@@ -663,6 +663,7 @@ public partial class Game : Node3D
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
         if (c.WasPressed(Key.I)) vessel.Flight.ToggleAssist();
+        if (c.WasPressed(Key.J) && Spaceflight.JumpKey() is { } no) Say(no, Tones.Warning); // the map may be open: pick, then J
     }
 
     void ToggleTorch()
@@ -951,7 +952,7 @@ public partial class Game : Node3D
         float ease = 1f - MathF.Exp(-(float)_focusFor / 0.15f);
         _focusWas = focus;
         _focusFor = 0;
-        if (moved.Length() > 400f || InOrbit) moved = Vector3.Zero; // a seam or a crossing moved the frame, not you
+        if (moved.Length() > 400f || InSpace) moved = Vector3.Zero; // a seam or a crossing moved the frame, not you
         Vector3 heading = Surface.Streamer.Heading.Lerp(moved, ease);
         Surface.Streamer.Heading = heading;
         Surface.Infra.Heading = heading;

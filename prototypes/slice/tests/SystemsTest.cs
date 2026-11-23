@@ -24,7 +24,8 @@ namespace Slice.Tests;
 /// giant's moons have moons of their own, in reach and on the one clock; suns and gas giants out-size every world
 /// you could land on, have bands, storms and spots and no ground; warp fuel lies on vacuum worlds only (as a
 /// deposit, plus loot in space places and ships), fold fuel on the dangerous high-gravity ones (plus ships), and
-/// the drives' materials with them; every system holds a high-gravity world; every start has a vacuum moon with
+/// the drives' materials with them: each drive's whole bill, walked down to ore, comes from its own worlds and is dug
+/// and made there (SystemsTest.Drives.cs); every system holds a high-gravity world; every start has a vacuum moon with
 /// enough warp fuel for a first jump; moons have no rings, and a ring's look follows the frost line and its
 /// giant's moons; every landable world holds what the cheapest flyer the recipe tree allows takes; and nothing
 /// marks a planet for a jump fuel. The rules on the systems' bodies run over thousands of systems; the ones
@@ -91,13 +92,26 @@ public partial class SystemsTest : Node
         HeavyWorlds(systems);
         DriveMaterials(systems);
         List<StarSystem> mapped = systems.Take(Mapped).ToList();
-        StartMoons(mapped, out List<(StarSystem System, WorldMap Moon)> moons);
-        var coarse = Fuels(mapped, moons);
-        NoWaterOnBareWorlds(coarse, moons);
-        BarrenMaps(coarse);
-        Flyer(mapped);
+        Memory("the systems made");
+        List<Ground> ground = Survey(mapped);
+        Memory($"{ground.Count} worlds' maps read");
+        StartMoons(ground);
+        Fuels(ground);
+        NoWaterOnBareWorlds(ground, mapped);
+        DriveBills(ground);
+        BarrenMaps(ground);
+        Flyer(ground);
         Loot();
         NoMarkers(systems);
+        DriveProof(mapped.Take(2));
+        Memory("the proof dug and made");
+    }
+
+    /// <summary>Prints what the process holds now and the most it has held (the test is kept to a few GB).</summary>
+    static void Memory(string when)
+    {
+        using var self = Process.GetCurrentProcess();
+        GD.Print($"(memory after {when}: {GC.GetTotalMemory(false) / 1e9:F2} GB managed, {self.WorkingSet64 / 1e9:F2} GB held, peak {self.PeakWorkingSet64 / 1e9:F2} GB)");
     }
 
     // ---- 0. Moons can be caught; planets keep their years -----------------------------------------
@@ -413,27 +427,26 @@ public partial class SystemsTest : Node
 
     // ---- 7. A start has a vacuum moon with warp fuel for a first jump ----------------------------------------
 
-    void StartMoons(List<StarSystem> systems, out List<(StarSystem, WorldMap)> maps)
+    void StartMoons(List<Ground> ground)
     {
-        var made = new (StarSystem, WorldMap)[systems.Count];
-        System.Threading.Tasks.Parallel.For(0, systems.Count, i => made[i] = (systems[i], BodySurfaces.Coarse(systems[i].FuelMoon.Spec)));
-        maps = made.ToList();
-        int noMoon = 0, notVacuum = 0, thin = 0, faults = 0, unreachable = 0;
+        int moons = 0, noMoon = 0, notVacuum = 0, thin = 0, faults = 0, unreachable = 0;
         long least = long.MaxValue;
-        foreach (var (s, map) in maps)
+        foreach (Ground g in ground.Where(g => g.Body == g.System.FuelMoon))
         {
-            Orbiter moon = s.FuelMoon;
-            if (moon == null || moon.Parent != s.Home && moon.Parent != s.Home.Parent) noMoon++;
-            if (moon?.Spec is not { Airless: true }) notVacuum++;
-            double cells = map.Deposits.All().Where(d => d.Kind == DepositKind.WarpFuel).Sum(Units);
-            long biggest = (long)map.Deposits.All().Where(d => d.Kind == DepositKind.WarpFuel).Select(Units).DefaultIfEmpty(0).Max();
+            moons++;
+            StarSystem s = g.System;
+            Orbiter moon = g.Body;
+            if (moon.Parent != s.Home && moon.Parent != s.Home.Parent) noMoon++;
+            if (moon.Spec is not { Airless: true }) notVacuum++;
+            double cells = g.Ore.GetValueOrDefault(DepositKind.WarpFuel);
             least = Math.Min(least, (long)cells);
-            if (cells < FirstJumpCells || biggest < FirstJumpCells) thin++;
+            if (cells < FirstJumpCells || g.BiggestWarp < FirstJumpCells) thin++;
             if (s.StartFault() is { } fault) { faults++; GD.Print($"   start fault: {fault}"); }
             if ((s.Position(moon, 0) - s.Position(s.Home, 0)).Length > s.Home.Radius * (StarSystem.ThrusterReachRadii + 1.0) && moon.Parent == s.Home) unreachable++;
         }
+        noMoon += Mapped - moons;
         Check(noMoon == 0 && notVacuum == 0, $"start: every system has a vacuum moon to start from ({noMoon} none, {notVacuum} with air)");
-        Check(thin == 0, $"start: each of the {maps.Count} moons holds warp fuel for a first jump ({FirstJumpCells} cells) in one deposit and the whole ({thin} too thin; the least {least} cells)");
+        Check(thin == 0, $"start: each of the {moons} moons holds warp fuel for a first jump ({FirstJumpCells} cells) in one deposit and the whole ({thin} too thin; the least {least} cells)");
         Check(faults == 0 && unreachable == 0, $"start: the moon is within thrusters' reach and nothing else the design promises is missing ({faults} faults, {unreachable} out of reach)");
     }
 
@@ -444,19 +457,36 @@ public partial class SystemsTest : Node
         return 4.0 / 3.0 * Math.PI * r * r * r * 12 * 0.6;
     }
 
+    /// <summary>
+    /// What one landable world's coarse map holds, kept in place of the map: a large world's map and deposit index run
+    /// to megabytes, and thousands are walked.
+    /// </summary>
+    sealed record Ground(StarSystem System, Orbiter Body, Dictionary<DepositKind, double> Ore, double BiggestWarp, bool Dry, BarrenRead? Barren);
+
+    /// <summary>Every landable world of the mapped systems, each coarse map made, read and dropped on a worker: no more than one a core is held at once.</summary>
+    static List<Ground> Survey(List<StarSystem> systems)
+    {
+        var worlds = systems.SelectMany(s => Landable(s).Select(b => (System: s, Body: b))).ToList();
+        var ground = new Ground[worlds.Count];
+        System.Threading.Tasks.Parallel.For(0, worlds.Count, i =>
+        {
+            WorldMap map = BodySurfaces.Coarse(worlds[i].Body.Spec);
+            var ore = map.Deposits.All().GroupBy(d => d.Kind).ToDictionary(g => g.Key, g => g.Sum(Units));
+            double biggest = map.Deposits.All().Where(d => d.Kind == DepositKind.WarpFuel).Select(Units).DefaultIfEmpty(0).Max();
+            ground[i] = new Ground(worlds[i].System, worlds[i].Body, ore, biggest, Dry(map), ReadBarren(map));
+        });
+        return ground.ToList();
+    }
+
     // ---- 4 and 5. The jump fuels ------------------------------------------------------------------------------
 
-    List<(StarSystem System, Orbiter Body, WorldMap Map)> Fuels(List<StarSystem> systems, List<(StarSystem System, WorldMap Moon)> moons)
+    void Fuels(List<Ground> ground)
     {
-        // Every landable world, its coarse map made here (the first map of a start moon is reused).
-        var worlds = systems.SelectMany(s => Landable(s).Select(b => (System: s, Body: b))).ToList();
-        var maps = new WorldMap[worlds.Count];
-        System.Threading.Tasks.Parallel.For(0, worlds.Count, i => maps[i] = worlds[i].Body == worlds[i].System.FuelMoon ? moons.First(m => m.System == worlds[i].System).Moon : BodySurfaces.Coarse(worlds[i].Body.Spec));
         int warpOn = 0, warpWrong = 0, hyperOn = 0, hyperMissing = 0, hyperElsewhere = 0, bare = 0, heavy = 0;
-        for (int i = 0; i < worlds.Count; i++)
+        foreach (Ground g in ground)
         {
-            Orbiter b = worlds[i].Body;
-            bool warp = maps[i].Deposits.All().Any(d => d.Kind == DepositKind.WarpFuel), crystal = maps[i].Deposits.All().Any(d => d.Kind == DepositKind.Crystal);
+            Orbiter b = g.Body;
+            bool warp = g.Ore.ContainsKey(DepositKind.WarpFuel), crystal = g.Ore.ContainsKey(DepositKind.Crystal);
             if (warp) warpOn++;
             bool cold = b.Spec.Airless; // vacuum worlds alone, icy or not (owner, 13 Nov)
             if (warp != cold) warpWrong++;
@@ -472,12 +502,11 @@ public partial class SystemsTest : Node
         Check(warpWrong == 0 && bare > 0, $"warp fuel (pentaxite): it lies on {warpOn} worlds, every vacuum one of {bare} and no other ({warpWrong} wrong)");
         Check(hyperMissing == 0 && heavy > 0, $"fold fuel: every one of the {heavy} dangerous high-gravity worlds holds some ({hyperMissing} did not)");
         Check(hyperElsewhere == 0, $"fold fuel: it lies nowhere else, but on the alien crystal worlds that always had it ({hyperElsewhere} other worlds had it)");
-        return worlds.Select((w, i) => (w.System, w.Body, maps[i])).ToList();
     }
 
     // ---- 8. Every world has what the cheapest flyer takes ------------------------------------------------------------
 
-    void Flyer(List<StarSystem> systems)
+    void Flyer(List<Ground> ground)
     {
         GameData data = GameData.Shared;
         ItemCatalogue items = data.Items;
@@ -507,17 +536,11 @@ public partial class SystemsTest : Node
         }
         GD.Print($"(the cheapest flyer is {name}: {cheapest.Leaves.Total} ore, tier {cheapest.MaxTier}: {items.Describe(cheapest.Leaves)})");
 
-        var worlds = systems.SelectMany(s => Landable(s)).ToList();
         var short1 = new List<string>();
-        var maps = new WorldMap[worlds.Count];
-        System.Threading.Tasks.Parallel.For(0, worlds.Count, i => maps[i] = BodySurfaces.Coarse(worlds[i].Spec));
-        for (int i = 0; i < worlds.Count; i++)
-        {
-            var have = maps[i].Deposits.All().GroupBy(d => d.Kind).ToDictionary(g => g.Key, g => g.Sum(Units));
+        foreach (Ground g in ground)
             foreach (var (kind, n) in need)
-                if (have.GetValueOrDefault(kind) < n) short1.Add($"{worlds[i].Spec} lacks {kind} ({have.GetValueOrDefault(kind):F0} of {n})");
-        }
-        Check(short1.Count == 0, $"flyer: all {worlds.Count} worlds hold the {string.Join(", ", need.Select(p => $"{p.Value} {p.Key}"))} of the cheapest flyer ({short1.Count} fell short{(short1.Count > 0 ? ": " + short1[0] : "")})");
+                if (g.Ore.GetValueOrDefault(kind) < n) short1.Add($"{g.Body.Spec} lacks {kind} ({g.Ore.GetValueOrDefault(kind):F0} of {n})");
+        Check(short1.Count == 0, $"flyer: all {ground.Count} worlds hold the {string.Join(", ", need.Select(p => $"{p.Value} {p.Key}"))} of the cheapest flyer ({short1.Count} fell short{(short1.Count > 0 ? ": " + short1[0] : "")})");
     }
 
     // ---- 4 and 5, loot: in space places and in ships -----------------------------------------------------------------
@@ -569,24 +592,24 @@ public partial class SystemsTest : Node
         return true;
     }
 
-    void NoWaterOnBareWorlds(List<(StarSystem System, Orbiter Body, WorldMap Map)> coarse, List<(StarSystem System, WorldMap Moon)> moons)
+    void NoWaterOnBareWorlds(List<Ground> ground, List<StarSystem> systems)
     {
         int bare = 0, wet = 0, wetOnes = 0, withAir = 0, watery = 0, ice = 0;
-        foreach (var (_, body, map) in coarse)
+        foreach (Ground g in ground)
         {
-            if (!body.Spec.Airless)
+            if (!g.Body.Spec.Airless)
             {
                 withAir++;
-                if (!Dry(map)) watery++;
+                if (!g.Dry) watery++;
                 continue;
             }
             bare++;
-            if (!Dry(map)) wet++;
-            if ((body.Spec.Archetype == Archetype.Ice || body.Spec is { Archetype: Archetype.Barren, Variant: Archetypes.Icy }) && map.Deposits.All().Any(d => d.Kind == DepositKind.Water)) ice++;
+            if (!g.Dry) wet++;
+            if ((g.Body.Spec.Archetype == Archetype.Ice || g.Body.Spec is { Archetype: Archetype.Barren, Variant: Archetypes.Icy }) && g.Ore.ContainsKey(DepositKind.Water)) ice++;
         }
-        // The same at the game's own resolution, on every start's moon.
-        var full = new bool[moons.Count];
-        System.Threading.Tasks.Parallel.For(0, moons.Count, i => full[i] = Dry(PlanetGenerator.Generate(moons[i].System.FuelMoon.Spec)));
+        // The same at the game's own resolution, on every start's moon (each map dropped once read).
+        var full = new bool[systems.Count];
+        System.Threading.Tasks.Parallel.For(0, systems.Count, i => full[i] = Dry(PlanetGenerator.Generate(systems[i].FuelMoon.Spec)));
         wetOnes = full.Count(d => !d);
         Check(bare > 0 && wet == 0, $"no water: none of {bare} airless worlds has a sea, lake or river, or ground under the waterline ({wet} had) ; {withAir} worlds with air keep theirs ({watery} have some)");
         Check(watery > 0, "no water: the worlds with air still have their seas and rivers (the rule is the vacuum's alone)");

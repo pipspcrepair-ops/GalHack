@@ -108,10 +108,26 @@ public partial class StructureMesh : Node3D
             if (PowerSource != null && PowerSource() != Powered) SetPowered(!Powered);
             UpdateLights();
         }
-        if (_waiting.Count > 0) DrainQueue();
+        if (_waiting.Count > 0) DrainShared();
         if (Rebuilt != rebuilt || queued > 0) LastFrameMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
+    static ulong _drawFrame;
+    static double _drawSpent;
+
+    /// <summary>
+    /// Redraws waiting chunks within the frame's budget, every structure's together: a zone that arrives with many wrecks to
+    /// draw (a warp's destination) shares the one budget rather than each spending it.
+    /// </summary>
+    void DrainShared()
+    {
+        ulong frame = Engine.GetProcessFrames();
+        if (frame != _drawFrame) (_drawFrame, _drawSpent) = (frame, 0.0);
+        if (_drawSpent >= BudgetMs) return;
+        long started = Stopwatch.GetTimestamp();
+        DrainQueue(BudgetMs - _drawSpent);
+        _drawSpent += (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
+    }
     /// <summary>Redraws waiting chunks, until the frame's budget is spent.</summary>
     public void DrainQueue(double budgetMs = BudgetMs)
     {
@@ -168,7 +184,7 @@ public partial class StructureMesh : Node3D
         }
         if (!_chunks.TryGetValue(chunk, out MeshInstance3D mesh))
         {
-            mesh = new MeshInstance3D { Name = $"Chunk{chunk.X}_{chunk.Y}_{chunk.Z}" };
+            mesh = new MeshInstance3D { Name = $"Chunk{chunk.X}_{chunk.Y}_{chunk.Z}", ProcessMode = ProcessModeEnum.Disabled }; // never processes: a zone's mode passes it by (StructureShapes)
             AddChild(mesh);
             if (!Powered) mesh.SetInstanceShaderParameter("powered", 0f);
             _chunks[chunk] = mesh;

@@ -20,7 +20,7 @@ namespace Slice.Orbit;
 /// Gravity frames hand over: in the orbit zone you fly in the frame of the body you are near (the
 /// zone's anchor). As you come within a moon's reach it takes over: it holds still and the world
 /// you left moves round it, so its ground waits where you see it. The descent onto it and the climb
-/// off it are the start world's, the same seam over its own map, with no air to shroud it.
+/// off it are the start world's, the same seam over its own map.
 /// </summary>
 public partial class Spaceflight
 {
@@ -57,27 +57,7 @@ public partial class Spaceflight
         float ceiling = Rules.OrbitAltitude("default");
         foreach (Orbiter moon in model.Bodies.Where(b => b.Kind == OrbiterKind.Moon && b != model.Home && b.Spec != null && (b.Parent == model.Home || b.Parent == model.Neighbour))
                      .OrderBy(b => b != model.FuelMoon))
-        {
-            var zone = new SurfaceZone
-            {
-                Name = Charts.Tidy(moon.Name).Replace(" ", ""), Data = home.Data, Spec = moon.Spec, ShareFrom = home.Planet, SkySurfaces = home.Sky.Surfaces, Body = moon,
-                MakeLater = moon != model.FuelMoon, ProcessMode = ProcessModeEnum.Disabled, Visible = false,
-            };
-            Game.AddChild(zone);
-            Mute(zone);
-            zone.Physics.Zone.Strength = model.GravityOf(moon, home.Physics.Zone.Strength);
-            zone.Physics.Zone.Ceiling = ceiling;
-            zone.Built += () =>
-            {
-                zone.Ground.Ceiling = ceiling;
-                LightBodies(zone);
-                Mute(zone);
-                GD.Print($"{Charts.Tidy(moon.Name)} is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s²");
-            };
-            Orbit.AddMoon(moon, zone, ceiling);
-            _surfaceShownOf[zone] = false;
-            _groundShownOf[zone] = true;
-        }
+            Orbit.AddMoon(moon, BodyZone(moon, now: moon == model.FuelMoon), ceiling);
     }
 
     /// <summary>A parked surface draws and lights nothing: its sky's environment and its light field are off.</summary>
@@ -98,7 +78,9 @@ public partial class Spaceflight
             if (!c.Surface.Making && (c == Here || eye.DistanceTo(c.Centre) - c.GlobeRadius < Rules.Space.MakeMoonWithin)) c.Surface.Make();
         SurfaceZone m = Below;
         if (Here.IsHome || m.Arrived) return;
-        if (m.TryArrive()) GD.Print($"[{Here.Name}'s surface arrived, a piece a frame: {m.ArriveSteps}]");
+        if (!m.TryArrive()) return;
+        GD.Print($"[{Here.Name}'s surface arrived, a piece a frame: {m.ArriveSteps}]");
+        Prepare(m);
     }
 
     /// <summary>
@@ -135,8 +117,8 @@ public partial class Spaceflight
     {
         if (Orbit == null) return;
         SurfaceZone s = Below;
-        foreach (Celestial c in Orbit.Bodies)
-            if (c.Surface is { Sky: not null } other && other != s) other.Sky.Days = s.Sky.Days;
+        foreach (SurfaceZone other in AllSurfaces())
+            if (other.Sky != null && other != s) other.Sky.Days = s.Sky.Days;
     }
 
     /// <summary>
@@ -205,8 +187,8 @@ public partial class Spaceflight
         Vector3 south = MathX.Rotate(frame, N.Vector3.UnitZ).ToGodot();
         N.Quaternion map = c.Map.Frame(gx, gz);
         float R = c.GlobeRadius;
-        float air = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir ? Globe.AirShare(c.World.Sky.Density) : 0f;
-        int umbrae = Orbit.Space.Umbrae(Game.Surface.Planet.StarSystem, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
+        float air = c.World != null ? Globe.AirShare(c.World.Sky.Density) : 0f;
+        int umbrae = Orbit.Space.Umbrae(Orbit.Home.Seen, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
         c.Globe.Draw(new WorldView
         {
             Umbra = _umbra, UmbraCount = umbrae, UmbraSun = umbraSun,

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics.Engine;
@@ -42,7 +42,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     public Vector3 ToSun => Zone.Sky.ToSun;
     public float CloudBaseY => Zone.Sky.Air.CloudBase;
     public IReadOnlyList<Hazard> Hazards => Sim?.Hazards ?? (IReadOnlyList<Hazard>)Array.Empty<Hazard>();
-    public Vector2 Wind2D => Sim?.Current.Wind ?? Vector2.Zero;
+    public Vector2 Wind2D => Sim?.Here.Wind ?? Vector2.Zero; // the observer's: a dust storm's gale only inside it
 
     PlanetWorld _planet;
     LightningFx _lightning;
@@ -69,8 +69,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     }
 
     /// <summary>Drops, and their splashes, are being drawn around the eye (tests).</summary>
-    public bool RainShown => _rain.Node.Visible;
-    public bool SplashShown => _splash.Visible;
+    public bool RainShown => _rain?.Node.Visible == true;
+    public bool SplashShown => _splash?.Visible == true;
 
     /// <summary>A strike's real light right now, and one set off by hand (tests).</summary>
     public float StrikeLight => _lightning.StrikeEnergy;
@@ -190,6 +190,101 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             new Vector4(f.Shear, f.Bow, f.Bows, f.Bays), new Vector4(f.Kind == FrontKind.Storm ? 1f : 0f, f.Roll ? 1f : 0f, f.Seed, f.Severity));
     }
 
+    readonly Dictionary<int, Storm> _storms = new();
+    readonly List<int> _gone = new();
+    float? _aerial;
+
+    /// <summary>The drawn body of a dust storm (tests and screenshots), or null.</summary>
+    public PlanetSurface.Fx.Volume StormOf(int id) => _storms.GetValueOrDefault(id)?.Body;
+
+    /// <summary>Steps a dust storm's body is drawn in: enough for its heaps near the eye, few enough for the frame.</summary>
+    const int StormSteps = 28;
+
+    /// <summary>
+    /// Each dust storm as a body of dust in the ground's own colour, lit by the sun, standing on the
+    /// land up to its height (planet-surface's general volume, Fx.Volume), and the eye's fog turning to
+    /// its murk as deep as the eye is in one: the fog draws the haze inside it, the body its wall and
+    /// billows, so going in and coming out are one smooth change.
+    /// </summary>
+    void SyncDust(Vector3 camera, float open)
+    {
+        Godot.Environment env = Zone.Sky.Environment;
+        Color haze = env.FogLightColor;
+        // Tan, not orange. The body is lit by the engine as the land is; the murk inside it, which the eye's fog draws, is its
+        // colour in the haze's light (the hour's), with a little of the sun's that gets in.
+        Color dust = Muted(_planet.Look.Dust, 0.25f);
+        Color sun = Muted(Zone.Sky.Sun.LightColor.SrgbToLinear() * Zone.Sky.Sun.LightEnergy, 0.5f);
+        Color deep = Muted(dust, 0.45f).SrgbToLinear() * (Muted(haze.SrgbToLinear(), 0.5f) * env.AmbientLightEnergy * 0.8f + sun * 0.06f);
+        // It is shaded away from the light that lights it most: the sun, or the night light once the sun is down.
+        Vector3 toLight = ToSun.Y > -0.03f ? ToSun : Zone.Sky.NightLight.GlobalTransform.Basis.Z;
+        // Deep in it the murk hides the sky and everything far off alike, in its own colour. The fog carries most of it, a
+        // little less in a lull and more in a gust; the body's heaps add the rest, uneven, streaming past the eye.
+        float inside = Sim.DustDepth(camera) * open;
+        float mean = Sim.MeanWindAt(camera).Length(), gust = mean > 0.5f ? Mathf.Clamp(Sim.WindAt(camera).Length() / mean, 0.6f, 1.5f) : 1f;
+        _aerial ??= env.FogAerialPerspective;
+        env.FogLightColor = haze.Lerp(deep.LinearToSrgb(), inside);
+        env.FogSkyAffect = Mathf.Lerp(env.FogSkyAffect, 1f, inside);
+        env.FogAerialPerspective = Mathf.Lerp(_aerial.Value, 0f, inside);
+        env.FogDensity *= Mathf.Lerp(1f, 0.5f * gust, inside);
+
+        _gone.Clear();
+        foreach (int id in _storms.Keys) _gone.Add(id);
+        foreach (DustStorm d in Sim.DustStorms)
+        {
+            if (d.Strength < 0.005f) continue;
+            _gone.Remove(d.Id);
+            if (!_storms.TryGetValue(d.Id, out Storm s))
+            {
+                s = new Storm(new PlanetSurface.Fx.Volume { Name = $"DustStorm{d.Id}" });
+                AddChild(s.Body);
+                _storms[d.Id] = s;
+            }
+            Vector3 at = _planet.NearestCopy(_planet.Canonical(d.Position), camera);
+            // It stands on the land: its floor under the lowest ground of its footprint, its top its height over the middle's.
+            // The ground under it is looked at again only once it has gone a good way, not every frame.
+            if (s.Laid.DistanceSquaredTo(at) > 150f * 150f)
+            {
+                var along = new Vector3(d.Heading.X, 0f, d.Heading.Y) * d.HalfLength;
+                var across = new Vector3(-d.Heading.Y, 0f, d.Heading.X) * d.HalfWidth;
+                s.Middle = s.Floor = Sim.GroundHeight(at.X, at.Z);
+                for (int i = -1; i <= 1; i++)
+                for (int j = -1; j <= 1; j++)
+                {
+                    Vector3 p = at + along * i + across * j;
+                    s.Floor = MathF.Min(s.Floor, Sim.GroundHeight(p.X, p.Z) - 40f);
+                }
+                s.Laid = at;
+            }
+            const float billow = 280f;
+            s.Body.Shape(new Vector2(at.X, at.Z), d.Heading, new Vector2(d.HalfLength, d.HalfWidth), s.Floor, s.Middle + d.Height - s.Floor, 0.3f, billow);
+            // As thick inside as its weather's visibility makes the fog (Atmosphere's rule), thinner up top; great lobes that
+            // ride on it a little faster than it moves, climbing its face, so its front rolls. Its outline drawn crisper than
+            // the model's ramp: the wall is seen as a wall, and inside the eye's fog carries most of the murk.
+            s.Body.Look(dust, 2.3f * 0.85f / d.Air.Visibility, 0.35f, MathF.Min(d.Edge, 150f), 900f, d.Velocity * 1.15f, 2.5f, d.Strength);
+            s.Body.Light(toLight, env.FogLightColor, env.FogDensity, StormSteps);
+        }
+        foreach (int id in _gone)
+        {
+            _storms[id].Body.QueueFree();
+            _storms.Remove(id);
+        }
+    }
+
+    /// <summary>A drawn dust storm, and the ground it was last stood on.</summary>
+    sealed class Storm(PlanetSurface.Fx.Volume body)
+    {
+        public readonly PlanetSurface.Fx.Volume Body = body;
+        public Vector3 Laid = new(float.MaxValue, 0f, 0f);
+        public float Floor, Middle;
+    }
+
+    /// <summary>A colour moved toward its own grey by a share.</summary>
+    static Color Muted(Color c, float share)
+    {
+        float grey = c.R * 0.2126f + c.G * 0.7152f + c.B * 0.0722f;
+        return c.Lerp(new Color(grey, grey, grey, c.A), share);
+    }
+
     (MeshInstance3D, ShaderMaterial) AddShaft()
     {
         var draw = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/rainshaft.gdshader") };
@@ -237,6 +332,15 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         _lightning = new LightningFx { Name = "Lightning", Fx = this, LightShare = () => SkyAtEye };
         AddChild(_lightning);
+    }
+
+    /// <summary>
+    /// What falls and blows (rain, snow, dust, motes, splashes, and what stops them), made once the zone has a world
+    /// with weather to show: a zone in space never pays for particles it can't have.
+    /// </summary>
+    void Dress()
+    {
+        if (_rain != null) return;
         // A top-down depth picture of everything around the camera: what falls dies on it.
         _stops = new GpuParticlesCollisionHeightField3D
         {
@@ -353,7 +457,11 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// </summary>
     public void SetWorld(PlanetWorld planet)
     {
+        Dress();
         _planet = planet;
+        // The last world's dust storms go with it (a world with no air has no weather to draw them again).
+        foreach (Storm s in _storms.Values) s.Body.QueueFree();
+        _storms.Clear();
         WeatherData data = Zone.Data.Weather;
         string archetype = ArchetypeFor(planet.Spec);
         World = WorldOf(data, planet);
@@ -842,6 +950,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         KeepStops(camera, dt);
         SyncCells(dt, camera);
         SyncFront(camera);
+        SyncDust(camera, open);
         Rumble(dt, camera);
 
         Vector2 w = c.Wind;

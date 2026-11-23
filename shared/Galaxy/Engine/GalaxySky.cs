@@ -32,6 +32,9 @@ public sealed class GalaxySky
     /// <summary>Everything is on the graphics card: stars are showing.</summary>
     public bool Ready { get; private set; }
 
+    /// <summary>A baked sky is going up to the graphics card, a texture a <see cref="Poll"/>.</summary>
+    public bool Uploading => _uploading != null;
+
     public double MakeMs { get; private set; }
     public double BakeMs { get; private set; }
 
@@ -130,6 +133,22 @@ public sealed class GalaxySky
             BakeMs = watch.Elapsed.TotalMilliseconds;
             return (v, cells, stars, faces);
         });
+    }
+
+    /// <summary>
+    /// Lets go of this sky now (a system folded away from): its textures, whatever a worker still has on its way, and the
+    /// materials it feeds. Nothing waits for the collector to find them.
+    /// </summary>
+    public void Release()
+    {
+        _bound.Clear();
+        _baking = null;
+        _uploading = null;
+        foreach (GodotObject t in new GodotObject[] { _cells, _stars, _glow, _newCells, _newStars, _newGlow })
+            t?.Dispose();
+        (_cells, _stars, _glow, _newCells, _newStars, _newGlow) = (null, null, null, null, null, null);
+        View = null;
+        Ready = false;
     }
 
     /// <summary>RGB floats as RGBA half floats (alpha 1): the glow cubemap's own format.</summary>

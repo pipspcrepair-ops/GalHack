@@ -311,7 +311,13 @@ public sealed class Driver
     public IEnumerable<int> ClickWidget(string id, bool shift = false)
     {
         foreach (int x in UntilWidget(id)) yield return x;
-        Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
+        foreach (int x in ClickAt(Game.Menu.RectOf(id).Value.GetCenter(), shift)) yield return x;
+    }
+
+    /// <summary>Moves the menu's mouse to a point and clicks there (a body on a map: not a widget of its own).</summary>
+    public IEnumerable<int> ClickAt(Vector2 at, bool shift = false)
+    {
+        Controls.Mouse = at;
         Controls.Hold(Key.Shift, shift);
         yield return 0;
         Controls.PrimaryPressed = true;

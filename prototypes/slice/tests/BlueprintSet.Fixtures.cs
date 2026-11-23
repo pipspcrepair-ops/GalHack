@@ -32,6 +32,7 @@ public static partial class BlueprintSet
         d.Put("core", P(0, 0, -9));
         d.Put("command-chair", P(-2, 1, -12));
         d.Put("command-chair", P(1, 1, -12));
+        d.Put("life-support-pod", P(-1, 4, -12));
         d.Mount("light", P(-1, 4, -8), Dir.PosY);
         foreach (int z in new[] { -1, 5 })
         {

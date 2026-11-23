@@ -39,6 +39,14 @@ public partial class Pacing : Node
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
+        // --minspec=1: the minimum spec's stand-in, as PopRoute's (4 cores, workers for 4, the lowest graphics unless --settings says otherwise).
+        if (_args.ContainsKey("minspec"))
+        {
+            HoldCores();
+            _coresReset = 0;
+            PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
+            _args.TryAdd("settings", "res://tests/minspec.cfg");
+        }
         if (_args.TryGetValue("screen", out string sc)) DisplayServer.WindowSetCurrentScreen(int.Parse(sc));
         DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen); // the owner's borderless, at the screen's own size
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
@@ -53,10 +61,29 @@ public partial class Pacing : Node
         _run = Run().GetEnumerator();
     }
 
+    static readonly System.Diagnostics.Process Me = System.Diagnostics.Process.GetCurrentProcess();
+    int _coresReset;
+
+    /// <summary>The min spec's 4 cores (logical CPUs 0, 2, 4, 6), put back whenever something outside sets them wider mid-run.</summary>
+    void HoldCores()
+    {
+        if (Me.ProcessorAffinity == 0x55) return;
+        Me.ProcessorAffinity = 0x55;
+        _coresReset++;
+    }
+
     public override void _PhysicsProcess(double delta)
     {
         bool more;
         int code = 0;
+        if (_args.ContainsKey("minspec")) HoldCores();
+        if (_storm != null)
+        {
+            _storm.Position = S.WorldFeet + _stormOffset;
+            _storm.Strength = 1f;
+            _storm.Age = 0f;
+            if (_builtin != null) Builtin();
+        }
         try { more = _run.MoveNext(); }
         catch (Exception e)
         {
@@ -67,6 +94,50 @@ public partial class Pacing : Node
         if (more) return;
         SetPhysicsProcess(false);
         Wildlife.Shutdown.Quit(this, code);
+    }
+
+    Weather.Model.DustStorm _storm;
+    Vector3 _stormOffset;
+
+    /// <summary>
+    /// --storm=inside|edge|outside: a dust storm held round the routes that way, coming from the way the walk goes: the eye at
+    /// its middle, 150 m in from its leading edge, or watching its wall 3 km off. It keeps its place to the sleeper all along.
+    /// </summary>
+    void HoldStorm(string where, Vector3 ahead)
+    {
+        Vector3 way = new Vector3(ahead.X, 0f, ahead.Z).Normalized();
+        var sim = _game.Zone.Weather.Sim;
+        _storm = sim.AddDustStorm(S.WorldFeet, 1f, new Vector2(-way.X, -way.Z) * sim.Data.State(WeatherKind.DustStorm).WindSpeed);
+        float h = _storm.HalfLength;
+        _stormOffset = way * (where switch { "inside" => 0f, "edge" => h - 150f, "outside" => 3000f + h, _ => throw new ArgumentException($"--storm={where}") });
+        GD.Print($"PACING storm {where}: {_storm.HalfWidth * 2f:F0} x {h * 2f:F0} m, {_storm.Height:F0} m tall; renderer {RenderingServer.GetCurrentRenderingMethod()}");
+        // --builtin=1 (run with --rendering-method forward_plus): the measured alternative, Godot's own volumetric fog with a
+        // fog volume in the storm's place and size, instead of the game's own volume. Measure only: the game stays on Mobile.
+        if (!_args.ContainsKey("builtin")) return;
+        var env = _game.Zone.Sky.Environment;
+        env.VolumetricFogEnabled = true;
+        env.VolumetricFogDensity = 0f; // no fog of its own outside the storm, as on the game's
+        env.VolumetricFogLength = PlanetSurface.Terrain.TerrainStreamer.HorizonReach; // its froxels must reach as far as the wall is seen
+        env.VolumetricFogAlbedo = _game.Zone.Planet.Look.Dust;
+        _builtin = new FogVolume
+        {
+            Name = "StormFog", Shape = RenderingServer.FogVolumeShape.Ellipsoid,
+            Size = new Vector3(2f * _storm.HalfLength, 2f * _storm.Height, 2f * _storm.HalfWidth),
+            Material = new FogMaterial { Density = 2.3f * 0.85f / _storm.Air.Visibility, Albedo = _game.Zone.Planet.Look.Dust, EdgeFade = 0.3f },
+        };
+        _game.Zone.AddChild(_builtin);
+    }
+
+    FogVolume _builtin;
+
+    /// <summary>The fog volume where the storm stands, turned its way, and the game's own volume hidden.</summary>
+    void Builtin()
+    {
+        Vector3 at = _game.Zone.Planet.NearestCopy(_game.Zone.Planet.Canonical(_storm.Position), _game.Camera.GlobalPosition);
+        at.Y = _game.Zone.GroundAt(at.X, at.Z).Y;
+        var along = new Vector3(_storm.Heading.X, 0f, _storm.Heading.Y);
+        _builtin.GlobalTransform = new Transform3D(new Basis(along, Vector3.Up, along.Cross(Vector3.Up)), at);
+        if (_game.Zone.Weather.StormOf(_storm.Id) is { } drawn) drawn.Visible = false;
     }
 
     /// <param name="drive">what moves you meanwhile, if not <paramref name="each"/> tick by tick</param>
@@ -82,6 +153,13 @@ public partial class Pacing : Node
     {
         foreach (int x in _drive.UntilSettled(30)) yield return x;
         _pacing.Start();
+        // --split=1: each frame's main thread by stage and by system, and every hitch written down whole (as PopRoute's).
+        if (_args.ContainsKey("split"))
+        {
+            _split ??= new FrameSplit(GetTree().Root, GetViewport().GetViewportRid()) { Systems = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) };
+            _split.Systems.Reset();
+            _split.Reset();
+        }
         Vector3 from = S.WorldFeet;
         using (IEnumerator<int> d = drive?.GetEnumerator())
             for (int i = 0; i < ticks && (d == null || d.MoveNext()); i++)
@@ -94,9 +172,18 @@ public partial class Pacing : Node
             System.IO.Directory.CreateDirectory(dir);
             _pacing.Dump($"{dir}/{name}.csv");
         }
-        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms): {_pacing.Stop()}");
+        GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms" +
+                 $"{(_args.ContainsKey("minspec") ? $", affinity 0x{Me.ProcessorAffinity:X}, put back {_coresReset} times so far" : "")}): {_pacing.Stop()}");
+        if (_split != null)
+        {
+            GD.Print($"SPLIT {name} frames: {_split.Report()}");
+            GD.Print($"SPLIT {name} by system (cpu ms a frame): {_split.Systems.Report(12)}");
+            foreach (string h in _split.Hitches) GD.Print($"SPLIT {name} hitch {h}");
+        }
         _mouse = Vector2.Zero;
     }
+
+    FrameSplit _split;
 
     IEnumerable<int> Run()
     {
@@ -126,6 +213,7 @@ public partial class Pacing : Node
         }
         foreach (int x in _drive.LookAt(town with { Y = S.WorldEye().Y }, 10)) yield return x;
         _drive.Controls.Look = Vector2.Zero;
+        if (_args.TryGetValue("storm", out string storm)) HoldStorm(storm, town - S.WorldFeet);
 
         foreach (int x in Measure("standing", 600)) yield return x;
         _mouse = new Vector2(360f, 0f);

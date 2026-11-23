@@ -21,7 +21,7 @@ public sealed partial class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.33);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        string[] own = { "scanner", "mining-drill", "plasma-drill", "hover-bike", "survival-constructor", "climate-node" };
+        string[] own = { "scanner", "mining-drill", "plasma-drill", "hover-bike", "survival-constructor", "survival-climate-pod" };
         foreach (string id in own) Hand((id, 2));
         Hand(("sleeper-tool", 1), ("iron-ore", 160), ("copper-ore", 80), ("carbon-ore", 70), ("silicon-ore", 30), ("biomass", 14), ("stone", 22), ("ice", 12), ("meat", 6), ("hide", 2),
             ("trail-ration", 4), ("patch-kit", 3), ("air-cell", 2), ("iron-bar", 30), ("copper-wire", 20), ("circuit-board", 4));

@@ -30,6 +30,8 @@ public sealed class DerelictPlan
     public Int3? Door;
     /// <summary>A capital ship's piece: what the hull builder made of it (its rooms, its dressing, its core's seat), else null.</summary>
     public Slice.Places.HullVessel.Result Hull;
+    /// <summary>Its collision, worked out with the plan off the main thread (null: worked out as it is set adrift).</summary>
+    public System.Collections.Generic.List<GalHack.Physics.ChunkColliders> Colliders;
 }
 
 /// <summary>

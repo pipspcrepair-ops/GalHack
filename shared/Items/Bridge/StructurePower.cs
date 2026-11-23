@@ -10,8 +10,15 @@ namespace GalHack.Items.Bridge;
 /// <summary>What a device is doing: the measures its draw follows (power.json "draw"). Each reads 0 to 1.</summary>
 public enum PowerState { Throttle, Turning, Hovering, Lit, Working, Seated, On, Idle, Tracking, Firing, Up, Recharging, Engaged }
 
-/// <summary>A drive's jump fuel: the item it burns from core storage, how many per <see cref="Unit"/> (AU or LY), and the seconds it spools before it jumps.</summary>
-public sealed record DriveFuel(string Item, double Per, string Unit, double Spool);
+/// <summary>
+/// A drive's jump fuel: the item it burns from core storage, how many per <see cref="Unit"/> (AU or LY), the seconds it
+/// spools before it jumps, and by block id the farthest one jump of it goes (none: as far as its fuel takes it).
+/// </summary>
+public sealed record DriveFuel(string Item, double Per, string Unit, double Spool, IReadOnlyDictionary<string, double> Reach)
+{
+    /// <summary>The fuel items a jump of so far (AU or LY) burns: whole items, rounded up.</summary>
+    public int Burn(double distance) => (int)Math.Ceiling(distance * Per - 1e-9);
+}
 
 /// <summary>A shield generator's figures: the hit points it holds and how many it recharges a second at full power.</summary>
 public readonly record struct ShieldBlock(double Hp, double Recharge);
@@ -66,7 +73,10 @@ public sealed class PowerRules
         {
             string fuel = DataJson.Str(d.Value, "fuel");
             if (!items.Has(fuel)) throw new InvalidDataException($"power.json: drive '{d.Name}' burns an unknown item '{fuel}'");
-            drives[d.Name] = new DriveFuel(fuel, DataJson.Num(d.Value, "per"), DataJson.Str(d.Value, "unit"), DataJson.Num(d.Value, "spool"));
+            var reach = new Dictionary<string, double>(StringComparer.Ordinal);
+            if (d.Value.TryGetProperty("reach", out JsonElement r))
+                foreach (JsonProperty b in r.EnumerateObject()) reach[b.Name] = b.Value.GetDouble();
+            drives[d.Name] = new DriveFuel(fuel, DataJson.Num(d.Value, "per"), DataJson.Str(d.Value, "unit"), DataJson.Num(d.Value, "spool"), reach);
         }
         JsonElement shield = root.GetProperty("shield");
         var shields = new Dictionary<string, ShieldBlock>(StringComparer.Ordinal);
@@ -164,16 +174,29 @@ public sealed partial class StructurePower
     public double SecondsLeft => DrawMW - SolarNowMW <= 1e-9 ? double.PositiveInfinity
         : ((GeneratorMW > 0 ? FuelUnits * _rules.FuelUnitMJ : 0) + ChargeMJ) / (DrawMW - SolarNowMW);
 
-    /// <summary>Power drawn from outside its blocks this tick (a climate node standing by it), MW.</summary>
+    /// <summary>Power drawn from outside its blocks this tick (a force field), MW.</summary>
     public void AddLoad(double mw) => _extra += mw;
 
-    /// <summary>A drive's reach on the jump fuel in core storage (AU or LY, per its rule), or null if none is fitted.</summary>
+    /// <summary>A drive's reach for one jump (AU or LY, per its rule): what the jump fuel in core storage takes it, no further than its best block jumps; null if none is fitted.</summary>
     public (double Reach, string Unit)? Range(string function)
     {
         Refresh();
         if (!_functions.Contains(function) || !_rules.Drives.TryGetValue(function, out DriveFuel d)) return null;
-        return (_storage.Count(d.Item) / d.Per, d.Unit);
+        return (Math.Min(_storage.Count(d.Item) / d.Per, JumpReach(function)), d.Unit);
     }
+
+    /// <summary>The farthest one jump of a drive goes, its fuel aside: its best fitted block's reach (infinite for a drive with none, or none fitted).</summary>
+    public double JumpReach(string function)
+    {
+        Refresh();
+        if (!_rules.Drives.TryGetValue(function, out DriveFuel d) || d.Reach.Count == 0) return double.PositiveInfinity;
+        double best = 0;
+        foreach (string id in _blockIds)
+            if (d.Reach.TryGetValue(id, out double r)) best = Math.Max(best, r);
+        return best > 0 ? best : double.PositiveInfinity;
+    }
+
+    readonly HashSet<string> _blockIds = new(StringComparer.Ordinal);
 
     /// <summary>
     /// One tick. <paramref name="on"/>: the structure's power switch (off, nothing draws and nothing is made).
@@ -252,11 +275,13 @@ public sealed partial class StructurePower
         _version = _s.Version;
         _loads.Clear();
         _functions.Clear();
+        _blockIds.Clear();
         _generators = _solar = ShieldMaxHp = _shieldRecharge = 0;
         foreach (var (cell, b) in _s.Blocks())
         {
             BlockType t = _s.TypeOf(b);
             _functions.Add(t.Function);
+            _blockIds.Add(t.Id);
             if (_rules.Shields.TryGetValue(t.Id, out ShieldBlock sb)) (ShieldMaxHp, _shieldRecharge) = (ShieldMaxHp + sb.Hp, _shieldRecharge + sb.Recharge);
             if (t.Power > 0 && t.Function == "solar") _solar += t.Power;
             else if (t.Power > 0) _generators += t.Power;

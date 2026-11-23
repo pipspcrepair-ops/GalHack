@@ -43,6 +43,8 @@
     "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
+    // On a world a nuclear war blasted, a dust storm lifts the craters' fallout: deep inside one, this share of the strongest crater's reading.
+    "dustFallout": 0.25,
     // A sealed room aboard a powered structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
     "sealedRoomC": 20,
     // A sealed room's air: with its structure powered it eases to sealedRoomC (the gap shrinks by e every roomEaseSeconds,
@@ -160,7 +162,7 @@
   // The climate node: running, it holds the air within radius metres inside lowC to highC. Life
   // support uses power only (owner, 15 Nov): it has no fuel of its own and draws power MW from the
   // capacitors of the structure whose area it stands in (the nearest with power, if several).
-  "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "power": 0.01 },
+  "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "burnPerSecond": 0.02 },
 
   // The head torch (L): a cone from the helmet.
   "torch": { "range": 60, "angle": 32, "energy": 6.5, "attenuation": 0.85 },
@@ -200,7 +202,7 @@
       { "id": "scanner", "label": "SCAN", "functions": ["scanner"], "act": "run", "icon": "scanner", "end": "left" },
       { "id": "shields", "label": "SHIELD", "functions": ["shield"], "act": "toggle", "icon": "shield", "end": "right" },
       { "id": "fabricators", "label": "FAB", "functions": ["constructor", "factory", "deconstructor"], "act": "toggle", "icon": "fabricator", "end": "right" },
-      { "id": "life-support", "label": "LIFE", "functions": ["core"], "act": "toggle", "icon": "atmosphere", "end": "right" },
+      { "id": "life-support", "label": "LIFE", "functions": ["life-support"], "act": "toggle", "icon": "atmosphere", "end": "right" },
       { "id": "gravity", "label": "GRAV", "functions": ["core"], "act": "toggle", "icon": "gravity", "end": "right" }
     ]
   },

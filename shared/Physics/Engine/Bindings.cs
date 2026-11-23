@@ -84,7 +84,10 @@ public sealed class HullBinding : BodyBinding
     public override void Move(PhysicsHost host, float dt)
     {
         Body b = Body;
-        Hull.GlobalTransform = GodotMath.TransformOf(b); // turning, gear lifts and settling happened in the rules
+        // Turning, gear lifts and settling happened in the rules. Where it already stands it isn't set again: every shape and
+        // mesh a hull holds is told of a move, and a still wreck of two thousand of them was told every tick.
+        Transform3D at = GodotMath.TransformOf(b);
+        if (Hull.GlobalTransform != at) Hull.GlobalTransform = at;
         if (b.Asleep)
         {
             // At rest it isn't swept, but what set it where it stands (settling onto its legs, a placement, a toss

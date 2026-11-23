@@ -168,7 +168,9 @@ public sealed class LeggedRig : Rig
         SmoothIntents(c, dt);
         Proportions b = Species.Body;
         float L = b.Size, H = b.Height, W = b.Width, legLen = b.LegLength;
-        Vector3 vel = WildSim.Flat(Pace.Velocity);
+        // (In a lunge the attack throws the body itself, a real move its legs keep up with, not a jostle's: the feet step after it at
+        // once, never left behind for the body to sag onto them, a bite's head down into whoever it bit.)
+        Vector3 vel = WildSim.Flat(c.Phase == AttackPhase.Lunge ? c.Velocity : Pace.Velocity);
         float speed = vel.Length();
         float walk = MathF.Max(0.3f, Species.Stats.WalkSpeed);
 

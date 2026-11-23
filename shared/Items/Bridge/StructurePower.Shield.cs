@@ -76,18 +76,26 @@ public sealed partial class StructurePower
 
     /// <summary>
     /// Starts a drive spooling for a jump of so far (AU or LY). Null when it starts; else what stops it, as the console
-    /// shows it: NOT FITTED, SPOOLING, SHIELDS UP, NO FUEL (less than the jump burns in core storage) or NO POWER.
+    /// shows it: NOT FITTED, SPOOLING, SHIELDS UP, OUT OF RANGE (past what one jump of its best block goes), NO FUEL
+    /// (less than the jump burns in core storage) or NO POWER.
     /// </summary>
     public string Engage(string function, double distance)
     {
         if (Range(function) is not { } range) return "NOT FITTED";
         if (Spooling != null) return "SPOOLING";
         if (ShieldUp) return "SHIELDS UP";
+        if (JumpReach(function) < distance) return "OUT OF RANGE";
         if (range.Reach < distance) return "NO FUEL";
         if (Supply <= 0) return "NO POWER";
         (Spooling, SpoolLeft, _jump) = (function, _rules.Drives[function].Spool, distance);
         return null;
     }
+
+    /// <summary>Calls a spooling drive off: it winds down and nothing burns.</summary>
+    public void Disengage() => Spooling = null;
+
+    /// <summary>The spool's share done, 0 to 1 (0 with nothing spooling).</summary>
+    public double SpoolShare => Spooling == null ? 0 : Math.Clamp(1 - SpoolLeft / _rules.Drives[Spooling].Spool, 0, 1);
 
     void TickDrive(double dt, bool on)
     {
@@ -100,7 +108,7 @@ public sealed partial class StructurePower
         SpoolLeft -= dt * Supply;
         if (SpoolLeft > 0) return;
         DriveFuel d = _rules.Drives[Spooling];
-        int burnt = _storage.Remove(d.Item, (int)Math.Ceiling(_jump * d.Per - 1e-9));
+        int burnt = _storage.Remove(d.Item, d.Burn(_jump));
         string function = Spooling;
         Spooling = null;
         LastJump = (function, _jump, burnt);

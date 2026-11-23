@@ -273,7 +273,9 @@ public sealed class GroundPalette
     public Rgb FarGround(double x, double z, float across)
     {
         double w = Map.WidthMeters, h = Map.HeightMeters;
-        float At(double px, double pz) => Map.Sample(Map.Elevation, Mathx.WrapX(px, w), Mathx.Wrap(pz, h));
+        // Smooth, height and slope both: bilinear, the slope steps from cell to cell, and the bare rock it decides stood round
+        // every lake and shore as a ring of 32 m squares; and the shore is where the paint has it (ColorMap).
+        float At(double px, double pz) => Map.SampleSmooth(Map.Elevation, px, pz);
         float height = At(x, z);
         var normal = new Vector3(At(x - across, z) - At(x + across, z), 2f * across, At(x, z - across) - At(x, z + across)).Normalized();
         return FarGround(Mathx.WrapX(x, w), Mathx.Wrap(z, h), height, normal.Y, out _);

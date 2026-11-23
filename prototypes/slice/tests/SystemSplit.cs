@@ -32,6 +32,9 @@ public sealed partial class SystemSplit
     }
 
     const int EndIndex = 0;
+
+    /// <summary>One of the markers (a count of the scene can leave them out).</summary>
+    public static bool IsMark(Node n) => n is Mark;
     readonly Node[] _parents;
     /// <summary>Children split one level further too, by class (a place into its creatures, people, dressing and itself), however many come and go.</summary>
     public System.Func<Node, bool> Deeper = _ => false;

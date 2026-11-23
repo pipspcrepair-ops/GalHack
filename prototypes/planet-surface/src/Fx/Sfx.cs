@@ -17,22 +17,27 @@ public partial class Sfx : Node3D
     const int Rate = 22050;
     const int Voices = 10;
 
-    readonly Dictionary<Sound, AudioStreamWav> _clips = new();
+    /// <summary>The clips, rendered once for every zone's effects (a world, a moon, an orbit each has its own player): sound is the same everywhere.</summary>
+    static Dictionary<Sound, AudioStreamWav> _clips;
+    static AudioStreamWav _windClip, _rainClip;
     readonly AudioStreamPlayer3D[] _voices = new AudioStreamPlayer3D[Voices];
     readonly RandomNumberGenerator _rng = new() { Seed = 42 };
     int _next;
 
     public override void _Ready()
     {
-        _clips[Sound.Dig] = Render(0.18f, Dig);
-        _clips[Sound.Ore] = Render(0.45f, Ore);
-        _clips[Sound.Clank] = Render(0.3f, Clank);
-        _clips[Sound.Place] = Render(0.22f, Place);
-        _clips[Sound.Boom] = Render(1.1f, Boom);
-        _clips[Sound.Ping] = Render(0.8f, Ping);
-        _clips[Sound.Thunder] = Render(3.2f, Thunder);
-        _wind = Loop("Wind", Render(4f, Wind, loop: true));
-        _rain = Loop("Rain", Render(3f, Rain, loop: true));
+        if (_clips == null)
+        {
+            _windClip = Render(4f, Wind, loop: true);
+            _rainClip = Render(3f, Rain, loop: true);
+            _clips = new Dictionary<Sound, AudioStreamWav>
+            {
+                [Sound.Dig] = Render(0.18f, Dig), [Sound.Ore] = Render(0.45f, Ore), [Sound.Clank] = Render(0.3f, Clank), [Sound.Place] = Render(0.22f, Place),
+                [Sound.Boom] = Render(1.1f, Boom), [Sound.Ping] = Render(0.8f, Ping), [Sound.Thunder] = Render(3.2f, Thunder),
+            };
+        }
+        _wind = Loop("Wind", _windClip);
+        _rain = Loop("Rain", _rainClip);
         for (int i = 0; i < Voices; i++)
         {
             _voices[i] = new AudioStreamPlayer3D { UnitSize = 6f, MaxDistance = 120f };

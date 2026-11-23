@@ -49,7 +49,7 @@ public partial class Game
                 foreach (Creature c in s.Sim.Creatures)
                     if (c.Species.Husk && !c.Dead && !c.Removed) patch.Sim.WrongPlaces.Add(patch.PatchLocal(s.World(c.Position)));
             }
-            if (InOrbit) raw = 0f;
+            if (InSpace) raw = 0f;
             _wrongRaw = raw;
         }
         // It builds as you come near (it takes a few seconds), and fades a little faster as you go.

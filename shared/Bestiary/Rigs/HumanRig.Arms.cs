@@ -83,6 +83,27 @@ public sealed partial class HumanRig
     }
 
     /// <summary>
+    /// A hand carried from one place to another (t 0 to 1) round the shoulder, as an arm swings: turned about the shoulder and its
+    /// reach eased between, never straight across past it, where the arm would fold up on itself and its elbow fly round. Between
+    /// two places nearly opposite about the shoulder (down at the side to up by the head), where the short way round could be any
+    /// way and swaps with the smallest change, it goes by way of the front (<paramref name="ahead"/>).
+    /// </summary>
+    static Vector3 Sweep(Vector3 shoulder, Vector3 from, Vector3 to, float t, Vector3 ahead)
+    {
+        if (t <= 0f) return from;
+        if (t >= 1f) return to;
+        Vector3 a = from - shoulder, b = to - shoulder, direct = a.Slerp(b, t);
+        float la = a.Length(), lb = b.Length(), cos = la * lb > 1e-8f ? a.Dot(b) / (la * lb) : 1f;
+        if (cos > -0.5f) return shoulder + direct;
+        Vector3 front = ahead * (0.5f * (la + lb));
+        Vector3 via = t < 0.5f ? a.Slerp(front, 2f * t) : front.Slerp(b, 2f * t - 1f);
+        return shoulder + direct.Lerp(via, Mathf.SmoothStep(-0.5f, -0.8f, cos));
+    }
+
+    /// <summary>How near its shoulder a hand comes at most, a share of the arm's length: nearer, the arm folds right up and its line through the shoulder swings round at the slightest move.</summary>
+    const float Nearest = 0.3f;
+
+    /// <summary>
     /// Clearance of a point from the torso's skin, m: below 0 inside it. In the body piece's space;
     /// near enough for an ellipse, and exact on its axes.
     /// </summary>
@@ -131,6 +152,10 @@ public sealed partial class HumanRig
     /// passing the shoulder, the body in the way one frame and not the next).
     /// </summary>
     readonly Vector3[] _way = new Vector3[2];
+
+    /// <summary>How long each arm has been eased into the body, s; how many times a limb's pace it comes out at most.</summary>
+    readonly float[] _into = new float[2];
+    const float CatchUp = 4f;
 
     /// <summary>How fast an elbow swings round the line from its shoulder to its hand, radians a second.</summary>
     const float ElbowSwing = 14f;
@@ -184,34 +209,74 @@ public sealed partial class HumanRig
         Vector3 axis0 = grips;
         Transform3D inv = _bodyInv;
         // The whole hand, not its wrist: the wrist goes where none of the hand is in the torso or the head.
-        Vector3 Free(Vector3 elbow, Vector3 wrist) => HandClear(new Transform3D(HandFrame(arm, hs, frame, axis0, gripW, (wrist - elbow).Normalized(), gripFore), wrist), hs.Shape, arm, 0.006f);
+        Vector3 Free(Vector3 elbow, Vector3 wrist, float margin = 0.006f) => HandClear(new Transform3D(HandFrame(arm, hs, frame, axis0, gripW, (wrist - elbow).Normalized(), gripFore), wrist), hs.Shape, arm, margin);
         // How far any of the arm is in the body (the arm first, the hand when the arm is clear).
         float Through(Vector3 sh, Vector3 elbow, Vector3 wrist, bool handToo)
         {
             float sunk = SunkIn(inv, sh, elbow, wrist, 0.15f);
             return sunk > 0f || !handToo ? sunk : Free(elbow, wrist).Length();
         }
+        // Shoulder to hand by IK, the hand no nearer the shoulder than it comes (a hand on a grip stays on it: the hold says where).
+        float nearest = Nearest * (upper + fore);
+        (Vector3 e, Vector3 w) Toward(Vector3 sh, Vector3 hd, Vector3 p) => ArmIK(sh, held || (hd - sh).LengthSquared() >= nearest * nearest ? hd : sh + (hd - sh).Normalized() * nearest, upper, fore, p);
+        // The arm as it is posed: reached again to the wrist as found (Done eases the wrist, not the hand asked, which can be out of
+        // reach). What is looked at for the body is what is posed.
+        (Vector3 e, Vector3 w) IK(Vector3 sh, Vector3 hd, Vector3 p) => Toward(sh, Toward(sh, hd, p).w, p);
         pole = ElbowWay(arm, shoulder, hand, pole, outward);
         Vector3 askedShoulder = shoulder, askedHand = hand, wasWay = _way[arm];
         // The arm as found, its shoulder and hand moved off where they were asked by no more than they were last frame give or take
         // what a limb moves in a frame (Shift), and its elbow swung round from the way it went as far as an elbow swings:
-        // what clears the body changes in a step between frames (a coat grazed, or no longer), the arm never does.
-        (Vector3 e, Vector3 w) Done(Vector3 sh, (Vector3 e, Vector3 w) r, Vector3 way, out Vector3 h, out Vector3 shoulderAt)
+        // what clears the body changes in a step between frames (a coat grazed, or no longer), the arm never does. Eased into the
+        // body (the way round it jumped on), it comes on faster the longer it has been in, as much as takes it out: an arm left in a
+        // thick coat is out of it in a moment.
+        (Vector3 e, Vector3 w) Done(Vector3 sh, Vector3 hd, Vector3 way, out Vector3 h, out Vector3 shoulderAt)
         {
             Basis b = body.Basis, bi = b.Inverse();
-            Vector3 cs = bi * (sh - askedShoulder), ch = bi * (r.w - askedHand);
-            if (_dt > 0f) (cs, ch) = (_shift[arm * 2].MoveToward(cs, Shift * _dt), _shift[arm * 2 + 1].MoveToward(ch, Shift * _dt));
-            (_shift[arm * 2], _shift[arm * 2 + 1]) = (cs, ch);
-            (shoulderAt, sh) = (askedShoulder + b * cs, askedShoulder + b * cs);
-            Vector3 hd = askedHand + b * ch, along = (hd - sh).Normalized();
-            way = Square(way, along);
-            Vector3 was = Square(b * wasWay, along);
-            if (way == Vector3.Zero) way = was != Vector3.Zero ? was : Square(outward, along);
-            if (was != Vector3.Zero && _dt > 0f)
+            hd = Toward(sh, hd, way).w;
+            Vector3 cs = bi * (sh - askedShoulder), ch = bi * (hd - askedHand), asked = way, along = default;
+            bool eased = _dt > 0f;
+            // The shoulder's (0) or the wrist's (1) move, eased at this many times a limb's pace; the arm so eased.
+            Vector3 Moved(int k, float pace) => eased ? _shift[arm * 2 + k].MoveToward(k == 0 ? cs : ch, Shift * pace * _dt) : k == 0 ? cs : ch;
+            (Vector3 e, Vector3 w) At(float pace, out Vector3 s, out Vector3 wy)
             {
-                float a = MathF.Atan2(along.Dot(was.Cross(way)), was.Dot(way)), step = ElbowSwing * _dt;
-                if (MathF.Abs(a) > step) way = was.Rotated(along, MathF.Sign(a) * step);
+                s = askedShoulder + b * Moved(0, pace);
+                Vector3 hd = askedHand + b * Moved(1, pace);
+                along = (hd - s).Normalized();
+                wy = Square(asked, along);
+                Vector3 was = Square(b * wasWay, along);
+                if (wy == Vector3.Zero) wy = was != Vector3.Zero ? was : Square(outward, along);
+                if (was != Vector3.Zero && eased)
+                {
+                    float a = MathF.Atan2(along.Dot(was.Cross(wy)), was.Dot(wy)), step = ElbowSwing * pace * _dt;
+                    if (MathF.Abs(a) > step) wy = was.Rotated(along, MathF.Sign(a) * step);
+                }
+                return Toward(s, hd, wy);
             }
+            bool In((Vector3 e, Vector3 w) r, Vector3 s) => SunkIn(inv, s, r.e, r.w, 0f) > 0f || Free(r.e, r.w, 0f) != Vector3.Zero;
+            var res = At(1f, out sh, out way);
+            float pace = 1f;
+            if (eased && !held && Shell != null && In(res, sh))
+            {
+                // Toward an arm that is out, as much faster as takes it out: none faster for a moment (a graze, a knock), then up to a
+                // pace more for every 0.03 s in (counting this frame).
+                _into[arm] += _dt;
+                float most = MathF.Min(CatchUp, 1f + MathF.Max(0f, _into[arm] - 0.05f) / 0.03f);
+                if (most > 1f && !In(At(1e6f, out Vector3 s1, out _), s1))
+                {
+                    float lo = 1f;
+                    pace = most;
+                    for (int n = 0; n < 5; n++)
+                    {
+                        float mid = (lo + pace) * 0.5f;
+                        if (In(At(mid, out Vector3 s2, out _), s2)) lo = mid;
+                        else pace = mid;
+                    }
+                }
+                res = At(pace, out sh, out way);
+            }
+            else _into[arm] = 0f;
+            (_shift[arm * 2], _shift[arm * 2 + 1]) = (Moved(0, pace), Moved(1, pace));
+            shoulderAt = sh;
             if (way != Vector3.Zero) _way[arm] = bi * way;
             // The hinge, rolled from the last no faster than an arm rolls: where the elbow's way is barely off the arm's line (a
             // straight arm turning about its own length) it has no side of its own, and the bones keep to the one they had.
@@ -223,9 +288,9 @@ public sealed partial class HumanRig
                 if (MathF.Abs(a) > step) h = hadHinge.Rotated(along, MathF.Sign(a) * step);
             }
             _hinge[arm] = bi * h;
-            return ArmIK(sh, hd, upper, fore, way);
+            return res;
         }
-        (Vector3 e, Vector3 w) = ArmIK(shoulder, hand, upper, fore, pole);
+        (Vector3 e, Vector3 w) = IK(shoulder, hand, pole);
         if (held)
         {
             // On a grip it stays on it, give or take a hand's clearance of the body (never more than 3 cm).
@@ -234,9 +299,9 @@ public sealed partial class HumanRig
                 Vector3 nudge = Free(e, w);
                 if (nudge.LengthSquared() < 1e-6f) break;
                 hand += nudge.Length() > 0.03f ? nudge.Normalized() * 0.03f : nudge;
-                (e, w) = ArmIK(shoulder, hand, upper, fore, pole);
+                (e, w) = IK(shoulder, hand, pole);
             }
-            return Done(shoulder, (e, w), pole, out hinge, out shoulder);
+            return Done(shoulder, hand, pole, out hinge, out shoulder);
         }
         bool clear = false;
         for (int k = 0; k < 6 && !clear; k++)
@@ -245,54 +310,53 @@ public sealed partial class HumanRig
             clear = push.LengthSquared() < 1e-6f;
             if (clear) break;
             hand += push;
-            (e, w) = ArmIK(shoulder, hand, upper, fore, pole);
+            (e, w) = IK(shoulder, hand, pole);
         }
-        if (Shell == null) return Done(shoulder, (e, w), pole, out hinge, out shoulder);
+        if (Shell == null) return Done(shoulder, hand, pole, out hinge, out shoulder);
         float least = Through(shoulder, e, w, !clear);
-        if (least <= 0f) return Done(shoulder, (e, w), pole, out hinge, out shoulder);
+        if (least <= 0f) return Done(shoulder, hand, pole, out hinge, out shoulder);
         // Through the body: the elbow round its circle to the nearest way that clears it (from the way it went last, found to a degree
         // or two); failing all of them, the shoulder brought forward a little (as one reaching across the chest does), then the hand a
         // step out to the side, forward or up, by turns, and round again: only as far into the last step as clears it. Nothing is
         // taken in whole steps, so nothing jumps a step between frames.
-        (Vector3, Vector3) fallback = (e, w);
-        Vector3 fallbackShoulder = shoulder, fallbackWay = pole;
+        Vector3 fallbackShoulder = shoulder, fallbackHand = hand, fallbackWay = pole, pushed = hand;
         const float Notch = MathF.Tau / 16f;
-        // The way nearest the way it went that clears, within this far round (radians), with the arm; false if none.
-        bool Round(Vector3 sh, Vector3 hd, float most, out (Vector3 e, Vector3 w) arm, out Vector3 way)
+        // The way nearest the way it went that clears, within this far round (radians); false if none.
+        bool Round(Vector3 sh, Vector3 hd, float most, out Vector3 way)
         {
             Vector3 axis = (hd - sh).Normalized();
             Vector3 b1 = Square(pole, axis);
             if (b1 == Vector3.Zero) b1 = Square(outward, axis);
             Vector3 b2 = axis.Cross(b1);
-            bool Clears(float a, out (Vector3, Vector3) r, out Vector3 p)
+            bool Clears(float a, out Vector3 p)
             {
                 p = b1 * MathF.Cos(a) + b2 * MathF.Sin(a);
-                r = ArmIK(sh, hd, upper, fore, p);
-                float sunk = Through(sh, r.Item1, r.Item2, true);
-                if (sunk > 0f && sunk < least) (least, fallback, fallbackShoulder, fallbackWay) = (sunk, r, sh, p);
+                var (e1, w1) = IK(sh, hd, p);
+                float sunk = Through(sh, e1, w1, true);
+                if (sunk > 0f && sunk < least) (least, fallbackShoulder, fallbackHand, fallbackWay) = (sunk, sh, hd, p);
                 return sunk <= 0f;
             }
             for (int j = 0; j <= 8 && j * Notch <= most + 1e-3f; j++)
                 for (int side = 1; side >= (j == 0 || j == 8 ? 1 : -1); side -= 2)
                 {
-                    if (!Clears(side * j * Notch, out arm, out way)) continue;
+                    if (!Clears(side * j * Notch, out way)) continue;
                     // (Between the last notch that was in the way and this one: as near the way it went as clears, to 1.4 degrees.)
                     float lo = side * (j - 1) * Notch, hi = side * j * Notch;
                     for (int n = 0; j > 0 && n < 4; n++)
                     {
                         float mid = (lo + hi) * 0.5f;
-                        if (Clears(mid, out var r, out Vector3 p)) (hi, arm, way) = (mid, r, p);
+                        if (Clears(mid, out Vector3 p)) (hi, way) = (mid, p);
                         else lo = mid;
                     }
                     return true;
                 }
-            (arm, way) = (default, Vector3.Zero);
+            way = Vector3.Zero;
             return false;
         }
         for (int k = 0; k < 17; k++)
         {
             float most = k >= 6 ? MathF.PI : 0.79f;
-            if (Round(shoulder, hand, most, out var found, out Vector3 way))
+            if (Round(shoulder, hand, most, out Vector3 way))
             {
                 if (k > 0)
                 {
@@ -304,19 +368,32 @@ public sealed partial class HumanRig
                     {
                         float t = (lo + hi) * 0.5f;
                         Vector3 s1 = sh0.Lerp(shoulder, t), h1 = hd0.Lerp(hand, t);
-                        if (Round(s1, h1, most, out var r, out Vector3 p)) (hi, found, way, sh) = (t, r, p, s1);
+                        if (Round(s1, h1, most, out Vector3 p)) (hi, way, sh, hd) = (t, p, s1, h1);
                         else lo = t;
                     }
-                    shoulder = sh;
+                    (shoulder, hand) = (sh, hd);
                 }
-                return Done(shoulder, found, way, out hinge, out shoulder);
+                return Done(shoulder, hand, way, out hinge, out shoulder);
             }
             if (k < 2) shoulder += ahead * 0.025f;
             else hand += Step(k);
         }
         Vector3 Step(int k) => (k % 3 == 0 ? outward : k % 3 == 1 ? ahead : body.Basis.Y) * 0.05f;
-        shoulder = fallbackShoulder;
-        return Done(shoulder, fallback, fallbackWay, out hinge, out shoulder);
+        // Failing all of those (a short arm asked behind a thick coat), the hand toward out at the side, a little below the shoulder,
+        // where an arm always clears the body: only as far as clears it.
+        Vector3 aside = askedShoulder + (outward * 0.95f - body.Basis.Y * 0.3f).Normalized() * (upper + fore) * 0.95f;
+        if (Round(askedShoulder, aside, MathF.PI, out Vector3 asideWay))
+        {
+            float lo = 0f, hi = 1f;
+            for (int n = 0; n < 5; n++)
+            {
+                float t = (lo + hi) * 0.5f;
+                if (Round(askedShoulder, pushed.Lerp(aside, t), MathF.PI, out Vector3 p)) (hi, asideWay) = (t, p);
+                else lo = t;
+            }
+            return Done(askedShoulder, pushed.Lerp(aside, hi), asideWay, out hinge, out shoulder);
+        }
+        return Done(fallbackShoulder, fallbackHand, fallbackWay, out hinge, out shoulder);
     }
 
     /// <summary>
@@ -326,7 +403,7 @@ public sealed partial class HumanRig
     /// </summary>
     struct Swing
     {
-        float _yaw, _pitch, _yawRate, _pitchRate;
+        float _yaw, _pitch, _far, _yawRate, _pitchRate, _farRate; // (and how far off: a near mark and a far one the same way from the feet are different ways from the chest)
         public Swing() => _yaw = float.NaN;
 
         /// <summary>How quickly arms come onto a new mark (a critically damped swing's rate, 1/s: most of the way in a quarter second, sped up and slowed down smoothly); how far round from the body's heading they point at most (the waist's turn and the arms').</summary>
@@ -339,13 +416,14 @@ public sealed partial class HumanRig
             if (mark == null) _yaw = float.NaN;
             if (mark == null || flat < 0.3f) return mark;
             float yaw = Math.Clamp(Geo.WrapAngle(MathF.Atan2(-to.X, -to.Z) - heading), -Round, Round), pitch = MathF.Atan2(to.Y, flat);
-            if (float.IsNaN(_yaw) || dt <= 0f) (_yaw, _pitch, _yawRate, _pitchRate) = (yaw, pitch, 0f, 0f);
+            if (float.IsNaN(_yaw) || dt <= 0f) (_yaw, _pitch, _far, _yawRate, _pitchRate, _farRate) = (yaw, pitch, to.Length(), 0f, 0f, 0f);
             else
             {
                 Follow(ref _yaw, ref _yawRate, yaw, dt);
                 Follow(ref _pitch, ref _pitchRate, pitch, dt);
+                Follow(ref _far, ref _farRate, to.Length(), dt);
             }
-            return from + new Basis(Vector3.Up, heading + _yaw) * new Vector3(0f, MathF.Sin(_pitch), -MathF.Cos(_pitch)) * to.Length();
+            return from + new Basis(Vector3.Up, heading + _yaw) * new Vector3(0f, MathF.Sin(_pitch), -MathF.Cos(_pitch)) * _far;
         }
 
         static void Follow(ref float x, ref float v, float target, float dt)
@@ -369,7 +447,7 @@ public sealed partial class HumanRig
         return aimed;
     }
 
-    /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or the thing pointed at is off to the left.</summary>
+    /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or carries something, or the thing pointed at is off to the left.</summary>
     static int Doer(in Gesture g, bool rightHeld, Vector3 chest, Basis torso)
     {
         if (rightHeld) return 0;
@@ -520,7 +598,7 @@ public sealed partial class HumanRig
                 Vector3 c = neck + head.Y * (f.Neck + f.HeadRadius) + F.Out * (f.HeadRadius + HandHalf(i) + 0.01f);
                 ArmGoal clutch = new(c, F.V(0.85f, 0.25f, -0.2f));
                 ArmGoal flail = Bones(shoulder, F.V(0.6f, 0.15f + 0.35f * MathF.Sin(t * 11f + i * 2f), 0.4f), F.V(0.3f, 0.6f, 0.5f + 0.4f * MathF.Sin(t * 9f + i)), upper, fore);
-                return new ArmGoal(clutch.Hand.Lerp(flail.Hand, k), clutch.Pole.Lerp(flail.Pole, k).Normalized()).With(HandTable.Mix("panic-clutch", "panic-flail", k, i));
+                return new ArmGoal(Sweep(shoulder, clutch.Hand, flail.Hand, k, F.Ahead), clutch.Pole.Lerp(flail.Pole, k).Normalized()).With(HandTable.Mix("panic-clutch", "panic-flail", k, i));
             }
             case BodyAct.Present:
                 // A hand swept out to the wares, palm up.
