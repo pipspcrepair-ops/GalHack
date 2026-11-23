@@ -126,6 +126,7 @@ public sealed partial class HumanRig
     static Basis HandBasis(in HandSpec s, in Frame F, Vector3 fore)
     {
         Vector3 d = s.Bend > 0f ? fore.Lerp(F.Mix(s.Fingers).Normalized(), s.Bend).Normalized() : fore;
+        if (!d.IsNormalized()) d = fore; // (fingers asked back along the forearm, half bent: no way between them)
         Vector3 p = F.Mix(s.Palm), n = p - d * p.Dot(d);
         if (n.LengthSquared() < 1e-3f)
         {
@@ -228,6 +229,7 @@ public sealed partial class HumanRig
     {
         Basis torso = Pose[_body].Basis;
         Quaternion q = Turn(torso.Inverse() * want), was = _wristTurn[i];
+        if (!q.IsNormalized()) q = was.IsNormalized() ? was : Quaternion.Identity; // (asked a frame with no turn: held as it was)
         if (_dt > 0f && was.LengthSquared() > 0.5f)
         {
             float a = was.AngleTo(q), most = WristTurn * _dt;
@@ -238,7 +240,12 @@ public sealed partial class HumanRig
     }
 
     /// <summary>Between two frames, turned the short way (t 0 the first).</summary>
-    static Basis Between(Basis a, Basis b, float t) => new(Turn(a).Slerp(Turn(b), t));
+    static Basis Between(Basis a, Basis b, float t)
+    {
+        Quaternion qa = Turn(a), qb = Turn(b);
+        // (A frame with no turn of its own, its axes run together: the other, whole.)
+        return new(!qa.IsNormalized() ? qb.IsNormalized() ? qb : Quaternion.Identity : !qb.IsNormalized() ? qa : qa.Slerp(qb, t));
+    }
 
     /// <summary>A frame's turn, unit length: a float frame's own can be off by more than a slerp allows (it throws, and the sim step with it).</summary>
     static Quaternion Turn(Basis b) => b.GetRotationQuaternion().Normalized();
