@@ -235,7 +235,9 @@ public partial class FoldTest : Node
     IEnumerable<int> SetDownShip()
     {
         GameData data = _game.Zone.Data;
-        string text = System.IO.File.ReadAllText(GameData.Own("data/blueprints/starter.gbp"));
+        // Six more lift jets along its sides: the drives weigh more than the Skiff was built to lift.
+        string text = System.IO.File.ReadAllText(GameData.Own("data/blueprints/starter.gbp"))
+            + string.Concat(new[] { -3, -1, 1 }.SelectMany(z => new[] { -3, 3 }.Select(x => $"\nblock {x} -1 {z} thruster-t1 rot=+z+y"))) + "\n";
         Structure s = Blueprint.Load(text, data.Catalogue, out List<string> errors);
         if (!Check(s != null && errors.Count == 0, $"the Skiff's blueprint loads ({string.Join("; ", errors)})")) yield break;
         data.Catalogue.TryGetType("fold-drive-t1", out BlockType drive);
@@ -251,7 +253,7 @@ public partial class FoldTest : Node
         _ship = Vessel.Spawn(_game.Zone, s, pad.ToNumerics() + N.Vector3.UnitY * 2.5f, 0f, landed: true);
         _ship.Storage.Add("fold-crystal", 300);
         _ship.Storage.Add("warp-cell", 60);
-        GD.Print($"  (setup: the Skiff with a fold drive and a warp drive set down whole at {pad}, 300 fold crystal and 60 warp cells in its hold, Creative's free power)");
+        GD.Print($"  (setup: the Skiff with a fold drive, a warp drive and six more lift jets set down whole at {pad}, 300 fold crystal and 60 warp cells in its hold, Creative's free power)");
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
@@ -272,6 +274,7 @@ public partial class FoldTest : Node
         GD.Print("-- up to orbit --");
         foreach (int x in _pilot.Board(_ship)) yield return x;
         if (!Check(_game.Survivor.Seated == _ship, "at the ship's controls")) yield break;
+        if (!Check(_ship.Stats?.LiftMargin > 0f, $"it can lift off this world: {_ship.Stats?.LiftMargin:F0} kN to spare")) yield break;
         _game.Controls.Hold(Key.Space);
         int ticks = 0;
         while (!_game.InOrbit && ticks++ < 60 * 150) yield return 0;
