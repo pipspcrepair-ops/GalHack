@@ -23,6 +23,7 @@ public static class DepositLook
         DepositKind.Gravium => Rgb.Hex("625678"),   // heavy violet
         DepositKind.Crystal => Rgb.Hex("7c6a86"),
         DepositKind.WarpFuel => Rgb.Hex("5f8a8c"),  // cold teal
+        DepositKind.Starsilver => Rgb.Hex("c6cddb"), // bright blue-white metal
         _ => Rgb.Hex("957548"),                     // resin
     };
 
