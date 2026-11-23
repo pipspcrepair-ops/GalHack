@@ -22,8 +22,7 @@ public sealed class WarpRules
     public double LeastTripSeconds { get; set; } = 2;
     public float ShortRangeSpeed { get; set; } = 30;
     public float Inside { get; set; } = 300;
-    public double GiantHighOrbit { get; set; } = 3.0;
-    public double StarHighOrbitAu { get; set; } = 0.25;
+    public double HighOrbitAcross { get; set; } = 45;
     public float Clearance { get; set; } = 1500;
     public float WreckClearance { get; set; } = 450;
     public float WreckStandOff { get; set; } = 350;
@@ -133,19 +132,18 @@ public partial class Spaceflight
 
     /// <summary>
     /// The radius of a body's highest orbit, from its centre (m): for a world, just inside the edge of the space where it is
-    /// the frame you fly in (its crossing, the band, and as far again as a moon takes over within); a giant's and the star's
-    /// high orbit; a belt's frame is a point in it.
+    /// the frame you fly in (its crossing, the band, and as far again as a moon takes over within); for a giant or the star, as
+    /// far out as it spans <see cref="WarpRules.HighOrbitAcross"/> degrees, past any rings; a belt's frame is a point in it.
     /// </summary>
     public float HighOrbit(OrbitZone o, Celestial c)
     {
         if (o.HasGround || !c.IsHome)
             return c.GlobeRadius + c.Ceiling + Rules.Crossing.Band + Rules.Space.TakesOverWithin - Warping.Inside;
-        return c.Body.Kind switch
-        {
-            OrbiterKind.GasGiant => (float)(c.Body.Radius * Warping.GiantHighOrbit),
-            OrbiterKind.Star => (float)(Warping.StarHighOrbitAu * StarSystem.AuMetres),
-            _ => 0f,
-        };
+        if (c.Body.Kind is not (OrbiterKind.GasGiant or OrbiterKind.Star)) return 0f;
+        // As far out as it stands HighOrbitAcross degrees across (it fills the view), and clear of its rings.
+        double r = c.Body.Radius / Math.Sin(Warping.HighOrbitAcross * Math.PI / 360.0);
+        if (c.Body.Rings) r = Math.Max(r, c.Body.Radius * SpaceSky.RingOuter * 1.05);
+        return (float)r;
     }
 
     /// <summary>The warp parks the orbit it left as it was (its environment and sun off), to come back to.</summary>

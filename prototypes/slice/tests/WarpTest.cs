@@ -390,7 +390,12 @@ public partial class WarpTest : Node
         N.Vector3 p = _ship.Body.Position;
         N.Vector3 centre = c.Centre.ToNumerics();
         float edge = Flight.HighOrbit(o, c), off = N.Vector3.Distance(p, centre);
-        Check(MathF.Abs(off - edge) < 25f, $"at its highest orbit's edge: {off:F0} m from its centre, the edge {edge:F0} m ({(o.HasGround || !c.IsHome ? $"{(off - c.GlobeRadius) / 1000:F1} km over its ground, inside where it takes over within {c.GlobeRadius + c.Ceiling + o.Rules.Crossing.Band + o.Rules.Space.TakesOverWithin:F0} m" : $"{off / (float)target.Radius:F2} radii out")})");
+        Check(MathF.Abs(off - edge) < 25f, $"at its highest orbit's edge: {off:F0} m from its centre, the edge {edge:F0} m ({(o.HasGround || !c.IsHome ? $"{(off - c.GlobeRadius) / 1000:F1} km over its ground, inside where it takes over within {c.GlobeRadius + c.Ceiling + o.Rules.Crossing.Band + o.Rules.Space.TakesOverWithin:F0} m" : $"{off / (float)target.Radius:F2} radii out, {2 * Mathf.RadToDeg(MathF.Asin(MathF.Min(1f, (float)target.Radius / off))):F0}° across")})");
+        if (!o.HasGround && c.IsHome && target.Radius > 0)
+        {
+            float across = 2f * Mathf.RadToDeg(MathF.Asin(MathF.Min(1f, (float)target.Radius / off)));
+            Check(across is >= 40f and <= 50f && off > target.Radius * (target.Rings ? SpaceSky.RingOuter : 1f), $"{Charts.Tidy(target.Name)} fills the view on arrival: {across:F0}° across, {off / (float)target.Radius:F2} radii out{(target.Rings ? ", past its rings" : "")}");
+        }
         Check(_ship.Body.Velocity.Length() < 0.5f && j.Arrived?.Zone == o, $"at rest in its frame ({_ship.Body.Velocity.Length():F2} m/s)");
         N.Vector3 nose = N.Vector3.Transform(-N.Vector3.UnitZ, _ship.Body.Rotation);
         float facing = N.Vector3.Dot(nose, N.Vector3.Normalize(centre - p));

@@ -10,9 +10,9 @@
   "shortRangeSpeed": 30,
   // Arrival at a world is in its highest orbit: this far inside the edge of the space where it is the frame you fly in (m).
   "inside": 300,
-  // A gas giant's high orbit (its radii, out past its rings) and the star's (chart AU): a warp stops there.
-  "giantHighOrbit": 3.0,
-  "starHighOrbitAu": 0.25,
+  // A gas giant's and the star's high orbit, where a warp stops: as far out as the body stands this many degrees across, so it
+  // fills the view (solar-systems.md section 8 item 15), from its own radius; and always out past a giant's rings.
+  "highOrbitAcross": 45,
   // An arrival keeps clear of every other body's air by this (m), with a clear line to what it faces, and of wrecks by this.
   "clearance": 1500,
   "wreckClearance": 450,
