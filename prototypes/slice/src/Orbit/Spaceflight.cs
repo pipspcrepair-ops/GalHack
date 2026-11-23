@@ -468,6 +468,10 @@ public partial class Spaceflight : Node
     {
         ZoneWork w = WorkOf(zone);
         w.Held.Clear();
+        // Its own frame (its focus, its frame shifts, its bodies' orbits) stops at once: all of it is about where you are.
+        w.Own = (zone.IsProcessing(), zone.IsPhysicsProcessing());
+        zone.SetProcess(false);
+        zone.SetPhysicsProcess(false);
         Hold(w, zone.Host); // nothing in it moves from here on
         foreach (BodyBinding b in zone.Host.Bindings)
         {
@@ -498,6 +502,12 @@ public partial class Spaceflight : Node
         if (w.Held.Count == 0)
             foreach (Node c in zone.GetChildren()) if (c != zone.Streamer) Hold(w, c);
         zone.ProcessMode = ProcessModeEnum.Inherit;
+        if (w.Own is var (process, physics))
+        {
+            zone.SetProcess(process);
+            zone.SetPhysicsProcess(physics);
+            w.Own = null;
+        }
         // Held twigs before branches: woken from the trunk out (the last held comes off the stack first). The small branches
         // that are the zone at work (its sky, camera, weather) wake now too; bodies and big branches a piece each.
         bool Now(Node n) => w.Now.Contains(n) || n.GetParent() == zone && n is not CollisionObject3D && n.GetChildCount() <= ManyKids;
@@ -519,6 +529,8 @@ public partial class Spaceflight : Node
         public HashSet<Node> Now = new();
         /// <summary>Bodies given their layers back, to be turned off their own way again once it has woken.</summary>
         public readonly List<(CollisionObject3D Body, CollisionObject3D.DisableModeEnum Mode)> Unshelved = new();
+        /// <summary>Whether the zone itself processed when it was parked (its own callbacks stop at once, not on its last piece).</summary>
+        public (bool Process, bool Physics)? Own;
         /// <summary>What it is doing and the frame it began, printed when it is done (how long a zone runs on parked, or waits woken).</summary>
         public string Doing;
         public ulong Since;
