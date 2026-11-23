@@ -132,7 +132,6 @@ public partial class Spaceflight
     void ProcessSeam(double delta)
     {
         HushStep();
-        DismantleStep();
         TurnGround();
         Lap("ground turning");
         if (Game.InOrbit)

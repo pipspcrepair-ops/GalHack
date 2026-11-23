@@ -517,8 +517,7 @@ public partial class FoldTest : Node
             yield return 0;
         }
         GD.Print($"    (the Skiff's power through it: least supply {leastSupply:P0}, {unpowered} ticks unpowered; {Fuel()})");
-        // A couple of seconds after, the arrival's settling in, and the system left all taken down.
-        for (int i = 0; i < 120 || Flight.Dismantling && i < 60 * 20; i++) yield return 0;
+        for (int i = 0; i < 120; i++) yield return 0; // a couple of seconds after, the arrival's settling in
         string frames = FrameReport();
         if (!Check(Flight.Folds.Count() > folds, $"the fold arrived after {ticks / 60f:F1} s ({Flight.Jumping.Now}{(Flight.Jumping.Trouble != null ? ", " + Flight.Jumping.Trouble : "")})")) yield break;
         Jump made = Flight.Folds.Last();
