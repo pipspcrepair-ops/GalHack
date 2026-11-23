@@ -355,7 +355,13 @@ public partial class BuildTest : Node
     /// <summary>Digs the ground down to the site's height, as a builder would cut a pad into a slope.</summary>
     void LevelSite(float radius)
     {
-        int y0 = (int)MathF.Floor(_site.Y), r = (int)radius;
+        // Down to the floor of any hollow in it deeper than a step (a crater on a barren world), or its bowl stands between you and the base.
+        int r = (int)radius;
+        float lowest = _site.Y;
+        for (int dx = -r; dx <= r; dx += 2)
+        for (int dz = -r; dz <= r; dz += 2)
+            lowest = MathF.Min(lowest, _game.Zone.GroundAt(_site.X + dx, _site.Z + dz).Y);
+        int y0 = (int)MathF.Floor(_site.Y - lowest > 0.6f ? lowest : _site.Y);
         var cells = new List<TerrainDigging.Terrain.Int3>();
         for (int dx = -r; dx <= r; dx++)
         for (int dz = -r; dz <= r; dz++)
@@ -414,7 +420,7 @@ public partial class BuildTest : Node
                 var way = new Vector3(MathF.Cos(k * 0.3927f), 0f, MathF.Sin(k * 0.3927f));
                 standing |= _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(_site + Vector3.Up * 1.2f, _site + Vector3.Up * 1.2f + way * 12f, GalHack.Physics.Layers.World)).Count > 0;
                 for (float r = 2f; r <= 12f; r += 2f)
-                    ridge = MathF.Max(ridge, MathF.Abs(_game.Zone.GroundAt(_site.X + way.X * r, _site.Z + way.Z * r).Y - _site.Y));
+                    ridge = MathF.Max(ridge, MathF.Abs(Ground(new Vector3(_site.X + way.X * r, 0f, _site.Z + way.Z * r)).Y - _site.Y)); // the ground as dug
             }
             if (ridge < 0.6f && !standing) break;
             GD.Print($"  (the site at {_site} keeps {ridge:F1} m of ground{(standing ? " and something standing on it" : "")}: on to another)");
