@@ -137,7 +137,7 @@ public sealed record WorldPalette
         // Grains are brighter than the face they came from (small particles scatter more), and keep its iron.
         Spectrum fines = (spec.Airless ? Spaced(stone, iron, maturity) : stone) * 1.3f;
         Spectrum sand = spec.Airless ? fines : Rust(fines, 0.3f * stain, 0.2f * stain);
-        Spectrum dust = spec.Airless ? fines : Rust(fines, 0.5f * iron, 0.2f * iron); // fine enough to oxidise in any air it rides
+        Spectrum dust = spec.Airless ? fines : Rust(fines, 0.85f * iron, 0.2f * iron); // the finest grains rust most: dust is the reddest of the ground
         var soils = new Rgb[Grid * Grid];
         for (int t = 0; t < Grid; t++)
             for (int w = 0; w < Grid; w++)
