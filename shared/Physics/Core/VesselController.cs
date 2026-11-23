@@ -54,6 +54,9 @@ public interface IFlightRules
     /// <summary>The pilot is asking for thrust: wakes a landed vessel.</summary>
     bool AnyThrust { get; }
 
+    /// <summary>The pilot is turning: wakes a vessel come to rest in no gravity (nothing to stand on: it turns where it floats).</summary>
+    bool AnyTurn { get; }
+
     /// <summary>Hover Mode: hop this tick.</summary>
     bool Jump { get; }
 
@@ -472,7 +475,8 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     /// </summary>
     bool TryWake(PhysicsWorld world, Body body)
     {
-        if (!Flight.Seated || !Flight.AnyThrust) return false;
+        // In no gravity a turn wakes it too: a Skiff come to rest at a warp's arrival could not turn till it thrust.
+        if (!Flight.Seated || !(Flight.AnyThrust || Flight.AnyTurn && Zone.Gravity <= 0f)) return false;
         if (!Stats.CanLiftOff && Zone.Gravity > 0f)
         {
             if (ConsoleMessageAge > 2f) Say(Stats.LiftWarning);

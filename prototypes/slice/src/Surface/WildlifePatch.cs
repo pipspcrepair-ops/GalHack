@@ -143,10 +143,31 @@ public partial class WildlifePatch : Node3D
         return Bestiary.Roll(Zone.Data.Wildlife, world);
     }
 
+    Task<WorldLife> _rollingAhead;
+    Task<(Terrain, NavGrid, Vector3, List<(long, Obstacle)>)> _bakingAhead;
+
+    /// <summary>
+    /// Starts rolling a world's life on a worker ahead of <see cref="SetWorld"/>, and baking its first patch round its landing
+    /// site: a world made while you are elsewhere (a warp's destination) then sets its life in its arrival's piece instead of
+    /// rolling it and baking the patch on the main thread (most of a second each).
+    /// </summary>
+    public void RollAhead(PlanetWorld planet)
+    {
+        if (_life != null || planet.Sky.Density < SurfaceWeather.NoAir) return;
+        Task<WorldLife> rolling = _rollingAhead = Task.Run(() => RollLife(planet));
+        _life = new Lazy<WorldLife>(() => rolling.Result);
+        Vector3 at = Snapped(new Vector3((float)planet.Landing.X, 0f, (float)planet.Landing.Y));
+        float half = SpawnReach.PatchHalf(Zone.Data.Rules.Wildlife.PatchHalfSize);
+        _bakingAhead = Task.Run(() => Bake(planet, at, half, null));
+    }
+
+    /// <summary>Any life rolled ahead, and its first patch, are ready.</summary>
+    public bool LifeReady => (_rollingAhead?.IsCompleted ?? true) && (_bakingAhead?.IsCompleted ?? true);
+
     public void SetWorld(PlanetWorld planet, Vector3 landing)
     {
         Airless = planet.Sky.Density < SurfaceWeather.NoAir;
-        _life = new Lazy<WorldLife>(() => RollLife(planet));
+        _life ??= new Lazy<WorldLife>(() => RollLife(planet));
         // An airless world has no creatures, so nothing here to bake or show (and no patch of it: the per-frame work stands down on _planet and Sim, never touching Life):
         // its life (the people in its sealed places) is rolled when the first place wants it, on that place's worker.
         if (Airless) return;
@@ -187,8 +208,9 @@ public partial class WildlifePatch : Node3D
         AddChild(Spit);
         Tells = new TellView { Name = "Tells", Audio = Audio };
         AddChild(Tells);
-        // The first is baked here and now, without its woods: the next is baked with them as soon as it can be.
-        var (terrain, nav, origin, trunks) = Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize), null);
+        // The first is baked here and now (or was, ahead, on a worker), without its woods: the next is baked with them as soon as it can be.
+        var (terrain, nav, origin, trunks) = _bakingAhead is { } ahead && ahead.Result.Item3 == Snapped(landing) ? ahead.Result : Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize), null);
+        _bakingAhead = null;
         Swap(terrain, nav, origin, trunks, keepClear: landing, clear: rules.SafeRadius);
     }
 
@@ -676,7 +698,7 @@ public partial class WildlifePatch : Node3D
     {
         Origin += by;
         Position = Origin;
-        Audio.Origin = Origin;
+        if (Audio != null) Audio.Origin = Origin; // none on an airless world (nothing calls there)
         _baking = null; // baked for the old frame: the next tick starts another
 
     }

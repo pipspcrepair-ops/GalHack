@@ -113,6 +113,9 @@ public sealed partial class Vessel
     /// <summary>The way the chair in use faces in the hull, for the view from it.</summary>
     public Basis ChairBasis => _chair is Int3 c && Structure.Has(c) ? VesselRoles.BasisOf(Structure, c) : Basis.Identity;
 
+    /// <summary>The pilot's frame in the hull: its forward is the way the ship flies (the pilot seat's facing; the hull's own with none).</summary>
+    public Basis PilotBasis => Flight?.State.Seat ?? Basis.Identity;
+
     /// <summary>The control frame follows the pilot's seat at once: the ship doesn't turn, only what counts as forward.</summary>
     void FollowPilot()
     {

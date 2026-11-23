@@ -36,7 +36,7 @@ public sealed class StructureShapes
         // a tick for a thousand ticks. Out of it, the compound is built once as it goes back. (A moving body keeps its space: it has
         // a velocity and contacts to keep.)
         Rid space = default;
-        bool still = _owner is StaticBody3D && _owner.IsInsideTree();
+        bool still = !_held && _owner is StaticBody3D && _owner.IsInsideTree();
         if (still)
         {
             space = PhysicsServer3D.BodyGetSpace(_owner.GetRid());
@@ -88,9 +88,36 @@ public sealed class StructureShapes
         }
     }
 
+    Rid _heldSpace;
+    bool _held;
+
+    /// <summary>
+    /// A body held out of its space while many chunks go in over several ticks (a wreck made in play, nothing near it yet):
+    /// in its space, or taken out and put back for each, it had its whole compound rebuilt every chunk (a drifting wreck's
+    /// for every shape), so a big hull's last chunks cost tens of ms each. Held, each chunk costs its own shapes, and the
+    /// compound is built once, as it goes back (<see cref="Return"/>).
+    /// </summary>
+    public void Hold()
+    {
+        // A moving body in a running zone keeps its space (it is swept every tick); parked, or still, it can be held.
+        if (_held || _owner is not PhysicsBody3D || !_owner.IsInsideTree() || _owner is not StaticBody3D && _owner.CanProcess()) return;
+        _heldSpace = PhysicsServer3D.BodyGetSpace(_owner.GetRid());
+        PhysicsServer3D.BodySetSpace(_owner.GetRid(), new Rid());
+        _held = true;
+    }
+
+    /// <summary>Back into its space after <see cref="Hold"/>, its compound built once.</summary>
+    public void Return()
+    {
+        if (!_held) return;
+        _held = false;
+        if (GodotObject.IsInstanceValid(_owner)) PhysicsServer3D.BodySetSpace(_owner.GetRid(), _heldSpace);
+    }
+
     /// <summary>Moves every shape to another body (a vessel becoming a free wreck keeps its exact shapes).</summary>
     public void MoveTo(CollisionObject3D owner)
     {
+        Return();
         foreach (var (_, shapes) in _chunks.Values)
             foreach (CollisionShape3D s in shapes)
                 s.Reparent(owner, false);

@@ -57,27 +57,7 @@ public partial class Spaceflight
         float ceiling = Rules.OrbitAltitude("default");
         foreach (Orbiter moon in model.Bodies.Where(b => b.Kind == OrbiterKind.Moon && b != model.Home && b.Spec != null && (b.Parent == model.Home || b.Parent == model.Neighbour))
                      .OrderBy(b => b != model.FuelMoon))
-        {
-            var zone = new SurfaceZone
-            {
-                Name = Charts.Tidy(moon.Name).Replace(" ", ""), Data = home.Data, Spec = moon.Spec, ShareFrom = home.Planet, SkySurfaces = home.Sky.Surfaces, Body = moon,
-                MakeLater = moon != model.FuelMoon, ProcessMode = ProcessModeEnum.Disabled, Visible = false,
-            };
-            Game.AddChild(zone);
-            Mute(zone);
-            zone.Physics.Zone.Strength = model.GravityOf(moon, home.Physics.Zone.Strength);
-            zone.Physics.Zone.Ceiling = ceiling;
-            zone.Built += () =>
-            {
-                zone.Ground.Ceiling = ceiling;
-                LightBodies(zone);
-                Mute(zone);
-                GD.Print($"{Charts.Tidy(moon.Name)} is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s²");
-            };
-            Orbit.AddMoon(moon, zone, ceiling);
-            _surfaceShownOf[zone] = false;
-            _groundShownOf[zone] = true;
-        }
+            Orbit.AddMoon(moon, BodyZone(moon, now: moon == model.FuelMoon), ceiling);
     }
 
     /// <summary>A parked surface draws and lights nothing: its sky's environment and its light field are off.</summary>
@@ -137,8 +117,8 @@ public partial class Spaceflight
     {
         if (Orbit == null) return;
         SurfaceZone s = Below;
-        foreach (Celestial c in Orbit.Bodies)
-            if (c.Surface is { Sky: not null } other && other != s) other.Sky.Days = s.Sky.Days;
+        foreach (SurfaceZone other in AllSurfaces())
+            if (other.Sky != null && other != s) other.Sky.Days = s.Sky.Days;
     }
 
     /// <summary>
@@ -208,7 +188,7 @@ public partial class Spaceflight
         N.Quaternion map = c.Map.Frame(gx, gz);
         float R = c.GlobeRadius;
         float air = c.World != null ? Globe.AirShare(c.World.Sky.Density) : 0f;
-        int umbrae = Orbit.Space.Umbrae(Game.Surface.Planet.StarSystem, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
+        int umbrae = Orbit.Space.Umbrae(Orbit.Home.Seen, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
         c.Globe.Draw(new WorldView
         {
             Umbra = _umbra, UmbraCount = umbrae, UmbraSun = umbraSun,

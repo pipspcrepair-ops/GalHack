@@ -98,6 +98,9 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>The wrecks set adrift so far.</summary>
     public readonly List<Vessel> Wrecks = new();
 
+    /// <summary>Made in play (a warp's destination), not behind the loading screen: its wrecks are drawn and made solid a chunk at a time once it runs, so no piece of setting it up is a hitch.</summary>
+    public bool DrawLater { get; init; }
+
     /// <summary>Its paint and its wrecks are made (worker threads); it can enter the scene.</summary>
     public bool Prepared => _preparing.IsCompletedSuccessfully;
 
@@ -137,6 +140,7 @@ public partial class OrbitZone : SurfaceZone
             var watch = Stopwatch.StartNew();
             GlobePaint paint = GlobePaint.Make(below.Spec, below.Map, rules.Globe, cloudCoverage, (x, z) => below.Palette.FarGround(x, z, 64f), below.Pois);
             List<DerelictPlan> wrecks = Derelicts.Plan(library, systemSeed, map, shell, rules, data.Catalogue, data.Items);
+            foreach (DerelictPlan p in wrecks) p.Colliders = PhysicsSandbox.Bridges.StructureBridge.Colliders(p.Structure);
             PrepareMs = watch.Elapsed.TotalMilliseconds;
             return (paint, wrecks);
         });
@@ -215,14 +219,17 @@ public partial class OrbitZone : SurfaceZone
     IEnumerable<int> Build()
     {
         var (paint, wrecks) = _preparing.Result;
-        Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces, (float)Rules.Globe.Atmosphere);
+        Space.Setup(paint?.Look, Below?.Sky ?? _lit, Home.Seen, Rules.Space, Surfaces, (float)Rules.Globe.Atmosphere);
         yield return 0;
-        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
-        Home.Ready = true;
+        if (HasGround)
+        {
+            foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
+            Home.Ready = true;
+        }
         foreach (DerelictPlan p in wrecks)
         {
             yield return 0;
-            Vessel wreck = Vessel.SpawnDerelict(this, p.Structure, ToWorld(p.Position), N.Quaternion.Normalize(Turn * p.Rotation));
+            Vessel wreck = Vessel.SpawnDerelict(this, p.Structure, ToWorld(p.Position), N.Quaternion.Normalize(Turn * p.Rotation), p.Colliders, DrawLater);
             wreck.Derelict = p;
             foreach (int x in wreck.DressSteps(p.Hull?.Decor)) yield return x;
             if (!p.Loot.IsEmpty)

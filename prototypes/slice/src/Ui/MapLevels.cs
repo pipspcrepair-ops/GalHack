@@ -24,7 +24,7 @@ namespace Slice.Ui;
 /// one level's zoom is the next level, in and back out. Each shows only what has been discovered
 /// (<see cref="Charts"/>), and where you are, in the suit terminal's look.
 /// </summary>
-public sealed class MapLevels
+public sealed partial class MapLevels
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
@@ -367,6 +367,9 @@ public sealed class MapLevels
 
     string _body;
 
+    /// <summary>Where each body of your system stands on the system map as last laid out, by its key (tests click them).</summary>
+    public IReadOnlyDictionary<string, Vector2> SystemPlaces { get; private set; } = new Dictionary<string, Vector2>();
+
     /// <summary>A dot's size on the system map, pixels: by kind, not to scale, or the giants would hide the rest.</summary>
     static float DotOf(SystemEntry e) => e.Kind switch { "star" => 15f, "giant" => 8f + e.Size * 8f, "world" => 7f, "planet" => 4f + e.Size * 8f, "moon" => 2.5f, _ => 0f };
 
@@ -406,14 +409,19 @@ public sealed class MapLevels
         // A moon of a moon's parent may come after it in the list: moons are placed once every world is.
         foreach (SystemEntry e in bodies.Where(e => e.Parent != null).OrderBy(e => byKey[e.Parent].Parent == null ? 0 : 1))
             places[e.Key] = Round(e, DotOf(byKey[e.Parent]) + 7f + e.Orbit * 6f, places[e.Parent]);
+        if (yours) SystemPlaces = places;
         if (!g.Drawing && g.Pressed && g.Over(panel))
         {
             SystemEntry hit = null;
             float nearest = 14f * 14f;
             foreach (SystemEntry e in bodies)
-                if (e.Kind != "belt" && places[e.Key].DistanceSquaredTo(g.Mouse) < nearest) (nearest, hit) = (places[e.Key].DistanceSquaredTo(g.Mouse), e);
-            if (hit?.Kind == "world" && yours) Trail.Down(); // your world opens high orbit
-            else if (hit != null) _body = hit.Key;
+                if (places[e.Key].DistanceSquaredTo(g.Mouse) < nearest) (nearest, hit) = (places[e.Key].DistanceSquaredTo(g.Mouse), e); // a belt by its label's place on it
+            if (hit?.Kind == "world" && yours && HereKey(sysModel) == "world") Trail.Down(); // your world opens high orbit while you are at it
+            else if (hit != null)
+            {
+                _body = hit.Key;
+                if (yours) _game.Spaceflight.Target = JumpTarget.To(Charts.BodyOf(sysModel, hit.Key)); // the one target: it replaces any other
+            }
         }
         Vector2 world = places["world"];
         if (g.Drawing)
@@ -453,11 +461,11 @@ public sealed class MapLevels
                 g.Canvas.DrawCircle(q, r, e.Kind switch { "world" => C.Holo, "giant" => C.Accent2, "moon" => C.Text, _ => new Color(C.Text, 0.8f) });
                 if (e.Key == _body) g.Canvas.DrawArc(q, r + 5f, 0, Mathf.Tau, 24, C.Holo, 1.5f);
                 bool moonOfYours = e.Kind == "moon" && e.Parent == "world";
-                if (e.Kind == "world") labels.Add(q, r + 7f, yours ? "YOUR WORLD: YOU ARE HERE" : e.Label.ToUpperInvariant(), yours ? C.Accent : C.Text, 0);
+                if (e.Kind == "world") labels.Add(q, r + 7f, yours ? HereKey(sysModel) == "world" ? "YOUR WORLD: YOU ARE HERE" : "YOUR WORLD" : e.Label.ToUpperInvariant(), yours ? C.Accent : C.Text, 0);
                 else if (e.Kind != "moon" || moonOfYours || e.Key == _body) labels.Add(q, r, e.Label.ToUpperInvariant(), moonOfYours ? C.Dim : C.Text, moonOfYours ? 3 : 2);
                 else labels.Add(q, r, null, C.Dim, 6);
             }
-            if (yours && panel.HasPoint(world)) g.Canvas.DrawArc(world, DotOf(byKey["world"]) + 5f, 0, Mathf.Tau, 32, C.Accent, 2f);
+            if (yours && places.TryGetValue(HereKey(sysModel) ?? "world", out Vector2 here) && panel.HasPoint(here)) g.Canvas.DrawArc(here, DotOf(byKey[HereKey(sysModel) ?? "world"]) + 5f, 0, Mathf.Tau, 32, C.Accent, 2f);
             if (yours)
             foreach (SystemEntry w in charts.Wrecks)
             {
@@ -495,6 +503,7 @@ public sealed class MapLevels
                 g.Canvas.DrawCircle(world, 5f, C.Accent);
             }
         }
+        if (yours) WarpPanel(g, panel, side, sysModel, places);
         // What the model knows of the body you picked (or of the star).
         SystemEntry shown = _body != null && byKey.TryGetValue(_body, out SystemEntry b) ? b : bodies[0];
         g.Text(shown.Label.ToUpperInvariant(), side.Position + new Vector2(0, 530), C.Text, 15);

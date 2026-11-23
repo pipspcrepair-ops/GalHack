@@ -26,6 +26,7 @@ public partial class Game
         Surface = Zone;
         Spaceflight = new Spaceflight { Name = "Spaceflight", Game = this };
         AddChild(Spaceflight);
+        AddChild(new JumpView { Name = "Jump", Flight = Spaceflight }); // in from the start: its shader is ready before any spool
         Zone.Built += Spaceflight.PlanetBuilt;
     }
 

@@ -89,6 +89,12 @@ public sealed partial class StructurePower
         return null;
     }
 
+    /// <summary>Calls a spooling drive off: it winds down and nothing burns.</summary>
+    public void Disengage() => Spooling = null;
+
+    /// <summary>The spool's share done, 0 to 1 (0 with nothing spooling).</summary>
+    public double SpoolShare => Spooling == null ? 0 : Math.Clamp(1 - SpoolLeft / _rules.Drives[Spooling].Spool, 0, 1);
+
     void TickDrive(double dt, bool on)
     {
         if (Spooling == null) return;

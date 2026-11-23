@@ -117,9 +117,7 @@ public sealed class Charts
         foreach (Orbiter b in system.Bodies)
             if (b.Parent == system.Star) farthest = Math.Max(farthest, b.Orbit + b.BeltWidth * 0.5);
         float Out(double r) => (float)Math.Sqrt(Math.Max(r, 0.0) / farthest) * 0.95f;
-        var keys = new Dictionary<Orbiter, string> { [system.Star] = "star", [system.Home] = "world" };
-        foreach (Orbiter b in system.Bodies)
-            if (!keys.ContainsKey(b)) keys[b] = $"body{keys.Count}";
+        Dictionary<Orbiter, string> keys = Keys(system);
         var list = new List<SystemEntry> { new("star", star, "star", 0.5f, 0f, 0f, $"{system.Luminosity:0.##} suns, {system.Bodies.Count - 1} bodies") };
         foreach (Orbiter b in system.Bodies)
         {
@@ -145,6 +143,21 @@ public sealed class Charts
         }
         return list;
     }
+
+    /// <summary>Every body's key on the system map: "star", "world" (the start world), then "body2" on in the system's order.</summary>
+    public static Dictionary<Orbiter, string> Keys(StarSystem system)
+    {
+        var keys = new Dictionary<Orbiter, string> { [system.Star] = "star", [system.Home] = "world" };
+        foreach (Orbiter b in system.Bodies)
+            if (!keys.ContainsKey(b)) keys[b] = $"body{keys.Count}";
+        return keys;
+    }
+
+    /// <summary>The body with a key on the system map, or null.</summary>
+    public static Orbiter BodyOf(StarSystem system, string key) => key == null ? null : Keys(system).FirstOrDefault(k => k.Value == key).Key;
+
+    /// <summary>A body's key on the system map, or null.</summary>
+    public static string KeyOf(StarSystem system, Orbiter body) => body != null && Keys(system).TryGetValue(body, out string key) ? key : null;
 
     /// <summary>A body's name for a chart: the model's "moon 2 of 3" is just Moon 2 there.</summary>
     public static string Tidy(string name)

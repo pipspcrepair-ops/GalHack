@@ -417,14 +417,36 @@ public sealed partial class Vessel
     /// <summary>Collision chunks still to build.</summary>
     public int PendingShapes => _pendingShapes.Count;
 
-    /// <summary>Builds the next chunk of collision still to build (each tick), or all of it now.</summary>
+    /// <summary>What building collision a chunk at a time may take of one tick, every structure's together, ms: a zone that
+    /// arrives with many wrecks to make solid (a warp's destination) shares it rather than each taking a chunk a tick.</summary>
+    const double ShapesBudgetMs = 2.0;
+    static ulong _shapesTick;
+    static double _shapesSpent;
+
+    /// <summary>
+    /// Builds the collision still to build, chunk by chunk while the tick's shared budget lasts, or all of it now. The hull
+    /// stays out of its space till its last chunk is in (<see cref="StructureShapes.Hold"/>): its compound is built once.
+    /// </summary>
     public void BuildPendingShapes(bool all = false)
     {
-        while (_pendingShapes.TryDequeue(out var next))
+        if (_pendingShapes.Count == 0) return;
+        if (!all)
         {
-            next.shapes.Apply(new[] { next.chunk });
-            if (!all) break;
+            ulong tick = Engine.GetPhysicsFrames();
+            if (tick != _shapesTick) (_shapesTick, _shapesSpent) = (tick, 0.0);
+            if (_shapesSpent >= ShapesBudgetMs) return;
         }
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        double Spent() => System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        HullShapes.Hold();
+        Cabin.Shapes.Hold();
+        while ((all || _shapesSpent + Spent() < ShapesBudgetMs) && _pendingShapes.TryDequeue(out var next)) next.shapes.Apply(new[] { next.chunk });
+        if (_pendingShapes.Count == 0)
+        {
+            HullShapes.Return();
+            Cabin.Shapes.Return();
+        }
+        if (!all) _shapesSpent += Spent();
     }
 
     void Register()
