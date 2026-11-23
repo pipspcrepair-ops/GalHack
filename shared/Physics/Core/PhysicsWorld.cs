@@ -392,10 +392,11 @@ public sealed class PhysicsWorld
         foreach (IForceProvider p in ForceProviders) p.ApplyForces(this, dt);
 
         // A sleeping rigid body that something now pushes (a gust, a tornado) wakes, and from
-        // then on carries its own weight (and its buoyancy) like everything else.
+        // then on carries its own weight (and its buoyancy) like everything else; so does a hull
+        // nothing flies (a wreck asleep in space: HullBinding), its controller deciding for any other.
         foreach (Body b in _bodies)
         {
-            if (!b.Asleep || b.Motion != Motion.Free) continue;
+            if (!b.Asleep || !(b.Motion == Motion.Free || b.Motion == Motion.Kinematic && b.Controller == null)) continue;
             if (b.PendingForce.LengthSquared() < 1e-4f * b.Mass * b.Mass && b.PendingImpulse == Vector3.Zero) continue;
             b.Asleep = false;
             AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);

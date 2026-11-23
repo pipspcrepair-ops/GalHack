@@ -26,21 +26,24 @@ public partial class Spaceflight
     /// <summary>Most a tick's arrival work took on the main thread, ms (tests read it).</summary>
     public double WorstArrivalMs { get; private set; }
 
+    /// <summary>How many zones jumps have woken (in the tunnel) or parked (left behind): proto/orbitclean's piecewise Park/Run replaces both, so tests time those ticks apart.</summary>
+    public int ZonesSwitched { get; private set; }
+
     (int Items, int Blocks) _jumpTotals;
     string _arrivalLaps = "";
     (Jump, SurfaceZone)? _leaving;
 
     /// <summary>
     /// Spools a drive on a structure for a jump of so far (its fuel's unit), with at least <paramref name="tripSeconds"/> in
-    /// the tunnel, to <paramref name="to"/>, going <paramref name="heading"/> (in this zone's world). Null once it spools; else what stops it, as the console says it.
+    /// the tunnel, to <paramref name="to"/>. Null once it spools; else what stops it, as the console says it.
     /// </summary>
-    public string StartJump(Vessel carrier, string drive, double distance, double tripSeconds, IJumpDestination to, N.Vector3 heading = default)
+    public string StartJump(Vessel carrier, string drive, double distance, double tripSeconds, IJumpDestination to)
     {
         if (Jumping?.Running == true) return "SPOOLING";
         if (carrier?.Power == null) return "NOT FITTED";
         string no = carrier.Power.Engage(drive, distance);
         if (no != null) return no;
-        var j = new Jump(carrier, drive, distance, tripSeconds, to) { From = Game.Zone, Heading = heading.LengthSquared() > 1e-6f ? N.Vector3.Normalize(heading) : default };
+        var j = new Jump(carrier, drive, distance, tripSeconds, to) { From = Game.Zone };
         j.OnJumped = (function, _) => j.Fired |= function == drive;
         carrier.Power.Jumped += j.OnJumped;
         Jumping = j;
@@ -71,6 +74,32 @@ public partial class Spaceflight
     {
         j.Now = stage;
         j.Carrier.Power.Jumped -= j.OnJumped;
+        j.LetGo();
+    }
+
+    /// <summary>What the next jump is aimed at, picked on the map (one body or one star; picking another replaces it), or null.</summary>
+    public JumpTarget Target { get; set; }
+
+    /// <summary>A fold to a star, as the fold drive provides it (null where it has none): null once it spools, else what stops it.</summary>
+    public Func<int, string> FoldTo;
+
+    /// <summary>
+    /// The jump key (J), and the map panel's button that shows it: a jump spooling is called off; else the warp to the
+    /// target body or the fold to the target star starts. Null if so; else what stops it, as the console says it.
+    /// </summary>
+    public string JumpKey()
+    {
+        if (Jumping?.Now == Jump.Stage.Spool)
+        {
+            CancelJump();
+            return null;
+        }
+        return Target switch
+        {
+            null => "NO TARGET",
+            { Body: { } body } => Warp(body),
+            _ => FoldTo?.Invoke(Target.Star) ?? "NOT FITTED",
+        };
     }
 
     /// <summary>Once a physics tick: the destination set up a piece at a time, the spool, the tunnel, the arrival.</summary>
@@ -82,6 +111,7 @@ public partial class Spaceflight
             _leaving = null;
             var watch = Stopwatch.StartNew();
             done.To.Left(this, left);
+            ZonesSwitched++;
             WorstArrivalMs = Math.Max(WorstArrivalMs, watch.Elapsed.TotalMilliseconds);
             GD.Print($"[jump: {left.Name} left behind in {watch.Elapsed.TotalMilliseconds:F1} ms]");
         }
@@ -123,6 +153,7 @@ public partial class Spaceflight
                     {
                         j.To.Zone.Camera = Game.Camera; // what it draws for itself (its weather's looks) faces the one camera from its first tick
                         Wake(j.To.Zone);
+                        ZonesSwitched++;
                     }
                     j.Woken = true;
                 }

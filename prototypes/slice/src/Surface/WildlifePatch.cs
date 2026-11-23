@@ -144,20 +144,25 @@ public partial class WildlifePatch : Node3D
     }
 
     Task<WorldLife> _rollingAhead;
+    Task<(Terrain, NavGrid, Vector3, List<(long, Obstacle)>)> _bakingAhead;
 
     /// <summary>
-    /// Starts rolling a world's life on a worker ahead of <see cref="SetWorld"/>: a world made while you are elsewhere (a warp's
-    /// destination) then sets its life in its arrival's piece instead of rolling it on the main thread (most of a second).
+    /// Starts rolling a world's life on a worker ahead of <see cref="SetWorld"/>, and baking its first patch round its landing
+    /// site: a world made while you are elsewhere (a warp's destination) then sets its life in its arrival's piece instead of
+    /// rolling it and baking the patch on the main thread (most of a second each).
     /// </summary>
     public void RollAhead(PlanetWorld planet)
     {
         if (_life != null || planet.Sky.Density < SurfaceWeather.NoAir) return;
         Task<WorldLife> rolling = _rollingAhead = Task.Run(() => RollLife(planet));
         _life = new Lazy<WorldLife>(() => rolling.Result);
+        Vector3 at = Snapped(new Vector3((float)planet.Landing.X, 0f, (float)planet.Landing.Y));
+        float half = SpawnReach.PatchHalf(Zone.Data.Rules.Wildlife.PatchHalfSize);
+        _bakingAhead = Task.Run(() => Bake(planet, at, half, null));
     }
 
-    /// <summary>Any life rolled ahead is ready.</summary>
-    public bool LifeReady => _rollingAhead == null || _rollingAhead.IsCompleted;
+    /// <summary>Any life rolled ahead, and its first patch, are ready.</summary>
+    public bool LifeReady => (_rollingAhead?.IsCompleted ?? true) && (_bakingAhead?.IsCompleted ?? true);
 
     public void SetWorld(PlanetWorld planet, Vector3 landing)
     {
@@ -203,8 +208,9 @@ public partial class WildlifePatch : Node3D
         AddChild(Spit);
         Tells = new TellView { Name = "Tells", Audio = Audio };
         AddChild(Tells);
-        // The first is baked here and now, without its woods: the next is baked with them as soon as it can be.
-        var (terrain, nav, origin, trunks) = Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize), null);
+        // The first is baked here and now (or was, ahead, on a worker), without its woods: the next is baked with them as soon as it can be.
+        var (terrain, nav, origin, trunks) = _bakingAhead is { } ahead && ahead.Result.Item3 == Snapped(landing) ? ahead.Result : Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize), null);
+        _bakingAhead = null;
         Swap(terrain, nav, origin, trunks, keepClear: landing, clear: rules.SafeRadius);
     }
 

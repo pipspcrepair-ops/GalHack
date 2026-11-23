@@ -663,6 +663,7 @@ public partial class Game : Node3D
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
         if (c.WasPressed(Key.I)) vessel.Flight.ToggleAssist();
+        if (c.WasPressed(Key.J) && Spaceflight.JumpKey() is { } no) Say(no, Tones.Warning); // the map may be open: pick, then J
     }
 
     void ToggleTorch()

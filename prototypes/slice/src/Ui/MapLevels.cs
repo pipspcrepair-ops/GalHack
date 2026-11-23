@@ -367,6 +367,9 @@ public sealed partial class MapLevels
 
     string _body;
 
+    /// <summary>Where each body of your system stands on the system map as last laid out, by its key (tests click them).</summary>
+    public IReadOnlyDictionary<string, Vector2> SystemPlaces { get; private set; } = new Dictionary<string, Vector2>();
+
     /// <summary>A dot's size on the system map, pixels: by kind, not to scale, or the giants would hide the rest.</summary>
     static float DotOf(SystemEntry e) => e.Kind switch { "star" => 15f, "giant" => 8f + e.Size * 8f, "world" => 7f, "planet" => 4f + e.Size * 8f, "moon" => 2.5f, _ => 0f };
 
@@ -406,6 +409,7 @@ public sealed partial class MapLevels
         // A moon of a moon's parent may come after it in the list: moons are placed once every world is.
         foreach (SystemEntry e in bodies.Where(e => e.Parent != null).OrderBy(e => byKey[e.Parent].Parent == null ? 0 : 1))
             places[e.Key] = Round(e, DotOf(byKey[e.Parent]) + 7f + e.Orbit * 6f, places[e.Parent]);
+        if (yours) SystemPlaces = places;
         if (!g.Drawing && g.Pressed && g.Over(panel))
         {
             SystemEntry hit = null;
@@ -413,7 +417,11 @@ public sealed partial class MapLevels
             foreach (SystemEntry e in bodies)
                 if (places[e.Key].DistanceSquaredTo(g.Mouse) < nearest) (nearest, hit) = (places[e.Key].DistanceSquaredTo(g.Mouse), e); // a belt by its label's place on it
             if (hit?.Kind == "world" && yours && HereKey(sysModel) == "world") Trail.Down(); // your world opens high orbit while you are at it
-            else if (hit != null) _body = hit.Key;
+            else if (hit != null)
+            {
+                _body = hit.Key;
+                if (yours) _game.Spaceflight.Target = JumpTarget.To(Charts.BodyOf(sysModel, hit.Key)); // the one target: it replaces any other
+            }
         }
         Vector2 world = places["world"];
         if (g.Drawing)
