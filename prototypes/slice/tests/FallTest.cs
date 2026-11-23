@@ -21,7 +21,7 @@ namespace Slice.Tests;
 /// fall"; "Are they effected by gravity?"). On fresh worlds every run (nothing pinned), in a settlement: the floor is broken under
 /// one of its people standing, one walking, one sitting and one asleep in bed; the ground is dug from under a scavenger out on the
 /// land; the floor goes from under one of the place's creatures; a crater is blown under a small and a large creature on the land;
-/// and one of the people is set high over the ground (30 m, then 100 m). Each must come down to what is below in the time a free fall
+/// and one of the people is set high over the ground (30 m, then a killing height), and one a killing height over a roof. Each must come down to what is below in the time a free fall
 /// under the world's pull takes (a tick either way), never be inside anything solid, be hurt by the sleeper's fall rule for the
 /// height (a long drop kills, limp), and keep acting after. (New members are read by name, so the same test runs, and fails, on a
 /// build from before the falls.)
@@ -109,7 +109,7 @@ public partial class FallTest : Node
         for (int i = 0; i < worlds; i++)
             foreach (int x in World(i == 0, i == 0 ? FirstSeed : null)) yield return x;
         // Every case shown on at least one of the worlds (a world may have nobody sitting, or no creature near, at the time).
-        foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "into deep water", "into shallow water", "a creature into deep water", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height" })
+        foreach (string kind in new[] { "standing", "walking", "sitting", "asleep in bed", "out on the land", "into deep water", "into shallow water", "a creature into deep water", "one of a place's creatures", "a small creature", "a large creature", "set high", "a killing height", "onto a roof" })
             Check(_proven.Contains(kind), $"shown falling on at least one world: {kind}");
     }
 
@@ -193,6 +193,7 @@ public partial class FallTest : Node
         // (High enough to kill on this world: a landing at its safe speed and 26 m/s more.)
         float lethal = MathF.Pow(_game.Zone.Physics.Rules.Contacts.PlayerSafeSpeed + 26f, 2f) / (2f * G);
         foreach (int x in High(town, place, used, lethal)) yield return x;
+        foreach (int x in Roof(town, place, used, lethal)) yield return x;
     }
 
     /// <summary>The drop under a point of the place (local feet): from the floor's underside down to what is below, m (by the colliders).</summary>
@@ -547,21 +548,83 @@ public partial class FallTest : Node
     {
         // (One with nothing over them all the way up: they come down where they stood, the whole height.)
         bool Open(Town.Person p) => new[] { Vector3.Zero, Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }.All(d => _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(town.World(p.Pos + d * 0.35f + Vector3.Up * (height + 1f)), town.World(p.Pos + d * 0.35f + Vector3.Up * 0.3f), Layers.World | Layers.Hull | Layers.Interior)).Count == 0); // (their whole body clear, not only their middle)
-        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep && town.CanStand(p.Pos) && Open(p) && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { p }) is not true).FirstOrDefault(); // (not a lookout set on a roof with no way down)
+        // (Open sky looked at again with the sleeper by them, as they are lifted: they may have walked on under an eave meanwhile, or the
+        // place's colliders there come only with the sleeper; else they come down on a roof short of the height, 23 Nov.)
+        var tried = new HashSet<Town.Person>();
+        Town.Person who = null;
+        for (int k = 0; k < 6 && who == null; k++)
+        {
+            Town.Person pick = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !tried.Contains(p) && !p.Asleep && town.CanStand(p.Pos) && Open(p) && town.GetType().GetMethod("Stranded")?.Invoke(town, new object[] { p }) is not true).FirstOrDefault(); // (not a lookout set on a roof with no way down)
+            if (pick == null) break;
+            tried.Add(pick);
+            Stand(town, pick);
+            for (int i = 0; i < 30; i++) { TopUp(); yield return 0; }
+            if (!pick.Dead && town.CanStand(pick.Pos) && Open(pick)) who = pick;
+        }
         if (who == null) { GD.Print($"  (nobody with open sky over them to set {height:F0} m up: not tried here)"); yield break; }
         used.Add(who);
-        Stand(town, who);
-        for (int i = 0; i < 30; i++) { TopUp(); yield return 0; }
         GD.Print($"  -- one set {height:F0} m over where they stood ({who.Job}) --");
+        foreach (int x in Lift(town, who, who.Pos, height, $"{height:F0} m up", height < 50f ? "set high" : "a killing height")) yield return x;
+    }
+
+    /// <summary>
+    /// One of the people set a killing height over a roof of the place's blocks (well over 60 m), the sleeper on the roof beside: down
+    /// on the roof (not through it, not short of it), killed by the rule, limp there.
+    /// </summary>
+    IEnumerable<int> Roof(Town town, Place place, HashSet<Town.Person> used, float height)
+    {
+        BlockGrid g = place.Memory.Inst.Blocks;
+        int Top(int x, int z)
+        {
+            for (int y = g.Min.Y + g.Size.Y - 1; y >= g.Min.Y; y--) if (!g.Get(new Int3(x, y, z)).IsAir) return y;
+            return int.MinValue;
+        }
+        // Roofs by the blocks: a column's top block well over the land, the same top three cells round it (room for the sleeper beside).
+        var roofs = new List<Vector3>();
+        for (int z = g.Min.Z + 3; z < g.Min.Z + g.Size.Z - 3; z += 2)
+            for (int x = g.Min.X + 3; x < g.Min.X + g.Size.X - 3; x += 2)
+            {
+                int top = Top(x, z);
+                if (top == int.MinValue) continue;
+                bool flat = true;
+                for (int dz = -2; dz <= 2 && flat; dz++)
+                    for (int dx = -2; dx <= 3 && flat; dx++) flat = Top(x + dx, z + dz) == top;
+                Vector3 at = new(x + 0.5f, top + 1f, z + 0.5f), w = town.World(at);
+                if (flat && w.Y - GroundNow(w.X, w.Z) > 3f) roofs.Add(at);
+            }
+        Vector3 me = town.Local(_game.Survivor.WorldFeet);
+        // (By the colliders once the sleeper stands on it: open sky over the whole body down to the roof's top.)
+        bool OnRoof(Vector3 at) => new[] { Vector3.Zero, Vector3.Left, Vector3.Right, Vector3.Forward, Vector3.Back }.All(d =>
+            _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(town.World(at + d * 0.35f + Vector3.Up * (height + 1f)), town.World(at + d * 0.35f + Vector3.Down * 0.5f), Layers.World | Layers.Hull | Layers.Interior)) is { Count: > 0 } hit
+            && MathF.Abs(town.Local((Vector3)hit["position"]).Y - at.Y) < 0.05f);
+        Vector3? roof = null;
+        foreach (Vector3 at in roofs.OrderBy(r => (r - me).LengthSquared()).Take(4))
+        {
+            _game.Survivor.PlaceOutside(town.World(at + Vector3.Right * 2.5f + Vector3.Up * 0.15f).ToNumerics());
+            for (int i = 0; i < 60; i++) { TopUp(); yield return 0; }
+            if (OnRoof(at)) { roof = at; break; }
+        }
+        if (roof is not { } spot) { GD.Print($"  (no roof of the place's blocks open to the sky ({roofs.Count} by the blocks): not tried here)"); yield break; }
+        Town.Person who = town.People.Where(p => !p.Dead && !p.Gone && p.View != null && p.Run == null && !used.Contains(p) && !p.Asleep).MinBy(p => (p.Pos - spot).LengthSquared());
+        if (who == null) { Check(false, "someone to set over a roof"); yield break; }
+        used.Add(who);
+        GD.Print($"  -- one set {height:F0} m over a roof {town.World(spot).Y - GroundNow(town.World(spot).X, town.World(spot).Z):F1} m over the land ({who.Job}) --");
+        foreach (int x in Lift(town, who, spot, height, "onto a roof", "onto a roof")) yield return x;
+        Check(MathF.Abs(who.Pos.Y - spot.Y) < 0.1f, $"onto a roof: down on the roof, not through it nor short of it ({who.Pos.Y:F2} against {spot.Y:F2})");
+    }
+
+    /// <summary>One of them set a height over a point (the place's frame) and watched down; from a killing height (over 50 m), dead and limp.</summary>
+    IEnumerable<int> Lift(Town town, Town.Person who, Vector3 over, float height, string what, string kind)
+    {
         (who.Sitting, who.Asleep, who.Path) = (false, false, null);
-        who.Pos += Vector3.Up * height;
+        who.Pos = over + Vector3.Up * height;
         Set(who, "CheckFor", 1f);
-        foreach (int x in Watch(town, who, $"{height:F0} m up", false, height < 50f ? "set high" : "a killing height")) yield return x;
+        foreach (int x in Watch(town, who, what, false, kind)) yield return x;
         if (height < 50f) yield break;
-        Check(who.Dead, $"a {height:F0} m drop kills");
+        Check(who.Dead, $"{what}: a {height:F0} m drop kills");
         int t = 0;
         for (; t < 10 * 60 && who.Rig is { Settled: false }; t++) { TopUp(); yield return 0; }
-        Check(who.Rig is { Settled: true }, $"the body falls limp and comes to rest ({t * Tick:F1} s)");
+        Check(who.Rig is { Settled: true }, $"{what}: the body falls limp and comes to rest ({t * Tick:F1} s)");
     }
 
     /// <summary>One of a place's own creatures on its floor (the settlement's, else the next places round it): the floor broken under it.</summary>
