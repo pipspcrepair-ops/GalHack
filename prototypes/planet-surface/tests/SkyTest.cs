@@ -291,7 +291,8 @@ public partial class SkyTest : Node
             sky.SetShaderParameter("giant_dir", Vector3.Up);
             sky.SetShaderParameter("giant_radius", 0.12f);
             sky.SetShaderParameter("giant_light", new Vector3(0.3f, -0.85f, 0.4f).Normalized());
-            sky.SetShaderParameter("giant_at", 0);
+            // In front of the system's own moons: the thruster moon, nearly as wide, overhead at midnight hid half of it (0.0086 against 0.02).
+            sky.SetShaderParameter("giant_at", (int)sky.GetShaderParameter("moon_count"));
             sky.SetShaderParameter("giant_layer", -1);
             sky.SetShaderParameter("rings", false);
             sky.SetShaderParameter("galaxy_on", false);
