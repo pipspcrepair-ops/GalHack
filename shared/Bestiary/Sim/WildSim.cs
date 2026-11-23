@@ -691,7 +691,7 @@ public sealed class WildSim
             c.Spaced = _spaced.Count;
             inside ??= c.Space;
             Vector3 v = Flat(c.Velocity);
-            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Dormant ? 0f : c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c) });
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Dormant ? 0f : c.Attacking ? 0.4f : 1f, Keep = Brain.Keep(c), Height = c.Species.BodyHeight });
             _spaced.Add(c);
         }
         if (_spaced.Count == 0) return;
