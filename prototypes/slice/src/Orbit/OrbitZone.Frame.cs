@@ -41,4 +41,30 @@ public partial class OrbitZone
         Anchor = Home;
         _preparing = Task.FromResult<(GlobePaint, List<DerelictPlan>)>((null, new List<DerelictPlan>()));
     }
+
+    /// <summary>
+    /// Moves everything in the zone so a point becomes its origin: out at a star's high orbit (a thousand km from its
+    /// centre) the numbers near where you fly stay small, and a hull drawn there doesn't shake. Nothing changes to the eye.
+    /// </summary>
+    public void Recentre(N.Vector3 point)
+    {
+        foreach (Celestial c in Bodies)
+        {
+            c.Shift -= point;
+            c.ShiftWas = c.Shift;
+            Placed(c);
+        }
+        foreach (var (_, shell) in _solids) shell.Position -= new Godot.Vector3(point.X, point.Y, point.Z);
+        foreach (GalHack.Physics.Body b in Physics.Bodies)
+        {
+            if (b.Frame != null) continue; // riders stay where they are aboard
+            b.Position -= point;
+            Host.BindingOf(b)?.Teleport();
+        }
+        foreach (Slice.Items.Lootable l in Loot.All)
+        {
+            l.Position -= new Godot.Vector3(point.X, point.Y, point.Z);
+            if (l.Node != null) l.Node.GlobalPosition = l.Position;
+        }
+    }
 }

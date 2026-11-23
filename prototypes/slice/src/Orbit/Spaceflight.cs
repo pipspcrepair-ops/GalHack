@@ -491,10 +491,10 @@ public partial class Spaceflight : Node
             {
                 Bill items = v.Storage.Contents;
                 foreach (var c in v.Machines.Values) Add(items, c.Tray);
-                yield return new Holder(IdOf(v), "structure", name, null, v.Name, items, v.Structure.Count, freed ? PlacingOf(v) : null);
+                yield return new Holder(IdOf(v), "structure", name, null, v.Name, items, v.Structure.Count, freed ? PlacingOf(v, zone) : null);
             }
             foreach (Lootable l in zone.Loot.All)
-                yield return new Holder(IdOf(l), "container", name, null, l.Name, l.Storage.Contents, 0, freed ? PlacingOf(l) : null);
+                yield return new Holder(IdOf(l), "container", name, null, l.Name, l.Storage.Contents, 0, freed ? PlacingOf(l, zone) : null);
             foreach (Device d in zone.Devices)
             {
                 Bill items = d.Storage?.Contents ?? new Bill();

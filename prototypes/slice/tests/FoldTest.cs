@@ -179,6 +179,7 @@ public partial class FoldTest : Node
         // Something left at A: a crate set adrift beside the ship.
         Vector3 crateAt = _ship.Body.Position.ToGodot() + new Vector3(40f, 6f, 0f);
         _game.Orbit.Loot.Spill(Bill.Of(("iron-ore", 7), ("stone", 3)), crateAt);
+        N.Vector3 crateOnStar = _game.Orbit.Home.ToGlobe(crateAt.ToNumerics()); // where it is in the star's own frame: the zone is laid out afresh each visit
         foreach (int x in Settle()) yield return x;
         Levels atA = Measure($"at {Catalogue.Name(a)}");
 
@@ -213,8 +214,9 @@ public partial class FoldTest : Node
         foreach (int x in FoldTo(a)) yield return x;
         if (Flight.StarHere != a) yield break;
         Lootable crate = _game.Orbit.Loot.All.FirstOrDefault(l => l.Storage.Contents["iron-ore"] == 7);
-        Check(crate != null && crate.Position.DistanceTo(crateAt) < 0.5f && crate.Storage.Contents["stone"] == 3,
-            $"back at A, the crate left there is put back where it was with what it held ({(crate == null ? "missing" : $"{crate.Position.DistanceTo(crateAt):F2} m off")})");
+        float off = crate == null ? float.MaxValue : N.Vector3.Distance(_game.Orbit.Home.ToGlobe(crate.Position.ToNumerics()), crateOnStar);
+        Check(crate != null && off < 0.5f && crate.Storage.Contents["stone"] == 3,
+            $"back at A, the crate left there is put back where it was with what it held ({(crate == null ? "missing" : $"{off:F2} m off")})");
     }
     // ---- Setting up ------------------------------------------------------------------------------
 
@@ -376,7 +378,8 @@ public partial class FoldTest : Node
         var lights = Lit().Where(l => !here.IsAncestorOf(l)).Select(l => l.GetPath().ToString()).ToList();
         Check(lights.Count == 0, $"no light of the old system shines here{(lights.Count > 0 ? ": " + string.Join(", ", lights.Take(4)) : "")}");
         Check(here.Physics.Zone.Strength == 0f && (Vector4)RenderingServer.GlobalShaderParameterGet("weather_wind") == Vector4.Zero, "no gravity and no wind out here");
-        var sounds = Playing().Where(n => !here.IsAncestorOf(n) && !_game.Audio.IsAncestorOf(n) && !_ship.Node.IsAncestorOf(n)).Select(n => n.GetPath().ToString()).ToList();
+        Node tunnel = _game.GetNodeOrNull("Jump"); // the fold's own tunnel sound, fading out
+        var sounds = Playing().Where(n => !here.IsAncestorOf(n) && !_game.Audio.IsAncestorOf(n) && !_ship.Node.IsAncestorOf(n) && tunnel?.IsAncestorOf(n) != true).Select(n => n.GetPath().ToString()).ToList();
         Check(sounds.Count == 0, $"no sound of the old system plays on{(sounds.Count > 0 ? ": " + string.Join(", ", sounds.Take(4)) : "")}");
         N.Vector3 v0 = _ship.Body.Velocity;
         _game.Controls.Hold(Key.W);
@@ -457,7 +460,8 @@ public partial class FoldTest : Node
 
     Levels Measure(string where)
     {
-        int star = Flight.Away != null || _game.Orbit is { HasGround: false } ? _game.Orbit.FindChildren("*", "", true, false).Count + 1 : 0;
+        // The space round a star (any body with no ground): its own nodes go with its system's bodies, counted apart.
+        int star = Zones().OfType<OrbitZone>().Where(o => !o.HasGround).Sum(o => o.FindChildren("*", "", true, false).Count + 1);
         var l = new Levels(where, (int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount), star, (int)Performance.GetMonitor(Performance.Monitor.ObjectCount),
             Zones().Sum(z => z.Physics?.Bodies.Count ?? 0), GC.GetTotalMemory(false), (long)Performance.GetMonitor(Performance.Monitor.MemoryStatic),
             (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TextureMemUsed), (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.VideoMemUsed));
@@ -478,10 +482,10 @@ public partial class FoldTest : Node
 
     /// <summary>The only environment shown is this one.</summary>
     bool OnlySky(WorldEnvironment mine) => _game.FindChildren("*", "WorldEnvironment", true, false).OfType<WorldEnvironment>()
-        .All(w => w == mine ? w.Environment != null : w.Environment == null);
+        .Where(w => w.GetViewport() == GetViewport()).All(w => w == mine ? w.Environment != null : w.Environment == null);
 
     IEnumerable<DirectionalLight3D> Lit() => _game.FindChildren("*", "DirectionalLight3D", true, false).OfType<DirectionalLight3D>()
-        .Where(l => l.IsVisibleInTree() && l.LightEnergy > 0f && l.SkyMode != DirectionalLight3D.SkyModeEnum.SkyOnly);
+        .Where(l => l.GetViewport() == GetViewport() && l.IsVisibleInTree() && l.LightEnergy > 0f && l.SkyMode != DirectionalLight3D.SkyModeEnum.SkyOnly);
 
     IEnumerable<Node> Playing() => _game.FindChildren("*", "", true, false).Where(n => n is AudioStreamPlayer { Playing: true } or AudioStreamPlayer2D { Playing: true } or AudioStreamPlayer3D { Playing: true });
 

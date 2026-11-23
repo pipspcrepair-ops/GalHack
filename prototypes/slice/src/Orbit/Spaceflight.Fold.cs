@@ -229,7 +229,8 @@ public partial class Spaceflight
             N.Vector3 centre = star.Centre.ToNumerics();
             N.Vector3 at = flight.ClearOf(o, centre, away, flight.HighOrbit(o, star), star);
             N.Quaternion turn = N.Quaternion.Normalize(Between(N.Vector3.Transform(-N.Vector3.UnitZ, carrier.Body.Rotation), N.Vector3.Normalize(centre - at)) * carrier.Body.Rotation);
-            return new JumpArrival(o, at, turn);
+            o.Recentre(at); // where it arrives is the zone's origin
+            return new JumpArrival(o, N.Vector3.Zero, turn);
         }
 
         public void Left(Spaceflight flight, SurfaceZone from)
@@ -371,13 +372,16 @@ public partial class Spaceflight
         foreach (var (id, type, kept, items) in Ledger.KeptIn(ZoneName(zone)).ToList())
         {
             if (_ids.ContainsValue(id)) continue; // there already
-            var at = new Vector3(kept.At[0], kept.At[1], kept.At[2]);
+            // Its place and turn were kept in its zone's frame body's own (an orbit's world moves when it is entered again).
+            N.Vector3 kat = new(kept.At[0], kept.At[1], kept.At[2]);
+            Vector3 at = (zone is OrbitZone o ? o.Home.ToWorld(kat) : kat).ToGodot();
             if (type == "structure" && kept.Blueprint != null)
             {
                 Structure s = Blueprint.Load(kept.Blueprint, zone.Data.Catalogue, out List<string> errors);
                 if (s == null || errors.Count > 0) { GD.PrintErr($"fold: {id} didn't come back: {string.Join("; ", errors)}"); continue; }
                 Vessel w = Vessel.Spawn(zone, s, at.ToNumerics(), 0f, landed: false);
-                w.Body.Rotation = new N.Quaternion(kept.Turn[0], kept.Turn[1], kept.Turn[2], kept.Turn[3]);
+                var kturn = new N.Quaternion(kept.Turn[0], kept.Turn[1], kept.Turn[2], kept.Turn[3]);
+                w.Body.Rotation = zone is OrbitZone ot ? N.Quaternion.Normalize(ot.Home.Turn * kturn) : kturn;
                 w.Binding.Teleport();
                 w.Storage.AddAll(items);
                 _ids[w] = id;
@@ -386,13 +390,22 @@ public partial class Spaceflight
         }
     }
 
-    /// <summary>Where a holder in a system out among the stars is, to be put back there: a structure's blueprint and turn, a container's place.</summary>
-    static ZoneLedger.Placing PlacingOf(object thing) => thing switch
+    /// <summary>
+    /// Where a holder in a system out among the stars is, to be put back there: a structure's blueprint and turn, a
+    /// container's place; in an orbit, in its frame body's own frame (the zone's world is laid out afresh each visit).
+    /// </summary>
+    static ZoneLedger.Placing PlacingOf(object thing, SurfaceZone zone)
     {
-        Vessel v => new ZoneLedger.Placing(Blueprint.Save(v.Structure), Floats(v.Body.Position), new[] { v.Body.Rotation.X, v.Body.Rotation.Y, v.Body.Rotation.Z, v.Body.Rotation.W }),
-        Lootable l => new ZoneLedger.Placing(null, Floats(l.Position.ToNumerics()), null),
-        _ => null,
-    };
+        OrbitZone o = zone as OrbitZone;
+        N.Vector3 Here(N.Vector3 p) => o != null ? o.Home.ToGlobe(p) : p;
+        N.Quaternion Turned(N.Quaternion q) => o != null ? N.Quaternion.Normalize(N.Quaternion.Conjugate(o.Home.Turn) * q) : q;
+        return thing switch
+        {
+            Vessel v when Turned(v.Body.Rotation) is var t => new ZoneLedger.Placing(Blueprint.Save(v.Structure), Floats(Here(v.Body.Position)), new[] { t.X, t.Y, t.Z, t.W }),
+            Lootable l => new ZoneLedger.Placing(null, Floats(Here(l.Position.ToNumerics())), null),
+            _ => null,
+        };
+    }
 
     static float[] Floats(N.Vector3 p) => new[] { p.X, p.Y, p.Z };
 }
