@@ -218,6 +218,8 @@ public sealed class SliceRules
         public double LapsePerKm { get; set; } = 6.5;
         public Dictionary<string, double> OxygenByAir { get; set; } = new();
         public Dictionary<string, double> RadiationByArchetype { get; set; } = new();
+        /// <summary>The share of a nuclear-blasted world's strongest crater reading that a dust storm's lifted fallout carries, deep inside it.</summary>
+        public double DustFallout { get; set; } = 0.25;
         public double SealedRoomC { get; set; } = 20;
 
         /// <summary>A sealed room's air, seconds: how fast its life support brings it to sealedRoomC (the gap shrinks by e each), how long it holds once the power is off, and how fast it then drifts to the outside's.</summary>

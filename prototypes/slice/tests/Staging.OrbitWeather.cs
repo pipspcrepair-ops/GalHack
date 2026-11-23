@@ -12,8 +12,7 @@ using N = System.Numerics;
 namespace Slice.Tests;
 
 /// <summary>
-/// The live weather from orbit: a front (--weather=Thunderstorm, or DustStorm on a dry world; any
-/// other weather has none) set coming over the start by the weather itself, seen from the ground
+/// The live weather from orbit: a front (--weather=Thunderstorm; any other weather has none; a dust storm, a place, stands over the start) set coming over the start by the weather itself, seen from the ground
 /// first, then the climb, and frames from high over it: the front and its storms by day, the same
 /// view a minute on, a look along its storms, the equator straight on, the night side with its
 /// lightning, and back down under it (--down=0 stops in orbit). --layer=1 also saves the weather
@@ -28,13 +27,12 @@ public sealed partial class Staging
         var sim = _game.Zone.Weather.Sim;
         var sky = _game.Zone.Sky;
         WeatherKind kind = Enum.Parse<WeatherKind>(_args.GetValueOrDefault("weather", "Thunderstorm"));
-        FrontKind frontKind = kind == WeatherKind.DustStorm ? FrontKind.Dust : FrontKind.Storm;
         // In the Skiff's seat first (building it clears the sky), then the weather comes in.
         foreach (int x in Seated()) yield return x;
         sim.Snap(kind);
         sim.ClearTornadoes();
         Vector3 start = _game.Survivor.WorldFeet;
-        if (Num("front", 1) != 0 && kind is WeatherKind.Thunderstorm or WeatherKind.Tornado or WeatherKind.DustStorm) sim.StartFront(frontKind, start, (float)Num("dist", 2600), null);
+        if (Num("front", 1) != 0 && kind is WeatherKind.Thunderstorm or WeatherKind.Tornado) sim.StartFront(FrontKind.Storm, start, (float)Num("dist", 2600), null);
         else sim.FrontsOff = Num("front", 1) == 0; // loose cells, the weather's own
         _game.Visor.Visible = false;
         _game.Hands.Visible = false;
