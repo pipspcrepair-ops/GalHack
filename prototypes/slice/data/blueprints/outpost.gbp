@@ -94,8 +94,8 @@ block 15..16 0 0 base-block paint=pad
 block 17 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
 block 18 0 0 base-block paint=pad
 block 19 0 0 base-block slope rot=+y+x paint=pad
-block -11..-10 0 1 concrete-plated paint=wall
-block -9..-6 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block -11 0 1 concrete-plated paint=wall
+block -10..-6 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 1 concrete-plated paint=wall
 block -4..5 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 1 concrete-plated paint=wall
@@ -171,8 +171,7 @@ block -11 1 0 concrete-plated paint=wall
 block -10 1 0 command-chair rot=+y-x
 block -5 1 0 door-1x2x1 rot=+y-x
 block 6 1 0 door-1x2x1 rot=+y+x
-block -11 1 1 concrete-plated paint=wall
-block -10 1 1 life-support-pod
+block -11 1 1 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block -5 1 1 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 1 1 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -11 1 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
@@ -214,6 +213,7 @@ block 6 2 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -11 2 -1 glass-plated paint=inner,-,-,-,-,-
 block -5 2 -1 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 2 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -12 2 0 life-support-pod
 block -11 2 0 glass-plated
 block -11 2 1 glass-plated paint=inner,-,-,-,-,-
 block -5 2 1 concrete-plated paint=inner,inner,wall,wall,wall,wall
