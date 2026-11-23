@@ -31,7 +31,7 @@ public static class BarrenViews
                 PlanetWorld of = PlanetWorld.Build(home, Main.Catalog);
                 Orbiter mine = of.StarSystem.Bodies.First(b => b.Seed == body.Seed);
                 PlanetWorld w = PlanetWorld.Build(mine.Spec, null);
-                w.ShareSystem(of, mine);
+                w.ShareSystem(of.Share(), mine);
                 return w;
             },
             Series: m => Shots(m, body, out time));
