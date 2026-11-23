@@ -428,10 +428,11 @@ public partial class Spaceflight : Node
         return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
     }
 
-    static void Wake(SurfaceZone zone)
+    void Wake(SurfaceZone zone)
     {
         zone.ProcessMode = ProcessModeEnum.Inherit;
         zone.Visible = true;
+        Untuck(zone);
     }
 
     static void Park(SurfaceZone zone)

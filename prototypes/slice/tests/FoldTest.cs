@@ -67,6 +67,8 @@ public partial class FoldTest : Node
 
     public override void _PhysicsProcess(double delta)
     {
+        // Held: something in the run resets the process's cores (read back 0xffff once).
+        if (_minSpec && (long)Process.GetCurrentProcess().ProcessorAffinity != 0x55) Process.GetCurrentProcess().ProcessorAffinity = 0x55;
         bool more;
         try { more = _run.MoveNext(); }
         catch (Exception e)
@@ -128,7 +130,8 @@ public partial class FoldTest : Node
 
     IEnumerable<int> Scenario()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.Fresh() };
+        // The min-spec stand-in plays at the stand-in's own settings (tests/minspec.cfg: the lowest, 1080p, vsync), as PopRoute's.
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.Fresh(), SettingsPath = _minSpec ? "res://tests/minspec.cfg" : null };
         AddChild(_game);
         _game.Spaceflight.LedgerFolder = System.IO.Path.Combine(OS.GetUserDataDir(), "fold-test-zones");
         _drive = new Driver(_game);
@@ -142,7 +145,6 @@ public partial class FoldTest : Node
         if (_minSpec)
         {
             Check((long)Process.GetCurrentProcess().ProcessorAffinity == 0x55, "the stand-in holds 4 cores (affinity read back)");
-            Lowest();
         }
         _game.Mode = GameMode.Creative; // free power: the generators run on nothing, the drive still burns its crystal
         foreach (int x in SetDownShip()) yield return x;
@@ -240,17 +242,6 @@ public partial class FoldTest : Node
             $"back at A, the crate left there is put back where it was with what it held ({(crate == null ? "missing" : $"{off:F2} m off")})");
     }
     // ---- Setting up ------------------------------------------------------------------------------
-
-    /// <summary>The min-spec run's settings: the lowest of each.</summary>
-    void Lowest()
-    {
-        GameSettings s = _game.Settings;
-        s.Shadows = default;
-        s.Aa = AntiAliasing.Off;
-        s.GroundDetail = GameSettings.MinGround;
-        s.TreeDistance = PlanetSurface.Terrain.DetailReach.LeastTrees;
-        _game.ApplySettings();
-    }
 
     /// <summary>The Skiff with a fold drive T1 at its tail, set down whole beside the start, its hold holding fold crystal.</summary>
     IEnumerable<int> SetDownShip()
