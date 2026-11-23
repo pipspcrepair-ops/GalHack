@@ -334,16 +334,16 @@ public sealed partial class HumanRig : Rig
     /// <summary>
     /// Where the feet are this pose (<see cref="_feet"/>): a foot on the ground moves back under the body at walking speed, one in
     /// the air comes through high, the way the stride runs (<paramref name="along"/>); going over the ground, one down keeps to it
-    /// (<see cref="Keep"/>) no further from its hip (<paramref name="hip"/>, flat) than <paramref name="most"/>. How far the
-    /// furthest is from its hip, flat (the hips come down to it).
+    /// (<see cref="Keep"/>) no further from its hip (<paramref name="hip"/>, flat) than <paramref name="most"/>. How high over the
+    /// ground its hips can stand at most, its legs <paramref name="legReach"/> long (the hips come down to it).
     /// </summary>
     float PlaceFeet(in Gesture g, Vector3 hip, Vector3 recoil, Vector3 fwd, Vector3 along, Vector3 right, float phase, float duty, float half, float moving, float run,
-        float stalk, float staggerSide, float keyed, Vector3 hitFlat, float stagger, bool husk, float most)
+        float stalk, float staggerSide, float keyed, Vector3 hitFlat, float stagger, bool husk, float most, float legReach)
     {
         Figure f = _f;
         int stepper = hitFlat.Dot(right) > 0f ? 1 : 0;
         float wide = (g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed * (1f - moving) : 0f) + stalk * 0.06f; // a wide stance for a threat or a fright, standing (a run stays narrow)
-        float apart = 0f;
+        float highest = float.MaxValue;
         for (int i = 0; i < 2; i++)
         {
             float side = i == 0 ? -1f : 1f;
@@ -361,10 +361,17 @@ public sealed partial class HumanRig : Rig
             bool grounded = stance || moving <= 0f;
             Vector3 hipAt = hip + right * side * f.HipW * 0.55f;
             foot += Keep(i, at, hipAt, most, g.Yaw, fwd, g.Travels && g.Sit <= 0f && g.Down <= 0f, ref grounded, out float rise);
-            apart = MathF.Max(apart, WildSim.Flat(foot - hipAt).Length());
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
-            // The heel comes up as a foot trails behind; the swing clears the ground.
-            float heel = stance ? MathF.Max(0f, -reach - 0.25f) * 0.22f * f.LegLength : 0f;
+            // The heel comes up as a foot trails behind, and is still up as it leaves the ground, coming down through the swing; the swing clears the ground.
+            float heel = 0.22f * f.LegLength * (stance ? MathF.Max(0f, -reach - 0.25f) : 0.75f * (1f - (reach + 1f) * 0.5f));
+            // How high its hip can be: the leg's reach over the flat way to the foot (never down onto the ground), on the heel's rise. A
+            // foot swung through holds the hips where it left them, going over to where it comes down, and only as it leaves the ground
+            // and comes back to it, by degrees: lifted, its knee folds.
+            float flat = MathF.Min(WildSim.Flat(foot - hipAt).Length(), 0.9f * (f.UpperLeg + f.LowerLeg));
+            float up = MathF.Sqrt(legReach * legReach - flat * flat) + moving * heel;
+            if (stance || float.IsNaN(_leftAt[i])) _leftAt[i] = up;
+            else up = Mathf.Lerp(up, _leftAt[i], moving * (1f - (reach + 1f) * 0.5f)) + moving * lift * lift * legReach;
+            highest = MathF.Min(highest, up);
             // A Husk drags one foot and throws the other up too high.
             float step = husk ? (i == (_offset > 0.5f ? 1 : 0) ? 0.3f : 1.7f) : 1f;
             foot.Y = ground + f.Ankle + moving * (heel + lift * step * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run) * (1f - 0.5f * stalk)) + stepLift + rise;
@@ -374,7 +381,7 @@ public sealed partial class HumanRig : Rig
             if (grounded && _swung[i]) (Steps, _swung[i]) = (Steps + 1, false);
             _planted[i] = grounded;
         }
-        return MathF.Min(apart, 0.9f * (f.UpperLeg + f.LowerLeg)); // (never down onto the ground)
+        return highest;
     }
 
     /// <summary>
@@ -453,6 +460,12 @@ public sealed partial class HumanRig : Rig
         return false;
     }
 
+    /// <summary>How far the hips are down for the feet apart (m), and how closely that follows them (1/s).</summary>
+    float _drop;
+    /// <summary>How high each hip could stand over its foot as the foot last left the ground, m.</summary>
+    readonly float[] _leftAt = { float.NaN, float.NaN };
+    const float DropRate = 15f;
+
     void DriveAlive(in Gesture g)
     {
         Figure f = _f;
@@ -517,8 +530,10 @@ public sealed partial class HumanRig : Rig
         if (went.Dot(fwd) < -0.05f) went = -went; // (stepping back: the stride runs backwards)
         _aslant = Ease(_aslant, g.Travels && went.LengthSquared() > 0.04f ? Math.Clamp(Geo.WrapAngle(MathF.Atan2(-went.X, -went.Z) - g.Yaw), -0.8f, 0.8f) : 0f, 3f);
         Vector3 along = new Basis(Vector3.Up, g.Yaw + _aslant) * Vector3.Forward;
-        float apart = PlaceFeet(g, hip, recoil, fwd, along, right, phase, duty, half, moving, run, stalk, staggerSide, keyed, hitFlat, stagger, husk, most);
-        hipY -= MathF.Max(0f, hipUp - MathF.Sqrt(MathF.Max(0f, legReach * legReach - apart * apart)));
+        float drop = MathF.Max(0f, hipUp - PlaceFeet(g, hip, recoil, fwd, along, right, phase, duty, half, moving, run, stalk, staggerSide, keyed, hitFlat, stagger, husk, most, legReach));
+        // (Followed closely, not jumped to: a foot set down or taken up never drops the hips for a frame.)
+        _drop = _dt > 0f ? Geo.Smooth(_drop, drop, DropRate, _dt) : drop;
+        hipY -= _drop;
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         hip += Vector3.Up * hipY;
 
@@ -631,7 +646,7 @@ public sealed partial class HumanRig : Rig
         GripLeftOn = hold.LW;
         GripAxisRight = hold.RAxis;
         GripAxisLeft = hold.LAxis;
-        int doer = Doer(g, hold.RW > 0f, chest, torso);
+        int doer = Doer(g, hold.RW > 0f || _carryRow != null, chest, torso);
         float shrug = g.Act == BodyAct.Shrug ? act * (0.03f + 0.03f * MathF.Max(0f, MathF.Sin(g.Clock * 3f))) * f.Height / 1.72f : 0f;
         Vector3 mouth = neck + headBasis.Y * (f.Neck + f.HeadRadius * 0.55f) - headBasis.Z * f.HeadRadius * 0.95f;
         Vector3 sipAxis = (headBasis.Z * 0.72f - headBasis.Y * 0.69f).Normalized(); // the bottle's way from the hand to the lips
@@ -686,9 +701,9 @@ public sealed partial class HumanRig : Rig
             if (stalk > 0f) pole = pole.Lerp(F.V(0.5f, -0.4f, -0.8f), stalk).Normalized();
             // The hand's shape and where its palm faces, eased the way the hand is.
             HandSpec spec = StanceHand(i, g, kind, hold, moving, run, stalk, sip);
-            // A hand on a weapon stays on it; the other does the gesture (a one-handed one done by the free hand). Each arm's share
-            // of it eases over as the doer or the hold changes: a gesture never jumps from hand to hand.
-            float keeps = i == 1 ? hold.RW : kind == HoldKind.Bow ? 1f : 0f;
+            // A hand on a weapon or a carried thing (a cane, a hoe) stays on it; the other does the gesture (a one-handed one done by the
+            // free hand). Each arm's share of it eases over as the doer or the hold changes: a gesture never jumps from hand to hand.
+            float keeps = i == 1 ? (_carryRow != null ? 1f : hold.RW) : kind == HoldKind.Bow ? 1f : 0f;
             _actShare[i] = Ease(_actShare[i], (1f - keeps) * (OneHanded(g) && i != doer ? 0f : 1f), 5f);
             float acts = act * _actShare[i];
             if (acts > 0f)
@@ -696,7 +711,7 @@ public sealed partial class HumanRig : Rig
                 ArmGoal a = ActArm(g, i, shoulder, neck, torso, headBasis, upperArm, forearm);
                 if (a.On)
                 {
-                    hand = hand.Lerp(a.Hand, acts);
+                    hand = Sweep(shoulder, hand, a.Hand, acts, ahead);
                     pole = pole.Lerp(a.Pole, acts).Normalized();
                     spec = HandSpec.Lerp(spec, a.Spec, acts);
                     if (i == 1) rightOff = MathF.Max(rightOff, acts);
@@ -705,7 +720,7 @@ public sealed partial class HumanRig : Rig
             float on = i == 1 ? hold.RW : hold.LW;
             if (on > 0f)
             {
-                hand = hand.Lerp(i == 1 ? hold.R : hold.L, on);
+                hand = Sweep(shoulder, hand, i == 1 ? hold.R : hold.L, on, ahead);
                 spec = HandSpec.Lerp(spec, i == 1 ? hold.RHand : hold.LHand, on);
                 // Holding something out in front, the elbow hangs down and a little out; drawing a bow, the elbow up and back along the arrow.
                 Vector3 holdPole = kind == HoldKind.Bow && i == 1 ? (hold.R - hold.L).Normalized() * 0.7f + torso.X * 0.6f - Vector3.Up * 0.1f : Vector3.Down + torso.X * side * 0.5f + torso.Z * 0.2f;
@@ -723,7 +738,7 @@ public sealed partial class HumanRig : Rig
             ArmGoal blow = i == 0 && kind == HoldKind.Bow ? default : StrikeArm(i, shoulder, torso, upperArm, forearm, out blowOn);
             if (blowOn > 0f && blow.On)
             {
-                hand = hand.Lerp(blow.Hand, blowOn);
+                hand = Sweep(shoulder, hand, blow.Hand, blowOn, ahead);
                 pole = pole.Lerp(blow.Pole, blowOn).Normalized();
                 spec = HandSpec.Lerp(spec, blow.Spec, blowOn);
                 if (i == 1) rightOff = MathF.Max(rightOff, blowOn);
@@ -759,7 +774,11 @@ public sealed partial class HumanRig : Rig
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
             if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f) * f.Padding) * on; // (a thick coat's shoulder rolls further forward)
-            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F, i, spec, axis, gripW, gripFore, on >= 0.999f, out Vector3 hinge);
+            // (Held on its grip once all the way on it a moment, until it is clearly off it: a hand on it for a frame or two between one
+            // gesture and the next, or barely off it, never switches how the arm is found.)
+            _onFor[i] = on < 0.999f ? 0f : _dt > 0f ? _onFor[i] + _dt : 1f;
+            _held[i] = _onFor[i] >= 0.12f || _held[i] && on >= 0.95f;
+            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F, i, spec, axis, gripW, gripFore, _held[i], out Vector3 hinge);
             // (Rolled with the elbow's hinge, never the torso's side: a bone along that has no roll to take from it.)
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, hinge);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, hinge);
@@ -789,7 +808,10 @@ public sealed partial class HumanRig : Rig
     }
 
     readonly Vector3[] _elbow = new Vector3[2], _shoulder = new Vector3[2];
-    /// <summary>Each arm's share of the gesture, eased (the doer's 1, a hand that keeps a weapon or the one not doing a one-handed act 0).</summary>
+    /// <summary>How long each hand has been all the way on its grip, s, and whether its arm is found as one holding it.</summary>
+    readonly float[] _onFor = new float[2];
+    readonly bool[] _held = new bool[2];
+    /// <summary>Each arm's share of the gesture, eased (the doer's 1, a hand that keeps a weapon or a carried thing or the one not doing a one-handed act 0).</summary>
     readonly float[] _actShare = { 1f, 1f };
     /// <summary>Each arm's shoulder, elbow and wrist as last posed (0 left, 1 right), for the tests.</summary>
     public (Vector3 shoulder, Vector3 elbow, Vector3 wrist) ArmOf(int i) => (_shoulder[i], _elbow[i], _wrist[i]);
@@ -883,7 +905,7 @@ public sealed partial class HumanRig : Rig
                 // Holstered on the right hip, muzzle down, the grip back and up.
                 Vector3 holster = hip + up * T * 0.12f + torso.X * 0.09f * u + ahead * (d + 0.07f * u); // (in front of the belt, out of the way of the hands swinging by the hips)
                 Vector3 holsterDir = (Vector3.Down + fwd * 0.12f).Normalized();
-                float drawn = Math.Clamp((aim - 0.15f) / 0.85f, 0f, 1f);
+                float drawn = Math.Clamp((aim - Grab) / (1f - Grab), 0f, 1f);
                 Vector3 low = hip + up * T * 0.45f + torso.X * 0.12f * u + ahead * (d + 0.2f * u);
                 Vector3 lowDir = (fwd * 0.6f + Vector3.Down * 0.8f).Normalized();
                 Vector3 raised = chest + Vector3.Up * 0.02f * u + right * 0.03f * u + look * armR * 0.85f;
@@ -893,7 +915,7 @@ public sealed partial class HumanRig : Rig
                 grip = holster.Lerp(low, clear).Lerp(raised, drawn);
                 dir = holsterDir.Lerp(lowDir, clear).Lerp(look, drawn).Normalized();
                 h.R = grip;
-                h.RW = aim > 0.15f ? 1f : aim / 0.15f;
+                h.RW = MathF.Min(1f, aim / Grab); // (taken in hand over a share of the raise, not in a frame or two)
                 h.L = grip - right * 0.045f * u + Vector3.Down * 0.03f * u;
                 h.LW = Mathf.SmoothStep(0.5f, 1f, drawn);
                 h.Prop = new Transform3D(Geo.AlongY(dir, torso.X.Lerp(right, Math.Clamp((aim - 0.05f) / 0.2f, 0f, 1f))), grip); // (rolled with the hips holstered, with the shoulders drawn, by degrees)
@@ -960,7 +982,9 @@ public sealed partial class HumanRig : Rig
                 // Hanging clear of the hip, head down; raised before the shoulder, swinging wide of the body between.
                 Vector3 hangs = shoulderR + Vector3.Down * armR * 0.84f + torso.X * MathF.Max(0.17f * u, MathF.Max(f.HipW, f.WaistW) * f.Padding - f.ShoulderW * 0.94f + 0.12f * u) + ahead * 0.06f * u;
                 // Wary or ready: the club up over the shoulder, its head cocked back (never levelled at them).
-                aim = Mathf.SmoothStep(0f, 0.4f, aim);
+                // (Raised at a body's pace, whatever the wariness does: a club never flies up or drops in a frame or two.)
+                _bladeUp = Ease(_bladeUp, Mathf.SmoothStep(0f, 0.4f, aim), 3f);
+                aim = Mathf.SmoothStep(0f, 1f, _bladeUp);
                 Vector3 raised = shoulderR + Vector3.Up * 0.05f * u + ahead * 0.14f * u + torso.X * 0.08f * u;
                 float wide = MathF.Sin(MathF.PI * aim);
                 h.R = hangs.Lerp(raised, aim) + (torso.X * 0.1f + ahead * 0.12f) * u * wide;
@@ -977,6 +1001,12 @@ public sealed partial class HumanRig : Rig
 
     /// <summary>How far a shoulder comes forward to reach out to a held weapon, m for a 1.72 m human's arms.</summary>
     const float Reach = 0.1f;
+
+    /// <summary>How far up a pistol's raise the hand is on its grip, the gun still holstered: the draw is the rest of it.</summary>
+    const float Grab = 0.3f;
+
+    /// <summary>How far a club or a blade is raised, eased in time (0 hanging, 1 up).</summary>
+    float _bladeUp;
 
     /// <summary>A weapon held out of the left hand's reach comes across and up toward the left shoulder (never back into the body) until its near grip is in reach.</summary>
     static Vector3 Across(Vector3 grip, Vector3 dir, float near, Vector3 shoulder, float reach, Vector3 ahead)
@@ -1036,11 +1066,34 @@ public sealed partial class HumanRig : Rig
         {
             Vector3 lead = Ends(kind == HoldKind.Blade ? thumb : along);
             Transform3D hand = new(_handAt[1].Basis, fist), back = hand.AffineInverse();
-            return hand * (back * h.Prop).InterpolateWith(back * new Transform3D(Geo.AlongY(lead, kind == HoldKind.Blade ? right : thumb.Cross(lead)), fist), busy);
+            Transform3D swung = hand * (back * h.Prop).InterpolateWith(back * new Transform3D(Geo.AlongY(lead, kind == HoldKind.Blade ? right : thumb.Cross(lead)), fist), busy);
+            return InFist(swung.Basis, swung.Origin);
         }
-        if (kind != HoldKind.None) return h.Prop;
+        if (kind != HoldKind.None) return InFist(h.Prop.Basis, h.Prop.Origin, false); // (as held: noted, so a blow turns it from there)
         Vector3 axis = PropAxis(g, torso, fwd, right, sip, sipAxis), line = axis.LengthSquared() > 0f ? Ends(thumb) : thumb; // (a thing with no way of its own to lie goes the thumb's way)
         float firm = axis.Length() * (1f - busy);
-        return new Transform3D(Geo.AlongY(firm > 0f ? HandSpec.Turn(line, axis / axis.Length(), firm) : line, right), fist); // (turned to its axis the short way, never through nothing)
+        return InFist(Geo.AlongY(firm > 0f ? HandSpec.Turn(line, axis / axis.Length(), firm) : line, right), fist); // (turned to its axis the short way, never through nothing)
+    }
+
+    /// <summary>The carried thing's turn in the fist as last posed (zero: not yet), and how fast it turns in it at most, radians a second.</summary>
+    Quaternion _inFist;
+    const float FistTurn = 10f;
+
+    /// <summary>
+    /// A carried thing as it lies in the fist, turned from the way it lay in it last as far as it turns in the time: where the way
+    /// it is asked to lie swaps ends or rolls over (its thumb's way crossing, its side along it), it turns over in the hand, never in a
+    /// frame. A weapon its hold places (<paramref name="turn"/> false) is only noted, for a blow to turn it from.
+    /// </summary>
+    Transform3D InFist(Basis want, Vector3 fist, bool turn = true)
+    {
+        Basis hand = _handAt[1].Basis;
+        Quaternion q = (hand.Inverse() * want).GetRotationQuaternion();
+        if (turn && _dt > 0f && _inFist.LengthSquared() > 0.5f)
+        {
+            float a = _inFist.AngleTo(q), most = FistTurn * _dt;
+            if (a > most) q = _inFist.Slerp(q, most / a);
+        }
+        _inFist = q;
+        return new Transform3D(hand * new Basis(q), fist);
     }
 }

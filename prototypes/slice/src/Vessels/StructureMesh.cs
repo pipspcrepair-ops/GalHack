@@ -184,7 +184,7 @@ public partial class StructureMesh : Node3D
         }
         if (!_chunks.TryGetValue(chunk, out MeshInstance3D mesh))
         {
-            mesh = new MeshInstance3D { Name = $"Chunk{chunk.X}_{chunk.Y}_{chunk.Z}" };
+            mesh = new MeshInstance3D { Name = $"Chunk{chunk.X}_{chunk.Y}_{chunk.Z}", ProcessMode = ProcessModeEnum.Disabled }; // never processes: a zone's mode passes it by (StructureShapes)
             AddChild(mesh);
             if (!Powered) mesh.SetInstanceShaderParameter("powered", 0f);
             _chunks[chunk] = mesh;

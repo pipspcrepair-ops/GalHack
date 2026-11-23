@@ -389,7 +389,7 @@ public partial class CrowdTest : Node
             var live = herd.Where(c => c.Alive && !c.Removed && !c.Attacking && c.State != CState.Chase).ToList(); // (one going for you closes to strike: not keeping its distance)
             foreach (Creature c in live)
             {
-                Creature o = live.Where(x => x != c).OrderBy(x => WildSim.Flat(x.Position - c.Position).Length() - x.Radius).FirstOrDefault();
+                Creature o = live.Where(x => x != c && Level(x, c)).OrderBy(x => WildSim.Flat(x.Position - c.Position).Length() - x.Radius).FirstOrDefault(); // (a leaper clear over another's back is not in it)
                 if (o == null) continue;
                 float nearest = WildSim.Flat(o.Position - c.Position).Length() - c.Radius - o.Radius;
                 if (-nearest > _herdWorst) (_herdWorst, _herdWorstAt) = (-nearest, $"{c.State}{(c.Species.Adult != null ? " young" : "")} and {o.State}{(o.Species.Adult != null ? " young" : "")}, {(alarmed ? "alarmed" : "grazing")}; spaced {c.Spaced}/{o.Spaced}, step every {c.StepEvery}/{o.StepEvery}, kept {c.Keeper != null}/{o.Keeper != null}, speed {WildSim.Flat(c.Velocity).Length():F2}/{WildSim.Flat(o.Velocity).Length():F2}, dormant {c.Dormant}/{o.Dormant}");
@@ -400,6 +400,9 @@ public partial class CrowdTest : Node
         if (!patch.Sim.Targets.Contains(patch.Player)) patch.Sim.Targets.Add(patch.Player);
         foreach (Creature c in herd) c.Removed = true;
     }
+
+    /// <summary>Whether two creatures stand at one level, as personal space has it: neither over the other's top.</summary>
+    static bool Level(Creature a, Creature b) => PersonalSpace.Level(new PersonalSpace.Body { Pos = a.Position, Height = a.Species.BodyHeight }, new PersonalSpace.Body { Pos = b.Position, Height = b.Species.BodyHeight });
 
     /// <summary>A frame of a point from a little way off and up (windowed only).</summary>
     IEnumerable<int> Snap(Vector3 at, string name, float back = 7f)

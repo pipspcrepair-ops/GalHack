@@ -64,7 +64,7 @@ public partial class SkyTraffic : Node
     int _tick;
     Vector3 _start;
 
-    /// <summary>What its ticks are timed by, ms: the wall clock, or (tests) the main thread's own time, which the OS's other work never adds to.</summary>
+    /// <summary>What its ticks (and a town's walk of its people out on runs) are timed by, ms: the wall clock, or (tests) the main thread's own time, which the OS's other work never adds to.</summary>
     public static Func<double> Clock = () => System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
 
     /// <summary>What its last tick cost, ms: the pilot, and every tenth tick its upkeep (tests).</summary>

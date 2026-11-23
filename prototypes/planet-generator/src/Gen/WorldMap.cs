@@ -121,6 +121,36 @@ public sealed class WorldMap
         return Mathx.Lerp(Mathx.Lerp(a, b, tx), Mathx.Lerp(c, d, tx), ty);
     }
 
+    /// <summary>
+    /// A per-cell field at a point in metres as a Catmull-Rom spline over the 4 by 4 cells round it, wrapping on both axes:
+    /// smooth, so its level lines are curves where bilinear ones trace the grid (a shore drawn from it is no stair of cells),
+    /// and through every cell's own value, so a lake keeps the reach it has (a B-spline shrank them off their beaches).
+    /// </summary>
+    public float SampleSmooth(float[] field, double x, double y)
+    {
+        double gx = x / CellSize - 0.5, gy = y / CellSize - 0.5;
+        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gy);
+        float tx = (float)(gx - i0), ty = (float)(gy - j0), sum = 0f;
+        for (int dj = -1; dj <= 2; dj++)
+        {
+            float row = 0f;
+            for (int di = -1; di <= 2; di++) row += field[Index(i0 + di, j0 + dj)] * Spline(tx, di);
+            sum += row * Spline(ty, dj);
+        }
+        // Held within the four cells round the point: past a step the spline overshoots, and a lake's bed would ring with water.
+        float a = field[Index(i0, j0)], b = field[Index(i0 + 1, j0)], c = field[Index(i0, j0 + 1)], d = field[Index(i0 + 1, j0 + 1)];
+        return Math.Clamp(sum, Math.Min(Math.Min(a, b), Math.Min(c, d)), Math.Max(Math.Max(a, b), Math.Max(c, d)));
+    }
+
+    /// <summary>The Catmull-Rom spline's weight for cell <paramref name="k"/> (-1 to 2) from a point <paramref name="t"/> past cell 0.</summary>
+    static float Spline(float t, int k) => k switch
+    {
+        -1 => (-t * t * t + 2f * t * t - t) * 0.5f,
+        0 => (3f * t * t * t - 5f * t * t + 2f) * 0.5f,
+        1 => (-3f * t * t * t + 4f * t * t + t) * 0.5f,
+        _ => (t * t * t - t * t) * 0.5f,
+    };
+
     /// <summary>Whether the sea is drawn over a point in metres (<see cref="SeaFrom"/>; both axes wrap).</summary>
     public bool IsSea(double x, double y) => Sample(SeaDepth, x, y) > SeaFrom;
 

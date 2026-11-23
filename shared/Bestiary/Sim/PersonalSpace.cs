@@ -29,6 +29,8 @@ public sealed class PersonalSpace
         public float Give;
         /// <summary>The distance it keeps past touching, m (0: none, it holds where it is).</summary>
         public float Keep;
+        /// <summary>How tall it stands, m (0: as a person, whom another 1.5 m over or under is on another floor).</summary>
+        public float Height;
         /// <summary>Out: how long it should wait before going on (a doorway), and the push it was given.</summary>
         public float Wait;
         public Vector3 Moved;
@@ -52,6 +54,16 @@ public sealed class PersonalSpace
 
     static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
 
+    /// <summary>
+    /// Whether two bodies are at one level, side by side: the higher one's feet lower than the other's top (at least 1.5 m, a
+    /// floor's worth). A tall leaper a body's height up still has its legs in the one under it; over its top, it is clear of it.
+    /// </summary>
+    public static bool Level(in Body a, in Body b)
+    {
+        float dy = b.Pos.Y - a.Pos.Y;
+        return MathF.Abs(dy) <= MathF.Max(1.5f, dy > 0f ? a.Height : b.Height);
+    }
+
     /// <summary>Separates the bodies: a few passes of pushing pairs apart, then a nudge to the right for those coming face to face. <paramref name="open"/>: whether body i can stand at a point.</summary>
     public void Resolve(float dt, Func<int, Vector3, bool> open = null, int passes = 3)
     {
@@ -71,7 +83,7 @@ public sealed class PersonalSpace
                         {
                             if (j <= i) continue;
                             Body b = Bodies[j];
-                            if (MathF.Abs(a.Pos.Y - b.Pos.Y) > 1.5f) continue; // another floor
+                            if (!Level(a, b)) continue; // another floor, or over it in a leap
                             Vector3 d = new(b.Pos.X - a.Pos.X, 0f, b.Pos.Z - a.Pos.Z);
                             float dist = d.Length(), want = a.Radius + b.Radius;
                             if (dist >= want) continue;
@@ -89,7 +101,7 @@ public sealed class PersonalSpace
                             {
                                 Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * overlap * ((i + j) % 2 == 0 ? 1f : -1f);
                                 if (a.Give >= b.Give && (open == null || open(i, a.Pos + side))) { pa = side; aOk = true; }
-                                else if (open == null || open(j, b.Pos - side)) { pb = -side; bOk = true; }
+                                else if (b.Give > 0f && (open == null || open(j, b.Pos - side))) { pb = -side; bOk = true; }
                                 // No room to part at all (a one-wide way): whoever is walking stops there and waits, never walks on through.
                                 if (!aOk && !bOk)
                                 {
@@ -132,7 +144,7 @@ public sealed class PersonalSpace
                         Body b = Bodies[j];
                         Vector3 d = new(b.Pos.X - a.Pos.X, 0f, b.Pos.Z - a.Pos.Z);
                         float dist = d.Length(), want = a.Radius + b.Radius;
-                        if (dist < 1e-3f || MathF.Abs(a.Pos.Y - b.Pos.Y) > 1.5f) continue;
+                        if (dist < 1e-3f || !Level(a, b)) continue;
                         Vector3 dir = d / dist;
                         float keep = a.Keep > 0f ? MathF.Max(a.Keep, b.Keep) : 0f;
                         if (keep > 0f && dist < want + keep) a.Room -= dir * MathF.Min(1.5f, (want + keep - dist) / keep);
@@ -164,7 +176,7 @@ public sealed class PersonalSpace
                 for (int dz = -1; dz <= 1; dz++)
                     if (_grid.TryGetValue(Key(cx + dx, cz + dz), out List<int> near))
                         foreach (int j in near)
-                            if (j > i && a.Give > 0f && Bodies[j].Give > 0f && MathF.Abs(a.Pos.Y - Bodies[j].Pos.Y) < 1.5f)
+                            if (j > i && a.Give > 0f && Bodies[j].Give > 0f && Level(a, Bodies[j]))
                             {
                                 float o = a.Radius + Bodies[j].Radius - new Vector2(a.Pos.X - Bodies[j].Pos.X, a.Pos.Z - Bodies[j].Pos.Z).Length();
                                 if (o > worst) { worst = o; WorstPair = (i, j); }

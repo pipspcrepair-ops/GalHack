@@ -59,8 +59,10 @@
     { "make": "control-unit",     "count": 1, "from": { "circuit-board": 3, "winding": 1, "iron-plate": 1 }, "seconds": 8,  "tier": 1 },
     { "make": "power-unit",       "count": 1, "from": { "winding": 4, "circuit-board": 1, "iron-plate": 2 }, "seconds": 10, "tier": 1 },
     { "make": "thrust-assembly",  "count": 1, "from": { "nozzle": 2, "magnet": 2, "iron-plate": 2 }, "seconds": 10, "tier": 2 },
+    // A drive's own parts come from its worlds (owner, 22 Nov): the warp coil's starsilver from vacuum worlds,
+    // the field emitter's fold crystal from high-gravity ones.
     { "make": "field-emitter",    "count": 1, "from": { "fold-crystal": 2, "logic-module": 1, "winding": 2 }, "seconds": 14, "tier": 2 },
-    { "make": "warp-coil",        "count": 1, "from": { "fold-crystal": 4, "starsilver-bar": 2, "magnet": 4 }, "seconds": 30, "tier": 3 },
+    { "make": "warp-coil",        "count": 1, "from": { "starsilver-bar": 4, "magnet": 4 }, "seconds": 30, "tier": 3 },
     { "make": "fusion-core",      "count": 1, "from": { "emberite": 2, "magnet": 2, "machine-frame": 1 }, "seconds": 30, "tier": 3 },
     { "make": "voidglass-lens",   "count": 1, "from": { "voidglass": 1, "glass": 2 },    "seconds": 14,  "tier": 3 },
     { "make": "storm-capacitor",  "count": 1, "from": { "stormcore": 1, "winding": 2 },  "seconds": 14,  "tier": 3 },

@@ -24,7 +24,12 @@ namespace PlanetSurface.Skies;
 /// </summary>
 public sealed class BodySurfaces
 {
-    public const int Width = 256, Height = 128, Layers = 32;
+    /// <summary>
+    /// A moon's far look hands over to its own globe about 9 km off, where its disc is a couple of hundred
+    /// pixels across, and the start world seen from its moon is as big: half this width is the hemisphere
+    /// in view, so at those sizes it is about a texel to a pixel, never smeared (owner, 17 Nov).
+    /// </summary>
+    public const int Width = 512, Height = 256, Layers = 32;
 
     /// <summary>What the array holds, mipmaps and all: the same whatever the system.</summary>
     public const long MemoryBytes = Layers * (long)Width * Height * 4 * 4 / 3;
@@ -62,8 +67,16 @@ public sealed class BodySurfaces
         // The world itself last: its moons' skies see it, and they share these.
         if (model.Home.Spec != null) order.Add(model.Home);
         Wanted = order.Count;
-        new Thread(() => Work(order)) { IsBackground = true, Name = "Body surfaces", Priority = ThreadPriority.BelowNormal }.Start();
+        System.Threading.Tasks.Task.Factory.StartNew(() => Work(order), CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.None, Painters);
     }
+
+    /// <summary>
+    /// Where paint for far looks and globes is made: a quarter of the cores the game runs on (<see cref="Terrain.TerrainStreamer.Cores"/>; one at the least). The generator's loops run
+    /// in parallel on whatever scheduler they are started from, so on all of them otherwise, and on the minimum spec's four
+    /// cores that took the frame's own threads' time while the system's bodies were painted.
+    /// </summary>
+    public static readonly System.Threading.Tasks.TaskScheduler Painters =
+        new System.Threading.Tasks.ConcurrentExclusiveSchedulerPair(System.Threading.Tasks.TaskScheduler.Default, Math.Max(1, Terrain.TerrainStreamer.Cores / 4)).ConcurrentScheduler;
 
     void Work(List<Orbiter> order)
     {

@@ -43,6 +43,8 @@
     "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
+    // On a world a nuclear war blasted, a dust storm lifts the craters' fallout: deep inside one, this share of the strongest crater's reading.
+    "dustFallout": 0.25,
     // A sealed room aboard a powered structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
     "sealedRoomC": 20,
     // A sealed room's air: with its structure powered it eases to sealedRoomC (the gap shrinks by e every roomEaseSeconds,

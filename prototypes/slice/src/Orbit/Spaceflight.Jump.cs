@@ -27,8 +27,6 @@ public partial class Spaceflight
     /// <summary>Most a tick's arrival work took on the main thread, ms (tests read it).</summary>
     public double WorstArrivalMs { get; private set; }
 
-    /// <summary>How many zones jumps have woken (in the tunnel) or parked (left behind): proto/orbitclean's piecewise Park/Run replaces both, so tests time those ticks apart.</summary>
-    public int ZonesSwitched { get; private set; }
 
     (int Items, int Blocks) _jumpTotals;
     string _arrivalLaps = "";
@@ -112,7 +110,6 @@ public partial class Spaceflight
             _leaving = null;
             var watch = Stopwatch.StartNew();
             done.To.Left(this, left);
-            ZonesSwitched++;
             WorstArrivalMs = Math.Max(WorstArrivalMs, watch.Elapsed.TotalMilliseconds);
             GD.Print($"[jump: {left.Name} left behind in {watch.Elapsed.TotalMilliseconds:F1} ms]");
         }
@@ -153,8 +150,8 @@ public partial class Spaceflight
                     if (j.To.Zone != Game.Zone)
                     {
                         j.To.Zone.Camera = Game.Camera; // what it draws for itself (its weather's looks) faces the one camera from its first tick
-                        Wake(j.To.Zone);
-                        ZonesSwitched++;
+                        Run(j.To.Zone); // a piece a frame, under the tunnel
+                        j.To.Zone.Visible = true;
                     }
                     j.Woken = true;
                 }
@@ -235,7 +232,11 @@ public partial class Spaceflight
         else
         {
             StreamAhead(false, default);
-            if (!j.Woken) Wake(to);
+            if (!j.Woken)
+            {
+                Run(to);
+                to.Visible = true;
+            }
             double woke = watch.Elapsed.TotalMilliseconds;
             Handover.Move(from, to, s, v, a.Position, a.Rotation, N.Vector3.Zero);
             g.EnterZone(to);
@@ -272,7 +273,7 @@ public partial class Spaceflight
         FrameAt(orbit, at);
         _aligned = false;
         _band = 0f; // the next frame lays it all out as space (AllSpace)
-        _wreckFade = -1f;
+        _wreckNext = 0; // its wrecks fade by their own records
         _sky = null;
         foreach (SurfaceZone z in AllSurfaces())
             if (z.Sky != null) z.Sky.Days = days;

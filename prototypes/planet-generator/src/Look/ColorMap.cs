@@ -35,47 +35,79 @@ public sealed class ColorMap
     const int SoftenPasses = 8;  // about two cells of spread: past the stair-steps a 32 m grid leaves in a border
 
     /// <param name="land">The ground's own colour at a map point (metres), for a map that must match the land you stand on; null: the biomes' colours.</param>
-    public static ColorMap Build(WorldMap map, ArchetypeLook look, int width, Func<double, double, Rgb> land = null)
+    public static ColorMap Build(WorldMap map, ArchetypeLook look, int width, Func<double, double, Rgb> land = null) =>
+        Build(map, look, 0, 0, map.WidthMeters / width, width, width / 2, land);
+
+    /// <summary>
+    /// A window of the same paint, finer: <paramref name="width"/> by <paramref name="height"/> pixels of
+    /// <paramref name="metres"/> each from the map point (<paramref name="x0"/>, <paramref name="y0"/>), wrapping
+    /// round the map (the globe's ground near you, painted at the grain it is seen at).
+    /// </summary>
+    public static ColorMap Build(WorldMap map, ArchetypeLook look, double x0, double y0, double metres, int width, int height, Func<double, double, Rgb> land = null)
     {
-        int height = width / 2;
         var result = new ColorMap(width, height);
-        int n = map.Count;
+        Paint(new Cells(map, look), map, look, x0, y0, metres, width, height, land, result.Albedo, result.Glow, new float[width * height]);
+        return result;
+    }
 
-        // Per-cell inputs, so per-pixel work is just blending.
-        Rgb[] color = CellColors(map, look, out Rgb[] glow);
-        var shade = new float[n];
-        float flat = Light.z;
-        for (int k = 0; k < n; k++)
+    /// <summary>
+    /// The paint's per-cell inputs, so per-pixel work is just blending: biome colour and glow spread across borders, and the
+    /// relief's shade. The same for every window of a map, so a painter that paints windows again and again works them out once.
+    /// </summary>
+    public sealed class Cells
+    {
+        public readonly Rgb[] Color, Glow;
+        public readonly float[] Shade;
+
+        public Cells(WorldMap map, ArchetypeLook look)
         {
-            int i = k % map.Width, j = k / map.Width;
-            float east = map.Elevation[map.Index(i + 1, j)], west = map.Elevation[map.Index(i - 1, j)];
-            float south = map.Elevation[map.Index(i, Math.Min(j + 1, map.Height - 1))];
-            float north = map.Elevation[map.Index(i, Math.Max(j - 1, 0))];
-            float gx = Math.Max(east, 0f) - Math.Max(west, 0f), gy = Math.Max(south, 0f) - Math.Max(north, 0f);
-            var nrm = Normalize(-gx * Relief / (2f * map.CellSize), -gy * Relief / (2f * map.CellSize), 1f);
-            float s = nrm.x * Light.x + nrm.y * Light.y + nrm.z * Light.z;
-            shade[k] = Math.Clamp(1f + (s - flat) * 1.5f, 0.5f, 1.35f);
+            Color = CellColors(map, look, out Glow);
+            int n = map.Count;
+            var shade = new float[n];
+            float flat = Light.z;
+            for (int k = 0; k < n; k++)
+            {
+                int i = k % map.Width, j = k / map.Width;
+                float east = map.Elevation[map.Index(i + 1, j)], west = map.Elevation[map.Index(i - 1, j)];
+                float south = map.Elevation[map.Index(i, Math.Min(j + 1, map.Height - 1))];
+                float north = map.Elevation[map.Index(i, Math.Max(j - 1, 0))];
+                float gx = Math.Max(east, 0f) - Math.Max(west, 0f), gy = Math.Max(south, 0f) - Math.Max(north, 0f);
+                var nrm = Normalize(-gx * Relief / (2f * map.CellSize), -gy * Relief / (2f * map.CellSize), 1f);
+                float s = nrm.x * Light.x + nrm.y * Light.y + nrm.z * Light.z;
+                shade[k] = Math.Clamp(1f + (s - flat) * 1.5f, 0.5f, 1.35f);
+            }
+            Shade = Soften(map, shade, 2); // a cliff one cell wide would otherwise shade as a stair of cells
         }
-        shade = Soften(map, shade, 2); // a cliff one cell wide would otherwise shade as a stair of cells
+    }
 
-        float[] rivers = RasterizeRivers(map, width, height);
+    /// <summary>
+    /// A window of the paint (as <see cref="Build(WorldMap, ArchetypeLook, double, double, double, int, int, Func{double, double, Rgb})"/>)
+    /// into buffers the caller keeps: <paramref name="albedo"/> RGBA8, <paramref name="glowOut"/> RGB8 (null: none wanted),
+    /// <paramref name="rivers"/> a pixel's worth of scratch each.
+    /// </summary>
+    public static void Paint(Cells cells, WorldMap map, ArchetypeLook look, double x0, double y0, double metres, int width, int height,
+        Func<double, double, Rgb> land, byte[] albedo, byte[] glowOut, float[] rivers)
+    {
+        Rgb[] color = cells.Color, glow = cells.Glow;
+        float[] shade = cells.Shade;
+        RasterizeRivers(map, x0, y0, metres, width, height, rivers);
         var jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), BorderWave, 4);
         Rgb riverColor = Rgb.Lerp(look.ShallowSea, look.DeepSea, 0.25f);
         bool lava = map.Def.Liquid == Liquid.Lava;
-        double sx = map.WidthMeters / width, sy = map.HeightMeters / height;
 
         Parallel.For(0, height, py =>
         {
             for (int px = 0; px < width; px++)
             {
-                double x = (px + 0.5) * sx, y = (py + 0.5) * sy;
+                double x = Mathx.WrapX(x0 + (px + 0.5) * metres, map.WidthMeters), y = Mathx.Wrap(y0 + (py + 0.5) * metres, map.HeightMeters);
                 double gx = x / map.CellSize - 0.5, gy = y / map.CellSize - 0.5;
                 int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gy);
                 float tx = (float)(gx - i0), ty = (float)(gy - j0);
                 int a = map.Index(i0, j0), b = map.Index(i0 + 1, j0);
                 int c = map.Index(i0, j0 + 1), d = map.Index(i0 + 1, j0 + 1);
                 float wa = (1 - tx) * (1 - ty), wb = tx * (1 - ty), wc = (1 - tx) * ty, wd = tx * ty;
-                float e = map.Elevation[a] * wa + map.Elevation[b] * wb + map.Elevation[c] * wc + map.Elevation[d] * wd;
+                // The shore from a cubic spread over the cells round it: straight between cells it traced the grid, a stair of 32 m steps.
+                float e = map.SampleSmooth(map.Elevation, x, y);
                 bool liquid = e < 0f;
 
                 Rgb col, emit = default;
@@ -138,17 +170,17 @@ public sealed class ColorMap
                 }
 
                 int o = (py * width + px) * 4;
-                result.Albedo[o] = Rgb.Byte(col.R);
-                result.Albedo[o + 1] = Rgb.Byte(col.G);
-                result.Albedo[o + 2] = Rgb.Byte(col.B);
-                result.Albedo[o + 3] = liquid ? (byte)255 : (byte)0;
+                albedo[o] = Rgb.Byte(col.R);
+                albedo[o + 1] = Rgb.Byte(col.G);
+                albedo[o + 2] = Rgb.Byte(col.B);
+                albedo[o + 3] = liquid ? (byte)255 : (byte)0;
+                if (glowOut == null) continue;
                 int g = (py * width + px) * 3;
-                result.Glow[g] = Rgb.Byte(emit.R);
-                result.Glow[g + 1] = Rgb.Byte(emit.G);
-                result.Glow[g + 2] = Rgb.Byte(emit.B);
+                glowOut[g] = Rgb.Byte(emit.R);
+                glowOut[g + 1] = Rgb.Byte(emit.G);
+                glowOut[g + 2] = Rgb.Byte(emit.B);
             }
         });
-        return result;
     }
 
     /// <summary>
@@ -248,17 +280,22 @@ public sealed class ColorMap
         total += w;
     }
 
-    /// <summary>Draws river polylines as anti-aliased lines; small streams fade out rather than vanish.</summary>
-    static float[] RasterizeRivers(WorldMap map, int width, int height)
+    /// <summary>Draws river polylines as anti-aliased lines over a window of the map (as <see cref="Build(WorldMap, ArchetypeLook, double, double, double, int, int, Func{double, double, Rgb})"/>); small streams fade out rather than vanish.</summary>
+    static void RasterizeRivers(WorldMap map, double fromX, double fromY, double metres, int width, int height, float[] mask)
     {
-        var mask = new float[width * height];
-        double sx = width / map.WidthMeters, sy = height / map.HeightMeters;
+        Array.Clear(mask, 0, width * height);
+        double s = 1.0 / metres, w = map.WidthMeters, h = map.HeightMeters;
+        // The whole map wraps its pixels round; a window cuts off what falls outside it.
+        bool whole = width * metres >= w - 1e-6;
+        // Each segment is laid out from its first point taken the near way round to the window's middle.
+        double midX = fromX + width * metres * 0.5, midY = fromY + height * metres * 0.5;
         foreach (River r in map.Rivers)
         {
             for (int k = 0; k + 1 < r.Count; k++)
             {
-                double ax = r.X[k] * sx, ay = r.Y[k] * sy, bx = r.X[k + 1] * sx, by = r.Y[k + 1] * sy;
-                float widthPx = r.Width[k] * (float)sx;
+                double ox = midX + Mathx.WrapDelta(r.X[k] - midX, w) - fromX, oy = midY + Mathx.WrapDelta(r.Y[k] - midY, h) - fromY;
+                double ax = ox * s, ay = oy * s, bx = (ox + r.X[k + 1] - r.X[k]) * s, by = (oy + r.Y[k + 1] - r.Y[k]) * s;
+                float widthPx = r.Width[k] * (float)s;
                 float half = Math.Max(widthPx * 0.5f, 0.45f);
                 float alpha = Math.Clamp(widthPx * 1.5f + 0.25f, 0.3f, 1f);
                 int x0 = (int)Math.Floor(Math.Min(ax, bx) - half - 1), x1 = (int)Math.Ceiling(Math.Max(ax, bx) + half + 1);
@@ -271,14 +308,13 @@ public sealed class ColorMap
                     double t = len2 > 0 ? Math.Clamp(((cx - ax) * vx + (cy - ay) * vy) / len2, 0, 1) : 0;
                     double dx = cx - (ax + vx * t), dy = cy - (ay + vy * t);
                     float cover = Math.Clamp(half + 0.5f - (float)Math.Sqrt(dx * dx + dy * dy), 0f, 1f) * alpha;
-                    if (cover <= 0f) continue;
+                    if (cover <= 0f || !whole && (px < 0 || py < 0 || px >= width || py >= height)) continue;
                     int wx = (px % width + width) % width, wy = (py % height + height) % height;
                     ref float m = ref mask[wy * width + wx];
                     m = Math.Max(m, cover);
                 }
             }
         }
-        return mask;
     }
 
     static (float x, float y, float z) Normalize(float x, float y, float z)

@@ -196,6 +196,9 @@ public partial class Spaceflight
         while (orbit.Home.Surface is { } rolling && !rolling.Wildlife.LifeReady) yield return false;
         if (orbit.Home.Surface is { } surface)
             for (Doing = "its surface arriving"; !surface.TryArrive(); Doing = "its surface arriving: " + surface.ArriveSteps.Split(", ").Where(s => s != "").LastOrDefault()) yield return false;
+        // Made parked: what its physics moves goes in shelved now, not on the frame it first runs (Spaceflight.Prepare).
+        Prepare(orbit);
+        if (orbit.Home.Surface is { } ground) Prepare(ground);
         GD.Print($"[{orbit.Name} made: {orbit.Bodies.Count} bodies with ground or frame, {orbit.Wrecks.Count} wrecks, setting up {orbit.LongestBuildMs:F1} ms at most; its surface arrived {orbit.Home.Surface?.ArriveSteps}]");
         yield return true;
     }
@@ -231,6 +234,10 @@ public partial class Spaceflight
         _hiddenKidsOf.Remove(z);
         _sunOf.Remove(z);
         _highest.Remove(z);
+        _workOf.Remove(z);
+        foreach (Vessel w in _wreckFadeOf.Keys.Where(w => w.Zone == z).ToList()) _wreckFadeOf.Remove(w);
+        _prepared.Remove(z);
+        foreach (CollisionObject3D body in _shelved.Keys.Where(b => !IsInstanceValid(b) || IsInstanceValid(z) && z.IsAncestorOf(b)).ToList()) _shelved.Remove(body);
         if (!IsInstanceValid(z)) return;
         if (z.IsInsideTree()) z.QueueFree();
         else z.Free();

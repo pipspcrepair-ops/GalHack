@@ -49,7 +49,7 @@ public partial class WarpTest : Node
     Vessel _ship;
     string _shots;
     readonly Dictionary<string, string> _args = new();
-    readonly List<double> _cpu = new(), _wall = new(), _parking = new();
+    readonly List<double> _cpu = new(), _wall = new();
     readonly Dictionary<string, List<double>> _byStage = new();
     readonly Dictionary<Orbiter, Vector2> _sites = new(); // each world's landing site, map metres
     double _worstCpu;
@@ -438,16 +438,11 @@ public partial class WarpTest : Node
         var views = new List<SeatView>();
         Jump.Stage stage = j.Now;
         SplitStart();
-        // The frames that wake the zone gone to and park the zone left are timed apart: proto/orbitclean's piecewise Park/Run replaces them.
-        int switched = Flight.ZonesSwitched;
-        bool apart = false;
         for (int i = 0; i < 60 * 240 && j.Running; i++)
         {
             yield return 0;
             bool kept = _keep != null; // the frame keeping for the seat's proof slows its frames: not counted
-            if (apart) { apart = false; _parking.Add(probe.LastCpuMs); }
-            else if (!kept) Frame(probe, $"warp to {route.Name}, {j.Now}");
-            if (Flight.ZonesSwitched != switched) (switched, apart) = (Flight.ZonesSwitched, true);
+            if (!kept) Frame(probe, $"warp to {route.Name}, {j.Now}");
             if (j.Now != stage) { SplitReport($"{route.Name}, {stage}"); stage = j.Now; }
             if (j.Now != Jump.Stage.Spool && spooled < 0) spooled = clock.Elapsed.TotalSeconds;
             if (_shots != null && j.Now == Jump.Stage.Spool && j.Spooled > 0.6 && shotSpool < 0) { shotSpool = 1; Shot($"spool-{Charts.Tidy(target.Name)}"); }
@@ -462,10 +457,9 @@ public partial class WarpTest : Node
         for (int i = 0; i < 90; i++)
         {
             yield return 0;
-            if (apart) { apart = false; _parking.Add(probe.LastCpuMs); }
-            else Frame(probe, $"arrived at {route.Name}");
-            if (Flight.ZonesSwitched != switched) (switched, apart) = (Flight.ZonesSwitched, true);
+            Frame(probe, $"arrived at {route.Name}");
         }
+        foreach (int x in UntilParked()) yield return x;
         probe.Remove();
         SplitReport($"{route.Name}, after arrival");
         foreach (SeatView v in views) Judge(v, route, awayDeg);
@@ -520,6 +514,12 @@ public partial class WarpTest : Node
             $"the sleeper and everyone aboard came along: seated, {ridersNow} riding the hull (was {riders}), the hull in one zone's world");
         Check(j.Audit.Count == 0, $"the ledger: nothing lost, doubled or misplaced ({string.Join("; ", j.Audit)})");
         Leftovers($"after the warp to {route.Name}");
+    }
+
+    /// <summary>The zone left parks a piece a frame, the zone itself last: parked once its mode reads Disabled.</summary>
+    IEnumerable<int> UntilParked()
+    {
+        for (int i = 0; i < 600 && Flight.AllZones().Any(z => z != _game.Zone && z.ProcessMode != ProcessModeEnum.Disabled); i++) yield return 0;
     }
 
     /// <summary>Nothing of a zone you are not in shows: its sky, its light, its sound, its globes; gravity and the camera are the zone's own.</summary>
@@ -657,6 +657,7 @@ public partial class WarpTest : Node
             Check(ore > 0, $"{name} is airless and holds pentaxite: {ore} warp fuel deposits");
         }
         if (_shots != null) Shot($"landed-{name}");
+        foreach (int x in UntilParked()) yield return x;
         Leftovers($"landed on {name}");
     }
 
@@ -741,7 +742,6 @@ public partial class WarpTest : Node
         var (p95, worst) = Spread(_cpu);
         var (wallP95, wallWorst) = Spread(_wall);
         foreach (var (stage, ms) in _byStage) { var (s95, sWorst) = Spread(ms); GD.Print($"  ({stage}: CPU 95th {s95:F1} ms, worst {sWorst:F1} ms over {ms.Count} frames)"); }
-        if (_parking.Count > 0) GD.Print($"  (left out of the budget: the frames waking the zone gone to and parking the zone left, proto/orbitclean's piecewise Park/Run to fix: {string.Join(", ", _parking.Select(ms => ms.ToString("F0")))} ms)");
         GD.Print($"  frame times through every warp, CPU: 95th {p95:F1} ms, worst {worst:F1} ms ({_worstAt}); wall: 95th {wallP95:F1} ms, worst {wallWorst:F1} ms; {_cpu.Count} frames, {(_args.ContainsKey("minspec") ? "min spec stand-in" : "this machine")}, {(_shots != null ? "windowed" : "headless")}");
         Check(p95 < 16.7 && worst < 33.4, $"the warps keep the frame budget in CPU time: 95th percentile {p95:F1} ms (budget 16.7), worst {worst:F1} ms (no frame dropped twice)");
     }

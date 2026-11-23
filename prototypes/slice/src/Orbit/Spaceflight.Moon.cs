@@ -20,7 +20,7 @@ namespace Slice.Orbit;
 /// Gravity frames hand over: in the orbit zone you fly in the frame of the body you are near (the
 /// zone's anchor). As you come within a moon's reach it takes over: it holds still and the world
 /// you left moves round it, so its ground waits where you see it. The descent onto it and the climb
-/// off it are the start world's, the same seam over its own map, with no air to shroud it.
+/// off it are the start world's, the same seam over its own map.
 /// </summary>
 public partial class Spaceflight
 {
@@ -78,7 +78,9 @@ public partial class Spaceflight
             if (!c.Surface.Making && (c == Here || eye.DistanceTo(c.Centre) - c.GlobeRadius < Rules.Space.MakeMoonWithin)) c.Surface.Make();
         SurfaceZone m = Below;
         if (Here.IsHome || m.Arrived) return;
-        if (m.TryArrive()) GD.Print($"[{Here.Name}'s surface arrived, a piece a frame: {m.ArriveSteps}]");
+        if (!m.TryArrive()) return;
+        GD.Print($"[{Here.Name}'s surface arrived, a piece a frame: {m.ArriveSteps}]");
+        Prepare(m);
     }
 
     /// <summary>
@@ -185,7 +187,7 @@ public partial class Spaceflight
         Vector3 south = MathX.Rotate(frame, N.Vector3.UnitZ).ToGodot();
         N.Quaternion map = c.Map.Frame(gx, gz);
         float R = c.GlobeRadius;
-        float air = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir ? Globe.AirShare(c.World.Sky.Density) : 0f;
+        float air = c.World != null ? Globe.AirShare(c.World.Sky.Density) : 0f;
         int umbrae = Orbit.Space.Umbrae(Orbit.Home.Seen, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
         c.Globe.Draw(new WorldView
         {

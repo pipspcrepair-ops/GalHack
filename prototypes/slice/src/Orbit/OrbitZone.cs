@@ -159,6 +159,7 @@ public partial class OrbitZone : SurfaceZone
     public override void _Ready()
     {
         ProcessPhysicsPriority = 50;
+        StandStill();
         if (_preparing.IsFaulted) throw new InvalidOperationException("the orbit failed to build", _preparing.Exception);
         Physics = new PhysicsWorld(Data.Physics);
         // No weight anywhere and never in the atmosphere: the handling model flies by its space rules.
@@ -197,6 +198,7 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>One piece of setting up, called once a frame while it waits parked: a texture, a wreck.</summary>
     public void BuildStep()
     {
+        CatchUp();
         if (Ready) MoonStep();
         if (Ready || _building == null) return;
         var watch = Stopwatch.StartNew();
@@ -241,6 +243,27 @@ public partial class OrbitZone : SurfaceZone
 
     Node _apart;
 
+    readonly Queue<BodyBinding> _catchUp = new();
+    readonly HashSet<BodyBinding> _catchingUp = new();
+
+    /// <summary>A body's node put where its body is now (which resets its interpolation too).</summary>
+    void Sync(BodyBinding binding)
+    {
+        _catchingUp.Remove(binding);
+        if (IsInstanceValid(binding.Node)) binding.Teleport();
+    }
+
+    /// <summary>Nodes left out of sight by <see cref="Align"/> catch up with their bodies, a millisecond's worth a frame.</summary>
+    void CatchUp()
+    {
+        long started = Stopwatch.GetTimestamp();
+        while (_catchUp.TryDequeue(out BodyBinding binding))
+        {
+            if (_catchingUp.Contains(binding)) Sync(binding);
+            if (Stopwatch.GetElapsedTime(started).TotalMilliseconds > 1.0) return;
+        }
+    }
+
     /// <summary>
     /// Lays the zone out so the start world's map point (x, z) lies under the world point (sx, sz):
     /// the globe's ground tangent to sea level there, its local east, up and south along the world's
@@ -264,9 +287,11 @@ public partial class OrbitZone : SurfaceZone
             b.Velocity = N.Vector3.Transform(b.Velocity, d);
             b.AngularVelocity = N.Vector3.Transform(b.AngularVelocity, d);
             b.Up = N.Vector3.Transform(b.Up, d);
-            BodyBinding binding = Host.BindingOf(b);
-            binding?.Teleport();
-            binding?.Node.ResetPhysicsInterpolation();
+            // Its node follows: at once if it can be seen, otherwise over the next frames (CatchUp). A big hull's node is thousands
+            // of shapes and meshes, and putting them all in their new place cost the crossing 20 ms; out of sight that can wait.
+            if (Host.BindingOf(b) is not BodyBinding binding) continue;
+            if (binding.Node.IsVisibleInTree()) Sync(binding);
+            else if (_catchingUp.Add(binding)) _catchUp.Enqueue(binding);
         }
         foreach (Lootable l in Loot.All)
         {

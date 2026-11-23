@@ -151,7 +151,8 @@ public partial class Spaceflight
             foreach (Celestial c in o.Bodies)
                 if (c.Globe != null) c.Globe.Visible = false; // its globes hang outside the zone (the far land from its surfaces): none stays in another orbit's view
         }
-        Park(from);
+        Park(from); // a piece a frame
+        from.Visible = false;
     }
 
     /// <summary>A warp's destination: the orbit holding the body (made for the jump if there is none yet) and the point in its highest orbit.</summary>

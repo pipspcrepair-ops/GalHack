@@ -75,7 +75,13 @@ public sealed class StructureShapes
                 shapes.Add(new CollisionShape3D { Shape = new BoxShape3D { Size = box.Size.ToGodot() }, Position = box.Center.ToGodot() });
             foreach (HullCollider hull in c.Hulls)
                 shapes.Add(new CollisionShape3D { Shape = new ConvexPolygonShape3D { Points = hull.Points.Select(p => p.ToGodot()).ToArray() } });
-            foreach (CollisionShape3D s in shapes) _owner.AddChild(s);
+            // A shape never processes: set apart from its body's mode, a zone parked or woken (ProcessMode) doesn't visit
+            // every one of a big hull's thousands of them, which cost a crossing 15 ms a hull each way.
+            foreach (CollisionShape3D s in shapes)
+            {
+                s.ProcessMode = Node.ProcessModeEnum.Disabled;
+                _owner.AddChild(s);
+            }
             ShapeCount += shapes.Count;
             _chunks[c.Chunk] = (c.Hash, shapes);
             LastRebuilt++;

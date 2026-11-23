@@ -83,7 +83,7 @@ public partial class SpaceSky : Node3D
         """;
 
     /// <summary>A world or moon: bands on a giant, a plain rock otherwise, lit exactly as the sky's shader lights them.</summary>
-    const string BodySource = $$"""
+    static readonly string BodySource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, unshaded, blend_mix, depth_draw_always, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
@@ -131,7 +131,7 @@ public partial class SpaceSky : Node3D
                 vec2 uv = vec2(atan(dot(n, cross(axis, zero)), dot(n, zero)) / 6.2831853, acos(clamp(dot(n, axis), -1.0, 1.0)) / 3.1415927);
                 // By the normal's own change across the pixel: the longitude jumps a turn at its seam.
                 float across = length(fwidth(n));
-                vec4 own = textureLod(surfaces, vec3(uv, float(layer)), log2(max(across * 40.7, 1.0)));
+                vec4 own = textureLod(surfaces, vec3(uv, float(layer)), log2(max(across * {{BodySurfaces.Width}}.0 / 6.2831853, 1.0)));
                 surface = own.rgb;
                 glows = own.a;
             }
