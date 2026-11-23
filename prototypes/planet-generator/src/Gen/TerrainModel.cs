@@ -120,7 +120,7 @@ public sealed class TerrainModel
         // the commonest (every surface saturated with them), the big ones a few to a world.
         var craters = new System.Collections.Generic.List<FeatureGrid>();
         for (double c = def.CraterSpacing; def.CraterSpacing > 0 && c >= CraterFinest; c /= CraterStep)
-            craters.Add(new FeatureGrid(Width, Height, c, _seed, 22 + 1000 * craters.Count, craters.Count == 0 ? 0.75f : 0.96f));
+            craters.Add(new FeatureGrid(Width, Height, c, _seed, 22 + 1000 * craters.Count, (craters.Count == 0 ? 0.75f : 0.96f) * def.CraterCover));
         _craterGrids = craters.ToArray();
         _coneGrid = new FeatureGrid(Width, Height, 900, _seed, 23, 0.8f);
         _ringGrid = new FeatureGrid(Width, Height, 2300, _seed, 24, 0.8f);
@@ -676,8 +676,8 @@ public sealed class TerrainModel
         return result;
     }
 
-    /// <summary>The smallest craters' spacing, m: a few metres across, under the player's feet.</summary>
-    const double CraterFinest = 12;
+    /// <summary>The smallest craters' spacing, m: 6 to 16 m across, under the player's feet (smaller ones the 1 m ground can't draw).</summary>
+    const double CraterFinest = 20;
     /// <summary>How much smaller each size of crater is than the one before.</summary>
     const double CraterStep = 2.0;
     /// <summary>How many craters each cell of a size's grid holds at most: two, so every size is about as thick as saturation allows, for one cell's hash.</summary>
@@ -726,10 +726,10 @@ public sealed class TerrainModel
             for (int dx = 0; dx <= 1; dx++)
             {
                 if (!FeatureGrid.Within(dx, dy, cu, cv, CraterReach)) continue;
-                ulong cell = grid.CellHash(ix + dx, iy + dy);
+                ulong cell = grid.CraterCell(ix + dx, iy + dy);
                 for (int k = 0; k < CratersPerCell; k++)
                 {
-                    if (!grid.Feature(cell, ix + dx, iy + dy, k, out double fx, out double fy, out ulong h)) continue;
+                    if (!grid.Crater(cell, ix + dx, iy + dy, k, out double fx, out double fy, out ulong h)) continue;
                     float ddx = (float)(x - fx), ddy = (float)(y - fy);
                     if (ddx * ddx + ddy * ddy >= most * most) continue;
                     var (radius, fresh) = Impact(grid, h);
@@ -762,7 +762,7 @@ public sealed class TerrainModel
 
     /// <summary>A crater's radius, m, and how fresh it is (0.3 worn by everything since, 1 sharp), from its grid and its hash.</summary>
     static (float Radius, float Fresh) Impact(in FeatureGrid grid, ulong h) =>
-        ((float)grid.Spacing * Mathx.Lerp(0.12f, CraterMost, Hash.Unit(h, 3)), Mathx.Lerp(0.3f, 1f, Hash.Unit(h, 4)));
+        ((float)grid.Spacing * Mathx.Lerp(0.12f, CraterMost, FeatureGrid.Bits(h, 48)), Mathx.Lerp(0.3f, 1f, Hash.Unit(h, 4)));
 
     static float Square(float v) => v * v;
 
@@ -785,7 +785,7 @@ public sealed class TerrainModel
             for (int dx = 0; dx <= 1; dx++)
             for (int k = 0; k < CratersPerCell && FeatureGrid.Within(dx, dy, cu, cv, CraterReach); k++)
             {
-                if (!grid.Feature(grid.CellHash(ix + dx, iy + dy), ix + dx, iy + dy, k, out double fx, out double fy, out ulong h)) continue;
+                if (!grid.Crater(grid.CraterCell(ix + dx, iy + dy), ix + dx, iy + dy, k, out double fx, out double fy, out ulong h)) continue;
                 var (radius, fresh) = Impact(grid, h);
                 if (radius < BlockCrater || fresh < 0.65f) continue;
                 float reach = Mathx.Lerp(0.45f, EjectaMost, fresh);
@@ -812,7 +812,7 @@ public sealed class TerrainModel
             for (int c = 0; c < grid.Cells; c++)
             for (int k = 0; k < CratersPerCell; k++)
             {
-                if (!grid.Feature(grid.CellHash(c % grid.Nx, c / grid.Nx), c % grid.Nx, c / grid.Nx, k, out double fx, out double fy, out ulong h)) continue;
+                if (!grid.Crater(grid.CraterCell(c % grid.Nx, c / grid.Nx), c % grid.Nx, c / grid.Nx, k, out double fx, out double fy, out ulong h)) continue;
                 var (r, fresh) = Impact(grid, h);
                 if (r >= radius) yield return (Mathx.WrapX(fx, Width), Mathx.Wrap(fy, Height), r, fresh);
             }
@@ -860,7 +860,7 @@ public sealed class TerrainModel
         readonly int _nx, _ny, _salt;
         readonly double _width, _height, _cw, _ch;
         readonly float _presence;
-        readonly ulong _seed;
+        readonly ulong _seed, _key;
 
         public FeatureGrid(double width, double height, double spacing, ulong seed, int salt, float presence)
         {
@@ -874,6 +874,7 @@ public sealed class TerrainModel
             _seed = seed;
             _salt = salt;
             _presence = presence;
+            _key = Hash.Of(seed, salt, 0x435241);
         }
 
         public int Nx => _nx;
@@ -919,25 +920,42 @@ public sealed class TerrainModel
             return gx * gx + gy * gy < reach * reach;
         }
 
-        public bool Feature(int ix, int iy, out double fx, out double fy, out ulong hash) => Feature(CellHash(ix, iy), ix, iy, 0, out fx, out fy, out hash);
-
-        /// <summary>A cell's own hash, from the cell wrapped onto the planet, so both sides of a seam see one cell: what its features are drawn from.</summary>
-        public ulong CellHash(int ix, int iy) => Hash.Of(_seed, Around(ix, _nx), Around(iy, _ny), _salt);
-
-        /// <summary>
-        /// The <paramref name="k"/>-th feature a cell may hold, from the cell's hash (<see cref="CellHash"/>): each its own hash and place,
-        /// the first the one <see cref="Feature(int, int, out double, out double, out ulong)"/> gives.
-        /// </summary>
-        public bool Feature(ulong cell, int ix, int iy, int k, out double fx, out double fy, out ulong hash)
+        public bool Feature(int ix, int iy, out double fx, out double fy, out ulong hash)
         {
-            // The feature's position stays in the unwrapped cell (beside the query point across a seam).
+            // The feature's position stays in the unwrapped cell (beside the query point across
+            // a seam), but its hash comes from the wrapped cell, so both sides see one feature.
             fx = fy = 0;
-            hash = k == 0 ? cell : Hash.Mix(cell + (ulong)k * 0xD1B54A32D192ED03UL);
+            hash = CellHash(ix, iy);
             if (Hash.Unit(hash, 0) > _presence) return false;
             fx = (ix + 0.15 + 0.7 * Hash.Unit(hash, 1)) * _cw;
             fy = (iy + 0.15 + 0.7 * Hash.Unit(hash, 2)) * _ch;
             return true;
         }
+
+        /// <summary>A cell's own hash, from the cell wrapped onto the planet, so both sides of a seam see one cell: what its features are drawn from.</summary>
+        public ulong CellHash(int ix, int iy) => Hash.Of(_seed, Around(ix, _nx), Around(iy, _ny), _salt);
+
+        /// <summary>A crater cell's hash, from the cell wrapped onto the planet (<see cref="Crater"/>): one mix of the grid's key, as the hot path's sample reads hundreds.</summary>
+        public ulong CraterCell(int ix, int iy) => Hash.Mix(_key ^ (ulong)Around(ix, _nx) * 0x9E3779B97F4A7C15UL ^ (ulong)Around(iy, _ny) * 0xC2B2AE3D27D4EB4FUL);
+
+        /// <summary>
+        /// The <paramref name="k"/>-th crater a cell may hold, from the cell's hash (<see cref="CraterCell"/>): whether it is there and its
+        /// place read straight off the hash's bits (16 each; the top 16 its size, <see cref="Impact"/>), the second's hash one mix on, so
+        /// a crater costs no more hashing than that. Its position stays in the unwrapped cell (beside the query point across a seam).
+        /// </summary>
+        public bool Crater(ulong cell, int ix, int iy, int k, out double fx, out double fy, out ulong hash)
+        {
+            fx = fy = 0;
+            hash = k == 0 ? cell : Hash.Mix(cell + (ulong)k * 0xD1B54A32D192ED03UL);
+            if (Bits(hash, 0) > _presence) return false;
+            fx = (ix + 0.15 + 0.7 * Bits(hash, 16)) * _cw;
+            fy = (iy + 0.15 + 0.7 * Bits(hash, 32)) * _ch;
+            return true;
+        }
+
+        /// <summary>Sixteen of a hash's bits from <paramref name="shift"/> as a fraction, 0 to 1.</summary>
+        public static float Bits(ulong hash, int shift) => ((hash >> shift) & 0xFFFF) * (1f / 65536f);
+
     }
 
     double Distance(double x, double y, double fx, double fy)

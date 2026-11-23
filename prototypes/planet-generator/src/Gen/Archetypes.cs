@@ -52,6 +52,7 @@ public sealed record ArchetypeDef
     public float VolcanoHeight { get; init; }
     public float CraterSpacing { get; init; }              // the biggest craters' spacing, smaller ones down to metres under them; 0 = no craters
     public float CraterRelief { get; init; } = 1f;         // how deep and high-rimmed they are against a fresh crater on rock (soft ice and heavy worlds less)
+    public float CraterCover { get; init; } = 0.3f;        // how thick craters lie at each size, 1 saturated (a barren body); a tidally heated moon's young surface keeps few
     public float MareBury { get; init; }                   // how much of the craters older lava or ice flows buried on the open plains (0 none .. 1 all but the youngest small ones)
     public float RilleDepth { get; init; }                 // winding lava channels, or straight cracks in an ice sheet (0 = none)
     public float RilleWidth { get; init; } = 90f;          // metres
@@ -305,7 +306,7 @@ public static class Archetypes
             LandMin = 1f, LandMax = 1f,
             ContinentScale = 0.5f, ContinentAmp = 170f, MountainHeight = 190f, SummitHeight = 0f, MountainWavelength = 1900f, RidgeSharpness = 0.9f,
             HillHeight = 40f, HillWavelength = 1600f, HillOctaves = 3, Roughness = 0.45f,
-            CraterSpacing = 3400f, MareBury = 0.9f, RilleDepth = 26f, RilleWidth = 110f, WrinkleHeight = 14f,
+            CraterSpacing = 3400f, CraterCover = 1f, MareBury = 0.9f, RilleDepth = 26f, RilleWidth = 110f, WrinkleHeight = 14f,
             RiverArea = 1e9f, Rain = 0f, BaseTemperature = 0.5f, LatitudeRange = 0.55f, BaseHumidity = 0f, RiverbankBiome = Biome.Regolith,
             Hazard = "vacuum, radiation, cold shadows", Resources = "iron, cobalt, polar ice", Signature = DepositKind.Iron,
             Landforms = Odds((Landform.Plains, 3f), (Landform.Hills, 3f), (Landform.Mountains, 0.8f)),
@@ -318,7 +319,7 @@ public static class Archetypes
             LandMin = 1f, LandMax = 1f,
             ContinentScale = 0.45f, ContinentAmp = 130f, MountainHeight = 140f, SummitHeight = 0f, MountainWavelength = 1700f, RidgeSharpness = 1.1f,
             HillHeight = 30f, HillWavelength = 1400f, HillOctaves = 3, Roughness = 0.3f,
-            CraterSpacing = 2000f, CraterRelief = 0.65f, MareBury = 0.25f, RilleDepth = 9f, RilleWidth = 26f, RilleWavelength = 2800f, RilleWarp = 0.04f, WrinkleHeight = 6f,
+            CraterSpacing = 2000f, CraterCover = 1f, CraterRelief = 0.65f, MareBury = 0.25f, RilleDepth = 9f, RilleWidth = 26f, RilleWavelength = 2800f, RilleWarp = 0.04f, WrinkleHeight = 6f,
             RiverArea = 1e9f, Rain = 0f, BaseTemperature = 0.04f, LatitudeRange = 0.2f, BaseHumidity = 0f, RiverbankBiome = Biome.Frost,
             Hazard = "vacuum, extreme cold, cracking ice", Resources = "water ice, ammonia, cobalt", Signature = DepositKind.Water,
             Landforms = Odds((Landform.IcePlain, 4f), (Landform.Plains, 1.5f), (Landform.Hills, 1.2f)),
@@ -331,7 +332,7 @@ public static class Archetypes
             LandMin = 1f, LandMax = 1f,
             ContinentScale = 0.42f, ContinentAmp = 150f, MountainHeight = 170f, SummitHeight = 0f, MountainWavelength = 1500f, RidgeSharpness = 2f,
             HillHeight = 30f, HillWavelength = 1400f, HillOctaves = 3, Roughness = 0.6f, SpireHeight = 90f,
-            CraterSpacing = 2400f, CraterRelief = 0.55f, MareBury = 0.5f, WrinkleHeight = 10f,
+            CraterSpacing = 2400f, CraterCover = 1f, CraterRelief = 0.55f, MareBury = 0.5f, WrinkleHeight = 10f,
             RiverArea = 1e9f, Rain = 0f, BaseTemperature = 0.7f, LatitudeRange = 0.4f, BaseHumidity = 0f, RiverbankBiome = Biome.Ironstone,
             Hazard = "vacuum, high gravity", Resources = "gravium, iron, rare metals", Signature = DepositKind.Gravium,
             Landforms = Odds((Landform.Plains, 3f), (Landform.ShardFields, 2f), (Landform.Hills, 0.8f)),
