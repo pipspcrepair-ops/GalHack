@@ -166,6 +166,12 @@ public partial class FoldTest : Node
         StartTiming(); // its markers in the scene before the counts are first taken
         foreach (int x in Settle()) yield return x;
         Levels baseline = Measure("in the start world's orbit, before any fold");
+        // What the start world's orbit costs a frame by itself, held still: what a fold out of it starts from.
+        StartTiming();
+        foreach (int x in _drive.Wait(60 * 8)) yield return x;
+        string still = FrameReport();
+        GD.Print($"  frames in the start world's orbit, no fold: {still}");
+        _foldFrames.Add($"start world's orbit, no fold: {still.Split(':')[0]}");
 
         float reach = (float)_ship.Power.JumpReach(Spaceflight.FoldDrive);
         List<int> nearHome = Catalogue.Neighbours(home, reach);
