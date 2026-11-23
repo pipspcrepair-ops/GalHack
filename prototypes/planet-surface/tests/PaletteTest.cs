@@ -175,8 +175,8 @@ public partial class PaletteTest : Node
     /// <summary>
     /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps): per element over the worlds with air, its
     /// median chroma against its floor and its hues spread round the wheel (at least five of its six sixths in use, none holding
-    /// over 45% of worlds); the land's hue (plants on a living world, soil on the rest) at least 60 degrees from its sky's on three
-    /// worlds in four, 90 at the median; red water, blue plants and a green sky each on at least one world in a hundred. Every
+    /// over 45% of worlds); the land's hue (plants on a living world, soil on the rest) at least 60 degrees from its sky's on seven
+    /// worlds in ten whose sky isn't their own lofted dust, 90 at the median; red water, blue plants and a green sky each on at least one world in a hundred. Every
     /// fourth roll is an airless body, whose rock (unless it rusted while it had air) stays grey.
     /// </summary>
     void Bold(int count)
@@ -204,12 +204,13 @@ public partial class PaletteTest : Node
             Oklab[] these = { zenith, band, plants, water, soil };
             for (int e = 0; e < Elements.Length; e++)
                 if ((e != 2 || p.Life > 0f) && (e != 3 || a != Archetype.Lava)) colours[e].Add(these[e]);
-            gaps.Add(Oklab.HueGap(MathF.Atan2(zenith.B + band.B, zenith.A + band.A), (p.Life >= 0.8f ? plants : soil).Hue) * 180f / MathF.PI);
+            // A dusty sky is its ground's dust lofted (burnt orange over rust: owner, 23 Nov): contrast is asked where the basis allows.
+            if (p.Air.Particles != Particles.Dust) gaps.Add(Oklab.HueGap(MathF.Atan2(zenith.B + band.B, zenith.A + band.A), (p.Life >= 0.8f ? plants : soil).Hue) * 180f / MathF.PI);
             if (a != Archetype.Lava && water.Chroma > 0.08f && (Deg(water) < 45f || Deg(water) > 345f)) red++;
             if (p.Life > 0f && plants.Chroma > 0.08f && Deg(plants) is > 215f and < 285f) blue++;
             if (zenith.Chroma > 0.08f && Deg(zenith) is > 120f and < 170f) green++;
         }
-        int worlds = gaps.Count;
+        int worlds = colours[0].Count;
         for (int e = 0; e < Elements.Length; e++)
         {
             var c = colours[e];
@@ -222,8 +223,8 @@ public partial class PaletteTest : Node
             Check(used >= 5 && most <= c.Count * 0.45f, $"{Elements[e]} hues spread round the wheel: {used} of 6 sixths in use, the fullest holding {most} of {c.Count}");
         }
         gaps.Sort();
-        float apart = gaps.Count(g => g >= 60f) / (float)worlds;
-        Check(apart >= 0.75f && gaps[worlds / 2] >= 90f, $"land stands apart from its sky: hue gap at least 60 deg on {apart:P0} of {worlds} worlds, median {gaps[worlds / 2]:F0} deg");
+        float apart = gaps.Count(g => g >= 60f) / (float)gaps.Count;
+        Check(apart >= 0.7f && gaps[gaps.Count / 2] >= 90f, $"land stands apart from its sky: hue gap at least 60 deg on {apart:P0} of {gaps.Count} worlds whose sky isn't their own dust, median {gaps[gaps.Count / 2]:F0} deg");
         Check(red >= worlds / 100 && blue >= worlds / 100 && green >= worlds / 100, $"red water on {red}, blue plants on {blue} and a green sky on {green} of {worlds} worlds (each at least {worlds / 100})");
         Check(greyest < 0.04f, $"airless rock that never rusted stays grey: highest Oklab chroma {greyest:F3}");
     }

@@ -18,8 +18,8 @@ public enum Pigment { Chlorophyll, Phycocyanin, Phycoerythrin, Anthocyanin, Caro
 /// <summary>What colours a world's water besides the water itself: what lives in it, what is dissolved in it, what hangs in it.</summary>
 public enum Waters { Clear, Halophiles, Iron, Copper, Flour, PurpleSulfur, Cyanobacteria, Blackwater, Sulfur }
 
-/// <summary>A world's commonest ore, weathered into its soil and dust beside the iron: sulfur, copper carbonates, manganese, cobalt bloom, glauconite.</summary>
-public enum Stain { None, Sulfur, Malachite, Azurite, Manganese, Cobalt, Glauconite }
+/// <summary>A world's commonest ore, weathered into its soil and dust beside the iron: sulfur, copper carbonates, manganese, cobalt bloom, glauconite, carbon.</summary>
+public enum Stain { None, Sulfur, Malachite, Azurite, Manganese, Cobalt, Glauconite, Carbon }
 
 /// <summary>
 /// A world's air as its colours need it: its gas column against Earth's (Rayleigh scattering grows with it;
@@ -233,12 +233,14 @@ public sealed record WorldPalette
         }
         Rgb SoilOf(Stain ore, float warm, float wet) => Bold(Stained(Soil(Fines(Stain.None), warm, wet, iron, life), ore, oreAmount), GroundBoost); // the ore over all a soil's weathering
 
-        // Where the air is the ground's own dust or ash, the ground comes first and the trace gas is the one of a few rolled that
+        // Where the air is the ground's own dust, the sky is that dust lofted: burnt orange and rust over rust as often as not (owner,
+        // 23 Nov), a trace gas rolled plainly. Over ash the ground comes first and the trace gas is the one of a few rolled that
         // stands furthest in hue from it; elsewhere the sky comes first and the ore is the one of a few rolled that stands furthest
         // from the sky. (Each is one the world might hold: only which one shows is chosen.)
         Trace gas = Trace.None;
         Stain ore = wet ? Roll(StainOdds(spec), U(23)) : Stain.None; // no weather, no ore weathered out
-        if (hasSky && air.Particles is Particles.Dust or Particles.Ash)
+        if (hasSky && air.Particles == Particles.Dust) gas = Roll(TraceOdds(air), U(21));
+        else if (hasSky && air.Particles == Particles.Ash)
             gas = Contrast(TraceOdds(air), h, 21, g => { var s = SkyOf(g, DustOf(ore)); return Oklab.Lch(0.6f, 0.1f, HueOf(s.Zenith, s.Band)).ToRgb(); }, Oklab.Of(SoilOf(ore, 0.6f, 0.5f)).Hue);
         else if (hasSky)
         {
@@ -265,7 +267,8 @@ public sealed record WorldPalette
         Spectrum LeafOf(Pigment kit) => Leaves(kelvin, through, k => U(4 + k), kit, silver, out _);
         Pigment pigment = life > 0f && hasSky ? Contrast(PigmentOdds(kelvin), h, 26, k => LeafOf(k).Reflectance(), skyHue) : Roll(PigmentOdds(kelvin), U(26));
         Spectrum leaf = Leaves(kelvin, through, k => U(4 + k), pigment, silver, out float peak);
-        Rgb leafColor = Bold(leaf, LeafBoost);
+        // A broad dark pigment (life gathering every photon of dim or red light) stays deep: umber and charcoal, never lightened.
+        Rgb leafColor = Bold(leaf, pigment == Pigment.Melanin ? LeafBoost with { Light = 1f } : LeafBoost);
 
         // ---- Water ----
         // Phytoplankton by how much lives (clear seas to green ones), dissolved matter browning still water,
@@ -300,8 +303,11 @@ public sealed record WorldPalette
         };
     }
 
-    /// <summary>How far the eye adapts to its star's light on lit ground: a little over half way, so the star's cast shows on everything it lights (<see cref="Spectrum.Adapted"/>).</summary>
-    const float Adaptation = 0.6f;
+    /// <summary>
+    /// How far the eye adapts to its star's light on lit ground: half way, so the star's cast shows on everything it lights, an
+    /// orange (K) dwarf's golden amber most of all (owner, 23 Nov) (<see cref="Spectrum.Adapted"/>).
+    /// </summary>
+    const float Adaptation = 0.5f;
 
     /// <summary>
     /// On an airless body the eye adapts most of the way (no sky to judge the light against): its grey rock reads grey under
@@ -378,7 +384,7 @@ public sealed record WorldPalette
         ? new[] { (Trace.None, 0.18f), (Trace.Ozone, 0.2f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.1f), (Trace.Chlorine, 0.14f), (Trace.NitrogenDioxide, 0.1f), (Trace.Sulfur, 0.08f) }
         : air.Particles switch
         {
-            Particles.Dust => new[] { (Trace.None, 0.15f), (Trace.Methane, 0.2f), (Trace.Iodine, 0.14f), (Trace.Chlorine, 0.15f), (Trace.NitrogenDioxide, 0.15f), (Trace.Sulfur, 0.15f) },
+            Particles.Dust => new[] { (Trace.None, 0.32f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.1f), (Trace.Chlorine, 0.12f), (Trace.NitrogenDioxide, 0.15f), (Trace.Sulfur, 0.15f) },
             Particles.Ash => new[] { (Trace.Sulfur, 0.25f), (Trace.Chlorine, 0.2f), (Trace.NitrogenDioxide, 0.15f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.15f) },
             Particles.Sulfate => new[] { (Trace.Sulfur, 0.3f), (Trace.Chlorine, 0.25f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.2f) },
             _ => new[] { (Trace.None, 0.14f), (Trace.Ozone, 0.14f), (Trace.Methane, 0.15f), (Trace.Chlorine, 0.15f), (Trace.Iodine, 0.12f), (Trace.NitrogenDioxide, 0.14f), (Trace.Sulfur, 0.13f) },
@@ -439,14 +445,15 @@ public sealed record WorldPalette
     /// <summary>The ores a world's ground may weather into its soil: volcanic worlds' sulfur most of all, an icy world's ground mostly plain.</summary>
     static (Stain, float)[] StainOdds(PlanetSpec spec) => spec.Archetype switch
     {
-        Archetype.Lava => new[] { (Stain.Sulfur, 0.4f), (Stain.None, 0.2f), (Stain.Manganese, 0.15f), (Stain.Malachite, 0.1f), (Stain.Cobalt, 0.15f) },
+        Archetype.Lava => new[] { (Stain.Sulfur, 0.35f), (Stain.None, 0.15f), (Stain.Manganese, 0.15f), (Stain.Malachite, 0.1f), (Stain.Cobalt, 0.1f), (Stain.Carbon, 0.15f) },
         Archetype.Ice => new[] { (Stain.None, 0.45f), (Stain.Azurite, 0.15f), (Stain.Manganese, 0.15f), (Stain.Glauconite, 0.15f), (Stain.Cobalt, 0.1f) },
-        _ => new[] { (Stain.None, 0.1f), (Stain.Sulfur, 0.08f), (Stain.Malachite, 0.18f), (Stain.Azurite, 0.14f), (Stain.Manganese, 0.16f), (Stain.Cobalt, 0.16f), (Stain.Glauconite, 0.18f) },
+        _ => new[] { (Stain.None, 0.1f), (Stain.Sulfur, 0.08f), (Stain.Malachite, 0.16f), (Stain.Azurite, 0.12f), (Stain.Manganese, 0.14f), (Stain.Cobalt, 0.14f), (Stain.Glauconite, 0.16f), (Stain.Carbon, 0.1f) },
     };
 
     /// <summary>
     /// Ground carrying an ore beside its iron: native sulfur and jarosite yellow; malachite green and azurite blue (copper
-    /// carbonates); manganese oxides violet-black; erythrite (cobalt bloom) pink; glauconite green (the "green sands").
+    /// carbonates); manganese oxides violet-black; erythrite (cobalt bloom) pink; glauconite green (the "green sands"); carbon
+    /// (organic-rich shale and coal measures, graphite) umber to charcoal.
     /// </summary>
     static Spectrum Stained(Spectrum r, Stain ore, float amount) => ore == Stain.None || amount <= 0f ? r : r * (Spectrum.Flat(1f) - Spectrum.Of(l => ore switch
     {
@@ -455,6 +462,7 @@ public sealed record WorldPalette
         Stain.Azurite => 0.75f * Mathx.Smooth(520f, 620f, l),
         Stain.Manganese => 0.6f * G(l, 560f, 55f) + 0.25f,
         Stain.Cobalt => 0.7f * G(l, 530f, 35f),
+        Stain.Carbon => 0.75f - 0.1f * (l - 400f) / 300f,
         _ => 0.55f * G(l, 640f, 70f) + 0.45f * Below(l, 470f, 25f),
     }) * amount);
 
