@@ -624,11 +624,12 @@ These replace anything above or in section 4 that disagrees with them.
    - **Thin dusty air.** Fine rust-red dust in thin carbon dioxide air gives a butterscotch to reddish sky.
    - **Meteors** glow by their elements: sodium orange-yellow, magnesium blue-green, iron yellow-white. They glow only where there is air.
 
-   **Art direction: natural worlds, vivid worlds, and worlds that mix both (owner, 23 Nov).** The owner's words: "With the palette, I was hoping for exaggerated, saturated colors. If we look to sci-fi art of the 70's, we have vivid contrasts, which we lack." And: "Every element is subject to vivid contrasts - the water in a myriad of colors, the grass in a myrid of colors, the sky, etc". Later the same day: "We can still have our desaturated and natural looking worlds. Having everything saturated and candy colored is same-ness under a different flavor", "So we still want a mix of vibrancies and earth tones available based on elements", and "we want to accomodate both!! not one or the other dude". The owner showed a dozen paperback-cover paintings; the saved ones are in `reference-photos/palette-70s-scifi/` (out of git, mood reference only, never copied). Asked which way, the owner chose all three: some worlds wholly desaturated and natural, some wholly vivid, and many mixing earthy and vivid parts on the same world. The physics above still picks each world's hues (the basis), and what the world and each of its parts are made of decides how vivid each is:
+   **Art direction: earthy worlds, today's look, vivid worlds, and worlds that mix them (owner, 23 Nov).** The owner's words: "With the palette, I was hoping for exaggerated, saturated colors. If we look to sci-fi art of the 70's, we have vivid contrasts, which we lack." And: "Every element is subject to vivid contrasts - the water in a myriad of colors, the grass in a myrid of colors, the sky, etc". Later the same day: "We can still have our desaturated and natural looking worlds. Having everything saturated and candy colored is same-ness under a different flavor", "So we still want a mix of vibrancies and earth tones available based on elements", and "we want to accomodate both!! not one or the other dude". The owner showed a dozen paperback-cover paintings; the saved ones are in `reference-photos/palette-70s-scifi/` (out of git, mood reference only, never copied). Asked which way, the owner chose all of them: some worlds wholly earthy, some in today's default look, some wholly vivid, and many mixing parts of these on the same world. The physics above still picks each world's hues (the basis), and what the world and each of its parts are made of decides how vivid each is:
    - **Natural, vivid and mixed worlds, from the elements.**
-     - Some worlds are wholly desaturated and natural: earth tones, dust, haze, like today's worlds.
+     - Some worlds are wholly earthy: earth tones, dust, haze.
+     - Some keep today's default look: the ground, plant, water, sky, haze and light colours and the grade the game has now (proto/batch2 and the test build, before any palette work). Owner: "When I meant earthy, I meant like our default look", then "man, like earthy is fine, but also what we have today would be something we could also see".
      - Some are wholly vivid, like the 70s covers.
-     - Many mix earthy and vivid parts on one world, such as umber cliffs by a red sea under a pale sky.
+     - Many mix parts from these on one world, part by part, such as earthy cliffs by a red sea.
      - Earth tones come from iron oxides, umbers, clays, basalt, carbon and dust.
      - Vivid colour comes from sulfur, copper and chlorine compounds, dissolved minerals, vivid pigments in life, and unusual air chemistry.
      - The star's colour, the air's thickness and haze shape both.
@@ -644,7 +645,8 @@ These replace anything above or in section 4 that disagrees with them.
    - **Airless moons** keep a grey base, but light and shadow tint them, like a lavender-grey cratered moon beside an orange asteroid. Never sandy yellow dunes. Owner: "We can still have a deep grey moons, but saturated". A moon can be a deep, dark grey rock with strongly tinted light and shadow, set against a vivid sky of planets, nebulae and stars.
    - Nothing global greys every world, and nothing global saturates every world. A natural world is natural because of its own elements, air and dust, never because of a scene-wide grade, and the tonemap keeps it natural. A vivid world is vivid because of its elements, never because of a global push. Overcast and night change the colours rather than draining them to grey.
    - **Variety check.** Over many random worlds:
-     - there are wholly natural worlds, wholly vivid worlds, and many mixed ones (earthy and vivid parts on the same world)
+     - each look turns up: wholly earthy worlds, worlds in today's default look, wholly vivid worlds, and many mixed ones
+     - a world that rolls today's default look matches the same seed on batch2, side by side
      - the hue families vary
      - red water, blue grass and green sky can each happen
    - **Colour bases the owner gave (23 Nov):**
