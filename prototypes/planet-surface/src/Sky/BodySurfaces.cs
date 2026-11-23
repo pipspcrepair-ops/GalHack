@@ -47,12 +47,11 @@ public sealed class BodySurfaces
     {
         // A headless run draws nothing: no worker, and nothing to upload to.
         if (DisplayServer.GetName() == "headless") return;
-        var blank = Image.CreateEmpty(Width, Height, true, Image.Format.Rgba8);
-        blank.Fill(new Color(0.5f, 0.5f, 0.5f, 0f));
-        var images = new Godot.Collections.Array<Image>();
-        for (int i = 0; i < Layers; i++) images.Add(blank);
-        Texture = new Texture2DArray();
-        Texture.CreateFromImages(images);
+        // The first system's array is made with a spare beside it, as the game loads; every other system takes the spare
+        // and gives its array back when it is let go of (making one was 46-155 ms on the minimum spec, mid-fold). A layer
+        // is read only once this system's surface is up in it (LayerOf), so what the last one left there never shows.
+        Texture = _spare ?? Blank();
+        _spare = _spare == null ? Blank() : null;
 
         var seen = new List<Sighting>();
         foreach (Orbiter b in model.Bodies)
@@ -65,12 +64,27 @@ public sealed class BodySurfaces
         new Thread(() => Work(order)) { IsBackground = true, Name = "Body surfaces", Priority = ThreadPriority.BelowNormal }.Start();
     }
 
-    /// <summary>Lets go of the array now and stops its thread after the surface it is on (a system left for good).</summary>
+    /// <summary>Lets go of the array (the next system's spare, or freed) and stops its thread after the surface it is on (a system left for good).</summary>
     public void Release()
     {
         _released = true;
         while (_painted.TryDequeue(out _)) { }
-        Texture?.Dispose();
+        if (_spare == null) _spare = Texture;
+        else Texture?.Dispose();
+    }
+
+    static Texture2DArray _spare;
+
+    /// <summary>An array of plain grey layers, mipmaps and all.</summary>
+    static Texture2DArray Blank()
+    {
+        var blank = Image.CreateEmpty(Width, Height, true, Image.Format.Rgba8);
+        blank.Fill(new Color(0.5f, 0.5f, 0.5f, 0f));
+        var images = new Godot.Collections.Array<Image>();
+        for (int i = 0; i < Layers; i++) images.Add(blank);
+        var array = new Texture2DArray();
+        array.CreateFromImages(images);
+        return array;
     }
 
     volatile bool _released;

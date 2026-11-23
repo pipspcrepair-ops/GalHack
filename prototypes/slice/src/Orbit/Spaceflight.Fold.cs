@@ -591,7 +591,9 @@ public partial class Spaceflight
 
     /// <summary>
     /// Where a holder in a system out among the stars is, to be put back there: a structure's blueprint and turn, a
-    /// container's place; in an orbit, in its frame body's own frame (the zone's world is laid out afresh each visit).
+    /// container's place; in an orbit, in its frame body's own frame (the zone's world is laid out afresh each visit). A
+    /// wreck of the orbit's own comes back from its plan, under the same id: none (its blueprint, saved at every commit
+    /// out there, was 140 ms a fold).
     /// </summary>
     static ZoneLedger.Placing PlacingOf(object thing, SurfaceZone zone)
     {
@@ -600,6 +602,7 @@ public partial class Spaceflight
         N.Quaternion Turned(N.Quaternion q) => o != null ? N.Quaternion.Normalize(N.Quaternion.Conjugate(o.Home.Turn) * q) : q;
         return thing switch
         {
+            Vessel { Derelict: not null } => null,
             Vessel v when Turned(v.Body.Rotation) is var t => new ZoneLedger.Placing(Blueprint.Save(v.Structure), Floats(Here(v.Body.Position)), new[] { t.X, t.Y, t.Z, t.W }),
             Lootable l => new ZoneLedger.Placing(null, Floats(Here(l.Position.ToNumerics())), null),
             _ => null,

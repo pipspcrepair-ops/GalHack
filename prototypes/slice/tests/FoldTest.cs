@@ -309,9 +309,10 @@ public partial class FoldTest : Node
         bool airless = here.Sky.Density < SurfaceWeather.NoAir;
         Check(airless == world.Spec.Airless && (_game.Suit.Beyond != null) == airless,
             $"its air its own: {(airless ? "none, the suit sealed against space" : $"density {here.Sky.Density:F2}, the suit on its own oxygen")}");
-        int creatures = surface.Wildlife?.Sim.Creatures.Count ?? 0;
-        Check(here.Flora != start.Flora && (!airless || here.Flora.Book.Barren && creatures == 0),
-            $"{(here.Flora.Book.Barren ? "barren" : "alive")} by its own rules: {creatures} creatures{(airless ? ", none on a world with no air" : "")}");
+        int creatures = surface.Wildlife?.Sim?.Creatures.Count ?? 0;
+        bool barren = here.Flora?.Book?.Barren ?? true;
+        Check(here.Flora != start.Flora && (!airless || barren && creatures == 0),
+            $"{(barren ? "barren" : "alive")} by its own rules: {creatures} creatures{(airless ? ", none on a world with no air" : "")}");
         Check(!_game.Surface.Visible && _game.Surface.ProcessMode == ProcessModeEnum.Disabled && Flight.HomeParked, "the start world waits parked: out of processing, hidden");
         OnlyHere(surface, $"on {name}");
         if (Shooting) Shot("fold-5-foreign-landed");
