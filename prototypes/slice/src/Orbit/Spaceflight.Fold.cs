@@ -171,7 +171,7 @@ public partial class Spaceflight
             {
                 if (!_system.IsCompleted) return false;
                 if (_system.IsFaulted) throw new InvalidOperationException($"{Name}'s system failed to build", _system.Exception);
-                MakeSpace(flight, _system.Result);
+                MakeSpace(flight, _system.Result); // a piece a tick: its sky, its far looks' array, its zone
                 return false;
             }
             _away?.Stars.Poll();
@@ -205,15 +205,23 @@ public partial class Spaceflight
                 return;
             }
             Galaxy galaxy = flight.Stars.Galaxy;
-            SkySystem light = SkySystem.For(system.Home.Spec, SkyRig.ClassOf(galaxy.Stars[_star].Kind));
-            _away = new Abroad
+            if (_away == null)
             {
-                Star = _star, System = system, Light = light, Share = new SystemShare(galaxy, _star, galaxy.DepthOf(_star), system, light),
-                Stars = new GalaxySky(galaxy, _star, galaxy.SystemSeed(_star)), // baked on a worker from now
-                Surfaces = new BodySurfaces(system.SeenFrom(system.Star), new D3(0, system.Star.Radius * 3.0, 0)),
-            };
+                SkySystem light = SkySystem.For(system.Home.Spec, SkyRig.ClassOf(galaxy.Stars[_star].Kind));
+                _away = new Abroad
+                {
+                    Star = _star, System = system, Light = light, Share = new SystemShare(galaxy, _star, galaxy.DepthOf(_star), system, light),
+                    Stars = new GalaxySky(galaxy, _star, galaxy.SystemSeed(_star)), // baked on a worker from now
+                };
+                flight._coming = _away;
+                return;
+            }
+            if (_away.Surfaces == null)
+            {
+                _away.Surfaces = new BodySurfaces(system.SeenFrom(system.Star), new D3(0, system.Star.Radius * 3.0, 0));
+                return;
+            }
             _zone = flight.StarSpace(system.Star, _away);
-            flight._coming = _away;
         }
 
         public JumpArrival Arrival(Spaceflight flight, Vessel carrier)
