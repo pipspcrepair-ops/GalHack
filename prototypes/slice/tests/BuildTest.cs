@@ -355,13 +355,7 @@ public partial class BuildTest : Node
     /// <summary>Digs the ground down to the site's height, as a builder would cut a pad into a slope.</summary>
     void LevelSite(float radius)
     {
-        // Down to the floor of any hollow in it deeper than a step (a crater on a barren world), or its bowl stands between you and the base.
-        int r = (int)radius;
-        float lowest = _site.Y;
-        for (int dx = -r; dx <= r; dx += 2)
-        for (int dz = -r; dz <= r; dz += 2)
-            lowest = MathF.Min(lowest, _game.Zone.GroundAt(_site.X + dx, _site.Z + dz).Y);
-        int y0 = (int)MathF.Floor(_site.Y - lowest > 0.6f ? lowest : _site.Y);
+        int y0 = (int)MathF.Floor(_site.Y), r = (int)radius;
         var cells = new List<TerrainDigging.Terrain.Int3>();
         for (int dx = -r; dx <= r; dx++)
         for (int dz = -r; dz <= r; dz++)
