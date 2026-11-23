@@ -262,9 +262,9 @@ public sealed record WorldPalette
             // bright horizon, and along the horizon a glowing band of the colour the long path lets through, turned well away from
             // the zenith's hue (blue air, a warm band; air that drinks the red, a cyan one), so the sky reads graded, never one tint.
             float v = Math.Clamp((Vivid(gas) + 0.3f * starOff) * MathF.Exp(-0.4f * air.Aerosol), 0.8f, 1f);
-            Rgb deep = Oklab.Vivid(zenith, 1f + 2f * v, 0.15f * v, 1f - 0.4f * v, most: SkyMost);
-            Rgb bright = Oklab.Vivid(horizon.Light(SkyGain, skyEye), 1f + 1.8f * v, 0.13f * v, 1.08f, most: SkyMost);
-            return (deep, Apart(bright, Oklab.Of(deep).Hue, MathF.PI / 6f),
+            Rgb deep = Oklab.Vivid(zenith, 1f + 2f * v, 0.15f * v, 1f - 0.5f * v, most: SkyMost);
+            Rgb bright = Oklab.Vivid(horizon.Light(SkyGain, skyEye), 1f + 1.8f * v, 0.13f * v, 1.1f, most: SkyMost);
+            return (deep, Apart(bright, Oklab.Of(deep).Hue, MathF.PI / 4f),
                     Apart(Oklab.Vivid((horizon * Spectrum.Exp(extinction * -2.5f)).Hue(skyEye), 1f + 1.2f * v, 0.2f * v, 1f - 0.04f * v, most: SkyMost + 0.03f), Oklab.Of(deep).Hue, MathF.PI / 3f),
                     Oklab.Vivid(Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye), 1f + 1.8f * v, 0.12f * v, most: SkyMost),
                     Oklab.Vivid(sunset, 1f + 0.6f * v, 0.2f * v, 1f - 0.05f * v),
@@ -332,7 +332,7 @@ public sealed record WorldPalette
         float openSilt = silt * (spec.Archetype == Archetype.Arid ? 0.45f : 0.1f);
         (Spectrum, Spectrum) WaterOf(Waters w) => Seas(plankton, tannin, silt, openSilt, leaf, dust, sand, w, solute);
         // Never the sky's own hue either: a sea that takes its sky's colour reads flat.
-        Waters waters = Contrast(Makers(WaterOdds(spec), 3, w => Vivid(w)), h, 31, w => WaterOf(w).Item1.Reflectance(), land.Hue, skyHue);
+        Waters waters = Contrast(Makers(WaterOdds(spec), 3, w => Vivid(w)), h, 31, w => WaterOf(w).Item1.Reflectance(), land.Hue, Oklab.Of(sky.Zenith).Hue, Oklab.Of(sky.Band).Hue);
         (Spectrum deep, Spectrum shallow) = WaterOf(waters);
         Spectrum snow = Spectrum.Of(l => 0.93f - 0.08f * (l - 400f) / 300f);
 
@@ -430,7 +430,7 @@ public sealed record WorldPalette
     /// The most chroma (Oklab) an earthy part takes, and an earthy sky's horizon: a natural world reads natural (owner, 23 Nov: "our
     /// desaturated and natural looking worlds"), and a part labelled earthy never looks vivid.
     /// </summary>
-    const float EarthyMost = 0.085f, EarthyHorizon = 0.06f;
+    public const float EarthyMost = 0.085f, EarthyHorizon = 0.06f;
 
     /// <summary>How often a wholly vivid world is candy, every part at full strength; the rest pair their strong parts against a deep one.</summary>
     const float CandyShare = 0.5f;
@@ -462,8 +462,19 @@ public sealed record WorldPalette
     /// <summary>A part as its chemistry makes it: a vivid maker's pushed at its own hue (<see cref="Bold"/>), an earthy one's as the light makes it, held natural.</summary>
     static Rgb Part(Spectrum s, (float Gain, float Floor, float Light) boost, float vivid) => vivid >= 0.5f ? Bold(s, boost, vivid) : Held(s.Reflectance(), EarthyMost);
 
-    /// <summary>A colour held to at most <paramref name="most"/> chroma (Oklab) at its own hue.</summary>
-    static Rgb Held(Rgb c, float most) => Oklab.Vivid(c, 1f, most: most);
+    /// <summary>
+    /// A colour held to at most <paramref name="most"/> chroma (Oklab) at its own hue, or <see cref="EarthTone"/> where its hue is an
+    /// earth tone's (rust, burnt orange, umber, ochre, mustard: Oklab hue 20° to 100°), which keep their strength (owner's bases, 23 Nov).
+    /// </summary>
+    static Rgb Held(Rgb c, float most)
+    {
+        Oklab o = Oklab.Of(c);
+        float deg = (o.Hue * 180f / MathF.PI + 360f) % 360f;
+        return Oklab.Vivid(c, 1f, most: deg is >= 20f and <= 100f ? MathF.Max(most, EarthTone) : most);
+    }
+
+    /// <summary>The most chroma an earth tone takes, earthy as it is: a burnt orange dust sky, rust ground, mustard light.</summary>
+    public const float EarthTone = 0.14f;
 
     /// <summary>A part laid deep against a vivid world's strong ones: darker and duller at its own hue.</summary>
     static Rgb Deepened(Rgb c)
@@ -528,10 +539,10 @@ public sealed record WorldPalette
 
 
     /// <summary>
-    /// Of four rolled by their odds, the one whose colour stands furthest in hue from <paramref name="away"/> (and <paramref name="also"/>), a near-grey
+    /// Of four rolled by their odds, the one whose colour stands furthest in hue from <paramref name="away"/> (and each of <paramref name="also"/>), a near-grey
     /// counting for less: the basis allows each, and the look takes the one that contrasts most.
     /// </summary>
-    static T Contrast<T>((T, float)[] odds, ulong h, int salt, Func<T, Rgb> color, float away, float? also = null)
+    static T Contrast<T>((T, float)[] odds, ulong h, int salt, Func<T, Rgb> color, float away, params float[] also)
     {
         T best = odds[0].Item1;
         float score = -1f;
@@ -539,7 +550,9 @@ public sealed record WorldPalette
         {
             T c = Roll(odds, Hash.Unit(h, salt + 40 * i));
             Oklab o = Oklab.Of(color(c));
-            float s = MathF.Min(Oklab.HueGap(o.Hue, away), also is float a ? Oklab.HueGap(o.Hue, a) : MathF.PI) * MathF.Min(1f, o.Chroma / 0.03f);
+            float s = Oklab.HueGap(o.Hue, away);
+            foreach (float a in also) s = MathF.Min(s, Oklab.HueGap(o.Hue, a));
+            s *= MathF.Min(1f, o.Chroma / 0.03f);
             if (s > score) (best, score) = (c, s);
         }
         return best;

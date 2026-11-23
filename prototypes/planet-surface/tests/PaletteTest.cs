@@ -170,6 +170,13 @@ public partial class PaletteTest : Node
     /// <summary>Hue families by Oklab hue: pink-magenta, red, orange, yellow, green, cyan, blue, violet (grey under 0.04 chroma, none).</summary>
     static readonly string[] Families = { "pink", "red", "orange", "yellow", "green", "cyan", "blue", "violet" };
 
+    /// <summary>Earthy to the eye: an earth tone (Oklab hue 20° to 100°, at most <see cref="WorldPalette.EarthTone"/>) or near grey.</summary>
+    static bool Earthy(Oklab o)
+    {
+        float d = (o.Hue * 180f / MathF.PI + 360f) % 360f;
+        return o.Chroma <= (d is >= 18f and <= 102f ? WorldPalette.EarthTone + 0.005f : WorldPalette.EarthyMost + 0.005f);
+    }
+
     static int FamilyOf(Oklab o)
     {
         float d = (o.Hue * 180f / MathF.PI + 360f) % 360f;
@@ -180,7 +187,8 @@ public partial class PaletteTest : Node
     /// <paramref name="count"/> fresh palettes of every type (palettes alone, no maps). Each kind of world is common: wholly earthy,
     /// today's look (about one in five), vivid worlds that pair their strong parts against a deep one, candy (every part at full
     /// strength: one share of the mix, never most: owner, 23 Nov) and mixed. Every part of every world looks as its label says: a
-    /// vivid part (sky: its zenith or its band) at least 0.095 Oklab chroma, an earthy one at most 0.09, a deep one dark and dull.
+    /// vivid part (sky: its zenith or its band) at least 0.095 Oklab chroma, an earthy one an earth tone or at most 0.09, a deep one
+    /// dark and dull.
     /// No hue family holds more than 35% of any part (sky, ground, plants, water), nor of its vivid ones. Red water, blue plants and
     /// a green sky each turn up on at least one world in a hundred. Every fourth roll is an airless body, whose rock (unless it rusted
     /// while it had air) stays grey.
@@ -224,7 +232,7 @@ public partial class PaletteTest : Node
                 bool vivid_ = p.VividParts.HasFlag(flags[e]), deep = p.DeepParts.HasFlag(flags[e]);
                 if (vivid_ && f >= 0) vivid[e, f]++;
                 float strongest = e == 0 ? MathF.Max(o.Chroma, band.Chroma) : o.Chroma;
-                bool looks = vivid_ ? strongest >= 0.095f : deep ? o.L <= 0.55f && o.Chroma <= 0.085f : strongest <= 0.09f && (e != 0 || Oklab.Of(p.Horizon).Chroma <= 0.09f);
+                bool looks = vivid_ ? strongest >= 0.095f : deep ? o.L <= 0.55f && o.Chroma <= 0.085f : Earthy(o) && (e != 0 || Earthy(band) && Earthy(Oklab.Of(p.Horizon)));
                 if (!looks) wrong.Add($"{spec.Seed} {a} {v} {parts[e]} {(vivid_ ? "vivid" : deep ? "deep" : "earthy")} chroma {strongest:F3} L {o.L:F2}");
             }
             if (p.Has.HasFlag(Planets.Look.Parts.Water) && these[3].Chroma > 0.08f && (Deg(these[3]) < 45f || Deg(these[3]) > 345f)) red++;

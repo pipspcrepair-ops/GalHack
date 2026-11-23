@@ -314,7 +314,7 @@ public sealed class GroundPalette
                 // round them gives way where it would hide them.
                 if (Map.Sample(Map.Elevation, x, z) - height < 2.5f)
                 {
-                    float showing = SmoothStep(0.45f, 0.68f, ValueNoise(x * 0.33, z * 0.33, 53));
+                    float showing = SmoothStep(0.52f, 0.6f, ValueNoise(x * 0.33, z * 0.33, 53)); // crisp: ore or ground, little between
                     c = Rgb.Lerp(DepositLook.Around(SoilAt(x, z, out _), ore), c, showing);
                     rock *= showing;
                     flags.Y = -showing;

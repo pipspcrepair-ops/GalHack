@@ -223,6 +223,15 @@ public partial class Screenshot : Node
         var inside = new PhysicsShapeQueryParameters3D { Shape = new SphereShape3D { Radius = 2.5f }, Transform = new Transform3D(Basis.Identity, eye) };
         if (space.IntersectShape(inside, 1).Count > 0) return 0f;
         float nearest = float.MaxValue;
+        // Canopies have no colliders: the plants' own solids, canopy hulls too, inside or in front of the eye.
+        Vector3 fwd = -m.Camera.GlobalBasis.Z;
+        foreach (var (s, offset) in m.Streamer.SolidsNear(eye, 40f, canopies: true))
+        {
+            Vector3 to = s.Center + offset - eye;
+            float reach = Mathf.Max(s.Extents.X, Mathf.Max(s.Extents.Y, s.Extents.Z)) * Mathf.Max(1f, s.Scale), d = to.Length();
+            if (d < reach + 2f) return 0f;
+            if (to.Dot(fwd) > d * 0.8f) nearest = Mathf.Min(nearest, d - reach);
+        }
         foreach (float yaw in new[] { -25f, -12f, 0f, 12f, 25f })
             foreach (float pitch in new[] { -8f, 0f, 8f })
             {
