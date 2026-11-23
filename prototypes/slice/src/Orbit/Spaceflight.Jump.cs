@@ -27,6 +27,8 @@ public partial class Spaceflight
     public double WorstArrivalMs { get; private set; }
 
     (int Items, int Blocks) _jumpTotals;
+    string _arrivalLaps = "";
+    (Jump, SurfaceZone)? _leaving;
 
     /// <summary>
     /// Spools a drive on a structure for a jump of so far (its fuel's unit), with at least <paramref name="tripSeconds"/> in
@@ -74,13 +76,24 @@ public partial class Spaceflight
     /// <summary>Once a physics tick: the destination set up a piece at a time, the spool, the tunnel, the arrival.</summary>
     void TickJump(double dt)
     {
+        if (_leaving is var (done, left))
+        {
+            // The tick after the arrival: the zone left goes as the destination says.
+            _leaving = null;
+            var watch = Stopwatch.StartNew();
+            done.To.Left(this, left);
+            WorstArrivalMs = Math.Max(WorstArrivalMs, watch.Elapsed.TotalMilliseconds);
+            GD.Print($"[jump: {left.Name} left behind in {watch.Elapsed.TotalMilliseconds:F1} ms]");
+        }
         Jump j = Jumping;
         if (j?.Running != true) return;
         long started = Stopwatch.GetTimestamp();
         if (!j.Ready)
         {
+            Doing = null;
             j.Ready = j.To.Step(this);
-            j.LongestStepMs = Math.Max(j.LongestStepMs, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            double ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            if (ms > j.LongestStepMs) (j.LongestStepMs, j.LongestStep) = (ms, Doing ?? "");
         }
         StructurePower p = j.Carrier.Power;
         switch (j.Now)
@@ -102,7 +115,14 @@ public partial class Spaceflight
             case Jump.Stage.Tunnel:
                 j.InTunnel += dt;
                 Hold(j);
-                if (j.Ready && j.InTunnel >= j.TripSeconds) BeginArrival(j);
+                if (!j.Ready) break;
+                if (!j.Woken)
+                {
+                    // The zone it goes to runs from now, under the tunnel: the arrival's own tick only moves it.
+                    if (j.To.Zone != Game.Zone) Wake(j.To.Zone);
+                    j.Woken = true;
+                }
+                else if (j.InTunnel >= j.TripSeconds) BeginArrival(j);
                 break;
             case Jump.Stage.Arriving:
                 Hold(j);
@@ -175,18 +195,21 @@ public partial class Spaceflight
         else
         {
             StreamAhead(false, default);
-            Wake(to);
+            if (!j.Woken) Wake(to);
+            double woke = watch.Elapsed.TotalMilliseconds;
             Handover.Move(from, to, s, v, a.Position, a.Rotation, N.Vector3.Zero);
             g.EnterZone(to);
             if (to is OrbitZone orbit) InOrbitOf(orbit);
+            _arrivalLaps = $"woken {woke:F1}, moved {watch.Elapsed.TotalMilliseconds - woke:F1}";
         }
         End(j, Jump.Stage.Done);
         if (to != from)
         {
-            j.To.Left(this, from);
-            foreach (string problem in Ledger.Audit(Holders(), _jumpTotals)) GD.PrintErr($"jump audit: {problem}");
+            _leaving = (j, from);
+            j.Audit = Ledger.Audit(Holders(), _jumpTotals);
+            foreach (string problem in j.Audit) GD.PrintErr($"jump audit: {problem}");
         }
-        GD.Print($"[jump: arrived at {j.To.Name} in {to.Name} after {j.InTunnel:F1} s in the tunnel, {watch.Elapsed.TotalMilliseconds:F1} ms]");
+        GD.Print($"[jump: arrived at {j.To.Name} in {to.Name} after {j.InTunnel:F1} s in the tunnel, {watch.Elapsed.TotalMilliseconds:F1} ms: {_arrivalLaps}; the slowest piece of making it {j.LongestStepMs:F1} ms, {j.LongestStep}]");
     }
 
     /// <summary>The orbit you fly in is now this one: the seam starts over in its terms, every sky on the one clock.</summary>

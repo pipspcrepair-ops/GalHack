@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
 using PlanetSurface.Skies;
 using PlanetSurface.World;
 using Slice.Game;
@@ -40,5 +42,36 @@ public partial class OrbitZone
         Bodies.Add(Home);
         Anchor = Home;
         _preparing = Task.FromResult<(GlobePaint, List<DerelictPlan>)>((null, new List<DerelictPlan>()));
+    }
+
+    /// <summary>
+    /// Everything in the zone moved by <paramref name="by"/> the other way, rigidly (the bodies, what floats, the globes): a
+    /// point far out in it (an arrival by a giant's far moon, or in the star's high orbit) becomes its origin, where floats
+    /// are finest. Nothing changes to the eye.
+    /// </summary>
+    public void Recentre(N.Vector3 by)
+    {
+        if (Physics != null)
+            foreach (Body b in Physics.Bodies)
+            {
+                if (b.Frame != null) continue; // riders stay where they are aboard
+                b.Position -= by;
+                BodyBinding binding = Host.BindingOf(b);
+                binding?.Teleport();
+                binding?.Node.ResetPhysicsInterpolation();
+            }
+        if (Loot != null)
+            foreach (Slice.Items.Lootable l in Loot.All)
+            {
+                l.Position -= new Godot.Vector3(by.X, by.Y, by.Z);
+                if (l.Node != null) l.Node.GlobalPosition = l.Position;
+            }
+        foreach (Celestial c in Bodies)
+        {
+            c.Shift -= by;
+            c.ShiftWas -= by;
+            Placed(c);
+        }
+        Move();
     }
 }

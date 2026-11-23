@@ -17,5 +17,7 @@
   "clearance": 1500,
   "wreckClearance": 450,
   // A short-range warp to a wreck stops this far off it (m).
-  "wreckStandOff": 350
+  "wreckStandOff": 350,
+  // An arrival further than this from its zone's origin (m) makes itself the origin: floats are finest there.
+  "recentreFrom": 20000
 }

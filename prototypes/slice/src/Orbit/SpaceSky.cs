@@ -280,7 +280,14 @@ public partial class SpaceSky : Node3D
         // The star field stands in the system's frame: the world turns under it with the day.
         Environment.SkyRotation = (turn * new Basis(V(o.X), V(o.Y), V(o.Z)).Transposed()).GetEuler();
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_time"), SkyRig.SunTime);
-        Vector3 field = V(model.Position(model.Star, days) - model.Position(model.Home, days)).Normalized();
+        D3 toStar = model.Position(model.Star, days) - model.Position(model.Home, days);
+        if (model.Home == model.Star)
+        {
+            // Round the star itself (a warp's high orbit): its disc and its light from where you are.
+            toStar = o.ToSystem(eyeGlobe) * -1.0;
+            _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_radius"), (float)Math.Asin(Math.Min(model.Star.Radius / Math.Max(toStar.Length, 1.0), 1.0)));
+        }
+        Vector3 field = V(toStar).Normalized();
         if (field.Dot(_fieldSun) < 0.99995f) // the sky's shader is worked again whenever its light moves
         {
             _fieldSun = field;

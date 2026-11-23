@@ -27,6 +27,7 @@ public sealed class WarpRules
     public float Clearance { get; set; } = 1500;
     public float WreckClearance { get; set; } = 450;
     public float WreckStandOff { get; set; } = 350;
+    public float RecentreFrom { get; set; } = 20000;
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -150,6 +151,8 @@ public partial class Spaceflight
         {
             o.Space.Show(false, 0f);
             o.Space.Light(0f);
+            foreach (Celestial c in o.Bodies)
+                if (c.Globe != null) c.Globe.Visible = false; // its globes hang outside the zone (the far land from its surfaces): none stays in another orbit's view
         }
         Park(from);
     }
@@ -176,6 +179,7 @@ public partial class Spaceflight
 
         /// <summary>The orbit it arrives in (once known).</summary>
         public OrbitZone Zone => _zone;
+        SurfaceZone IJumpDestination.Zone => _zone;
 
         public void Begin(Spaceflight flight)
         {
@@ -210,6 +214,13 @@ public partial class Spaceflight
             D3 back = _from - ToSystem(o, centre);
             N.Vector3 away = back.Length > 1 ? N.Vector3.Normalize(N.Vector3.Transform(new N.Vector3((float)back.X, (float)back.Y, (float)back.Z), toWorld)) : N.Vector3.UnitY;
             N.Vector3 at = flight.ClearOf(o, centre, away, radius, c);
+            if (at.Length() > flight.Warping.RecentreFrom)
+            {
+                // Far out in its zone (the star's high orbit, a giant's far moon): that point becomes the zone's origin.
+                o.Recentre(at);
+                centre -= at;
+                at = N.Vector3.Zero;
+            }
             // The structure keeps its turn in the system's frame (the sky as it was), turned the least way to face what it went to.
             N.Quaternion turn = N.Quaternion.Normalize(toWorld * WorldToSystem(flight.Orbit) * carrier.Body.Rotation);
             N.Vector3 nose = N.Vector3.Transform(-N.Vector3.UnitZ, turn), want = N.Vector3.Normalize(centre - at);

@@ -115,8 +115,8 @@ public partial class Spaceflight
     {
         if (Orbit == null) return;
         SurfaceZone s = Below;
-        foreach (Celestial c in Orbit.Bodies)
-            if (c.Surface is { Sky: not null } other && other != s) other.Sky.Days = s.Sky.Days;
+        foreach (SurfaceZone other in AllSurfaces())
+            if (other.Sky != null && other != s) other.Sky.Days = s.Sky.Days;
     }
 
     /// <summary>

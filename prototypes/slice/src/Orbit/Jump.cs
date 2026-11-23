@@ -17,6 +17,9 @@ public interface IJumpDestination
     /// <summary>What it is, for the console and the logs.</summary>
     string Name { get; }
 
+    /// <summary>The zone it arrives in, once that is known (null till then).</summary>
+    SurfaceZone Zone { get; }
+
     /// <summary>The drive spools: start making it.</summary>
     void Begin(Spaceflight flight);
 
@@ -78,6 +81,9 @@ public sealed class Jump
     /// <summary>The longest one tick's setting up of the destination took on the main thread, ms (it must not show).</summary>
     public double LongestStepMs { get; internal set; }
 
+    /// <summary>What that longest piece was.</summary>
+    public string LongestStep { get; internal set; } = "";
+
     /// <summary>Why it stopped, if it was called off.</summary>
     public string Trouble { get; internal set; }
 
@@ -87,12 +93,18 @@ public sealed class Jump
     /// <summary>The zone it left.</summary>
     public SurfaceZone From { get; internal set; }
 
+    /// <summary>What the ledger's audit found wrong with the move (empty: nothing lost, doubled or misplaced).</summary>
+    public System.Collections.Generic.IReadOnlyList<string> Audit { get; internal set; } = System.Array.Empty<string>();
+
     /// <summary>The fuel items the drive burnt.</summary>
     public int Burnt { get; internal set; }
 
     /// <summary>Where the structure is held through the tunnel.</summary>
     internal N.Vector3 HeldAt;
     internal N.Quaternion HeldTurn;
+
+    /// <summary>The zone it arrives in has been woken (in the tunnel, so the arrival's tick only moves it).</summary>
+    internal bool Woken;
 
     /// <summary>The drive has spooled and burnt its fuel (StructurePower.Jumped).</summary>
     internal bool Fired;
