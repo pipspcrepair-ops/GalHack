@@ -185,11 +185,12 @@ public partial class WarpTest : Node
             foreach (int x in Leg(Model.Home, land: true, $"{loop}: home")) yield return x;
             if (!_ok) yield break;
             foreach (int x in _drive.Wait(300)) yield return x;
+            foreach (int x in Settle()) yield return x;
             levels.Add(($"landed home after round trip {loop}", Measure()));
             GD.Print($"  level {loop}: {levels[^1].At}");
             Holdings(loop);
             static double Mb(Performance.Monitor m) => Performance.GetMonitor(m) / 1048576.0;
-            GD.Print($"  (memory {loop}: static {Mb(Performance.Monitor.MemoryStatic):F0} MB, video {Mb(Performance.Monitor.RenderVideoMemUsed):F0} MB, textures {Mb(Performance.Monitor.RenderTextureMemUsed):F0} MB, buffers {Mb(Performance.Monitor.RenderBufferMemUsed):F0} MB, {Performance.GetMonitor(Performance.Monitor.ObjectResourceCount)} resources; the physics server: {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects)} active bodies, {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs)} pairs, {Performance.GetMonitor(Performance.Monitor.Physics3DIslandCount)} islands)");
+            GD.Print($"  (memory {loop}: static {Mb(Performance.Monitor.MemoryStatic):F0} MB ({_staticAtOnce:F0} the moment the collection ended); video {Mb(Performance.Monitor.RenderVideoMemUsed):F0} MB, textures {Mb(Performance.Monitor.RenderTextureMemUsed):F0} MB, buffers {Mb(Performance.Monitor.RenderBufferMemUsed):F0} MB, {Performance.GetMonitor(Performance.Monitor.ObjectResourceCount)} resources; the physics server: {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects)} active bodies, {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs)} pairs, {Performance.GetMonitor(Performance.Monitor.Physics3DIslandCount)} islands)");
             if (loop < loops)
             {
                 foreach (int x in TakeOff("home")) yield return x;
@@ -387,9 +388,37 @@ public partial class WarpTest : Node
             foreach (int x in SkyAway("after-the-star-home-facing-away", v => Check(v <= Math.Max(_freshSky * 1.5, _freshSky + 0.03),
                 $"no glare follows from the star: home's sky facing away from the sun is back at its fresh level (its floor of brightness {v:F3}, {_freshSky:F3} before the star)"))) yield return x;
         if (!_ok || !land || _args.ContainsKey("noland")) yield break; // --noland=1: warps alone (shots of the trip)
+        foreach (int x in StaticAt($"warp to {Charts.Tidy(target.Name)}")) yield return x;
         foreach (int x in Land(target)) yield return x;
         if (!_ok) yield break;
+        foreach (int x in StaticAt($"landing on {Charts.Tidy(target.Name)}")) yield return x;
         if (target != Model.Home) foreach (int x in TakeOff(Charts.Tidy(target.Name))) yield return x;
+        if (target != Model.Home) foreach (int x in StaticAt($"take-off from {Charts.Tidy(target.Name)}")) yield return x;
+    }
+
+    double _staticWas, _staticAtOnce;
+
+    /// <summary>--phases=1: the engine's static memory after a step, everything unreachable collected first (what a step adds).</summary>
+    IEnumerable<int> StaticAt(string after)
+    {
+        if (!_args.ContainsKey("phases")) yield break;
+        foreach (int x in Settle()) yield return x;
+        double now = OS.GetStaticMemoryUsage() / 1048576.0;
+        GD.Print($"  (static {now:F0} MB after the {after}: {now - _staticWas:+0;-0} MB; {Performance.GetMonitor(Performance.Monitor.ObjectCount)} objects, {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)} nodes)");
+        _staticWas = now;
+    }
+
+    /// <summary>
+    /// Everything unreachable collected, then a few frames: what the finalizers let go of (a mesh's or texture's data) the engine
+    /// frees on the main thread over the next frames, so static memory read the moment a collection ends still counts it, and the
+    /// more there was to collect the more it counts (160 to 400 MB more a round trip: it looked like a leak).
+    /// </summary>
+    IEnumerable<int> Settle()
+    {
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        GC.WaitForPendingFinalizers();
+        _staticAtOnce = OS.GetStaticMemoryUsage() / 1048576.0;
+        for (int i = 0; i < 3; i++) yield return 0;
     }
 
     /// <summary>
