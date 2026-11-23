@@ -85,6 +85,7 @@ public partial class WarpTest : Node
             more = false;
         }
         if (more) return;
+        if (!_timed) FrameTimes(); // a run cut short still says what its frames took
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
         Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
@@ -481,6 +482,13 @@ public partial class WarpTest : Node
         if (o.Anchor != c) { _ok = false; yield break; }
         GD.Print($"-- down onto {name} --");
         foreach (int x in MoonTest.Upright(_pilot, c, _ship)) yield return x;
+        for (int tries = 0; tries < 2 && Mathf.RadToDeg(N.Vector3.Transform(N.Vector3.UnitY, _ship.Body.Rotation).ToGodot().AngleTo((_ship.Body.Position.ToGodot() - c.Centre).Normalized())) > 20f; tries++)
+        {
+            GD.Print("  (not upright yet: turning again)");
+            foreach (int x in MoonTest.Upright(_pilot, c, _ship)) yield return x;
+        }
+        Vector3 radial = (_ship.Body.Position.ToGodot() - c.Centre).Normalized(), top = N.Vector3.Transform(N.Vector3.UnitY, _ship.Body.Rotation).ToGodot();
+        GD.Print($"  (upright over {name}: its top {Mathf.RadToDeg(top.AngleTo(radial)):F0}° off the sky over it, turning {_ship.Body.AngularVelocity.Length():F2} rad/s, {c.Height(_ship.Body.Position.ToGodot()):F0} m up)");
         int crossings = Flight.Crossings.Count;
         for (int i = 0; i < 60 * 150 && Flight.Crossings.Count == crossings; i++)
         {
@@ -562,8 +570,11 @@ public partial class WarpTest : Node
             GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count, terrain);
     }
 
+    bool _timed;
+
     void FrameTimes()
     {
+        _timed = true;
         static (double P95, double Worst) Spread(List<double> ms)
         {
             var sorted = ms.OrderBy(x => x).ToList();
