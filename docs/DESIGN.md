@@ -685,7 +685,7 @@ Resources climb a five-step rarity ladder (common, uncommon, rare, exotic, uniqu
 | Uncommon | Pentaxite | Vacuum worlds only, always including the start world's fuel moon, with the warp drive's materials; plus loot in some space places and wrecks (owner, 13 and 22 Nov) | Warp fuel (warp cells) |
 | Rare | Fold crystal | High-gravity worlds (32 km and up), with the fold drive's materials (owner, 13 and 22 Nov) | Fold fuel, shields |
 | Rare | Emberite | Lava worlds around young and dying stars | Fusion cells, plasma weapons, high-output generators |
-| Rare | Starsilver | Barren metal worlds and dense asteroids near giant stars | Top-tier devices, fold drive T2, advanced constructor |
+| Rare | Starsilver | Vacuum worlds, with pentaxite, as the warp drive's material (owner's rule, 22 Nov: warp drive materials on vacuum worlds); richest round blue and white giants | Warp coils (warp and fold drives), advanced constructor, top-tier devices |
 | Exotic | Voidglass | Glass-desert worlds | Long-range scanners, sensor arrays, holographic displays |
 | Exotic | Stormcore | Storm worlds | Capacitors, high-output shields |
 | Exotic | Rimefire | Cryo-fire worlds | Fold drive range boosters |
@@ -712,7 +712,7 @@ The generator checks every seed against these rules. If a guarantee fails, it ad
 | --- | --- | --- |
 | Wake to Wings (everything up to and including small vessels) | Iron, copper, silicon, stone, burnstone, cobalt, magnesium, neodymium | Every planet has deposits of all of them. Uncommon ores are smaller and fewer there, but never absent |
 | Capital (first capital vessel and first fold drive jump) | The above, plus gravium, gold and fold crystal | All of them can be gathered inside the start system by small vessel, and the start system's trading station stocks fold crystal |
-| Frontier | Emberite, starsilver | At least one system rich in each lies within one T1 jump (about 30 LY) of every start system |
+| Frontier | Emberite | At least one system rich in each lies within one T1 jump (about 30 LY) of every start system |
 | Unique items | Precursor alloy and echo shards | The rare POIs that hold them regenerate, and rare traders sell them at a premium, so a looted site never blocks anyone's progress on a shared server |
 | Exotic upgrades | Voidglass, stormcore, rimefire | Optional upgrades only, never needed to advance; each lives on its themed planet type (section 4) |
 | Getting home, from any system | Fold crystal and the small-vessel kit | Every system holds a fold crystal source (a deposit or a trader that stocks it), so no stranding is permanent (section 14) |
