@@ -89,7 +89,7 @@ public partial class BarTest : Node
         s.Set(new Int3(3, 1, 3), Make("generator-t1"));
         s.Set(new Int3(-3, 1, 1), Make("container-t1"));
         s.Set(new Int3(-3, 1, 2), Make("container-t1"));
-        s.Set(new Int3(-2, 1, 3), Make("life-support-pod"));
+        s.Set(new Int3(-3, 1, 0), Make("life-support-pod"));
         s.Set(Chair, Make("command-chair"));
         foreach (Int3 g in Guns) s.Set(g, Make("gatling"));
         foreach (Int3 p in Spots) s.Set(p, Make("spotlight"));
