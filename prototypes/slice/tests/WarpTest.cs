@@ -672,9 +672,9 @@ public partial class WarpTest : Node
 
     // ---- Levels and frame times --------------------------------------------------------------------------------------
 
-    readonly record struct Level(int Nodes, int Objects, int Resources, int Bodies, int Colliders, int Drawn, double ManagedMb, double StaticMb, int Zones, int Terrain)
+    readonly record struct Level(int Nodes, int Objects, int Resources, int Bodies, int Colliders, int Drawn, double ManagedMb, double StaticMb, int Zones, int Streamed)
     {
-        public override string ToString() => $"{Nodes} nodes, {Objects} objects, {Resources} resources, {Bodies} physics bodies, {Colliders} colliders, {Drawn} drawn, managed {ManagedMb:F0} MB, engine {StaticMb:F0} MB, {Zones} zones, {Terrain} streamed ground pieces apart";
+        public override string ToString() => $"{Nodes} nodes, {Objects} objects, {Resources} resources, {Bodies} physics bodies, {Colliders} colliders, {Drawn} drawn, managed {ManagedMb:F0} MB, engine {StaticMb:F0} MB, {Zones} zones, {Streamed} nodes streamed round where you are (ground, places, roads, life) apart";
     }
 
     Level Measure()
@@ -682,20 +682,27 @@ public partial class WarpTest : Node
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        int colliders = 0, drawn = 0, terrain = 0, marks = 0;
-        foreach (Node n in Every(_game))
+        int colliders = 0, drawn = 0, streamed = 0, marks = 0;
+        static int All(Node n) => 1 + n.GetChildren().Sum(All);
+        void Walk(Node n)
         {
-            if (SystemSplit.IsMark(n)) { marks++; continue; } // --split's own markers aren't the game's
-            // The ground streamed round where you are (or left each world) comes and goes with where that is: counted apart.
-            bool ground = n is PlanetSurface.Terrain.TerrainStreamer || n.GetParent() is PlanetSurface.Terrain.TerrainStreamer;
-            if (ground) { terrain += n.GetChildCount(); continue; }
+            if (SystemSplit.IsMark(n)) { marks++; return; } // --split's own markers aren't the game's
+            // What streams round where you are (the ground, its places, roads and life) comes and goes with where that is,
+            // and each world's landing spot differs from loop to loop: counted apart, whole.
+            if (n is PlanetSurface.Terrain.TerrainStreamer or Slice.Places.PoiPlaces or PlanetSurface.Poi.PoiLayer or PlanetSurface.Infra.InfraLayer or WildlifePatch)
+            {
+                streamed += All(n);
+                return;
+            }
             if (n is CollisionObject3D) colliders++;
             if (n is GeometryInstance3D gi && gi.IsVisibleInTree()) drawn++;
+            foreach (Node k in n.GetChildren()) Walk(k);
         }
+        Walk(_game);
         var zones = Flight.AllZones().ToList();
-        return new Level((int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount) - marks, (int)Performance.GetMonitor(Performance.Monitor.ObjectCount) - marks,
+        return new Level((int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount) - marks - streamed, (int)Performance.GetMonitor(Performance.Monitor.ObjectCount) - marks - streamed,
             (int)Performance.GetMonitor(Performance.Monitor.ObjectResourceCount), zones.Sum(z => z.Physics?.Bodies.Count ?? 0), colliders, drawn,
-            GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count, terrain);
+            GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count, streamed);
     }
 
     bool _timed;
