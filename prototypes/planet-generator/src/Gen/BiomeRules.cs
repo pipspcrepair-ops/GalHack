@@ -148,14 +148,14 @@ static class BiomeRules
 
     /// <summary>
     /// Barren ground by what it is: on regolith, dark mare basalt on the low plains and bright highland on the
-    /// hills, plain grey regolith on steep crater walls, and frost in the coldest polar ground; on an ice moon
+    /// hills, plain grey regolith on steep crater walls, and frost on the coldest level polar ground; on an ice moon
     /// frost with dirty regolith on its steepest walls; on a metal world iron-rich ground with regolith patches.
     /// </summary>
     static Biome Barren(int variant, Landform landform, Cell c)
     {
         if (variant == Archetypes.Icy) return c.Slope > 0.75f ? Biome.Regolith : Biome.Frost;
         if (variant == Archetypes.Metal) return c.Patch > 0.45f && c.Slope < 0.4f ? Biome.Regolith : Biome.Ironstone;
-        if (c.T < 0.08f) return Biome.Frost;
+        if (c.T < 0.08f && c.Slope < 0.35f) return Biome.Frost; // polar frost lies on level ground, never down a wall
         if (c.Slope > 0.7f) return Biome.Regolith;
         return landform is Landform.Plains ? Biome.Mare : Biome.Highland;
     }

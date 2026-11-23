@@ -17,7 +17,9 @@ namespace PlanetSurface.Terrain;
 /// How a face is shaped is its landform's by rule (<see cref="FaceOf"/>): a mesa is banded beds under a
 /// caprock, a canyon wall banded and fluted, a sea cliff jointed over a wet foot, a mountain crag all
 /// joints and blocks, karst fluted, badlands thin-bedded and gullied. One texel every planet/256 holds the
-/// blend of the region's landforms, so a face changes as the land does.
+/// blend of the region's landforms, so a face changes as the land does. A world with no air never had water
+/// or weather to wear its faces: no flutes, no varnish streaks, no caprock, faint beds, and the joints of
+/// impact-shattered rock rather than a crag's blocks (<see cref="Unweathered"/>).
 /// </summary>
 public sealed class RockLook
 {
@@ -100,7 +102,7 @@ public sealed class RockLook
         // Weathering down a face: dry, a dark varnish of the rock's own iron and manganese; wet, damp and algae.
         Rgb dry = Rgb.Lerp(Base * 0.32f, first * 0.4f, 0.3f);
         Rgb wet = Rgb.Lerp(Base * 0.42f, Life * 0.35f, LifeAmount);
-        Varnish = Rgb.Lerp(dry, wet, Math.Clamp((humid - 0.3f) * 2f, 0f, 1f));
+        Varnish = world.Spec.Airless ? Base : Rgb.Lerp(dry, wet, Math.Clamp((humid - 0.3f) * 2f, 0f, 1f));
 
         (_styleMap, _bedsMap) = Textures(world, pal.Strata);
     }
@@ -137,6 +139,9 @@ public sealed class RockLook
     /// planet/256, from the blend of landforms there. The world's rock bands more or less by its kind
     /// (<paramref name="strata"/>, the palette's): a desert's sandstone more than a temperate world's.
     /// </summary>
+    /// <summary>A face's style (strata, flutes, joints, caprock) where nothing ever weathered it: faint beds, the rest gone but shattered joints.</summary>
+    public static Vector4 Unweathered(Vector4 s) => new(s.X * 0.3f, 0f, Math.Min(s.Z, 0.3f), 0f);
+
     static (Image style, Image beds) Textures(PlanetWorld world, float strata)
     {
         WorldMap map = world.Map;
@@ -165,6 +170,7 @@ public sealed class RockLook
                 s /= total;
                 thick /= total;
                 s.X = Math.Clamp(s.X * banding, 0f, 1f);
+                if (world.Spec.Airless) s = Unweathered(s);
                 int p = (j * TexWidth + i) * 4;
                 style[p] = Rgb.Byte(s.X);
                 style[p + 1] = Rgb.Byte(s.Y);
