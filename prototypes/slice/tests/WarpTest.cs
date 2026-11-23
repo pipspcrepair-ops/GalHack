@@ -188,6 +188,8 @@ public partial class WarpTest : Node
             levels.Add(($"landed home after round trip {loop}", Measure()));
             GD.Print($"  level {loop}: {levels[^1].At}");
             Holdings(loop);
+            static double Mb(Performance.Monitor m) => Performance.GetMonitor(m) / 1048576.0;
+            GD.Print($"  (memory {loop}: static {Mb(Performance.Monitor.MemoryStatic):F0} MB, video {Mb(Performance.Monitor.RenderVideoMemUsed):F0} MB, textures {Mb(Performance.Monitor.RenderTextureMemUsed):F0} MB, buffers {Mb(Performance.Monitor.RenderBufferMemUsed):F0} MB, {Performance.GetMonitor(Performance.Monitor.ObjectResourceCount)} resources; the physics server: {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects)} active bodies, {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs)} pairs, {Performance.GetMonitor(Performance.Monitor.Physics3DIslandCount)} islands)");
             if (loop < loops)
             {
                 foreach (int x in TakeOff("home")) yield return x;
