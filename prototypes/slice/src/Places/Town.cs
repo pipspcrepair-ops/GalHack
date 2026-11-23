@@ -614,6 +614,9 @@ public sealed partial class Town : IKeeper
     /// <summary>Far towns step less often, as their people already pose less often (<see cref="PersonView.PoseEvery"/>): measurements switch it off.</summary>
     public static bool Spaced = true;
 
+    /// <summary>The place down (only those out on the land about), how many ticks its people's moods are settled over, a share each tick.</summary>
+    const int DownEvery = 6;
+
     /// <summary>Whether a person this far off is due a step this town step: every <see cref="PersonView.PoseEvery"/> ticks, whichever tick of the step's span that falls on.</summary>
     bool Due(int who, float away) => (_tick + who) % PersonView.PoseEvery(away) < _step;
 
@@ -661,7 +664,7 @@ public sealed partial class Town : IKeeper
             {
                 _clock += tickDt;
                 Sense(tickDt);
-                MoodTick(tickDt);
+                MoodTick(tickDt, DownEvery);
                 Held();
             }
             double kept = SkyTraffic.Clock();

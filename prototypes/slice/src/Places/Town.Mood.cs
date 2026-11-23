@@ -84,16 +84,21 @@ public sealed partial class Town
         }
     }
 
-    /// <summary>Settles every mood, sees deaths, lifts those at a fire, and sends the frightened running.</summary>
-    void MoodTick(float dt)
+    /// <summary>
+    /// Settles every mood, sees deaths, lifts those at a fire, and sends the frightened running: everyone each call, or (the
+    /// place down, only those out on the land about) one in <paramref name="every"/> in turn, with that much more time.
+    /// </summary>
+    void MoodTick(float dt, int every = 1)
     {
         if (_fires == null)
         {
             _fires = new List<Vector3>();
             foreach (Marker m in Memory.Inst.Markers) if (m.Kind == "campfire") _fires.Add(Walk(m.Cell));
         }
-        foreach (Person p in People)
+        dt *= every;
+        for (int i = _tick % every; i < People.Count; i += every)
         {
+            Person p = People[i];
             if (p.Gone || p.Looks == null) continue;
             Bind(p);
             if (p.Dead)

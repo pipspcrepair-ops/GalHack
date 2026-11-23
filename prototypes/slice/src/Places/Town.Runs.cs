@@ -399,11 +399,21 @@ public sealed partial class Town
 
     // ---- Under way ----------------------------------------------------------------------------------
 
+    /// <summary>Where those out on the land are (world), gathered once a look round (<see cref="Sense"/>).</summary>
+    readonly List<Vector3> _outAt = new();
+
+    void GatherOut()
+    {
+        _outAt.Clear();
+        foreach (Person p in People)
+            if (p.Run != null && !p.Dead && !p.Gone) _outAt.Add(World(p.Pos));
+    }
+
     /// <summary>Something (world) is near one of them out on the land: they see it as on their way.</summary>
     bool OnTheirWay(Vector3 world)
     {
-        foreach (Person p in People)
-            if (p.Run != null && !p.Dead && !p.Gone && Flat(World(p.Pos) - world) < WaySight) return true;
+        foreach (Vector3 at in _outAt)
+            if (Flat(at - world) < WaySight) return true;
         return false;
     }
 
