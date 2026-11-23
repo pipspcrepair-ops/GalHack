@@ -452,9 +452,10 @@ public sealed record WorldPalette
     {
         Rgb c = s.Reflectance();
         float gain = 1f + (boost.Gain - 1f) * vivid, light = 1f + (boost.Light - 1f) * vivid;
-        // Where the screen can't hold that chroma so light or so dark, the lightness gives way toward the middle, never the colour.
+        // Where the screen can't hold that chroma so light, the lightness gives way toward the middle, never the colour; a dark
+        // colour stays dark (dim light's leaves, broad dark pigments: never lightened).
         Rgb bold = Oklab.Vivid(c, gain, boost.Floor, light);
-        for (int i = 0; i < 4 && Oklab.Of(bold).Chroma < boost.Floor * 0.95f; i++)
+        for (int i = 0; i < 4 && Oklab.Of(bold).Chroma < boost.Floor * 0.95f && Oklab.Of(bold).L > 0.6f; i++)
             bold = Oklab.Vivid(c, gain, boost.Floor, (light = 0.6f / MathF.Max(Oklab.Of(c).L, 0.05f) * 0.35f + light * 0.65f));
         return bold;
     }
@@ -476,11 +477,11 @@ public sealed record WorldPalette
     /// <summary>The most chroma an earth tone takes, earthy as it is: a burnt orange dust sky, rust ground, mustard light.</summary>
     public const float EarthTone = 0.14f;
 
-    /// <summary>A part laid deep against a vivid world's strong ones: darker and duller at its own hue.</summary>
+    /// <summary>A part laid deep against a vivid world's strong ones: darker and duller at its own hue (a dark vivid colour keeps its chroma; this doesn't).</summary>
     static Rgb Deepened(Rgb c)
     {
         Oklab o = Oklab.Of(c);
-        return Oklab.Lch(o.L * 0.62f, MathF.Min(o.Chroma * 0.55f, 0.08f), o.Hue).ToRgb();
+        return Oklab.Lch(o.L * 0.62f, MathF.Min(o.Chroma * 0.45f, 0.055f), o.Hue).ToRgb();
     }
 
     // How vivid each element's chemistry makes it, 0 an earth tone to 1 a colour as strong as it comes (owner, 23 Nov: "a mix of
@@ -627,11 +628,11 @@ public sealed record WorldPalette
         _ => new[] { (Waters.Clear, 0.22f), (Waters.Cyanobacteria, 0.12f), (Waters.PurpleSulfur, 0.08f), (Waters.Halophiles, 0.06f), (Waters.Copper, 0.12f), (Waters.Flour, 0.08f), (Waters.Blackwater, 0.1f), (Waters.Iron, 0.1f), (Waters.Sulfur, 0.1f) },
     };
 
-    /// <summary>The ores a world's ground may weather into its soil: volcanic worlds' sulfur most of all, an icy world's ground mostly plain.</summary>
+    /// <summary>The ores a world's ground may weather into its soil: volcanic worlds' sulfur most of all, an icy world's ground plain as often as any one ore.</summary>
     static (Stain, float)[] StainOdds(PlanetSpec spec) => spec.Archetype switch
     {
         Archetype.Lava => new[] { (Stain.Sulfur, 0.35f), (Stain.None, 0.15f), (Stain.Manganese, 0.15f), (Stain.Malachite, 0.1f), (Stain.Cobalt, 0.1f), (Stain.Carbon, 0.15f) },
-        Archetype.Ice => new[] { (Stain.None, 0.45f), (Stain.Azurite, 0.15f), (Stain.Manganese, 0.15f), (Stain.Glauconite, 0.15f), (Stain.Cobalt, 0.1f) },
+        Archetype.Ice => new[] { (Stain.None, 0.25f), (Stain.Azurite, 0.15f), (Stain.Manganese, 0.2f), (Stain.Glauconite, 0.2f), (Stain.Cobalt, 0.1f), (Stain.Carbon, 0.1f) },
         _ => new[] { (Stain.None, 0.12f), (Stain.Sulfur, 0.12f), (Stain.Malachite, 0.14f), (Stain.Azurite, 0.13f), (Stain.Manganese, 0.12f), (Stain.Cobalt, 0.09f), (Stain.Glauconite, 0.14f), (Stain.Carbon, 0.12f) },
     };
 
