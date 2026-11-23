@@ -333,8 +333,8 @@ public partial class Spaceflight
 
     // ---- The system left ---------------------------------------------------------------------
 
-    /// <summary>What of a zone was put away before it was parked, in order: each switched off, and hidden if it showed.</summary>
-    readonly Dictionary<SurfaceZone, List<(Node Node, bool Shown)>> _tucked = new();
+    /// <summary>What of a zone was put away before it was parked, in order: each hidden if it showed, switched off if it ran.</summary>
+    readonly Dictionary<SurfaceZone, List<(Node Node, bool Shown, bool Ran)>> _tucked = new();
 
     /// <summary>What is still to put away of a zone being left, and whether a big branch's twigs have gone in ahead of it.</summary>
     readonly Dictionary<SurfaceZone, Stack<(Node Node, bool Opened)>> _toTuck = new();
@@ -359,13 +359,16 @@ public partial class Spaceflight
             _toTuck[from] = left = new Stack<(Node, bool)>(from.GetChildren().Where(n => !keep.Any(k => k != null && (k == n || n.IsAncestorOf(k)))).Select(n => (n, false)));
             // Left again while it was still coming back (woken a moment ago): what hadn't come back yet stays put away.
             _waking.Remove(from);
-            _tucked.TryAdd(from, new List<(Node, bool)>());
+            _tucked.TryAdd(from, new List<(Node, bool, bool)>());
         }
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         while (left.TryPop(out var top))
         {
             Node n = top.Node;
-            if (!IsInstanceValid(n) || n.ProcessMode != ProcessModeEnum.Inherit) continue;
+            if (!IsInstanceValid(n)) continue;
+            // What runs by its own process mode keeps it, but is hidden all the same; what is off and hidden already stays so.
+            bool ran = n.ProcessMode == ProcessModeEnum.Inherit, shown = n is Node3D { Visible: true };
+            if (!ran && !shown) continue;
             // A big branch twig by twig; and what hangs under a plain node (a globe, apart so a parked orbit still shows it
             // from the ground), which its hiding wouldn't reach.
             if (!top.Opened && (n.GetChildCount() > ManyKids || n is not Node3D && n.GetChildCount() > 0))
@@ -374,10 +377,9 @@ public partial class Spaceflight
                 foreach (Node kid in n.GetChildren()) left.Push((kid, false));
                 continue;
             }
-            bool shown = n is Node3D { Visible: true };
-            n.ProcessMode = ProcessModeEnum.Disabled;
+            if (ran) n.ProcessMode = ProcessModeEnum.Disabled;
             if (shown) ((Node3D)n).Visible = false;
-            _tucked[from].Add((n, shown));
+            _tucked[from].Add((n, shown, ran));
             if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > TuckMs) break;
         }
         return left.Count > 0;
@@ -400,13 +402,13 @@ public partial class Spaceflight
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         foreach (SurfaceZone zone in _waking.ToList())
         {
-            List<(Node Node, bool Shown)> put = _tucked[zone];
+            List<(Node Node, bool Shown, bool Ran)> put = _tucked[zone];
             while (put.Count > 0)
             {
-                var (n, shown) = put[^1];
+                var (n, shown, ran) = put[^1];
                 put.RemoveAt(put.Count - 1);
                 if (!IsInstanceValid(n)) continue;
-                n.ProcessMode = ProcessModeEnum.Inherit;
+                if (ran) n.ProcessMode = ProcessModeEnum.Inherit;
                 if (shown) ((Node3D)n).Visible = true;
                 if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > GroundTurnMs) return;
             }
@@ -433,6 +435,8 @@ public partial class Spaceflight
                 foreach (Celestial c in o.Bodies)
                     if (c.Globe != null) c.Globe.Visible = false;
             }
+            took.Append($"{z.Name} {watch.Elapsed.TotalMilliseconds:F1}+");
+            watch.Restart();
             Park(z);
             if (z is not OrbitZone) Mute(z); // a surface's sky and light off (an orbit's are its space sky's, off above)
             Silence(z);
