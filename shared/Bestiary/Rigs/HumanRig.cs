@@ -1088,7 +1088,8 @@ public sealed partial class HumanRig : Rig
     Transform3D InFist(Basis want, Vector3 fist, bool turn = true)
     {
         Basis hand = _handAt[1].Basis;
-        Quaternion q = (hand.Inverse() * want).GetRotationQuaternion();
+        Quaternion q = Turn(hand.Inverse() * want);
+        if (!q.IsNormalized()) q = _inFist.IsNormalized() ? _inFist : Quaternion.Identity; // (asked a frame with no turn: held as it was)
         if (turn && _dt > 0f && _inFist.LengthSquared() > 0.5f)
         {
             float a = _inFist.AngleTo(q), most = FistTurn * _dt;
