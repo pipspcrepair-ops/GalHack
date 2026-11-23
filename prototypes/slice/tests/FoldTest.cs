@@ -660,8 +660,11 @@ public partial class FoldTest : Node
         GC.WaitForPendingFinalizers();
         GC.Collect(2, GCCollectionMode.Forced, true, true);
         // What the finalizers let go of (a mesh's, a texture's data) the engine frees on the main thread over the next frames:
-        // static memory is read after them, as WarpTest's (read at once, it counted all of it).
+        // static memory is read after them, as WarpTest's (read at once, it counted all of it); twice, for what the first let go of.
         for (int i = 0; i < 10; i++) yield return 0;
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        GC.WaitForPendingFinalizers();
+        for (int i = 0; i < 20; i++) yield return 0;
     }
 
     Levels Measure(string where)
@@ -675,12 +678,15 @@ public partial class FoldTest : Node
         return l;
     }
 
-    /// <summary>A swap leaves things level: what isn't the star zone's own counts the same; memory and textures within a little.</summary>
+    /// <summary>
+    /// A swap leaves things level: what isn't the star zone's own counts the same; memory and textures grow by no more than a
+    /// little (back home from out among the stars they drop by that system's own sky and far looks: 30 MB of textures).
+    /// </summary>
     void Level(Levels was, Levels now, string swap)
     {
         int nodes = (now.Nodes - now.StarNodes) - (was.Nodes - was.StarNodes);
         long managed = now.Managed - was.Managed, statics = now.Static - was.Static, textures = now.Textures - was.Textures;
-        Check(Math.Abs(nodes) <= 40 && now.Bodies == was.Bodies && Math.Abs(managed) < 96L << 20 && Math.Abs(statics) < 96L << 20 && Math.Abs(textures) < 24L << 20,
+        Check(Math.Abs(nodes) <= 40 && now.Bodies == was.Bodies && managed < 96L << 20 && statics < 96L << 20 && textures < 24L << 20,
             $"{swap}: level after the swap: {nodes:+0;-0;0} nodes outside the star's zone, bodies {was.Bodies} → {now.Bodies}, managed {managed / 1048576.0:+0.0;-0.0} MB, static {statics / 1048576.0:+0.0;-0.0} MB, textures {textures / 1048576.0:+0.0;-0.0} MB");
     }
 
