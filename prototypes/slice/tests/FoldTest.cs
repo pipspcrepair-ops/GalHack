@@ -426,7 +426,8 @@ public partial class FoldTest : Node
             if (!fitted && Building.Check(s, new Int3(x, y, z), block) == PlaceError.None)
                 fitted = Building.Place(s, new Int3(x, y, z), block) == PlaceError.None;
         if (!Check(fitted && Fit(s, "warp-drive"), "a fold drive T1 and a warp drive fit at the Skiff's tail")) yield break;
-        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 26f, span: 12f);
+        // Where the sleeper can walk to it: about their own height (on a cliff's top 57 m up, boarding failed).
+        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Survivor.WorldFeet, 26f, within: 3f, span: 12f);
         _ship = Vessel.Spawn(_game.Zone, s, pad.ToNumerics() + N.Vector3.UnitY * 2.5f, 0f, landed: true);
         // Fuelled for the whole trip: generator fuel for hours of full thrust, the capacitor full, fold crystal for five
         // folds of the drive's longest (one a light year), warp cells for every warp's AU.
