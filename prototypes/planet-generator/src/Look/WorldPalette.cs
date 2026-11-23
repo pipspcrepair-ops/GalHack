@@ -225,10 +225,10 @@ public sealed record WorldPalette
     const float Adaptation = 0.85f;
 
     /// <summary>
-    /// How far the sky is seen adapted: half the way. A sky fills half the view but the eye sets its white by the lit
+    /// How far the sky is seen adapted: two thirds of the way (the sky also lights the ground, so a red dwarf's sky kept any warmer would tint grey rock). A sky fills half the view but the eye sets its white by the lit
     /// ground it stands on, so the sky keeps more of its star's cast: skies under M, K, G and F stars differ.
     /// </summary>
-    const float SkyAdaptation = 0.5f;
+    const float SkyAdaptation = 0.65f;
 
     /// <summary>How bright a sky is against its sunlight: Earth's clear zenith comes out at Earth's (luminance about 0.22 of white).</summary>
     const float SkyGain = 1.4f;
