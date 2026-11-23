@@ -643,7 +643,7 @@ public partial class SkyRig : Node3D
         // valley fog under a low sun are dim and warm, never a white wall. The glow toward the sun
         // (sun scatter) is kept modest: a low sun shines through the haze, it doesn't blind.
         float fogLight = Smooth(-0.16f, 0.25f, toSun.Y);
-        Rgb fog = Rgb.Lerp(s.Haze, grey, air.Overcast * 0.8f) * (0.08f + 0.92f * fogLight);
+        Rgb fog = Rgb.Lerp(s.Haze, grey, Smooth(0.5f, 1f, air.Overcast) * 0.8f) * (0.08f + 0.92f * fogLight); // the haze keeps its air's colour until the sky is really overcast
         fog = Rgb.Lerp(fog, s.Sunset * (0.8f * fogLight), low * day * 0.35f);
         Environment.FogLightColor = C(fog);
         Environment.FogDensity = air.FogDensity;

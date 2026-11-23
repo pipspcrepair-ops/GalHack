@@ -120,7 +120,7 @@ public sealed record WorldPalette
         // Every light here (the sun on the ground, the sky, the sunset) is seen by an eye adapted most of the way to its star, so
         // grey rock reads grey under any star with only a faint cast; the star's colour still shows where the light differs
         // from its own (the sky's scattering, the sunset's reddening, leaf pigments) and in its own disc (Disc).
-        Spectrum.Eye eye = light.Adapted(Adaptation);
+        Spectrum.Eye eye = light.Adapted(Adaptation), skyEye = light.Adapted(SkyAdaptation);
 
         // ---- Minerals and soils ----
         // An airless body's regolith is its dark mare basalt and bright highland anorthosite in its own mix (the Moon's).
@@ -184,11 +184,11 @@ public sealed record WorldPalette
         Rgb zenith = default, horizon = default, haze = default, sunset = default, limb = default;
         if (column > 0f)
         {
-            zenith = Sky(1f, 1f, 0.8f).Light(SkyGain, eye); // the sun higher than 45° at midday: further from its glare
-            horizon = Sky(10f, 0.8f, 0.5f).Light(SkyGain, eye);
-            haze = Sky(40f, 0.8f, 0.5f).Light(SkyGain, eye);
-            sunset = (light * Spectrum.Exp(extinction * -12f)).Hue(eye); // the sun about 5° up
-            limb = (light * scatter).Hue(eye);
+            zenith = Sky(1f, 1f, 0.8f).Light(SkyGain, skyEye); // the sun higher than 45° at midday: further from its glare
+            horizon = Sky(10f, 0.8f, 0.5f).Light(SkyGain, skyEye);
+            haze = Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye);
+            sunset = (light * Spectrum.Exp(extinction * -12f)).Hue(skyEye); // the sun about 5° up
+            limb = (light * scatter).Hue(skyEye);
         }
 
         // ---- Plants ----
@@ -223,6 +223,12 @@ public sealed record WorldPalette
 
     /// <summary>How far an eye adapts to its star's light: most of the way, never all of it (<see cref="Spectrum.Adapted"/>).</summary>
     const float Adaptation = 0.85f;
+
+    /// <summary>
+    /// How far the sky is seen adapted: half the way. A sky fills half the view but the eye sets its white by the lit
+    /// ground it stands on, so the sky keeps more of its star's cast: skies under M, K, G and F stars differ.
+    /// </summary>
+    const float SkyAdaptation = 0.5f;
 
     /// <summary>How bright a sky is against its sunlight: Earth's clear zenith comes out at Earth's (luminance about 0.22 of white).</summary>
     const float SkyGain = 1.4f;

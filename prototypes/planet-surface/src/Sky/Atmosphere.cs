@@ -86,7 +86,9 @@ public static class Atmosphere
             ValleyFogDepth: ValleyFogDepthOf(valley),
             SunScale: 0.12f + 0.88f * solar,
             AmbientScale: 1f + overcast * 0.6f,
-            Saturation: 1.05f - 0.25f * overcast - 0.2f * c.Dust,
+            // Only a sky that is really overcast greys the picture, and only as far as it is: a fair day keeps the colour
+            // its air gives it (a world-wide cut greyed every meadow, owner 22 Nov). Dust colours the air itself (the palette's).
+            Saturation: 1.05f - 0.25f * Smooth(0.5f, 1f, overcast),
             Visibility: visibility)
         {
             GroundFog = Math.Clamp(c.GroundFog, 0f, 1f),

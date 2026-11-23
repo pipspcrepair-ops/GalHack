@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -569,7 +569,8 @@ public partial class GenTest : Node
     }
 
     /// <summary>
-    /// The blind test, automated: simple feature vectors from what a player sees (colour map) and
+    /// The blind test, automated: simple feature vectors from what a player sees of the land (its ground and growth,
+    /// not its water or sky, whose colours are its star's and air's: WorldPalette) and
     /// the terrain, then a nearest-centroid classifier trained on some seeds and scored on others.
     /// </summary>
     void Distinctness()
@@ -646,22 +647,18 @@ public partial class GenTest : Node
     {
         var look = ArchetypeLook.For(map.Spec);
         var colors = ColorMap.Build(map, look, 192);
-        double lr = 0, lg = 0, lb = 0, wr = 0, wg = 0, wb = 0, luma2 = 0, luma = 0;
-        int land = 0, liquid = 0;
+        double lr = 0, lg = 0, lb = 0, luma2 = 0, luma = 0;
+        int land = 0;
         for (int p = 0; p < colors.Width * colors.Height; p++)
         {
+            if (colors.Albedo[p * 4 + 3] > 0) continue;
             float r = colors.Albedo[p * 4] / 255f, g = colors.Albedo[p * 4 + 1] / 255f, b = colors.Albedo[p * 4 + 2] / 255f;
-            if (colors.Albedo[p * 4 + 3] > 0) { wr += r; wg += g; wb += b; liquid++; }
-            else
-            {
-                lr += r; lg += g; lb += b; land++;
-                float l = 0.3f * r + 0.59f * g + 0.11f * b;
-                luma += l;
-                luma2 += l * l;
-            }
+            lr += r; lg += g; lb += b; land++;
+            float l = 0.3f * r + 0.59f * g + 0.11f * b;
+            luma += l;
+            luma2 += l * l;
         }
         land = Math.Max(land, 1);
-        liquid = Math.Max(liquid, 1);
         double lumaMean = luma / land;
 
         double slope = 0, elev = 0, elev2 = 0;
@@ -679,7 +676,6 @@ public partial class GenTest : Node
         return new[]
         {
             (float)(lr / land), (float)(lg / land), (float)(lb / land),
-            (float)(wr / liquid), (float)(wg / liquid), (float)(wb / liquid),
             map.LandFraction,
             (float)(slope / cells),
             (float)Math.Sqrt(Math.Max(0, elev2 / cells - elevMean * elevMean)) / 100f,

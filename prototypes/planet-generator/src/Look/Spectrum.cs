@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace Planets.Look;
 
@@ -152,9 +152,9 @@ public readonly struct Spectrum
 
     /// <summary>
     /// How much more colourful daylight looks than its screen copy: CIECAM02's colourfulness goes as the fourth root
-    /// of its luminance-level factor F_L, about 1.35 from a sunlit scene's adapting luminance to a screen's.
+    /// of its luminance-level factor F_L, about 1.45 from a sunlit scene's adapting luminance (some 2,000 cd/m²) to a screen's (20).
     /// </summary>
-    const float Hunt = 1.35f;
+    const float Hunt = 1.45f;
 
     /// <summary>The colour of a light at its brightest channel 1: its hue alone (a star, a glow).</summary>
     public Rgb Hue(Eye eye = default)
