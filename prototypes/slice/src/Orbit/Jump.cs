@@ -64,6 +64,9 @@ public sealed class Jump
 
     public readonly IJumpDestination To;
 
+    /// <summary>The way it goes, a unit direction in the world of the zone it leaves (zero: the way the hull points); the tunnel streams from it.</summary>
+    public N.Vector3 Heading { get; internal set; }
+
     public Stage Now { get; internal set; } = Stage.Spool;
 
     /// <summary>How far the spool has come, 0 to 1.</summary>

@@ -123,8 +123,12 @@ public partial class Spaceflight
     string Warp(WarpRoute r)
     {
         if (r.Refusal != null) return r.Refusal;
-        var to = new WarpTo(this, r, HereInSystem());
-        return StartJump(WarpCarrier, WarpDrive, r.Short ? 0 : r.Au, r.TripSeconds, to);
+        D3 here = HereInSystem();
+        var to = new WarpTo(this, r, here);
+        // The way it goes, toward what it goes to, in the world of the orbit it leaves.
+        D3 toward = (r.Wreck != null ? ToSystem(Orbit, r.Wreck.Body.Position) : Game.Surface.Planet.StarSystem.Position(r.Body, Game.Surface.Sky.Days)) - here;
+        N.Vector3 heading = N.Vector3.Transform(new N.Vector3((float)toward.X, (float)toward.Y, (float)toward.Z), N.Quaternion.Conjugate(WorldToSystem(Orbit)));
+        return StartJump(WarpCarrier, WarpDrive, r.Short ? 0 : r.Au, r.TripSeconds, to, heading);
     }
 
     /// <summary>

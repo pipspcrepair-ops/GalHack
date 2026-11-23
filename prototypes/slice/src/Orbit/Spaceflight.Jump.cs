@@ -32,15 +32,15 @@ public partial class Spaceflight
 
     /// <summary>
     /// Spools a drive on a structure for a jump of so far (its fuel's unit), with at least <paramref name="tripSeconds"/> in
-    /// the tunnel, to <paramref name="to"/>. Null once it spools; else what stops it, as the console says it.
+    /// the tunnel, to <paramref name="to"/>, going <paramref name="heading"/> (in this zone's world). Null once it spools; else what stops it, as the console says it.
     /// </summary>
-    public string StartJump(Vessel carrier, string drive, double distance, double tripSeconds, IJumpDestination to)
+    public string StartJump(Vessel carrier, string drive, double distance, double tripSeconds, IJumpDestination to, N.Vector3 heading = default)
     {
         if (Jumping?.Running == true) return "SPOOLING";
         if (carrier?.Power == null) return "NOT FITTED";
         string no = carrier.Power.Engage(drive, distance);
         if (no != null) return no;
-        var j = new Jump(carrier, drive, distance, tripSeconds, to) { From = Game.Zone };
+        var j = new Jump(carrier, drive, distance, tripSeconds, to) { From = Game.Zone, Heading = heading.LengthSquared() > 1e-6f ? N.Vector3.Normalize(heading) : default };
         j.OnJumped = (function, _) => j.Fired |= function == drive;
         carrier.Power.Jumped += j.OnJumped;
         Jumping = j;
