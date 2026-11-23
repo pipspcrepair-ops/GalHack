@@ -323,10 +323,14 @@ public partial class FoldTest : Node
         Check(_game.Orbit.Home.Body == system.Star && Flight.Away == away && away.Orbits.Contains(_game.Orbit), $"back round {star}'s star, in its own zone ({_game.Orbit.Name})");
     }
 
+    /// <summary>The ship's fuel as the console has it: generator fuel, the capacitor, the jump fuels.</summary>
+    string Fuel() => $"generator fuel {_ship.Power.FuelUnits:F0} units, capacitor {_ship.Power.ChargeMJ:F1} of {_ship.Power.CapacityMJ:F0} MJ, supply {_ship.Power.Supply:P0}, "
+        + $"{_ship.Storage.Count("warp-cell")} warp cells, {_ship.Storage.Count("fold-crystal")} fold crystal";
+
     /// <summary>A warp in the system here, spooled and waited through.</summary>
     IEnumerable<int> Warp(Orbiter to)
     {
-        GD.Print($"-- the warp to {Charts.Tidy(to.Name)} --");
+        GD.Print($"-- the warp to {Charts.Tidy(to.Name)} ({Flight.Route(to).Cells} cells; {Fuel()}) --");
         string refused = Flight.Warp(to);
         if (!Check(refused == null, $"the warp to {Charts.Tidy(to.Name)} spools ({refused ?? $"{Flight.Jumping.Distance:F2} AU"})")) yield break;
         for (int i = 0; i < 60 * 240 && Flight.Jumping.Running; i++) yield return 0;
@@ -355,9 +359,14 @@ public partial class FoldTest : Node
         if (!Check(fitted && Fit(s, "warp-drive"), "a fold drive T1 and a warp drive fit at the Skiff's tail")) yield break;
         Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 26f, span: 12f);
         _ship = Vessel.Spawn(_game.Zone, s, pad.ToNumerics() + N.Vector3.UnitY * 2.5f, 0f, landed: true);
+        // Fuelled for the whole trip: generator fuel for hours of full thrust, the capacitor full, fold crystal for five
+        // folds of the drive's longest (one a light year), warp cells for every warp's AU.
+        ItemDef fuel = _ship.Power.Rules.Fuels[^1];
+        _ship.Storage.Add(fuel.Id, 200);
+        _ship.Power.ChargeMJ = _ship.Power.CapacityMJ;
         _ship.Storage.Add("fold-crystal", 300);
         _ship.Storage.Add("warp-cell", 60);
-        GD.Print($"  (setup: the Skiff with a fold drive, a warp drive and six more lift jets set down whole at {pad}, 300 fold crystal and 60 warp cells in its hold, Creative's free power)");
+        GD.Print($"  (setup: the Skiff with a fold drive, a warp drive and six more lift jets set down whole at {pad}; in its hold 200 {fuel.Id}, 300 fold crystal and 60 warp cells; its capacitor full; Creative's free power besides)");
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
@@ -386,11 +395,13 @@ public partial class FoldTest : Node
     IEnumerable<int> Climb()
     {
         string from = _game.Zone.Name;
+        if (!Check(_ship.Powered && (_ship.Power.FuelUnits > 0 || _ship.Power.ChargeMJ > 0), $"fuelled to climb off {from}: {Fuel()}")) yield break;
         _game.Controls.Hold(Key.Space);
         int ticks = 0;
         while (!_game.InOrbit && ticks++ < 60 * 150) yield return 0;
         _game.Controls.ReleaseAll();
-        Check(_game.InOrbit, $"the climb off {from} crossed into orbit after {ticks / 60f:F0} s (lift margin {_ship.Stats?.LiftMargin:F0} kN)");
+        Check(_game.InOrbit, _game.InOrbit ? $"the climb off {from} crossed into orbit after {ticks / 60f:F0} s (lift margin {_ship.Stats?.LiftMargin:F0} kN; {Fuel()})"
+            : $"NO CLIMB: off {from} the Skiff didn't reach orbit in {ticks / 60f:F0} s, {_ship.Body.Position.ToGodot().Y:F0} m up ({(_ship.Powered ? "powered" : "no power")}; {Fuel()})");
         // Clear of the band, where nothing of the surface is drawn.
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 60 * 30 && Flight.Band < 1f; i++) yield return 0;
@@ -414,7 +425,7 @@ public partial class FoldTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Flight.Charts.ChosenStar = star;
         string fault = Flight.FoldFault(_ship, star);
-        if (!Check(fault == null, $"the fold drive can make it: {fault ?? "IN REACH"} ({Flight.CrystalTo(star)} fold crystal, {_ship.Power.Range(Spaceflight.FoldDrive)?.Reach:F0} LY on the gauge)")) yield break;
+        if (!Check(fault == null, $"the fold drive can make it: {fault ?? "IN REACH"} ({Flight.CrystalTo(star)} fold crystal for {ly:F1} LY, {_ship.Power.Range(Spaceflight.FoldDrive)?.Reach:F0} LY on the gauge; {Fuel()})")) yield break;
         int folds = Flight.Folds.Count();
         StartTiming();
         string refused = Flight.Fold(star);
