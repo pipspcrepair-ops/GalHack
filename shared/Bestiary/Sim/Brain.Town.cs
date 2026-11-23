@@ -56,7 +56,7 @@ public static partial class Brain
         }
 
         // Out of its pen (shoved, or startled out): straight back.
-        if (WildSim.Flat(c.Position - pen).Length() > radius + (s.Domestic == DomesticKind.Stock && c.Owner != null ? 5f : 0f))
+        if (Strayed(c))
         {
             c.SetState(CState.ReturnHome);
             Go(w, c, pen, s.Stats.WalkSpeed);
@@ -127,6 +127,10 @@ public static partial class Brain
         c.Owner = master;
         Pet(w, c, master.Position, 8f, dt);
     }
+
+    /// <summary>Whether a settlement's animal is out of where it is kept: its pen or field (stock a little past it after their handler), else round its home.</summary>
+    static bool Strayed(Creature c) =>
+        WildSim.Flat(c.Position - (c.PenRadius > 0f ? c.PenCenter : c.Home)).Length() > MathF.Max(1.5f, c.PenRadius) + (c.Species.Domestic == DomesticKind.Stock && c.Owner != null ? 5f : 0f);
 
     static void Settle(Creature c)
     {

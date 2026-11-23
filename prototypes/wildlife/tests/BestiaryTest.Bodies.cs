@@ -68,6 +68,21 @@ public partial class BestiaryTest
         }
     }
 
+    /// <summary>
+    /// A pose as the player sees it held a moment (0.3 s of frames): the rig carries its pose from one frame to the next (an elbow
+    /// swings round, a hand turns, an arm eases off the body at a limb's pace), so a pose jumped to in one call from an unrelated
+    /// one is still on its way there, as it never is in the game.
+    /// </summary>
+    static void Held(HumanRig rig, Gesture g)
+    {
+        float clock = g.Clock;
+        for (int k = 3; k >= 0; k--)
+        {
+            g.Clock = clock - k * 0.1f;
+            rig.Drive(g);
+        }
+    }
+
     /// <summary>The thickest coat any world dresses its people in.</summary>
     float ThickestCoat()
     {
@@ -113,7 +128,7 @@ public partial class BestiaryTest
                 Gesture g = g0;
                 g.Feet = Vector3.Zero;
                 g.Yaw = 0.7f;
-                rig.Drive(g);
+                Held(rig, g);
                 poses++;
                 for (int i = 0; i < 2; i++)
                 {
@@ -146,7 +161,7 @@ public partial class BestiaryTest
             bodies++;
             Species s = s0.Copy();
             s.Figure = s0.Figure.Clone();
-            s.Figure.Prop = "bottle";
+            s.Figure.Prop = ""; // (empty-handed: a hand carrying something keeps it, and gestures go to the other)
             var rig = new HumanRig(s);
             // And the same person in the thickest coat, for the shrug (the owner's shot: forearms hanging).
             Species heavy = s.Copy();
@@ -169,7 +184,7 @@ public partial class BestiaryTest
                 float t = 0.3f + k * 0.77f;
                 foreach (BodyAct a in new[] { BodyAct.Cower, BodyAct.Grieve })
                 {
-                    rig.Drive(At(a, t));
+                    Held(rig, At(a, t));
                     for (int i = 0; i < 2; i++)
                     {
                         var (sh, el, wr) = rig.ArmOf(i);
@@ -177,17 +192,17 @@ public partial class BestiaryTest
                         if (Local(el).Y > Local(sh).Y - 0.04f || Local(el).Y > Local(wr).Y) { if (a == BodyAct.Cower) cowerUp++; else grieveUp++; }
                     }
                 }
-                rig.Drive(At(BodyAct.Beckon, t));
+                Held(rig, At(BodyAct.Beckon, t));
                 {
                     var (sh, el, wr) = rig.ArmOf(1);
                     if (Local(el).Y > Local(sh).Y - drop || Out(sh, el) > 0.18f) beckonOut++;
                 }
-                rig.Drive(At(BodyAct.WaveOff, t));
+                Held(rig, At(BodyAct.WaveOff, t));
                 {
                     var (sh, el, wr) = rig.ArmOf(1);
                     if (Out(sh, el) > 0.2f || Local(el).Y > Local(sh).Y - drop || Local(wr).X < -0.05f) waveOffAcross++;
                 }
-                rig.Drive(At(BodyAct.Point, t));
+                Held(rig, At(BodyAct.Point, t));
                 {
                     var (sh, el, wr) = rig.ArmOf(1);
                     Vector3 d = (wr - sh).Normalized();
@@ -195,7 +210,7 @@ public partial class BestiaryTest
                 }
                 foreach (HumanRig who in new[] { rig, coated })
                 {
-                    who.Drive(At(BodyAct.Shrug, t));
+                    Held(who, At(BodyAct.Shrug, t));
                     Transform3D inv = who.Pose[body].AffineInverse();
                     bool thick = who == coated;
                     for (int i = 0; i < 2; i++)
@@ -227,10 +242,14 @@ public partial class BestiaryTest
                 for (int b = a + 1; b < hands.Count; b++)
                     if (hands[a].Item1.DistanceTo(hands[b].Item1) + hands[a].Item2.DistanceTo(hands[b].Item2) < 0.09f) thanksSame++;
             // The sip: the bottle's neck at the lips, tipped up; not a pole before the face.
-            rig.Drive(new Gesture { Feet = Vector3.Zero, Sip = 1f, Clock = 1f });
-            int prop = rig.Layout.Pieces.FindIndex(p => p.Name == "prop");
-            int head = rig.Layout.Pieces.FindIndex(p => p.Name == "head");
-            Transform3D bottle = rig.Pose[prop], h = rig.Pose[head];
+            Species sipper = s0.Copy();
+            sipper.Figure = s0.Figure.Clone();
+            sipper.Figure.Prop = "bottle";
+            var drinker = new HumanRig(sipper);
+            Held(drinker, new Gesture { Feet = Vector3.Zero, Sip = 1f, Clock = 1f });
+            int prop = drinker.Layout.Pieces.FindIndex(p => p.Name == "prop");
+            int head = drinker.Layout.Pieces.FindIndex(p => p.Name == "head");
+            Transform3D bottle = drinker.Pose[prop], h = drinker.Pose[head];
             Vector3 neckTip = bottle * new Vector3(0f, 0.19f * HumanBody.Scale(f), 0f);
             Vector3 mouth = h.Origin + h.Basis.Y * (f.Neck + f.HeadRadius * 0.55f) - h.Basis.Z * f.HeadRadius * 0.95f;
             if (neckTip.DistanceTo(mouth) > 0.05f) sipOff++;
@@ -240,7 +259,7 @@ public partial class BestiaryTest
             a2.Figure = s0.Figure.Clone();
             a2.Figure.Prop = "bow";
             var archer = new HumanRig(a2);
-            archer.Drive(new Gesture { Feet = Vector3.Zero, Aim = 1f, Clock = 1f });
+            Held(archer, new Gesture { Feet = Vector3.Zero, Aim = 1f, Clock = 1f });
             var (lsh, _, lwr) = archer.ArmOf(0);
             var (_, rel, rwr) = archer.ArmOf(1);
             float armL = a2.Figure.UpperArmOf(0) + a2.Figure.ForearmOf(0);

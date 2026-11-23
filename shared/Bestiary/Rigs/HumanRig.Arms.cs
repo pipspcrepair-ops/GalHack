@@ -226,7 +226,7 @@ public sealed partial class HumanRig
             (shoulderAt, sh) = (askedShoulder + b * cs, askedShoulder + b * cs);
             Vector3 hd = askedHand + b * ch, along = (hd - sh).Normalized();
             float nearest = Nearest * (upper + fore);
-            if ((hd - sh).LengthSquared() < nearest * nearest) hd = sh + along * nearest;
+            if (!held && (hd - sh).LengthSquared() < nearest * nearest) hd = sh + along * nearest; // (a hand on a grip stays on it: the hold says where)
             way = Square(way, along);
             Vector3 was = Square(b * wasWay, along);
             if (way == Vector3.Zero) way = was != Vector3.Zero ? was : Square(outward, along);
