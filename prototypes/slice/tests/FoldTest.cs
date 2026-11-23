@@ -293,9 +293,12 @@ public partial class FoldTest : Node
         SurfaceZone surface = c.Surface;
         if (!Check(_game.Zone == surface && _ship.Zone == surface && _game.Survivor.Seated == _ship && Flight.Crossings[^1].Audit.Count == 0,
                 $"down through its crossing onto {name}'s ground, seated, nothing lost ({_game.Zone.Name})")) yield break;
+        // On dry land, flat: the nearest such ground within a few km of where it came down.
+        Vector3 under = _ship.Body.Position.ToGodot();
+        Vector3 pad = new[] { 40f, 300f, 900f, 2000f, 4000f }.Select(d => OrbitTest.FlatSpot(surface, under, d)).FirstOrDefault(p => p.Y > 1f, OrbitTest.FlatSpot(surface, under, 40f));
         for (int tries = 0; tries < 2 && _ship.Controller?.Frozen != true; tries++)
         {
-            foreach (int x in _pilot.Land(_ship, OrbitTest.FlatSpot(surface, _ship.Body.Position.ToGodot(), 40f))) yield return x;
+            foreach (int x in _pilot.Land(_ship, tries == 0 ? pad : OrbitTest.FlatSpot(surface, _ship.Body.Position.ToGodot(), 30f))) yield return x;
             foreach (int x in _drive.Wait(40)) yield return x;
         }
         Check(_ship.Controller?.Frozen == true && !_game.Suit.Dead, $"landed on {name} on its gear, the sleeper alive ({_ship.AboveGround:F1} m up, the suit's air {_game.Suit.OxygenShare:P0})");
