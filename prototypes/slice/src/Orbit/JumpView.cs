@@ -35,7 +35,7 @@ public partial class JumpView : Node3D
         varying vec3 dir;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         void vertex() {
-            dir = VERTEX; // the sphere's own frame: -z is the way the jump goes
+            dir = VERTEX; // the sphere's own frame: -z is the pilot's forward
         }
         void fragment() {
             vec3 d = normalize(dir);
@@ -88,7 +88,7 @@ public partial class JumpView : Node3D
     /// <summary>How fast the streaks run, phase a second: gathering with the spool, then the tunnel's rush (a star's run a frame stays well under half its spacing, so none reads backwards).</summary>
     public static float PhaseRate(float spool, bool tunnel) => tunnel ? 6f : 0.5f + 2.5f * spool;
 
-    /// <summary>The tunnel's look; its axis (-z) is the way the jump goes, and <c>phase</c> grows with the streaks' run.</summary>
+    /// <summary>The tunnel's look; its axis (-z) is the pilot's forward, and <c>phase</c> grows with the streaks' run.</summary>
     public static ShaderMaterial TunnelMaterial() => new() { Shader = new Shader { Code = Source } };
 
     public override void _Process(double delta)
@@ -139,12 +139,11 @@ public partial class JumpView : Node3D
         bool shown = _streaks > 0.003f || _cover > 0.003f || _flash > 0.003f || _drawnOnce < 3;
         _tunnel.Visible = shown;
         if (!shown) return;
-        // Round the eye, its axis the way the jump goes (wherever the hull points): the streaks pour out of the point ahead.
+        // Round the eye, its axis the pilot's forward (Vessel.PilotBasis): the ship flies on forward through the tunnel, so
+        // from the seat the streaks pour out of the point ahead of the nose, wherever what it goes to lies (it arrives facing
+        // that). Toward the target instead, a target behind the pilot ran them into the view ahead.
         Jump going = _shown ?? Flight.Jumping;
-        Basis hullTurn = going?.Carrier?.Node is { } hull && IsInstanceValid(hull) ? hull.GlobalBasis.Orthonormalized() : eye.GlobalBasis.Orthonormalized();
-        Vector3 ahead = going != null && going.Heading.LengthSquared() > 0.5f ? new Vector3(going.Heading.X, going.Heading.Y, going.Heading.Z) : -hullTurn.Z;
-        Vector3 up = MathF.Abs(ahead.Dot(hullTurn.Y)) < 0.98f ? hullTurn.Y : hullTurn.X;
-        Basis axis = Basis.LookingAt(ahead, up);
+        Basis axis = going?.Carrier is { Node: { } hull } carrier && IsInstanceValid(hull) ? (hull.GlobalBasis * carrier.PilotBasis).Orthonormalized() : eye.GlobalBasis.Orthonormalized();
         _tunnel.GlobalTransform = new Transform3D(axis.Scaled(Vector3.One * Radius), eye.GlobalPosition);
         _material.SetShaderParameter("amount", _streaks);
         _material.SetShaderParameter("cover", _cover);

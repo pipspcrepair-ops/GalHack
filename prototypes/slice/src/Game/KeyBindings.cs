@@ -50,6 +50,7 @@ public sealed class KeyBindings
             new("style", Key.G, "Deco style / gear", "next style · landing gear", Build),
             new("cruise", Key.C, "Cruise", "hold speed", Build),
             new("assist", Key.I, "Flight assist", "hold · coast", Build),
+            new("jump", Key.J, "Warp / fold", "to the map's target · call off", Build),
             new("switch-bar", Key.Y, "Switch toolbar", "bag · structure", Build),
             new("terminal", Key.Tab, "Suit terminal", "menu", Menus),
             new("map", Key.M, "Map", "open · close", Menus),

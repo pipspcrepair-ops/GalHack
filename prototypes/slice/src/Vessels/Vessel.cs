@@ -406,22 +406,30 @@ public sealed partial class Vessel
     static ulong _shapesTick;
     static double _shapesSpent;
 
-    /// <summary>Builds the next chunk of collision still to build (each tick, within the shared budget), or all of it now.</summary>
+    /// <summary>
+    /// Builds the collision still to build, chunk by chunk while the tick's shared budget lasts, or all of it now. The hull
+    /// stays out of its space till its last chunk is in (<see cref="StructureShapes.Hold"/>): its compound is built once.
+    /// </summary>
     public void BuildPendingShapes(bool all = false)
     {
+        if (_pendingShapes.Count == 0) return;
         if (!all)
         {
             ulong tick = Engine.GetPhysicsFrames();
             if (tick != _shapesTick) (_shapesTick, _shapesSpent) = (tick, 0.0);
-            if (_shapesSpent >= ShapesBudgetMs || _pendingShapes.Count == 0) return;
+            if (_shapesSpent >= ShapesBudgetMs) return;
         }
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (_pendingShapes.TryDequeue(out var next))
+        double Spent() => System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        HullShapes.Hold();
+        Cabin.Shapes.Hold();
+        while ((all || _shapesSpent + Spent() < ShapesBudgetMs) && _pendingShapes.TryDequeue(out var next)) next.shapes.Apply(new[] { next.chunk });
+        if (_pendingShapes.Count == 0)
         {
-            next.shapes.Apply(new[] { next.chunk });
-            if (!all) break;
+            HullShapes.Return();
+            Cabin.Shapes.Return();
         }
-        if (!all) _shapesSpent += System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (!all) _shapesSpent += Spent();
     }
 
     void Register()

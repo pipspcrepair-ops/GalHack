@@ -9,6 +9,21 @@ namespace Slice.Orbit;
 public readonly record struct JumpArrival(SurfaceZone Zone, N.Vector3 Position, N.Quaternion Rotation);
 
 /// <summary>
+/// The one thing the next jump is aimed at (solar-systems.md section 8 item 16): a body of this system, picked on the system
+/// map (a warp), or a star of the galaxy, picked on the star map (a fold), never both. <see cref="Spaceflight.Target"/> holds it.
+/// </summary>
+public sealed record JumpTarget
+{
+    public PlanetSurface.Skies.Orbiter Body { get; private init; }
+
+    /// <summary>The star's system id, or -1.</summary>
+    public int Star { get; private init; } = -1;
+
+    public static JumpTarget To(PlanetSurface.Skies.Orbiter body) => body == null ? null : new JumpTarget { Body = body };
+    public static JumpTarget ToStar(int star) => star < 0 ? null : new JumpTarget { Star = star };
+}
+
+/// <summary>
 /// What a jump goes to (an in-system warp's world or a fold jump's star). It starts being made the moment the drive
 /// spools, off the main thread where it can; the tunnel lasts until it is ready.
 /// </summary>
@@ -64,9 +79,6 @@ public sealed class Jump
 
     public readonly IJumpDestination To;
 
-    /// <summary>The way it goes, a unit direction in the world of the zone it leaves (zero: the way the hull points); the tunnel streams from it.</summary>
-    public N.Vector3 Heading { get; internal set; }
-
     public Stage Now { get; internal set; } = Stage.Spool;
 
     /// <summary>How far the spool has come, 0 to 1.</summary>
@@ -90,11 +102,27 @@ public sealed class Jump
     /// <summary>Why it stopped, if it was called off.</summary>
     public string Trouble { get; internal set; }
 
-    /// <summary>Where it arrived (once it has).</summary>
+    /// <summary>Where it arrives (once it is worked out); its zone only while the jump runs: a finished jump holds no zone.</summary>
     public JumpArrival? Arrived { get; internal set; }
 
-    /// <summary>The zone it left.</summary>
+    /// <summary>The zone it leaves, while it runs (null once it has ended: a finished jump holds no zone).</summary>
     public SurfaceZone From { get; internal set; }
+
+    /// <summary>The zones it left and arrived in, by name: what a finished jump keeps of them.</summary>
+    public string FromName { get; private set; } = "";
+    public string ArrivedIn { get; private set; } = "";
+
+    /// <summary>It has ended: it keeps its zones' names and lets go of the zones (a system folded away from is freed whole).</summary>
+    internal void LetGo()
+    {
+        FromName = From?.Name ?? FromName;
+        if (Arrived is { } a)
+        {
+            ArrivedIn = a.Zone?.Name ?? ArrivedIn;
+            Arrived = a with { Zone = null };
+        }
+        From = null;
+    }
 
     /// <summary>What the ledger's audit found wrong with the move (empty: nothing lost, doubled or misplaced).</summary>
     public System.Collections.Generic.IReadOnlyList<string> Audit { get; internal set; } = System.Array.Empty<string>();

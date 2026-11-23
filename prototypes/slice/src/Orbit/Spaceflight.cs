@@ -92,6 +92,7 @@ public partial class Spaceflight : Node
     {
         ProcessPhysicsPriority = 6; // after the game's own after-physics step (5): positions are final
         ProcessPriority = 100;      // after the zones and the game have placed everything this frame
+        FoldTo = Fold;              // the jump key's fold to a star target
     }
 
     /// <summary>A zone waiting out of the scene is freed with the game (a made orbit that never entered it).</summary>

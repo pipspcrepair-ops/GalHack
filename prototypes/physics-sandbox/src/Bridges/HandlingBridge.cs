@@ -145,6 +145,7 @@ public sealed class HandlingFlight : IFlightRules
 
     public bool Seated => Input.Seated;
     public bool AnyThrust => Input.AnyThrust;
+    public bool AnyTurn => Input.Seated && Input.Turn.LengthSquared() > 1e-4f;
     public bool Jump => Input.Jump;
 
     public void Halt()

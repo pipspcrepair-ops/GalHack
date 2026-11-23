@@ -119,20 +119,23 @@ public partial class Spaceflight
         return null;
     }
 
-    /// <summary>Starts a fold to a star: the drive spools and the destination starts being made. Null once it spools; else what stops it.</summary>
-    public string Fold(int star)
+    /// <summary>
+    /// Starts a fold to a star: the drive spools and the destination starts being made. Null once it spools; else what
+    /// stops it. Only by the jump key (<see cref="FoldTo"/>), with a star the one target (section 8 item 16).
+    /// </summary>
+    string Fold(int star)
     {
         Vessel v = Folder();
         string fault = FoldFault(v, star);
         if (fault != null) return fault;
-        return StartJump(v, FoldDrive, LightYearsTo(star), Rules.Fold.Tunnel, new FoldTo(this, star));
+        return StartJump(v, FoldDrive, LightYearsTo(star), Rules.Fold.Tunnel, new FoldDestination(this, star));
     }
 
     /// <summary>Every fold arrived so far (tests read these).</summary>
     public IEnumerable<Jump> Folds => Jumps.Where(j => j.Drive == FoldDrive && j.Now == Jump.Stage.Done);
 
     /// <summary>A fold's destination: the target star's system and the space round its star, made on the spool.</summary>
-    sealed class FoldTo : IJumpDestination
+    sealed class FoldDestination : IJumpDestination
     {
         readonly Spaceflight _f;
         readonly int _star, _from;
@@ -141,7 +144,7 @@ public partial class Spaceflight
         OrbitZone _zone;
         bool _arrived, _made, _warmed;
 
-        public FoldTo(Spaceflight flight, int star)
+        public FoldDestination(Spaceflight flight, int star)
         {
             _f = flight;
             _star = star;
@@ -155,8 +158,12 @@ public partial class Spaceflight
         /// <summary>What letting go of the system left took on the main thread, ms (tests read it).</summary>
         public double LeftMs { get; private set; }
 
+        /// <summary>The zone the fold leaves, while it is under way (a fold called off brings back what was put away of it).</summary>
+        SurfaceZone _leaving;
+
         public void Begin(Spaceflight flight)
         {
+            _leaving = flight.Game.Zone;
             Galaxy galaxy = flight.Stars.Galaxy;
             int star = _star;
             _system = star == flight.HomeStar ? Task.FromResult(flight.HomeSystem)
@@ -297,16 +304,17 @@ public partial class Spaceflight
             flight.Game.Progress.Discover("fold", 200, "folded to another star");
             LeftMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             GD.Print($"[fold: the system left {(left != null ? "freed" : _away != null ? "parked" : "in play again")} in {LeftMs:F1} ms; the longest tick making it {WorstStageMs:F1} ms, {WorstStage}]");
-            (_away, _zone) = (null, null); // the jump's record keeps no hold on a system once it is let go of
+            (_away, _zone, _leaving) = (null, null, null); // the jump's record keeps no hold on a system once it is let go of
         }
 
         public void Dropped(Spaceflight flight)
         {
             if (_arrived) return;
             flight._coming = null;
-            if (flight.Jumping?.From is { } from) flight.Untuck(from); // what was put away of the zone it never left comes back
+            if (_leaving != null) flight.Untuck(_leaving); // what was put away of the zone it never left comes back
             if (_away != null) flight.FreeAbroad(_away);
             else if (_made) flight.Unmake(_zone, null);
+            (_away, _zone, _leaving) = (null, null, null);
         }
     }
 
@@ -467,13 +475,7 @@ public partial class Spaceflight
     void FreeAbroad(Abroad a)
     {
         var gone = a.Zones.ToList();
-        // Nothing keeps a hold on them: where a world of it was left from, the jumps made in it.
-        foreach (Celestial c in a.Orbits.SelectMany(o => o.Bodies)) _leftAt.Remove(c);
-        foreach (Jump j in Jumps.Where(j => !j.Running))
-        {
-            if (gone.Contains(j.From)) j.From = null;
-            if (j.Arrived is { } at && gone.Contains(at.Zone)) j.Arrived = null;
-        }
+        foreach (Celestial c in a.Orbits.SelectMany(o => o.Bodies)) _leftAt.Remove(c); // where a world of it was left from holds it
         foreach (SurfaceZone z in gone)
         {
             if (z is OrbitZone o && o.Space != null)

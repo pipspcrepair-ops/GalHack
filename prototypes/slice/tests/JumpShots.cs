@@ -8,8 +8,8 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The warp's streaks as a person sees them (windowed): two seconds of the tunnel and two of the spool at the window's own
-/// frame rate, the camera looking along the way the jump goes and then turned 30° off it (the hull not pointed at the
-/// target), the streaks run by real time as the game runs them (<see cref="JumpView.PhaseRate"/>). For each, a contact sheet
+/// frame rate, the camera looking along the pilot's forward and then turned 30° off it, as from the seat, the streaks run
+/// by real time as the game runs them (<see cref="JumpView.PhaseRate"/>). For each, a contact sheet
 /// of eight consecutive frames to follow a streak by eye, and a measure of which way they run: the brightness round the
 /// point ahead, bearing by bearing, matched frame to frame (positive: outward from the point ahead, past the camera).
 /// Quits itself.
@@ -26,7 +26,7 @@ public partial class JumpShots : Node3D
     int _failures;
     double _delta;
 
-    const int W = 480, H = 270; // each kept frame, for the sheets and the measure
+    const int W = StreakFlow.W, H = StreakFlow.H; // each kept frame, for the sheets and the measure
 
     public override void _Ready()
     {
@@ -65,7 +65,7 @@ public partial class JumpShots : Node3D
     IEnumerable<int> Case(bool tunnel, float off)
     {
         string name = $"{(tunnel ? "tunnel" : "spool")}-{(off == 0f ? "ahead" : $"{off:F0}-off")}";
-        // The way it goes is -z; the camera turned from it as a hull pointed elsewhere would be (JumpView's axis, Basis.LookingAt).
+        // The pilot's forward is -z (JumpView's axis); the camera turned from it as a pilot looking aside in the seat.
         _tunnel.GlobalTransform = new Transform3D(Basis.LookingAt(Vector3.Forward, Vector3.Up).Scaled(Vector3.One * 60f), Vector3.Zero);
         _camera.GlobalTransform = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(off)), Vector3.Zero);
         _material.SetShaderParameter("cover", tunnel ? 1f : 0f);
@@ -107,10 +107,7 @@ public partial class JumpShots : Node3D
         sheet.SavePng(System.IO.Path.Combine(_out, $"{name}-sheet.png"));
         frames[from].SavePng(System.IO.Path.Combine(_out, $"{name}-frame.png"));
         // Which way they run, frame to frame over the whole two seconds.
-        var lags = new List<float>();
-        for (int k = 0; k + 1 < frames.Count; k++) lags.Add(Lag(frames[k], frames[k + 1], centre));
-        lags.Sort();
-        float median = lags[lags.Count / 2], outward = lags.Count(l => l > 0) / (float)lags.Count;
+        var (median, outward) = StreakFlow.Run(frames.Select(StreakFlow.Luma).ToList(), centre);
         double fps = deltas.Count / deltas.Sum();
         bool ok = median > 0 && outward > 0.8f;
         GD.Print($"  {(ok ? "ok   " : "FAIL ")} {name}: {frames.Count} frames at {fps:F0} fps; streaks move {median:+0.0;-0.0} px a frame (median, at {W} px wide) from the point ahead at ({centre.X:F0}, {centre.Y:F0}), outward in {outward:P0} of frame pairs: {(ok ? "rushing outward, past the camera" : "NOT outward")} ({_out})");
@@ -121,12 +118,48 @@ public partial class JumpShots : Node3D
     {
         if (x >= 0 && y >= 0 && x < f.GetWidth() && y < f.GetHeight()) f.SetPixel(x, y, Colors.Red);
     }
+}
 
-    /// <summary>The radial shift (px, outward positive) that best matches frame b to frame a, over every bearing round <paramref name="c"/>.</summary>
-    static float Lag(Image a, Image b, Vector2 c)
+/// <summary>
+/// Which way the warp's streaks run on screen, frame to frame: the brightness round the point ahead, bearing by bearing,
+/// matched between consecutive frames at every radial shift (positive: outward from the point ahead, past the camera).
+/// Whatever stands still over the frames (the tunnel's own glow, a cockpit in frame) is taken out first: only what moves
+/// is matched. Frames are measured at <see cref="W"/> × <see cref="H"/>.
+/// </summary>
+static class StreakFlow
+{
+    public const int W = 480, H = 270;
+
+    /// <summary>A frame's brightness at W × H.</summary>
+    public static float[] Luma(Image shot)
     {
-        const int Bearings = 180, From = 50, To = 240, MaxLag = 30; // out where a streak crosses pixels a frame; the newborn dots by the point ahead barely move
-        float[,] pa = Polar(a, c, Bearings, From, To), pb = Polar(b, c, Bearings, From, To);
+        var img = (Image)shot.Duplicate();
+        if (img.GetWidth() != W || img.GetHeight() != H) img.Resize(W, H, Image.Interpolation.Bilinear);
+        img.Convert(Image.Format.Rgba8);
+        byte[] d = img.GetData();
+        var l = new float[W * H];
+        for (int i = 0; i < l.Length; i++) l[i] = (0.2126f * d[4 * i] + 0.7152f * d[4 * i + 1] + 0.0722f * d[4 * i + 2]) / 255f;
+        return l;
+    }
+
+    /// <summary>The median shift a frame (px at W wide) round <paramref name="c"/> over every consecutive pair, and the share of pairs that ran outward.</summary>
+    public static (float Median, float Outward) Run(IReadOnlyList<float[]> frames, Vector2 c)
+    {
+        var still = new float[W * H];
+        foreach (float[] f in frames)
+            for (int i = 0; i < still.Length; i++) still[i] += f[i] / frames.Count;
+        var polar = frames.Select(f => Polar(f, still, c)).ToList();
+        var lags = new List<float>();
+        for (int k = 0; k + 1 < polar.Count; k++) lags.Add(Lag(polar[k], polar[k + 1]));
+        if (lags.Count == 0) return (0f, 0f);
+        lags.Sort();
+        return (lags[lags.Count / 2], lags.Count(l => l > 0) / (float)lags.Count);
+    }
+
+    const int Bearings = 180, From = 50, To = 240, MaxLag = 30; // out where a streak crosses pixels a frame; the newborn dots by the point ahead barely move
+
+    static int Lag(float[,] pa, float[,] pb)
+    {
         int best = 0;
         double bestScore = double.NegativeInfinity;
         for (int lag = -MaxLag; lag <= MaxLag; lag++)
@@ -140,25 +173,20 @@ public partial class JumpShots : Node3D
         return best;
     }
 
-    static float[,] Polar(Image img, Vector2 c, int bearings, int from, int to)
+    static float[,] Polar(float[] img, float[] still, Vector2 c)
     {
-        var p = new float[bearings, to - from];
-        var mean = new float[to - from];
-        for (int t = 0; t < bearings; t++)
+        var p = new float[Bearings, To - From];
+        for (int t = 0; t < Bearings; t++)
         {
-            float a = t * Mathf.Tau / bearings;
+            float a = t * Mathf.Tau / Bearings;
             var dir = new Vector2(MathF.Cos(a), MathF.Sin(a));
-            for (int r = from; r < to; r++)
+            for (int r = From; r < To; r++)
             {
                 Vector2 q = c + dir * r;
                 int x = (int)q.X, y = (int)q.Y;
-                p[t, r - from] = x >= 0 && y >= 0 && x < img.GetWidth() && y < img.GetHeight() ? img.GetPixel(x, y).Luminance : 0f;
-                mean[r - from] += p[t, r - from] / bearings;
+                p[t, r - From] = x >= 0 && y >= 0 && x < W && y < H ? img[y * W + x] - still[y * W + x] : 0f;
             }
         }
-        // The tunnel's own glow deepens with distance from the point ahead, the same every frame: only the streaks are matched.
-        for (int t = 0; t < bearings; t++)
-            for (int r = 0; r < to - from; r++) p[t, r] -= mean[r];
         return p;
     }
 }

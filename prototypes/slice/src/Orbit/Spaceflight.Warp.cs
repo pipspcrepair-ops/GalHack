@@ -69,9 +69,9 @@ public partial class Spaceflight
     /// <summary>Where you are in the system's frame: your eye in orbit, else the body you are on.</summary>
     D3 HereInSystem()
     {
-        StarSystem model = SystemHere;
+        StarSystem model = Game.Surface.Planet.StarSystem;
         if (Game.InOrbit) return ToSystem(Orbit, Game.Camera.GlobalPosition.ToNumerics());
-        return model.Position(Game.Zone.Body ?? model.Home, Below.Sky.Days);
+        return model.Position(Game.Zone.Body ?? model.Home, Game.Surface.Sky.Days);
     }
 
     /// <summary>A warp's route to a body of the system from where you are now.</summary>
@@ -83,8 +83,8 @@ public partial class Spaceflight
     WarpRoute Route(Orbiter body, Vessel wreck)
     {
         Vessel v = WarpCarrier;
-        StarSystem model = SystemHere;
-        double days = Below.Sky.Days;
+        StarSystem model = Game.Surface.Planet.StarSystem;
+        double days = Game.Surface.Sky.Days;
         bool inOrbit = Game.InOrbit;
         bool isShort = wreck != null || inOrbit && CelestialOf(Orbit, body) != null;
         D3 at = wreck != null ? ToSystem(Orbit, wreck.Body.Position) : model.Position(body, days);
@@ -93,7 +93,7 @@ public partial class Spaceflight
         double per = fuel?.Per ?? 1, spool = fuel?.Spool ?? 6;
         int cells = isShort ? 0 : (int)Math.Ceiling(au * per - 1e-9);
         double trip = Math.Max(Warping.LeastTripSeconds, isShort ? 0 : au * Warping.TripSecondsPerAu);
-        string name = wreck != null ? wreck.Name : body == model.Home && Away == null ? "Your world" : Charts.Tidy(body.Name);
+        string name = wreck != null ? wreck.Name : body == model.Home ? "Your world" : Charts.Tidy(body.Name);
         return new WarpRoute(body, wreck, name, isShort, au, cells, spool, trip, Refusal(v, body, wreck, isShort, cells));
     }
 
@@ -122,12 +122,7 @@ public partial class Spaceflight
     string Warp(WarpRoute r)
     {
         if (r.Refusal != null) return r.Refusal;
-        D3 here = HereInSystem();
-        var to = new WarpTo(this, r, here);
-        // The way it goes, toward what it goes to, in the world of the orbit it leaves.
-        D3 toward = (r.Wreck != null ? ToSystem(Orbit, r.Wreck.Body.Position) : Game.Surface.Planet.StarSystem.Position(r.Body, Game.Surface.Sky.Days)) - here;
-        N.Vector3 heading = N.Vector3.Transform(new N.Vector3((float)toward.X, (float)toward.Y, (float)toward.Z), N.Quaternion.Conjugate(WorldToSystem(Orbit)));
-        return StartJump(WarpCarrier, WarpDrive, r.Short ? 0 : r.Au, r.TripSeconds, to, heading);
+        return StartJump(WarpCarrier, WarpDrive, r.Short ? 0 : r.Au, r.TripSeconds, new WarpTo(this, r, HereInSystem()));
     }
 
     /// <summary>
@@ -163,7 +158,7 @@ public partial class Spaceflight
     sealed class WarpTo : IJumpDestination
     {
         readonly Spaceflight _f;
-        readonly WarpRoute _route;
+        WarpRoute _route;
         readonly D3 _from;
         OrbitZone _zone;
         SurfaceZone _home;
@@ -223,9 +218,9 @@ public partial class Spaceflight
                 centre -= at;
                 at = N.Vector3.Zero;
             }
-            // The structure keeps its turn in the system's frame (the sky as it was), turned the least way to face what it went to.
+            // The structure keeps its turn in the system's frame (the sky as it was), turned the least way for its pilot to face what it went to.
             N.Quaternion turn = N.Quaternion.Normalize(toWorld * WorldToSystem(flight.Orbit) * carrier.Body.Rotation);
-            N.Vector3 nose = N.Vector3.Transform(-N.Vector3.UnitZ, turn), want = N.Vector3.Normalize(centre - at);
+            N.Vector3 nose = N.Vector3.Transform((carrier.PilotBasis * Vector3.Forward).ToNumerics(), turn), want = N.Vector3.Normalize(centre - at);
             if (radius < 1f) want = N.Vector3.Normalize(-away);
             turn = N.Quaternion.Normalize(Between(nose, want) * turn);
             return new JumpArrival(o, at, turn);
@@ -234,15 +229,21 @@ public partial class Spaceflight
         public void Left(Spaceflight flight, SurfaceZone from)
         {
             flight.LeaveOrbit(from);
-            (_zone, _home, _making) = (null, null, null); // the jump's record keeps no hold on a zone (a system folded away from is freed)
+            LetGo();
         }
 
         public void Dropped(Spaceflight flight)
         {
-            if (!_made) return;
-            flight.Unmake(_zone, _home);
             _making?.Dispose();
-            _making = null;
+            if (_made) flight.Unmake(_zone, _home);
+            LetGo();
+        }
+
+        /// <summary>Done with: the jump's record keeps its name and no hold on a zone, a wreck or the system's model.</summary>
+        void LetGo()
+        {
+            (_zone, _home, _making) = (null, null, null);
+            _route = _route with { Body = null, Wreck = null };
         }
     }
 

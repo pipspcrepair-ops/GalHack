@@ -30,8 +30,12 @@ namespace Slice.Tests;
 /// Setting up is the one shortcut, printed when it happens: the Skiff's parts and its drive are handed over, the tech tree
 /// opened, the warp cells given. Fresh system every run.
 ///
+/// Windowed, at 60 fps, the first warp is also watched from the pilot's seat with the hull turned well away from where it
+/// goes: the streaks must pour out of the point ahead of the nose, looking ahead and looking aside (<see cref="SeatStreaks"/>).
+///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/WarpTest.tscn
-/// Windowed with shots: godot-q.ps1 ... res://tests/WarpTest.tscn -- --shots=&lt;folder&gt; [--minspec=1]
+/// Windowed with shots: godot-q.ps1 ... res://tests/WarpTest.tscn -- --shots=&lt;folder&gt; [--minspec=1] [--loops=N]
+/// --split=1: every stage of every warp split by engine stage and by system (<see cref="FrameSplit"/>, <see cref="SystemSplit"/>).
 /// </summary>
 public partial class WarpTest : Node
 {
@@ -45,7 +49,7 @@ public partial class WarpTest : Node
     Vessel _ship;
     string _shots;
     readonly Dictionary<string, string> _args = new();
-    readonly List<double> _cpu = new(), _wall = new();
+    readonly List<double> _cpu = new(), _wall = new(), _parking = new();
     readonly Dictionary<string, List<double>> _byStage = new();
     double _worstCpu;
     string _worstAt = "";
@@ -115,6 +119,7 @@ public partial class WarpTest : Node
         _drive = new Driver(_game);
         _pilot = new Pilot(_game, _drive);
         foreach (int x in _drive.UntilPlaying()) yield return x;
+        if (Windowed) Engine.MaxFps = 60; // the owner's 60 Hz screen: every frame kept is one he sees
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
@@ -127,19 +132,34 @@ public partial class WarpTest : Node
         AirCells.Give(_game, 16);
         if (_ship == null) { Fail("the Skiff was not built"); yield break; }
         FitDrive(_ship, Lift(Model.Home, planet, moon));
+        // Fuelled for the whole trip: generator fuel for hours of full thrust, the capacitor full, warp cells for every warp.
+        var fuel = _ship.Power.Rules.Fuels[^1];
+        _ship.Storage.Add(fuel.Id, 200);
+        _ship.Power.ChargeMJ = _ship.Power.CapacityMJ;
+        _ship.Storage.Add("warp-cell", 60);
+        GD.Print($"  (setup: in the Skiff's hold 200 {fuel.Id} and 60 warp cells, its capacitor full: {Fuelled()})");
         foreach (int x in _pilot.Board(_ship)) yield return x;
+        if (_game.Survivor.Seated != _ship && _ship.Stand is N.Vector3 stood)
+        {
+            // Set down out of reach (the projector's ray met a roof in a town): the setup moves its stand to flat ground by you.
+            Vector3 spot = OrbitTest.FlatSpot(_game.Zone, _game.Survivor.WorldFeet, 30f);
+            _ship.Stand = new N.Vector3(spot.X, _game.Zone.GroundAt(spot.X, spot.Z).Y + _ship.Body.Shape.FeetBelowOrigin + 0.1f, spot.Z);
+            GD.Print($"  (setup: the Skiff stood out of reach at {stood.ToGodot()}: its stand moved to flat ground at {spot})");
+            foreach (int x in _drive.Wait(10)) yield return x;
+            foreach (int x in _pilot.Board(_ship)) yield return x;
+        }
         if (_game.Survivor.Seated != _ship) { Fail("not at the Skiff's controls"); yield break; }
         foreach (int x in TakeOff("the start world")) yield return x;
         if (!_game.InOrbit) yield break;
-        _ship.Storage.Add("warp-cell", 60);
+        if (Windowed) foreach (int x in SkyAway("home-orbit-fresh-facing-away", v => _freshSky = v)) yield return x;
         // The same flight with no warp, as a baseline: a few seconds in orbit.
         var idle = new FrameProbe(this);
         for (int i = 0; i < 300; i++) { yield return 0; Frame(idle, "in orbit, no warp, Baseline"); }
         idle.Remove();
         _cpu.Clear();
         _wall.Clear();
-        GD.Print("  (setup: 60 warp cells in the Skiff's core storage)");
         Refusals();
+        foreach (int x in CallOff(planet, moon, giant)) yield return x;
 
         var levels = new List<(string When, Level At)>();
         int loops = int.Parse(_args.GetValueOrDefault("loops", "3"));
@@ -182,10 +202,13 @@ public partial class WarpTest : Node
         Check(b.ManagedMb < a.ManagedMb * 1.15 + 40 && b.StaticMb < a.StaticMb * 1.10 + 64,
             $"memory back at level: managed {b.ManagedMb:F0} MB (was {a.ManagedMb:F0}), engine {b.StaticMb:F0} MB (was {a.StaticMb:F0})");
         Check(b.Zones == a.Zones, $"no zone made twice: {b.Zones} zones after both loops");
+        Check(Flight.Jumps.TrueForAll(x => x.Running || x.From == null && x.Arrived?.Zone == null && x.To.Zone == null),
+            $"no finished jump holds a zone, only their names ({Flight.Jumps.Count} jumps; the last from {Flight.Jumps[^1].FromName} to {Flight.Jumps[^1].ArrivedIn})");
         FrameTimes();
     }
 
     bool _ok = true;
+    double _freshSky = -1;
     int _loop;
 
     /// <summary>No growth from one loop to the next (streaming makes what is loaded come and go, so less is fine).</summary>
@@ -303,66 +326,145 @@ public partial class WarpTest : Node
         Check(_game.Visor != null && _ship.Power.Range(Spaceflight.WarpDrive)?.Reach == cells, $"the WARP gauge's reach is the cells' ({_ship.Power.Range(Spaceflight.WarpDrive)?.Reach:F0} AU)");
     }
 
+    /// <summary>
+    /// J again while the drive spools calls the warp off, nothing burnt; the zones made for it (a world nobody has gone to)
+    /// are freed, and nothing holds on to them: not the jump's record, not its destination, not the flight.
+    /// </summary>
+    IEnumerable<int> CallOff(params Orbiter[] trip)
+    {
+        static Orbiter Root(Orbiter b)
+        {
+            while (b.Parent != null && b.Parent.Kind != OrbiterKind.Star) b = b.Parent;
+            return b;
+        }
+        var taken = trip.Where(b => b != null).Select(Root).Append(Model.Home).ToHashSet();
+        Orbiter fresh = Model.Bodies.FirstOrDefault(b => b.Parent == Model.Star && b.Spec != null && !taken.Contains(b) && Flight.OrbitOf(b) == null);
+        if (fresh == null) { GD.Print("  (no world left out of the trip to call a warp off on)"); yield break; }
+        List<ulong> before = _game.GetChildren().OfType<SurfaceZone>().Select(z => z.GetInstanceId()).ToList();
+        int cells = _ship.Storage.Count("warp-cell");
+        Flight.Target = JumpTarget.To(fresh);
+        foreach (int x in _drive.Tap(Key.J)) yield return x;
+        Jump j = Flight.Jumping;
+        for (int i = 0; i < 120 && j?.Now == Jump.Stage.Spool; i++) yield return 0; // its world starts being made
+        List<WeakReference> made = MadeSince(before, j);
+        foreach (int x in _drive.Tap(Key.J)) yield return x;
+        Check(j?.Now == Jump.Stage.Cancelled && _ship.Storage.Count("warp-cell") == cells,
+            $"J again while it spools calls the warp to {Charts.Tidy(fresh.Name)} off, nothing burnt ({j?.Now}, {j?.Trouble}, {_ship.Storage.Count("warp-cell")} cells of {cells})");
+        int waited = 0;
+        for (; waited < 60 * 20 && made.Exists(w => w.IsAlive); waited++)
+        {
+            if (waited % 30 == 29) { GC.Collect(); GC.WaitForPendingFinalizers(); }
+            yield return 0;
+        }
+        Check(made.Count > 0 && !made.Exists(w => w.IsAlive),
+            $"the {made.Count} zones made for the warp called off are freed and nothing holds them ({made.Count(w => w.IsAlive)} still reachable after {waited / 60f:F1} s)");
+        Flight.Target = null;
+    }
+
+    /// <summary>The zones made since (weakly held: an iterator's locals would hold them).</summary>
+    List<WeakReference> MadeSince(List<ulong> before, Jump j)
+    {
+        var made = _game.GetChildren().OfType<SurfaceZone>().Where(z => !before.Contains(z.GetInstanceId())).Select(z => new WeakReference(z)).ToList();
+        if (j?.To.Zone is { } orbit && !before.Contains(orbit.GetInstanceId()) && !made.Exists(w => w.Target == orbit)) made.Add(new WeakReference(orbit));
+        return made;
+    }
+
     // ---- A leg: warp, then down and back up --------------------------------------------------------------------------
 
     IEnumerable<int> Leg(Orbiter target, bool land, string what)
     {
         GD.Print($"-- {what}: warp to {Charts.Tidy(target.Name)} --");
         foreach (int x in WarpTo(target)) yield return x;
-        if (!_ok || !land) yield break;
+        if (_ok && Windowed && target == Model.Star)
+            foreach (int x in SkyAway("star-high-orbit-facing-away", v => GD.Print($"  (at the star's high orbit the sky facing away from it: its floor of brightness {v:F3})"))) yield return x;
+        if (_ok && Windowed && target == Model.Home && _freshSky >= 0)
+            foreach (int x in SkyAway("after-the-star-home-facing-away", v => Check(v <= Math.Max(_freshSky * 1.5, _freshSky + 0.03),
+                $"no glare follows from the star: home's sky facing away from the sun is back at its fresh level (its floor of brightness {v:F3}, {_freshSky:F3} before the star)"))) yield return x;
+        if (!_ok || !land || _args.ContainsKey("noland")) yield break; // --noland=1: warps alone (shots of the trip)
         foreach (int x in Land(target)) yield return x;
         if (!_ok) yield break;
         if (target != Model.Home) foreach (int x in TakeOff(Charts.Tidy(target.Name))) yield return x;
     }
 
-    /// <summary>The Tab menu's system map with the target picked: the route from where you are, its AU, cells and seconds.</summary>
-    IEnumerable<int> ChartShot(Orbiter target)
+    /// <summary>
+    /// The owner's flow (solar-systems.md section 8 item 16): open the map, click the body on the system map (the one target,
+    /// its route and cost on the panel, the button showing J), press J with the map still open, close the map.
+    /// </summary>
+    IEnumerable<int> PickAndJump(Orbiter target)
     {
+        string key = Charts.KeyOf(Model, target), name = Charts.Tidy(target.Name);
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
         _game.Menu.OpenMap(Slice.Ui.MapLevel.System);
-        _game.Menu.Root.Map.Levels.Picked = Charts.KeyOf(Model, target);
-        for (int i = 0; i < 40; i++) yield return 0;
-        Shot($"chart-route-{Charts.Tidy(target.Name)}");
+        var levels = _game.Menu.Root.Map.Levels;
+        for (int i = 0; i < 60 && !levels.SystemPlaces.ContainsKey(key); i++) yield return 0;
+        if (levels.SystemPlaces.TryGetValue(key, out Vector2 at)) foreach (int x in _drive.ClickAt(at)) yield return x;
+        for (int i = 0; i < 20; i++) yield return 0;
+        Check(Flight.Target?.Body == target, $"clicking {name} on the system map makes it the one jump target ({(Flight.Target?.Body is { } b ? Charts.Tidy(b.Name) : Flight.Target?.Star >= 0 ? $"star {Flight.Target.Star}" : "none")}; its place on the map {(levels.SystemPlaces.ContainsKey(key) ? at.ToString() : "not drawn")})");
+        if (_shots != null && _shot < 40) Shot($"map-target-{name}");
+        foreach (int x in _drive.Tap(Key.J)) yield return x;
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
-        for (int i = 0; i < 10; i++) yield return 0;
+        for (int i = 0; i < 4; i++) yield return 0;
     }
 
     IEnumerable<int> WarpTo(Orbiter target)
     {
-        if (_shots != null && _shot < 30) foreach (int x in ChartShot(target)) yield return x;
+        // The seat's proof wants a tunnel of a few seconds: the first warp that long, else the loop's last (home).
+        bool watch = Windowed && !_watched && !Flight.Route(target).Short && (Flight.Route(target).TripSeconds >= 4.5 || target == Model.Home);
+        if (watch) foreach (int x in TurnAway(target)) yield return x;
         WarpRoute route = Flight.Route(target);
-        if (route.Short)
-        {
-            // A short-range warp from 30 m/s: away from what is near, nose first.
-            _game.Controls.Hold(Key.W);
-            for (int i = 0; i < 60 * 20 && _ship.Body.Velocity.Length() < Flight.Warping.ShortRangeSpeed + 2f; i++) yield return 0;
-            _game.Controls.ReleaseAll();
-            route = Flight.Route(target);
-        }
+        // A short-range warp from 30 m/s: away from what is near, nose first, held there till it spools.
+        if (route.Short) _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 60 * 20 && route.Short && _ship.Body.Velocity.Length() < Flight.Warping.ShortRangeSpeed + 2f; i++) yield return 0;
+        route = Flight.Route(target);
         int before = _ship.Storage.Count("warp-cell");
         int riders = _ship.Zone.Physics.Bodies.Count(b => b.Frame == _ship.Body);
-        string no = Flight.Warp(target);
-        Check(no == null, $"the drive spools for {route.Name}: {(route.Short ? "short-range, " : "")}{route.Au:F3} AU, {route.Cells} cells, {route.SpoolSeconds:F0} s spool and {route.TripSeconds:F1} s trip ({no ?? "spooling"})");
+        int jumps = Flight.Jumps.Count;
+        foreach (int x in PickAndJump(target)) yield return x;
+        _game.Controls.ReleaseAll();
+        string no = Flight.Jumps.Count > jumps && Flight.Jumping.To.Name == route.Name ? null : $"J didn't spool for it: {Flight.Route(target).Refusal ?? "no jump"}";
+        Check(no == null, $"J spools the drive for {route.Name}: {(route.Short ? "short-range, " : "")}{route.Au:F3} AU, {route.Cells} cells, {route.SpoolSeconds:F0} s spool and {route.TripSeconds:F1} s trip ({no ?? "spooling"}; {Fuelled()})");
         if (no != null) { _ok = false; yield break; }
         Jump j = Flight.Jumping;
+        float awayDeg = watch ? Mathf.RadToDeg(Forward(_ship).AngleTo(Toward(target))) : 0f;
         var probe = new FrameProbe(this);
-        var watch = Stopwatch.StartNew();
+        var clock = Stopwatch.StartNew();
         double spooled = -1, shotSpool = -1;
         bool tunnelShot = false;
+        IEnumerator<int> seat = null;
+        var views = new List<SeatView>();
+        Jump.Stage stage = j.Now;
+        SplitStart();
+        // The frames that wake the zone gone to and park the zone left are timed apart: proto/orbitclean's piecewise Park/Run replaces them.
+        int switched = Flight.ZonesSwitched;
+        bool apart = false;
         for (int i = 0; i < 60 * 240 && j.Running; i++)
         {
             yield return 0;
-            Frame(probe, $"warp to {route.Name}, {j.Now}");
-            if (j.Now != Jump.Stage.Spool && spooled < 0) spooled = watch.Elapsed.TotalSeconds;
+            bool kept = _keep != null; // the frame keeping for the seat's proof slows its frames: not counted
+            if (apart) { apart = false; _parking.Add(probe.LastCpuMs); }
+            else if (!kept) Frame(probe, $"warp to {route.Name}, {j.Now}");
+            if (Flight.ZonesSwitched != switched) (switched, apart) = (Flight.ZonesSwitched, true);
+            if (j.Now != stage) { SplitReport($"{route.Name}, {stage}"); stage = j.Now; }
+            if (j.Now != Jump.Stage.Spool && spooled < 0) spooled = clock.Elapsed.TotalSeconds;
             if (_shots != null && j.Now == Jump.Stage.Spool && j.Spooled > 0.6 && shotSpool < 0) { shotSpool = 1; Shot($"spool-{Charts.Tidy(target.Name)}"); }
-            if (_shots != null && j.Now == Jump.Stage.Tunnel && j.InTunnel > 1.2 && !tunnelShot) { tunnelShot = true; Shot($"tunnel-{Charts.Tidy(target.Name)}"); }
+            if (watch && seat == null && j.Now == Jump.Stage.Tunnel && j.InTunnel > 0.8) seat = SeatStreaks(j, views).GetEnumerator();
+            if (seat != null && !seat.MoveNext()) { seat = null; watch = false; }
+            if (_shots != null && j.Now == Jump.Stage.Tunnel && j.InTunnel > 1.2 && !tunnelShot && seat == null) { tunnelShot = true; Shot($"tunnel-{Charts.Tidy(target.Name)}"); }
         }
+        seat?.Dispose(); // a tunnel that ended mid-watch: the seat looks ahead again
+        views.RemoveAll(v => v.Frames.Count < 20);
+        _watched = views.Count == 2; // else the next long warp watches again
+        SplitReport($"{route.Name}, {stage}");
         for (int i = 0; i < 90; i++)
         {
             yield return 0;
-            Frame(probe, $"arrived at {route.Name}");
+            if (apart) { apart = false; _parking.Add(probe.LastCpuMs); }
+            else Frame(probe, $"arrived at {route.Name}");
+            if (Flight.ZonesSwitched != switched) (switched, apart) = (Flight.ZonesSwitched, true);
         }
         probe.Remove();
+        SplitReport($"{route.Name}, after arrival");
+        foreach (SeatView v in views) Judge(v, route, awayDeg);
         if (j.Now != Jump.Stage.Done) { Fail($"the warp to {route.Name} ended {j.Now}: {j.Trouble}"); _ok = false; yield break; }
         GD.Print($"  (spool {spooled:F1} s, tunnel {j.InTunnel:F1} s (trip {j.TripSeconds:F1}); setting the destination up took {j.LongestStepMs:F1} ms of a tick at most, the arrival {Flight.WorstArrivalMs:F1})");
         Arrived(j, route, before, riders);
@@ -396,10 +498,9 @@ public partial class WarpTest : Node
             float across = 2f * Mathf.RadToDeg(MathF.Asin(MathF.Min(1f, (float)target.Radius / off)));
             Check(across is >= 40f and <= 50f && off > target.Radius * (target.Rings ? SpaceSky.RingOuter : 1f), $"{Charts.Tidy(target.Name)} fills the view on arrival: {across:F0}° across, {off / (float)target.Radius:F2} radii out{(target.Rings ? ", past its rings" : "")}");
         }
-        Check(_ship.Body.Velocity.Length() < 0.5f && j.Arrived?.Zone == o, $"at rest in its frame ({_ship.Body.Velocity.Length():F2} m/s)");
-        N.Vector3 nose = N.Vector3.Transform(-N.Vector3.UnitZ, _ship.Body.Rotation);
-        float facing = N.Vector3.Dot(nose, N.Vector3.Normalize(centre - p));
-        Check(facing > 0.99f, $"facing it ({MathF.Acos(Math.Clamp(facing, -1f, 1f)) * 180f / MathF.PI:F1}° off)");
+        Check(_ship.Body.Velocity.Length() < 0.5f && j.ArrivedIn == o.Name, $"at rest in its frame ({_ship.Body.Velocity.Length():F2} m/s, in {j.ArrivedIn})");
+        float facing = Forward(_ship).Dot(N.Vector3.Normalize(centre - p).ToGodot());
+        Check(facing > 0.99f, $"the pilot facing it ({MathF.Acos(Math.Clamp(facing, -1f, 1f)) * 180f / MathF.PI:F1}° off)");
         string inside = null;
         foreach (Celestial b in o.Bodies)
             if (N.Vector3.Distance(p, b.Centre.ToNumerics()) < b.GlobeRadius + (b == c ? 0f : b.Ceiling)) inside = b.Name;
@@ -486,26 +587,30 @@ public partial class WarpTest : Node
         Check(o.Anchor == c && c.Ready && c.Surface.Arrived, $"{name} is the frame you fly in, its globe painted from its own surface, made from its seed ({c.Surface.Made?.Spec})");
         if (o.Anchor != c) { _ok = false; yield break; }
         GD.Print($"-- down onto {name} --");
-        foreach (int x in MoonTest.Upright(_pilot, c, _ship)) yield return x;
+        int t = 0;
+        foreach (int x in MoonTest.Upright(_pilot, c, _ship))
+        {
+            if (++t == 60) GD.Print($"  (turning upright, a second in: {Attitude(c)})");
+            yield return x;
+        }
         for (int tries = 0; tries < 2 && Mathf.RadToDeg(N.Vector3.Transform(N.Vector3.UnitY, _ship.Body.Rotation).ToGodot().AngleTo((_ship.Body.Position.ToGodot() - c.Centre).Normalized())) > 20f; tries++)
         {
-            GD.Print("  (not upright yet: turning again)");
+            GD.Print($"  (not upright yet: {Attitude(c)}; turning again)");
             foreach (int x in MoonTest.Upright(_pilot, c, _ship)) yield return x;
         }
-        Vector3 radial = (_ship.Body.Position.ToGodot() - c.Centre).Normalized(), top = N.Vector3.Transform(N.Vector3.UnitY, _ship.Body.Rotation).ToGodot();
-        GD.Print($"  (upright over {name}: its top {Mathf.RadToDeg(top.AngleTo(radial)):F0}° off the sky over it, turning {_ship.Body.AngularVelocity.Length():F2} rad/s, {c.Height(_ship.Body.Position.ToGodot()):F0} m up)");
+        GD.Print($"  (upright over {name}: {Attitude(c)}, {c.Height(_ship.Body.Position.ToGodot()):F0} m up)");
         int crossings = Flight.Crossings.Count;
         for (int i = 0; i < 60 * 150 && Flight.Crossings.Count == crossings; i++)
         {
             _game.Controls.Hold(Key.Ctrl, -_ship.Body.Velocity.ToGodot().Dot((_ship.Body.Position.ToGodot() - c.Centre).Normalized()) < 40f);
             yield return 0;
             if (i % 1200 == 1199)
-                GD.Print($"  ({i / 60 + 1} s down: {c.Height(_ship.Body.Position.ToGodot()):F0} m over {name}, sinking {-_ship.Body.Velocity.ToGodot().Dot((_ship.Body.Position.ToGodot() - c.Centre).Normalized()):F1} m/s, in {_game.Zone.Name}, frame {o.Anchor.Name}, band {Flight.Band:F2}, aligned {Flight.Aligned}, streaming {Flight.StreamingAhead}, its surface arrived {c.Surface.Arrived}, ground ready {c.Surface.Streamer.ReadyAround(_ship.Body.Position.ToGodot(), 1, needCollision: false)}, ceiling {c.Surface.Physics.Zone.Ceiling:F0})");
+                GD.Print($"  ({i / 60 + 1} s down: {c.Height(_ship.Body.Position.ToGodot()):F0} m over {name}, sinking {-_ship.Body.Velocity.ToGodot().Dot((_ship.Body.Position.ToGodot() - c.Centre).Normalized()):F1} m/s, {Attitude(c)}, in {_game.Zone.Name}, frame {o.Anchor.Name}, band {Flight.Band:F2}, aligned {Flight.Aligned}, streaming {Flight.StreamingAhead}, its surface arrived {c.Surface.Arrived}, ground ready {c.Surface.Streamer.ReadyAround(_ship.Body.Position.ToGodot(), 1, needCollision: false)}, ceiling {c.Surface.Physics.Zone.Ceiling:F0})");
         }
         _game.Controls.ReleaseAll();
         SurfaceZone surface = c.Surface;
         Check(_game.Zone == surface && _ship.Zone == surface && _game.Survivor.Seated == _ship && Flight.Crossings[^1].Audit.Count == 0,
-            $"down through its crossing onto {name}'s own surface, seated, nothing lost ({_game.Zone.Name})");
+            $"down through its crossing onto {name}'s own surface, seated, nothing lost ({_game.Zone.Name}{(_game.Zone == surface ? "" : $"; {Attitude(c)}")})");
         if (_game.Zone != surface) { _ok = false; yield break; }
         Vector3 at = _ship.Body.Position.ToGodot();
         Check(at.Y > surface.GroundAt(at.X, at.Z).Y + 1f, $"it came in over the ground, not under it ({at.Y - surface.GroundAt(at.X, at.Z).Y:F0} m up)");
@@ -534,11 +639,28 @@ public partial class WarpTest : Node
         Leftovers($"landed on {name}");
     }
 
+    /// <summary>The Skiff's fuel as the console has it: generator fuel, the capacitor, warp cells.</summary>
+    string Fuelled() => $"generator fuel {_ship.Power.FuelUnits:F0} units, capacitor {_ship.Power.ChargeMJ:F1} of {_ship.Power.CapacityMJ:F0} MJ, supply {_ship.Power.Supply:P0}, {_ship.Storage.Count("warp-cell")} warp cells";
+
     IEnumerable<int> TakeOff(string from)
     {
-        GD.Print($"-- up off {from} --");
+        GD.Print($"-- up off {from} ({Fuelled()}) --");
+        if (!_ship.Powered || _ship.Power.FuelUnits <= 0 && _ship.Power.ChargeMJ <= 0)
+        {
+            Fail($"NO CLIMB: off {from} the Skiff has nothing to climb on ({(_ship.Powered ? "powered" : "no power")}; {Fuelled()})");
+            _ok = false;
+            yield break;
+        }
         _game.Controls.Hold(Key.Space);
-        for (int i = 0; i < 60 * 150 && !_game.InOrbit; i++) yield return 0;
+        int climbed = 0;
+        for (; climbed < 60 * 150 && !_game.InOrbit; climbed++) yield return 0;
+        if (!_game.InOrbit)
+        {
+            _game.Controls.ReleaseAll();
+            Fail($"NO CLIMB: off {from} the Skiff didn't reach orbit in {climbed / 60} s, {_ship.AboveGround:F0} m up ({(_ship.Powered ? "powered" : "no power")}, lift margin {_ship.Stats?.LiftMargin:F0} kN; {Fuelled()})");
+            _ok = false;
+            yield break;
+        }
         for (int i = 0; i < 60 * 60 && _game.InOrbit && Flight.Band < 1f; i++) yield return 0;
         for (int i = 0; i < 60 * 6; i++) yield return 0;
         _game.Controls.ReleaseAll();
@@ -560,9 +682,10 @@ public partial class WarpTest : Node
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        int colliders = 0, drawn = 0, terrain = 0;
+        int colliders = 0, drawn = 0, terrain = 0, marks = 0;
         foreach (Node n in Every(_game))
         {
+            if (SystemSplit.IsMark(n)) { marks++; continue; } // --split's own markers aren't the game's
             // The ground streamed round where you are (or left each world) comes and goes with where that is: counted apart.
             bool ground = n is PlanetSurface.Terrain.TerrainStreamer || n.GetParent() is PlanetSurface.Terrain.TerrainStreamer;
             if (ground) { terrain += n.GetChildCount(); continue; }
@@ -570,7 +693,7 @@ public partial class WarpTest : Node
             if (n is GeometryInstance3D gi && gi.IsVisibleInTree()) drawn++;
         }
         var zones = Flight.AllZones().ToList();
-        return new Level((int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount), (int)Performance.GetMonitor(Performance.Monitor.ObjectCount),
+        return new Level((int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount) - marks, (int)Performance.GetMonitor(Performance.Monitor.ObjectCount) - marks,
             (int)Performance.GetMonitor(Performance.Monitor.ObjectResourceCount), zones.Sum(z => z.Physics?.Bodies.Count ?? 0), colliders, drawn,
             GC.GetTotalMemory(false) / 1048576.0, OS.GetStaticMemoryUsage() / 1048576.0, zones.Count, terrain);
     }
@@ -588,6 +711,7 @@ public partial class WarpTest : Node
         var (p95, worst) = Spread(_cpu);
         var (wallP95, wallWorst) = Spread(_wall);
         foreach (var (stage, ms) in _byStage) { var (s95, sWorst) = Spread(ms); GD.Print($"  ({stage}: CPU 95th {s95:F1} ms, worst {sWorst:F1} ms over {ms.Count} frames)"); }
+        if (_parking.Count > 0) GD.Print($"  (left out of the budget: the frames waking the zone gone to and parking the zone left, proto/orbitclean's piecewise Park/Run to fix: {string.Join(", ", _parking.Select(ms => ms.ToString("F0")))} ms)");
         GD.Print($"  frame times through every warp, CPU: 95th {p95:F1} ms, worst {worst:F1} ms ({_worstAt}); wall: 95th {wallP95:F1} ms, worst {wallWorst:F1} ms; {_cpu.Count} frames, {(_args.ContainsKey("minspec") ? "min spec stand-in" : "this machine")}, {(_shots != null ? "windowed" : "headless")}");
         Check(p95 < 16.7 && worst < 33.4, $"the warps keep the frame budget in CPU time: 95th percentile {p95:F1} ms (budget 16.7), worst {worst:F1} ms (no frame dropped twice)");
     }

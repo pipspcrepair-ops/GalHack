@@ -182,16 +182,20 @@ public partial class FoldTest : Node
         if (!Check(legs.bs != null, $"two stars in reach of home and of each other ({nearHome.Count} in reach of home)")) yield break;
         int a = legs.a, b = legs.bs[_rng.Next(legs.bs.Count)];
         GD.Print($"route: home {Catalogue.Name(home)} ({home}) → A {Catalogue.Name(a)} ({a}) → B {Catalogue.Name(b)} ({b}) → home → A");
-        if (Shooting)
-        {
-            // The galaxy map with A picked: its route, LY, crystal and reach.
-            Flight.Charts.ChosenStar = a;
-            _game.Menu.OpenMap(Slice.Ui.MapLevel.Galaxy);
-            foreach (int x in _drive.Wait(40)) yield return x;
-            Shot("fold-1-map-route");
-            _game.Menu.Close();
-            foreach (int x in _drive.Wait(10)) yield return x;
-        }
+        // A targeted on the galaxy map, J, and J again while it spools: called off, nothing burnt.
+        _ship.Power.ShieldsOn = false;
+        foreach (int x in PickOnMap(a)) yield return x;
+        if (Shooting) Shot("fold-1-map-route"); // the panel: route, LY, crystal, IN REACH and [J] FOLD
+        int before = _ship.Storage.Count("fold-crystal");
+        foreach (int x in _drive.Tap(Key.J)) yield return x;
+        foreach (int x in _drive.Wait(90)) yield return x;
+        bool spooled = Flight.Jumping is { Now: Jump.Stage.Spool, Drive: Spaceflight.FoldDrive };
+        foreach (int x in _drive.Tap(Key.J)) yield return x;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(spooled && Flight.Jumping.Now == Jump.Stage.Cancelled && !_ship.Power.Engaged(Spaceflight.FoldDrive) && _ship.Storage.Count("fold-crystal") == before,
+            $"J spools the fold to the star targeted, and J again calls it off: {Flight.Jumping.Now}, {before - _ship.Storage.Count("fold-crystal")} crystal burnt");
+        _game.Menu.Close();
+        foreach (int x in _drive.Wait(10)) yield return x;
 
         foreach (int x in FoldTo(a)) yield return x;
         if (Flight.StarHere != a) yield break;
@@ -361,6 +365,37 @@ public partial class FoldTest : Node
     string Fuel() => $"generator fuel {_ship.Power.FuelUnits:F0} units, capacitor {_ship.Power.ChargeMJ:F1} of {_ship.Power.CapacityMJ:F0} MJ, supply {_ship.Power.Supply:P0}, "
         + $"{_ship.Storage.Count("warp-cell")} warp cells, {_ship.Storage.Count("fold-crystal")} fold crystal";
 
+    /// <summary>
+    /// The galaxy map opened and a star clicked on it, through the game's own mouse: the one jump target (section 8 item
+    /// 16). Where another star stands under the cursor too, in closer and again.
+    /// </summary>
+    IEnumerable<int> PickOnMap(int star)
+    {
+        _game.Menu.OpenMap(Slice.Ui.MapLevel.Galaxy);
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Controls c = _game.Controls;
+        Slice.Ui.MapLevels levels = _game.Menu.Root.Map.Levels;
+        for (int tries = 0; tries < 5 && Flight.Target?.Star != star && levels.ScreenOf(star) is Vector2 at; tries++)
+        {
+            if (tries > 0)
+            {
+                c.Mouse = at;
+                c.Wheel = -1;
+                foreach (int x in _drive.Wait(10)) yield return x;
+                if (levels.ScreenOf(star) is not Vector2 closer) break;
+                at = closer;
+            }
+            c.Mouse = at;
+            yield return 0;
+            c.PrimaryPressed = c.Primary = true;
+            yield return 0;
+            c.Primary = false;
+            c.PrimaryReleased = true;
+            foreach (int x in _drive.Wait(6)) yield return x;
+        }
+        Check(Flight.Target?.Star == star && Flight.Target.Body == null, $"on the galaxy map, {Catalogue.Name(star)} clicked is the one jump target ({(Flight.Target?.Star is int t and >= 0 ? Catalogue.Name(t) : "none")})");
+    }
+
     /// <summary>A warp in the system here, spooled and waited through.</summary>
     IEnumerable<int> Warp(Orbiter to)
     {
@@ -456,14 +491,16 @@ public partial class FoldTest : Node
         Bill hold = _ship.Storage.Contents.Clone();
         GD.Print($"-- fold: {Catalogue.Name(from)} → {Catalogue.Name(star)}, {ly:F1} LY --");
         _ship.Power.ShieldsOn = false;
-        foreach (int x in _drive.Wait(2)) yield return x;
-        Flight.Charts.ChosenStar = star;
+        // The owner's flow: the galaxy map open, the star clicked, J.
+        foreach (int x in PickOnMap(star)) yield return x;
         string fault = Flight.FoldFault(_ship, star);
         if (!Check(fault == null, $"the fold drive can make it: {fault ?? "IN REACH"} ({Flight.CrystalTo(star)} fold crystal for {ly:F1} LY, {_ship.Power.Range(Spaceflight.FoldDrive)?.Reach:F0} LY on the gauge; {Fuel()})")) yield break;
         int folds = Flight.Folds.Count();
         StartTiming();
-        string refused = Flight.Fold(star);
-        if (!Check(refused == null, $"FOLD: the drive spools ({refused ?? $"{_ship.Power.SpoolLeft:F0} s"})")) yield break;
+        foreach (int x in _drive.Tap(Key.J)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        _game.Menu.Close();
+        if (!Check(Flight.Jumping is { Running: true, Drive: Spaceflight.FoldDrive }, $"J: the fold drive spools ({_ship.Power.SpoolLeft:F0} s)")) yield break;
         int ticks = 0, unpowered = 0;
         bool tunnelShot = false;
         double leastSupply = 1;

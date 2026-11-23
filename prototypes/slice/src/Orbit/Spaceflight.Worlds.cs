@@ -195,6 +195,13 @@ public partial class Spaceflight
             orbit.BuildStep();
             yield return false;
         }
+        // Its wrecks made solid before you arrive (nothing there can touch them yet), within the ticks' shared budget.
+        while (orbit.Wrecks.Exists(w => w.PendingShapes > 0))
+        {
+            Doing = $"its wrecks made solid ({orbit.Wrecks.Sum(w => w.PendingShapes)} chunks to go)";
+            foreach (Vessel w in orbit.Wrecks) w.BuildPendingShapes();
+            yield return false;
+        }
         Doing = "waiting on its life";
         while (orbit.Home.Surface is { } rolling && !rolling.Wildlife.LifeReady) yield return false;
         if (orbit.Home.Surface is { } surface)
