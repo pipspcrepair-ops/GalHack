@@ -434,8 +434,9 @@ public partial class FoldTest : Node
         StartTiming();
         string refused = Flight.Fold(star);
         if (!Check(refused == null, $"FOLD: the drive spools ({refused ?? $"{_ship.Power.SpoolLeft:F0} s"})")) yield break;
-        int ticks = 0;
+        int ticks = 0, unpowered = 0;
         bool tunnelShot = false;
+        double leastSupply = 1;
         while (Flight.Folds.Count() == folds && Flight.Jumping.Running && ticks++ < 60 * 120)
         {
             if (Shooting && !tunnelShot && Flight.Jumping.Holding && Flight.Jumping.InTunnel > 1.0)
@@ -444,8 +445,11 @@ public partial class FoldTest : Node
                 Shot("fold-2-tunnel");
             }
             if (ticks % 20 == 0) _systems.MarkNew(); // the zones a fold makes are split out too, as they come
+            leastSupply = Math.Min(leastSupply, _ship.Power.Supply);
+            if (!_ship.Powered) unpowered++;
             yield return 0;
         }
+        GD.Print($"    (the Skiff's power through it: least supply {leastSupply:P0}, {unpowered} ticks unpowered; {Fuel()})");
         // A couple of seconds after, the arrival's settling in, and the system left all taken down.
         for (int i = 0; i < 120 || Flight.Dismantling && i < 60 * 20; i++) yield return 0;
         string frames = FrameReport();
