@@ -332,7 +332,7 @@ public sealed record WorldPalette
         float openSilt = silt * (spec.Archetype == Archetype.Arid ? 0.45f : 0.1f);
         (Spectrum, Spectrum) WaterOf(Waters w) => Seas(plankton, tannin, silt, openSilt, leaf, dust, sand, w, solute);
         // Never the sky's own hue either: a sea that takes its sky's colour reads flat.
-        Waters waters = Contrast(Makers(WaterOdds(spec), 3, w => Vivid(w)), h, 31, w => WaterOf(w).Item1.Reflectance(), land.Hue, Oklab.Of(sky.Zenith).Hue, Oklab.Of(sky.Band).Hue);
+        Waters waters = Contrast(Makers(WaterOdds(spec), 3, w => Vivid(w)), h, 31, w => WaterOf(w).Item1.Reflectance(), land.Hue, Oklab.Of(sky.Zenith).Hue, Oklab.Of(sky.Horizon).Hue, Oklab.Of(sky.Band).Hue);
         (Spectrum deep, Spectrum shallow) = WaterOf(waters);
         Spectrum snow = Spectrum.Of(l => 0.93f - 0.08f * (l - 400f) / 300f);
 

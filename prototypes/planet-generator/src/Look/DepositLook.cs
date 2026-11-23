@@ -21,12 +21,20 @@ public static class DepositLook
     public static Rgb Around(Rgb ground, DepositKind kind)
     {
         Oklab g = Oklab.Of(ground), o = Oklab.Of(Color(kind));
-        float da = g.A - o.A, db = g.B - o.B, dl = g.L - o.L, need = Margin * Margin - da * da - db * db;
-        if (dl * dl >= need) return ground;
-        float step = MathF.Sqrt(need) + 0.01f, l = o.L + (dl >= 0f ? step : -step);
-        if (l > 0.95f || l < 0.08f) l = o.L + (dl >= 0f ? -step : step); // no room that way: the other
-        return new Oklab(l, g.A, g.B).ToRgb();
+        if (Gap(g, o) >= Margin) return ground;
+        // Lighter or darker by as little as will do, on the side the ground already lies first; the screen's gamut may take some
+        // of its chroma there, so each step is checked as it will show.
+        float side = g.L >= o.L ? 1f : -1f;
+        foreach (float s in new[] { side, -side })
+            for (float l = o.L + s * 0.02f; l is > 0.03f and < 0.99f; l += s * 0.02f)
+            {
+                Rgb c = new Oklab(l, g.A, g.B).ToRgb();
+                if (Gap(Oklab.Of(c), o) >= Margin) return c;
+            }
+        return ground;
     }
+
+    static float Gap(Oklab a, Oklab b) => MathF.Sqrt((a.L - b.L) * (a.L - b.L) + (a.A - b.A) * (a.A - b.A) + (a.B - b.B) * (a.B - b.B));
 
     public static Rgb Color(DepositKind kind) => kind switch
     {

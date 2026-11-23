@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -593,7 +593,8 @@ public partial class GenTest : Node
                 float[] f = Form(PlanetGenerator.Generate(spec), out Oklab land);
                 if (s < train) trainSet.Add((f, (int)a, v));
                 else testSet.Add((f, (int)a));
-                (landColours.TryGetValue(a, out var colours) ? colours : landColours[a] = new List<Oklab>()).Add(land);
+                // (Today's look paints every world of a type alike, by design: its variety is the rest's.)
+                if (!WorldPalette.IsToday(spec)) (landColours.TryGetValue(a, out var colours) ? colours : landColours[a] = new List<Oklab>()).Add(land);
                 (byType.TryGetValue(a, out var forms) ? forms : byType[a] = new List<float[]>()).Add(f);
             }
         // Each feature's least on the worlds that should show it, and its most on those that shouldn't.
@@ -676,7 +677,9 @@ public partial class GenTest : Node
             // Fire, not a luminous night's faint glow over everything (GlowingNights) or alien seas' shimmer.
             if (0.3f * colors.Glow[p * 3] + 0.59f * colors.Glow[p * 3 + 1] + 0.11f * colors.Glow[p * 3 + 2] > 0.2f * 255f) glowing++;
             Oklab o = Oklab.Of(new Rgb(r, g, b));
-            bool snow = o.L > 0.85f && o.Chroma < 0.06f;
+            // Snow, or ice pale and blue (today's look paints sea ice so).
+            float hue = (o.Hue * 180f / MathF.PI + 360f) % 360f;
+            bool snow = o.L > 0.85f && o.Chroma < 0.06f || o.L > 0.75f && o.Chroma < 0.08f && hue is > 200f and < 270f;
             if (snow) white++;
             // The land's own colour for variety: its ground and growth, not its snow (white on any world).
             if (colors.Albedo[p * 4 + 3] > 0 || snow) continue;

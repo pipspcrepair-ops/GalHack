@@ -189,7 +189,8 @@ public partial class PaletteTest : Node
     /// strength: one share of the mix, never most: owner, 23 Nov) and mixed. Every part of every world looks as its label says: a
     /// vivid part (sky: its zenith or its band) at least 0.095 Oklab chroma, an earthy one an earth tone or at most 0.09, a deep one
     /// dark and dull.
-    /// No hue family holds more than 35% of any part (sky, ground, plants, water), nor of its vivid ones. Red water, blue plants and
+    /// No hue family holds more than 35% of any part's vivid colours (sky, ground, plants, water), nor 45% of all its colours (earthy
+    /// worlds' earth tones may lead). Red water, blue plants and
     /// a green sky each turn up on at least one world in a hundred. Every fourth roll is an airless body, whose rock (unless it rusted
     /// while it had air) stays grey.
     /// </summary>
@@ -251,7 +252,8 @@ public partial class PaletteTest : Node
             int n = Enumerable.Range(0, 8).Sum(f => all[e, f]), nv = Enumerable.Range(0, 8).Sum(f => vivid[e, f]);
             int most = Enumerable.Range(0, 8).Max(f => all[e, f]), mostVivid = Enumerable.Range(0, 8).Max(f => vivid[e, f]);
             GD.Print($"RANGE {parts[e]}: " + string.Join(" ", Enumerable.Range(0, 8).Select(f => $"{Families[f]} {all[e, f]}/{vivid[e, f]}")) + $" (all/vivid of {n}/{nv})");
-            Check(most <= n * 0.35f && mostVivid <= nv * 0.35f, $"no hue family takes over the {parts[e]}: the commonest holds {most * 100 / Math.Max(n, 1)}% of all, {mostVivid * 100 / Math.Max(nv, 1)}% of the vivid");
+            // (Earthy worlds' own earth tones may lead a part's colours, never more than 45% of them.)
+            Check(most <= n * 0.45f && mostVivid <= nv * 0.35f, $"no hue family takes over the {parts[e]}: the commonest holds {most * 100 / Math.Max(n, 1)}% of all, {mostVivid * 100 / Math.Max(nv, 1)}% of the vivid");
         }
         Check(red >= worlds / 100 && blue >= worlds / 100 && green >= worlds / 100, $"red water on {red}, blue plants on {blue} and a green sky on {green} of {worlds} worlds (each at least {worlds / 100})");
         Check(greyest < 0.04f, $"airless rock that never rusted stays grey: highest Oklab chroma {greyest:F3}");
@@ -271,7 +273,7 @@ public partial class PaletteTest : Node
         float nearest = float.MaxValue;
         for (int i = 0; i < count; i++)
         {
-            var (a, v) = (new[] { Archetype.Temperate, Archetype.Arid, Archetype.Ice, Archetype.Alien }[Fresh() % 4], (int)(Fresh() % 2));
+            var (a, v) = (new[] { Archetype.Temperate, Archetype.Arid, Archetype.Ice, Archetype.Alien }[i % 4], (int)(Fresh() % 2));
             PlanetSpec spec = PlanetSpec.Roll(Fresh(), a, v, 8);
             if (spec.Airless) continue;
             WorldMap map = PlanetGenerator.Generate(spec);
@@ -280,7 +282,7 @@ public partial class PaletteTest : Node
             var ground = new GroundPalette(map, sky.Palette, PlanetFlora.For(map, sky));
             foreach (DepositKind k in Enum.GetValues<DepositKind>())
             {
-                Color c = ground.Vertex(CellMaterial.Ore, 100.0, 100.0, map.Sample(map.Elevation, 100.0, 100.0) - 30f, out Vector2 f, k);
+                Color c = ground.Vertex(CellMaterial.Ore, 100.0, 100.0, -1000f, out Vector2 f, k); // deep: the same place on every world
                 if (f.Y > -0.99f) unmarked++;
                 if (seen.TryGetValue(k, out Color was) && !was.IsEqualApprox(c)) differ++;
                 seen[k] = c;
