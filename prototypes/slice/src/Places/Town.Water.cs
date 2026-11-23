@@ -40,6 +40,9 @@ public sealed partial class Town
     /// <summary>The bed under a point that stands in water (more than ankle-deep), the place's frame; null out of it.</summary>
     float? BedIn(Vector3 local) => Surface(local) is float top && Bottom(local) is var bed && top - bed > 0.15f ? bed : null;
 
+    /// <summary>The bed under someone out on a run (<see cref="BedIn"/>), not looked for where their run found the land dry.</summary>
+    float? BedUnder(Person p) => p.Run is { } r && r.DryAt(World(p.Pos)) ? null : BedIn(p.Pos);
+
     /// <summary>In the water (landed in it, or walked into it out on a run): their way given up, the nearest bank looked for.</summary>
     void EnterWater(Person p)
     {

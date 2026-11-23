@@ -44,6 +44,9 @@ public partial class ScavTest : Node
             System.Environment.Exit(1);
         }) { IsBackground = true }.Start();
         ProcessPhysicsPriority = 100;
+        // (The far walk's cost as the main thread's own time: a machine busy with other runs keeps it off its core for a
+        // scheduler's slice now and then, 4 to 16 ms of nothing it did.)
+        if (PlanetSurface.FrameProbe.CyclesPerMs > 0) SkyTraffic.Clock = () => PlanetSurface.FrameProbe.Cycles() / PlanetSurface.FrameProbe.CyclesPerMs;
         _run = Scenario().GetEnumerator();
     }
 
@@ -364,7 +367,7 @@ public partial class ScavTest : Node
         }
         GD.Print($"  out of sight {(down ? "with the place down" : "with the place still up")}: {moved:F0} m along their way, {Searched(who)} spots searched (on a run {OnRun(who)}, homeward {Get(Get(who, "Run"), "Home")}, scared {who.ScaredFor:F1}, {new Vector2(who.Pos.X - gate.X, who.Pos.Z - gate.Z).Length():F0} m out); the walk of those out {(samples > 0 ? sumMs / samples : 0):F4} ms a tick on average, {worstMs:F4} ms at worst{(worstNote != "" ? $" ({worstNote})" : "")}");
         Check(moved > 40f && down, $"far off, with the place down, they kept walking their way ({moved:F0} m, the place {(down ? "down" : "never down")})");
-        Check(samples > 0 && worstMs < 0.1f, $"the far walking cost under 0.1 ms a tick ({worstMs:F4} ms at worst over {samples} ticks)");
+        Check(samples > 0 && worstMs < 0.1f, $"the far walking cost under 0.1 ms a tick ({worstMs:F4} ms at worst over {samples} ticks{(PlanetSurface.FrameProbe.CyclesPerMs > 0 ? ", the main thread's own time" : "")})");
         // Back inside the way in, before they are.
         _game.Survivor.PlaceOutside(town.World(stand + Vector3.Up * 0.15f).ToNumerics());
         shown = who.View is { Visible: true };
