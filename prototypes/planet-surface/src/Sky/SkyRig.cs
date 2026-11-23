@@ -678,7 +678,7 @@ public partial class SkyRig : Node3D
         {
             Color ground = _world.Look.Dust.SrgbToLinear(), shade = C(s.Shade).SrgbToLinear();
             float bounce = GroundBounce * Sun.LightEnergy * Math.Max(0f, toSun.Y) / ((1f - VacuumSkyShare) * Math.Max(0.05f, Environment.AmbientLightEnergy));
-            float thrown = (0.2126f * ground.R * light.R + 0.7152f * ground.G * light.G + 0.0722f * ground.B * light.B) * bounce;
+            float thrown = (0.2126f * ground.R * light.R + 0.7152f * ground.G * light.G + 0.0722f * ground.B * light.B) * bounce * VacuumShadeLift;
             Environment.AmbientLightColor = (shade * (thrown / Math.Max(1e-4f, 0.2126f * shade.R + 0.7152f * shade.G + 0.0722f * shade.B))).LinearToSrgb();
         }
         // A deposit keeps its colour: the terrain shader takes the shade light's own colour back off its ore (its grey stays).
@@ -689,6 +689,12 @@ public partial class SkyRig : Node3D
 
     /// <summary>The share of a vacuum world's shade light its sky's radiance gives (the planet overhead), the rest the ground's bounce.</summary>
     const float VacuumSkyShare = 0.5f;
+
+    /// <summary>
+    /// How much brighter than the ground's bounce a vacuum world's shade is drawn: enough that its colour opposite the star shows (deep
+    /// violet, blue or magenta shadows on grey rock: owner, 23 Nov, "deep grey moons, but saturated"), the shade still deep.
+    /// </summary>
+    const float VacuumShadeLift = 3f;
 
     /// <summary>How much of the sunlight on the ground comes back up into a shadow: a dim fill, the shade still near black.</summary>
     const float GroundBounce = 0.08f;
