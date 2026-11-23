@@ -228,7 +228,7 @@ public sealed class GroundPalette
             (Archetype.Ice, _) => (Rgb.Hex("5d646e"), 0.3f),
             (Archetype.Lava, _) => (Rgb.Hex("2f2a2b"), 0.35f),
             (Archetype.Alien, 0) => (Rgb.Hex("6f6185"), 0.5f),
-            (Archetype.Barren, _) => (Rgb.Hex("6b6b6b"), 0.15f), // impact-shattered rock: neutral grey, barely bedded
+            (Archetype.Barren, _) => (Rgb.Hex("505050"), 0.15f), // impact-shattered rock: neutral deep grey, barely bedded
             _ => (Rgb.Hex("6b5a52"), 0.3f),
         };
         DeepRock = Rock * 0.72f;
@@ -292,10 +292,10 @@ public sealed class GroundPalette
         Biome.FungalForest => Rgb.Hex("874a3c"),
         Biome.SporeMarsh => Rgb.Hex("5e6a35"),
         Biome.Mycelium => Rgb.Hex("cbbfa4"),
-        Biome.Regolith => Rgb.Hex("848484"),
-        Biome.Mare => Rgb.Hex("4c4c4e"),
-        Biome.Highland => Rgb.Hex("a3a3a3"),
-        Biome.Ironstone => Rgb.Hex("57504d"),
+        Biome.Regolith => Rgb.Hex("5c5c5c"),
+        Biome.Mare => Rgb.Hex("3a3a3b"),
+        Biome.Highland => Rgb.Hex("7c7c7c"),
+        Biome.Ironstone => Rgb.Hex("4a4848"),
         Biome.Frost => Rgb.Hex("cdd1d6"),
         _ => Rgb.Hex("6a6a5a"),
     };
