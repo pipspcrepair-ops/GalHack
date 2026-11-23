@@ -177,7 +177,8 @@ public partial class SpaceSky : Node3D
         """;
 
     /// <param name="atmosphere">How high a world's air stands round its globe, in its radii: the far look's air is its globe's.</param>
-    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces, float atmosphere)
+    /// <returns>A step a body: each body's far look is made on its own frame (a system's worth at once would show as a hitch).</returns>
+    public IEnumerable<int> Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces, float atmosphere)
     {
         _surfaces = surfaces;
         _rules = rules;
@@ -215,6 +216,7 @@ public partial class SpaceSky : Node3D
         foreach (Orbiter b in model.Bodies)
         {
             if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == model.Home && b.Spec != null) continue; // a giant you are round is drawn here: it has no globe
+            yield return 0;
             var material = new ShaderMaterial { Shader = bodyShader };
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.Color));
             material.SetShaderParameter(PlanetSurface.Fx.Names.Of("band"), C(b.Band));

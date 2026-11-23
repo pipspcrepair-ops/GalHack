@@ -150,6 +150,9 @@ public partial class Spaceflight
 
         public string Name => _f.Stars.Galaxy.Name(_star);
 
+        /// <summary>What letting go of the system left took on the main thread, ms (tests read it).</summary>
+        public double LeftMs { get; private set; }
+
         public void Begin(Spaceflight flight)
         {
             Galaxy galaxy = flight.Stars.Galaxy;
@@ -237,6 +240,7 @@ public partial class Spaceflight
         public void Left(Spaceflight flight, SurfaceZone from)
         {
             _arrived = true;
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             Abroad left = flight.Away;
             flight.Away = _away;
             flight._coming = null;
@@ -246,6 +250,8 @@ public partial class Spaceflight
             flight.Restore(flight.Away);
             flight.Charts.Visited.Add(_star);
             flight.Game.Progress.Discover("fold", 200, "folded to another star");
+            LeftMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            GD.Print($"[fold: the system left {(left != null ? "freed" : _away != null ? "parked" : "in play again")} in {LeftMs:F1} ms]");
         }
 
         public void Dropped(Spaceflight flight)
@@ -297,7 +303,7 @@ public partial class Spaceflight
                     if (c.Globe != null) c.Globe.Visible = false;
             }
             Park(z);
-            Mute(z);
+            if (z is not OrbitZone) Mute(z); // a surface's sky and light off (an orbit's are its space sky's, off above)
             Silence(z);
         }
     }
