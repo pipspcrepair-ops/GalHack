@@ -63,8 +63,9 @@ public partial class JumpShots : Node3D
         _tunnel.GlobalTransform = new Transform3D(Basis.LookingAt(Vector3.Forward, Vector3.Up).Scaled(Vector3.One * 60f), Vector3.Zero);
         _camera.GlobalTransform = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(off)), Vector3.Zero);
         Vector2 size = GetViewport().GetVisibleRect().Size;
-        // Where the point ahead is on screen.
-        Vector2 centre = _camera.UnprojectPosition(Vector3.Forward * 1000f);
+        // Where the point ahead is on screen: the camera's height-kept field of view, the point turned off degrees from its middle.
+        float focal = size.Y * 0.5f / MathF.Tan(Mathf.DegToRad(_camera.Fov * 0.5f));
+        var centre = new Vector2(size.X * 0.5f + focal * MathF.Tan(Mathf.DegToRad(off)), size.Y * 0.5f);
         var frames = new List<Image>();
         for (int k = 0; k < 4; k++)
         {
@@ -105,7 +106,7 @@ public partial class JumpShots : Node3D
     /// <summary>The radial shift (px, outward positive) that best matches frame b to frame a, over every bearing round <paramref name="c"/>.</summary>
     static float Lag(Image a, Image b, Vector2 c)
     {
-        const int Bearings = 180, From = 40, To = 260, MaxLag = 30;
+        const int Bearings = 180, From = 40, To = 300, MaxLag = 40;
         float[,] pa = Polar(a, c, Bearings, From, To), pb = Polar(b, c, Bearings, From, To);
         int best = 0;
         double bestScore = double.NegativeInfinity;
@@ -123,6 +124,7 @@ public partial class JumpShots : Node3D
     static float[,] Polar(Image img, Vector2 c, int bearings, int from, int to)
     {
         var p = new float[bearings, to - from];
+        var mean = new float[to - from];
         for (int t = 0; t < bearings; t++)
         {
             float a = t * Mathf.Tau / bearings;
@@ -132,8 +134,12 @@ public partial class JumpShots : Node3D
                 Vector2 q = c + dir * r;
                 int x = (int)q.X, y = (int)q.Y;
                 p[t, r - from] = x >= 0 && y >= 0 && x < img.GetWidth() && y < img.GetHeight() ? img.GetPixel(x, y).Luminance : 0f;
+                mean[r - from] += p[t, r - from] / bearings;
             }
         }
+        // The tunnel's own glow deepens with distance from the point ahead, the same every frame: only the streaks are matched.
+        for (int t = 0; t < bearings; t++)
+            for (int r = 0; r < to - from; r++) p[t, r] -= mean[r];
         return p;
     }
 }
