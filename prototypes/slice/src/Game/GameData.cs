@@ -248,8 +248,8 @@ public sealed class SliceRules
         public double LowC { get; set; } = 12;
         public double HighC { get; set; } = 26;
 
-        /// <summary>What it draws from its structure's capacitors while running, MW.</summary>
-        public double Power { get; set; } = 0.01;
+        /// <summary>Fuel units it burns a second: a burnstone pack (30) lasts about a day and night (1,440 s, survival.json).</summary>
+        public double BurnPerSecond { get; set; } = 0.02;
     }
 
     public sealed class ToolRules

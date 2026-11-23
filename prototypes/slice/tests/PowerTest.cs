@@ -249,15 +249,15 @@ public partial class PowerTest : Node
 
     void Start(GameData data)
     {
-        GD.Print("-- the start: power before the climate node needs it --");
+        GD.Print("-- the start: the first things a sleeper makes --");
         ItemCatalogue items = data.Items;
         var fresh = new Progress(data.Progress, items, data.Catalogue);
         string[] first = { "core", "generator-t1", "container-t1", "biofuel", "energy-cell", Device.ClimateItem };
         var late = first.Where(id => !fresh.ItemAllowed(items.Item(id)) || items.Item(id).Recipe.Tier > 0).ToList();
-        Check(late.Count == 0, $"a sleeper at level 1 makes a core, a generator, a container, biofuel and a climate node at the survival constructor{(late.Count > 0 ? ": not " + string.Join(", ", late) : "")}");
+        Check(late.Count == 0, $"a sleeper at level 1 makes a core, a generator, a container, biofuel and a climate pod at the survival constructor{(late.Count > 0 ? ": not " + string.Join(", ", late) : "")}");
         Check(items.Item("biofuel").Recipe.Inputs.All(i => i.Item.Source == ItemSource.Harvested), "and the first fuel from cutting plants");
-        Check(data.Rules.ClimateNode.Power > 0 && !items.Recipes.Any(r => r.Output.Id == Device.ClimateItem && r.Inputs.Any(i => i.Item.FuelUnits > 0)),
-            $"the climate node draws {data.Rules.ClimateNode.Power} MW of its structure's power and burns nothing");
+        Check(data.Rules.ClimateNode.BurnPerSecond > 0 && !items.Recipes.Any(r => r.Output.Id == Device.ClimateItem && r.Inputs.Any(i => i.Item.FuelUnits > 0)),
+            $"the climate pod burns {data.Rules.ClimateNode.BurnPerSecond} fuel units a second of its own and is made from no fuel");
     }
 
     // ---- In the world ------------------------------------------------------------------------------------

@@ -162,7 +162,7 @@
   // The climate node: running, it holds the air within radius metres inside lowC to highC. Life
   // support uses power only (owner, 15 Nov): it has no fuel of its own and draws power MW from the
   // capacitors of the structure whose area it stands in (the nearest with power, if several).
-  "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "power": 0.01 },
+  "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "burnPerSecond": 0.02 },
 
   // The head torch (L): a cone from the helmet.
   "torch": { "range": 60, "angle": 32, "energy": 6.5, "attenuation": 0.85 },
