@@ -94,6 +94,6 @@
 
     // ---- Tools ----------------------------------------------------------------------------------
     { "make": "survival-constructor", "count": 1, "from": { "iron-bar": 4, "copper-wire": 4, "winding": 1 }, "seconds": 10, "tier": 0 },
-    { "make": "climate-node", "count": 1, "from": { "iron-bar": 3, "copper-wire": 3, "winding": 1 }, "seconds": 8, "tier": 0 }
+    { "make": "survival-climate-pod", "count": 1, "from": { "iron-bar": 3, "copper-wire": 3, "winding": 1 }, "seconds": 8, "tier": 0 }
   ]
 }

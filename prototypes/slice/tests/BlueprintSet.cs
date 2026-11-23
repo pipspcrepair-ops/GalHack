@@ -129,6 +129,7 @@ two mains, a retro, a side jet each way, a lift jet, a down jet and three pads."
         d.Fill(P(-11, 2, -1), P(-11, 3, 1), "glass-plated").Fill(P(-9, 2, -3), P(-7, 3, -3), "glass-plated").Fill(P(-9, 2, 3), P(-7, 3, 3), "glass-plated");
         d.Door("door-1x2x1", P(-5, 1, 0), Dir.NegX);
         d.Put("command-chair", P(-10, 1, 0), Designer.Rot(Dir.PosY, Dir.NegX));
+        d.Put("life-support-pod", P(-12, 2, 0));
         d.Mount("light", P(-8, 3, 0), Dir.PosY);
         // Framing: a pilaster at each corner of the hall and along its north wall, dark against the cream.
         foreach (int x in new[] { -5, -1, 3, 6 }) d.Fill(P(x, 0, -6), P(x, 4, -6), Concrete, frame).Slope(P(x, 5, -6), P(x, 5, -6), Concrete, frame, Dir.NegZ);
@@ -193,6 +194,7 @@ its rim hazard-marked and ramped down to the ground.");
         d.Door("door-1x2x1", P(0, 1, -2), Dir.NegZ);
         d.Stairs(P(0, 0, -3), Dir.PosZ, hull);
         d.Put("command-chair", P(1, 1, -1));
+        d.Put("life-support-pod", P(3, 2, -1));
         d.Put("container-t1", P(-1, 1, 2));
         d.Put("generator-t1", P(0, 1, 2));
         d.Put("container-t1", P(1, 1, 2));

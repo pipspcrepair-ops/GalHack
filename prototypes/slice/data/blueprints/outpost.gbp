@@ -213,6 +213,7 @@ block 6 2 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -11 2 -1 glass-plated paint=inner,-,-,-,-,-
 block -5 2 -1 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 2 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -12 2 0 life-support-pod
 block -11 2 0 glass-plated
 block -11 2 1 glass-plated paint=inner,-,-,-,-,-
 block -5 2 1 concrete-plated paint=inner,inner,wall,wall,wall,wall

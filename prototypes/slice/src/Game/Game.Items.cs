@@ -84,8 +84,9 @@ public partial class Game
         }
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
         {
-            // The full panel: hopper beside the recipes and queue. A climate node has neither: it runs on its structure's power.
+            // The full panel: hopper beside the recipes and queue. A climate pod has only its fuel slot, opened beside the bag.
             if (device.Constructor != null) Menu.OpenCore(device);
+            else Open(new OpenContainer { Title = device.Label, Grid = device.Grid, Device = device, Where = () => device.GlobalPosition });
             return;
         }
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
@@ -98,6 +99,11 @@ public partial class Game
             }
             if (type.IsCommandChair)
             {
+                return;
+            }
+            if (type.IsLifeSupport)
+            {
+                UseLifeSupport(v);
                 return;
             }
             if (type.IsLight && Godot.Input.IsKeyPressed(Godot.Key.Shift))
@@ -121,6 +127,31 @@ public partial class Game
         if (UsePlace(look)) return;
     }
 
+    /// <summary>E at a life support pod: a working one tops the suit's air up to full.</summary>
+    public bool UseLifeSupport(Vessel v)
+    {
+        if (!v.LifeSupport) return false;
+        Suit.Vitals.Oxygen = Suit.Sim.OxygenCapacity;
+        return true;
+    }
+
+    /// <summary>F at a climate pod: it goes back in the pack with the fuel still in its slot.</summary>
+    bool PickUpPod()
+    {
+        if (Menu.IsOpen || !WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look)
+            || Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider && d.IsClimate) is not Device pod) return false;
+        var back = new Bill();
+        back.Add(Device.ClimateItem, 1);
+        foreach (var (id, n) in pod.Storage.Contents) back.Add(id, n);
+        var spill = new Bill();
+        foreach (var (id, n) in back)
+            foreach (var (left, m) in Pack.Add(id, n)) spill.Add(left, m);
+        if (!spill.IsEmpty) SetDown(spill, pod.GlobalPosition);
+        Zone.Devices.Remove(pod);
+        pod.QueueFree();
+        return true;
+    }
+
     /// <summary>What E (or F) would do with what is under the crosshair, for the prompt beside it; empty if nothing usable is in reach.</summary>
     public string UsePrompt()
     {
@@ -136,12 +167,14 @@ public partial class Game
         if (PlacePrompt(eye, dir, hit, look) is { Length: > 0 } place) return place;
         if (!hit) return "";
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
-            return device.Grid == null ? $"{device.Label.ToUpperInvariant()} · {(device.Running ? "ON" : "NO POWER")}" : $"E  Open {device.Label.ToLowerInvariant()}";
+            return device.Constructor != null ? $"E  Open {device.Label.ToLowerInvariant()}"
+                : $"E  Fuel  ·  F  Pick up  ·  {(device.Running ? "ON" : "OFF")}  ·  {Slice.Ui.Alerts.Clock(device.SecondsLeft)}";
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
         {
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
             if (type.IsCommandChair) return "F  Command chair";
+            if (type.IsLifeSupport) return $"E  Air  ·  {(v.LifeSupport ? "ON" : "OFF")}";
             if (type.IsLight) return (b.Off ? "E  Light on" : "E  Light off") + "   ·   Shift+E  Colour";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }

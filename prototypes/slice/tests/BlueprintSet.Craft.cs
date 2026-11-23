@@ -122,6 +122,7 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
         d.Put("core", P(2, -1, -1));
         d.Put("command-chair", P(-2, 0, -5));
         d.Put("command-chair", P(1, 0, -5));
+        d.Put("life-support-pod", P(-4, 1, -5));
         for (int z = 0; z <= 3; z++)
         {
             d.Put("container-t1", P(-2, 0, z));
@@ -220,6 +221,7 @@ each sponson.");
         d.Fill(P(-2, 1, -14), P(1, 2, -14), "glass-plated");
         d.Put("command-chair", P(-2, 0, -13));
         d.Put("command-chair", P(1, 0, -13));
+        d.Put("life-support-pod", P(-4, 1, -13));
         // The cab's nose cut at its corners, the roof and belly raked to the glass, the roof's edges raked to the sides.
         for (int y = -1; y <= 2; y++)
             d.Chamfer(P(2, y, -14), P(2, y, -14), "iron-plated", cream, Dir.PosX, Dir.NegZ).Chamfer(P(-3, y, -14), P(-3, y, -14), "iron-plated", cream, Dir.NegX, Dir.NegZ);
@@ -336,6 +338,7 @@ corners, two down jets, a side jet each way, four pads.");
         d.Put("core", P(3, 0, -12));
         d.Put("command-chair", P(-1, 6, -19));
         d.Put("command-chair", P(0, 6, -19));
+        d.Put("life-support-pod", P(-2, 9, -19));
         // The machine room: power and fuel at the stern end, gyros opposite, lockers down the bow.
         d.Put("generator-t2", P(-7, 1, -8));
         d.Put("generator-t2", P(-7, 1, -7));

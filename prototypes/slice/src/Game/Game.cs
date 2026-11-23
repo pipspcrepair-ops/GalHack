@@ -555,7 +555,7 @@ public partial class Game : Node3D
                 else Select(i);
             }
         if (c.WasPressed(Key.Y)) SwitchBar();
-        if (c.WasPressed(Key.F) && !OpenCryopod()) TrySit();
+        if (c.WasPressed(Key.F) && !OpenCryopod() && !PickUpPod()) TrySit();
         if (c.WasPressed(Key.E)) Use();
         if (c.WasPressed(Key.B)) Report(Suit.Sim.DeployOrPack(FeetPos()));
         if (c.WasPressed(Key.H)) Report(Suit.Sim.ToggleHelmet());
