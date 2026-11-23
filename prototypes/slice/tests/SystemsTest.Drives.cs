@@ -52,11 +52,12 @@ public partial class SystemsTest
 
     // ---- 11. Each drive's bill, down to ore, from its own worlds --------------------------------------------------------
 
-    void DriveBills(List<(StarSystem System, Orbiter Body, WorldMap Map)> worlds)
+    /// <summary>Against what the survey read off every mapped world's coarse map (no world is made again for it).</summary>
+    void DriveBills(List<Ground> worlds)
     {
         GameData data = GameData.Shared;
         ItemCatalogue items = data.Items;
-        var held = worlds.Select(w => w.Map.Deposits.All().Select(d => d.Kind).ToHashSet()).ToList();
+        var held = worlds.Select(w => w.Ore.Keys.ToHashSet()).ToList();
         HashSet<DepositKind> everywhere = held.Aggregate((a, b) => a.Intersect(b).ToHashSet());
         var none = new List<string>();
         var kinds = Drives.ToDictionary(d => d.Block, d => KindsOf(items, DriveBill(data, d.Block, d.Drive, 1), none));
@@ -108,7 +109,7 @@ public partial class SystemsTest
         {
             if (worlds[i].Body != worlds[i].System.FuelMoon) continue;
             moons++;
-            var have = worlds[i].Map.Deposits.All().GroupBy(d => d.Kind).ToDictionary(g => g.Key, g => g.Sum(Units));
+            Dictionary<DepositKind, double> have = worlds[i].Ore;
             foreach (var (id, n) in need)
                 if (Enum.TryParse(items.Item(id).DepositKind, out DepositKind k) && have.GetValueOrDefault(k) < n) thin.Add($"{worlds[i].Body.Spec} {have.GetValueOrDefault(k):F0} of {n} {id}");
         }
@@ -120,8 +121,9 @@ public partial class SystemsTest
     /// <summary>
     /// On fresh systems: an advanced constructor, the warp drive, warp cells for a first jump and the fold drive's warp
     /// coils, all from ore dug out of the fuel moon's own ground at the game's resolution; then the fold drive and fold
-    /// crystal for a first jump from a high-gravity world's, the coils carried there. Dug as the sleeper's tool digs (an
-    /// ore cell gives its body's ore, a rock cell stone) and made by the constructors' own queues.
+    /// crystal for a first jump from the system's smallest high-gravity world, the coils carried there. Dug as the sleeper's
+    /// tool digs (an ore cell gives its body's ore, a rock cell stone) and made by the constructors' own queues. Each world
+    /// is made, dug and let go in <see cref="Mine"/>, and collected before the next is made.
     /// </summary>
     void DriveProof(IEnumerable<StarSystem> systems)
     {
@@ -129,7 +131,7 @@ public partial class SystemsTest
         int coils = items.Blocks.For("fold-drive-t1")["warp-coil"];
         foreach (StarSystem s in systems)
         {
-            Orbiter moon = s.FuelMoon, heavy = s.Bodies.First(b => b.Deposits.Contains(PlanetSurface.Skies.Deposit.FoldDriveMaterials));
+            Orbiter moon = s.FuelMoon, heavy = s.Bodies.Where(b => b.Spec is { HighGravity: true }).MinBy(b => b.Spec.WidthKm);
             var hold = new SharedStorage(items, "moon", 1e9);
             Bill want = items.Graph.Expand(Bill.Of(("fabricator-t3", 1), ("warp-drive", 1), ("warp-cell", FirstJumpCells), ("warp-coil", coils))).Leaves;
             string lacked = Mine(moon.Spec, want, hold, out Bill dug);
@@ -164,6 +166,7 @@ public partial class SystemsTest
     {
         GameData data = GameData.Shared;
         int orePerCell = data.Rules.Materials.OrePerCell, stonePerCell = data.Rules.Materials.StonePerRockCell;
+        GC.Collect(); // the last world dug is let go before this one is made
         WorldMap map = PlanetGenerator.Generate(spec);
         var ground = new PlanetTerrainSource(map);
         LandingSite site = Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
