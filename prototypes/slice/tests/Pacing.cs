@@ -42,7 +42,8 @@ public partial class Pacing : Node
         // --minspec=1: the minimum spec's stand-in, as PopRoute's (4 cores, workers for 4, the lowest graphics unless --settings says otherwise).
         if (_args.ContainsKey("minspec"))
         {
-            System.Diagnostics.Process.GetCurrentProcess().ProcessorAffinity = 0x55;
+            HoldCores();
+            _coresReset = 0;
             PlanetSurface.Terrain.TerrainStreamer.Cores = 4;
             _args.TryAdd("settings", "res://tests/minspec.cfg");
         }
@@ -60,10 +61,22 @@ public partial class Pacing : Node
         _run = Run().GetEnumerator();
     }
 
+    static readonly System.Diagnostics.Process Me = System.Diagnostics.Process.GetCurrentProcess();
+    int _coresReset;
+
+    /// <summary>The min spec's 4 cores (logical CPUs 0, 2, 4, 6), put back whenever something outside sets them wider mid-run.</summary>
+    void HoldCores()
+    {
+        if (Me.ProcessorAffinity == 0x55) return;
+        Me.ProcessorAffinity = 0x55;
+        _coresReset++;
+    }
+
     public override void _PhysicsProcess(double delta)
     {
         bool more;
         int code = 0;
+        if (_args.ContainsKey("minspec")) HoldCores();
         if (_storm != null)
         {
             _storm.Position = S.WorldFeet + _stormOffset;
@@ -160,7 +173,7 @@ public partial class Pacing : Node
             _pacing.Dump($"{dir}/{name}.csv");
         }
         GD.Print($"PACING {name} ({S.WorldFeet.DistanceTo(from):F0} m in {ticks / 60} s; paced at {_game.Pacer.Refreshes} refreshes a frame, work {_game.Pacer.Work:F1} ms, room {_game.Pacer.Room:F1} ms" +
-                 $"{(_args.ContainsKey("minspec") ? $", affinity 0x{System.Diagnostics.Process.GetCurrentProcess().ProcessorAffinity:X}" : "")}): {_pacing.Stop()}");
+                 $"{(_args.ContainsKey("minspec") ? $", affinity 0x{Me.ProcessorAffinity:X}, put back {_coresReset} times so far" : "")}): {_pacing.Stop()}");
         if (_split != null)
         {
             GD.Print($"SPLIT {name} frames: {_split.Report()}");
