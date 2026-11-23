@@ -8,7 +8,7 @@ namespace PlanetSurface.Skies;
 public readonly record struct AtmosphereState(
     float CloudCover, float CloudDarkness, float CloudBase, float CloudThickness, float Overcast,
     float FogDensity, float FogSkyAffect, float ValleyFog, float ValleyFogDepth,
-    float SunScale, float AmbientScale, float Saturation, float Visibility)
+    float SunScale, float AmbientScale, float Visibility)
 {
     /// <summary>
     /// The weather's own ground fog (0..1), on its own. <see cref="ValleyFog"/> is the larger of
@@ -30,7 +30,7 @@ public readonly record struct AtmosphereState(
 /// Turns the weather model's conditions, the world's air and the time of day into fog, cloud and
 /// light values. Pure, so each weather state's look is testable headless:
 /// - <b>Clouds</b>: cover and darkness come from the weather; heavier weather lowers and thickens
-///   the deck; overcast greys the whole sky.
+///   the deck; overcast covers the whole sky, in its air's own hue.
 /// - <b>Fog</b>: depth fog from the weather's visibility (about 90 % fogged at that distance) over
 ///   the air's own haze (thick air hazes the distance more).
 /// - <b>Valley fog</b>: banks that pool in low ground. The weather's ground fog sets them, and on
@@ -86,9 +86,6 @@ public static class Atmosphere
             ValleyFogDepth: ValleyFogDepthOf(valley),
             SunScale: 0.12f + 0.88f * solar,
             AmbientScale: 1f + overcast * 0.6f,
-            // Only a sky that is really overcast greys the picture, and only as far as it is: a fair day keeps the colour
-            // its air gives it (a world-wide cut greyed every meadow, owner 22 Nov). Dust colours the air itself (the palette's).
-            Saturation: 1.05f - 0.25f * Smooth(0.5f, 1f, overcast),
             Visibility: visibility)
         {
             GroundFog = Math.Clamp(c.GroundFog, 0f, 1f),

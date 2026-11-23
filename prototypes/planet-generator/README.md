@@ -293,7 +293,7 @@ On the surface, the HUD shows the distance to the nearest deposit of each starte
 .\tools\test.ps1 -Project prototypes/planet-generator -Scene res://tests/ViewTest.tscn
 ```
 
-`tests/GenTest.tscn` runs headless in about 150 s and checks (`-- --only=Relief,Distinctness` runs just the named checks). `-- --only=Survey`, `-- --list=a:v:first:count` and `-- --world=a:v:seed` are tuning aids that print worlds' landforms. The checks:
+`tests/GenTest.tscn` runs headless in about 150 s and checks (`-- --only=Relief,TypesByForm` runs just the named checks). `-- --only=Survey`, `-- --list=a:v:first:count` and `-- --world=a:v:seed` are tuning aids that print worlds' landforms. The checks:
 - **Determinism:** identical map hash and identical fine terrain from the same spec.
 - **Terrain ceiling:** over 140 worlds of every variant, Highlands included: nothing stands over 900 m, most ranges top out about 500 m, ground over 600 m is rare and the greatest peaks still reach 700 m, other landforms stay on the 500 m scale, and high ground carries ice.
 - **Size classes:** the roll keeps to its odds over 200,000 seeds, moons stay small, start worlds are 16x8 km, and `Roll` without a width is still 16 km.
@@ -321,7 +321,7 @@ On the surface, the HUD shows the distance to the nearest deposit of each starte
   - Each pole is one point with level rings round it.
   - The highest ground is under the clouds.
   - It builds in about 60 ms.
-- **Distinctness:** a nearest-centroid classifier on colour and terrain features, trained on some seeds and scored on 100 unseen planets, names the archetype 100% of the time (it must stay at 95% or above).
+- **TypesByForm:** each type reads by its form, never its colours (owner, 23 Nov: every element comes in a myriad of colours, so no type owns any). On fresh worlds of every type with air: every lava world is partly self-lit and no temperate, arid or ice world is; every ice world is largely white snow and ice and no arid, lava or alien world is; an arid world has almost no standing vegetation where a temperate one is grown over; an alien world stands in crystal and fungus and no other does. A nearest-centroid classifier on those features and the terrain alone names the type of unseen worlds (95% or above), and colour's check is variety: worlds of one type differ in their land's colour.
 
 `tests/ViewTest.tscn` runs headless and is the views' stability check. It lands, flies at boost speed north-east across the corner where both seams meet, returns to orbit, switches planet and lands again. It checks that streaming settles and that the main thread never stalls (worst frame about 9 ms). The seam-corner flight is flown three times and the stall check judges the best flight, printing all three: a machine busy with other work stalls some frames, but a real stall shows in every flight.
 

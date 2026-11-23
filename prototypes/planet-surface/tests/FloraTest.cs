@@ -340,14 +340,14 @@ public partial class FloraTest : Node
                 }
             }
             GD.Print($"SPREAD {name}: {string.Join(", ", bands.OrderByDescending(b => b.Value).Select(b => $"{b.Key} {b.Value}"))} of 20 worlds; {(species == 0 ? 0 : green * 100 / species)}% of tree and grass species green");
-            // Leaves follow the light their plants evolved under (owner, 22 Nov): green under a yellow star, darker
-            // under a red dwarf, and across many stars more than one colour.
+            // Leaves follow the light their plants evolved under (owner, 22 Nov): darker under a red dwarf, where photons are
+            // scarce; and green is one colour among many, not the default, even under a yellow star (owner, 23 Nov: "blue grass").
             if (a == Archetype.Temperate)
             {
                 float Mean(StarClass s) => value.TryGetValue(s, out var vs) ? vs.Average() : float.NaN;
                 bool darker = !value.ContainsKey(StarClass.RedDwarf) || !value.ContainsKey(StarClass.Yellow) || Mean(StarClass.RedDwarf) < Mean(StarClass.Yellow);
-                Check(yellowGreen * 2 >= yellow && darker && bands.Count >= 2,
-                    $"{name} leaves follow their star: {yellowGreen} of {yellow} under yellow stars green, red dwarfs' {Mean(StarClass.RedDwarf):F2} against yellow's {Mean(StarClass.Yellow):F2} bright, {bands.Count} colours");
+                Check(darker && bands.Count >= 3,
+                    $"{name} leaves follow their star: red dwarfs' {Mean(StarClass.RedDwarf):F2} against yellow's {Mean(StarClass.Yellow):F2} bright, {bands.Count} colours ({yellowGreen} of {yellow} under yellow stars green)");
             }
         }
     }

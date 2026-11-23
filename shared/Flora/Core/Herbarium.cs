@@ -238,24 +238,19 @@ public sealed class Herbarium
 
     static FloraStyle RollStyle(FloraClimate c, Dice d)
     {
-        // Leaves take the pigment the world's light evolved (the planet's palette works it out from its star and air:
-        // green under a sunlike star, gold under a hot one, near black under a red dwarf). Alien chemistry may be
-        // anything, and only that earns odd hues.
+        // Leaves take the pigment the world's light evolved (the planet's palette works it out from its star, its air and the
+        // kit its plants gather light with, alien worlds' too: blue, violet, crimson, gold, silver or black as readily as green).
         (float H, float S, float V) p = c.Pigment.ToHsv();
         // The two rolls the old pigment tables took, so every world's plants keep the forms and sizes they had.
         if (Familiar(c)) d.Unit();
         d.Unit();
         p.H += d.Range(-9f, 9f);
-        if (c.Alien > 0.4f)
-        {
-            p = (d.Range(0f, 360f), d.Range(0.34f, 0.62f), d.Range(0.34f, 0.56f));
-        }
-        // Cold greys and darkens them; drought bleaches them; thick wet air deepens them; thin air pales them. Gently:
-        // the pigment already holds the light, and each species greys again by its own dryness (Make).
+        if (c.Alien > 0.4f) { d.Unit(); d.Unit(); d.Unit(); } // the rolls alien worlds' own hues took, so their forms stay as they were
+        // Cold dulls and darkens them a little; drought bleaches them; thick wet air deepens them; thin air pales them. Gently:
+        // the pigment already holds the light, and each species dulls again by its own dryness (Make). Nothing greys a whole world.
         float cold = 1f - c.Warmth, dry = 1f - c.Wetness;
-        p.S *= 1f - 0.12f * cold - 0.15f * dry;
+        p.S *= 1f - 0.06f * cold - 0.08f * dry;
         p.V *= (1f + 0.22f * dry) * (c.Wetness > 0.6f ? 0.92f : 1f) * (c.Air < 0.7f ? 1.12f : 1f);
-        if (c.Air < 0.7f) p.S *= 0.82f;
         FloraMood m = c.Moods;
         // Overgrown country is deeper green; swollen growth swings off into wrong colours.
         p.V *= 1f - 0.1f * m.Overgrown;
@@ -325,7 +320,7 @@ public sealed class Herbarium
         leaf = Tone.Lerp(leaf, leaf * (0.86f + d.Unit() * 0.3f), 0.8f);
         // A plant's own climate shows in it: dry country is duller, wet country deeper.
         float grey = leaf.Luma;
-        leaf = Tone.Lerp(leaf, new Tone(grey, grey, grey * 0.9f), Math.Clamp((0.45f - wet) * 0.8f, 0f, 0.4f));
+        leaf = Tone.Lerp(leaf, new Tone(grey, grey, grey * 0.9f), Math.Clamp((0.45f - wet) * 0.4f, 0f, 0.2f));
         if (family == PlantFamily.Cactus) leaf = Tone.Lerp(leaf, Tone.Hsv(150f, 0.3f, 0.4f), 0.35f);
         // On a green world the odd tree has turned: a species, so russet woods come and go with the region.
         if (Familiar(book.Climate) && family == PlantFamily.Broadleaf && d.Chance(0.16f)) leaf = Tone.Hsv(d.Range(16f, 44f), d.Range(0.46f, 0.6f), d.Range(0.4f, 0.5f));

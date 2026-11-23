@@ -242,9 +242,8 @@ public partial class SkyRig : Node3D
             Sky = new Sky { SkyMaterial = _sky, RadianceSize = Sky.RadianceSizeEnum.Size64, ProcessMode = Sky.ProcessModeEnum.Incremental },
             AmbientLightSource = Godot.Environment.AmbientSource.Sky,
             ReflectedLightSource = Godot.Environment.ReflectionSource.Sky,
-            TonemapMode = Godot.Environment.ToneMapper.Filmic,
-            TonemapWhite = 6f,
-            TonemapExposure = 1.0f,
+            // Half the shade's light is the sky's own colour at full strength (Shade), so shadows are coloured, never grey.
+            AmbientLightSkyContribution = 0.5f,
             FogEnabled = true,
             FogMode = Godot.Environment.FogModeEnum.Exponential,
             FogAerialPerspective = 0.35f,
@@ -254,9 +253,9 @@ public partial class SkyRig : Node3D
             GlowIntensity = 0.5f,
             GlowBloom = 0.02f,
             GlowHdrThreshold = 2.0f,
-            AdjustmentEnabled = true,
             AdjustmentContrast = 1.06f,
         };
+        Grade.Apply(Environment);
         AddChild(new WorldEnvironment { Environment = Environment });
 
         AddChild(Sun = SunShadows.Light("Sun", true));
@@ -274,6 +273,7 @@ public partial class SkyRig : Node3D
         SkySystem s = System;
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_day"), C(s.Zenith));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("horizon_day"), C(s.Horizon));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("band_day"), C(s.Palette?.Band ?? s.Horizon));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("zenith_night"), C(s.NightZenith));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sunset"), C(s.Sunset));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("haze"), C(s.Haze));
@@ -631,12 +631,13 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast"), air.Overcast);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("stratus"), air.Stratus);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cirrus"), air.Cirrus);
-        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.7f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
+        // Overcast keeps the air's own hue under its cloud: it changes the sky's colour, never drains it.
+        Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.35f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("overcast_color"), C(grey));
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lit"), C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));
         // Ash over lava glows red from underneath, more so as daylight fades.
         _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_underglow"), s.Air == AirKind.Ash ? new Color(0.55f, 0.16f, 0.05f) * (0.35f + 0.65f * (1f - day)) : new Color(0, 0, 0));
-        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_shade"), C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), 0.6f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_shade"), C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), 0.35f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
 
         // Fog: the air's haze colour, lit by the sun, greyed by overcast, dark at night. It is lit
         // as the ground is: by a sun that has climbed clear of the horizon's air, so haze and
@@ -656,7 +657,8 @@ public partial class SkyRig : Node3D
         // Ash worlds are lit as much by their lava as their sun: never quite black.
         float floor = s.Air == AirKind.Ash ? 0.45f : 0.25f;
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
-        Environment.AdjustmentSaturation = air.Saturation;
+        // The shade's own colour goes with the daylight, as the sky's light does: night keeps its dark.
+        Environment.AmbientLightColor = C(s.Shade * (0.06f + 0.94f * day));
     }
 
     /// <summary>

@@ -9,6 +9,18 @@ public enum Mineral { Granite, Basalt, Andesite, Sandstone, Limestone, Shale, An
 /// <summary>What hangs in a world's air besides its gas: sea salt and sulfate (clean), water haze, the ground's own dust, volcanic ash, sulfuric acid with sulfur.</summary>
 public enum Particles { Clean, Haze, Dust, Ash, Sulfate }
 
+/// <summary>A gas in a world's air that absorbs part of the visible light, and so colours its sky: ozone (violet-blue), chlorine (green), iodine (magenta), nitrogen dioxide (amber), methane (teal), sulfur vapour (gold).</summary>
+public enum Trace { None, Ozone, Chlorine, Iodine, NitrogenDioxide, Methane, Sulfur }
+
+/// <summary>The pigment kit a world's plants gather light with besides their reaction centre: what they throw back is their colour.</summary>
+public enum Pigment { Chlorophyll, Phycocyanin, Phycoerythrin, Anthocyanin, Carotenoid, Retinal, Melanin }
+
+/// <summary>What colours a world's water besides the water itself: what lives in it, what is dissolved in it, what hangs in it.</summary>
+public enum Waters { Clear, Halophiles, Iron, Copper, Flour, PurpleSulfur, Cyanobacteria, Blackwater, Sulfur }
+
+/// <summary>A world's commonest ore, weathered into its soil and dust beside the iron: sulfur, copper carbonates, manganese, cobalt bloom, glauconite.</summary>
+public enum Stain { None, Sulfur, Malachite, Azurite, Manganese, Cobalt, Glauconite }
+
 /// <summary>
 /// A world's air as its colours need it: its gas column against Earth's (Rayleigh scattering grows with it;
 /// 0 is vacuum), what particles it holds and how thick they are (optical depth at 550 nm), and whether it
@@ -28,7 +40,12 @@ public readonly record struct AirMix(float Column, Particles Particles, float Ae
 /// colours. Colours are worked band by band (<see cref="Spectrum"/>) and only seen at the end, so a
 /// red dwarf's light reddens everything it falls on for the same reason it does in life. Made things
 /// (paint, roofs, cloth) take a world's rolled palette instead and never come from here.
-/// Sources are cited in prototypes/planet-generator/README.md (Palette).
+///
+/// The physics picks each world's hues: its trace gas, its plants' pigment kit, its water's chemistry and its
+/// soil's ore, each rolled with real odds. Where the rolls allow, the land takes the kit or ore whose hue
+/// stands furthest from its sky's, and the water the chemistry furthest from its land's. Then the art direction
+/// (owner, 23 Nov: exaggerated, saturated colour like 1970s science fiction art) pushes every colour far past
+/// realistic at its own hue (<see cref="Bold"/>). Sources are cited in prototypes/planet-generator/README.md (Palette).
 /// </summary>
 public sealed record WorldPalette
 {
@@ -42,26 +59,36 @@ public sealed record WorldPalette
     public float Life { get; init; }
     /// <summary>Phytoplankton in the water, mg of pigment a m³ (0.05 a clear open sea, several in a green one).</summary>
     public float Plankton { get; init; }
+    public Trace Gas { get; init; }
+    public Pigment Kit { get; init; }
+    /// <summary>Its plants carry a wax bloom or fine hairs that throw back every colour: silver.</summary>
+    public bool Silver { get; init; }
+    public Waters Water { get; init; }
+    public Stain Ore { get; init; }
 
     // ---- Light and sky ----
-    /// <summary>The starlight's colour at its brightest channel 1, as the adapted eye sees it on the ground: a faint warmth under a red dwarf, a faint chill under a hot star.</summary>
+    /// <summary>The starlight's colour at its brightest channel 1, as the adapted eye sees it on the ground: warm under a red dwarf, cool under a hot star.</summary>
     public Rgb Star { get; init; }
     /// <summary>The star's disc as it is: a small bright source no eye adapts to, so a red dwarf's disc stays red-orange.</summary>
     public Rgb Disc { get; init; }
     /// <summary>Clear midday sky straight up: starlight scattered by the gas, more for short waves (Rayleigh), and by the particles.</summary>
     public Rgb Zenith { get; init; }
-    /// <summary>Clear sky at the horizon: so long a path that every wave is scattered almost fully, paler than the zenith.</summary>
+    /// <summary>Clear sky toward the horizon: a long path, every wave scattered more fully, paler than the zenith.</summary>
     public Rgb Horizon { get; init; }
+    /// <summary>The bright band along the horizon: light that crossed the whole air to reach the eye, coloured by what the long path lets through.</summary>
+    public Rgb Band { get; init; }
     /// <summary>What distance fades to (fog's colour): the horizon's light where the path never ends.</summary>
     public Rgb Haze { get; init; }
     /// <summary>The sun's own light through 25 airmasses: the short waves scattered out, particles deepening it.</summary>
     public Rgb Sunset { get; init; }
-    /// <summary>The air's rim seen from space: starlight scattered once, unsaturated, the gas's own colour at its strongest.</summary>
+    /// <summary>The air's rim seen from space: starlight scattered once, the gas's own colour at its strongest.</summary>
     public Rgb Limb { get; init; }
     /// <summary>What clouds are made of: water and ice white, mixed with the air's dust, ash or sulfur.</summary>
     public Rgb CloudTint { get; init; }
     /// <summary>The ground's fines lifted into the air: what dust storms and devils are.</summary>
     public Rgb Dust { get; init; }
+    /// <summary>What lights the ground in shadow: the dome of the sky's own light, its colour at full strength (black with no air).</summary>
+    public Rgb Shade { get; init; }
 
     // ---- Ground ----
     /// <summary>The bare rock: its mineral, stained by what iron its weather lets rust.</summary>
@@ -71,7 +98,7 @@ public sealed record WorldPalette
     public Rgb Snow { get; init; }
 
     // ---- Water ----
-    /// <summary>Deep water seen from above: what comes back up after the water, its plankton, its dissolved matter and its silt absorb.</summary>
+    /// <summary>Deep water seen from above: what comes back up after the water, its life, its dissolved matter and its silt absorb.</summary>
     public Rgb Deep { get; init; }
     /// <summary>Four metres of the same water over the world's own sand.</summary>
     public Rgb Shallow { get; init; }
@@ -79,7 +106,7 @@ public sealed record WorldPalette
     public Rgb Ice { get; init; }
 
     // ---- Life ----
-    /// <summary>The leaf pigment its plants evolved under this light: green under a sunlike star, gold under a hot one, near black under a red dwarf.</summary>
+    /// <summary>The leaf colour its plants evolved under this light: their reaction centre at the light's photon peak and their kit beside it.</summary>
     public Rgb Leaf { get; init; }
     /// <summary>Where that pigment absorbs most, nm: where the light at the ground has most photons in the visible.</summary>
     public float Peak { get; init; }
@@ -117,9 +144,8 @@ public sealed record WorldPalette
 
         Spectrum light = Spectrum.Blackbody(kelvin);
         light *= 1f / light.Y;
-        // Every light here (the sun on the ground, the sky, the sunset) is seen by an eye adapted most of the way to its star, so
-        // grey rock reads grey under any star with only a faint cast; the star's colour still shows where the light differs
-        // from its own (the sky's scattering, the sunset's reddening, leaf pigments) and in its own disc (Disc).
+        // The lit ground is seen by an eye adapted part of the way to its star, the sky less: grey rock takes the star's
+        // cast (warm under a red dwarf, cool under a hot star), and the sky keeps more of it still.
         Spectrum.Eye eye = light.Adapted(Adaptation), skyEye = light.Adapted(SkyAdaptation);
 
         // ---- Minerals and soils ----
@@ -133,105 +159,295 @@ public sealed record WorldPalette
         // How long an airless surface has lain under the solar wind, from fresh (bright) to fully weathered (Lucey et al. 2000).
         float maturity = 0.3f + 0.7f * U(16);
         float stain = wet ? iron : 0f;
-        Spectrum bedrock = spec.Airless ? Spaced(stone, iron, maturity) : Rust(stone, 0.35f * stain * (spec.Archetype == Archetype.Arid ? 1.6f : 1f), 0.25f * stain);
-        // Grains are brighter than the face they came from (small particles scatter more), and keep its iron.
-        Spectrum fines = (spec.Airless ? Spaced(stone, iron, maturity) : stone) * 1.3f;
-        Spectrum sand = spec.Airless ? fines : Rust(fines, 0.3f * stain, 0.2f * stain);
-        Spectrum dust = spec.Airless ? fines : Rust(fines, 0.85f * iron, 0.2f * iron); // the finest grains rust most: dust is the reddest of the ground
-        var soils = new Rgb[Grid * Grid];
-        for (int t = 0; t < Grid; t++)
-            for (int w = 0; w < Grid; w++)
-                soils[t * Grid + w] = (spec.Airless ? fines : Soil(fines, t / (Grid - 1f), w / (Grid - 1f), iron, life)).Reflectance(); // no air, no weather: regolith everywhere
+        // Grains are brighter than the face they came from (small particles scatter more), and keep its iron; the finest
+        // grains rust most (dust is the reddest of the ground), and take the world's ore with them where there is weather.
+        float oreAmount = 0.5f + 0.5f * U(20);
+        Spectrum Fines(Stain ore) => Stained((spec.Airless ? Spaced(stone, iron, maturity) : stone) * 1.3f, ore, wet ? oreAmount : 0f);
+        Spectrum DustOf(Stain ore) => spec.Airless ? Fines(ore) : Rust(Fines(ore), 0.85f * iron, 0.2f * iron);
 
         // ---- Air ----
+        // The trace gas that colours the sky (its kind by what the air is) and its amount, a column's optical depth at its peak.
+        float traceDepth = 0.25f + 1.1f * U(22);
         // Optical depths straight up, by wavelength (nm), so the visible bands and the near infrared the plants see agree.
         float column = air.Column;
+        bool hasSky = column > 0f;
         float RayleighAt(float l)
         {
             float um = l / 1000f, u2 = 1f / (um * um);
             return 0.008569f * u2 * u2 * (1f + 0.0113f * u2 + 0.00013f * u2 * u2) * column; // Hansen & Travis 1974
         }
-        // The particles: how much they scatter by wavelength (Ångström) and what share they don't absorb (single-scattering albedo).
-        (float angstrom, Spectrum albedo) = air.Particles switch
-        {
-            Particles.Haze => (0.5f, Spectrum.Flat(0.99f)),
-            Particles.Dust => (0.1f, Albedo(dust)),
-            Particles.Ash => (0.3f, Spectrum.Of(l => 0.5f + 0.06f * (l - 400f) / 300f)), // dark, near grey: glass and rock shards
-            Particles.Sulfate => (1.1f, Spectrum.Flat(0.99f)), // Venus' clouds: sulfuric acid, nearly white
-            _ => (1.3f, Spectrum.Flat(0.96f)),
-        };
+        // The particles: how much they scatter by wavelength (Ångström).
+        float angstrom = air.Particles switch { Particles.Haze => 0.5f, Particles.Dust => 0.1f, Particles.Ash => 0.3f, Particles.Sulfate => 1.1f, _ => 1.3f };
         float ParticlesAt(float l) => air.Aerosol * MathF.Pow(l / 550f, -angstrom);
-        static float G(float l, float c, float w) => MathF.Exp(-0.5f * (l - c) * (l - c) / (w * w));
         // Gases that absorb: ozone's Chappuis band (deepens twilight blue) and oxygen's A band where there is oxygen;
         // water vapour's near-infrared bands on any world with seas under its air; over Venus-like sulfuric haze,
-        // sulfur and its oxides drinking the blue.
-        float GasAt(float l) => column * ((air.Oxygen ? 0.03f * G(l, 600f, 45f) + G(l, 762f, 6f) : 0f)
+        // sulfur and its oxides drinking the blue; and the trace gas.
+        float GasAt(float l, Trace gas) => column * ((air.Oxygen ? 0.03f * G(l, 600f, 45f) + G(l, 762f, 6f) : 0f)
             + (wet ? 0.2f * G(l, 722f, 12f) + 0.35f * G(l, 820f, 18f) + 1.5f * G(l, 940f, 25f) : 0f)
-            + (air.Particles == Particles.Sulfate ? 0.35f / (1f + MathF.Exp((l - 470f) / 25f)) : 0f));
+            + (air.Particles == Particles.Sulfate ? 0.35f / (1f + MathF.Exp((l - 470f) / 25f)) : 0f)
+            + traceDepth * Absorbs(gas, l));
         Spectrum rayleigh = Spectrum.Of(RayleighAt), aerosol = Spectrum.Of(ParticlesAt);
-        Spectrum extinction = rayleigh + aerosol + Spectrum.Of(GasAt);
-        Spectrum scatter = rayleigh + aerosol * albedo;
-
-        // Single scattering of the sun 45° up: the gas's Rayleigh phase, the particles' forward lobe. Thick particles
-        // scatter light many times over, which evens their lobe out toward the same in every direction.
         float even = 1f - MathF.Exp(-air.Aerosol);
-        Spectrum Sky(float viewAirmass, float rayleighPhase, float particlePhase)
+
+        // The sky from its trace gas and the ground's dust (a dusty sky is its ground's colour lifted into the air), made bold:
+        // a deep zenith, a brighter graded horizon, a glowing band along it, a strong sunset, and shadows lit by the sky's own colour.
+        (Rgb Zenith, Rgb Horizon, Rgb Band, Rgb Haze, Rgb Sunset, Rgb Limb, Rgb Shade, Spectrum Albedo) SkyOf(Trace gas, Spectrum dust)
         {
-            float lobe = particlePhase + (1f - particlePhase) * even;
-            Spectrum share = (rayleigh * rayleighPhase + aerosol * albedo * lobe) / extinction.Map(v => MathF.Max(v, 1e-5f));
-            return light * share * (Spectrum.Flat(1f) - Spectrum.Exp(extinction * -viewAirmass)) * Spectrum.Exp(extinction * -0.7f);
+            if (!hasSky) return default;
+            // What share of the light the particles don't absorb (single-scattering albedo).
+            Spectrum albedo = air.Particles switch
+            {
+                Particles.Haze => Spectrum.Flat(0.99f),
+                Particles.Dust => Albedo(dust),
+                Particles.Ash => Spectrum.Of(l => 0.5f + 0.06f * (l - 400f) / 300f), // dark, near grey: glass and rock shards
+                Particles.Sulfate => Spectrum.Flat(0.99f), // Venus' clouds: sulfuric acid, nearly white
+                _ => Spectrum.Flat(0.96f),
+            };
+            Spectrum extinction = rayleigh + aerosol + Spectrum.Of(l => GasAt(l, gas));
+            Spectrum scatter = rayleigh + aerosol * albedo;
+            // Single scattering of the sun 45° up: the gas's Rayleigh phase, the particles' forward lobe. Thick particles
+            // scatter light many times over, which evens their lobe out toward the same in every direction.
+            Spectrum Sky(float viewAirmass, float rayleighPhase, float particlePhase)
+            {
+                float lobe = particlePhase + (1f - particlePhase) * even;
+                Spectrum share = (rayleigh * rayleighPhase + aerosol * albedo * lobe) / extinction.Map(v => MathF.Max(v, 1e-5f));
+                return light * share * (Spectrum.Flat(1f) - Spectrum.Exp(extinction * -viewAirmass)) * Spectrum.Exp(extinction * -0.7f);
+            }
+            Rgb zenith = Sky(1f, 1f, 0.8f).Light(SkyGain, skyEye); // the sun higher than 45° at midday: further from its glare
+            Spectrum horizon = Sky(10f, 0.8f, 0.5f);
+            Rgb deep = Oklab.Vivid(zenith, 2.4f, 0.11f, 0.82f);
+            // The band along the horizon: the horizon's light after the long way back through the air, so it takes the colour the air
+            // lets through, the complement of the colour it scatters (blue air, a warm band; air that drinks the red, a cyan one).
+            return (deep, Oklab.Vivid(horizon.Light(SkyGain, skyEye), 2.2f, 0.09f, 1.02f),
+                    Apart(Oklab.Vivid((horizon * Spectrum.Exp(extinction * -2.5f)).Hue(skyEye), 1.8f, 0.16f, 0.96f), Oklab.Of(deep).Hue, MathF.PI / 3f),
+                    Oklab.Vivid(Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye), 2.2f, 0.09f),
+                    Oklab.Vivid((light * Spectrum.Exp(extinction * -12f)).Hue(skyEye), 1.6f, 0.2f, 0.95f), // the sun about 5° up
+                    Oklab.Vivid((light * scatter).Hue(skyEye), 1.6f, 0.12f),
+                    Oklab.Vivid(zenith, 2.8f, 0.14f), albedo);
         }
-        Rgb zenith = default, horizon = default, haze = default, sunset = default, limb = default;
-        if (column > 0f)
+        // The sky's hue as a whole: its zenith's and its band's together.
+        static float HueOf(Rgb zenith, Rgb band)
         {
-            zenith = Sky(1f, 1f, 0.8f).Light(SkyGain, skyEye); // the sun higher than 45° at midday: further from its glare
-            horizon = Sky(10f, 0.8f, 0.5f).Light(SkyGain, skyEye);
-            haze = Sky(40f, 0.8f, 0.5f).Light(SkyGain, skyEye);
-            sunset = (light * Spectrum.Exp(extinction * -12f)).Hue(skyEye); // the sun about 5° up
-            limb = (light * scatter).Hue(skyEye);
+            Oklab z = Oklab.Of(zenith), b = Oklab.Of(band);
+            return MathF.Atan2(z.B + b.B, z.A + b.A);
         }
+        Rgb SoilOf(Stain ore, float warm, float wet) => Bold(Stained(Soil(Fines(Stain.None), warm, wet, iron, life), ore, oreAmount), GroundBoost); // the ore over all a soil's weathering
+
+        // Where the air is the ground's own dust or ash, the ground comes first and the trace gas is the one of a few rolled that
+        // stands furthest in hue from it; elsewhere the sky comes first and the ore is the one of a few rolled that stands furthest
+        // from the sky. (Each is one the world might hold: only which one shows is chosen.)
+        Trace gas = Trace.None;
+        Stain ore = Roll(StainOdds(spec), U(23));
+        if (hasSky && air.Particles is Particles.Dust or Particles.Ash)
+            gas = Contrast(TraceOdds(air), h, 21, g => { var s = SkyOf(g, DustOf(ore)); return Oklab.Lch(0.6f, 0.1f, HueOf(s.Zenith, s.Band)).ToRgb(); }, Oklab.Of(SoilOf(ore, 0.6f, 0.5f)).Hue);
+        else if (hasSky)
+        {
+            gas = Roll(TraceOdds(air), U(21));
+            var s = SkyOf(gas, DustOf(Stain.None));
+            ore = Contrast(StainOdds(spec), h, 24, o => SoilOf(o, 0.6f, 0.5f), HueOf(s.Zenith, s.Band));
+        }
+        Spectrum fines = Fines(ore), dust = DustOf(ore);
+        var sky = SkyOf(gas, dust);
+        float skyHue = HueOf(sky.Zenith, sky.Band);
+        Spectrum bedrock = spec.Airless ? Spaced(stone, iron, maturity) : Stained(Rust(stone, 0.35f * stain * (spec.Archetype == Archetype.Arid ? 1.6f : 1f), 0.25f * stain), ore, wet ? 0.5f * oreAmount : 0f);
+        Spectrum sand = spec.Airless ? fines : Rust(fines, 0.3f * stain, 0.2f * stain);
+        var soils = new Rgb[Grid * Grid];
+        for (int t = 0; t < Grid; t++)
+            for (int w = 0; w < Grid; w++)
+                soils[t * Grid + w] = spec.Airless ? fines.Reflectance() : SoilOf(ore, t / (Grid - 1f), w / (Grid - 1f)); // no air, no weather: regolith everywhere
 
         // ---- Plants ----
         // The light at the ground with the sun 45° up, into the near infrared: oxygen's and water vapour's bands carve it
         // there, which puts the Sun's photon peak at the ground near 685 nm, where chlorophyll absorbs (Kiang et al. 2007).
-        Spectrum leaf = Leaves(kelvin, l => MathF.Exp(-1.4f * (RayleighAt(l) + ParticlesAt(l) + GasAt(l))), k => U(4 + k), out float peak);
+        // The kit beside it is the one of a few rolled for this starlight whose colour stands furthest from the sky.
+        Func<float, float> through = l => MathF.Exp(-1.4f * (RayleighAt(l) + ParticlesAt(l) + GasAt(l, gas)));
+        bool silver = U(25) < 0.15f;
+        Spectrum LeafOf(Pigment kit) => Leaves(kelvin, through, k => U(4 + k), kit, silver, out _);
+        Pigment pigment = life > 0f && hasSky ? Contrast(PigmentOdds(kelvin), h, 26, k => LeafOf(k).Reflectance(), skyHue) : Roll(PigmentOdds(kelvin), U(26));
+        Spectrum leaf = Leaves(kelvin, through, k => U(4 + k), pigment, silver, out float peak);
+        Rgb leafColor = Bold(leaf, LeafBoost);
 
         // ---- Water ----
-        // Phytoplankton by how much lives (clear blue seas to green ones), dissolved matter browning still water,
-        // silt from the land's rivers, a little on every world with weather.
+        // Phytoplankton by how much lives (clear seas to green ones), dissolved matter browning still water,
+        // silt from the land's rivers, a little on every world with weather; and the water's own chemistry, the one of a
+        // few rolled for this kind of world that stands furthest from the land's colour.
         float plankton = life * MathF.Pow(10f, -1.5f + 2.5f * U(12));
         float tannin = 0.01f + 0.5f * U(13) * U(13) * U(13) * (0.3f + life);
         float silt = wet ? 0.4f + 10f * U(14) * U(14) : 0f;
+        float solute = 0.4f + 1.2f * U(30);
+        Oklab land = Oklab.Of(life >= 0.8f ? leafColor : SoilOf(ore, 0.6f, 0.5f));
         // The open sea holds a tenth of the silt the shore does; a desert's sea takes wind-blown dust too (the Sahara's falls on the Atlantic).
-        (Spectrum deep, Spectrum shallow) = Water(plankton, tannin, silt, silt * (spec.Archetype == Archetype.Arid ? 0.45f : 0.1f), leaf, dust, sand);
+        float openSilt = silt * (spec.Archetype == Archetype.Arid ? 0.45f : 0.1f);
+        (Spectrum, Spectrum) WaterOf(Waters w) => Seas(plankton, tannin, silt, openSilt, leaf, dust, sand, w, solute);
+        Waters waters = Contrast(WaterOdds(spec), h, 31, w => WaterOf(w).Item1.Reflectance(), land.Hue);
+        (Spectrum deep, Spectrum shallow) = WaterOf(waters);
         Spectrum snow = Spectrum.Of(l => 0.93f - 0.08f * (l - 400f) / 300f);
 
         return new WorldPalette
         {
             Kelvin = kelvin, Air = air, Rock = rock, Iron = iron, Life = life, Plankton = plankton,
+            Gas = gas, Kit = pigment, Silver = silver, Water = waters, Ore = ore,
             Star = light.Hue(eye), Disc = light.Hue(),
-            Zenith = zenith, Horizon = horizon, Haze = haze, Sunset = sunset, Limb = limb,
-            CloudTint = Rgb.Lerp(new Rgb(1f, 1f, 1f), Albedo(albedo).Reflectance(), Math.Clamp(air.Aerosol * 0.35f, 0f, 0.55f)),
-            Dust = dust.Reflectance(),
-            Bedrock = bedrock.Reflectance(), Sand = sand.Reflectance(), Snow = snow.Reflectance(),
-            Deep = deep.Reflectance(), Shallow = shallow.Reflectance(),
+            Zenith = sky.Zenith, Horizon = sky.Horizon, Band = sky.Band, Haze = sky.Haze, Sunset = sky.Sunset, Limb = sky.Limb, Shade = sky.Shade,
+            CloudTint = hasSky ? Rgb.Lerp(new Rgb(1f, 1f, 1f), Albedo(sky.Albedo).Reflectance(), Math.Clamp(air.Aerosol * 0.35f, 0f, 0.55f)) : new Rgb(1f, 1f, 1f),
+            // An airless body keeps its regolith's own grey (its light and shadow colour it).
+            Dust = spec.Airless ? dust.Reflectance() : Bold(dust, GroundBoost),
+            Bedrock = spec.Airless ? bedrock.Reflectance() : Bold(bedrock, RockBoost), Sand = spec.Airless ? sand.Reflectance() : Bold(sand, GroundBoost), Snow = snow.Reflectance(),
+            Deep = Bold(deep, DeepBoost), Shallow = Bold(shallow, ShallowBoost),
             Ice = (snow * 0.92f).Reflectance(),
-            Leaf = leaf.Reflectance(), Peak = peak,
+            Leaf = leafColor, Peak = peak,
             _soils = soils,
         };
     }
 
-    /// <summary>How far an eye adapts to its star's light: most of the way, never all of it (<see cref="Spectrum.Adapted"/>).</summary>
-    const float Adaptation = 0.85f;
+    /// <summary>How far the eye adapts to its star's light on lit ground: a little over half way, so the star's cast shows on everything it lights (<see cref="Spectrum.Adapted"/>).</summary>
+    const float Adaptation = 0.6f;
 
-    /// <summary>
-    /// How far the sky is seen adapted: two thirds of the way (the sky also lights the ground, so a red dwarf's sky kept any warmer would tint grey rock). A sky fills half the view but the eye sets its white by the lit
-    /// ground it stands on, so the sky keeps more of its star's cast: skies under M, K, G and F stars differ.
-    /// </summary>
-    const float SkyAdaptation = 0.65f;
+    /// <summary>How far the sky is seen adapted: under half way, so skies under M, K, G, F and A stars differ plainly.</summary>
+    const float SkyAdaptation = 0.45f;
 
     /// <summary>How bright a sky is against its sunlight: Earth's clear zenith comes out at Earth's (luminance about 0.22 of white).</summary>
     const float SkyGain = 1.4f;
+
+    /// <summary>
+    /// The art direction's push for each kind of surface: chroma times this, at least that (Oklab), at its own hue.
+    /// Lightness too: plants and water brighter than life, as the paintings have them (deep water most: it would be near black).
+    /// </summary>
+    static readonly (float Gain, float Floor, float Light) GroundBoost = (2.1f, 0.05f, 1f), RockBoost = (1.8f, 0.035f, 1f), LeafBoost = (2.4f, 0.1f, 1.15f), ShallowBoost = (2.2f, 0.09f, 1.25f), DeepBoost = (2.2f, 0.09f, 1.6f);
+
+    static Rgb Bold(Spectrum s, (float Gain, float Floor, float Light) boost) => Oklab.Vivid(s.Reflectance(), boost.Gain, boost.Floor, boost.Light);
+
+    /// <summary>
+    /// A graded sky, never one flat tint: a colour turned round the hue circle, the way it already leans, until it stands at least
+    /// <paramref name="gap"/> (radians) from <paramref name="from"/>. The art direction's, where the air alone would leave the band
+    /// along the horizon the zenith's own hue.
+    /// </summary>
+    static Rgb Apart(Rgb c, float from, float gap)
+    {
+        Oklab o = Oklab.Of(c);
+        float d = MathF.IEEERemainder(o.Hue - from, MathF.Tau);
+        if (MathF.Abs(d) >= gap) return c;
+        return Oklab.Lch(o.L, o.Chroma, from + (d < 0f ? -gap : gap)).ToRgb();
+    }
+
+    /// <summary>One of a few things, by its odds.</summary>
+    static T Roll<T>((T, float)[] odds, float u)
+    {
+        float total = 0f;
+        foreach (var (_, p) in odds) total += p;
+        u *= total;
+        foreach (var (m, p) in odds)
+            if ((u -= p) < 0f) return m;
+        return odds[^1].Item1;
+    }
+
+
+    /// <summary>
+    /// Of four rolled by their odds, the one whose colour stands furthest in hue from <paramref name="away"/>, a near-grey
+    /// counting for less: the basis allows each, and the look takes the one that contrasts most.
+    /// </summary>
+    static T Contrast<T>((T, float)[] odds, ulong h, int salt, Func<T, Rgb> color, float away)
+    {
+        T best = odds[0].Item1;
+        float score = -1f;
+        for (int i = 0; i < 4; i++)
+        {
+            T c = Roll(odds, Hash.Unit(h, salt + 40 * i));
+            Oklab o = Oklab.Of(color(c));
+            float s = Oklab.HueGap(o.Hue, away) * MathF.Min(1f, o.Chroma / 0.03f);
+            if (s > score) (best, score) = (c, s);
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// The trace gas a kind of air may carry. Oxygen air: a thick ozone layer, or traces of methane, chlorine, iodine, nitrogen
+    /// dioxide or sulfur from its life and its volcanoes; dusty air the same without ozone; volcanic air sulfur, chlorine and
+    /// nitrogen dioxide; air the model doesn't otherwise hold any of them.
+    /// </summary>
+    static (Trace, float)[] TraceOdds(AirMix air) => air.Oxygen
+        ? new[] { (Trace.None, 0.18f), (Trace.Ozone, 0.2f), (Trace.Methane, 0.16f), (Trace.Iodine, 0.14f), (Trace.Chlorine, 0.14f), (Trace.NitrogenDioxide, 0.1f), (Trace.Sulfur, 0.08f) }
+        : air.Particles switch
+        {
+            Particles.Dust => new[] { (Trace.None, 0.15f), (Trace.Methane, 0.2f), (Trace.Iodine, 0.2f), (Trace.Chlorine, 0.15f), (Trace.NitrogenDioxide, 0.15f), (Trace.Sulfur, 0.15f) },
+            Particles.Ash => new[] { (Trace.Sulfur, 0.25f), (Trace.Chlorine, 0.2f), (Trace.NitrogenDioxide, 0.15f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.15f) },
+            Particles.Sulfate => new[] { (Trace.Sulfur, 0.3f), (Trace.Chlorine, 0.25f), (Trace.Iodine, 0.15f), (Trace.Methane, 0.1f), (Trace.None, 0.2f) },
+            _ => new[] { (Trace.None, 0.14f), (Trace.Ozone, 0.14f), (Trace.Methane, 0.15f), (Trace.Chlorine, 0.15f), (Trace.Iodine, 0.15f), (Trace.NitrogenDioxide, 0.14f), (Trace.Sulfur, 0.13f) },
+        };
+
+    /// <summary>
+    /// A trace gas's absorption by wavelength (nm), 1 at its strongest in the visible: ozone's Chappuis band near 600 nm (a thick
+    /// layer turns the sky violet-blue); chlorine's band from the ultraviolet across the violet and blue (a yellow-green gas: blue
+    /// air turns green); iodine's band in the green near 525 nm (a violet gas: magenta skies); nitrogen dioxide's across the blue
+    /// (amber); methane's red bands from 619 nm on (Uranus' and Neptune's cyan); sulfur's allotropes drinking the violet (gold).
+    /// </summary>
+    static float Absorbs(Trace gas, float l) => gas switch
+    {
+        Trace.Ozone => G(l, 600f, 50f),
+        Trace.Chlorine => G(l, 380f, 55f),
+        Trace.Iodine => G(l, 525f, 38f),
+        Trace.NitrogenDioxide => Below(l, 470f, 30f),
+        Trace.Methane => 0.9f * Mathx.Smooth(560f, 700f, l) + 0.5f * G(l, 619f, 10f),
+        Trace.Sulfur => Below(l, 450f, 18f),
+        _ => 0f,
+    };
+
+    /// <summary>A soft absorption band, 1 at <paramref name="c"/> nm, <paramref name="w"/> nm wide.</summary>
+    static float G(float l, float c, float w) => MathF.Exp(-0.5f * (l - c) * (l - c) / (w * w));
+
+    /// <summary>A soft absorption edge, 1 below <paramref name="edge"/> nm.</summary>
+    static float Below(float l, float edge, float w) => 1f / (1f + MathF.Exp((l - edge) / w));
+
+    /// <summary>
+    /// The pigment kits a starlight favours (Kiang et al. 2007: pigments absorb where the light is richest). Every kit is possible
+    /// anywhere; under a cool red star the orange-red-drinking phycobilins (blue-green plants) and broad dark pigments (black ones)
+    /// do best, under a hot white star the blue-drinking carotenoids (gold and orange) and the screening anthocyanins (magenta and
+    /// purple); chlorophyll's green antenna is a sunlike star's.
+    /// </summary>
+    static (Pigment, float)[] PigmentOdds(float kelvin)
+    {
+        float hot = Mathx.Smooth(5800f, 8500f, kelvin), cool = Mathx.Smooth(5800f, 3600f, kelvin), sunny = 1f - hot - cool;
+        return new[]
+        {
+            (Pigment.Chlorophyll, 0.25f + 0.5f * sunny), (Pigment.Phycocyanin, 0.25f + 0.6f * cool), (Pigment.Phycoerythrin, 0.25f + 0.2f * sunny),
+            (Pigment.Anthocyanin, 0.2f + 0.6f * hot), (Pigment.Carotenoid, 0.2f + 0.7f * hot), (Pigment.Retinal, 0.25f), (Pigment.Melanin, 0.05f + 0.6f * cool * cool),
+        };
+    }
+
+    /// <summary>
+    /// What may colour a kind of world's water: salt pans' halophile blooms (pink to red), acid iron (orange-red), copper (turquoise),
+    /// glacial rock flour (milky cyan), purple sulfur bacteria (violet), cyanobacteria (lime), tannins (black tea), sulfur (milky gold-green).
+    /// </summary>
+    static (Waters, float)[] WaterOdds(PlanetSpec spec) => spec.Archetype switch
+    {
+        Archetype.Arid => new[] { (Waters.Halophiles, 0.3f), (Waters.Iron, 0.2f), (Waters.Copper, 0.15f), (Waters.Sulfur, 0.1f), (Waters.PurpleSulfur, 0.1f), (Waters.Clear, 0.15f) },
+        Archetype.Ice => new[] { (Waters.Flour, 0.35f), (Waters.Clear, 0.25f), (Waters.Copper, 0.15f), (Waters.PurpleSulfur, 0.1f), (Waters.Halophiles, 0.15f) },
+        Archetype.Lava => new[] { (Waters.Sulfur, 0.4f), (Waters.Iron, 0.35f), (Waters.Copper, 0.25f) },
+        Archetype.Alien => new[] { (Waters.Clear, 0.08f), (Waters.Halophiles, 0.115f), (Waters.Iron, 0.115f), (Waters.Copper, 0.115f), (Waters.Flour, 0.115f), (Waters.PurpleSulfur, 0.115f), (Waters.Cyanobacteria, 0.115f), (Waters.Blackwater, 0.115f), (Waters.Sulfur, 0.115f) },
+        _ => new[] { (Waters.Clear, 0.22f), (Waters.Cyanobacteria, 0.14f), (Waters.PurpleSulfur, 0.1f), (Waters.Halophiles, 0.08f), (Waters.Copper, 0.1f), (Waters.Flour, 0.08f), (Waters.Blackwater, 0.1f), (Waters.Iron, 0.08f), (Waters.Sulfur, 0.1f) },
+    };
+
+    /// <summary>The ores a world's ground may weather into its soil: volcanic worlds' sulfur most of all, an icy world's ground mostly plain.</summary>
+    static (Stain, float)[] StainOdds(PlanetSpec spec) => spec.Archetype switch
+    {
+        Archetype.Lava => new[] { (Stain.Sulfur, 0.4f), (Stain.None, 0.2f), (Stain.Manganese, 0.15f), (Stain.Malachite, 0.1f), (Stain.Cobalt, 0.15f) },
+        Archetype.Ice => new[] { (Stain.None, 0.45f), (Stain.Azurite, 0.15f), (Stain.Manganese, 0.15f), (Stain.Glauconite, 0.15f), (Stain.Cobalt, 0.1f) },
+        _ => new[] { (Stain.None, 0.1f), (Stain.Sulfur, 0.08f), (Stain.Malachite, 0.18f), (Stain.Azurite, 0.14f), (Stain.Manganese, 0.16f), (Stain.Cobalt, 0.16f), (Stain.Glauconite, 0.18f) },
+    };
+
+    /// <summary>
+    /// Ground carrying an ore beside its iron: native sulfur and jarosite yellow; malachite green and azurite blue (copper
+    /// carbonates); manganese oxides violet-black; erythrite (cobalt bloom) pink; glauconite green (the "green sands").
+    /// </summary>
+    static Spectrum Stained(Spectrum r, Stain ore, float amount) => ore == Stain.None || amount <= 0f ? r : r * (Spectrum.Flat(1f) - Spectrum.Of(l => ore switch
+    {
+        Stain.Sulfur => 0.85f * Below(l, 500f, 14f),
+        Stain.Malachite => 0.75f * G(l, 660f, 60f) + 0.5f * Below(l, 450f, 20f),
+        Stain.Azurite => 0.75f * Mathx.Smooth(520f, 620f, l),
+        Stain.Manganese => 0.6f * G(l, 560f, 55f) + 0.25f,
+        Stain.Cobalt => 0.7f * G(l, 530f, 35f),
+        _ => 0.55f * G(l, 640f, 70f) + 0.45f * Below(l, 470f, 25f),
+    }) * amount);
 
     /// <summary>
     /// Weathered with water and oxygen, iron rusts: hematite reds hot, dry ground, goethite browns cool, wet ground
@@ -249,22 +465,16 @@ public sealed record WorldPalette
         r * Spectrum.Of(l => 1f - maturity * (0.38f + 0.3f * iron) + maturity * (0.12f + 0.2f * iron) * (l - 400f) / 300f);
 
     /// <summary>A world's rock by its type: lava worlds are basalt, airless bodies mare basalt or bright highland (or ice), the rest any of the common crustal rocks.</summary>
-    static Mineral RockOf(PlanetSpec spec, float u)
-    {
-        (Mineral, float)[] odds = spec.Airless
-            ? spec.Archetype == Archetype.Ice ? new[] { (Mineral.Ice, 0.6f), (Mineral.Basalt, 0.2f), (Mineral.Anorthosite, 0.2f) }
-            : new[] { (Mineral.Basalt, 0.5f), (Mineral.Anorthosite, 0.5f) } // the more of the two in its mix: Make blends them
-            : spec.Archetype switch
-            {
-                Archetype.Lava => new[] { (Mineral.Basalt, 0.45f), (Mineral.Andesite, 0.3f), (Mineral.Granite, 0.25f) }, // granite's volcanic twin, rhyolite: pale and pink
-                Archetype.Arid => new[] { (Mineral.Sandstone, 0.3f), (Mineral.Granite, 0.2f), (Mineral.Basalt, 0.25f), (Mineral.Limestone, 0.25f) }, // red beds, grus, black sand, white gypsum and lime
-                Archetype.Ice => new[] { (Mineral.Granite, 0.35f), (Mineral.Basalt, 0.35f), (Mineral.Shale, 0.3f) },
-                _ => new[] { (Mineral.Granite, 0.25f), (Mineral.Basalt, 0.2f), (Mineral.Sandstone, 0.2f), (Mineral.Limestone, 0.15f), (Mineral.Shale, 0.2f) },
-            };
-        foreach (var (m, p) in odds)
-            if ((u -= p) < 0f) return m;
-        return odds[^1].Item1;
-    }
+    static Mineral RockOf(PlanetSpec spec, float u) => Roll(spec.Airless
+        ? spec.Archetype == Archetype.Ice ? new[] { (Mineral.Ice, 0.6f), (Mineral.Basalt, 0.2f), (Mineral.Anorthosite, 0.2f) }
+        : new[] { (Mineral.Basalt, 0.5f), (Mineral.Anorthosite, 0.5f) } // the more of the two in its mix: Make blends them
+        : spec.Archetype switch
+        {
+            Archetype.Lava => new[] { (Mineral.Basalt, 0.45f), (Mineral.Andesite, 0.3f), (Mineral.Granite, 0.25f) }, // granite's volcanic twin, rhyolite: pale and pink
+            Archetype.Arid => new[] { (Mineral.Sandstone, 0.3f), (Mineral.Granite, 0.2f), (Mineral.Basalt, 0.25f), (Mineral.Limestone, 0.25f) }, // red beds, grus, black sand, white gypsum and lime
+            Archetype.Ice => new[] { (Mineral.Granite, 0.35f), (Mineral.Basalt, 0.35f), (Mineral.Shale, 0.3f) },
+            _ => new[] { (Mineral.Granite, 0.25f), (Mineral.Basalt, 0.2f), (Mineral.Sandstone, 0.2f), (Mineral.Limestone, 0.15f), (Mineral.Shale, 0.2f) },
+        }, u);
 
     /// <summary>
     /// Fresh rock's reflectance, 400 to 700 nm (from USGS spectral library shapes, simplified): granite pale with
@@ -308,15 +518,17 @@ public sealed record WorldPalette
     }
 
     /// <summary>
-    /// Leaves under a light. Pigments absorb where the light reaching the ground has most photons (Kiang et al. 2007):
-    /// in the red under a sunlike star (so green is thrown back), toward the blue under a hot one, out past the
-    /// visible under a red dwarf. Where photons are scarce in the visible, as under a red dwarf, leaves take all
-    /// they can and go dark; under a hot star light is plenty and they go pale. A porphyrin's blue band always, with the carotenoids beside it that every leaf on Earth carries.
-    /// Each world's pigment sits a little either side of the peak and is laid on more or less thickly (Earth's own
-    /// chlorophylls a, b, d and f span 640 to 720 nm), and some worlds add helpers: carotenoid-like (absorbing
-    /// blue-green), anthocyanin-like (green) and phycobilin-like (orange).
+    /// Leaves under a light. The reaction centre absorbs where the light reaching the ground has most photons (Kiang et al. 2007):
+    /// in the red under a sunlike star, toward the blue under a hot one, out past the visible under a red dwarf, where photons
+    /// are scarce in the visible and leaves take all they can and go dark; under a hot star light is plenty and they go pale.
+    /// Each world's centre sits a little either side of the peak (Earth's chlorophylls a, b, d and f span 640 to 720 nm), with a
+    /// porphyrin's blue band, and its <paramref name="kit"/> beside it: chlorophyll b's antenna 50 nm to the blue (green
+    /// leaves), cyanobacteria's phycocyanin drinking the orange-red (blue-green), red algae's phycoerythrin the green (red),
+    /// anthocyanins screening the green (magenta), carotenoids screening the blue (gold, orange), a retinal pigment like
+    /// haloarchaea's bacteriorhodopsin drinking the yellow-green (purple: DasSarma and Schwieterman 2021), or a broad dark one
+    /// (black). Some worlds' plants grow a wax bloom or fine hairs that throw back every colour (silver).
     /// </summary>
-    static Spectrum Leaves(float kelvin, Func<float, float> through, Func<int, float> u, out float peak)
+    static Spectrum Leaves(float kelvin, Func<float, float> through, Func<int, float> u, Pigment kit, bool silver, out float peak)
     {
         // Photons at the ground (Planck's law over the photon's energy, through the air), 400 to 1100 nm, and the share past the visible.
         float Photons(float k, float l) => MathF.Pow(l / 550f, -4f) / (MathF.Exp(1.4388e7f / (l * k)) - 1f);
@@ -331,35 +543,68 @@ public sealed record WorldPalette
         float scarce = nir / (vis + nir) - sunNir / (sunVis + sunNir);
         peak += (u(0) - 0.5f) * 50f;
         float body = Math.Clamp(1.2f + 5f * scarce + (u(1) - 0.5f) * 0.6f, 0.6f, 2.8f);
-        // The reaction centre at the peak, its antenna pigment 50 nm to the blue of it (chlorophyll b's 650 nm beside a's
-        // 680 nm), and the blue band.
-        Spectrum a = Spectrum.Flat(body) + Spectrum.Band(peak, 30f) * 1.4f + Spectrum.Band(peak - 50f, 35f) + Spectrum.Band(450f, 45f) * 1.3f;
-        // About one world in three has each helper.
-        float Helper(float v) => v < 0.67f ? 0f : (v - 0.67f) * 3f;
-        a += Spectrum.Band(480f, 22f) * Helper(u(2)) + Spectrum.Band(545f, 25f) * Helper(u(3)) + Spectrum.Band(615f, 25f) * Helper(u(4));
-        return Spectrum.Exp(a * -1f) * (0.45f + 0.1f * u(5));
+        Spectrum a = Spectrum.Flat(body) + Spectrum.Band(peak, 30f) * 1.4f + kit switch
+        {
+            Pigment.Phycocyanin => Spectrum.Band(615f, 28f) * 2.2f + Spectrum.Band(570f, 25f) + Spectrum.Band(450f, 45f) * 0.4f,
+            Pigment.Phycoerythrin => Spectrum.Band(555f, 25f) * 2.4f + Spectrum.Band(500f, 20f) * 0.8f + Spectrum.Band(450f, 45f) * 0.6f,
+            Pigment.Anthocyanin => Spectrum.Band(535f, 35f) * 2.2f + Spectrum.Band(450f, 45f) * 0.8f,
+            Pigment.Carotenoid => Spectrum.Band(470f, 30f) * 2.5f + Spectrum.Band(500f, 18f) + Spectrum.Band(440f, 30f),
+            Pigment.Retinal => Spectrum.Band(568f, 38f) * 2.4f + Spectrum.Band(450f, 45f) * 0.5f,
+            Pigment.Melanin => Spectrum.Flat(2f) + Spectrum.Below(600f, 60f),
+            _ => Spectrum.Band(peak - 50f, 35f) + Spectrum.Band(450f, 45f) * 1.3f,
+        };
+        Spectrum leaf = Spectrum.Exp(a * -1f) * (0.45f + 0.1f * u(5));
+        return silver ? Spectrum.Lerp(leaf, Spectrum.Flat(0.6f), 0.4f) : leaf;
     }
 
     /// <summary>
     /// Water's colour from above, deep and over four metres to sand: irradiance reflectance about 0.33 b_b/(a + b_b)
     /// (Morel and Prieur 1977). Water itself absorbs red (Pope and Fry 1997; Smith and Baker 1981) and scatters blue
     /// (Morel 1974): blue. Plankton absorb as the land's leaves do (the same chemistry), dissolved matter absorbs the
-    /// blue (Bricaud et al. 1981), and silt scatters the colour of the land's dust.
+    /// blue (Bricaud et al. 1981), and silt scatters the colour of the land's dust. Its chemistry (<paramref name="kind"/>,
+    /// <paramref name="solute"/> as strong) adds its own: halophile carotenoids drinking the blue-green (Lake Hillier,
+    /// Lake Retba: Oren 2009), dissolved ferric iron the blue (Rio Tinto), cupric ions the red (turquoise), glacial rock
+    /// flour scattering white over water's own red absorption (Lake Louise's milky cyan), purple sulfur bacteria's okenone
+    /// the green, a cyanobacterial bloom's phycocyanin and chlorophyll the orange and blue (lime), tannins the blue to green
+    /// (blackwater: the Rio Negro), colloidal sulfur scattering pale over its blue absorption.
     /// </summary>
-    static (Spectrum Deep, Spectrum Shallow) Water(float plankton, float tannin, float silt, float openSilt, Spectrum leaf, Spectrum dust, Spectrum sand)
+    static (Spectrum Deep, Spectrum Shallow) Seas(float plankton, float tannin, float silt, float openSilt, Spectrum leaf, Spectrum dust, Spectrum sand, Waters kind, float solute)
     {
         Spectrum water = Spectrum.Of(PureWater);
         Spectrum pigment = leaf.Map(r => -MathF.Log(MathF.Max(r, 1e-3f)));
         float top = 0f;
         for (int i = 0; i < Spectrum.Bands; i++) top = MathF.Max(top, pigment[i]);
         Spectrum grains = Albedo(dust);
+        float s = solute;
+        if (kind == Waters.Blackwater) tannin += 1.5f * s;
+        // What the chemistry absorbs (m⁻¹) and scatters back.
+        float Absorb(float l) => kind switch
+        {
+            Waters.Halophiles => s * 0.8f * (G(l, 470f, 25f) + 1.1f * G(l, 500f, 22f) + 0.8f * G(l, 535f, 20f)),
+            Waters.Iron => s * 1.5f * Below(l, 570f, 22f),
+            Waters.Copper => s * 0.6f * Mathx.Smooth(540f, 680f, l),
+            Waters.PurpleSulfur => s * 0.9f * (1.2f * G(l, 520f, 28f) + 0.6f * G(l, 480f, 20f) + 0.3f * G(l, 590f, 15f)),
+            Waters.Cyanobacteria => s * 0.8f * (G(l, 440f, 25f) + 1.3f * G(l, 620f, 20f) + G(l, 675f, 15f)),
+            Waters.Sulfur => s * 0.8f * Below(l, 480f, 20f),
+            _ => 0f,
+        };
+        float Back(float l) => kind switch
+        {
+            Waters.Halophiles or Waters.PurpleSulfur => s * 0.004f,
+            Waters.Iron => s * 0.006f * (1f - Below(l, 560f, 25f)),
+            Waters.Copper => s * 0.003f,
+            Waters.Flour => s * 0.03f * 550f / l,
+            Waters.Cyanobacteria => s * 0.008f * 550f / l,
+            Waters.Sulfur => s * 0.02f,
+            _ => 0f,
+        };
         // The light coming up from under the surface (the water's glint off the surface is the renderer's).
         (Spectrum r, Spectrum k) Body(float mud)
         {
             Spectrum a = water + pigment * (0.06f * MathF.Pow(plankton, 0.65f) / MathF.Max(top, 1e-3f))
-                         + Spectrum.Of(l => tannin * MathF.Exp(-0.014f * (l - 440f)))
+                         + Spectrum.Of(l => tannin * MathF.Exp(-0.014f * (l - 440f)) + Absorb(l))
                          + grains.Map(w => (1f - w) * 0.04f * mud);
-            Spectrum bb = Spectrum.Of(l => 0.5f * 0.00222f * MathF.Pow(500f / l, 4.32f) + 0.003f * MathF.Pow(plankton, 0.62f) * 550f / l)
+            Spectrum bb = Spectrum.Of(l => 0.5f * 0.00222f * MathF.Pow(500f / l, 4.32f) + 0.003f * MathF.Pow(plankton, 0.62f) * 550f / l + Back(l))
                           + grains * (0.006f * mud);
             return (bb / (a + bb) * 0.33f, a + bb);
         }
