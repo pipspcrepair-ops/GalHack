@@ -442,7 +442,8 @@ public partial class FoldTest : Node
             if (ticks % 20 == 0) _systems.MarkNew(); // the zones a fold makes are split out too, as they come
             yield return 0;
         }
-        for (int i = 0; i < 120; i++) yield return 0; // a couple of seconds after, the arrival's settling in
+        // A couple of seconds after, the arrival's settling in, and the system left all taken down.
+        for (int i = 0; i < 120 || Flight.Dismantling && i < 60 * 20; i++) yield return 0;
         string frames = FrameReport();
         if (!Check(Flight.Folds.Count() > folds, $"the fold arrived after {ticks / 60f:F1} s ({Flight.Jumping.Now}{(Flight.Jumping.Trouble != null ? ", " + Flight.Jumping.Trouble : "")})")) yield break;
         Jump made = Flight.Folds.Last();

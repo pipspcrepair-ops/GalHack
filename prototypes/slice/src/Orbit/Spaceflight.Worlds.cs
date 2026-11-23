@@ -229,14 +229,20 @@ public partial class Spaceflight
 
     void Free(SurfaceZone z)
     {
+        Forget(z);
+        if (!IsInstanceValid(z)) return;
+        if (z.IsInsideTree()) z.QueueFree();
+        else z.Free();
+    }
+
+    /// <summary>What the flight keeps of a zone let go of, dropped.</summary>
+    void Forget(SurfaceZone z)
+    {
         _surfaceShownOf.Remove(z);
         _groundShownOf.Remove(z);
         _hiddenKidsOf.Remove(z);
         _sunOf.Remove(z);
         _highest.Remove(z);
-        if (!IsInstanceValid(z)) return;
-        if (z.IsInsideTree()) z.QueueFree();
-        else z.Free();
     }
 
     /// <summary>The game goes: an orbit made that never entered the scene goes with it.</summary>

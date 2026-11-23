@@ -171,10 +171,10 @@ public partial class Spaceflight
         {
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             string stage = "waiting";
-            // Out of the start system to another star: the zone left is put away a little a tick under the tunnel's cover, so
-            // parking it on arrival is cheap; the tunnel lasts till it is.
-            bool putAway = flight.Away != null || _star == flight.HomeStar;
-            if (!putAway && flight.Jumping is { Holding: true } j && j.InTunnel >= TuckFrom)
+            // The zone left is put away a little a tick under the tunnel's cover, so parking it on arrival (or letting it go)
+            // is cheap; the tunnel lasts till it is.
+            bool putAway = false;
+            if (flight.Jumping is { Holding: true } j && j.InTunnel >= TuckFrom)
             {
                 putAway = !flight.Tuck(j.From, j.Carrier);
                 stage = "putting away";
@@ -428,7 +428,11 @@ public partial class Spaceflight
         }
     }
 
-    /// <summary>A system out among the stars, let go of whole: its zones out of the scene and freed, its sky's textures and far looks with them.</summary>
+    /// <summary>
+    /// A system out among the stars, let go of whole: its zones out of play at once, then taken down and freed a little a
+    /// frame (<see cref="DismantleStep"/>: a world's surface is thousands of nodes, and all at once it showed as a hitch);
+    /// its sky's textures and far looks with them.
+    /// </summary>
     void FreeAbroad(Abroad a)
     {
         foreach (SurfaceZone z in a.Zones.ToList())
@@ -437,14 +441,66 @@ public partial class Spaceflight
             {
                 o.Space.Show(false, 0f);
                 o.Space.Release();
+                foreach (Celestial c in o.Bodies)
+                    if (c.Globe != null) c.Globe.Visible = false; // apart from the zone's own hiding: it is far land from the ground too
             }
+            else if (z.Sky != null) Mute(z);
             foreach (object dead in _ids.Keys.Where(k => k is Vessel w && w.Zone == z || k is Lootable l && z.Loot != null && z.Loot.All.Contains(l)).ToList()) _ids.Remove(dead);
-            if (z.IsInsideTree()) z.GetParent().RemoveChild(z);
-            Free(z);
+            Forget(z);
+            _tucked.Remove(z);
+            _toTuck.Remove(z);
+            if (!z.IsInsideTree()) { z.Free(); continue; }
+            Park(z);
+            _dismantle.Push((z, false));
         }
         a.Orbits.Clear();
         a.Stars.Release();
         a.Surfaces?.Release();
+    }
+
+    /// <summary>What of the zones let go of is still to take out of the scene, and whether a node's twigs have gone in ahead of it.</summary>
+    readonly Stack<(Node Node, bool Opened)> _dismantle = new();
+
+    /// <summary>What has been taken out, to free once every zone it was in is gone.</summary>
+    readonly Queue<Node> _detached = new();
+
+    /// <summary>Most of a frame taking zones down takes, ms.</summary>
+    const double DismantleMs = 1.5;
+
+    /// <summary>The zones let go of are still being taken down (tests wait on it).</summary>
+    public bool Dismantling => _dismantle.Count > 0 || _detached.Count > 0;
+
+    /// <summary>
+    /// A little more of the zones let go of taken down (once a drawn frame): out of the scene twig by twig, each zone last
+    /// of its own; then the twigs freed. A branch's own clearing up as it leaves still finds its twigs whole.
+    /// </summary>
+    void DismantleStep()
+    {
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool Spent() => System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > DismantleMs;
+        while (_dismantle.TryPop(out var top))
+        {
+            Node n = top.Node;
+            if (!IsInstanceValid(n)) continue;
+            if (!top.Opened && n.GetChildCount() > 0)
+            {
+                _dismantle.Push((n, true));
+                foreach (Node kid in n.GetChildren()) _dismantle.Push((kid, false));
+                continue;
+            }
+            if (n is SurfaceZone) n.Free();
+            else
+            {
+                n.GetParent()?.RemoveChild(n);
+                _detached.Enqueue(n);
+            }
+            if (Spent()) return;
+        }
+        while (_detached.TryDequeue(out Node n))
+        {
+            if (IsInstanceValid(n)) n.Free();
+            if (Spent()) return;
+        }
     }
 
     /// <summary>
