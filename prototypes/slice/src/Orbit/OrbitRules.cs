@@ -86,8 +86,8 @@ public sealed class OrbitRules
 
     public sealed class FoldRules
     {
-        /// <summary>A star's high orbit, in its radii: where a fold arrives, as close as you come.</summary>
-        public double HighOrbit { get; set; } = 1.6;
+        /// <summary>The least time in a fold's tunnel, s: longer still while the destination is made.</summary>
+        public double Tunnel { get; set; } = 4;
     }
 
     static readonly JsonSerializerOptions Json = new()

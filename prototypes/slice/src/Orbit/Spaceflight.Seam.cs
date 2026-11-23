@@ -126,15 +126,6 @@ public partial class Spaceflight
 
     void ProcessSeam(double delta)
     {
-        if (AtStar is { } star)
-        {
-            // Round a star: its own sky from the eye; the start system's clock runs on while it waits.
-            star.Track(Game.Camera.GlobalPosition, delta);
-            Lap("the star's sky");
-            Game.Surface.Sky.RunClock(delta);
-            KeepOneClock();
-            return;
-        }
         TurnGround();
         Lap("ground turning");
         if (Game.InOrbit)
@@ -171,13 +162,13 @@ public partial class Spaceflight
         N.Vector3 q = c.ToGlobe(eye.ToNumerics()), h = o.Home.ToGlobe(eye.ToNumerics());
         var inHome = ViewFrom ?? new PlanetSurface.Skies.D3(h.X, h.Y, h.Z);
         var inHere = c.IsHome ? inHome : new PlanetSurface.Skies.D3(q.X, q.Y, q.Z);
-        if (s.Arrived)
+        if (s.Arrived && c.Surface == s)
         {
             s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
             s.Sky.Track();
             Lap("the sky below");
         }
-        o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
+        o.Space.Track(o.Home.Seen, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
     }
 
     /// <summary>Lays the orbit out over the surface at the point under a world position.</summary>
@@ -491,8 +482,8 @@ public partial class Spaceflight
         Vector3 at = carrier != null ? carrier.DrawTransform.Origin : Game.Survivor.WorldFeet;
         OrbitZone o = Orbit;
         float y = Height(at);
-        Game.Surface.Sky.Stars.Poll();
-        o.Space.Galaxy(Game.Surface.Sky.Stars);
+        Stars.Poll();
+        o.Space.Galaxy(Stars);
         HandOverFrames(at);
         if (!_aligned || y >= BandTop)
         {

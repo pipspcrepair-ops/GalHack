@@ -37,7 +37,7 @@ public partial class SurfaceZone : Node3D
     /// that world's galaxy, star and system (its sky is the system seen from here), and its places
     /// come later. Null: the start world, which owns the system.
     /// </summary>
-    public PlanetWorld ShareFrom;
+    public SystemShare ShareFrom;
 
     /// <summary>Another body's: the far looks its sky shares, the start world's sky's (painted once for every sky of the system), or null.</summary>
     public PlanetSurface.Skies.BodySurfaces SkySurfaces;
@@ -207,7 +207,7 @@ public partial class SurfaceZone : Node3D
     public void Make()
     {
         if (Making || ShareFrom == null) return;
-        PlanetWorld of = ShareFrom;
+        SystemShare of = ShareFrom;
         Orbiter body = Body;
         PlanetSpec spec = Spec;
         _building = Task.Run(() =>

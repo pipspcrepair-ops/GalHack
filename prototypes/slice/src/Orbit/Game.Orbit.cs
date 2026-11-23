@@ -18,7 +18,7 @@ public partial class Game
     public bool InOrbit => Zone is OrbitZone;
 
     /// <summary>Out in space: a world's orbit, or round a star.</summary>
-    public bool InSpace => Zone is OrbitZone or StarZone;
+    public bool InSpace => Zone is OrbitZone;
 
     /// <summary>Climbing out, coming down, and everything that differs in space.</summary>
     public Spaceflight Spaceflight { get; private set; }
@@ -29,6 +29,7 @@ public partial class Game
         Surface = Zone;
         Spaceflight = new Spaceflight { Name = "Spaceflight", Game = this };
         AddChild(Spaceflight);
+        AddChild(new JumpView { Name = "Jump", Flight = Spaceflight }); // in from the start: its shader is ready before any spool
         Zone.Built += Spaceflight.PlanetBuilt;
     }
 

@@ -64,7 +64,10 @@ public partial class OrbitZone
     /// sea level, moving with it. Nothing flies through a body whose ground hasn't streamed in (and the
     /// crossing onto it, high over this, is the way down).
     /// </summary>
-    static void Shell(Celestial c) => c.Sphere.AddChild(Shell(c.GlobeRadius));
+    static void Shell(Celestial c)
+    {
+        if (c.Body.Radius > 0.0) c.Sphere.AddChild(Shell(c.GlobeRadius)); // a belt's frame is a point in it, not a body
+    }
 
     static StaticBody3D Shell(float radius)
     {
@@ -188,7 +191,7 @@ public partial class OrbitZone
     static N.Vector3 G(D3 d) => new((float)d.X, (float)d.Y, (float)d.Z);
 
     /// <summary>The rotation taking the zone's axes to these (the images of X, Y and Z).</summary>
-    static N.Quaternion FromAxes(N.Vector3 x, N.Vector3 y, N.Vector3 z)
+    internal static N.Quaternion FromAxes(N.Vector3 x, N.Vector3 y, N.Vector3 z)
     {
         var m = new N.Matrix4x4(x.X, x.Y, x.Z, 0, y.X, y.Y, y.Z, 0, z.X, z.Y, z.Z, 0, 0, 0, 0, 1);
         return N.Quaternion.Normalize(N.Quaternion.CreateFromRotationMatrix(m));

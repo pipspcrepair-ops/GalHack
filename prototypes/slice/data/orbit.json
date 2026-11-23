@@ -131,11 +131,10 @@
   },
 
   // A fold between stars (docs/solar-systems.md section 8): it arrives in orbit of the target star,
-  // clear of it at its high orbit, on the side that faces the star it came from, its worlds where the
-  // one clock has them.
+  // clear of it at its high orbit (warp.json's, the same as a warp to the star), on the side that
+  // faces the star it came from, its worlds where the one clock has them.
   "fold": {
-    // A star's high orbit, in its radii: as close as you come (section 8, item 15), the star filling
-    // the view, every world of the system further out.
-    "highOrbit": 1.6
+    // The least time in the tunnel, s: it lasts longer while the destination is still being made.
+    "tunnel": 4
   }
 }

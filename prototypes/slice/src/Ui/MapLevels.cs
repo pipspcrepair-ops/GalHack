@@ -393,10 +393,10 @@ public sealed class MapLevels
         }
         Charts charts = _game.Spaceflight.Charts;
         // Your world and its wrecks are marked only in its own system, and only while you are by it (not out at a star).
-        bool yours = Trail.AtYourStar && _game.Spaceflight.AtStar == null;
+        bool yours = Trail.AtYourStar && _game.Spaceflight.Away == null;
         string star = Catalogue != null && Trail.Star >= 0 ? Catalogue.Name(Trail.Star) : "Star";
         PlanetSurface.Skies.StarSystem sysModel = Trail.AtYourStar ? _game.Spaceflight.SystemHere : Profile.System(Trail.Star);
-        List<SystemEntry> bodies = Charts.Bodies(sysModel, yours ? "Your world" : "Inner world", _game.Spaceflight.DaysHere, star);
+        List<SystemEntry> bodies = Charts.Bodies(sysModel, yours ? "Your world" : "Inner world", _game.Spaceflight.Below.Sky.Days, star);
         Vector2 c = panel.GetCenter() + _sysPan;
         float unit = panel.Size.Y * 0.49f * _sysZoom;
         var places = new Dictionary<string, Vector2> { ["star"] = c };
@@ -961,8 +961,10 @@ public sealed class MapLevels
         g.Text($"FOLD {flight.LightYearsTo(id):F1} LY · FOLD CRYSTAL {flight.CrystalTo(id)}", at, C.Holo, 15, UiTheme.Mono);
         Vessel ship = flight.Folder();
         string fault = flight.FoldFault(ship, id);
-        string state = flight.InTunnel ? "TUNNEL" : flight.Folding ? $"SPOOLING {ship?.Power.SpoolLeft ?? 0:F0} S" : fault ?? "IN REACH";
-        g.Text(state, at + new Vector2(0, 24), fault == null || flight.Folding ? C.Good : C.Warn, 15, UiTheme.Mono);
+        Jump j = flight.Jumping;
+        bool folding = j?.Running == true && j.Drive == Spaceflight.FoldDrive;
+        string state = folding ? j.Holding ? "TUNNEL" : $"SPOOLING {ship?.Power.SpoolLeft ?? 0:F0} S" : fault ?? "IN REACH";
+        g.Text(state, at + new Vector2(0, 24), fault == null || folding ? C.Good : C.Warn, 15, UiTheme.Mono);
         if (g.Button("map:fold", new Rect2(at + new Vector2(160, 18), new Vector2(146, 30)), "FOLD", C.Holo, enabled: fault == null, size: 15)) flight.Fold(id);
     }
 

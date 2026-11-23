@@ -136,7 +136,7 @@ public static class MusicScenes
             if (here.Region == GalHack.Stars.Region.Core) return new MusicScene(MusicPlace.GalacticCore);
             if (here.Nebula >= 0) return new MusicScene(MusicPlace.Nebula);
         }
-        if (g.Zone is StarZone) return new MusicScene(MusicPlace.DeepSpace);
+        if (g.Zone is OrbitZone { HasGround: false }) return new MusicScene(MusicPlace.DeepSpace);
         if (g.Zone is OrbitZone orbit && orbit.AboveShell(g.Survivor.WorldEye()) > orbit.GlobeRadius * 3f) return new MusicScene(MusicPlace.DeepSpace);
         return new MusicScene(MusicPlace.HighOrbit);
     }

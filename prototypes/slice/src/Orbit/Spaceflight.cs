@@ -97,7 +97,7 @@ public partial class Spaceflight : Node
     /// <summary>A zone waiting out of the scene is freed with the game (a made orbit that never entered it).</summary>
     public override void _Notification(int what)
     {
-        if (what == NotificationPredelete && Orbit != null && IsInstanceValid(Orbit) && !Orbit.IsInsideTree()) Orbit.Free();
+        if (what == NotificationPredelete) FreeLoose();
     }
 
     /// <summary>The crossing height of the body you are near, on or over, m.</summary>
@@ -156,10 +156,9 @@ public partial class Spaceflight : Node
         Survivor s = g.Survivor;
         if (s.Seated == null && s.Body.Frame != null && s.Legs.Floating) Riding.SetUp(s.Body, N.Vector3.UnitY);
         JetpackInZeroG(s);
-        FoldTick();
-        // Round a star there is no world to cross to (the warp to one is the way on).
-        if (AtStar != null) return;
-        if (_pending != null)
+        TickJump(delta);
+        if (Jumping?.Holding == true) { } // held in the tunnel: no crossing
+        else if (_pending != null)
         {
             if (Ledger.Committing) HoldAtCap(Carrier());
             else FinishCrossing();
@@ -204,7 +203,6 @@ public partial class Spaceflight : Node
         Vector3 at = g.Survivor.WorldFeet;
         // Where you are is charted, and with it everything a jump away.
         if (Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
-        if (AtStar != null) return;
         if (g.InOrbit)
         {
             OrbitZone o = Orbit;
@@ -259,7 +257,7 @@ public partial class Spaceflight : Node
         {
             ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = s.Sky.Surfaces,
         };
-        Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}"));
+        Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}")) { Kept = KeptInLedger };
         Orbit.Home.Surface = s;
         Orbit.Days = () => Below.Sky.Days;
         LightBodies(s);
@@ -356,6 +354,7 @@ public partial class Spaceflight : Node
     void WatchOrbit()
     {
         OrbitZone orbit = Orbit;
+        if (!orbit.HasGround && Here.IsHome) return; // no ground under a giant's, the star's or a belt's space: no crossing
         Vessel carrier = Carrier();
         Body b = carrier?.Body ?? Game.Survivor.Body;
         Vector3 at = carrier != null ? b.Position.ToGodot() : Game.Survivor.WorldFeet;
@@ -447,7 +446,7 @@ public partial class Spaceflight : Node
     void BeginCrossing(Vessel carrier, bool up)
     {
         string id = carrier != null ? IdOf(carrier) : ZoneLedger.Sleeper;
-        if (Ledger.Begin(Holders(), id, up ? ZoneLedger.Orbit : ZoneName(Below))) _pending = new Pending(carrier, up);
+        if (Ledger.Begin(Holders(), id, ZoneName(up ? Orbit : Below))) _pending = new Pending(carrier, up);
         else Refused();
     }
 
@@ -483,12 +482,11 @@ public partial class Spaceflight : Node
         Vessel aboard = s.Seated ?? (s.Body.Frame != null ? s.Aboard : null);
         string sleeperZone = aboard != null ? ZoneLedger.Cabin(IdOf(aboard)) : ZoneName(s.Zone);
         yield return new Holder(ZoneLedger.Sleeper, "sleeper", sleeperZone, aboard != null ? IdOf(aboard) : null, "Sleeper", g.Pack.Storage.Contents, 0);
-        IEnumerable<SurfaceZone> zones = Orbit == null ? new[] { g.Surface } : Orbit.Bodies.Select(c => c.Surface).Prepend(Orbit);
-        foreach (SurfaceZone zone in AtStar != null ? zones.Append(AtStar) : zones)
+        foreach (SurfaceZone zone in AllZones())
         {
             if (zone?.Physics == null) continue;
             string name = ZoneName(zone);
-            bool freed = zone is StarZone; // freed when it is left: where each thing is goes in its record, to be put back
+            bool freed = IsAbroad(zone); // freed when its system is left: where each thing is goes in its record, to be put back
             foreach (Vessel v in zone.Vessels)
             {
                 Bill items = v.Storage.Contents;
@@ -511,8 +509,7 @@ public partial class Spaceflight : Node
         foreach (var (id, n) in from) to.Add(id, n);
     }
 
-    string ZoneName(SurfaceZone z) => z is StarZone star ? ZoneLedger.StarZoneOf(star.StarId) : z is OrbitZone ? ZoneLedger.Orbit : z == Game.Surface ? ZoneLedger.Surface
-        : ZoneLedger.Moon + Orbit.Bodies.FindIndex(c => c.Surface == z);
+    string ZoneName(SurfaceZone z) => NameOf(z);
 
     /// <summary>A record id that stays with a thing for the game.</summary>
     string IdOf(object thing)
@@ -521,7 +518,7 @@ public partial class Spaceflight : Node
         id = thing switch
         {
             Vessel v when v == Game.Bunker?.Ruin => "bunker",
-            Vessel { Derelict: not null } v => ("wreck-" + v.Derelict.Id)[..Math.Min(64, 6 + v.Derelict.Id.Length)],
+            Vessel { Derelict: not null } v => ("wreck-" + WreckPrefix(v) + v.Derelict.Id) is var w ? w[..Math.Min(64, w.Length)] : null,
             Vessel => $"structure-{++_nextId}",
             Lootable => $"container-{++_nextId}",
             Device => $"device-{++_nextId}",
