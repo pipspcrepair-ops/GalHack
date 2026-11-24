@@ -109,6 +109,7 @@ public partial class MoonTest : Node
         if (_skiff == null) yield break;
         foreach (int x in ClimbOut()) yield return x;
         if (!_game.InOrbit) yield break;
+        foreach (int x in HandsInOrbit()) yield return x;
         Celestial moon = null;
         foreach (int x in ToTheMoon()) yield return x;
         if (_game.Orbit.Anchor != (moon = _game.Orbit.Moon)) yield break;
@@ -606,6 +607,7 @@ public partial class MoonTest : Node
         Check(slid < MathF.Max(1f, 2f * _worldStride),
             $"a stride let go stops as on a planet in {g:F1} m/s²: let go at {speed:F1} m/s it carries on {slid:F2} m ({_worldStride:F2} m on the world at {s.Legs.WalkSpeed:F1} m/s)");
         MarkedHere(moon);
+        foreach (int x in HandsOnGround(moon.Name)) yield return x;
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(s.Seated == v, "and back into the Skiff's seat");
     }

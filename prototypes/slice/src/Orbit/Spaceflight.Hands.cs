@@ -30,7 +30,7 @@ public partial class Spaceflight
 
     Vessel _salvaging;
     Int3 _salvageCell;
-    float _salvageTime, _sparkTime, _shotCooldown;
+    float _salvageTime, _sparkTime;
     string _lastRefusal;
 
     /// <summary>The fraction of the current block's salvage done, 0 to 1 (the visor's progress).</summary>
@@ -38,31 +38,22 @@ public partial class Spaceflight
 
     /// <summary>
     /// The hands in space (the game asks this first, before the surface's tools): the Sleeper
-    /// tool's gather salvages the wreck block it is on and fires at anything else (repair
-    /// does nothing yet in space), a core item claims a wreck,
-    /// building waits for a later phase. False for what works the same anywhere (food, kits).
+    /// tool's gather salvages the wreck block it is on (anything else is the tool's as on any
+    /// ground, as are the weapons), a core item on a wreck claims it. False for what works the
+    /// same anywhere (building, food, kits).
     /// </summary>
     public bool TakeHands(float dt, HandKind hand, bool primary, bool pressed)
     {
-        _shotCooldown -= dt;
-        if (!Game.InOrbit && !OnOtherBody) return false; // on the moon as in orbit: its ground's tools come later
+        if (!Game.InOrbit && !OnOtherBody) return false;
         switch (hand)
         {
             case HandKind.Tool:
-                if (Game.Tool.Mode == ToolMode.Gather && OnWreckBlock()) Salvage(dt, primary);
-                else
-                {
-                    Halt();
-                    if (primary && _shotCooldown <= 0f && Game.Tool.Mode == ToolMode.Gather) Shoot();
-                }
-                return true;
-            case HandKind.Core:
+                if (Game.Tool.Mode == ToolMode.Gather && OnWreckBlock(Rules.Wrecks.SalvageReach)) { Salvage(dt, primary); return true; }
+                Halt();
+                return false;
+            case HandKind.Core when OnWreckBlock(Slice.Game.Game.UseReach + 1f):
                 Halt();
                 if (pressed) Claim();
-                return true;
-            case HandKind.Block or HandKind.Device or HandKind.Blueprint:
-                Halt();
-                if (pressed) Game.Say("NO BUILDING IN ORBIT", Tones.Caution);
                 return true;
             default:
                 Halt();
@@ -70,9 +61,9 @@ public partial class Spaceflight
         }
     }
 
-    /// <summary>The look is on a block of a vessel within salvage reach.</summary>
-    bool OnWreckBlock() => WorldRay.Cast(Game.Zone, Game.Survivor, Rules.Wrecks.SalvageReach, Layers.Hull, out LookHit look)
-                           && look.Vessel != null && look.Vessel.Structure.Has(look.Cell);
+    /// <summary>The look is on a block of a wreck within reach.</summary>
+    bool OnWreckBlock(float reach) => WorldRay.Cast(Game.Zone, Game.Survivor, reach, Layers.Hull, out LookHit look)
+                           && look.Vessel is { IsDerelict: true } v && v.Structure.Has(look.Cell);
 
     void Halt()
     {
@@ -109,12 +100,6 @@ public partial class Spaceflight
             return;
         }
         Vessel v = look.Vessel;
-        if (!v.IsDerelict)
-        {
-            Halt();
-            Refuse(v.Derelict != null ? $"{v.Name} · YOURS · USE BUILD TOOL" : "SALVAGE · WRECKS ONLY");
-            return;
-        }
         Structure s = v.Structure;
         BlockType type = s.TypeOf(block);
         if (type.IsContainer && !v.Storage.IsEmpty)
@@ -183,21 +168,6 @@ public partial class Spaceflight
     {
         Orbit?.Wrecks.Remove(v);
         v.Zone.Remove(v);
-    }
-
-    // ---- Shooting ------------------------------------------------------------------------------
-
-    /// <summary>Shoot mode in space: a bolt and a scorch where it lands (nothing out here to hunt).</summary>
-    void Shoot()
-    {
-        _shotCooldown = 0.35f;
-        Survivor s = Game.Survivor;
-        Vector3 eye = s.WorldEye(), dir = s.WorldLook();
-        bool hit = WorldRay.Cast(Game.Zone, s, 120f, Layers.Hull | Layers.Props, out LookHit look);
-        Vector3 end = hit ? look.Point : eye + dir * 120f;
-        Vector3 muzzle = eye + dir * 0.6f + s.WorldUp() * -0.25f;
-        Game.Shots?.Fire(muzzle, end, new Color("6ff2e0"), () => { if (hit) Game.Shots.Impact(look.Point, look.Normal, ImpactKind.Block); });
-        Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, eye, 2.6f, -14f);
     }
 
     // ---- Claiming ------------------------------------------------------------------------------

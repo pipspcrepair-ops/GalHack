@@ -43,18 +43,19 @@ public partial class Game
 
     /// <summary>
     /// The last step of a zone handover: the zone you are in is now <paramref name="zone"/>. The
-    /// camera, the cockpit console and the shots' effects go with you; everything the menu, the
+    /// camera, the cockpit console, the shots' effects and the arms go with you; everything the menu, the
     /// visor and the tools ask about (structures, containers, devices) is that zone's.
     /// </summary>
     internal void EnterZone(SurfaceZone zone)
     {
-        // Camera and shots go with you; the console follows only if it isn't riding a hull with you.
-        foreach (Node n in new Node[] { Camera, Console, Shots })
+        // Camera, shots and arms go with you; the console follows only if it isn't riding a hull with you.
+        foreach (Node n in new Node[] { Camera, Console, Shots, Arms })
             if (n != null && n.GetParent() is SurfaceZone && n.GetParent() != zone) n.Reparent(zone, false);
         zone.Camera = Camera;
         zone.Focus = Focus;
         zone.WorldRules.Mode = Mode;
         Zone = zone;
+        if (Tool != null) { Tool.Zone = zone; Tool.Sfx = zone.Sfx; }
         CloseContainer();
     }
 }

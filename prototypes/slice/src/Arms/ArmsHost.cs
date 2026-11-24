@@ -74,12 +74,16 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Sounds = new GunSounds { Name = "GunSounds" };
         AddChild(Sounds);
         Sounds.Make(rows);
-        Zone.FrameShifted += by => Pool.Shift(by.ToNumerics());
         _passed = new int[Pool.Shots.Length];
         People = new SimArms(this);
     }
 
     bool _warmed;
+
+    /// <summary>The shots ride the frame of the zone the host is in (it goes with you, <see cref="Slice.Game.Game.EnterZone"/>).</summary>
+    public override void _EnterTree() { if (GetParent() is SurfaceZone z) z.FrameShifted += Shift; }
+    public override void _ExitTree() { if (GetParent() is SurfaceZone z) z.FrameShifted -= Shift; }
+    void Shift(Vector3 by) => Pool.Shift(by.ToNumerics());
 
     /// <summary>
     /// The first shot's first-time work done on the first tick, unseen and unheard, far over the world: the aim's ray, a round
@@ -107,7 +111,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
 
     public override void _PhysicsProcess(double delta)
     {
-        if (Game?.Survivor == null || Zone?.Planet == null) return;
+        if (Game?.Survivor == null || Zone == null) return;
         if (!_warmed) Warm();
         float dt = (float)delta;
         SyncExceptions(); // before the step: the step itself touches nothing but the shots and the world

@@ -36,7 +36,7 @@ public partial class ArmsHost
             if (places.Resolve(collider, at, n, out PoiPlaces.Hit h, hit.CellX)) { places.Struck(h, amount); PlaceHits++; }
             else if (places.SalvageOf(collider) is { } wreck) { places.Work(wreck, amount); WreckHits++; }
         }
-        else if (hit.Thing is Rid body && Zone.TreeAt((body, hit.CellX), out long tree, out _) && Zone.Sighting(tree, at, out TerrainStreamer.PlantSighting plant))
+        else if (hit.Thing is Rid body && Zone.Planet != null && Zone.TreeAt((body, hit.CellX), out long tree, out _) && Zone.Sighting(tree, at, out TerrainStreamer.PlantSighting plant))
         {
             Zone.WearPlant(plant, amount * Table.Rules.PlantRound, dir with { Y = 0f }, batch: true);
             PlantHits++;
@@ -58,6 +58,7 @@ public partial class ArmsHost
         long t = System.Diagnostics.Stopwatch.GetTimestamp();
         places?.Blast(p, r, damage);
         PlacesMs = Math.Max(PlacesMs, System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds);
+        if (Zone.Planet == null) return; // in space: no plants or ground
         t = System.Diagnostics.Stopwatch.GetTimestamp();
         _blasted.Clear();
         foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(p, r))

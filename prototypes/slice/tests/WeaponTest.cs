@@ -200,22 +200,25 @@ public partial class WeaponTest : Node
     Vector3 WallMiddle(Vessel v) => v.ToWorld(StructureBridge.CellCenter(v.Structure, new Int3(2, 2, 0)));
 
     /// <summary>Puts a weapon in hand on slot 1 with plenty of its ammo, loaded.</summary>
-    WeaponDef Arm(string id, int ammoItems = 20)
+    WeaponDef Arm(string id, int ammoItems = 20) => Arm(_game, id, ammoItems);
+
+    /// <summary>A weapon in hand, in slot 1, loaded, with ammo in the bag (other tests arm the sleeper by it too).</summary>
+    public static WeaponDef Arm(Game.Game game, string id, int ammoItems = 20)
     {
-        WeaponDef d = Arms.Table.Get(id);
-        PlayerInventory pack = _game.Pack;
+        WeaponDef d = game.Arms.Table.Get(id);
+        PlayerInventory pack = game.Pack;
         int have = pack[d.Item];
         if (have < (d.Ammo == d.Item ? ammoItems : 1)) pack.Storage.Add(d.Item, (d.Ammo == d.Item ? ammoItems : 1) - have);
         // One stack of it, in slot 1 (any other stack of it folds back into the bag).
         for (int i = 1; i < pack.Grid.Count; i++)
             if (pack.Grid[i].Item == d.Item) { pack.Grid[i].Item = null; pack.Grid[i].Count = 0; }
         pack.Grid[0].Item = d.Item;
-        pack.Grid[0].Count = Math.Min(pack[d.Item], Math.Max(1, Zone.Data.Items.Item(d.Item).StackSize));
+        pack.Grid[0].Count = Math.Min(pack[d.Item], Math.Max(1, game.Zone.Data.Items.Item(d.Item).StackSize));
         foreach (WeaponDef m in d.Modes)
             if (m.Ammo != d.Item && pack[m.Ammo] < ammoItems) pack.Storage.Add(m.Ammo, ammoItems - pack[m.Ammo]);
         pack.Grid.Reconcile();
         pack.Selected = 0;
-        Gun gun = Arms.GunFor(d);
+        Gun gun = game.Arms.GunFor(d);
         if (gun.Loaded == 0) gun.LoadNow();
         return d;
     }

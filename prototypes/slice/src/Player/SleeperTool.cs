@@ -41,7 +41,8 @@ public enum ToolMode { Gather, Repair }
 /// </summary>
 public sealed class SleeperTool
 {
-    readonly SurfaceZone _zone;
+    /// <summary>The zone you are in: the game moves it with you (<see cref="Slice.Game.Game.EnterZone"/>).</summary>
+    public SurfaceZone Zone;
     readonly Survivor _survivor;
     readonly Suit _suit;
     readonly PlayerInventory _pack;
@@ -144,7 +145,7 @@ public sealed class SleeperTool
 
     public SleeperTool(SurfaceZone zone, Survivor survivor, Suit suit, PlayerInventory pack)
     {
-        _zone = zone;
+        Zone = zone;
         _survivor = survivor;
         _suit = suit;
         _pack = pack;
@@ -175,7 +176,7 @@ public sealed class SleeperTool
 
     (float, float)? HealthOn(float range)
     {
-        if (!WorldRay.Cast(_zone, _survivor, range, Layers.World | Layers.Hull, out LookHit look)) return PlantOn();
+        if (!WorldRay.Cast(Zone, _survivor, range, Layers.World | Layers.Hull, out LookHit look)) return PlantOn();
         if (look.Vessel is Slice.Vessels.Vessel v)
             return v.Structure.TryGetBlock(look.Cell, out _, out GalHack.Structures.Block b) ? (b.Hp, v.Structure.StatsOf(b).MaxHp) : null;
         if (Places != null && Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h, look.Shape)) return Places.Health(h);
@@ -184,32 +185,34 @@ public sealed class SleeperTool
 
     /// <summary>The plant the gather blast would wear (<see cref="CutPlant"/>'s), as its hit points.</summary>
     (float, float)? PlantOn() =>
-        Mode == ToolMode.Gather && FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting s)
-        && !_zone.Planet.Felled.Contains(s.Id) ? _zone.PlantHealth(s) : null;
+        Mode == ToolMode.Gather && Zone.Streamer != null && FloraFinder.Nearest(Zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting s)
+        && !Zone.Planet.Felled.Contains(s.Id) ? Zone.PlantHealth(s) : null;
 
     // ---- Aim -----------------------------------------------------------------------------------
 
     void Aim()
     {
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
-        PlanetTerrain terrain = _zone.Planet.Terrain;
-        HasTarget = terrain.Store.Raycast(eye.ToNumerics(), dir.ToNumerics(), _rules.Reach, out Int3 cell, out _, out float ground);
+        PlanetTerrain terrain = Zone.Planet?.Terrain; // (none in space)
+        Int3 cell = default;
+        float ground = 0f;
+        HasTarget = terrain != null && terrain.Store.Raycast(eye.ToNumerics(), dir.ToNumerics(), _rules.Reach, out cell, out _, out ground);
         // A structure's block (the one you are in, from inside) nearer than the ground blocks the dig.
         // (Trunks share the props layer with devices: only a structure's block or a device counts.)
-        OnBlock = WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.Hull | Layers.Props, out LookHit block)
-                  && (block.OnBlock || _zone.Devices.Exists(d => d.Collider == block.Collider))
+        OnBlock = WorldRay.Cast(Zone, _survivor, _rules.Reach, Layers.Hull | Layers.Props, out LookHit block)
+                  && (block.OnBlock || Zone.Devices.Exists(d => d.Collider == block.Collider))
                   && (!HasTarget || block.Distance < ground);
         TargetLabel = "";
         _placeHit = null;
         _wreck = null;
         _tell = null;
-        if (!OnBlock && Places != null && WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Props | Place.SceneryLayer, out LookHit p)
+        if (!OnBlock && Places != null && WorldRay.Cast(Zone, _survivor, _rules.Reach, Layers.World | Layers.Props | Place.SceneryLayer, out LookHit p)
             && (!HasTarget || p.Distance < ground + 0.05f))
         {
             _placePoint = p.Point;
             if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h, p.Shape)) _placeHit = h;
             else _wreck = Places.SalvageOf(p.Collider);
-            if (!OnPlace && p.Collider is Node solid && _zone.Infra.IsAncestorOf(solid)) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
+            if (!OnPlace && p.Collider is Node solid && Zone.Infra?.IsAncestorOf(solid) == true) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
             if (OnPlace)
             {
                 TargetLabel = _placeHit is PoiPlaces.Hit ph ? Places.Label(ph) : _wreck.Name.ToUpperInvariant();
@@ -225,13 +228,13 @@ public sealed class SleeperTool
         TargetVerdict = terrain.Check(cell, EditKind.Tool);
         CellMaterial m = terrain.Store.MaterialAt(cell);
         // Only ore is named by the crosshair: something you can take (plain ground says nothing).
-        TargetLabel = m == CellMaterial.Ore && TargetVerdict != Verdict.Bedrock ? (OreOf(_zone.Planet.Source.OreKindAt(cell))?.Name ?? "Ore").ToUpperInvariant() : "";
+        TargetLabel = m == CellMaterial.Ore && TargetVerdict != Verdict.Bedrock ? (OreOf(Zone.Planet.Source.OreKindAt(cell))?.Name ?? "Ore").ToUpperInvariant() : "";
     }
 
     // ---- Gather --------------------------------------------------------------------------------
 
     /// <summary>The raw item a deposit kind gives (shared/Items' deposit field).</summary>
-    public ItemDef OreOf(DepositKind kind) => SliceItems.OreFor(_zone.Data.Items, kind.ToString());
+    public ItemDef OreOf(DepositKind kind) => SliceItems.OreFor(Zone.Data.Items, kind.ToString());
 
     /// <summary>The hand tool in hand (the item id), which sets how fast and how wide it gathers; Game sets it each tick.</summary>
     public string ItemId = "sleeper-tool";
@@ -272,7 +275,7 @@ public sealed class SleeperTool
     void Announce(SortedDictionary<string, int> got, bool quietStone)
     {
         foreach (var (id, n) in got)
-            if (!quietStone || id != "stone") Said?.Invoke($"+{n} {_zone.Data.Items.Item(id).Name}", Tones.Good);
+            if (!quietStone || id != "stone") Said?.Invoke($"+{n} {Zone.Data.Items.Item(id).Name}", Tones.Good);
     }
 
     /// <summary>
@@ -285,7 +288,7 @@ public sealed class SleeperTool
     {
         if (!HasTarget) return null;
         _cooldown = _rules.DigInterval;
-        PlanetTerrain terrain = _zone.Planet.Terrain;
+        PlanetTerrain terrain = Zone.Planet.Terrain;
         Vector3 at = new(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f);
         Verdict verdict = terrain.Check(Target, EditKind.Tool);
         if (verdict != Verdict.Removable)
@@ -314,14 +317,14 @@ public sealed class SleeperTool
             float dealt = MathF.Min(power * weight, durability - hurt);
             if (dealt <= 0f) dealt = 0f;
             double share = dealt / durability;
-            if (m == CellMaterial.Ore && OreOf(_zone.Planet.Source.OreKindAt(cell)) is ItemDef item) Earn(item.Id, _yields.OrePerCell * share, got);
+            if (m == CellMaterial.Ore && OreOf(Zone.Planet.Source.OreKindAt(cell)) is ItemDef item) Earn(item.Id, _yields.OrePerCell * share, got);
             else if (m is CellMaterial.Rock or CellMaterial.DeepRock && _yields.StonePerRockCell > 0) Earn("stone", _yields.StonePerRockCell * share, got);
             hurt += power * weight;
             if (hurt >= durability) { finished.Add(cell); _cellHurt.Remove(cell); }
             else _cellHurt[cell] = (hurt, _clock);
         }
         PruneHurt();
-        PlanetEdit edit = finished.Count > 0 ? _zone.Edits.DigCells(finished) : new PlanetEdit(EditKind.Tool);
+        PlanetEdit edit = finished.Count > 0 ? Zone.Edits.DigCells(finished) : new PlanetEdit(EditKind.Tool);
         int ore = 0;
         foreach (RemovedCell r in edit.Removed) if (r.Material == CellMaterial.Ore) ore++;
         if (edit.Removed.Count > 0)
@@ -335,7 +338,7 @@ public sealed class SleeperTool
         else
         {
             // Still chipping: a puff of grit and a low scrape.
-            Debris?.Puff(at, _zone.Planet.Grit(at), 0.35f);
+            Debris?.Puff(at, Zone.Planet.Grit(at), 0.35f);
             Sfx?.Play(Sfx.Sound.Dig, at, 0.8f, -9f);
         }
         Announce(got, quietStone: got.Count > 1);
@@ -352,7 +355,7 @@ public sealed class SleeperTool
     /// <summary>The deposit whose tell rock stands at a point (its outcrop or scree, within the ore body's radius), if it still has rock to break.</summary>
     Deposit? TellAt(Vector3 point)
     {
-        var world = _zone.Planet;
+        var world = Zone.Planet;
         double px = Mathx.WrapX(point.X, world.Width), pz = Mathx.Wrap(point.Z, world.Height);
         foreach (Deposit d in world.Map.Deposits.InRect(px - 8, pz - 8, px + 8, pz + 8))
         {
@@ -376,7 +379,7 @@ public sealed class SleeperTool
         _tellsWorked[(d.X, d.Y)] = worked + pulses;
         Vector3 at = _placePoint;
         Sfx?.Play(Sfx.Sound.Clank, at, 1.1f, -8f);
-        Debris?.Puff(at, _zone.Planet.Grit(at), 0.5f);
+        Debris?.Puff(at, Zone.Planet.Grit(at), 0.5f);
         if (OreOf(d.Kind) is ItemDef item)
         {
             Give(item.Id, TellOrePerPulse * pulses);
@@ -384,7 +387,7 @@ public sealed class SleeperTool
             Said?.Invoke($"+{TellOrePerPulse * pulses} {item.Name}", Tones.Good);
         }
         // Worked through: the rock and its collider go, and the tool digs on into the ground under it.
-        if (_tellsWorked[(d.X, d.Y)] >= TellPulses) _zone.Infra.BreakTell(d);
+        if (_tellsWorked[(d.X, d.Y)] >= TellPulses) Zone.Infra.BreakTell(d);
     }
 
     /// <summary>One pulse on a place's block or piece, or a wreck: it comes away once worked through, its materials into the pack.</summary>
@@ -399,7 +402,7 @@ public sealed class SleeperTool
         if (got != null && !got.IsEmpty)
         {
             foreach (var (id, n) in got) Give(id, n);
-            Said?.Invoke(string.Join(", ", got.Select(kv => $"+{kv.Value} {_zone.Data.Items.Item(kv.Key).Name}")), Tones.Good);
+            Said?.Invoke(string.Join(", ", got.Select(kv => $"+{kv.Value} {Zone.Data.Items.Item(kv.Key).Name}")), Tones.Good);
             Salvaged?.Invoke();
         }
         if (!string.IsNullOrEmpty(message)) Said?.Invoke(message, got != null || message.Contains("room") ? Tones.Good : Tones.Caution);
@@ -413,7 +416,7 @@ public sealed class SleeperTool
     }
 
     /// <summary>What felled trees leave (the zone's).</summary>
-    public TreeFx Trees => _zone.Trees;
+    public TreeFx Trees => Zone.Trees;
 
     /// <summary>Trees that have fallen to the tool (tests).</summary>
     public int TreesFelled { get; private set; }
@@ -427,17 +430,17 @@ public sealed class SleeperTool
     public bool CutPlant(out Vector3 struck)
     {
         struck = default;
-        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting sighting)
-            || _zone.Planet.Felled.Contains(sighting.Id))
+        if (Zone.Streamer == null || !FloraFinder.Nearest(Zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting sighting)
+            || Zone.Planet.Felled.Contains(sighting.Id))
             return false;
         Vector3 plant = sighting.Root;
         float scale = sighting.Scale, size = Math.Clamp(scale, 0.5f, 3f);
         Flora kind = sighting.Kind;
-        GalHack.Plants.Plant species = _zone.SpeciesOf(sighting.Plant);
+        GalHack.Plants.Plant species = Zone.SpeciesOf(sighting.Plant);
         bool tree = TreeFx.IsTree(kind), boulder = SurfaceZone.IsBoulder(kind);
         _suit.Worked();
-        double share = _zone.WearPlant(sighting, BlastWear, plant - _survivor.WorldEye());
-        SliceRules.PlantRules rules = _zone.Data.Rules.Plants;
+        double share = Zone.WearPlant(sighting, BlastWear, plant - _survivor.WorldEye());
+        SliceRules.PlantRules rules = Zone.Data.Rules.Plants;
         var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
         if (boulder) Earn("stone", rules.BoulderStone * size * share, got);
         else
@@ -448,10 +451,10 @@ public sealed class SleeperTool
         }
         Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, species == null ? 2.2f * size + 1f : species.Height * scale * 0.5f) : 0.6f * size);
         struck = boulder ? plant + Vector3.Up * 0.4f : plant.Lerp(crown, 0.5f);
-        if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, _zone.Planet.Grit(plant), 0.7f);
+        if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, Zone.Planet.Grit(plant), 0.7f);
         else Trees.Leaves(crown, TreeFx.LeafOf(kind, species), tree ? 14 : 8, tree ? 1.2f : 0.4f);
         Sfx?.Play(Sfx.Sound.Dig, plant, tree ? 0.8f : 1.4f, -9f);
-        if (_zone.Planet.Felled.Contains(sighting.Id))
+        if (Zone.Planet.Felled.Contains(sighting.Id))
         {
             PlantsCut++;
             PlantCut?.Invoke();
@@ -499,7 +502,7 @@ public sealed class SleeperTool
         if (Seizer?.Invoke() is { Dead: false } husk)
         {
             // A Husk's face against yours can't be missed: straight into it, at the head. Enough and it lets go.
-            Vector3 face = _zone.Wildlife.WorldOf(husk) + Vector3.Up * husk.Species.Figure.Height * 0.88f;
+            Vector3 face = Zone.Wildlife.WorldOf(husk) + Vector3.Up * husk.Species.Figure.Height * 0.88f;
             Hurt(husk, damage * 1.5f);
             SeizerHit?.Invoke(husk);
             CreatureHit?.Invoke(husk);
@@ -521,7 +524,7 @@ public sealed class SleeperTool
                 return;
             case HitKind.Creature:
                 var c = (Creature)hit.Thing;
-                Hurt(c, damage * _zone.Wildlife.HitScale(c, at));
+                Hurt(c, damage * Zone.Wildlife.HitScale(c, at));
                 CreatureHit?.Invoke(c);
                 CreatureStruck?.Invoke(c, at, dir);
                 Fx?.Impact(at, -dir, ImpactKind.Creature, lit: false);
@@ -561,7 +564,7 @@ public sealed class SleeperTool
             // A door or a piece of dressing: worn at the blast's rate, giving up its bill's share as it goes.
             var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
             foreach (var (id, n) in Places.Wear(dressed, BlastWear))
-                if (_zone.Data.Items.Has(id)) Earn(id, n * Bolt.ExtractShare, got);
+                if (Zone.Data.Items.Has(id)) Earn(id, n * Bolt.ExtractShare, got);
             Announce(got, quietStone: false);
             Sfx?.Play(Sfx.Sound.Clank, _placePoint, 1.25f, -12f);
             Strike(_placePoint, Vector3.One * 0.35f, 4, attack: true);
@@ -632,7 +635,7 @@ public sealed class SleeperTool
         float from = 0f;
         for (int k = 0; k < 4 && body == null && from < reach; k++)
         {
-            Creature c = _zone.Wildlife.Raycast(eye + dir * from, dir, reach - from, out float d, out _);
+            Creature c = Zone.Wildlife.Raycast(eye + dir * from, dir, reach - from, out float d, out _);
             if (c == null) break;
             if (c.Dead && c.Species.Id != CharacterModel.Sleeper.Id) { body = c; reach = from + d; }
             else from += d + 0.5f; // on past the living
@@ -640,8 +643,8 @@ public sealed class SleeperTool
         Town.Person person = Places?.PersonAlong(eye, dir, reach, out _, dead: true);
         object owner = (object)person ?? body;
         if (owner == null) return false;
-        Vector3 at = person != null ? person.Town.World(person.Pos) : _zone.Wildlife.WorldOf(body);
-        if (_zone.Loot.All.FirstOrDefault(l => l.Kind == LootKind.Corpse && l.Owner == owner) is Lootable loot)
+        Vector3 at = person != null ? person.Town.World(person.Pos) : Zone.Wildlife.WorldOf(body);
+        if (Zone.Loot.All.FirstOrDefault(l => l.Kind == LootKind.Corpse && l.Owner == owner) is Lootable loot)
         {
             var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
             foreach (var (id, n) in loot.Storage.Contents)
@@ -660,7 +663,7 @@ public sealed class SleeperTool
     void Hurt(Creature c, float amount)
     {
         float was = c.Health;
-        _zone.Wildlife.Damage(c, amount);
+        Zone.Wildlife.Damage(c, amount);
         if (c.Health < was) Bio();
     }
 
@@ -668,7 +671,7 @@ public sealed class SleeperTool
     void Bio()
     {
         Give(Biomass, 1);
-        Said?.Invoke($"+1 {_zone.Data.Items.Item(Biomass).Name}", Tones.Good);
+        Said?.Invoke($"+1 {Zone.Data.Items.Item(Biomass).Name}", Tones.Good);
     }
 
     public const string Biomass = "biomass";
@@ -718,7 +721,7 @@ public sealed class SleeperTool
         {
             v.Hits.Shot(cell, at.ToNumerics(), normal.ToNumerics(), amount, GalHack.Structures.DamageType.Energy, wear: true);
             if (max > 0f && dealt > 0f)
-                foreach (var (id, n) in GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, s, b))
+                foreach (var (id, n) in GalHack.Items.Bridge.BuildingBridge.BillOf(Zone.Data.Items, s, b))
                     Earn(id, n * Bolt.ExtractShare * dealt / max, got);
         }
         Extracted++;
@@ -750,7 +753,7 @@ public sealed class SleeperTool
         }
         if (!attack) return; // (gathering works the suit itself)
         _suit.Worked();
-        _zone.Wildlife.Noise(_survivor.WorldEye(), ShotHeard);
+        Zone.Wildlife.Noise(_survivor.WorldEye(), ShotHeard);
     }
 
     // ---- Repair: the green cone ------------------------------------------------------------------
@@ -772,15 +775,15 @@ public sealed class SleeperTool
             Arms?.Sounds?.Play(CombatSound.Mend, Muzzle(), 0.95f + 0.1f * (float)Random.Shared.NextDouble(), -10f);
         }
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
-        if (WorldRay.Cast(_zone, _survivor, r.Range, Layers.World | Layers.Hull, out LookHit look) && look.OnBlock
+        if (WorldRay.Cast(Zone, _survivor, r.Range, Layers.World | Layers.Hull, out LookHit look) && look.OnBlock
             && look.Vessel.Structure.TryGetBlock(look.Cell, out SInt3 anchor, out GalHack.Structures.Block b) && b.Hp < look.Vessel.Structure.StatsOf(b).MaxHp - 0.01f)
         {
             Slice.Vessels.Vessel v = look.Vessel;
             float max = v.Structure.StatsOf(b).MaxHp, gain = MathF.Min(r.Rate * dt, max - b.Hp);
             if (!Pay(v, anchor, b, gain / max))
             {
-                LastMend = $"short of {_zone.Data.Items.Describe(BillOf(v, b), 3)} for {anchor}";
-                if (pulse) Said?.Invoke($"REPAIR · {_zone.Data.Items.Describe(BillOf(v, b), 3)} NEEDED", Tones.Caution);
+                LastMend = $"short of {Zone.Data.Items.Describe(BillOf(v, b), 3)} for {anchor}";
+                if (pulse) Said?.Invoke($"REPAIR · {Zone.Data.Items.Describe(BillOf(v, b), 3)} NEEDED", Tones.Caution);
                 return;
             }
             v.Hits.Heal(anchor, b.Hp + gain);
@@ -796,7 +799,7 @@ public sealed class SleeperTool
         foreach (var (v, cell, fallen) in FallenInCone(eye, dir, r.Range, cos))
         {
             if (v.Structure.Has(cell)) { v.Hits.Fallen.Remove(cell); continue; }
-            if (!Pay(v, cell, fallen, r.RestoreShare, commit: false)) { why = $"REPAIR · {_zone.Data.Items.Describe(BillOf(v, fallen), 3)} NEEDED"; continue; }
+            if (!Pay(v, cell, fallen, r.RestoreShare, commit: false)) { why = $"REPAIR · {Zone.Data.Items.Describe(BillOf(v, fallen), 3)} NEEDED"; continue; }
             why = Builder?.Restore(v, cell, fallen, v.Structure.StatsOf(fallen).MaxHp * r.RestoreShare);
             if (why != null) continue;
             Pay(v, cell, fallen, r.RestoreShare);
@@ -811,7 +814,7 @@ public sealed class SleeperTool
     public Bill BillOf(Slice.Vessels.Vessel v, GalHack.Structures.Block b)
     {
         GalHack.Structures.BlockType t = v.Structure.TypeOf(b);
-        return t.IsPlated ? Bill.Of((t.Plate, v.Structure.Catalogue.PlatesOf(b))) : GalHack.Items.Bridge.BuildingBridge.BillOf(_zone.Data.Items, v.Structure, b);
+        return t.IsPlated ? Bill.Of((t.Plate, v.Structure.Catalogue.PlatesOf(b))) : GalHack.Items.Bridge.BuildingBridge.BillOf(Zone.Data.Items, v.Structure, b);
     }
 
     /// <summary>What the block being mended owes so far, item by item (below zero: paid ahead, an item's worth not yet used).</summary>
@@ -826,7 +829,7 @@ public sealed class SleeperTool
     /// </summary>
     bool Pay(Slice.Vessels.Vessel v, SInt3 cell, GalHack.Structures.Block b, float share, bool commit = true)
     {
-        if (_zone.WorldRules.Creative) return true;
+        if (Zone.WorldRules.Creative) return true;
         if (_owedFor != (v, cell)) { _owed.Clear(); _owedFor = (v, cell); }
         var due = new Bill();
         var next = new Dictionary<string, double>(_owed, StringComparer.Ordinal);
@@ -850,7 +853,7 @@ public sealed class SleeperTool
     List<(Slice.Vessels.Vessel, SInt3, GalHack.Structures.Block)> FallenInCone(Vector3 eye, Vector3 dir, float range, float cos)
     {
         var found = new List<(float, Slice.Vessels.Vessel, SInt3, GalHack.Structures.Block)>();
-        foreach (Slice.Vessels.Vessel v in _zone.Vessels)
+        foreach (Slice.Vessels.Vessel v in Zone.Vessels)
             foreach (var (cell, b) in v.Hits.Fallen)
             {
                 Vector3 to = v.ToWorld(PhysicsSandbox.Bridges.StructureBridge.BlockCenter(v.Structure, cell, b)) - eye;
