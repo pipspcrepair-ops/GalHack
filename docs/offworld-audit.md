@@ -50,9 +50,15 @@
 | 18 | **Lights near places** — `Zone.Light.Places` is set on the starter only. There are no places off-world anyway (#3), so this goes with that fix. | Game/Game.Places.cs:78 | C | S |
 | 19 | **Replicator markers** are added to whichever zone is current when they're first seen, and never moved. Off-world they show up in the wrong world or not at all. | Game/Game.cs:964-982 | L | S |
 | 20 | **Cave and underworld rules about the bunker** (`Keep`, `Indoors`) assume the starter's bunker. They only matter once #3 gives other worlds caves. | Game/Game.Places.cs:60-70 | C | S, with #3 |
+| 21 | **Deposit discovery IDs carry no world.** The ID is `deposit:x,z` only. A deposit at the same rounded x,z on another world (or star) gives no XP and no count, because the starter's deposit already used that ID. | Game/Game.Progress.cs:41 | C | S: prefix the world key |
+| 22 | **"Landed on the moon" is one discovery for every body.** Landing on any world but the starter pays the same one-time `moon` discovery with that label. The second, third and every later world give nothing. The same goes for `orbit` (only the first orbit pays) and `fold` (only the first star). | Orbit/Spaceflight.cs:373, 455; Orbit/Spaceflight.Fold.cs:293 | C | S: one discovery per world key |
+| 23 | **Wreck charting uses the bare site ID.** `Charts.SeeWreck` records `Derelict.Id`, with no world. Every orbit numbers its sites alike (comment at Spaceflight.Worlds.cs:100), so a wreck around another world or star that shares a number with one already charted never shows on the chart. | Orbit/Spaceflight.cs:232; Orbit/Charts.cs:100-104 | L: depends on whether Charts is reset per star | S |
+| 24 | **Species discovery** uses `species:<id>`. That is right if a species ID means the same animal everywhere. If generated species reuse IDs across worlds, meeting a new world's animals pays nothing. | Game/Game.Progress.cs:49, 58 | U | S |
 
 ## Checked and fine (follow `Game.Zone`)
 - **Zone-following code:** ArmsHost and SimArms logic (`Zone => Game.Zone`; the ArmsHost node is still a starter child), MachineScreens, the core scanner, CreatureBodies (logic; its node is still a starter child), ForceFields, Survivor gravity (`Zone.Physics.GravityAt`), death bag placement (`Zone.Loot`), and SetDown and containers.
+- **Deposit scanner** (`Game.Scanner.cs:90`): reads `Zone.Planet`, the current world.
+- **Visor planet readout and the info sections** (`Ui/Visor.cs:420`, `Ui/InfoSections.cs:176-187`): different in orbit on purpose.
 - **Spaceflight.Weather `Here.IsHome`:** rightly limited to the home globe.
 - **Static caches:** none in shared/ or planet-surface hold a planet or zone (mesh caches only).
 
@@ -60,8 +66,26 @@
 - Hands and consumables
 - Game.Gestures
 - `PoiSiting.Loading` (static, set false after the starter loads; may affect other worlds' first POI build once #3 exists)
-- Charts marks keyed by star
+- Whether Charts is reset per star (#23)
 - The `Device` zone reassignment
+
+---
+
+## Wider risks of not being world-agnostic
+These are patterns that will keep producing bugs like the ones above, not single bugs.
+
+1. **Record IDs are save-format debt.** `structure-N`, `container-N`, `device-N` and `thing-N` come from an in-memory counter (Orbit/Spaceflight.cs:89, 718-729). They are unique only for one session, and they are numbered in the order things are first seen. A wreck's ID gets a world prefix only outside the first orbit (`WreckPrefix`, Spaceflight.Worlds.cs:101). Before saves, IDs must be stable and unique across worlds and stars: world key plus a persistent counter, or a seeded ID.
+2. **Rules are game-wide, not per world.** Every world shares one `GameData` (`BodyZone` sets `Data = home.Data`). That's right for items and blueprints. But `Rules.ClimateNode` and `Rules.Planet` are then the same on every world, so the suit's temperature clamp (Suit.cs:115) will be the starter's even after #2 is fixed. Per-world values must come from the world's spec.
+3. **One clock, set from the starter.** Orbits read `Below.Sky.Days`, and jumps copy it into the next world's sky (Spaceflight.Jump.cs:271-279; Spaceflight.Moon.cs:110). That's fine as a galaxy clock. Anything that reads a world's day length or season from it gets the starter's.
+4. **"Home" is a special case everywhere.** `Game.Surface`, `OnOtherBody` (`Zone != Surface`), `Here.IsHome`, the bunker checks, and `moon<index>` names exist only for the start orbit. Every one is a code path other worlds never take, so bugs hide there.
+5. **Tests only prove the starter.** Seeds are random, but nearly every test plays on a starter planet; only MoonTest touches another body. Every finding here passed the test suite. Fix: let the test runner start on any body (moon, vacuum world, another star) and run a share of each suite there.
+6. **Wiring per world needs unwiring.** Once systems wire to the current world, every `+=` on a zone needs a matching `-=` on leaving. Otherwise callbacks fire on freed zones (crashes) and dropped worlds stay in memory (leaks). One `WireZone` / `UnwireZone` pair, not ad-hoc hooks.
+7. **Memory and frame time.** Home-system worlds stay in memory for the whole game, each with its own streamer, wildlife and weather. With settings applied only to the starter (#10), the others stream at default detail. That is a risk on the minimum-spec machine.
+8. **One-time setup that assumes one world.** The bunker, the starting kit, `PoiSiting.Loading` (a static flag cleared after the starter loads) and music readiness (`WorldReady` needs `Game.Places`). Any of these can skip or misfire on the first visit to another world.
+
+**What would stop it coming back:**
+- Every brief says no system keeps a zone, and everything reads the current world through one accessor.
+- The merge review flags any new `readonly SurfaceZone`, `Game.Surface` use outside the spaceflight code, or text ID built without a world key.
 
 ---
 
@@ -69,7 +93,7 @@
 1. **Small fixes first:** #4, #10, #12, #14, #9.
    - One shared `EnterZone` hook does most of it: a list of nodes to reparent, plus `WireZone` and `UnwireZone` for event-wired systems (#6, #9).
 2. **Medium fixes:** #2 Suit and #1 respawn come next. These hit the player directly.
-3. **The data job** (#7, #8, #15) needs a design pass before travel between stars ships.
+3. **The data job** (#7, #8, #15, #21-24, and risks 1-3) needs a design pass before travel between stars ships.
    - Pick the world key. It should be stable from the galaxy seed, star and body, not list order.
    - Decide which changes each world records.
    - Make respawn points, bikes, devices and edits carry the key.
