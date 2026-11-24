@@ -146,14 +146,18 @@ public sealed class SimArms
         return k.Mounted ? -1f : _host.Table.Get(Weapons.Fists).Damage * 1.5f;
     }
 
-    /// <summary>Where its shots leave: the muzzle of the model in its hand or on its mount (undrawn, far off: about where it would be).</summary>
+    /// <summary>
+    /// Where its shots leave: the muzzle of the model in its hand or on its mount as drawn; a bow (the body's own), or a gun
+    /// not drawn, from the hand along the weapon's line as the rig holds it, else its chest ahead of it: raised as far as its
+    /// body is drawn over the sim's ground (far off it stands on the coarser far land), never at its feet.
+    /// </summary>
     public Vector3 Muzzle(Creature c, Kit k, Vector3 origin)
     {
-        if (k.Model != null && GodotObject.IsInstanceValid(k.Model.Muzzle) && k.Model.Muzzle.IsInsideTree()) return k.Model.Muzzle.GlobalPosition;
-        // A bow (the body's own): from the bow hand, along the arrow.
-        if (c.Rig is HumanRig hr && hr.WeaponLine.LengthSquared() > 0.5f) return hr.WeaponGrip + hr.WeaponLine * 0.1f + origin;
+        if (k.Model != null && GodotObject.IsInstanceValid(k.Model.Muzzle) && k.Model.Muzzle.IsVisibleInTree()) return k.Model.Muzzle.GlobalPosition;
+        Vector3 lift = Vector3.Up * (Patch?.View.DrawnLift(c) ?? 0f);
+        if (c.Rig is HumanRig hr && hr.WeaponLine.LengthSquared() > 0.5f) return hr.WeaponGrip + hr.WeaponLine * 0.1f + origin + lift;
         float h = c.Species.Figure?.Height ?? c.Species.BodyHeight;
-        return c.Position + origin + Vector3.Up * h * 0.75f + c.Forward * 0.5f;
+        return c.Position + origin + lift + Vector3.Up * h * 0.75f + c.Forward * 0.5f;
     }
 
     /// <summary>Every physics tick: bursts under way go round by round, and new bodies in view get their weapon drawn.</summary>

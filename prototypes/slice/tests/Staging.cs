@@ -173,6 +173,7 @@ public sealed partial class Staging
             "own-inside" => OwnInside(),
             "wanderers" => WanderersView(),
             "clash" => ClashView(),
+            "fieldfight" => FieldFightView(),
             "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
             "layers-land" => LayersLand(),
