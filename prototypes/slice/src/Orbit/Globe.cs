@@ -884,9 +884,10 @@ public partial class Globe : Node3D
     /// <summary>How far along the map the sheet reaches this frame, m.</summary>
     public float Reach { get; private set; }
 
-    /// <summary>The angular radius of the sphere the sheet was last drawn on, and the eye it was drawn for (tests: its true size).</summary>
+    /// <summary>The angular radius of the sphere the sheet was last drawn on, the eye it was drawn for, and all it was drawn with (tests: its true size, the height and up it stands from).</summary>
     public float Angular { get; private set; }
-    public Vector3 DrawnFrom { get; private set; }
+    public Vector3 DrawnFrom => Drawn.Eye;
+    public WorldView Drawn { get; private set; }
 
     /// <summary>Sets the sheet up a piece at a time, each upload on its own frame, so none of them shows as a hitch.</summary>
     public IEnumerable<int> Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules, Vector2 mapSize)
@@ -997,7 +998,7 @@ public partial class Globe : Node3D
         if (!Visible) return;
         float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
         Reach = v.FlatFrom + RimOf(rho, v.Height);
-        (Angular, DrawnFrom) = (MathF.Asin(rho / (rho + v.Height)), v.Eye);
+        (Angular, Drawn) = (MathF.Asin(rho / (rho + v.Height)), v);
         float sphereOut = ArcAt(_sphereReach, rho, Radius);
         foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {

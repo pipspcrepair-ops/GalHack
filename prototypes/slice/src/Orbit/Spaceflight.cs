@@ -104,6 +104,9 @@ public partial class Spaceflight : Node
     /// <summary>The crossing height of the body you are near, on or over, m.</summary>
     float Ceiling => Below.Physics.Zone.Ceiling;
 
+    /// <summary>How far round the globe from the point the band is laid out over you may stray before it is laid out under you again, as the cosine of the angle (half a degree: a few dozen metres, the flat terms a fraction of a metre off).</summary>
+    static readonly float RelaidPast = MathF.Cos(Mathf.DegToRad(0.5f));
+
     /// <summary>The highest ground of the body you are near, on or over, m.</summary>
     public float Highest
     {
@@ -392,7 +395,13 @@ public partial class Spaceflight : Node
             if (y < band && inward) AlignHere(at);
             return;
         }
-        // In the band world coordinates are the surface's: what is under you is what you land on.
+        // In the band world coordinates are the surface's: what is under you is what you land on. That holds only near the point
+        // the orbit was laid out over, for the globe curves away from it: flown off it, the orbit is laid out again under you.
+        if ((at - Here.Centre).Normalized().Dot(Vector3.Up) < RelaidPast)
+        {
+            AlignHere(at);
+            return;
+        }
         StreamAhead(v.Dot((at - Here.Centre).Normalized()) < 0f || y < Ceiling, at);
         if (y >= Ceiling - Rules.Crossing.Gap) return;
         if (Here.Ready && Below.Arrived && Below.Streamer.ReadyAround(at, 1, needCollision: false))

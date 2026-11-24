@@ -440,23 +440,19 @@ public partial class Spaceflight
         Lap("globe weather");
         double w = s.Planet.Width, h = s.Planet.Height;
 
-        // Where the sheet stands: under you on the flat map, turning into under you on the globe up the band.
-        float onGlobe = !orbit ? 0f : _aligned ? Smooth((y - cap) / r.Band) : 1f;
+        // Where the sheet stands: under you on the flat map where the land's own mesh shows, and over the cap under you on the
+        // globe, from your true height, so the readout's altitude is the drawn ground's (owner, 24 Nov: once the band's flat
+        // terms had drifted off the globe, its mountains were drawn up level with a ship at 1,218 m).
         double nx = Planets.Gen.Mathx.WrapX(eye.X, w), nz = Planets.Gen.Mathx.Wrap(eye.Z, h);
         Vector3 up = Vector3.Up, east = Vector3.Right, south = Vector3.Back;
         float height = eye.Y;
-        if (onGlobe > 0f)
+        if (orbit && y >= cap)
         {
             N.Vector3 q = o.ToGlobe(eye.ToNumerics());
-            var (gx, gz) = o.Map.MapPoint(q);
-            N.Quaternion frame = N.Quaternion.Normalize(o.Turn * o.Map.Frame(gx, gz));
-            up = up.Lerp(MathX.Rotate(frame, N.Vector3.UnitY).ToGodot(), onGlobe).Normalized();
-            east = east.Lerp(MathX.Rotate(frame, N.Vector3.UnitX).ToGodot(), onGlobe);
-            east = (east - up * east.Dot(up)).Normalized();
-            south = east.Cross(up);
-            nx = Planets.Gen.Mathx.WrapX(nx + onGlobe * Planets.Gen.Mathx.WrapDelta(gx - nx, w), w);
-            nz = Planets.Gen.Mathx.Wrap(nz + onGlobe * Planets.Gen.Mathx.WrapDelta(gz - nz, h), h);
-            height = Mathf.Lerp(height, o.SurfaceHeight(q.Length()), onGlobe);
+            (nx, nz) = o.Map.MapPoint(q);
+            N.Quaternion frame = N.Quaternion.Normalize(o.Turn * o.Map.Frame(nx, nz));
+            (up, east, south) = (MathX.Rotate(frame, N.Vector3.UnitY).ToGodot(), MathX.Rotate(frame, N.Vector3.UnitX).ToGodot(), MathX.Rotate(frame, N.Vector3.UnitZ).ToGodot());
+            height = o.SurfaceHeight(q.Length());
         }
         N.Quaternion map = o.Map.Frame(nx, nz);
         // Under the band's top, where the ground is near enough for a texel of the whole paint to be metres on the screen,
@@ -518,7 +514,7 @@ public partial class Spaceflight
             FogDensity = SurfaceShown ? env.FogDensity : 0f,
             FogColor = airFar,
             Rim = SeenFromOutside(y) * share,
-            TrueDepth = onGlobe >= 1f,
+            TrueDepth = orbit && (!_aligned || y >= BandTop),
             TrueCentre = o.Centre,
         });
 
