@@ -29,7 +29,9 @@ public static class BlockMaterials
     /// <summary>Seconds on the shader's TIME clock (it wraps each hour), so a lamp's real light stays in step with its glow.</summary>
     public static double LampClock => (Godot.Time.GetTicksMsec() / 1000.0) % 3600.0;
 
-    public static ShaderMaterial Glass => _glass ??= new ShaderMaterial { Shader = new Shader { Code = GlassCode } };
+    // After the sky's bodies and rings (priorities 2 to 10 in the slice's SpaceSky and Globe), which draw into the
+    // same transparent queue and write the depth glass doesn't: a lower number puts a planet over the window.
+    public static ShaderMaterial Glass => _glass ??= new ShaderMaterial { Shader = new Shader { Code = GlassCode }, RenderPriority = 20 };
 
     /// <summary>A translucent hologram for the ghost preview, tinted per use. Fill 0 draws only the edges.</summary>
     public static ShaderMaterial Ghost(Color tint, float fill = 0.3f)
