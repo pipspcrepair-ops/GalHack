@@ -88,6 +88,11 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         for (int i = 0; i < 5; i++) yield return 0;
 
+        if (OS.GetCmdlineUserArgs().Contains("--perf"))
+        {
+            foreach (int x in Performance()) yield return x;
+            yield break;
+        }
         if (OS.GetCmdlineUserArgs().Contains("--hover"))
         {
             GD.Print("-- hover rover: trench, holes, water --");
