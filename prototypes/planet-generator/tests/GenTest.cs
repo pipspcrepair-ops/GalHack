@@ -572,8 +572,8 @@ public partial class GenTest : Node
     /// <summary>
     /// Each type reads by its form and features, never by its colours (owner, 23 Nov: every element in a myriad of colours, so a
     /// type has no colours of its own). Fresh worlds of every type with air, measured on the map and the globe's colour map:
-    /// lava glows (its self-lit share), ice is ice (white snow and ice cover), an arid world has no standing vegetation (the
-    /// cover of what grows) where a temperate one is grown over, an alien one stands in crystal and fungus.
+    /// lava glows (its self-lit share), ice is ice (white snow and ice cover), an arid world is thinly grown (scrub and oases)
+    /// where a temperate one is grown over, an alien one stands in crystal and fungus.
     /// Then the blind test on those features and the terrain's: a nearest-centroid classifier trained on some worlds and scored
     /// on others names the type. Colour's check is variety: worlds of one type differ in their land's colour.
     /// </summary>
@@ -610,8 +610,12 @@ public partial class GenTest : Node
         Check(Least(Archetype.Lava, 0) > 0f && lavaGlow >= 0.05f && lavaGlow >= 10f * otherGlow, $"lava glows: every lava world shows fire (least {Least(Archetype.Lava, 0):P1}), {lavaGlow:P1} of a lava world self-lit on average against {otherGlow:P2} of a temperate, arid or ice one");
         float otherWhite = Most(a => a is not (Archetype.Ice or Archetype.Temperate), 1);
         Check(Least(Archetype.Ice, 1) >= 0.4f && otherWhite < 0.15f, $"ice is ice: at least {Least(Archetype.Ice, 1):P0} of every ice world white with snow and ice, at most {otherWhite:P0} of an arid, lava or alien one");
-        float aridCover = Most(a => a == Archetype.Arid, 2);
-        Check(aridCover <= 0.25f && Least(Archetype.Temperate, 2) >= 0.35f, $"an arid world has no standing vegetation: its land at most {aridCover:F2} covered by what grows, a temperate world's at least {Least(Archetype.Temperate, 2):F2}");
+        // Arid worlds grow scrub where their air is humid and oases in wetlands, and a temperate world may hold a desert or
+        // badlands: the types differ in the bulk of their worlds, so each type's far tail is judged against the other's middle.
+        float Grown(Archetype a, float q) { var v = byType[a].Select(f => f[2]).OrderBy(x => x).ToList(); return v[(int)(q * (v.Count - 1))]; }
+        var (aridMid, aridHigh, aridMost) = (Grown(Archetype.Arid, 0.5f), Grown(Archetype.Arid, 0.9f), Grown(Archetype.Arid, 1f));
+        var (tempMid, tempLow, tempLeast) = (Grown(Archetype.Temperate, 0.5f), Grown(Archetype.Temperate, 0.1f), Grown(Archetype.Temperate, 0f));
+        Check(aridHigh < tempLow && aridMost < tempMid && tempLeast > aridMid, $"an arid world is thinly grown, a temperate one grown over: land covered by what grows, arid median {aridMid:F2}, 90th pct {aridHigh:F2}, most {aridMost:F2}; temperate median {tempMid:F2}, 10th pct {tempLow:F2}, least {tempLeast:F2}");
         float otherStrange = Most(a => a != Archetype.Alien, 6);
         Check(Least(Archetype.Alien, 6) >= 0.3f && otherStrange == 0f, $"an alien world stands in crystal and fungus: at least {Least(Archetype.Alien, 6):P0} of every alien world's land, none of any other");
 
